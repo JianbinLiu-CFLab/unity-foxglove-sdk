@@ -111,7 +111,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.QosReliability,
                     member.QosDurability,
                     member.QosHistory,
-                    member.QosDepth))
+                    member.QosDepth,
+                    member.IsStream))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)

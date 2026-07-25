@@ -99,7 +99,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("MakeGenericMethod", emitter, StringComparison.Ordinal);
             Assert.DoesNotContain("Activator", emitter, StringComparison.Ordinal);
             Assert.DoesNotContain("dynamic", emitter, StringComparison.Ordinal);
-            Assert.Contains("registrar.Register<", emitter, StringComparison.Ordinal);
+            Assert.Contains("registrar.", emitter, StringComparison.Ordinal);
+            Assert.Contains("\"Register<\"", emitter, StringComparison.Ordinal);
+            Assert.Contains("\"RegisterStream<\"", emitter, StringComparison.Ordinal);
         }
 
         [Fact]

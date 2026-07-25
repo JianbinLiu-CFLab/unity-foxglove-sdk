@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const string QosRequiresRos2DirectionDiagnosticId = "FOXRUN614";
         private const string MixedDirectionalQosContractDiagnosticId = "FOXRUN615";
         private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
+        private const string InvalidStreamDeclarationDiagnosticId = "FOXRUN215";
         private const FoxRunNamedArgumentPresence DirectionalQosPresenceMask =
             FoxRunNamedArgumentPresence.Source
             | FoxRunNamedArgumentPresence.Targets
@@ -72,6 +73,19 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var member in type.Members)
                     ValidateMember(member, diagnostics);
 
+                foreach (var streamGroup in type.Members
+                             .Where(member => member.IsStream)
+                             .GroupBy(member => member.MemberName, StringComparer.Ordinal)
+                             .Where(group => group.Count() != 1))
+                {
+                    var first = streamGroup.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        InvalidStreamDeclarationDiagnosticId,
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "FoxRunStream<T> fields require exactly one FoxRun declaration."));
+                }
+
                 ValidateTopicGroups(type, diagnostics);
             }
             return diagnostics;
@@ -86,6 +100,25 @@ namespace Unity.FoxgloveSDK.Editor
             var requiresWebSocketShapeValidation = RequiresWebSocketShapeValidation(
                 member,
                 hasValidNativeCapability);
+
+            const FoxRunNamedArgumentPresence forbiddenStreamArguments =
+                FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.Policy
+                | FoxRunNamedArgumentPresence.Hz
+                | FoxRunNamedArgumentPresence.Tolerance
+                | FoxRunNamedArgumentPresence.OnlyIf;
+            if (member.IsStream
+                && (member.Mode != 2
+                    || !string.Equals(member.MemberKind, "field", StringComparison.Ordinal)
+                    || member.IsAggregateMember
+                    || (member.NamedArgumentPresence & forbiddenStreamArguments) != 0))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidStreamDeclarationDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRunStream<T> must be a Subscribe field without ordinary scheduling or publish-target arguments."));
+            }
 
             if (!member.GeneratesWebSocketCodec
                 && !member.GeneratesRos2NativeRegistration

@@ -102,7 +102,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunQosReliability qosReliability = 0,
             FoxRunQosDurability qosDurability = 0,
             FoxRunQosHistory qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -117,6 +118,7 @@ namespace Unity.FoxgloveSDK.Components
             QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
+            IsStream = isStream;
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
@@ -139,6 +141,7 @@ namespace Unity.FoxgloveSDK.Components
         public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public bool IsStream { get; }
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }

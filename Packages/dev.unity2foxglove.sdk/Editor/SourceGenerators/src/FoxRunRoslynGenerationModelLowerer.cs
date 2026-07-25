@@ -54,7 +54,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     qosReliability: FoxRunGenerationMember.DeclaredQosReliabilityToText(member.QosReliability),
                     qosDurability: FoxRunGenerationMember.DeclaredQosDurabilityToText(member.QosDurability),
                     qosHistory: FoxRunGenerationMember.DeclaredQosHistoryToText(member.QosHistory),
-                    qosDepth: member.QosDepth))
+                    qosDepth: member.QosDepth,
+                    isStream: member.IsStream))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -99,6 +100,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
+        public readonly bool IsStream;
 
         public FoxRunRoslynGenerationMember(
             string ns,
@@ -137,7 +139,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int qosReliability = 0,
             int qosDurability = 0,
             int qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -187,6 +190,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             NamedArgumentPresence = namedArgumentPresence;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
+            IsStream = isStream;
         }
 
         public FoxRunRoslynGenerationMember(

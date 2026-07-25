@@ -191,6 +191,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: native ROS2 generation requires an assembly reference to Unity2Foxglove.Ros2ForUnity.Native",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor InvalidStreamDeclaration = new DiagnosticDescriptor(
+            "FOXRUN215", "FoxRun stream declaration invalid",
+            "{0}: FoxRunStream<T> must be one non-static field with exactly one Subscribe declaration and no Targets, Policy, Hz, Tolerance, or OnlyIf",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor StreamInitializerMissing = new DiagnosticDescriptor(
+            "FOXRUN216", "FoxRun stream initializer missing",
+            "{0}: FoxRunStream<T> fields must have a non-null initializer",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         #endregion
 
         #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
@@ -393,6 +403,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN210": return Ros2SchemaMismatch;
                 case "FOXRUN211": return Ros2MessageShape;
                 case "FOXRUN212": return MissingNativeAssemblyReference;
+                case "FOXRUN215": return InvalidStreamDeclaration;
+                case "FOXRUN216": return StreamInitializerMissing;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -432,6 +444,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN018": return AggregateFieldWithoutMessage;
                 case "FOXRUN021": return StaticAggregateMember;
                 case "FOXRUN203": return InboundTargetNotWritable;
+                case "FOXRUN215": return InvalidStreamDeclaration;
+                case "FOXRUN216": return StreamInitializerMissing;
                 default:
                     return UnknownFoxRunDiagnostic(id);
             }

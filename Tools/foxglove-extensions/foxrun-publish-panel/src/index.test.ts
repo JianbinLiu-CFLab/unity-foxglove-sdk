@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   JsonTopicAdvertisementTracker,
   clampRequestedRateHz,
+  normalizeRequestedRateHz,
   normalizeCatalog,
   parseFieldValue,
   readContractDetail,
@@ -23,6 +24,7 @@ const summary = {
       encoding: "protobuf",
       schemaName: "unity2foxglove.foxrun.Demo_Input",
       hz: 10,
+      isStream: true,
       writableFieldCount: 1,
       protobufDescriptorAvailable: true,
       protobufDescriptorDigest: "abc",
@@ -34,6 +36,7 @@ const summary = {
       encoding: "json",
       schemaName: "Demo.Input",
       hz: 10,
+      isStream: false,
       writableFieldCount: 1,
       protobufDescriptorAvailable: false,
       protobufDescriptorDigest: "",
@@ -80,6 +83,21 @@ describe("FoxRun Publish catalog state", () => {
     expect(clampRequestedRateHz(20.4, 12)).toBe(12);
     expect(clampRequestedRateHz(-5, 12)).toBe(1);
     expect(clampRequestedRateHz(Number.NaN, 12)).toBe(1);
+  });
+
+  it("bypasses only the ordinary topic limit for catalog-declared bounded streams", () => {
+    expect(normalizeRequestedRateHz(640, 60, true)).toBe(640);
+    expect(normalizeRequestedRateHz(640, 60, false)).toBe(60);
+    expect(normalizeRequestedRateHz(Number.NaN, 60, true)).toBe(1);
+  });
+
+  it("rejects catalog entries that omit the stream semantic", () => {
+    const missing = {
+      ...summary,
+      contracts: summary.contracts.map(({ isStream: _isStream, ...contract }) => contract),
+    };
+
+    expect(normalizeCatalog(missing)?.contracts).toEqual([]);
   });
 
   it("keeps requested repeat rates separately for each catalog topic", () => {

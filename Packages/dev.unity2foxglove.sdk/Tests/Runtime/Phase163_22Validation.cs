@@ -46,7 +46,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "float",
                 onlyIf: "isReady",
                 isAggregateMember: true,
-                jsonFieldName: "renamedValue"));
+                jsonFieldName: "renamedValue",
+                isStream: true));
 
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var root = JObject.Parse(json);
@@ -57,13 +58,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(member.Value<string>("onlyIf") == "isReady"
                   && member.Value<string>("onlyIfMemberKind") == "Unresolved"
                   && member.Value<bool>("isAggregateMember")
+                  && member.Value<bool>("isStream")
                   && member.Value<string>("jsonFieldName") == "renamedValue",
-                "163-22A-1: descriptor JSON writes conditional, aggregate, and JSON field semantics");
+                "163-22A-1: descriptor JSON writes conditional, aggregate, stream, and JSON field semantics");
             Check(rereadMember.OnlyIf == "isReady"
                   && rereadMember.ConditionMemberKind == FoxRunConditionMemberKind.Unresolved
                   && rereadMember.IsAggregateMember
+                  && rereadMember.IsStream
                   && rereadMember.JsonFieldName == "renamedValue",
-                "163-22A-2: descriptor reader restores conditional, aggregate, and JSON field semantics");
+                "163-22A-2: descriptor reader restores conditional, aggregate, stream, and JSON field semantics");
             Check(FoxRunGenerationDescriptorComparer.Compare(model, reread).IsSemanticEqual,
                 "163-22A-3: descriptor comparer treats round-tripped semantic policy fields as equal");
         }
@@ -224,6 +227,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(writer.Contains("\"onlyIf\"", StringComparison.Ordinal)
                   && writer.Contains("\"onlyIfMemberKind\"", StringComparison.Ordinal)
                   && writer.Contains("\"isAggregateMember\"", StringComparison.Ordinal)
+                  && writer.Contains("\"isStream\"", StringComparison.Ordinal)
                   && writer.Contains("\"jsonFieldName\"", StringComparison.Ordinal),
                 "163-22G-1: descriptor writer includes all semantic policy fields");
             Check(comparer.Contains("member.CanonicalType", StringComparison.Ordinal)
@@ -265,7 +269,8 @@ namespace Unity.FoxgloveSDK.Tests
             string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            bool isStream = false)
             => new FoxRunGenerationMember(
                 ns: "Demo",
                 className: "DescriptorProbe",
@@ -286,7 +291,8 @@ namespace Unity.FoxgloveSDK.Tests
                 onlyIf: onlyIf,
                 isAggregateMember: isAggregateMember,
                 jsonFieldName: jsonFieldName,
-                conditionMemberKind: conditionMemberKind);
+                conditionMemberKind: conditionMemberKind,
+                isStream: isStream);
 
         private static FoxRunSchemaContractInfo Contract(string schemaName, string topic, params FoxRunSchemaFieldInfo[] fields)
             => new FoxRunSchemaContractInfo(

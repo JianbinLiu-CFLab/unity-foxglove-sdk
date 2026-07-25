@@ -504,6 +504,123 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var valueCdr = InvokeCdrBuilder(hostType, host, 3);
             AssertNullableEnumCdr(valueCdr, 2, true);
         }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void GeneratedCustomStreamDefersUserConstructionAndSettersUntilConsumerDrain()
+        {
+            var shape = new FoxRunRos2CustomDtoShape(
+                "Phase184.StreamProbeState",
+                "phase184/StreamProbeState",
+                "Phase184StreamProbeState184E",
+                hasPublicParameterlessConstructor: true,
+                isSupported: true,
+                members: new[]
+                {
+                    new FoxRunRos2CustomDtoMemberShape(
+                        "Value", "value", FoxRunRos2CustomDtoMemberKind.Scalar,
+                        "System.Int32", "int32", "", "", false, true, true),
+                },
+                diagnostics: Array.Empty<string>());
+            var generated = FoxgloveSourceEmitter.EmitClass(
+                "Phase184",
+                "GeneratedStream",
+                new[]
+                {
+                    CreateCustomMember(
+                        "State",
+                        "Phase184.StreamProbeState",
+                        "/phase184/custom-stream",
+                        (int)FoxRunFlow.Subscribe,
+                        FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                        shape,
+                        isStream: true),
+                });
+            Assert.Contains(
+                "RegisterStream<global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope, global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope>",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(".TryEnqueueDeferredOwned(", generated, StringComparison.Ordinal);
+
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols: new[]
+                {
+                    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                    "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                });
+            var compilation = CSharpCompilation.Create(
+                "phase184_custom_stream_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(generated, parseOptions),
+                    CSharpSyntaxTree.ParseText(CustomStreamDynamicSupport, parseOptions),
+                },
+                DynamicReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(
+                emit.Success,
+                string.Join(
+                    Environment.NewLine,
+                    emit.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)));
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var hostType = assembly.GetType("Phase184.GeneratedStream", throwOnError: true);
+            var registrarType = assembly.GetType("Phase184.CapturingStreamRegistrar", throwOnError: true);
+            var dtoType = assembly.GetType("Phase184.StreamProbeState", throwOnError: true);
+            var envelopeType = assembly.GetType(
+                "unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope",
+                throwOnError: true);
+            var payloadType = assembly.GetType(
+                "unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184E",
+                throwOnError: true);
+            var host = Activator.CreateInstance(hostType);
+            var registrar = Activator.CreateInstance(registrarType);
+            ((Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2CustomSubscriptionSource)host)
+                .FoxRunRos2RegisterCustomSubscriptions(
+                    (Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionRegistrar)registrar);
+
+            var borrowed = Activator.CreateInstance(envelopeType);
+            var borrowedPayload = Activator.CreateInstance(payloadType);
+            payloadType.GetProperty("Value").SetValue(borrowedPayload, 184);
+            envelopeType.GetProperty("Payload").SetValue(borrowed, borrowedPayload);
+            envelopeType.GetProperty("Foxrun_origin_id").SetValue(borrowed, "remote");
+            Exception producerFailure = null;
+            var producerThreadId = 0;
+            var producer = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    producerThreadId = Environment.CurrentManagedThreadId;
+                    registrarType.GetMethod("Emit").Invoke(registrar, new[] { borrowed });
+                }
+                catch (Exception exception)
+                {
+                    producerFailure = exception;
+                }
+            }) { IsBackground = true };
+            producer.Start();
+            Assert.True(producer.Join(TimeSpan.FromSeconds(5)));
+            Assert.Null(producerFailure);
+            Assert.Equal(1, hostType.GetProperty("StreamCount").GetValue(host));
+            Assert.Equal(0, dtoType.GetProperty("ConstructorThreadId").GetValue(null));
+            Assert.Equal(0, dtoType.GetProperty("SetterThreadId").GetValue(null));
+
+            var consumerThreadId = Environment.CurrentManagedThreadId;
+            Assert.Equal(1, hostType.GetMethod("DrainStream").Invoke(host, null));
+
+            Assert.NotEqual(producerThreadId, consumerThreadId);
+            Assert.Equal(consumerThreadId, dtoType.GetProperty("ConstructorThreadId").GetValue(null));
+            Assert.Equal(consumerThreadId, dtoType.GetProperty("SetterThreadId").GetValue(null));
+            Assert.Equal(184, hostType.GetProperty("LastValue").GetValue(host));
+            var ownedEnvelope = registrarType.GetProperty("LastOwnedEnvelope").GetValue(registrar);
+            var ownedPayload = registrarType.GetProperty("LastOwnedPayload").GetValue(registrar);
+            Assert.Equal(1, envelopeType.GetProperty("DisposeCalls").GetValue(ownedEnvelope));
+            Assert.Equal(1, payloadType.GetProperty("DisposeCalls").GetValue(ownedPayload));
+            Assert.Null(envelopeType.GetProperty("Payload").GetValue(ownedEnvelope));
+        }
 #endif
 
         private static byte[] InvokeCdrBuilder(Type hostType, object host, int topicIndex)
@@ -561,7 +678,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             string topic,
             int mode,
             string source,
-            FoxRunRos2CustomDtoShape shape)
+            FoxRunRos2CustomDtoShape shape,
+            bool isStream = false)
             => new FoxgloveSourceEmitter.TopicMember(
                 memberName,
                 typeName,
@@ -589,7 +707,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
                 qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
                 qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
-                qosDepth: 10);
+                qosDepth: 10,
+                isStream: isStream);
 
         private const string CustomMapperDynamicSupport = @"
 namespace UnityEngine.Scripting
@@ -712,6 +831,110 @@ namespace unity2foxglove_foxrun_interfaces_v1.msg
         public ulong Foxrun_sequence { get; set; }
         public global::builtin_interfaces.msg.Time Foxrun_stamp { get; set; }
         public Phase184OtherStateA184D001 Payload { get; set; }
+    }
+}";
+
+        private const string CustomStreamDynamicSupport = CustomMapperDynamicSupport + @"
+namespace Phase184
+{
+    public sealed class StreamProbeState
+    {
+        private int _value;
+        public StreamProbeState()
+        {
+            ConstructorThreadId = global::System.Environment.CurrentManagedThreadId;
+        }
+        public static int ConstructorThreadId { get; private set; }
+        public static int SetterThreadId { get; private set; }
+        public int Value
+        {
+            get => _value;
+            set
+            {
+                SetterThreadId = global::System.Environment.CurrentManagedThreadId;
+                _value = value;
+            }
+        }
+    }
+
+    public partial class GeneratedStream
+    {
+        private readonly global::Unity.FoxgloveSDK.Components.FoxRunStream<StreamProbeState> State =
+            new global::Unity.FoxgloveSDK.Components.FoxRunStream<StreamProbeState>();
+        public int StreamCount => State.Count;
+        public int LastValue { get; private set; }
+        public int DrainStream() => State.Drain(value => LastValue = value.Value);
+    }
+
+    public sealed class CapturingStreamRegistrar :
+        global::Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionRegistrar
+    {
+        private global::System.Func<bool> _tryAdmit;
+        private global::System.Func<
+            global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope,
+            global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext,
+            global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope> _materialize;
+        private global::System.Action<
+            global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope> _transfer;
+
+        public global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope LastOwnedEnvelope { get; private set; }
+        public global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184E LastOwnedPayload { get; private set; }
+
+        public void Register<T>(
+            global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract contract,
+            global::System.Func<T, global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext, T> copy,
+            global::System.Action<T> dispose,
+            global::System.Action<T> apply,
+            global::System.Func<T, bool> clearIfOwned,
+            global::System.Func<T, T, bool> valuesEqual,
+            global::System.Func<bool> consumeTrigger,
+            global::System.Func<bool> canApply)
+            where T : global::ROS2.Message, new()
+        {
+            throw new global::System.InvalidOperationException(""Expected stream registration."");
+        }
+
+        public void RegisterStream<TTransport, TSample>(
+            global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract contract,
+            global::System.Func<bool> tryAdmitInput,
+            global::System.Func<TTransport, global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext, TSample> materializeOwned,
+            global::System.Action<TSample> transferOwned,
+            global::System.Action clearOwned)
+            where TTransport : global::ROS2.Message, new()
+        {
+            _tryAdmit = tryAdmitInput;
+            _materialize = (source, budget) =>
+                (global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope)(object)
+                    materializeOwned((TTransport)(object)source, budget);
+            _transfer = owned => transferOwned((TSample)(object)owned);
+        }
+
+        public void Emit(
+            global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope borrowed)
+        {
+            if (!_tryAdmit()) return;
+            LastOwnedEnvelope = _materialize(
+                borrowed,
+                new global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext(1024 * 1024));
+            LastOwnedPayload = LastOwnedEnvelope.Payload;
+            _transfer(LastOwnedEnvelope);
+        }
+    }
+}
+
+namespace unity2foxglove_foxrun_interfaces_v1.msg
+{
+    public sealed class Phase184StreamProbeState184E : DisposableMessage
+    {
+        public int Value { get; set; }
+    }
+
+    public sealed class Phase184StreamProbeState184EEnvelope : DisposableMessage
+    {
+        public string Foxrun_origin_id { get; set; }
+        public ulong Foxrun_sequence { get; set; }
+        public global::builtin_interfaces.msg.Time Foxrun_stamp { get; set; }
+        public Phase184StreamProbeState184E Payload { get; set; }
     }
 }";
 

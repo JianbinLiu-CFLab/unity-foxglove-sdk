@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Components
                     ["encoding"] = FoxRunEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
                     ["schemaName"] = contract.SchemaName,
                     ["hz"] = contract.Hz,
+                    ["isStream"] = entry.IsStream,
                     ["writableFieldCount"] = contract.Fields?.Count ?? 0,
                     ["protobufDescriptorAvailable"] = descriptor.Length > 0,
                     ["protobufDescriptorDigest"] = descriptor.Length > 0 ? ComputeSha256Hex(descriptor) : string.Empty
@@ -122,12 +123,13 @@ namespace Unity.FoxgloveSDK.Components
                     var variants = group.ToArray();
                     var declared = ResolveDeclaredEncoding(variants);
                     var mode = ParseFlow(group.Key.Flow);
-                    if (!ResolvesToWebSocket(
+                    if (!TryResolveToWebSocket(
                             manifest,
                             variants,
                             mode,
                             declared,
-                            defaultProvider))
+                            defaultProvider,
+                            out var isStream))
                     {
                         continue;
                     }
@@ -135,18 +137,20 @@ namespace Unity.FoxgloveSDK.Components
                     var protocolEncoding = FoxRunEncodingResolver.ToProtocolEncoding(effective);
                     var selected = variants.FirstOrDefault(contract =>
                         string.Equals(contract.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? variants[0];
-                    yield return new CatalogContract(selected, effective);
+                    yield return new CatalogContract(selected, effective, isStream);
                 }
             }
         }
 
-        private static bool ResolvesToWebSocket(
+        private static bool TryResolveToWebSocket(
             FoxRunSchemaManifestInfo manifest,
             IReadOnlyList<FoxRunSchemaContractInfo> contracts,
             FoxRunFlow mode,
             FoxRunEncoding declaredEncoding,
-            FoxRunEndpoint defaultProvider)
+            FoxRunEndpoint defaultProvider,
+            out bool isStream)
         {
+            isStream = false;
             if (contracts == null || contracts.Count == 0)
                 return false;
             var contract = contracts[0];
@@ -186,6 +190,7 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
             }
+            isStream = bindings.Any(binding => binding.IsStream);
             return true;
         }
 
@@ -270,14 +275,19 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct CatalogContract
         {
-            public CatalogContract(FoxRunSchemaContractInfo contract, FoxRunEncoding effectiveEncoding)
+            public CatalogContract(
+                FoxRunSchemaContractInfo contract,
+                FoxRunEncoding effectiveEncoding,
+                bool isStream)
             {
                 Contract = contract;
                 EffectiveEncoding = effectiveEncoding;
+                IsStream = isStream;
             }
 
             public FoxRunSchemaContractInfo Contract { get; }
             public FoxRunEncoding EffectiveEncoding { get; }
+            public bool IsStream { get; }
         }
 
         private readonly struct ContractKey : IEquatable<ContractKey>
@@ -336,6 +346,7 @@ namespace Unity.FoxgloveSDK.Components
                 ["encoding"] = TypeSchema("string"),
                 ["schemaName"] = TypeSchema("string"),
                 ["hz"] = TypeSchema("number"),
+                ["isStream"] = TypeSchema("boolean"),
                 ["writableFieldCount"] = TypeSchema("integer"),
                 ["protobufDescriptorAvailable"] = TypeSchema("boolean"),
                 ["protobufDescriptorDigest"] = TypeSchema("string"),

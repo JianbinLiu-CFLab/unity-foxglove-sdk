@@ -409,8 +409,39 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 typeSymbol = null;
             }
 
+            var streamDefinition = ctx.SemanticModel.Compilation.GetTypeByMetadataName(
+                "Unity.FoxgloveSDK.Components.FoxRunStream`1");
+            var streamType = typeSymbol as INamedTypeSymbol;
+            var isStream = streamType != null
+                           && streamType.IsGenericType
+                           && streamDefinition != null
+                           && SymbolEqualityComparer.Default.Equals(
+                               streamType.OriginalDefinition,
+                               streamDefinition);
+            if (isStream)
+            {
+                const FoxRunNamedArgumentPresence forbiddenStreamArguments =
+                    FoxRunNamedArgumentPresence.Targets
+                    | FoxRunNamedArgumentPresence.Policy
+                    | FoxRunNamedArgumentPresence.Hz
+                    | FoxRunNamedArgumentPresence.Tolerance
+                    | FoxRunNamedArgumentPresence.OnlyIf;
+                if (!(symbol is IFieldSymbol streamField)
+                    || streamField.IsStatic
+                    || topics.Count != 1
+                    || topics[0].Mode != 2
+                    || (topics[0].NamedArgumentPresence & forbiddenStreamArguments) != 0)
+                {
+                    return MemberData.ForDiagnostic(memberLocation, "FOXRUN215");
+                }
+                if (!HasNonNullStreamInitializer(streamField, ct))
+                    return MemberData.ForDiagnostic(memberLocation, "FOXRUN216");
+                typeSymbol = streamType.TypeArguments[0];
+            }
+
             var hasInboundTopic = topics.Any(topic => topic.Mode == 2 || topic.Mode == 3);
-            if (hasInboundTopic
+            if (!isStream
+                && hasInboundTopic
                 && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
                     || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
             {
@@ -461,7 +492,26 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames);
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream);
+        }
+
+        private static bool HasNonNullStreamInitializer(
+            IFieldSymbol field,
+            System.Threading.CancellationToken cancellationToken)
+        {
+            foreach (var syntaxReference in field.DeclaringSyntaxReferences)
+            {
+                if (!(syntaxReference.GetSyntax(cancellationToken) is VariableDeclaratorSyntax variable))
+                    continue;
+                var value = variable.Initializer?.Value;
+                if (value == null
+                    || value.IsKind(SyntaxKind.NullLiteralExpression)
+                    || value.IsKind(SyntaxKind.DefaultLiteralExpression)
+                    || value is DefaultExpressionSyntax)
+                    return false;
+                return true;
+            }
+            return false;
         }
 
         private static string DeclaringTypeName(INamedTypeSymbol containingType)
@@ -820,12 +870,20 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 item.AppendRoslynMembers(roslynMembers);
                 memberLocations[MemberLocationKey(item.Ns, item.ClassName, item.MemberName)] = item.MemberLocation;
 
-                if (nativeCompilationEvidence.HasNativeDefine
-                    && !nativeCompilationEvidence.HasNativeAssemblyReference
-                    && item.Ros2MessageShape != null
+                var hasPackagedNativeShape = item.Ros2MessageShape != null
                     && item.Ros2MessageShape.ImplementsRos2Message
                     && item.Ros2MessageShape.HasPublicParameterlessConstructor
-                    && item.Ros2MessageShape.Diagnostics.Count == 0
+                    && item.Ros2MessageShape.Diagnostics.Count == 0;
+                var hasStreamCustomNativeShape = item.IsStream
+                    && item.Ros2CustomDtoShape != null
+                    && item.Ros2CustomDtoShape.IsSupported
+                    && item.Ros2CustomDtoShape.HasPublicParameterlessConstructor
+                    && item.Ros2CustomDtoShape.Diagnostics.Count == 0;
+                if (nativeCompilationEvidence.HasNativeDefine
+                    && (!nativeCompilationEvidence.HasNativeAssemblyReference
+                        || (item.IsStream
+                            && !nativeCompilationEvidence.HasStreamRegistrarSeam))
+                    && (hasPackagedNativeShape || hasStreamCustomNativeShape)
                     && item.Topics.Any(topic =>
                         topic.Mode == 2
                         && (topic.Source == 0
@@ -944,14 +1002,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             private const string QosHistoryMetadataName =
                 "Unity.FoxgloveSDK.Components.FoxRunQosHistory";
 
-            public NativeCompilationEvidence(bool hasNativeDefine, bool hasNativeAssemblyReference)
+            public NativeCompilationEvidence(
+                bool hasNativeDefine,
+                bool hasNativeAssemblyReference,
+                bool hasStreamRegistrarSeam)
             {
                 HasNativeDefine = hasNativeDefine;
                 HasNativeAssemblyReference = hasNativeAssemblyReference;
+                HasStreamRegistrarSeam = hasStreamRegistrarSeam;
             }
 
             public bool HasNativeDefine { get; }
             public bool HasNativeAssemblyReference { get; }
+            public bool HasStreamRegistrarSeam { get; }
 
             public static NativeCompilationEvidence FromCompilation(Compilation compilation)
             {
@@ -974,7 +1037,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     && HasExactRegistrarSeam(compilation, registrar, contract, context, ros2Message)
                     && HasExactContractConstructor(compilation, contract)
                     && HasExactCopyContextSeam(compilation, context);
-                return new NativeCompilationEvidence(hasNativeDefine, hasNativeAssemblyReference);
+                var hasStreamRegistrarSeam = hasNativeAssemblyReference
+                    && HasExactStreamRegistrarSeam(
+                        compilation,
+                        registrar,
+                        contract,
+                        context,
+                        ros2Message);
+                return new NativeCompilationEvidence(
+                    hasNativeDefine,
+                    hasNativeAssemblyReference,
+                    hasStreamRegistrarSeam);
             }
 
             private static bool HasPublicNativeType(INamedTypeSymbol symbol, TypeKind typeKind)
@@ -1069,6 +1142,58 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         }
                     }
                     if (matches)
+                        return true;
+                }
+                return false;
+            }
+
+            private static bool HasExactStreamRegistrarSeam(
+                Compilation compilation,
+                INamedTypeSymbol registrar,
+                INamedTypeSymbol contract,
+                INamedTypeSymbol context,
+                INamedTypeSymbol ros2Message)
+            {
+                var func1 = compilation.GetTypeByMetadataName("System.Func`1");
+                var func3 = compilation.GetTypeByMetadataName("System.Func`3");
+                var action0 = compilation.GetTypeByMetadataName("System.Action");
+                var action1 = compilation.GetTypeByMetadataName("System.Action`1");
+                if (func1 == null || func3 == null || action0 == null || action1 == null)
+                    return false;
+
+                foreach (var method in registrar.GetMembers("RegisterStream").OfType<IMethodSymbol>())
+                {
+                    if (!IsPublicInstanceOrdinaryVoid(method)
+                        || method.Arity != 2
+                        || method.Parameters.Length != 5)
+                        continue;
+                    var transport = method.TypeParameters[0];
+                    var sample = method.TypeParameters[1];
+                    if (!transport.HasConstructorConstraint
+                        || transport.HasReferenceTypeConstraint
+                        || transport.HasValueTypeConstraint
+                        || transport.HasUnmanagedTypeConstraint
+                        || transport.ConstraintTypes.Length != 1
+                        || !SymbolEqualityComparer.Default.Equals(
+                            transport.ConstraintTypes[0],
+                            ros2Message)
+                        || sample.HasConstructorConstraint
+                        || sample.HasReferenceTypeConstraint
+                        || sample.HasValueTypeConstraint
+                        || sample.HasUnmanagedTypeConstraint
+                        || sample.ConstraintTypes.Length != 0)
+                        continue;
+                    var expected = new ITypeSymbol[]
+                    {
+                        contract,
+                        func1.Construct(compilation.GetSpecialType(SpecialType.System_Boolean)),
+                        func3.Construct(transport, context, sample),
+                        action1.Construct(sample),
+                        action0
+                    };
+                    if (method.Parameters.Select(parameter => parameter.Type)
+                        .SequenceEqual(expected, SymbolEqualityComparer.Default)
+                        && method.Parameters.All(parameter => parameter.RefKind == RefKind.None))
                         return true;
                 }
                 return false;

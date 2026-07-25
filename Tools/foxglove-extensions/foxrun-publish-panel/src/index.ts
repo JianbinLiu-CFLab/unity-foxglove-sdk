@@ -18,6 +18,7 @@ type SubscriptionContractSummary = {
   encoding: "json" | "protobuf";
   schemaName: string;
   hz: number;
+  isStream: boolean;
   writableFieldCount: number;
   protobufDescriptorAvailable: boolean;
   protobufDescriptorDigest: string;
@@ -146,9 +147,18 @@ export function readContractDetail(value: unknown, topic: string): SubscriptionC
 }
 
 export function clampRequestedRateHz(requestedRateHz: number, limitHz: number): number {
+  return normalizeRequestedRateHz(requestedRateHz, limitHz, false);
+}
+
+export function normalizeRequestedRateHz(
+  requestedRateHz: number,
+  limitHz: number,
+  isStream: boolean,
+): number {
   const requested = Number.isFinite(requestedRateHz) ? Math.floor(requestedRateHz) : 1;
   const limit = Math.max(1, Math.floor(limitHz));
-  return Math.min(Math.max(1, requested), limit);
+  const positiveRequested = Math.max(1, requested);
+  return isStream ? positiveRequested : Math.min(positiveRequested, limit);
 }
 
 export class JsonTopicAdvertisementTracker {
@@ -198,9 +208,17 @@ export function initPanel(context: PanelExtensionContext): () => void {
     return selectedDetail?.topic === state.selectedTopic ? selectedDetail : undefined;
   }
 
+  function selectedContractSummary(): SubscriptionContractSummary | undefined {
+    return catalog?.contracts.find((contract) => contract.topic === state.selectedTopic);
+  }
+
   function effectiveRateHz(): number {
     const limit = catalog?.subscriptionRateLimitHz ?? 1;
-    return clampRequestedRateHz(requestedRateHzForSelectedTopic(), limit);
+    return normalizeRequestedRateHz(
+      requestedRateHzForSelectedTopic(),
+      limit,
+      selectedContractSummary()?.isStream === true,
+    );
   }
 
   function requestedRateHzForSelectedTopic(): number {
@@ -214,7 +232,11 @@ export function initPanel(context: PanelExtensionContext): () => void {
       return;
     }
 
-    const normalized = clampRequestedRateHz(rateHz, catalog?.subscriptionRateLimitHz ?? 1);
+    const normalized = normalizeRequestedRateHz(
+      rateHz,
+      catalog?.subscriptionRateLimitHz ?? 1,
+      selectedContractSummary()?.isStream === true,
+    );
     state = {
       ...state,
       requestedRateHzByTopic: {
@@ -229,17 +251,27 @@ export function initPanel(context: PanelExtensionContext): () => void {
     panel.status.dataset.kind = kind;
   }
 
+  function renderRateLimit(): void {
+    if (catalog == undefined) {
+      panel.limit.textContent = "Waiting for Unity subscription catalog";
+      return;
+    }
+    panel.limit.textContent = selectedContractSummary()?.isStream === true
+      ? `Bounded stream: Unity stream options enforce admission; ordinary-topic limit is ${catalog.subscriptionRateLimitHz} Hz`
+      : `Unity ordinary subscription limit: ${catalog.subscriptionRateLimitHz} Hz per topic`;
+  }
+
   function renderCatalog(): void {
     panel.topic.replaceChildren();
     if (catalog == undefined) {
       panel.topic.disabled = true;
       panel.send.disabled = true;
-      panel.limit.textContent = "Waiting for Unity subscription catalog";
+      renderRateLimit();
       return;
     }
 
-    panel.limit.textContent = `Unity subscription limit: ${catalog.subscriptionRateLimitHz} Hz per topic`;
     if (!catalog.subscriptionsEnabled) {
+      renderRateLimit();
       panel.topic.disabled = true;
       panel.send.disabled = true;
       setStatus("Unity subscriptions are disabled or not authorized for this connection.", "warn");
@@ -263,6 +295,7 @@ export function initPanel(context: PanelExtensionContext): () => void {
       state = { ...state, selectedTopic: catalog.contracts[0].topic };
     }
     panel.topic.value = state.selectedTopic;
+    renderRateLimit();
     panel.rate.value = String(effectiveRateHz());
     panel.topic.disabled = false;
     panel.send.disabled = true;
@@ -441,6 +474,7 @@ export function initPanel(context: PanelExtensionContext): () => void {
     stopRepeat();
     releaseJsonAdvertisement();
     state = { ...state, selectedTopic: panel.topic.value };
+    renderRateLimit();
     panel.rate.value = String(effectiveRateHz());
     saveState();
     void loadSelectedContractDetail().then(() => {
@@ -552,6 +586,7 @@ function isSubscriptionContractSummary(value: unknown): value is SubscriptionCon
     && (contract.encoding === "json" || contract.encoding === "protobuf")
     && typeof contract.schemaName === "string"
     && typeof contract.hz === "number"
+    && typeof contract.isStream === "boolean"
     && typeof contract.writableFieldCount === "number"
     && typeof contract.protobufDescriptorAvailable === "boolean"
     && typeof contract.protobufDescriptorDigest === "string";

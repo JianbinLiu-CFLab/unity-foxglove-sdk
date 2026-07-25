@@ -160,6 +160,9 @@ namespace Unity.FoxgloveSDK.Editor
             WriteName(sb, "isAggregateMember");
             sb.Append(member.IsAggregateMember ? "true" : "false");
             sb.Append(',');
+            WriteName(sb, "isStream");
+            sb.Append(member.IsStream ? "true" : "false");
+            sb.Append(',');
             WriteStringField(sb, "jsonFieldName", member.JsonFieldName);
             sb.Append(',');
             WriteStringField(sb, "hostKind", member.HostKind);

@@ -67,6 +67,7 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
             public readonly bool IsAggregateMember;
             public readonly string JsonFieldName;
+            public readonly bool IsStream;
 
             /// <summary>
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
@@ -75,6 +76,9 @@ namespace Unity.FoxgloveSDK.Editor
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float hz, string schema,
                 int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0)
             {
+                IsStream = IsFoxRunStreamType(type);
+                if (IsStream)
+                    type = type.GetGenericArguments()[0];
                 MemberName = name;
                 MemberKind = memberKind;
                 RawTypeName = type.FullName ?? type.Name;
@@ -165,6 +169,7 @@ namespace Unity.FoxgloveSDK.Editor
                 NamedArgumentPresence = namedArgumentPresence;
                 IsAggregateMember = isAggregateMember;
                 JsonFieldName = jsonFieldName ?? "";
+                IsStream = false;
             }
 
             public FoxRunManifestMember ToManifestMember()
@@ -222,8 +227,14 @@ namespace Unity.FoxgloveSDK.Editor
                     QosReliability,
                     QosDurability,
                     QosHistory,
-                    QosDepth);
+                    QosDepth,
+                    IsStream);
             }
+
+            private static bool IsFoxRunStreamType(Type type)
+                => type != null
+                   && type.IsGenericType
+                   && type.GetGenericTypeDefinition() == typeof(FoxRunStream<>);
         }
 
         private static bool TryGetArrayElementType(Type type, out Type elementType)

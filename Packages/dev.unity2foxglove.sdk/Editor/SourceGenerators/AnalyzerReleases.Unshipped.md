@@ -15,6 +15,8 @@ FOXRUN209 | FoxRun | Error | Native message type must be declared directly in a 
 FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
 FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
 FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
+FOXRUN215 | FoxRun | Error | FoxRunStream<T> must be one initialized Subscribe field with stream-safe arguments.
+FOXRUN216 | FoxRun | Error | FoxRunStream<T> fields must have a non-null initializer.
 FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
 FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe.

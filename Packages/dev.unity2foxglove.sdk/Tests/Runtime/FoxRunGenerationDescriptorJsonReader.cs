@@ -72,7 +72,8 @@ namespace Unity.FoxgloveSDK.Tests
                         generatesRos2NativeRegistration: BoolValue(member, "generatesRos2NativeRegistration"),
                         ros2MessageShape: Ros2MessageShapeValue(member),
                         namedArgumentPresence: ExplicitArgumentsValue(member),
-                        conditionMemberKind: ConditionMemberKindValue(member)));
+                        conditionMemberKind: ConditionMemberKindValue(member),
+                        isStream: BoolValue(member, "isStream")));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }

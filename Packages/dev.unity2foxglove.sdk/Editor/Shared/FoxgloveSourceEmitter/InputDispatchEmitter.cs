@@ -50,7 +50,8 @@ namespace Unity.FoxgloveSDK.Editor
                     $"hasExplicitHz: {BoolLiteral(member.HasExplicitHz)}, " +
                     $"declaredTargets: {TargetsLiteral(member.Targets)}, " +
                     $"hasExplicitTargets: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Targets))}, " +
-                    $"hasExplicitQos: {BoolLiteral(HasExplicitQos(member))});");
+                    $"hasExplicitQos: {BoolLiteral(HasExplicitQos(member))}, " +
+                    $"isStream: {BoolLiteral(member.IsStream)});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
             sb.AppendLine($"{pad}        }}");
@@ -68,6 +69,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
             EmitInputFlush(sb, members, publishTopics, pad);
+            EmitOwnedInputClear(sb, members, pad);
             ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
 
@@ -83,6 +85,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             for (var i = 0; i < members.Count; i++)
             {
+                if (members[i].IsStream)
+                {
+                    sb.AppendLine(
+                        $"{pad}    private global::Unity.FoxgloveSDK.Components.FoxRunStream<{GlobalTypeName(members[i].TypeName)}> __foxRunInputStream_{i};");
+                    continue;
+                }
                 var typeName = GlobalTypeName(members[i].TypeName);
                 sb.AppendLine($"{pad}    private bool __foxRunInputHasPending_{i};");
                 sb.AppendLine($"{pad}    private {typeName} __foxRunInputPending_{i};");
@@ -122,19 +130,33 @@ namespace Unity.FoxgloveSDK.Editor
 
             sb.AppendLine($"{pad}            case {index}:");
             sb.AppendLine($"{pad}                {{");
+            if (member.IsStream)
+            {
+                sb.AppendLine($"{pad}                    var __stream = __foxRunInputStream_{index};");
+                sb.AppendLine($"{pad}                    if (__stream == null)");
+                sb.AppendLine($"{pad}                    {{");
+                sb.AppendLine($"{pad}                        error = \"FoxRunStream field is null.\";");
+                sb.AppendLine($"{pad}                        return false;");
+                sb.AppendLine($"{pad}                    }}");
+                sb.AppendLine($"{pad}                    if (!__stream.TryAdmitInput())");
+                sb.AppendLine($"{pad}                    {{");
+                sb.AppendLine($"{pad}                        error = string.Empty;");
+                sb.AppendLine($"{pad}                        return true;");
+                sb.AppendLine($"{pad}                    }}");
+            }
             if (inherited)
             {
                 sb.AppendLine($"{pad}                    if (string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase))");
                 sb.AppendLine($"{pad}                    {{");
                 sb.AppendLine($"{pad}                        if (!{protobufReader}) return false;");
-                EmitStageAssignment(sb, index, pad + "                        ");
+                EmitStageAssignment(sb, member, index, pad + "                        ");
                 sb.AppendLine($"{pad}                    }}");
                 if (SupportsJsonInbound(member))
                 {
                     sb.AppendLine($"{pad}                    else if (string.Equals(encoding, \"json\", global::System.StringComparison.OrdinalIgnoreCase))");
                     sb.AppendLine($"{pad}                    {{");
                     sb.AppendLine($"{pad}                        if (!{jsonReader}) return false;");
-                    EmitStageAssignment(sb, index, pad + "                        ");
+                    EmitStageAssignment(sb, member, index, pad + "                        ");
                     sb.AppendLine($"{pad}                    }}");
                 }
                 else
@@ -156,15 +178,24 @@ namespace Unity.FoxgloveSDK.Editor
                 var reader = protobuf ? protobufReader : jsonReader;
                 sb.AppendLine($"{pad}                    if (!{reader})");
                 sb.AppendLine($"{pad}                        return false;");
-                EmitStageAssignment(sb, index, pad + "                    ");
+                EmitStageAssignment(sb, member, index, pad + "                    ");
             }
             sb.AppendLine($"{pad}                    error = string.Empty;");
             sb.AppendLine($"{pad}                    return true;");
             sb.AppendLine($"{pad}                }}");
         }
 
-        private static void EmitStageAssignment(StringBuilder sb, int index, string pad)
+        private static void EmitStageAssignment(
+            StringBuilder sb,
+            FoxgloveSourceEmitter.TopicMember member,
+            int index,
+            string pad)
         {
+            if (member.IsStream)
+            {
+                sb.AppendLine($"{pad}__stream.TryEnqueueOwned(__value, static _ => {{ }});");
+                return;
+            }
             sb.AppendLine($"{pad}__foxRunInputPending_{index} = __value;");
             sb.AppendLine($"{pad}__foxRunInputHasPending_{index} = true;");
         }
@@ -180,12 +211,83 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine($"{pad}        var applied = 0;");
             for (var i = 0; i < members.Count; i++)
-                EmitInputFlushMember(sb, members[i], i, pad);
+            {
+                if (!members[i].IsStream)
+                    EmitInputFlushMember(sb, members[i], i, pad);
+            }
             sb.AppendLine($"{pad}        return applied;");
             sb.AppendLine($"{pad}    }}");
 
             for (var i = 0; i < members.Count; i++)
-                EmitInputApplyHelper(sb, members[i], publishTopics, i, pad);
+            {
+                if (!members[i].IsStream)
+                    EmitInputApplyHelper(sb, members[i], publishTopics, i, pad);
+            }
+        }
+
+        private static void EmitOwnedInputClear(
+            StringBuilder sb,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            string pad)
+        {
+            var hasStream = false;
+            for (var index = 0; index < members.Count; index++)
+            {
+                if (members[index].IsStream)
+                {
+                    hasStream = true;
+                    break;
+                }
+            }
+            if (!hasStream)
+                return;
+
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    bool IFoxgloveOwnedInputSource.FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var index = 0; index < members.Count; index++)
+            {
+                if (!members[index].IsStream)
+                    continue;
+                var access = TypeExprEmitter.MemberAccess(members[index].MemberName);
+                sb.AppendLine($"{pad}            case {index}:");
+                sb.AppendLine($"{pad}                var __stream = {access};");
+                sb.AppendLine($"{pad}                if (__stream == null)");
+                sb.AppendLine($"{pad}                {{");
+                sb.AppendLine($"{pad}                    error = \"FoxRunStream field '{StringLiteralEmitter.CSharpStringLiteral(members[index].MemberName)}' must be initialized before registration.\";");
+                sb.AppendLine($"{pad}                    return false;");
+                sb.AppendLine($"{pad}                }}");
+                sb.AppendLine($"{pad}                if (global::System.Threading.Interlocked.CompareExchange(ref __foxRunInputStream_{index}, __stream, null) != null)");
+                sb.AppendLine($"{pad}                {{");
+                sb.AppendLine($"{pad}                    error = \"FoxRunStream field is already owned by an input provider.\";");
+                sb.AppendLine($"{pad}                    return false;");
+                sb.AppendLine($"{pad}                }}");
+                sb.AppendLine($"{pad}                error = string.Empty;");
+                sb.AppendLine($"{pad}                return true;");
+            }
+            sb.AppendLine($"{pad}            default:");
+            sb.AppendLine($"{pad}                error = \"Topic index does not identify a FoxRunStream field.\";");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    void IFoxgloveOwnedInputSource.FoxgloveInput_ClearOwned(int topicIndex)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var index = 0; index < members.Count; index++)
+            {
+                if (!members[index].IsStream)
+                    continue;
+                sb.AppendLine($"{pad}            case {index}:");
+                sb.AppendLine(
+                    $"{pad}                global::System.Threading.Interlocked.Exchange(ref __foxRunInputStream_{index}, null)?.Clear();");
+                sb.AppendLine($"{pad}                break;");
+            }
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
         }
 
         private static void EmitInputFlushMember(

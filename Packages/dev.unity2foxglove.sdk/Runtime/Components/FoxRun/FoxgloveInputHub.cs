@@ -161,15 +161,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RebuildRouterRegistrationsForActiveSession()
         {
-            if (!_subscriptionsEnabled)
-                return;
-
             RemoveStaleSources();
             _scanSources.Clear();
             _scanSources.AddRange(_sources);
             _scanSources.Sort(CompareInputSourceOrder);
             foreach (var source in _scanSources)
                 _router.Unregister(source);
+            if (!_subscriptionsEnabled)
+            {
+                _scanSources.Clear();
+                return;
+            }
             foreach (var source in _scanSources)
                 _router.Register(source, WarnOnce);
             _scanSources.Clear();
@@ -188,7 +190,7 @@ namespace Unity.FoxgloveSDK.Components
             _scanSources.Sort(CompareInputSourceOrder);
             foreach (var source in _scanSources)
             {
-                if (_sources.Add(source))
+                if (_sources.Add(source) && _subscriptionsEnabled)
                     _router.Register(source, WarnOnce);
             }
         }

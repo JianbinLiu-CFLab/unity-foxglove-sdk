@@ -158,7 +158,10 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = ReadFoxRunAttributeSnapshots(fi);
                 foreach (var a in attrs)
                 {
-                    if (a.Mode != (int)FoxRunFlow.Publish && fi.IsInitOnly)
+                    if (a.Mode != (int)FoxRunFlow.Publish
+                        && fi.IsInitOnly
+                        && !(fi.FieldType.IsGenericType
+                             && fi.FieldType.GetGenericTypeDefinition() == typeof(FoxRunStream<>)))
                         throw CreateInboundTargetNotWritableException(type, fi.Name, "field", "readonly fields");
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.Hz, a.SchemaName,

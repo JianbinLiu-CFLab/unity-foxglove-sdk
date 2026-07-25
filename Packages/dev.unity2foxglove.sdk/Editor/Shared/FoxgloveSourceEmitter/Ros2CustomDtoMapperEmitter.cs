@@ -63,6 +63,8 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (!ContainsMember(subscriptionMembers, mapperMembers[index]))
                     continue;
+                if (mapperMembers[index].IsStream)
+                    continue;
                 var envelope = EnvelopeType(mapperMembers[index]);
                 sb.AppendLine(pad + "    private " + envelope + " __foxRunRos2CustomAppliedOwned_" + index + ";");
                 sb.AppendLine(pad + "    private object __foxRunRos2CustomAppliedDto_" + index + ";");
@@ -155,7 +157,18 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Source,
                 canonicalEnvelope,
                 member);
-            sb.AppendLine(pad + "        registrar.Register<" + envelope + ">(");
+            if (member.IsStream)
+            {
+                var access = TypeExprEmitter.MemberAccess(member.MemberName);
+                sb.AppendLine(pad + "        var __foxRunRos2CustomStream_" + index + " = " + access + ";");
+                sb.AppendLine(pad + "        if (__foxRunRos2CustomStream_" + index + " == null)");
+                sb.AppendLine(pad + "            throw new global::System.InvalidOperationException(\"FoxRunStream field is null when the native custom subscription session is captured.\");");
+            }
+            sb.AppendLine(
+                pad + "        registrar."
+                + (member.IsStream
+                    ? "RegisterStream<" + envelope + ", " + envelope + ">("
+                    : "Register<" + envelope + ">("));
             sb.AppendLine(pad + "            new " + NativeNamespace + "FoxRunRos2GeneratedContract(");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(id) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.Topic) + "\",");
@@ -182,7 +195,24 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Policy == 2 && member.HasExplicitHz && member.Hz > 0f
                     ? 1f / member.Hz
                     : 0f) + "),");
-            sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2CustomCopyEnvelope_" + index + "(source, budget),");
+            sb.AppendLine(pad + "            "
+                + (member.IsStream
+                    ? "__foxRunRos2CustomStream_" + index + ".TryAdmitInput,"
+                    : "static (source, budget) => __FoxRunRos2CustomCopyEnvelope_" + index + "(source, budget),"));
+            if (member.IsStream)
+            {
+                sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2CustomCopyEnvelope_" + index + "(source, budget),");
+                sb.AppendLine(pad + "            owned =>");
+                sb.AppendLine(pad + "            {");
+                sb.AppendLine(pad + "                __foxRunRos2CustomStream_" + index + ".TryEnqueueDeferredOwned(");
+                sb.AppendLine(pad + "                    owned,");
+                sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomMaterialize_" + index + "(value),");
+                sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomDisposeEnvelope_" + index + "(value),");
+                sb.AppendLine(pad + "                    static _ => { });");
+                sb.AppendLine(pad + "            },");
+                sb.AppendLine(pad + "            () => __foxRunRos2CustomStream_" + index + ".Clear());");
+                return;
+            }
             sb.AppendLine(pad + "            static owned => __FoxRunRos2CustomDisposeEnvelope_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2CustomApply_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2CustomClearIfOwned_" + index + "(owned),");
@@ -209,10 +239,18 @@ namespace Unity.FoxgloveSDK.Editor
             EmitCopyEnvelope(sb, pad, member, index, root);
             if (emitSubscriptionMappers)
             {
-                sb.AppendLine();
-                EmitApplyAndClear(sb, pad, member, index, root, publishTopics);
-                sb.AppendLine();
-                EmitEnvelopeEquals(sb, pad, member, index, root);
+                if (member.IsStream)
+                {
+                    sb.AppendLine();
+                    EmitStreamMaterializer(sb, pad, member, index, root);
+                }
+                else
+                {
+                    sb.AppendLine();
+                    EmitApplyAndClear(sb, pad, member, index, root, publishTopics);
+                    sb.AppendLine();
+                    EmitEnvelopeEquals(sb, pad, member, index, root);
+                }
             }
 
             for (var shapeIndex = 0; shapeIndex < registry.Count; shapeIndex++)
@@ -229,6 +267,22 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine();
                 EmitRosPayloadEquals(sb, pad, entry);
             }
+        }
+
+        private static void EmitStreamMaterializer(
+            StringBuilder sb,
+            string pad,
+            FoxgloveSourceEmitter.TopicMember member,
+            int index,
+            ShapeEntry root)
+        {
+            var envelope = EnvelopeType(member);
+            var dtoType = GlobalTypeName(member.TypeName);
+            sb.AppendLine(pad + "    private static " + dtoType + " __FoxRunRos2CustomMaterialize_" + index + "(");
+            sb.AppendLine(pad + "        " + envelope + " owned)");
+            sb.AppendLine(pad + "    {");
+            sb.AppendLine(pad + "        return " + root.RosToDtoMethod + "(owned == null ? null : owned.Payload);");
+            sb.AppendLine(pad + "    }");
         }
 
         private static void EmitMapDtoToEnvelope(

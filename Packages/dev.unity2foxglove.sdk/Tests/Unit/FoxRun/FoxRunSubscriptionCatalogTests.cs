@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("Subscribe", contract.Value<string>("flow"));
             Assert.Equal("json", contract.Value<string>("encoding"));
             Assert.Equal("json-input", contract.Value<string>("schemaName"));
+            Assert.False(contract.Value<bool>("isStream"));
             Assert.Equal(1, contract.Value<int>("writableFieldCount"));
             Assert.Null(contract["fields"]);
             Assert.Null(contract["protobufDescriptorBase64"]);
@@ -75,6 +76,24 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("protobuf", protobufContract.Value<string>("encoding"));
             Assert.Single((JArray)protobufContract["fields"]);
             Assert.Equal(Convert.ToBase64String(new byte[] { 4, 5, 6 }), protobufContract.Value<string>("protobufDescriptorBase64"));
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void CatalogPublishesStreamSemanticsFromTheMaintainedSubscriptionBinding()
+        {
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                CreateManifest(isStream: true),
+                subscriptionsEnabled: true,
+                FoxRunEncoding.Protobuf,
+                FoxRunEncoding.JSON,
+                subscriptionRateLimitHz: 60,
+                requestedTopic: null,
+                includeDescriptor: false);
+
+            var contract = Assert.Single((JArray)response["contracts"]);
+            Assert.True(contract.Value<bool>("isStream"));
+            Assert.Equal(60, response.Value<int>("subscriptionRateLimitHz"));
         }
 
         [Fact]
@@ -153,8 +172,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 .ToArray();
             Assert.Equal(schemaKeys, actualKeys);
             Assert.Contains("hz", schemaKeys);
+            Assert.Contains("isStream", schemaKeys);
             Assert.DoesNotContain("rateHz", schemaKeys);
             Assert.Contains("hz", actualKeys);
+            Assert.Contains("isStream", actualKeys);
             Assert.DoesNotContain("rateHz", actualKeys);
         }
 
@@ -166,6 +187,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Contains("typeof contract.flow === \"string\"", panel, StringComparison.Ordinal);
             Assert.Contains("typeof contract.hz === \"number\"", panel, StringComparison.Ordinal);
+            Assert.Contains("typeof contract.isStream === \"boolean\"", panel, StringComparison.Ordinal);
             Assert.DoesNotContain("contract.flowMode", panel, StringComparison.Ordinal);
             Assert.DoesNotContain("contract.rateHz", panel, StringComparison.Ordinal);
         }
@@ -360,13 +382,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "subscriptionPolicy.TransportAdmissionRateLimitHz",
+                handler,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
                 "subscriptionPolicy.DefaultSubscribeRateHz",
                 handler,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("_defaultFoxRunSubscriptionSource", handler, StringComparison.Ordinal);
         }
 
-        private static FoxRunSchemaManifestInfo CreateManifest()
+        private static FoxRunSchemaManifestInfo CreateManifest(bool isStream = false)
         {
             var fields = new[]
             {
@@ -389,7 +415,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 subscriptionManifestHash: "subscriptions",
                 subscriptionBindings: new[]
                 {
-                    WebSocketBinding("Demo.Input", "_requested", "/phase176/input")
+                    WebSocketBinding("Demo.Input", "_requested", "/phase176/input", isStream)
                 });
         }
 
@@ -569,7 +595,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         private static FoxRunSchemaSubscriptionBindingInfo WebSocketBinding(
             string declaringType,
             string memberName,
-            string topic)
+            string topic,
+            bool isStream = false)
             => new(
                 declaringType,
                 memberName,
@@ -581,6 +608,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 supportsRos2Native: false,
                 nativeType: string.Empty,
                 canonicalRosType: string.Empty,
-                copyShapeIdentity: string.Empty);
+                copyShapeIdentity: string.Empty,
+                isStream: isStream);
     }
 }

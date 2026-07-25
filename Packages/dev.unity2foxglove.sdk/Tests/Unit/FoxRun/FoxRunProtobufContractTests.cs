@@ -251,7 +251,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var normalizedSource = source.Replace("\r\n", "\n");
             Assert.Contains(
                 "FoxRunQosHistory.KeepLast,\n"
-                + new string(' ', 20) + "5\n"
+                + new string(' ', 20) + "5,\n"
+                + new string(' ', 20) + "false\n"
                 + new string(' ', 16) + "),",
                 normalizedSource,
                 StringComparison.Ordinal);

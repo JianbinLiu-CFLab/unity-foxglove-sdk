@@ -258,7 +258,8 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + QosReliabilityLiteral(binding.QosReliability) + ",");
                 sb.AppendLine(inner + "    " + QosDurabilityLiteral(binding.QosDurability) + ",");
                 sb.AppendLine(inner + "    " + QosHistoryLiteral(binding.QosHistory) + ",");
-                sb.AppendLine(inner + "    " + binding.QosDepth.ToString(CultureInfo.InvariantCulture));
+                sb.AppendLine(inner + "    " + binding.QosDepth.ToString(CultureInfo.InvariantCulture) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(binding.IsStream));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");

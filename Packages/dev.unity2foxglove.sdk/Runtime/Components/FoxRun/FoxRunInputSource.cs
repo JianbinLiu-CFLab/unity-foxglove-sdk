@@ -74,7 +74,8 @@ namespace Unity.FoxgloveSDK.Components
             bool hasExplicitHz = false,
             FoxRunEndpoint declaredTargets = 0,
             bool hasExplicitTargets = false,
-            bool hasExplicitQos = false)
+            bool hasExplicitQos = false,
+            bool isStream = false)
             : this(
                 topic,
                 declaredEncoding,
@@ -89,7 +90,8 @@ namespace Unity.FoxgloveSDK.Components
                 hasExplicitHz,
                 declaredTargets,
                 hasExplicitTargets,
-                hasExplicitQos)
+                hasExplicitQos,
+                isStream)
         {
         }
 
@@ -107,7 +109,8 @@ namespace Unity.FoxgloveSDK.Components
             bool hasExplicitHz = false,
             FoxRunEndpoint declaredTargets = 0,
             bool hasExplicitTargets = false,
-            bool hasExplicitQos = false)
+            bool hasExplicitQos = false,
+            bool isStream = false)
         {
             Topic = topic ?? string.Empty;
             DeclaredEncoding = declaredEncoding;
@@ -126,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
             DeclaredTargets = declaredTargets;
             HasExplicitTargets = hasExplicitTargets;
             HasExplicitQos = hasExplicitQos;
+            IsStream = isStream;
             HeartbeatIntervalSeconds = policy == FoxRunPolicy.Change
                                        && hasExplicitHz
                                        && hz > 0f
@@ -145,6 +149,8 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEndpoint DeclaredTargets { get; }
         public bool HasExplicitTargets { get; }
         public bool HasExplicitQos { get; }
+        /// <summary>True when this registration feeds a bounded <c>FoxRunStream&lt;T&gt;</c>.</summary>
+        public bool IsStream { get; }
         /// <summary>Per-contract policy applied after transport admission.</summary>
         public FoxRunPolicy Policy { get; }
         /// <summary>Declared cadence; input uses it only when <see cref="HasExplicitHz"/> is true and positive.</summary>
@@ -161,5 +167,15 @@ namespace Unity.FoxgloveSDK.Components
         FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index);
         bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error);
         int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz);
+    }
+
+    /// <summary>
+    /// Optional generated contract for input sources that retain owned queued
+    /// samples and must release them when their router registration ends.
+    /// </summary>
+    public interface IFoxgloveOwnedInputSource
+    {
+        bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error);
+        void FoxgloveInput_ClearOwned(int topicIndex);
     }
 }

@@ -97,6 +97,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
             /// <summary>Exact optional arguments written on the source declaration.</summary>
             public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
+            /// <summary>True when the authored field is a bounded FoxRunStream of this payload type.</summary>
+            public readonly bool IsStream;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -151,7 +153,8 @@ namespace Unity.FoxgloveSDK.Editor
                 string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
                 string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
                 string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-                int qosDepth = 0)
+                int qosDepth = 0,
+                bool isStream = false)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -189,6 +192,7 @@ namespace Unity.FoxgloveSDK.Editor
                 Ros2CustomDtoShape = ros2CustomDtoShape;
                 Ros2ContractKind = ros2ContractKind;
                 NamedArgumentPresence = namedArgumentPresence;
+                IsStream = isStream;
             }
         }
 
@@ -366,6 +370,7 @@ namespace Unity.FoxgloveSDK.Editor
                 hasConditions,
                 nativeBusMembers.Count > 0,
                 webSocketInputMembers.Count > 0,
+                webSocketInputMembers.Any(member => member.IsStream),
                 pad);
             if (topics.Count > 0)
             {

@@ -28,6 +28,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<bool> consumeTrigger,
             Func<bool> canApply)
             where T : ROS2.Message, new();
+
+        void RegisterStream<TTransport, TSample>(
+            FoxRunRos2GeneratedContract contract,
+            Func<bool> tryAdmitInput,
+            Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
+            Action<TSample> transferOwned,
+            Action clearOwned)
+            where TTransport : ROS2.Message, new();
     }
 }
 #endif

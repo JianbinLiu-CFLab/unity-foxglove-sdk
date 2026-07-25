@@ -6,6 +6,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -43,6 +45,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<string, Queue<double>> _arrivalTimes =
             new(StringComparer.Ordinal);
         private readonly List<IFoxgloveInputSource> _registeredSources = new();
+        private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
         private FoxRunEndpoint _defaultSubscriptionSource =
@@ -126,60 +129,180 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 throw new ArgumentNullException(nameof(source));
 
-            var firstUnavailableDiagnostic = string.Empty;
-            lock (_gate)
+            RegistrationLifetime lifetime;
+            while (true)
             {
-                var addedRegistration = false;
-                for (var index = 0; index < source.FoxgloveInput_TopicCount; index++)
+                RegistrationLifetime existing;
+                lock (_gate)
                 {
-                    var info = source.FoxgloveInput_GetTopic(index);
-                    if (string.IsNullOrWhiteSpace(info.Topic))
-                        continue;
-                    var topology = FoxRunEndpointResolver.Resolve(
-                        info.Mode,
-                        info.DeclaredSource,
-                        info.HasExplicitSource,
-                        info.DeclaredTargets,
-                        info.HasExplicitTargets,
-                        info.DeclaredEncoding,
-                        info.HasExplicitEncoding,
-                        _defaultSubscriptionSource,
-                        _defaultPublishTargets,
-                        publishDefaultEncoding: _defaultSubscriptionEncoding,
-                        subscribeDefaultEncoding: _defaultSubscriptionEncoding,
-                        info.HasExplicitQos);
-                    if (!topology.Success
-                        || topology.Topology.Source != FoxRunEndpoint.Foxglove
-                        || !info.SupportsWebSocket)
+                    existing = FindRegistrationLifetimeUnderLock(source);
+                    if (existing == null)
                     {
-                        if (topology.DiagnosticCode == FoxRunEndpointDiagnosticCode.QosRequiresRos2
-                            && string.IsNullOrEmpty(firstUnavailableDiagnostic))
-                        {
-                            firstUnavailableDiagnostic = topology.DiagnosticMessage;
-                        }
-                        continue;
+                        lifetime = new RegistrationLifetime(source);
+                        _registrationLifetimes.Add(lifetime);
+                        break;
                     }
-                    if (!_registrations.TryGetValue(info.Topic, out var registrations))
-                        _registrations[info.Topic] = registrations = new List<Registration>();
-                    if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))
-                        continue;
-                    registrations.Add(new Registration(
-                        source,
-                        index,
-                        info.DeclaredEncoding,
-                        info.HasExplicitEncoding,
-                        info.Mode,
-                        _defaultSubscriptionEncoding));
-                    _registrationSnapshots[info.Topic] = registrations.ToArray();
-                    addedRegistration = true;
+                    if (existing.IsOpen)
+                        return;
                 }
 
-                if (addedRegistration)
-                    AddSourceSnapshotEntry(source);
+                existing.WaitUntilInitialized();
+                if (existing.IsOpen)
+                    return;
+                existing.WaitForCleanup();
             }
 
-            if (!string.IsNullOrEmpty(firstUnavailableDiagnostic))
-                reportUnavailable?.Invoke(firstUnavailableDiagnostic);
+            var ownedInputSource = source as IFoxgloveOwnedInputSource;
+            var firstUnavailableDiagnostic = string.Empty;
+            var registrationError = string.Empty;
+            var pending = new List<PendingRegistration>();
+            var registrationOpened = false;
+            ExceptionDispatchInfo failure = null;
+            try
+            {
+                var topicCount = Math.Max(0, source.FoxgloveInput_TopicCount);
+                var topics = new FoxgloveInputTopicInfo[topicCount];
+                for (var index = 0; index < topicCount; index++)
+                    topics[index] = source.FoxgloveInput_GetTopic(index);
+
+                lock (_gate)
+                {
+                    if (lifetime.IsInitializing)
+                    {
+                        for (var index = 0; index < topics.Length; index++)
+                        {
+                            var info = topics[index];
+                            if (string.IsNullOrWhiteSpace(info.Topic))
+                                continue;
+                            var topology = FoxRunEndpointResolver.Resolve(
+                                info.Mode,
+                                info.DeclaredSource,
+                                info.HasExplicitSource,
+                                info.DeclaredTargets,
+                                info.HasExplicitTargets,
+                                info.DeclaredEncoding,
+                                info.HasExplicitEncoding,
+                                _defaultSubscriptionSource,
+                                _defaultPublishTargets,
+                                publishDefaultEncoding: _defaultSubscriptionEncoding,
+                                subscribeDefaultEncoding: _defaultSubscriptionEncoding,
+                                info.HasExplicitQos);
+                            if (!topology.Success
+                                || topology.Topology.Source != FoxRunEndpoint.Foxglove
+                                || !info.SupportsWebSocket)
+                            {
+                                if (topology.DiagnosticCode == FoxRunEndpointDiagnosticCode.QosRequiresRos2
+                                    && string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                                {
+                                    firstUnavailableDiagnostic = topology.DiagnosticMessage;
+                                }
+                                continue;
+                            }
+                            pending.Add(new PendingRegistration(
+                                info.Topic,
+                                new Registration(
+                                    source,
+                                    index,
+                                    info.DeclaredEncoding,
+                                    info.HasExplicitEncoding,
+                                    info.Mode,
+                                    _defaultSubscriptionEncoding,
+                                    info.IsStream,
+                                    lifetime)));
+                        }
+                    }
+                }
+
+                for (var index = 0; index < pending.Count; index++)
+                {
+                    var registration = pending[index].Registration;
+                    if (!registration.IsStream)
+                        continue;
+                    if (ownedInputSource == null)
+                    {
+                        registrationError =
+                            "FoxRunStream input source does not implement owned-input cleanup.";
+                        break;
+                    }
+                    if (!ownedInputSource.FoxgloveInput_TryAcquireOwned(
+                            registration.TopicIndex,
+                            out var ownedError))
+                    {
+                        registrationError = string.IsNullOrWhiteSpace(ownedError)
+                            ? "FoxRun owned input source is not ready for registration."
+                            : ownedError;
+                        break;
+                    }
+                    lifetime.RecordOwnedTopicIndex(registration.TopicIndex);
+                }
+
+                if (string.IsNullOrEmpty(registrationError))
+                {
+                    lock (_gate)
+                    {
+                        if (lifetime.IsInitializing)
+                        {
+                            for (var index = 0; index < pending.Count; index++)
+                            {
+                                var item = pending[index];
+                                if (!_registrations.TryGetValue(item.Topic, out var registrations))
+                                    _registrations[item.Topic] = registrations = new List<Registration>();
+                                if (registrations.Exists(existing =>
+                                        ReferenceEquals(existing.Source, source)
+                                        && existing.TopicIndex == item.Registration.TopicIndex))
+                                {
+                                    continue;
+                                }
+                                registrations.Add(item.Registration);
+                                _registrationSnapshots[item.Topic] = registrations.ToArray();
+                            }
+
+                            if (pending.Count > 0)
+                            {
+                                AddSourceSnapshotEntry(source);
+                                lifetime.Open();
+                                registrationOpened = true;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = ExceptionDispatchInfo.Capture(exception);
+            }
+            finally
+            {
+                if (!registrationOpened)
+                {
+                    lock (_gate)
+                    {
+                        lifetime.Close();
+                        RemoveSourceRegistrationsUnderLock(source);
+                    }
+                }
+
+                lifetime.EndInitialization();
+                if (!registrationOpened)
+                {
+                    try
+                    {
+                        TeardownRegistrationLifetime(lifetime, ownedInputSource);
+                    }
+                    catch (Exception exception)
+                    {
+                        failure ??= ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
+            }
+
+            failure?.Throw();
+
+            var unavailableDiagnostic = string.IsNullOrEmpty(registrationError)
+                ? firstUnavailableDiagnostic
+                : registrationError;
+            if (!string.IsNullOrEmpty(unavailableDiagnostic))
+                reportUnavailable?.Invoke(unavailableDiagnostic);
         }
 
         public void Unregister(IFoxgloveInputSource source)
@@ -187,33 +310,19 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 return;
 
+            RegistrationLifetime lifetime;
             lock (_gate)
             {
-                var emptyTopics = new List<string>();
-                foreach (var pair in _registrations)
-                {
-                    if (pair.Value.RemoveAll(item => ReferenceEquals(item.Source, source)) == 0)
-                        continue;
-
-                    if (pair.Value.Count == 0)
-                    {
-                        emptyTopics.Add(pair.Key);
-                    }
-                    else
-                    {
-                        _registrationSnapshots[pair.Key] = pair.Value.ToArray();
-                    }
-                }
-
-                foreach (var topic in emptyTopics)
-                {
-                    _registrations.Remove(topic);
-                    _registrationSnapshots.Remove(topic);
-                    _arrivalTimes.Remove(topic);
-                }
-
-                RemoveSourceSnapshotEntry(source);
+                lifetime = FindRegistrationLifetimeUnderLock(source);
+                if (lifetime == null)
+                    return;
+                lifetime.Close();
+                RemoveSourceRegistrationsUnderLock(source);
             }
+
+            TeardownRegistrationLifetime(
+                lifetime,
+                source as IFoxgloveOwnedInputSource);
         }
 
         /// <summary>
@@ -297,6 +406,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             Registration[] registrations;
             var advertisedEncoding = encoding ?? string.Empty;
+            var ordinaryRateAccepted = true;
             lock (_gate)
             {
                 if (string.IsNullOrEmpty(topic)
@@ -319,12 +429,17 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 var hasMatchingEncoding = false;
+                var hasMatchingOrdinary = false;
+                var hasMatchingStream = false;
                 foreach (var registration in registrations)
                 {
                     if (string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
                     {
                         hasMatchingEncoding = true;
-                        break;
+                        if (registration.IsStream)
+                            hasMatchingStream = true;
+                        else
+                            hasMatchingOrdinary = true;
                     }
                 }
 
@@ -340,7 +455,8 @@ namespace Unity.FoxgloveSDK.Components
                         0);
                 }
 
-                if (!AcceptRate(topic, nowSeconds))
+                ordinaryRateAccepted = !hasMatchingOrdinary || AcceptRate(topic, nowSeconds);
+                if (!ordinaryRateAccepted && !hasMatchingStream)
                 {
                     return new FoxRunInputDispatchResult(
                         FoxRunInputDispatchStatus.RateLimited,
@@ -371,20 +487,35 @@ namespace Unity.FoxgloveSDK.Components
                             + "\".";
                     continue;
                 }
+                if (!registration.IsStream && !ordinaryRateAccepted)
+                {
+                    if (string.IsNullOrEmpty(firstError))
+                        firstError = "Ordinary FoxRun input exceeded the per-topic rate limit.";
+                    continue;
+                }
 
                 try
                 {
-                    if (registration.Source.FoxgloveInput_TryStage(
-                            registration.TopicIndex,
-                            payload,
-                            encoding,
-                            out var error))
+                    if (!registration.Lifetime.TryEnter())
+                        continue;
+                    try
                     {
-                        staged++;
+                        if (registration.Source.FoxgloveInput_TryStage(
+                                registration.TopicIndex,
+                                payload,
+                                encoding,
+                                out var error))
+                        {
+                            staged++;
+                        }
+                        else if (string.IsNullOrEmpty(firstError))
+                        {
+                            firstError = error;
+                        }
                     }
-                    else if (string.IsNullOrEmpty(firstError))
+                    finally
                     {
-                        firstError = error;
+                        registration.Lifetime.Exit();
                     }
                 }
                 catch (Exception ex) when (!(ex is OutOfMemoryException)
@@ -424,6 +555,83 @@ namespace Unity.FoxgloveSDK.Components
             _sourceSnapshot = _registeredSources.ToArray();
         }
 
+        private void RemoveSourceRegistrationsUnderLock(IFoxgloveInputSource source)
+        {
+            var emptyTopics = new List<string>();
+            foreach (var pair in _registrations)
+            {
+                if (pair.Value.RemoveAll(item => ReferenceEquals(item.Source, source)) == 0)
+                    continue;
+
+                if (pair.Value.Count == 0)
+                {
+                    emptyTopics.Add(pair.Key);
+                }
+                else
+                {
+                    _registrationSnapshots[pair.Key] = pair.Value.ToArray();
+                }
+            }
+
+            foreach (var topic in emptyTopics)
+            {
+                _registrations.Remove(topic);
+                _registrationSnapshots.Remove(topic);
+                _arrivalTimes.Remove(topic);
+            }
+
+            RemoveSourceSnapshotEntry(source);
+        }
+
+        private RegistrationLifetime FindRegistrationLifetimeUnderLock(
+            IFoxgloveInputSource source)
+        {
+            for (var index = 0; index < _registrationLifetimes.Count; index++)
+            {
+                if (ReferenceEquals(_registrationLifetimes[index].Source, source))
+                    return _registrationLifetimes[index];
+            }
+            return null;
+        }
+
+        private void TeardownRegistrationLifetime(
+            RegistrationLifetime lifetime,
+            IFoxgloveOwnedInputSource ownedInputSource)
+        {
+            if (!lifetime.TryClaimCleanup())
+            {
+                lifetime.WaitForCleanup();
+                return;
+            }
+
+            try
+            {
+                lifetime.WaitForIdle();
+                ExceptionDispatchInfo failure = null;
+                if (ownedInputSource != null)
+                {
+                    foreach (var topicIndex in lifetime.OwnedTopicIndices)
+                    {
+                        try
+                        {
+                            ownedInputSource.FoxgloveInput_ClearOwned(topicIndex);
+                        }
+                        catch (Exception exception)
+                        {
+                            failure ??= ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
+                failure?.Throw();
+            }
+            finally
+            {
+                lifetime.CompleteCleanup();
+                lock (_gate)
+                    _registrationLifetimes.Remove(lifetime);
+            }
+        }
+
         private bool AcceptRate(string topic, double nowSeconds)
         {
             if (!_arrivalTimes.TryGetValue(topic, out var arrivals))
@@ -445,13 +653,17 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunEncoding declaredEncoding,
                 bool hasExplicitEncoding,
                 FoxRunFlow mode,
-                FoxRunEncoding subscriptionDefault)
+                FoxRunEncoding subscriptionDefault,
+                bool isStream,
+                RegistrationLifetime lifetime)
             {
                 Source = source;
                 TopicIndex = topicIndex;
                 DeclaredEncoding = declaredEncoding;
                 HasExplicitEncoding = hasExplicitEncoding;
                 Mode = mode;
+                IsStream = isStream;
+                Lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
                 Encoding = FoxRunEncodingResolver.ToProtocolEncoding(
                     hasExplicitEncoding
                         ? FoxRunEncodingResolver.ValidateProfileDefault(declaredEncoding)
@@ -463,6 +675,8 @@ namespace Unity.FoxgloveSDK.Components
             public FoxRunEncoding DeclaredEncoding { get; }
             public bool HasExplicitEncoding { get; }
             public FoxRunFlow Mode { get; }
+            public bool IsStream { get; }
+            public RegistrationLifetime Lifetime { get; }
             public string Encoding { get; }
 
             public Registration Resolve(FoxRunEncoding subscriptionDefault)
@@ -472,7 +686,102 @@ namespace Unity.FoxgloveSDK.Components
                     DeclaredEncoding,
                     HasExplicitEncoding,
                     Mode,
-                    subscriptionDefault);
+                    subscriptionDefault,
+                    IsStream,
+                    Lifetime);
+        }
+
+        private readonly struct PendingRegistration
+        {
+            internal PendingRegistration(string topic, Registration registration)
+            {
+                Topic = topic ?? string.Empty;
+                Registration = registration;
+            }
+
+            internal string Topic { get; }
+            internal Registration Registration { get; }
+        }
+
+        private sealed class RegistrationLifetime
+        {
+            private const int InitializingState = 0;
+            private const int OpenState = 1;
+            private const int ClosedState = 2;
+            private const int CleanupCompleteState = 3;
+
+            private readonly ManualResetEventSlim _initialized = new ManualResetEventSlim();
+            private readonly ManualResetEventSlim _cleanupComplete = new ManualResetEventSlim();
+            private readonly List<int> _ownedTopicIndices = new List<int>();
+            private int _state = InitializingState;
+            private int _inFlight = 1;
+            private int _cleanupClaimed;
+
+            internal RegistrationLifetime(IFoxgloveInputSource source)
+                => Source = source ?? throw new ArgumentNullException(nameof(source));
+
+            internal IFoxgloveInputSource Source { get; }
+            internal IReadOnlyList<int> OwnedTopicIndices => _ownedTopicIndices;
+            internal bool IsInitializing => Volatile.Read(ref _state) == InitializingState;
+            internal bool IsOpen => Volatile.Read(ref _state) == OpenState;
+
+            internal void Open()
+            {
+                if (Interlocked.CompareExchange(ref _state, OpenState, InitializingState) == InitializingState)
+                    _initialized.Set();
+            }
+
+            internal void Close()
+            {
+                while (true)
+                {
+                    var state = Volatile.Read(ref _state);
+                    if (state == ClosedState || state == CleanupCompleteState)
+                        break;
+                    if (Interlocked.CompareExchange(ref _state, ClosedState, state) == state)
+                        break;
+                }
+                _initialized.Set();
+            }
+
+            internal void EndInitialization() => Exit();
+
+            internal void RecordOwnedTopicIndex(int topicIndex)
+            {
+                if (!_ownedTopicIndices.Contains(topicIndex))
+                    _ownedTopicIndices.Add(topicIndex);
+            }
+
+            internal bool TryEnter()
+            {
+                if (!IsOpen)
+                    return false;
+                Interlocked.Increment(ref _inFlight);
+                if (IsOpen)
+                    return true;
+                Interlocked.Decrement(ref _inFlight);
+                return false;
+            }
+
+            internal void Exit() => Interlocked.Decrement(ref _inFlight);
+            internal bool TryClaimCleanup()
+                => Interlocked.CompareExchange(ref _cleanupClaimed, 1, 0) == 0;
+            internal void WaitUntilInitialized() => _initialized.Wait();
+            internal void WaitForCleanup() => _cleanupComplete.Wait();
+
+            internal void WaitForIdle()
+            {
+                var spinner = new SpinWait();
+                while (Volatile.Read(ref _inFlight) != 0)
+                    spinner.SpinOnce();
+            }
+
+            internal void CompleteCleanup()
+            {
+                Volatile.Write(ref _state, CleanupCompleteState);
+                _initialized.Set();
+                _cleanupComplete.Set();
+            }
         }
     }
 }

@@ -1065,6 +1065,129 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
+        private void AddStreamBinding<TTransport, TSample>(
+            SourceCandidate source,
+            FoxRunRos2GeneratedContract contract,
+            Func<bool> tryAdmitInput,
+            Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
+            Action<TSample> transferOwned,
+            Action clearOwned)
+            where TTransport : ROS2.Message, new()
+        {
+            var identity = source.InstanceId + "|" + contract.Id;
+            _seenEndpoints.Add(identity);
+            if (_existingBindings.Contains(identity) || _bindings.Count >= MaximumContracts)
+                return;
+
+            if (!FoxRunRos2ContractActivation.TryResolve(
+                    contract, _policy, out var qos, out var activationError,
+                    out var activationDiagnostic))
+            {
+                RecordUnsupported(identity, contract, activationError, activationDiagnostic);
+                return;
+            }
+
+            IFoxRunRos2NativeBackend backend;
+            if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface)
+            {
+                var readiness = FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(
+                    contract.BaseRuntimePackageId,
+                    contract.InterfaceDigest,
+                    Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
+                if (!readiness.IsReady)
+                {
+                    RecordUnsupported(
+                        identity,
+                        contract,
+                        FoxRunRos2RegistrationError.TypesupportUnavailable,
+                        FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.TypesupportUnavailable));
+                    return;
+                }
+                if (!FoxRunRos2CustomNativeTransportHost.TryAcquireSubscriptionBackend(out backend))
+                {
+                    RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
+                    return;
+                }
+                _runtimeDiagnosticContext =
+                    FoxRunRos2RuntimeDiagnosticContext.CaptureAfterRuntimeReady(
+                        Environment.GetEnvironmentVariable("ROS_DISTRO"),
+                        Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
+            }
+            else
+            {
+                if (!TryEnsureNodeOwner(out var owner))
+                {
+                    RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
+                    return;
+                }
+                backend = owner.AcquireBackend();
+            }
+
+            var generation = CheckedGeneration(_policy.SessionGeneration);
+            FoxRunRos2StreamSubscriptionBinding<TTransport, TSample> binding = null;
+            Func<TTransport, bool> dropBorrowed = null;
+            if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface)
+            {
+                var sourceOrigin =
+                    (source.Behaviour as IFoxgloveTopicContractSource)?.FoxgloveLog_Origin;
+                dropBorrowed = borrowed => contract.TryGetCustomEnvelopeOrigin(
+                        borrowed,
+                        out var origin)
+                    && IsSelfOrigin(identity, origin, sourceOrigin);
+            }
+
+            try
+            {
+                binding = new FoxRunRos2StreamSubscriptionBinding<TTransport, TSample>(
+                    contract,
+                    generation,
+                    _activeSession.ReadGeneration,
+                    _policy.NativeCopyBudgetBytes,
+                    tryAdmitInput,
+                    materializeOwned,
+                    transferOwned,
+                    clearOwned,
+                    backend,
+                    qos,
+                    qosFactory: null,
+                    dropBorrowed: dropBorrowed);
+                binding.WaitForRuntime();
+                if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
+                        gameObject.scene))
+                    binding.TryRegister();
+                _bindings.Add(new HostedBinding(
+                    source.Behaviour,
+                    source.InstanceId,
+                    identity,
+                    new FoxRunRos2DiscoveryKey(
+                        source.TypeName,
+                        source.InstanceId,
+                        contract.Topic,
+                        contract.MemberName),
+                    binding,
+                    1d));
+                _existingBindings.Add(identity);
+            }
+            catch (Exception exception)
+            {
+                var primary = ExceptionDispatchInfo.Capture(exception);
+                try
+                {
+                    if (binding != null)
+                        binding.Stop();
+                    else
+                        backend.ReleaseNodeOwnership();
+                }
+                catch
+                {
+                    // Preserve the startup failure.
+                }
+                primary.Throw();
+                throw;
+            }
+        }
+
         private static double EffectiveSubscribeRateHz(
             FoxRunRos2GeneratedContract contract,
             int managerDefaultSubscribeRateHz,
@@ -1282,6 +1405,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         valuesEqual,
                         consumeTrigger,
                         canApply),
+                    exception => _hub.RecordFailed(
+                        _source.InstanceId + "|" + contract.Id,
+                        contract,
+                        exception));
+
+            public void RegisterStream<TTransport, TSample>(
+                FoxRunRos2GeneratedContract contract,
+                Func<bool> tryAdmitInput,
+                Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
+                Action<TSample> transferOwned,
+                Action clearOwned)
+                where TTransport : ROS2.Message, new()
+                => FoxRunRos2RegistrationIsolation.TryRun(
+                    () => _hub.AddStreamBinding(
+                        _source,
+                        contract,
+                        tryAdmitInput,
+                        materializeOwned,
+                        transferOwned,
+                        clearOwned),
                     exception => _hub.RecordFailed(
                         _source.InstanceId + "|" + contract.Id,
                         contract,

@@ -299,6 +299,9 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "supportsRos2Native");
             sb.Append(binding.SupportsRos2Native ? "true" : "false");
             sb.Append(',');
+            AppendPropertyName(sb, "isStream");
+            sb.Append(binding.IsStream ? "true" : "false");
+            sb.Append(',');
             AppendPropertyName(sb, "nativeType");
             AppendString(sb, binding.NativeType);
             sb.Append(',');

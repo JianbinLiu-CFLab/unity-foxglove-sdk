@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
         public float Tolerance { get; }
         public bool IsAggregateMember { get; }
+        public bool IsStream { get; }
         public string JsonFieldName { get; }
         public string Source { get; }
         public string Targets { get; }
@@ -74,7 +75,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -94,6 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
             ProtobufTypeShape = protobufTypeShape;
             Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
+            IsStream = isStream;
             JsonFieldName = jsonFieldName ?? string.Empty;
             Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
             Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
@@ -172,7 +175,8 @@ namespace Unity.FoxgloveSDK.Editor
                 member.QosReliability,
                 member.QosDurability,
                 member.QosHistory,
-                member.QosDepth);
+                member.QosDepth,
+                member.IsStream);
         }
 
         private static int EncodingValue(string encoding)
@@ -296,6 +300,7 @@ namespace Unity.FoxgloveSDK.Editor
         public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public bool IsStream { get; }
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }
@@ -324,7 +329,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -339,6 +345,7 @@ namespace Unity.FoxgloveSDK.Editor
             QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
+            IsStream = isStream;
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;

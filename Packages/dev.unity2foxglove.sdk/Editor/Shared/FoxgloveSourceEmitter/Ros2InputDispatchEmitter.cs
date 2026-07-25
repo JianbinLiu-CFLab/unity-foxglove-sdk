@@ -39,6 +39,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "{");
             for (var i = 0; i < members.Count; i++)
             {
+                if (members[i].IsStream)
+                    continue;
                 var typeName = GlobalTypeName(members[i].Ros2MessageShape.FullyQualifiedTypeName);
                 sb.AppendLine(pad + "    private " + typeName + " __foxRunRos2AppliedOwned_" + i + ";");
                 if (members[i].Policy == 4)
@@ -81,7 +83,18 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Source,
                 shape.CanonicalRosType,
                 member);
-            sb.AppendLine(pad + "        registrar.Register<" + typeName + ">(");
+            if (member.IsStream)
+            {
+                var access = TypeExprEmitter.MemberAccess(member.MemberName);
+                sb.AppendLine(pad + "        var __foxRunRos2Stream_" + index + " = " + access + ";");
+                sb.AppendLine(pad + "        if (__foxRunRos2Stream_" + index + " == null)");
+                sb.AppendLine(pad + "            throw new global::System.InvalidOperationException(\"FoxRunStream field is null when the native subscription session is captured.\");");
+            }
+            sb.AppendLine(
+                pad + "        registrar."
+                + (member.IsStream
+                    ? "RegisterStream<" + typeName + ", " + typeName + ">("
+                    : "Register<" + typeName + ">("));
             sb.AppendLine(pad + "            new " + NativeNamespace + "FoxRunRos2GeneratedContract(");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(id) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.Topic) + "\",");
@@ -99,7 +112,23 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Policy == 2 && member.HasExplicitHz && member.Hz > 0f
                     ? 1f / member.Hz
                     : 0f) + "),");
-            sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
+            sb.AppendLine(pad + "            "
+                + (member.IsStream
+                    ? "__foxRunRos2Stream_" + index + ".TryAdmitInput,"
+                    : "static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),"));
+            if (member.IsStream)
+                sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
+            if (member.IsStream)
+            {
+                sb.AppendLine(pad + "            owned =>");
+                sb.AppendLine(pad + "            {");
+                sb.AppendLine(pad + "                __foxRunRos2Stream_" + index + ".TryEnqueueOwned(");
+                sb.AppendLine(pad + "                    owned,");
+                sb.AppendLine(pad + "                    static value => __FoxRunRos2Dispose_" + index + "(value));");
+                sb.AppendLine(pad + "            },");
+                sb.AppendLine(pad + "            () => __foxRunRos2Stream_" + index + ".Clear());");
+                return;
+            }
             sb.AppendLine(pad + "            static owned => __FoxRunRos2Dispose_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2Apply_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2ClearIfOwned_" + index + "(owned),");
@@ -268,6 +297,9 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine();
                 EmitDisposeMethod(sb, pad, helper.DisposeName, helper.Shape, helpers);
             }
+
+            if (member.IsStream)
+                return;
 
             sb.AppendLine();
             EmitEqualsMethod(sb, pad, "__FoxRunRos2Equals_" + index, shape, helpers);

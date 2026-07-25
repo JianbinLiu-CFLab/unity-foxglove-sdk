@@ -162,7 +162,8 @@ namespace Unity.FoxgloveSDK.Editor
                     qosReliability: FoxRunGenerationMember.DeclaredQosReliabilityToText(member.QosReliability),
                     qosDurability: FoxRunGenerationMember.DeclaredQosDurabilityToText(member.QosDurability),
                     qosHistory: FoxRunGenerationMember.DeclaredQosHistoryToText(member.QosHistory),
-                    qosDepth: member.QosDepth))
+                    qosDepth: member.QosDepth,
+                    isStream: member.IsStream))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -207,6 +208,7 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
+        public readonly bool IsStream;
 
         public FoxRunReflectionGenerationMember(
             string ns,
@@ -245,7 +247,8 @@ namespace Unity.FoxgloveSDK.Editor
             int qosReliability = 0,
             int qosDurability = 0,
             int qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -295,6 +298,7 @@ namespace Unity.FoxgloveSDK.Editor
             NamedArgumentPresence = namedArgumentPresence;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
+            IsStream = isStream;
         }
 
         public FoxRunReflectionGenerationMember(
@@ -333,7 +337,8 @@ namespace Unity.FoxgloveSDK.Editor
             int qosReliability = 0,
             int qosDurability = 0,
             int qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
             : this(
                 ns,
                 className,
@@ -371,7 +376,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosReliability,
                 qosDurability,
                 qosHistory,
-                qosDepth)
+                qosDepth,
+                isStream)
         {
         }
     }

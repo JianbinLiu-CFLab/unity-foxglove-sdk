@@ -1714,6 +1714,118 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-E")]
+        public void GeneratedNativeStreamBindingCompilesAgainstTheExactPublicSeam()
+        {
+            var generated = FoxgloveSourceEmitter.EmitClass(
+                FoxRunGenerationModel.FromMembers(new[]
+                {
+                    BuildNativeGoldenMember(
+                        "std_msgs.msg.String",
+                        BuildStringGoldenShape(),
+                        isStream: true)
+                }).Types.Single());
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols: new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY" });
+            var host = CSharpSyntaxTree.ParseText(@"
+namespace UnityEngine { }
+namespace UnityEngine.Scripting
+{
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+namespace Unity.FoxgloveSDK.Components
+{
+    public sealed class FoxRunStream<T>
+    {
+        public bool TryAdmitInput() => true;
+        public bool TryEnqueueOwned(T value, System.Action<T> disposer) => true;
+        public int Clear() => 0;
+    }
+}
+namespace std_msgs.msg
+{
+    public sealed class String : ROS2.Message, System.IDisposable
+    {
+        public string Data { get; set; } = string.Empty;
+        public void Dispose() { }
+    }
+}
+namespace Demo
+{
+    public partial class Receiver
+    {
+        private Unity.FoxgloveSDK.Components.FoxRunStream<std_msgs.msg.String> _incoming =
+            new Unity.FoxgloveSDK.Components.FoxRunStream<std_msgs.msg.String>();
+    }
+}", parseOptions);
+            var compilation = CSharpCompilation.Create(
+                "phase184e_generated_native_stream",
+                new[] { CSharpSyntaxTree.ParseText(generated, parseOptions), host },
+                PlatformReferences().Concat(new[]
+                {
+                    CoreAttributeAssembly.Value,
+                    Ros2Contract.Value.Reference,
+                    NativeAssembly.Value
+                }),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            Assert.DoesNotContain(
+                compilation.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            Assert.Contains(
+                "RegisterStream<global::std_msgs.msg.String, global::std_msgs.msg.String>",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(".TryAdmitInput", generated, StringComparison.Ordinal);
+            Assert.Contains(".TryEnqueueOwned(", generated, StringComparison.Ordinal);
+            Assert.Contains(".Clear()", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain("__foxRunRos2AppliedOwned_0", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void NativeStreamRequiresStreamRegistrarWithoutRegressingOrdinaryNativeSeam()
+        {
+            var message = ValidMessageSource(
+                "vendor_msgs.msg",
+                "public int Value { get; set; }",
+                publicConstructor: true);
+            var legacySeam = CompleteNativeSeamSource.Replace(
+                StreamRegistrarSeamSource,
+                string.Empty,
+                StringComparison.Ordinal);
+
+            var ordinary = RunGenerator(
+                message,
+                "vendor_msgs/msg/Command",
+                nativeDefine: true,
+                nativeReference: true,
+                nativeReferenceSource: legacySeam);
+            var streamMissing = RunGenerator(
+                message,
+                "vendor_msgs/msg/Command",
+                nativeDefine: true,
+                nativeReference: true,
+                nativeReferenceSource: legacySeam,
+                isStream: true);
+            var streamPresent = RunGenerator(
+                message,
+                "vendor_msgs/msg/Command",
+                nativeDefine: true,
+                nativeReference: true,
+                isStream: true);
+
+            Assert.DoesNotContain(ordinary.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(streamMissing.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(streamPresent.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(
+                "RegisterStream<global::vendor_msgs.msg.Command, global::vendor_msgs.msg.Command>",
+                string.Join(Environment.NewLine, streamPresent.GeneratedTrees.Select(tree => tree.GetText().ToString())),
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedNativeContractMetadataEscapesAndRoundTripsAllCSharpStringBoundaries()
         {
             const string boundary = "tab\t nul\0 control\u0001 lines\u2028\u2029 surrogate\uD800 quote\" slash\\";
@@ -2494,7 +2606,8 @@ namespace Demo
 
         private static FoxRunGenerationMember BuildNativeGoldenMember(
             string typeName,
-            FoxRunRos2MessageShape shape)
+            FoxRunRos2MessageShape shape,
+            bool isStream = false)
             => new FoxRunGenerationMember(
                 "Demo", "Receiver", "_incoming", "field",
                 typeName, "global::" + typeName,
@@ -2519,7 +2632,8 @@ namespace Demo
                 qosReliability: FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
                 qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
                 qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
-                qosDepth: 5);
+                qosDepth: 5,
+                isStream: isStream);
 
         private static FoxRunGenerationMember BuildNativeTriggerMember(
             string memberName,
@@ -2832,8 +2946,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Action<T> apply, Func<T, bool> clearIfOwned,
             Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
             Func<bool> canApply) where T : ROS2.Message, new();
+" + StreamRegistrarSeamSource + @"
     }
 }";
+
+        private const string StreamRegistrarSeamSource = @"
+        void RegisterStream<TTransport, TSample>(FoxRunRos2GeneratedContract contract,
+            Func<bool> tryAdmitInput,
+            Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
+            Action<TSample> transferOwned,
+            Action clearOwned) where TTransport : ROS2.Message, new();";
 
         private static readonly Lazy<MetadataReference> NativeAssembly = new Lazy<MetadataReference>(() =>
             BuildNativeAssemblyReference(CompleteNativeSeamSource));
@@ -2898,7 +3020,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string sourceExpression = null,
             string nativeReferenceSource = null,
             string encoding = null,
-            string onlyIf = null)
+            string onlyIf = null,
+            bool isStream = false)
         {
             var parseOptions = new CSharpParseOptions(
                 LanguageVersion.CSharp9,
@@ -2911,6 +3034,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var sourceArgument = string.IsNullOrEmpty(resolvedSourceExpression)
                 ? string.Empty
                 : "Source = " + resolvedSourceExpression + ",";
+            if (isStream)
+            {
+                source += @"
+namespace Unity.FoxgloveSDK.Components
+{
+    public sealed class FoxRunStream<T>
+    {
+        public FoxRunStream() { }
+    }
+}";
+            }
             source += @"
 namespace Demo
 {
@@ -2931,7 +3065,11 @@ namespace Demo
                 ? string.Empty
                 : "OnlyIf = nameof(" + onlyIf + "),") + @"
             SchemaName = """ + schemaName + @""")]
-        private " + messageTypeName + @" _incoming;
+        private " + (isStream
+            ? "Unity.FoxgloveSDK.Components.FoxRunStream<" + messageTypeName + ">"
+            : messageTypeName) + @" _incoming" + (isStream
+                ? " = new Unity.FoxgloveSDK.Components.FoxRunStream<" + messageTypeName + ">();"
+                : ";") + @"
         " + (string.IsNullOrEmpty(onlyIf)
             ? string.Empty
             : "private bool " + onlyIf + "() => true;") + @"

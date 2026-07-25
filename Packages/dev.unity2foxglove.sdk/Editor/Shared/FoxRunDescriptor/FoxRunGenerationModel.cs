@@ -241,6 +241,7 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
+        public readonly bool IsStream;
 
         public FoxRunGenerationMember(
             string ns,
@@ -279,7 +280,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
             : this(
                 ns,
                 className,
@@ -318,7 +320,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosReliability,
                 qosDurability,
                 qosHistory,
-                qosDepth)
+                qosDepth,
+                isStream)
         {
         }
 
@@ -360,7 +363,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
             : this(
                 ns,
                 className,
@@ -400,7 +404,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosReliability,
                 qosDurability,
                 qosHistory,
-                qosDepth)
+                qosDepth,
+                isStream)
         {
         }
 
@@ -443,7 +448,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -468,6 +474,7 @@ namespace Unity.FoxgloveSDK.Editor
             QosDurability = qosDurability ?? string.Empty;
             QosHistory = qosHistory ?? string.Empty;
             QosDepth = qosDepth;
+            IsStream = isStream;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
@@ -565,7 +572,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosReliability: QosReliability,
                 qosDurability: QosDurability,
                 qosHistory: QosHistory,
-                qosDepth: QosDepth);
+                qosDepth: QosDepth,
+                isStream: IsStream);
         }
 
         public bool HasNamedArgument(FoxRunNamedArgumentPresence argument)

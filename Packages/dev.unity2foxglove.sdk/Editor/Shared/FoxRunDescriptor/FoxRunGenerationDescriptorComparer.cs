@@ -161,6 +161,7 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationMember.ExplicitArgumentsToText(right.NamedArgumentPresence),
                 semantic);
             CompareSemantic(key, "isAggregateMember", left.IsAggregateMember ? "true" : "false", right.IsAggregateMember ? "true" : "false", semantic);
+            CompareSemantic(key, "isStream", left.IsStream ? "true" : "false", right.IsStream ? "true" : "false", semantic);
             CompareSemantic(key, "jsonFieldName", left.JsonFieldName, right.JsonFieldName, semantic);
             CompareProvenance(key, "hostKind", left.HostKind, right.HostKind, provenance);
             CompareProvenance(key, "rawTypeName", left.RawTypeName, right.RawTypeName, provenance);

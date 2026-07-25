@@ -1864,6 +1864,80 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-E")]
+        public void DescriptorWriterAndComparerPreserveStreamSemantics()
+        {
+            var streamMember = new FoxRunGenerationMember(
+                "Demo", "StreamInput", "_samples", "field", "System.Int32",
+                true, false, "", "/phase184/stream", 0f, "",
+                1, 0f, "UnitTest", 0, "",
+                mode: (int)FoxRunFlow.Subscribe,
+                isStream: true);
+            var stream = FoxRunGenerationModel.FromMembers(new[] { streamMember });
+            var ordinary = FoxRunGenerationModel.FromMembers(new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "StreamInput", "_samples", "field", "System.Int32",
+                    true, false, "", "/phase184/stream", 0f, "",
+                    1, 0f, "UnitTest", 0, "",
+                    mode: (int)FoxRunFlow.Subscribe)
+            });
+
+            var json = FoxRunGenerationDescriptorJsonWriter.Write(stream);
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(stream, ordinary);
+            using var descriptor = JsonDocument.Parse(json);
+            var serializedMember = descriptor.RootElement
+                .GetProperty("types")[0]
+                .GetProperty("members")[0];
+
+            Assert.Contains("\"isStream\":true", json, StringComparison.Ordinal);
+            Assert.True(serializedMember.GetProperty("isStream").GetBoolean());
+            Assert.False(comparison.IsSemanticEqual);
+            Assert.Contains(
+                comparison.SemanticDifferences,
+                difference => difference.Contains("isStream", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void ManifestAndGeneratedSubscriptionCatalogPreserveStreamSemantics()
+        {
+            var generationMember = new FoxRunGenerationMember(
+                "Demo", "StreamInput", "_samples", "field", "System.Int32",
+                true, false, "", "/phase184/catalog-stream", 0f, "",
+                1, 0f, "UnitTest", 0, "",
+                mode: (int)FoxRunFlow.Subscribe,
+                isStream: true);
+            var manifestMember = FoxRunManifestMember.FromGenerationMember(generationMember);
+            var manifest = FoxRunManifestBuilder.Build(
+                new[] { manifestMember },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+            var binding = Assert.Single(manifest.Sections.Subscriptions.Bindings);
+            var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
+            var generated = FoxRunSchemaInfoWriter.GenerateSource(manifest);
+            var runtimeBinding = new FoxRunSchemaSubscriptionBindingInfo(
+                binding.DeclaringType,
+                binding.MemberName,
+                binding.Topic,
+                binding.Flow,
+                FoxRunEndpoint.Foxglove,
+                (FoxRunQosProfile)0,
+                supportsWebSocket: true,
+                supportsRos2Native: false,
+                nativeType: string.Empty,
+                canonicalRosType: string.Empty,
+                copyShapeIdentity: string.Empty,
+                isStream: true);
+
+            Assert.True(manifestMember.IsStream);
+            Assert.True(binding.IsStream);
+            Assert.Contains("\"isStream\":true", canonical, StringComparison.Ordinal);
+            Assert.Contains("/phase184/catalog-stream", generated, StringComparison.Ordinal);
+            Assert.Matches(@"0,\s+true\s+\),", generated);
+            Assert.True(runtimeBinding.IsStream);
+        }
+
+        [Fact]
         public void DescriptorComparerTreatsMatchingNanFloatsAsSameValue()
         {
             var compare = typeof(FoxRunGenerationDescriptorComparer).GetMethod(
@@ -2268,6 +2342,132 @@ namespace Demo
                 .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToArray();
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void RoslynAcceptsOneInitializedSubscribeStreamWithDirectionalTransportOptions()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+namespace Demo
+{
+    public partial class Streams
+    {
+        [FoxRun(""/imu"", Mode = FoxRunFlow.Subscribe, Source = FoxRunEndpoint.Foxglove,
+            Encoding = FoxRunEncoding.JSON)]
+        private FoxRunStream<int> _imu = new FoxRunStream<int>();
+    }
+}";
+            var result = RunGenerator(source);
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class Streams", StringComparison.Ordinal));
+            var output = RunGeneratorAndUpdateCompilation(source);
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            Assert.Contains("IFoxgloveOwnedInputSource", generated, StringComparison.Ordinal);
+            Assert.Contains(
+                "void IFoxgloveOwnedInputSource.FoxgloveInput_ClearOwned(int topicIndex)",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "bool IFoxgloveOwnedInputSource.FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains("isStream: true", generated, StringComparison.Ordinal);
+            Assert.Contains("must be initialized before registration", generated, StringComparison.Ordinal);
+            Assert.Contains(
+                "private global::Unity.FoxgloveSDK.Components.FoxRunStream<int> __foxRunInputStream_0;",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Interlocked.CompareExchange(ref __foxRunInputStream_0, __stream, null)",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Interlocked.Exchange(ref __foxRunInputStream_0, null)?.Clear();",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("this._imu?.Clear();", generated, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [Trait("Phase", "184-E")]
+        [InlineData("", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Publish", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.PublishAndSubscribe", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe, Targets = FoxRunEndpoint.Foxglove", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe, Policy = FoxRunPolicy.Change", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe, Hz = 10", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe, Tolerance = 0.1f", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe, OnlyIf = \"Enabled\"", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
+        [InlineData("Mode = FoxRunFlow.Subscribe", "private FoxRunStream<int> Stream { get; } = new FoxRunStream<int>();")]
+        public void RoslynRejectsIllegalStreamDeclarationShapes(
+            string arguments,
+            string declaration)
+        {
+            var separator = string.IsNullOrEmpty(arguments) ? string.Empty : ", ";
+            var result = RunGenerator($@"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{{
+    public partial class Streams
+    {{
+        private bool Enabled => true;
+        [FoxRun(""/stream""{separator}{arguments})]
+        {declaration}
+    }}
+}}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN215");
+        }
+
+        [Theory]
+        [Trait("Phase", "184-E")]
+        [InlineData("private FoxRunStream<int> _stream;")]
+        [InlineData("private FoxRunStream<int> _stream = null;")]
+        [InlineData("private FoxRunStream<int> _stream = default;")]
+        public void RoslynRejectsStreamWithoutNonNullFieldInitializer(string declaration)
+        {
+            var result = RunGenerator($@"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{{
+    public partial class Streams
+    {{
+        [FoxRun(""/stream"", Mode = FoxRunFlow.Subscribe)]
+        {declaration}
+    }}
+}}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN216");
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void RoslynRejectsMultipleFoxRunAttributesOnOneStream()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{
+    public partial class Streams
+    {
+        [FoxRun(""/one"", Mode = FoxRunFlow.Subscribe)]
+        [FoxRun(""/two"", Mode = FoxRunFlow.Subscribe)]
+        private FoxRunStream<int> _stream = new FoxRunStream<int>();
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN215");
         }
 
         private static GeneratorDriverRunResult RunGenerator(string source)

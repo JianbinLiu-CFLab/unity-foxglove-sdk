@@ -132,6 +132,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly Location DiagnosticLocation;
         public readonly string DiagnosticId;
         public readonly IReadOnlyList<string> DeclaredMemberNames;
+        public readonly bool IsStream;
 
         /// <summary>
         /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
@@ -142,8 +143,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>
         /// Creates a valid member-data record with no diagnostic.
         /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames)
+        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream)
         {
         }
 
@@ -156,7 +157,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
         }
 
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null)
+        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
         {
             Ns = ns;
             ClassName = cn;
@@ -183,6 +184,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             DeclaredMemberNames = declaredMemberNames == null
                 ? Array.Empty<string>()
                 : new List<string>(declaredMemberNames).AsReadOnly();
+            IsStream = isStream;
         }
 
         public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
@@ -247,7 +249,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.QosReliability,
                 topic.QosDurability,
                 topic.QosHistory,
-                topic.QosDepth);
+                topic.QosDepth,
+                IsStream);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(

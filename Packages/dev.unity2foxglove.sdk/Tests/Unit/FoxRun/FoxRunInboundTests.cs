@@ -8,6 +8,8 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
@@ -541,6 +543,249 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-E")]
+        public void RouterUnregisterClearsOptionalOwnedInputExactlyOncePerRegistrationLifetime()
+        {
+            var input = new OwnedRecordingInput("/phase184/stream");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            router.Unregister(input);
+            router.Unregister(input);
+
+            Assert.Equal(1, input.ClearCount);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase184/stream", Array.Empty<byte>(), "json", 1).Status);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public async Task RouterUnregisterClosesIngressThenWaitsBeforeClearingOwnedStream()
+        {
+            var input = new BlockingOwnedStreamInput("/phase184/stream-race");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var dispatch = Task.Run(() => router.Dispatch(
+                "/phase184/stream-race",
+                new byte[] { 7 },
+                "json",
+                nowSeconds: 1d));
+            Assert.True(await Task.Run(() => input.StageEntered.Wait(TimeSpan.FromSeconds(5))));
+            var unregister = Task.Factory.StartNew(
+                () => router.Unregister(input),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+
+            var firstCompletion = await Task.WhenAny(
+                unregister,
+                Task.Delay(TimeSpan.FromMilliseconds(250)));
+            var unregisterWaitedForDispatch = !ReferenceEquals(firstCompletion, unregister);
+            input.FinishStage.Set();
+            var result = await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
+            await unregister.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(unregisterWaitedForDispatch);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, result.Status);
+            Assert.Equal(0, input.Stream.Count);
+            Assert.Equal(1, input.DisposedCount);
+            Assert.Equal(1, input.ClearCount);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void RouterOwnsOnlyStreamMembersResolvedToWebSocket()
+        {
+            var input = new MixedProviderOwnedInput();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionSource = FoxRunEndpoint.Ros2Native
+            };
+
+            router.Register(input);
+            router.Unregister(input);
+
+            Assert.Equal(1, input.WebClearCount);
+            Assert.Equal(0, input.NativeClearCount);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void FailedTopicEnumerationEndsLifetimeWithoutAcquiringOwnedMembers()
+        {
+            var input = new ThrowingSecondTopicOwnedInput();
+            var router = new FoxRunInputRouter();
+
+            Assert.Throws<InvalidOperationException>(() => router.Register(input));
+            Exception unregisterFailure = null;
+            var unregister = new Thread(() =>
+            {
+                try
+                {
+                    router.Unregister(input);
+                }
+                catch (Exception exception)
+                {
+                    unregisterFailure = exception;
+                }
+            }) { IsBackground = true };
+            unregister.Start();
+
+            Assert.True(unregister.Join(TimeSpan.FromSeconds(2)));
+            Assert.Null(unregisterFailure);
+            Assert.Equal(0, input.ClearCount);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase184/partial", Array.Empty<byte>(), "json", 1d).Status);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void FailedSecondOwnershipAcquisitionClearsTheFirstMemberExactlyOnce()
+        {
+            var input = new ThrowingSecondAcquireOwnedInput();
+            var router = new FoxRunInputRouter();
+
+            Assert.Throws<InvalidOperationException>(() => router.Register(input));
+            router.Unregister(input);
+
+            Assert.Equal(1, input.FirstClearCount);
+            Assert.Equal(0, input.SecondClearCount);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase184/acquire-first", Array.Empty<byte>(), "json", 1d).Status);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void GeneratedWebSocketStreamFreezesRegisteredInstanceUntilOwnedClear()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase184WebStreamFreeze_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+namespace Demo
+{
+    public partial class StreamReceiver
+    {
+        [FoxRun(""/phase184/frozen-stream"", Mode = FoxRunFlow.Subscribe,
+            Encoding = FoxRunEncoding.JSON)]
+        public FoxRunStream<int> Stream = new FoxRunStream<int>();
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out _);
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+            Assert.True(
+                emit.Success,
+                "Stream freeze fixture failed to compile: "
+                + string.Join("; ", emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var receiverType = assembly.GetType("Demo.StreamReceiver", throwOnError: true);
+            var receiver = Activator.CreateInstance(receiverType);
+            var input = Assert.IsAssignableFrom<IFoxgloveInputSource>(receiver);
+            var owned = Assert.IsAssignableFrom<IFoxgloveOwnedInputSource>(receiver);
+            var field = receiverType.GetField("Stream");
+            Assert.NotNull(field);
+            var first = Assert.IsType<FoxRunStream<int>>(field.GetValue(receiver));
+            var second = new FoxRunStream<int>();
+
+            Assert.True(owned.FoxgloveInput_TryAcquireOwned(0, out var validationError), validationError);
+            field.SetValue(receiver, second);
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Stream\":7}"),
+                "json",
+                out var stageError), stageError);
+
+            Assert.Equal(1, first.Count);
+            Assert.Equal(0, second.Count);
+            owned.FoxgloveInput_ClearOwned(0);
+            Assert.Equal(0, first.Count);
+            Assert.Equal(0, second.Count);
+
+            Assert.True(owned.FoxgloveInput_TryAcquireOwned(0, out validationError), validationError);
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Stream\":8}"),
+                "json",
+                out stageError), stageError);
+            Assert.Equal(1, second.Count);
+            owned.FoxgloveInput_ClearOwned(0);
+            Assert.Equal(0, second.Count);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void StreamRegistrationUsesItsOwnAdmissionCeilingInsteadOfOrdinaryRouterLimit()
+        {
+            var input = new OwnedRecordingInput("/phase184/stream-rate");
+            var router = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            router.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch("/phase184/stream-rate", Array.Empty<byte>(), "json", 1d).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch("/phase184/stream-rate", Array.Empty<byte>(), "json", 1.1d).Status);
+            Assert.Equal(2, input.StageCount);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void MixedTopicKeepsOrdinaryRateLimitWhileStreamUsesItsOwnCeiling()
+        {
+            const string topic = "/phase184/mixed-rate";
+            var ordinary = new RecordingInput(topic);
+            var stream = new OwnedRecordingInput(topic);
+            var router = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            router.Register(ordinary);
+            router.Register(stream);
+
+            var first = router.Dispatch(topic, Array.Empty<byte>(), "json", 1d);
+            var second = router.Dispatch(topic, Array.Empty<byte>(), "json", 1.1d);
+
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, first.Status);
+            Assert.Equal(2, first.StagedCount);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, second.Status);
+            Assert.Equal(1, second.StagedCount);
+            Assert.Equal(1, ordinary.ApplyCount);
+            Assert.Equal(2, stream.StageCount);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void NullOwnedInputFailsBeforeRouterRegistration()
+        {
+            var input = new OwnedRecordingInput("/phase184/null-stream", ready: false);
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter();
+
+            router.Register(input, diagnostics.Add);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase184/null-stream", Array.Empty<byte>(), "json", 1d).Status);
+            Assert.Contains("initialized before registration", Assert.Single(diagnostics), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RouterResolvesInheritedInputAgainstTheCurrentSubscriptionDefault()
         {
             var input = new InheritedRecordingInput("/phase175/inherit");
@@ -749,6 +994,16 @@ namespace Demo
             Assert.True(
                 registerIndex > unregisterIndex,
                 "Sources must be registered again only after all old provider resolutions are removed.");
+
+            var scan = TestSources.ExtractMethod(source, "private void Scan()");
+            Assert.Contains(
+                "if (_sources.Add(source) && _subscriptionsEnabled)",
+                scan,
+                StringComparison.Ordinal);
+            Assert.True(
+                scan.IndexOf("_sources.Add(source)", StringComparison.Ordinal)
+                < scan.IndexOf("_router.Register(source, WarnOnce);", StringComparison.Ordinal),
+                "A source discovered while subscriptions are disabled must be retained for a later rebuild without acquiring its owned stream.");
         }
 
         [Fact]
@@ -1031,6 +1286,231 @@ namespace Demo
             }
 
             public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class OwnedRecordingInput : IFoxgloveInputSource, IFoxgloveOwnedInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+            private readonly bool _ready;
+
+            public OwnedRecordingInput(string topic, bool ready = true)
+            {
+                _topic = new FoxgloveInputTopicInfo(
+                    topic,
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false,
+                    isStream: true);
+                _ready = ready;
+            }
+
+            public int ClearCount { get; private set; }
+            public int StageCount { get; private set; }
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                StageCount++;
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+            public bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)
+            {
+                error = _ready
+                    ? string.Empty
+                    : "FoxRunStream field must be initialized before registration.";
+                return _ready;
+            }
+            public void FoxgloveInput_ClearOwned(int topicIndex) => ClearCount++;
+        }
+
+        private sealed class BlockingOwnedStreamInput : IFoxgloveInputSource, IFoxgloveOwnedInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public BlockingOwnedStreamInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(
+                    topic,
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false,
+                    isStream: true);
+                Stream = new FoxRunStream<byte>();
+            }
+
+            public ManualResetEventSlim StageEntered { get; } = new ManualResetEventSlim();
+            public ManualResetEventSlim FinishStage { get; } = new ManualResetEventSlim();
+            public FoxRunStream<byte> Stream { get; }
+            public int ClearCount;
+            public int DisposedCount;
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                StageEntered.Set();
+                if (!FinishStage.Wait(TimeSpan.FromSeconds(5)))
+                    throw new TimeoutException("The teardown race did not release staging.");
+                Stream.TryEnqueueOwned(
+                    payload[0],
+                    _ => Interlocked.Increment(ref DisposedCount));
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+            public bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+
+            public void FoxgloveInput_ClearOwned(int topicIndex)
+            {
+                Interlocked.Increment(ref ClearCount);
+                Stream.Clear();
+            }
+        }
+
+        private sealed class MixedProviderOwnedInput : IFoxgloveInputSource, IFoxgloveOwnedInputSource
+        {
+            private readonly FoxgloveInputTopicInfo[] _topics =
+            {
+                new FoxgloveInputTopicInfo(
+                    "/phase184/web-stream",
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    supportsWebSocket: true,
+                    supportsRos2Native: true,
+                    isStream: true),
+                new FoxgloveInputTopicInfo(
+                    "/phase184/native-stream",
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    declaredSource: 0,
+                    hasExplicitSource: false,
+                    hasExplicitEncoding: true,
+                    supportsWebSocket: true,
+                    supportsRos2Native: true,
+                    isStream: true)
+            };
+
+            public int WebClearCount { get; private set; }
+            public int NativeClearCount { get; private set; }
+            public int FoxgloveInput_TopicCount => _topics.Length;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+            public bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+            public void FoxgloveInput_ClearOwned(int topicIndex)
+            {
+                if (topicIndex == 0)
+                    WebClearCount++;
+                else if (topicIndex == 1)
+                    NativeClearCount++;
+            }
+        }
+
+        private sealed class ThrowingSecondTopicOwnedInput : IFoxgloveInputSource, IFoxgloveOwnedInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _first = new FoxgloveInputTopicInfo(
+                "/phase184/partial",
+                FoxRunEncoding.JSON,
+                FoxRunFlow.Subscribe,
+                FoxRunEndpoint.Foxglove,
+                supportsWebSocket: true,
+                supportsRos2Native: false,
+                isStream: true);
+
+            public int ClearCount { get; private set; }
+            public int FoxgloveInput_TopicCount => 2;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index)
+                => index == 0 ? _first : throw new InvalidOperationException("second topic failed");
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+            public bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+            public void FoxgloveInput_ClearOwned(int topicIndex) => ClearCount++;
+        }
+
+        private sealed class ThrowingSecondAcquireOwnedInput : IFoxgloveInputSource, IFoxgloveOwnedInputSource
+        {
+            private readonly FoxgloveInputTopicInfo[] _topics =
+            {
+                new FoxgloveInputTopicInfo(
+                    "/phase184/acquire-first",
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false,
+                    isStream: true),
+                new FoxgloveInputTopicInfo(
+                    "/phase184/acquire-second",
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false,
+                    isStream: true),
+            };
+
+            public int FirstClearCount { get; private set; }
+            public int SecondClearCount { get; private set; }
+            public int FoxgloveInput_TopicCount => _topics.Length;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+            public bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)
+            {
+                if (topicIndex == 1)
+                    throw new InvalidOperationException("second ownership acquisition failed");
+                error = string.Empty;
+                return true;
+            }
+            public void FoxgloveInput_ClearOwned(int topicIndex)
+            {
+                if (topicIndex == 0)
+                    FirstClearCount++;
+                else if (topicIndex == 1)
+                    SecondClearCount++;
+            }
         }
 
         private static MetadataReference[] DynamicCompilationReferences()
