@@ -91,6 +91,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs";
         private const string CustomOutboundPolicyPath =
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomOutboundMappingPolicy.cs";
+        private const string CustomOutboundBudgetPolicyPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2CustomOutboundBudgetPolicy.cs";
         private const string CustomMapperEmitterPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomDtoMapperEmitter.cs";
         private const string CustomPublishEmitterPath =
@@ -177,6 +179,8 @@ namespace Unity.FoxgloveSDK.Tests
             var customPublisherBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherBindingPath);
             var subscriptionBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(SubscriptionBindingPath);
             var customOutboundPolicy = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomOutboundPolicyPath);
+            var customOutboundBudgetPolicy =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomOutboundBudgetPolicyPath);
             var customMapperEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomMapperEmitterPath);
             var customPublishEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublishEmitterPath);
             var foxgloveLogHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxgloveLogHubPath);
@@ -238,6 +242,7 @@ namespace Unity.FoxgloveSDK.Tests
                 customPublisherBinding,
                 subscriptionBinding,
                 customOutboundPolicy,
+                customOutboundBudgetPolicy,
                 customMapperEmitter,
                 customPublishEmitter,
                 foxgloveLogHub,
@@ -568,6 +573,7 @@ namespace Unity.FoxgloveSDK.Tests
             string customPublisherBinding,
             string subscriptionBinding,
             string customOutboundPolicy,
+            string customOutboundBudgetPolicy,
             string customMapperEmitter,
             string customPublishEmitter,
             string foxgloveLogHub,
@@ -595,7 +601,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "181D-2: custom output demand resolves QoS and native targets independently of subscription sessions and fails closed before endpoint creation");
 
             var stopStart = customPublisherBinding.IndexOf("internal void Stop()", StringComparison.Ordinal);
-            var stopEnd = customPublisherBinding.IndexOf("private void OnBusEnvelope", StringComparison.Ordinal);
+            var stopEnd = customPublisherBinding.IndexOf("private bool OnBusEnvelope", StringComparison.Ordinal);
             var stopBody = stopStart >= 0 && stopEnd > stopStart
                 ? customPublisherBinding.Substring(stopStart, stopEnd - stopStart)
                 : string.Empty;
@@ -617,7 +623,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && removePublisher > detachToken
                   && releaseNode > removePublisher
                   && backendRemove > removeHelper
-                  && customPublisherBinding.IndexOf("catch (Exception)", removeHelper, StringComparison.Ordinal) > backendRemove,
+                  && customPublisherBinding.IndexOf(
+                      "FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception)",
+                      backendRemove,
+                      StringComparison.Ordinal) > backendRemove,
                 "181D-3: typed publisher unsubscribes, detaches its endpoint token, and protects native teardown before node release");
 
             Check(subscriptionBinding.Contains("dropBeforeApply", StringComparison.Ordinal)
@@ -630,7 +639,12 @@ namespace Unity.FoxgloveSDK.Tests
                       StringComparison.Ordinal),
                 "181D-4: custom P&S drops its own origin through the policy decision after bounded callback copying and before DTO apply");
 
-            Check(customOutboundPolicy.Contains("MaximumBytes = 4L * 1024L * 1024L", StringComparison.Ordinal)
+            Check(customOutboundBudgetPolicy.Contains(
+                      "MaximumBytes = 4L * 1024L * 1024L",
+                      StringComparison.Ordinal)
+                  && customOutboundPolicy.Contains(
+                      "FoxRunRos2CustomOutboundBudgetPolicy.MaximumBytes",
+                      StringComparison.Ordinal)
                   && !customOutboundPolicy.Contains("foxRunRos2NativeCopyBudget", StringComparison.Ordinal)
                   && customMapperEmitter.Contains("FoxRunRos2CustomEnvelopeTimestamp.TryFromUnixNanoseconds", StringComparison.Ordinal)
                   && customMapperEmitter.Contains("__FoxRunRos2CustomDisposeEnvelope", StringComparison.Ordinal)

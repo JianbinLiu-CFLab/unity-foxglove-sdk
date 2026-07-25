@@ -19,7 +19,7 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 - [04_Foxglove_Desktop_Operation](en/04_Foxglove_Desktop_Operation.md): connect Foxglove and use 3D, Image, Plot, Parameters, Service Call, and Problems panels.
 - [05_Verifying_Basic_Visualization](en/05_Verifying_Basic_Visualization.md): import and verify the minimal Basic Visualization sample.
 - [06_Parameters_and_Services](en/06_Parameters_and_Services.md): edit runtime parameters and call Unity services from Foxglove.
-- [07_FoxRun_Zero_Code_Publishing](en/07_FoxRun_Zero_Code_Publishing.md): publish debug values with `[FoxRun]`.
+- [07_FoxRun_Zero_Code_Publishing](en/07_FoxRun_Zero_Code_Publishing.md): generate FoxRun publish, subscribe, endpoint, QoS, trigger, full-duplex, and bounded-stream contracts.
 - [08_MCAP_Recording_and_Replay](en/08_MCAP_Recording_and_Replay.md): record `.mcap` files, open them in Foxglove, and replay them in Unity.
 - [09_IL2CPP_Build_Guide](en/09_IL2CPP_Build_Guide.md): build and verify standalone Players with the repository build script.
 - [10_Architecture](en/10_Architecture.md): advanced overview of runtime, protocol, FoxRun, MCAP, and replay internals.

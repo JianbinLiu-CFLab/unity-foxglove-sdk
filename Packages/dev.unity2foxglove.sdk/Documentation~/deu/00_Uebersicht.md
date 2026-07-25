@@ -20,7 +20,7 @@ Der übliche Weg ist: Package installieren, Foxglove verbinden, Unity-Daten ver�
 ## 4. Laufzeitsteuerung
 
 - [Parameters and Services (English)](../en/06_Parameters_and_Services.md): `/cube/color`, `/cube/scale` bearbeiten und `/cube/reset_pose` aufrufen.
-- [FoxRun (English)](../en/07_FoxRun_Zero_Code_Publishing.md): Debug-Topics mit `[FoxRun]` veröffentlichen.
+- [FoxRun (English)](../en/07_FoxRun_Zero_Code_Publishing.md): Publish-, Subscribe-, Endpunkt-, QoS-, Trigger-, Full-Duplex- und begrenzte Stream-Verträge mit `[FoxRun]` erzeugen.
 - [Inspector Reference (English)](../en/12_Inspector_Reference.md): wichtige Unity Inspector-Felder verstehen.
 
 ## 5. Aufzeichnung, Wiedergabe und Builds

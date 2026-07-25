@@ -4,20 +4,31 @@ This source-only sample demonstrates the existing ROS2 message input path. It le
 
 ## Contract
 
-Add the imported native subscribe sample component to a GameObject in a scene that has a `FoxgloveManager`. Configure the Manager with **Enable FoxRun Subscriptions** enabled and default subscription provider **ROS2 Native (R2FU)**. The component exposes these explicit `Subscribe` contracts; its serialized topic fields retain source-defined defaults and can be inspected or changed in Unity:
+Add the imported native subscribe sample component to a GameObject in a scene
+that has a `FoxgloveManager`, then enable **FoxRun Subscriptions**. Every sample
+declaration explicitly selects `Source = FoxRunEndpoint.Ros2Native`, so it does
+not depend on the Subscribe Profile's default Source. Its topic constants are
+fixed by the sample:
 
-| ROS2 type | Inspector topic field | QoS preset |
+| ROS2 type | Topic | Official QoS profile |
 | --- | --- | --- |
-| `std_msgs/msg/String` | String Topic | Reliable |
-| `geometry_msgs/msg/Twist` | Twist Topic | Reliable |
-| `sensor_msgs/msg/Joy` | Joy Topic | SensorData / BestEffort |
-| `sensor_msgs/msg/Imu` | Imu Topic | SensorData / BestEffort |
+| `std_msgs/msg/String` | `/foxrun/phase179/string` | `Default` |
+| `geometry_msgs/msg/Twist` | `/foxrun/phase179/twist` | `Default` |
+| `sensor_msgs/msg/Joy` | `/foxrun/phase179/joy` | `SensorData` |
+| `sensor_msgs/msg/Imu` | `/foxrun/phase179/imu` | `SensorData` |
 
-The generated binding owns each latest typed message copy. The sample only copies bounded strings, scalar values, and the first few Joy elements into regular managed Inspector fields. Do not retain a message received from a ROS2 callback or treat it as valid beyond the generated binding's ownership path.
+These are ordinary latest-wins fields. The generated binding owns each latest
+typed message copy, while the sample copies only bounded strings, scalar
+values, and the first few Joy elements into regular managed Inspector fields.
+Do not retain a message received from a ROS2 callback or treat it as valid
+beyond the generated binding's ownership path.
 
 ## Install and run
 
-1. Install this adapter package and resolve exactly one of the Humble, Jazzy, or Lyrical Windows runtime packages in the Unity project manifest.
+1. Install this optional facade package and resolve exactly one of the Humble,
+   Jazzy, or Lyrical Windows runtime packages in the Unity project manifest.
+   Projects that need only Foxglove or the publish-only localhost Bridge use
+   `dev.unity2foxglove.sdk` alone and do not need R2FU.
 2. After a runtime package or Lyrical communication mode has been changed after native initialization, restart Unity before entering Play Mode. Runtime DLLs must not be mixed in one Editor process.
 3. Set the Unity runtime communication mode before its first ROS2 initialization. FastDDS is DDS; Lyrical Zenoh uses `rmw_zenoh_cpp`. They do not discover one another.
 4. Make the Linux peer match Unity's ROS distro, `RMW_IMPLEMENTATION`, `ROS_DOMAIN_ID`, discovery topology, and topic QoS. For example:
@@ -58,7 +69,11 @@ All evidence is written under `build/phase179/<profile-id>/`. A Linux, Editor, o
 
 ### Editor surface: exact manual sequence
 
-1. In Unity, resolve exactly the runtime shown by the selected row. In the `FoxgloveManager` Inspector enable **Enable FoxRun Subscriptions**, choose **ROS2 Native (R2FU)** as the default subscription provider, and use the imported **FoxRun ROS2 Native Subscribe** acceptance scene/component with its String, Twist, and Joy contracts enabled.
+1. In Unity, resolve exactly the runtime shown by the selected row. In the
+   `FoxgloveManager` Inspector enable **FoxRun Subscriptions** and use the
+   imported **FoxRun ROS2 Native Subscribe** acceptance scene/component. The
+   component's declarations already select ROS2 Native as their explicit
+   Source, independently of the Subscribe Profile default.
 2. Before entering Play Mode, start the matching Windows Editor host. It snapshots the current Editor log offset, then waits for a *new* matching READY marker; do not reuse a stale marker or token.
 
    ```powershell
@@ -118,5 +133,10 @@ Unity2Foxglove.Ros2ForUnity.Native
 
 - Foxglove Desktop is unrelated to native ROS2 traffic. These topics do not appear in **FoxRun Publish** and do not require a Foxglove connection.
 - ROS domain IDs isolate discovery; they are not authentication. Use the network and ROS2 security controls appropriate to the deployment.
-- This sample supports existing compiled `.msg` types and native `Subscribe` only.
-- Arbitrary FoxRun DTO-to-custom-ROS2-message generation plus native Publish Data/bidirectional contracts are future work and are not available here.
+- This sample supports existing compiled `.msg` types and ordinary native
+  `Subscribe` fields only. For ordered finite high-rate batches, use a
+  Subscribe-only `FoxRunStream<T>` with its own capacity, finite `MaxInputHz`,
+  `MaxBatch`, overflow policy, and explicit ownership API.
+- Generated custom DTO native Publish, Subscribe, and diagnostic full duplex
+  are documented by the separate **FoxRun Custom ROS2 Interface** sample and
+  require the matching static interface and typesupport packages.

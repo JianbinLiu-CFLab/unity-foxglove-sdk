@@ -65,6 +65,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
@@ -82,13 +83,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         /// </summary>
         public Phase181State NativeInputPort => _inputPort;
 
-        [Tooltip("Native ROS2 is the inbound provider while this member keeps an explicit JSON WebSocket output contract.")]
+        [Tooltip("Native ROS2 is the inbound source while Foxglove is the explicit JSON output target.")]
 #pragma warning disable FOXRUN400 // The sample deliberately documents its bidirectional ownership and peer protocol.
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
             Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Foxglove,
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
 #pragma warning restore FOXRUN400

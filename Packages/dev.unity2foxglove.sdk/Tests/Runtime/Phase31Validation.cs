@@ -78,7 +78,10 @@ namespace Unity.FoxgloveSDK.Tests
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
             Check(output.Contains("FoxgloveLog_TopicCount => 1"), "grouped topic count");
-            Check(output.Contains("[\"x\"] = this._x, [\"y\"] = this._y"), "grouped fields in JSON");
+            Check(
+                output.Contains(
+                    "[\"x\"] = __foxRunCapture_0_0, [\"y\"] = __foxRunCapture_0_1"),
+                "grouped fields in JSON use the one-sample capture");
         }
 
         static void VerifyTwoTopics()
@@ -101,7 +104,10 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_pos", "UnityEngine.Vector3", "/pos", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new Dictionary<string, object> { [\"x\"] = this._pos.x, [\"y\"] = this._pos.y, [\"z\"] = this._pos.z }"), "Vector3 decomp");
+            Check(
+                output.Contains(
+                    "new Dictionary<string, object> { [\"x\"] = __foxRunCapture_0_0.x, [\"y\"] = __foxRunCapture_0_0.y, [\"z\"] = __foxRunCapture_0_0.z }"),
+                "Vector3 decomp uses the one-sample capture");
         }
 
         static void VerifyQuaternionDecomp()
@@ -111,7 +117,10 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_rot", "UnityEngine.Quaternion", "/rot", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new Dictionary<string, object> { [\"x\"] = this._rot.x, [\"y\"] = this._rot.y, [\"z\"] = this._rot.z, [\"w\"] = this._rot.w }"), "Quaternion decomp");
+            Check(
+                output.Contains(
+                    "new Dictionary<string, object> { [\"x\"] = __foxRunCapture_0_0.x, [\"y\"] = __foxRunCapture_0_0.y, [\"z\"] = __foxRunCapture_0_0.z, [\"w\"] = __foxRunCapture_0_0.w }"),
+                "Quaternion decomp uses the one-sample capture");
         }
 
         static void VerifyColorDecomp()
@@ -121,7 +130,10 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_color", "UnityEngine.Color", "/color", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new Dictionary<string, object> { [\"r\"] = this._color.r, [\"g\"] = this._color.g, [\"b\"] = this._color.b, [\"a\"] = this._color.a }"), "Color decomp");
+            Check(
+                output.Contains(
+                    "new Dictionary<string, object> { [\"r\"] = __foxRunCapture_0_0.r, [\"g\"] = __foxRunCapture_0_0.g, [\"b\"] = __foxRunCapture_0_0.b, [\"a\"] = __foxRunCapture_0_0.a }"),
+                "Color decomp uses the one-sample capture");
         }
 
         static void VerifyUnderscoreStrip()
@@ -131,8 +143,12 @@ namespace Unity.FoxgloveSDK.Tests
                 new("___value", "System.Single", "/val", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("[\"value\"] = this.___value"), "underscore strip: value in JSON");
-            Check(!output.Contains("___value = this.___value"), "underscore not raw in JSON");
+            Check(
+                output.Contains("[\"value\"] = __foxRunCapture_0_0"),
+                "underscore strip: value in captured JSON");
+            Check(
+                !output.Contains("[\"___value\"]"),
+                "underscore not raw in JSON");
         }
 
         static void VerifyGlobalNamespace()

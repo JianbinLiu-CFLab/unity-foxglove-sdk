@@ -2,20 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/FoxRunTriggerTelemetry
-// Purpose: Demonstrates [FoxRun("topic", options...)] trigger-driven telemetry,
-// including fixed-rate, manual trigger, and grouped topic publishing.
+// Purpose: Demonstrates the current direction-specific FoxRun publish trigger
+// API alongside the minimum declaration and grouped topic publishing.
 
 using System.Collections;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
-// Minimal example for FoxRun trigger-driven telemetry.
+// The minimum publish form is:
+//   [FoxRun("/demo/heartbeat")]
 //
-// Think of the attribute as:
-//   [FoxRun("your/topic", options...)]
-//
-// The first argument is always the Foxglove topic path. Use a stable topic
+// The first argument is always the FoxRun topic path. Use a stable topic
 // name that matches your domain, for example:
 //   /demo/heartbeat
 //   /events/counter
@@ -41,7 +39,9 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 //
 // For Trigger fields, generated code adds a method named after the member:
 //   triggerCounter -> FoxRun_Publish_triggerCounter()
-// The method returns true when the publish dispatch succeeds.
+// It also adds FoxRun_PublishAll(). Subscribe Trigger declarations instead
+// receive FoxRun_Apply_<member>() and FoxRun_ApplyAll(). Each method returns
+// true only when its direction-specific dispatch succeeds.
 //
 // A class with [FoxRun] members must be partial so the source generator can
 // add the hidden IFoxgloveLogSource implementation and trigger methods.

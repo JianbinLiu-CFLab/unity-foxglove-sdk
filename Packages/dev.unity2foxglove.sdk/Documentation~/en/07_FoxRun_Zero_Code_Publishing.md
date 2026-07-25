@@ -19,7 +19,7 @@ using Unity.FoxgloveSDK.Components;
 
 public partial class RobotTelemetry : MonoBehaviour
 {
-    [FoxRun("/robot/pose")]
+    [FoxRun("/topic")]
     private Vector3 _position;
 
     private void Update()
@@ -29,7 +29,7 @@ public partial class RobotTelemetry : MonoBehaviour
 }
 ```
 
-`[FoxRun("/robot/pose")]` means `Publish`, `FixedRate`, 10 Hz. The containing
+`[FoxRun("/topic")]` means `Publish`, `FixedRate`, 10 Hz. The containing
 class must be `partial`, the topic must start with `/`, and the value must have
 a supported generated wire shape.
 
@@ -129,6 +129,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
+        Source = FoxRunEndpoint.Foxglove,
         Policy = Change, Hz = 30,
         Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
@@ -165,8 +166,10 @@ private DriveCommand _command;
 `FoxRunEndpoint.Foxglove`. `FoxRunEndpoint.Ros2Native` requires the optional
 `dev.unity2foxglove.ros2forunity` facade, one selected distro runtime package,
 and a supported native message or matching custom typesupport add-on.
-`FoxRunEndpoint.Ros2Bridge` is reserved as a publish target; it is not currently
-a subscribe source.
+`dev.unity2foxglove.sdk` alone is the normal installation for Foxglove and
+ROS2 Bridge. `FoxRunEndpoint.Ros2Bridge` is publish-only and requires the
+manually operated localhost sidecar; it is neither a subscribe source nor a
+remote gateway.
 
 `Targets` accepts one or more endpoint flags and replaces, rather than extends,
 the Publish Profile default:
@@ -182,7 +185,32 @@ their generated ROS 2 message contracts; CDR is not a public `Encoding` option.
 Source, targets, encoding, QoS, copy budget, maximum subscribe rate, and
 directional default rates are frozen for the corresponding enabled session.
 
-## 7. Explicit Triggers
+## 7. Official ROS 2 QoS
+
+QoS is portable ROS 2 vocabulary, not a distro or RMW switch. It is legal only
+when the declaration resolves at least one ROS 2 Native or Bridge direction.
+Foxglove-only declarations do not consume ROS 2 QoS.
+
+```csharp
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+    QoS = FoxRunQosProfile.Default,
+    Reliability = FoxRunQosReliability.BestEffort,
+    Durability = FoxRunQosDurability.TransientLocal,
+    History = FoxRunQosHistory.KeepLast,
+    Depth = 7)]
+private RobotState _state;
+```
+
+The base profiles are `Default`, `SensorData`, and `SystemDefault`. Optional
+overrides are `Reliable` or `BestEffort`, `Volatile` or `TransientLocal`,
+`KeepLast` or `KeepAll`, and a positive Keep Last `Depth`. `SystemDefault` and
+`KeepAll` remain real transport values; they are not silently rewritten.
+`KeepAll` cannot be combined with `Depth`. Native and Bridge receive the same
+resolved portable contract and let the selected ROS 2 transport perform its
+official mapping.
+
+## 8. Explicit Triggers
 
 Publish triggers set the value first and then call the generated
 `FoxRun_Publish_<member>()` method:
@@ -210,7 +238,7 @@ until user code calls `FoxRun_Apply_<member>()`. Generated trigger methods are
 main-thread-oriented; worker callbacks should marshal to the Unity main thread
 before invoking them.
 
-## 8. Full Duplex
+## 9. Full Duplex
 
 `PublishAndSubscribe` generates independent publish and apply schedules from
 one declaration. Applying an inbound value marks that exact version so it is
@@ -219,7 +247,50 @@ publish normally. Use this mode for debug loops and integration probes where
 both sides understand the ownership rule. Prefer separate `Publish` and
 `Subscribe` declarations for production authority boundaries.
 
-## 9. Aggregate Messages
+## 10. Bounded Input Streams
+
+Ordinary subscribed fields are bounded latest-wins state. Use the explicitly
+opted-in `FoxRunStream<T>` shape when user code needs an ordered, finite batch
+of high-rate input:
+
+```csharp
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+public partial class ControlSamples : MonoBehaviour
+{
+    [FoxRun("/control/samples", Mode = Subscribe, Source = Foxglove)]
+    private FoxRunStream<ControlSample> _samples =
+        new FoxRunStream<ControlSample>(
+            new FoxRunStreamOptions(
+                capacity: 32,
+                maxInputHz: 1000,
+                maxBatch: 16,
+                overflow: FoxRunStreamOverflowPolicy.DropOldest));
+
+    private void Update()
+    {
+        _samples.Drain(sample => Process(sample));
+    }
+}
+```
+
+A stream declaration is one initialized, non-static field with exactly one
+`Subscribe` attribute. `Source`, Foxglove `Encoding`, and ROS 2 QoS are legal.
+`Targets`, `Policy`, `Hz`, `Tolerance`, and `OnlyIf` are not: stream admission
+and user-driven consumption replace ordinary field scheduling.
+
+The parameterless stream uses capacity 1024, a finite 1000 Hz admission
+ceiling, maximum batch 128, and `DropOldest`. `Drain(Action<T>)` retains stream
+ownership, invokes at most `MaxBatch` callbacks, and disposes each value after
+its callback; the callback must not retain the value. `TryTake` and
+`TryTakeLatest` instead transfer one `FoxRunStreamSample<T>` lease to the
+caller, which must dispose it. `Stats` exposes saturating received, admitted,
+drained, taken, overflow, rate-drop, high-water, clear, and disposal
+diagnostics without per-message logging. Streams remain Subscribe-only.
+
+## 11. Aggregate Messages
 
 `[FoxRunMessage]` remains an aggregate publish form. It uses the same `Policy`
 vocabulary but does not expose a partial inbound mode.
@@ -236,7 +307,7 @@ public partial class RobotSummary
 }
 ```
 
-## 10. Foxglove Workflow
+## 12. Foxglove Workflow
 
 1. Add the component and a `FoxgloveManager` to the scene.
 2. Configure Publish Data and, when needed, Subscribe Data before Play Mode.
@@ -250,7 +321,7 @@ The panel discovers contracts through `/foxrun/subscription-contracts`; it
 does not guess topics or encodings. Protobuf input uses binary MessageData and
 does not fall back to JSON.
 
-## 11. Generated Evidence and Player Builds
+## 13. Generated Evidence and Player Builds
 
 The Roslyn generator is the authoring authority. Editor Play Mode refreshes the
 canonical descriptor, manifest, hashes, and runtime schema info. Player builds
@@ -289,7 +360,7 @@ MCAP records the external boundary representation. Replay compares the
 recorded FoxRun schema identity with the current generated identity and
 suppresses live WebSocket and native fanout while replay is authoritative.
 
-## 12. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -297,6 +368,7 @@ suppresses live WebSocket and native fanout while replay is authoritative.
 | Subscribe receives nothing | Enable subscriptions, verify the selected source and encoding, and inspect transport-admission diagnostics. |
 | Input arrives but applies slowly | Check declaration `Hz` or the Manager's **Default Subscribe Rate Hz**. |
 | Messages are dropped | Check **Maximum Subscribe Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
+| Stream drops or retains fewer samples than offered | Check its finite `MaxInputHz`, capacity, overflow policy, `MaxBatch`, and `Stats`; every stream is intentionally bounded. |
 | Trigger value does not move | Call the correct generated publish or apply trigger from the Unity main thread. |
 | Full-duplex value does not echo immediately | One-shot suppression of the just-applied inbound version is intentional. |
 | Editor works but Player does not | Inspect the build-preprocess logs and generated fallback source. |

@@ -157,8 +157,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && addSource.Contains("private bool AddSourceNow")
                   && addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
-            Check(!triggerSource.Contains("_timers"),
-                "72C-10: triggered FoxRun publications bypass normal cadence state");
+            Check(triggerSource.Contains("TryPublishTriggeredTopic")
+                  && !triggerSource.Contains("FixedRatePublishScheduler.ShouldPublish")
+                  && !triggerSource.Contains(".Timers["),
+                "72C-10: triggered FoxRun publications bypass normal cadence scheduling");
         }
 
         private static int SimulatePublishes(float rateHz, double frameHz, double seconds, bool nonPositivePublishesEveryFrame)

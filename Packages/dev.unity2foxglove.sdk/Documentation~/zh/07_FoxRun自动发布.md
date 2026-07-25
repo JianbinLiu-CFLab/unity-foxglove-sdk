@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 
 public partial class RobotTelemetry : MonoBehaviour
 {
-    [FoxRun("/robot/pose")]
+    [FoxRun("/topic")]
     private Vector3 _position;
 
     private void Update()
@@ -22,7 +22,7 @@ public partial class RobotTelemetry : MonoBehaviour
 }
 ```
 
-`[FoxRun("/robot/pose")]` 默认表示 `Publish`、`FixedRate`、10 Hz。所在类型必须是 `partial`，topic 必须以 `/` 开头，值类型必须能生成受支持的线格式。
+`[FoxRun("/topic")]` 默认表示 `Publish`、`FixedRate`、10 Hz。所在类型必须是 `partial`，topic 必须以 `/` 开头，值类型必须能生成受支持的线格式。
 
 ## 3. 声明语法
 
@@ -103,6 +103,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
+        Source = FoxRunEndpoint.Foxglove,
         Policy = Change, Hz = 30,
         Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
@@ -120,7 +121,7 @@ public partial class SpeedController : MonoBehaviour
 
 省略 `Source`、`Targets` 或 `Encoding` 时，声明继承对应方向冻结的 Manager Profile；用户代码不应写数值零哨兵。全双工声明可以分别继承发布与订阅方向的 Foxglove 编码；显式 `Encoding` 则应用于该声明选中的所有 Foxglove 方向。
 
-`Source` 选择唯一输入源，核心 SDK 默认使用 `FoxRunEndpoint.Foxglove`。`FoxRunEndpoint.Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。`FoxRunEndpoint.Ros2Bridge` 目前只作为发布 Target 保留，不能作为订阅 Source。
+`Source` 选择唯一输入源，核心 SDK 默认使用 `FoxRunEndpoint.Foxglove`。`FoxRunEndpoint.Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。一般 Foxglove 与 ROS2 Bridge 路径只需 `dev.unity2foxglove.sdk`。`FoxRunEndpoint.Ros2Bridge` 仅支持发布，必须使用手动运行的 localhost sidecar；它既不是订阅 Source，也不是远程网关。
 
 `Targets` 接受一个或多个端点标志，并替换而不是追加 Publish Profile 的默认值：
 
@@ -132,13 +133,85 @@ private RobotState _state;
 
 JSON 和 Protobuf 只描述 Foxglove 线格式。Native 与 Bridge 使用生成的 ROS 2 消息契约；CDR 不是公开的 `Encoding` 选项。Source、Targets、编码、QoS、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
 
-## 7. Trigger 与全双工
+## 7. 官方 ROS 2 QoS
+
+QoS 使用可移植的官方 ROS 2 词汇，不负责选择发行版或 RMW。只有声明最终包含 ROS 2 Native 或 Bridge 方向时才能设置 QoS；纯 Foxglove 声明不使用 ROS 2 QoS。
+
+```csharp
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+    QoS = FoxRunQosProfile.Default,
+    Reliability = FoxRunQosReliability.BestEffort,
+    Durability = FoxRunQosDurability.TransientLocal,
+    History = FoxRunQosHistory.KeepLast,
+    Depth = 7)]
+private RobotState _state;
+```
+
+基础 Profile 是 `Default`、`SensorData` 和 `SystemDefault`。可选覆盖项为
+`Reliable`/`BestEffort`、`Volatile`/`TransientLocal`、
+`KeepLast`/`KeepAll`，以及 Keep Last 的正数 `Depth`。`SystemDefault`
+与 `KeepAll` 会原样进入传输层，不会被静默改写；`KeepAll` 不能同时设置
+`Depth`。Native 与 Bridge 接收同一个已解析的可移植契约，再由所选 ROS 2
+传输执行官方映射。
+
+## 8. Trigger 与全双工
 
 发布触发先更新值，再调用生成的 `FoxRun_Publish_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
 
+```csharp
+[FoxRun("/events/state", Policy = FoxRunPolicy.Trigger)]
+private string _state;
+
+private void OnEnable()
+{
+    _state = "enabled";
+    FoxRun_Publish_state();
+}
+```
+
 `PublishAndSubscribe` 为同一个声明生成独立的发布与应用节拍。应用外部值后，该版本会被标记，避免立即作为本地变化回传；之后真正发生的本地修改仍可正常发布。生产环境权属边界通常应拆成独立的 `Publish` 和 `Subscribe` 声明。
 
-## 8. Foxglove 与 Player 工作流
+## 9. 有界输入流
+
+普通订阅字段是有界 latest-wins 状态。需要按序消费有限批次的高频输入时，必须显式使用 `FoxRunStream<T>`：
+
+```csharp
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+public partial class ControlSamples : MonoBehaviour
+{
+    [FoxRun("/control/samples", Mode = Subscribe, Source = Foxglove)]
+    private FoxRunStream<ControlSample> _samples =
+        new FoxRunStream<ControlSample>(
+            new FoxRunStreamOptions(
+                capacity: 32,
+                maxInputHz: 1000,
+                maxBatch: 16,
+                overflow: FoxRunStreamOverflowPolicy.DropOldest));
+
+    private void Update()
+    {
+        _samples.Drain(sample => Process(sample));
+    }
+}
+```
+
+流声明必须是一个已初始化的非静态字段，并且只有一个 `Subscribe` 特性。
+`Source`、Foxglove `Encoding` 和 ROS 2 QoS 仍然合法；`Targets`、`Policy`、
+`Hz`、`Tolerance` 与 `OnlyIf` 不合法，因为流自己的准入和用户驱动消费取代
+了普通字段调度。
+
+无参数构造使用容量 1024、有限的 1000 Hz 准入上限、最大批次 128 和
+`DropOldest`。`Drain(Action<T>)` 仍由流持有所有权，每次至多调用
+`MaxBatch` 个回调，并在回调结束后释放值；回调不能保留该值。`TryTake` 与
+`TryTakeLatest` 会把一个 `FoxRunStreamSample<T>` lease 转移给调用方，调用方
+必须释放它。`Stats` 提供饱和的接收、准入、消费、溢出、频率丢弃、高水位、
+清空和释放诊断，不产生逐消息日志。流始终仅支持 Subscribe。
+
+## 10. Foxglove 与 Player 工作流
 
 1. 在场景中添加业务组件和 `FoxgloveManager`。
 2. 在 Play Mode 前配置 Publish Data；需要输入时再配置并启用 Subscribe Data。
@@ -165,7 +238,7 @@ Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 调试覆盖层（debug overlay）是非契约（non-contract）诊断，不包含在（not included）
 规范 hash 中，也不是 Replay 的防护键。
 
-## 9. 常见问题
+## 11. 常见问题
 
 | 现象 | 检查项 |
 |---|---|
@@ -173,6 +246,7 @@ Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 | 订阅没有数据 | 是否启用订阅、Source 与编码是否匹配、传输准入诊断是否出现丢弃。 |
 | 输入应用太慢 | 声明 `Hz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
 | 消息被丢弃 | **Maximum Subscribe Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
+| 流保留的样本少于发送量 | 检查流自己的有限 `MaxInputHz`、容量、overflow、`MaxBatch` 与 `Stats`；流始终有界。 |
 | Trigger 不生效 | 是否从 Unity 主线程调用了对应的发布或应用触发方法。 |
 | 全双工值没有立即回传 | 刚应用的外部版本会执行一次 echo suppression，这是设计行为。 |
 | Editor 正常、Player 异常 | 检查 build preprocess 日志与生成的 fallback source。 |

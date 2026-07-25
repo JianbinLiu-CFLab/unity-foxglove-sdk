@@ -161,12 +161,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && sync.Contains("EndFoxRunSubscriptionSession();", StringComparison.Ordinal)
                   && OccursBefore(
                       onDisable,
-                      "EndFoxRunSubscriptionSession();",
-                      "StopServer(restoreLivePublishers: true);")
+                      "EndFoxRunSubscriptionSession,",
+                      "StopServer(restoreLivePublishers: true),")
                   && OccursBefore(
                       onDestroy,
-                      "EndFoxRunSubscriptionSession();",
-                      "StopServer(restoreLivePublishers: true);"),
+                      "EndFoxRunSubscriptionSession,",
+                      "StopServer(restoreLivePublishers: true),"),
                 "Manager enable, update, and teardown own the subscription session lifecycle");
 
             var startServer = PhaseValidationSourceHelpers.SourceMethod(
@@ -235,8 +235,9 @@ namespace Unity.FoxgloveSDK.Tests
             var sink = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
             Check(sink.Contains(
-                      "public sealed class Ros2R2FUTopicSink : IFoxTopicSink",
+                      "public sealed class Ros2R2FUTopicSink",
                       StringComparison.Ordinal)
+                  && sink.Contains("IFoxTopicSink,", StringComparison.Ordinal)
                   && sink.Contains("IRos2TopicPublisherFactory", StringComparison.Ordinal)
                   && sink.Contains("publisher.TryPublish(", StringComparison.Ordinal)
                   && !sink.Contains("CreateSubscription", StringComparison.Ordinal)
@@ -254,7 +255,9 @@ namespace Unity.FoxgloveSDK.Tests
             var catalog = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunSubscriptionCatalog.cs");
 
-            var registerIndex = emitter.IndexOf("registrar.Register<", StringComparison.Ordinal);
+            var registerIndex = emitter.IndexOf(
+                ": \"Register<\" + typeName + \">(\"",
+                StringComparison.Ordinal);
             var copyIndex = emitter.IndexOf(
                 "static (source, budget) => __FoxRunRos2Copy_",
                 registerIndex < 0 ? 0 : registerIndex,
@@ -269,7 +272,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !emitter.Contains("MakeGenericMethod", StringComparison.Ordinal)
                   && !emitter.Contains("Activator", StringComparison.Ordinal)
                   && !emitter.Contains("dynamic", StringComparison.Ordinal)
-                  && !emitter.Contains("Enqueue", StringComparison.Ordinal),
+                  && !emitter.Contains("EnqueueRaw", StringComparison.Ordinal)
+                  && emitter.Contains(".TryEnqueueOwned(", StringComparison.Ordinal),
                 "generated native registration is closed-generic and supplies owned copy before apply without raw enqueue");
 
             Check(router.Contains("info.DeclaredSource", StringComparison.Ordinal)
@@ -1126,9 +1130,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sampleReadme.Contains("FOXRUN212", StringComparison.Ordinal)
                   && sampleReadme.Contains("Foxglove Desktop is unrelated", StringComparison.Ordinal)
-                  && sampleReadme.Contains("Arbitrary FoxRun DTO-to-custom-ROS2-message generation", StringComparison.Ordinal)
-                  && sampleReadme.Contains("native Publish Data/bidirectional contracts", StringComparison.Ordinal)
-                  && sampleReadme.Contains("future work", StringComparison.Ordinal)
+                  && sampleReadme.Contains(
+                      "Generated custom DTO native Publish, Subscribe, and diagnostic full duplex",
+                      StringComparison.Ordinal)
+                  && sampleReadme.Contains("Subscribe-only `FoxRunStream<T>`", StringComparison.Ordinal)
                   && sampleReadme.Contains("4 MiB", StringComparison.Ordinal)
                   && sampleReadme.Contains("1 KiB", StringComparison.Ordinal)
                   && sampleReadme.Contains("CopyFailed", StringComparison.Ordinal)
@@ -1137,7 +1142,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && packageReadme.Contains("FOXRUN212", StringComparison.Ordinal)
                   && packageReadme.Contains("4 MiB", StringComparison.Ordinal)
                   && packageReadme.Contains("CopyFailed", StringComparison.Ordinal),
-                "public native-subscribe documentation states assembly, transport, copy-budget, security, Player, and future custom-message/native-publish boundaries");
+                "public native-subscribe documentation states assembly, transport, copy-budget, security, Player, custom-message, and stream boundaries");
         }
 
         private static void VerifyPermanentOptionalCompilationCiGates()

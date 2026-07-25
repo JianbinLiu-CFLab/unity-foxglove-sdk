@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "111F-B3: Ros2Bridge connection failures do not inflate frame failures");
             Check(source.Contains("IRos2BridgeSink sink;", StringComparison.Ordinal)
                   && source.Contains("sink = _sink;", StringComparison.Ordinal)
-                  && source.Contains("sink.Send(frame, _sendTimeoutMs)", StringComparison.Ordinal),
+                  && source.Contains("sink.Send(queued.Frame, _sendTimeoutMs)", StringComparison.Ordinal),
                 "111F-B4: Ros2Bridge worker snapshots sink before send");
         }
 

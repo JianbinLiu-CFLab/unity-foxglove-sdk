@@ -16,8 +16,9 @@ public partial class TestLog : MonoBehaviour
     [SerializeField] private Transform _trackedCube;
     private bool _warnedMissingTrackedCube;
 
-    // Minimal form uses only a topic path.
-    // Publishes at the default fixed rate and uses the field value as payload.
+    // Minimum form: one topic path, default Publish flow, FixedRate policy,
+    // configured/frozen Publish Profile cadence (10 Hz by default), and
+    // profile-selected Targets.
     [FoxRun("/debug/position")]
     private Vector3 _pos;
 

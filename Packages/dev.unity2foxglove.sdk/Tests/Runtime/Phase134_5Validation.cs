@@ -126,9 +126,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunHubIsolatesSourceFailures()
         {
             var source = ReadRepoText(FoxRunHubPath);
-            Check(source.Contains("private readonly HashSet<SourceFailureKey> _warnedSourceFailures = new();", StringComparison.Ordinal)
-                  && source.Contains("private readonly struct SourceFailureKey", StringComparison.Ordinal),
-                "134-5B-1: FoxRun hub tracks de-duplicated source failure warnings");
+            Check(source.Contains("private readonly Dictionary<SourceFailureKey, SourceFailureWarningState> _warnedSourceFailures = new();", StringComparison.Ordinal)
+                  && source.Contains("private readonly struct SourceFailureKey", StringComparison.Ordinal)
+                  && source.Contains("private readonly struct SourceFailureWarningState", StringComparison.Ordinal),
+                "134-5B-1: FoxRun hub tracks keyed, cooldown-bounded source failure warnings");
             Check(source.Contains("TryPublishScheduledTopic(kv.Key, state.Topics[i], i, ref state.Timers[i], nowNs, nowSec)", StringComparison.Ordinal),
                 "134-5B-2: FoxRun scheduled updates route through per-topic isolation");
             Check(source.Contains("private bool TryPublishScheduledTopic", StringComparison.Ordinal)
@@ -141,8 +142,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs", StringComparison.Ordinal),
                 "134-5B-4: FoxRun trigger publishes return false instead of throwing on generated source failure");
             Check(source.Contains("[FoxRun] {operation} failed", StringComparison.Ordinal)
-                  && source.Contains("_warnedSourceFailures.Add(key)", StringComparison.Ordinal),
-                "134-5B-5: FoxRun source failure warnings identify operation/source/topic and suppress repeats");
+                  && source.Contains("_warnedSourceFailures.TryGetValue(key", StringComparison.Ordinal)
+                  && source.Contains("WarningDebouncer.ShouldEmitKeyedCooldown", StringComparison.Ordinal)
+                  && source.Contains("_warnedSourceFailures[key]", StringComparison.Ordinal),
+                "134-5B-5: FoxRun source failure warnings identify operation/source/topic and debounce repeats");
 
             var update = Slice(source, "private void Update()", "private bool TryPublishScheduledTopic");
             Check(!update.Contains("FoxgloveLog_Publish", StringComparison.Ordinal)
@@ -154,6 +157,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunHubRegistrationAndScanGuards()
         {
             var source = ReadRepoText(FoxRunHubPath);
+            var exceptionPolicy = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunPublishTargetStatus.cs");
             Check(source.Contains("PendingRegistrations", StringComparison.Ordinal)
                   && source.Contains("PendingRegistrations.Add(source)", StringComparison.Ordinal)
                   && source.Contains("PendingRegistrationsGate", StringComparison.Ordinal)
@@ -165,8 +170,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Scan();", StringComparison.Ordinal),
                 "134-5B-8: FoxRun fallback scene scan can be disabled when self-registration is reliable");
             Check(source.Contains("catch (Exception ex) when (IsRecoverableSourceException(ex))", StringComparison.Ordinal)
-                  && source.Contains("!(ex is OutOfMemoryException)", StringComparison.Ordinal),
-                "134-5B-9: FoxRun source isolation preserves fatal-like exceptions");
+                  && source.Contains("FoxRunExceptionPolicy.IsRecoverable(ex)", StringComparison.Ordinal)
+                  && exceptionPolicy.Contains("!(exception is OutOfMemoryException)", StringComparison.Ordinal)
+                  && exceptionPolicy.Contains("!(exception is AccessViolationException)", StringComparison.Ordinal),
+                "134-5B-9: FoxRun source isolation delegates to the shared fatal-exception policy");
 
             var overlay = ReadRepoText(DebugOverlayPath);
             var publish = Slice(overlay, "public static bool Publish(", "public static bool PublishValue(");

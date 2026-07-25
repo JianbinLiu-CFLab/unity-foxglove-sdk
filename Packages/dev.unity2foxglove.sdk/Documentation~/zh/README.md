@@ -20,7 +20,7 @@
 - [04_Foxglove操作指南](04_Foxglove操作指南.md)：Foxglove Desktop 基本操作。
 - [05_基础可视化](05_基础可视化.md)：基础可视化 sample。
 - [06_Parameters与Services](06_Parameters与Services.md)：参数和服务调用。
-- [07_FoxRun自动发布](07_FoxRun自动发布.md)：使用 `[FoxRun]` 自动发布调试字段。
+- [07_FoxRun自动发布](07_FoxRun自动发布.md)：使用 `[FoxRun]` 生成发布、订阅、端点、QoS、Trigger、全双工与有界流契约。
 - [08_MCAP录制回放](08_MCAP录制回放.md)：MCAP 录制和回放。
 - [09_IL2CPP构建](09_IL2CPP构建.md)：IL2CPP 构建。
 - [10_架构说明](10_架构说明.md)：SDK 架构和数据流。

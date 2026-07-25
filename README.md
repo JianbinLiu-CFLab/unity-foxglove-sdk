@@ -48,31 +48,61 @@ For a ready-made project, open the `Unity2Foxglove` directory in Unity Hub. The 
 ### FoxRun in One Minute
 
 ```csharp
-using static Unity.FoxgloveSDK.Components.FoxRunFlow;
-using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+using UnityEngine;
+using Unity.FoxgloveSDK.Components;
 
 public partial class RobotStateView : MonoBehaviour
 {
-    // Default: Publish + FixedRate + 10 Hz.
-    [FoxRun("/robot/pose")]
-    private PoseState _pose;
-
-    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, Hz = 30)]
+    [FoxRun("/topic")]
     private RobotState _state;
-
-    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, Hz = 10)]
-    private DebugState _debugState;
 }
 ```
 
-One subscribed member resolves one input source for a session. Published data
-can fan out to more than one enabled destination. `Hz` overrides the
-directional cadence. `Policy = Change, Hz = ...` adds a bounded heartbeat;
-`Tolerance` controls supported semantic comparisons, and `OnlyIf` names one
-positive condition. None of these settings changes network receive rate or
-ROS2 QoS.
+That minimum declaration publishes at the frozen Publish Profile cadence
+(10 Hz by default). The current direction, endpoint, QoS, trigger,
+full-duplex, and stream grammar stays explicit:
 
-See [FoxRun shared-emitter architecture](docs/research-shared-emitter-architecture.md) for the complete flow/policy semantics and AOT boundary.
+```csharp
+[FoxRun("/robot/command", Mode = FoxRunFlow.Subscribe,
+    Source = FoxRunEndpoint.Foxglove)]
+private RobotCommand _command;
+
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Foxglove |
+              FoxRunEndpoint.Ros2Native |
+              FoxRunEndpoint.Ros2Bridge,
+    QoS = FoxRunQosProfile.SensorData)]
+private RobotState _fanoutState;
+
+[FoxRun("/events/reset", Policy = FoxRunPolicy.Trigger)]
+private ResetEvent _reset;
+
+[FoxRun("/debug/state", Mode = FoxRunFlow.PublishAndSubscribe)]
+private DebugState _debugState;
+
+[FoxRun("/control/samples", Mode = FoxRunFlow.Subscribe,
+    Source = FoxRunEndpoint.Foxglove)]
+private FoxRunStream<ControlSample> _samples = new FoxRunStream<ControlSample>();
+
+private bool PublishReset() => FoxRun_Publish_reset();
+```
+
+One subscribed member resolves one `Source`; published data may select multiple
+`Targets`. Portable ROS 2 QoS uses `QoS`, `Reliability`, `Durability`,
+`History`, and `Depth`. Trigger declarations generate direction-specific
+`FoxRun_Publish_*` and `FoxRun_Apply_*` methods. Full duplex is intended for
+debug and integration loops; use separate one-way declarations for production
+authority. `FoxRunStream<T>` is Subscribe-only, finite, and user-drained.
+
+The normal Foxglove WebSocket and localhost ROS2 Bridge paths need only
+`dev.unity2foxglove.sdk`. Bridge is publish-only and its sidecar is not a
+remote gateway. Add the optional R2FU facade and exactly one runtime only for
+direct ROS2 Native input or output.
+
+See the [FoxRun user guide](Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md)
+for Subscribe, endpoints, QoS, triggers, full duplex, and stream examples, and
+the [shared-emitter architecture](docs/research-shared-emitter-architecture.md)
+for the AOT boundary.
 
 ### Replay in One Minute
 

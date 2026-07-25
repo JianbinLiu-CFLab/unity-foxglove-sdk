@@ -118,10 +118,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(input.Contains("member.HasExplicitHz", StringComparison.Ordinal)
                   && input.Contains("inheritedSubscribeRateHz", StringComparison.Ordinal)
                   && trigger.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
-                  && input.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal),
+                  && input.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal),
                 "Structural 183A-9: generated WebSocket input inherits or overrides subscription rate, exposes Trigger apply, and marks remote-echo suppression");
             Check(publish.Contains("fields.Any(field => field.Mode == 3)", StringComparison.Ordinal)
-                  && publish.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal)
+                  && publish.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal)
+                  && publish.Contains("__foxRunRemoteOwned_", StringComparison.Ordinal)
                   && native.Contains("member.HasExplicitHz", StringComparison.Ordinal)
                   && native.Contains("member.Hz", StringComparison.Ordinal),
                 "Structural 183A-10: PublishAndSubscribe generates both independently scheduled directions with one-shot echo suppression");

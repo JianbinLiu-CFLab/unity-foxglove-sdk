@@ -210,8 +210,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sidecar.Contains("qos.history must be system_default, keep_last, or keep_all")
                   && sidecar.Contains("qos.depth must be 0 unless qos.history is keep_last"),
                 "96E-4: sidecar rejects invalid history/depth combinations");
-            Check(sidecar.Contains("create_generic_publisher(frame.topic, frame.schema_name, qos)"),
-                "96E-5: sidecar applies requested QoS when creating publisher");
+            Check(sidecar.Contains("auto qos = make_qos(frame);")
+                  && sidecar.Contains("publisher_factory_(frame.topic, frame.schema_name, qos)"),
+                "96E-5: sidecar applies requested QoS through its publisher factory");
             Check(sidecar.Contains("reused with different schemaName or QoS: was [")
                   && sidecar.Contains("] got ["),
                 "96E-6: sidecar rejects same-topic schema/QoS conflicts");

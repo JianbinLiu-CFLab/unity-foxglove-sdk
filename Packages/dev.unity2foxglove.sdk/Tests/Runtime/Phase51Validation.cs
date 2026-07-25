@@ -587,8 +587,12 @@ namespace Unity.FoxgloveSDK.Tests
                 new FoxgloveSourceEmitter.TopicMember("_health", "System.Single", "/phase51/health", 10f, "")
             });
 
-            Check(source.Contains("[\"x\"] = this.Position.x") && source.Contains("[\"health\"] = this._health"),
-                "51D-1: generated value expressions use explicit this. member access");
+            Check(
+                source.Contains("__foxRunCapture_0_0 = this.Position;")
+                && source.Contains("__foxRunCapture_1_0 = this._health;")
+                && source.Contains("[\"x\"] = __foxRunCapture_0_0.x")
+                && source.Contains("[\"health\"] = __foxRunCapture_1_0"),
+                "51D-1: generated capture uses explicit this. member access and serialization reuses the one-sample capture");
         }
 
         private static void VerifyFoxRunMixedPolicyDiagnostic()
