@@ -99,6 +99,23 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var fieldProperties = PublicPropertyNames(typeof(FoxRunAttribute));
             var aggregateProperties = PublicPropertyNames(typeof(FoxRunMessageAttribute));
+            var expectedFieldProperties = new HashSet<string>(
+                new[]
+                {
+                    "Topic", "SchemaName", "ProtobufFieldNumber",
+                    "Mode", "Policy", "Hz", "Tolerance", "OnlyIf",
+                    "Source", "Targets", "Encoding", "QoS",
+                    "Reliability", "Durability", "History", "Depth"
+                },
+                StringComparer.Ordinal);
+            var expectedAggregateProperties = new HashSet<string>(
+                new[]
+                {
+                    "Topic", "SchemaName", "Policy", "Hz", "Tolerance", "OnlyIf",
+                    "Targets", "Encoding", "QoS",
+                    "Reliability", "Durability", "History", "Depth"
+                },
+                StringComparer.Ordinal);
             var removed = new[]
             {
                 "PublishMode",
@@ -111,21 +128,11 @@ namespace Unity.FoxgloveSDK.Tests
             };
 
             Check(
-                new[]
-                {
-                    "Mode", "Policy", "Hz", "Tolerance", "OnlyIf",
-                    "Source", "Targets", "Encoding", "QoS",
-                    "Reliability", "Durability", "History", "Depth"
-                }.All(fieldProperties.Contains)
-                && new[]
-                {
-                    "Policy", "Hz", "Tolerance", "OnlyIf",
-                    "Targets", "Encoding", "QoS",
-                    "Reliability", "Durability", "History", "Depth"
-                }.All(aggregateProperties.Contains)
+                fieldProperties.SetEquals(expectedFieldProperties)
+                && aggregateProperties.SetEquals(expectedAggregateProperties)
                 && removed.All(name => !fieldProperties.Contains(name)
                                        && !aggregateProperties.Contains(name)),
-                "Structural 184A-1: FoxRun attributes expose only the short scheduling, endpoint, encoding, and official QoS grammar");
+                "Structural 184A-1: FoxRun attributes expose only the approved topic, schema, scheduling, endpoint, encoding, and official QoS grammar");
 
             var assembly = typeof(FoxRunAttribute).Assembly;
             Check(
@@ -554,11 +561,12 @@ namespace Phase184RuntimeFixture
             stream.TryEnqueueOwned(1, disposed.Add);
             stream.TryEnqueueOwned(2, disposed.Add);
             ticks = 20;
-            stream.TryAdmitInput();
+            var repeatedBoundaryAdmitted = stream.TryAdmitInput();
             stream.TryEnqueueOwned(3, disposed.Add);
 
             Check(
-                disposed.SequenceEqual(new[] { 1 })
+                repeatedBoundaryAdmitted
+                && disposed.SequenceEqual(new[] { 1 })
                 && stream.Count == 2
                 && stream.Stats.DroppedOldest == 1
                 && stream.Stats.RateDropped == 1
@@ -628,6 +636,7 @@ namespace Phase184RuntimeFixture
 
         private static HashSet<string> PublicPropertyNames(Type type)
             => type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.DeclaringType == type)
                 .Select(property => property.Name)
                 .ToHashSet(StringComparer.Ordinal);
 
