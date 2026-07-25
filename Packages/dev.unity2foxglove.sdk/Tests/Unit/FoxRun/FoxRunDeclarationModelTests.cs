@@ -807,6 +807,30 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-F")]
+        public void ValidPublishAndSubscribeDoesNotEmitAuthorityWarning()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class SharedState
+    {
+        [FoxRun(""/phase184/full-duplex"", Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Foxglove,
+            Targets = FoxRunEndpoint.Foxglove,
+            Encoding = FoxRunEncoding.JSON)]
+        private string _state;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN400");
+        }
+
+        [Fact]
         public void TriggerMethodsAreDirectionSpecificAndExposeBulkOperations()
         {
             var result = RunGenerator(@"
@@ -2399,6 +2423,36 @@ namespace Demo
             Assert.DoesNotContain("this._imu?.Clear();", generated, StringComparison.Ordinal);
         }
 
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void RoslynCompilesTwoInitializedSubscribeStreamsInOneType()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+namespace Demo
+{
+    public partial class Streams
+    {
+        [FoxRun(""/imu"", Mode = FoxRunFlow.Subscribe)]
+        private FoxRunStream<int> _imu = new FoxRunStream<int>();
+
+        [FoxRun(""/lidar"", Mode = FoxRunFlow.Subscribe)]
+        private FoxRunStream<float> _lidar = new FoxRunStream<float>();
+    }
+}";
+
+            var output = RunGeneratorAndUpdateCompilation(source);
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
         [Theory]
         [Trait("Phase", "184-E")]
         [InlineData("", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
@@ -2428,6 +2482,116 @@ namespace Demo
 }}");
 
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN215");
+        }
+
+        [Theory]
+        [Trait("Phase", "184-E")]
+        [InlineData(1, "field", false, 0L)]
+        [InlineData(3, "field", false, 0L)]
+        [InlineData(2, "property", false, 0L)]
+        [InlineData(2, "field", true, 0L)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Targets)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Policy)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Hz)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Tolerance)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.OnlyIf)]
+        public void ReflectionLowererRejectsIllegalStreamDeclarationShapes(
+            int mode,
+            string memberKind,
+            bool isAggregateMember,
+            long namedArgumentPresence)
+        {
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo",
+                    "Streams",
+                    "_stream",
+                    memberKind,
+                    "System.Int32",
+                    "int",
+                    isValueType: true,
+                    isArray: false,
+                    elementTypeName: "",
+                    topic: "/stream",
+                    schemaName: "",
+                    hz: -1f,
+                    policy: 0,
+                    tolerance: 0f,
+                    rawMemberOrder: 0,
+                    conditionalSymbols: "",
+                    isAggregateMember: isAggregateMember,
+                    mode: mode,
+                    namedArgumentPresence:
+                        (FoxRunNamedArgumentPresence)namedArgumentPresence,
+                    isStream: true)
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN215");
+        }
+
+        [Fact]
+        [Trait("Phase", "184-E")]
+        public void ReflectionLowererAcceptsValidSubscribeStreamFieldShape()
+        {
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo",
+                    "Streams",
+                    "_stream",
+                    "field",
+                    "System.Int32",
+                    "int",
+                    isValueType: true,
+                    isArray: false,
+                    elementTypeName: "",
+                    topic: "/stream",
+                    schemaName: "",
+                    hz: -1f,
+                    policy: 0,
+                    tolerance: 0f,
+                    rawMemberOrder: 0,
+                    conditionalSymbols: "",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    isStream: true)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN215");
+        }
+
+        [Fact]
+        [Trait("Phase", "184-F")]
+        public void ControlledTestLogPhysicalFallbackMatchesRoslynEmitter()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
+            var result = RunGenerator(source);
+            var core = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(generated => generated.HintName == "TestLog_FoxRun.g.cs")
+                .SourceText
+                .ToString();
+            var expected = string.Join(
+                    "\n",
+                    "// <auto-generated/>",
+                    "// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.",
+                    "// SPDX-License-Identifier: Apache-2.0",
+                    "// " + FoxRunGeneratedSourceReconciler.GeneratedSourceSentinel,
+                    "// In the Unity Editor, the Roslyn analyzer already generates this partial type in memory.",
+                    "#if !UNITY_EDITOR")
+                + "\n"
+                + NormalizeGeneratedSource(core).TrimEnd()
+                + "\n#endif";
+            var actual = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs");
+
+            Assert.Equal(expected, NormalizeGeneratedSource(actual).TrimEnd());
         }
 
         [Theory]
@@ -2544,6 +2708,11 @@ namespace Demo
                 BasicReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         }
+
+        private static string NormalizeGeneratedSource(string source)
+            => (source ?? string.Empty)
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
 
         private sealed class ReflectionArgumentsFixture
         {

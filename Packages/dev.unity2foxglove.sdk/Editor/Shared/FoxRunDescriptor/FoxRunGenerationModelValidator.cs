@@ -266,13 +266,6 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun inbound Protobuf DTO members must be writable fields or settable properties."));
             }
 
-            if (member.Mode == 3)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    "FOXRUN400",
-                    target,
-                    member.MemberName,
-                    "PublishAndSubscribe exposes remote-authoritative state; document ownership and feedback behavior."));
-
             if (member.Mode == 2 && !LooksLikeInputPort(member.MemberName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
                     "FOXRUN202",

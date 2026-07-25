@@ -64,7 +64,7 @@ namespace Unity2Foxglove.ManualAcceptance
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _inputPort;
 
-#pragma warning disable FOXRUN400 // The peer protocol explicitly owns the native inbound/output-loop evidence.
+        // The peer protocol explicitly owns the native inbound/output-loop evidence.
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
@@ -72,7 +72,6 @@ namespace Unity2Foxglove.ManualAcceptance
             Source = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
-#pragma warning restore FOXRUN400
 
         // Keep the declarations source-generator-visible before an add-on is
         // selected. Generated native bindings remain conditionally compiled,

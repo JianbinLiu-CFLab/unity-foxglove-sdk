@@ -36,6 +36,16 @@ namespace Unity.FoxgloveSDK.Tests
             + @"Policy\s*=\s*(?:(?:FoxRunPublishMode|FoxRunPolicy)\s*\.\s*)?(?:OnChange|OnTrigger|ChangeOrInterval))\b",
             RegexOptions.CultureInvariant);
 
+        private static readonly Regex LegacyTypeReference = new Regex(
+            @"\b(?:FoxRunMode|FoxRunPublishMode|FoxRunSubscriptionProvider|FoxRunWireEncoding|"
+            + @"FoxRunRos2QosPreset|Ros2BridgeQosProfile)\b",
+            RegexOptions.CultureInvariant);
+
+        private static readonly Regex FoxRunAttributeReference = new Regex(
+            @"(?<![A-Za-z0-9_])(?:(?:global::)?(?:[A-Za-z_][A-Za-z0-9_]*\.)*)?"
+            + @"(?:FoxRun(?:Attribute)?|FoxRunMessage(?:Attribute)?)\s*(?:\(|(?=[,\]]))",
+            RegexOptions.CultureInvariant);
+
         private static readonly HashSet<string> ForbiddenArtifactDirectories =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -59,7 +69,11 @@ namespace Unity.FoxgloveSDK.Tests
             Begin("Phase 184A: clean declaration API and legality matrix");
             VerifyCleanDeclarationApi();
             VerifyEndpointLegalityMatrix();
+            VerifyLegacyAttributeSyntaxGuardCoverage();
+            VerifyMaintainedTextScope();
             VerifyLegacyAttributeSyntaxGuard();
+            VerifyPhase184EvidenceClassification();
+            VerifyPublicDocumentationContract();
             End("Phase 184A");
         }
 
@@ -232,45 +246,231 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var text = File.ReadAllText(path);
                 var relative = RelativeRepoPath(path);
-                var root = path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                    ? CSharpSyntaxTree.ParseText(text, path: path).GetRoot()
-                    : null;
-                var sourceAttributes = root?.DescendantNodes()
-                    .OfType<AttributeSyntax>()
-                    .Where(IsFoxRunAttribute)
-                    .ToArray()
-                    ?? Array.Empty<AttributeSyntax>();
-
-                foreach (var block in FindFoxRunAttributeBlocks(text))
-                {
-                    foreach (Match match in LegacyNamedArgument.Matches(block.Text)
-                        .Cast<Match>()
-                        .Concat(LegacyNamedValue.Matches(block.Text).Cast<Match>()))
-                    {
-                        var position = block.Start + match.Index;
-                        if (sourceAttributes.Any(attribute => attribute.FullSpan.Contains(position)))
-                        {
-                            violations.Add(relative + ":" + LineNumber(text, position)
-                                           + " source attribute uses " + match.Value);
-                            continue;
-                        }
-
-                        if (IsAnalyzerLedger(relative))
-                            continue;
-                        if (IsNegativeCompilationFixture(relative, root, position))
-                            continue;
-
-                        violations.Add(relative + ":" + LineNumber(text, position)
-                                       + " non-fixture attribute text uses " + match.Value);
-                    }
-                }
+                violations.AddRange(FindLegacyAttributeSyntaxViolations(relative, text));
             }
 
             Check(
                 violations.Count == 0,
-                "Structural 184A-6: old named arguments occur only in analyzer ledgers or the explicit negative-compilation string fixture"
+                "Structural 184A-8: old declaration syntax occurs only in analyzer ledgers or explicit negative-compilation string fixtures"
                 + FormatViolations(violations));
         }
+
+        private static void VerifyLegacyAttributeSyntaxGuardCoverage()
+        {
+            var retiredForms = new[]
+            {
+                "[Fox" + "Run(\"/x\", Mode = FoxRunMode.PublishAndSubscribe)]",
+                "[Fox" + "Run(\"/x\", Source = FoxRunSubscriptionProvider.Ros2Native)]",
+                "[Fox" + "Run(\"/x\", Encoding = FoxRunWireEncoding.Json)]",
+                "[Fox" + "Run(\"/x\", QoS = FoxRunRos2QosPreset.Default)]",
+                "[Fox" + "Run(\"/x\", QoS = Ros2BridgeQosProfile.Default)]"
+            };
+            var qualifiedAttribute = @"
+class Qualified
+{
+    [Unity.FoxgloveSDK.Components.Fox" + @"Run(
+        ""/x"", Mode = FoxRun" + @"Mode.PublishAndSubscribe)]
+    private int _value;
+}";
+            var combinedAttributeList = @"
+class Combined
+{
+    [System.Obsolete, Fox" + @"Run(
+        ""/x"", Encoding = FoxRunWire" + @"Encoding.Json)]
+    private int _value;
+}";
+
+            Check(
+                retiredForms.All(form => FindLegacySyntaxMatches(form).Any())
+                && FindLegacyAttributeSyntaxViolations(
+                    "synthetic/Qualified.cs",
+                    qualifiedAttribute).Count != 0
+                && FindLegacyAttributeSyntaxViolations(
+                    "synthetic/Combined.cs",
+                    combinedAttributeList).Count != 0
+                && FindLegacyAttributeSyntaxViolations(
+                    "synthetic/Qualified.md",
+                    qualifiedAttribute).Count != 0
+                && FindLegacyAttributeSyntaxViolations(
+                    "synthetic/Combined.md",
+                    combinedAttributeList).Count != 0,
+                "Structural 184A-6: the old-syntax guard detects every retired type family in simple, qualified, and combined attribute forms");
+        }
+
+        private static void VerifyMaintainedTextScope()
+        {
+            var maintained = new HashSet<string>(
+                MaintainedTextFiles().Select(RelativeRepoPath),
+                StringComparer.OrdinalIgnoreCase);
+            var required = new[]
+            {
+                "README.md",
+                "Packages/dev.unity2foxglove.sdk/Documentation~/README.md",
+                "Unity2Foxglove/README.md",
+                "docs/architecture-patterns.md",
+                "Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md"
+            };
+
+            Check(
+                required.All(maintained.Contains),
+                "Structural 184A-7: old-syntax scanning covers every maintained Phase184 documentation surface");
+        }
+
+        private static IEnumerable<Match> FindLegacySyntaxMatches(string text)
+            => LegacyNamedArgument.Matches(text)
+                .Cast<Match>()
+                .Concat(LegacyNamedValue.Matches(text).Cast<Match>())
+                .Concat(LegacyTypeReference.Matches(text).Cast<Match>());
+
+        private static IReadOnlyList<string> FindLegacyAttributeSyntaxViolations(
+            string relative,
+            string text)
+        {
+            var violations = new List<string>();
+            var root = relative.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                ? CSharpSyntaxTree.ParseText(text, path: relative).GetRoot()
+                : null;
+            var sourceAttributes = root?.DescendantNodes()
+                .OfType<AttributeSyntax>()
+                .Where(IsFoxRunAttribute)
+                .ToArray()
+                ?? Array.Empty<AttributeSyntax>();
+
+            foreach (var attribute in sourceAttributes)
+            {
+                var attributeText = text.Substring(attribute.Span.Start, attribute.Span.Length);
+                foreach (var match in FindLegacySyntaxMatches(attributeText))
+                {
+                    var position = attribute.Span.Start + match.Index;
+                    violations.Add(relative + ":" + LineNumber(text, position)
+                                   + " source attribute uses " + match.Value);
+                }
+            }
+
+            foreach (var block in FindFoxRunAttributeBlocks(text))
+            {
+                foreach (var match in FindLegacySyntaxMatches(block.Text))
+                {
+                    var position = block.Start + match.Index;
+                    if (sourceAttributes.Any(attribute => attribute.FullSpan.Contains(position)))
+                        continue;
+
+                    if (IsAnalyzerLedger(relative))
+                        continue;
+                    if (IsNegativeCompilationFixture(relative, root, position))
+                        continue;
+
+                    violations.Add(relative + ":" + LineNumber(text, position)
+                                   + " non-fixture attribute text uses " + match.Value);
+                }
+            }
+
+            return violations;
+        }
+
+        private static void VerifyPhase184EvidenceClassification()
+        {
+            var expected = new Dictionary<string, ValidationEvidence>(StringComparer.Ordinal)
+            {
+                ["--phase184a"] = ValidationEvidence.Behavior | ValidationEvidence.Structural,
+                ["--phase184b"] = ValidationEvidence.Behavior,
+                ["--phase184c"] = ValidationEvidence.Behavior,
+                ["--phase184d"] = ValidationEvidence.Behavior,
+                ["--phase184e"] = ValidationEvidence.Behavior | ValidationEvidence.Structural
+            };
+
+            Check(
+                expected.All(pair =>
+                    PhaseValidationRegistry.All.Single(item => item.Flag == pair.Key).Evidence
+                    == pair.Value),
+                "Structural 184A-9: Phase184 evidence labels match the behavior and structural work each selection actually performs");
+        }
+
+        private static void VerifyPublicDocumentationContract()
+        {
+            var rootReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText("README.md");
+            var englishGuide = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md");
+            var chineseGuide = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md");
+            var customNativeSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/README.md");
+            var packagedNativeSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/README.md");
+            var bridgeReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
+
+            Check(
+                ContainsAll(
+                    rootReadme,
+                    "[FoxRun(\"/topic\")]",
+                    "Mode = FoxRunFlow.Subscribe",
+                    "Source = FoxRunEndpoint.Foxglove",
+                    "Targets = FoxRunEndpoint.Foxglove",
+                    "QoS = FoxRunQosProfile.SensorData",
+                    "Policy = FoxRunPolicy.Trigger",
+                    "FoxRun_Publish_reset",
+                    "PublishAndSubscribe",
+                    "FoxRunStream<ControlSample>",
+                    "dev.unity2foxglove.sdk",
+                    "publish-only",
+                    "localhost",
+                    "R2FU"),
+                "Structural 184A-10: root onboarding shows the minimal declaration and every advanced Phase184 contract without making R2FU mandatory");
+
+            Check(
+                new[] { englishGuide, chineseGuide }.All(guide => ContainsAll(
+                    guide,
+                    "[FoxRun(\"/topic\")]",
+                    "Mode = Subscribe",
+                    "Source",
+                    "Targets",
+                    "QoS = FoxRunQosProfile.Default",
+                    "FoxRun_Publish_state",
+                    "PublishAndSubscribe",
+                    "FoxRunStream<ControlSample>",
+                    "dev.unity2foxglove.sdk",
+                    "localhost"))
+                && englishGuide.Contains("publish-only", StringComparison.Ordinal)
+                && chineseGuide.Contains("仅支持发布", StringComparison.Ordinal),
+                "Structural 184A-11: English and Chinese FoxRun guides cover direction, endpoints, QoS, triggers, full duplex, streams, and package boundaries");
+
+            Check(
+                ContainsAll(
+                    customNativeSample,
+                    "Targets = FoxRunEndpoint.Ros2Native",
+                    "Source = FoxRunEndpoint.Ros2Native",
+                    "QoS = FoxRunQosProfile.Default",
+                    "Native PublishAndSubscribe",
+                    "dev.unity2foxglove.sdk",
+                    "publish-only",
+                    "localhost")
+                && ContainsAll(
+                    packagedNativeSample,
+                    "Source = FoxRunEndpoint.Ros2Native",
+                    "FoxRunStream<T>",
+                    "dev.unity2foxglove.sdk",
+                    "publish-only",
+                    "localhost",
+                    "R2FU"),
+                "Structural 184A-12: native samples state their explicit contracts and preserve the optional-R2FU boundary");
+
+            Check(
+                ContainsAll(
+                    bridgeReadme,
+                    "localhost only",
+                    "publish-only",
+                    "portable ROS 2 profile",
+                    "reliability",
+                    "durability",
+                    "history",
+                    "depth",
+                    "U2R2"),
+                "Structural 184A-13: Bridge documentation stays localhost, publish-only, portable-QoS, and frame-contract explicit");
+        }
+
+        private static bool ContainsAll(string text, params string[] required)
+            => required.All(value => text.Contains(value, StringComparison.Ordinal));
 
         private static void VerifyDirectionalProfileFreeze()
         {
@@ -693,7 +893,8 @@ namespace Phase184RuntimeFixture
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk"),
                 Path.Combine(root, "Packages", "dev.unity2foxglove.ros2forunity"),
                 Path.Combine(root, "Unity2Foxglove", "Assets", "Samples"),
-                Path.Combine(root, "Unity2Foxglove", "Assets", "Scripts")
+                Path.Combine(root, "Unity2Foxglove", "Assets", "Scripts"),
+                Path.Combine(root, "docs")
             };
 
             var files = roots
@@ -705,6 +906,17 @@ namespace Phase184RuntimeFixture
             var readme = Path.Combine(root, "README.md");
             if (File.Exists(readme))
                 files.Add(readme);
+            var unityReadme = Path.Combine(root, "Unity2Foxglove", "README.md");
+            if (File.Exists(unityReadme))
+                files.Add(unityReadme);
+            var bridgeReadme = Path.Combine(
+                root,
+                "Tools",
+                "ros2_bridge",
+                "unity2foxglove_ros2_bridge",
+                "README.md");
+            if (File.Exists(bridgeReadme))
+                files.Add(bridgeReadme);
             return files.OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
         }
 
@@ -759,34 +971,15 @@ namespace Phase184RuntimeFixture
             {
                 if (text[index] != '[')
                     continue;
-                if (!StartsWithAttributeName(text, index + 1, "FoxRun")
-                    && !StartsWithAttributeName(text, index + 1, "FoxRunAttribute")
-                    && !StartsWithAttributeName(text, index + 1, "FoxRunMessage")
-                    && !StartsWithAttributeName(text, index + 1, "FoxRunMessageAttribute"))
-                {
-                    continue;
-                }
 
                 var end = text.IndexOf(']', index + 1);
                 if (end < 0)
                     yield break;
-                yield return new AttributeBlock(index, text.Substring(index, end - index + 1));
+                var block = text.Substring(index, end - index + 1);
+                if (FoxRunAttributeReference.IsMatch(block))
+                    yield return new AttributeBlock(index, block);
                 index = end;
             }
-        }
-
-        private static bool StartsWithAttributeName(string text, int start, string name)
-        {
-            if (start + name.Length > text.Length
-                || !string.Equals(
-                    text.Substring(start, name.Length),
-                    name,
-                    StringComparison.Ordinal))
-                return false;
-            if (start + name.Length == text.Length)
-                return true;
-            var next = text[start + name.Length];
-            return char.IsWhiteSpace(next) || next == '(' || next == ']';
         }
 
         private static bool IsFoxRunAttribute(AttributeSyntax attribute)

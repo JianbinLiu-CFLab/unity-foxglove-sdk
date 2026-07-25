@@ -540,6 +540,14 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "RegisterStream<global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope, global::unity2foxglove_foxrun_interfaces_v1.msg.Phase184StreamProbeState184EEnvelope>",
                 generated,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "var __foxRunRos2CustomTryAdmit_0 = __foxRunRos2CustomStream_0 == null ? null : new global::System.Func<bool>(__foxRunRos2CustomStream_0.TryAdmitInput);",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "throw new global::System.InvalidOperationException(\"FoxRunStream field is null",
+                generated,
+                StringComparison.Ordinal);
             Assert.Contains(".TryEnqueueDeferredOwned(", generated, StringComparison.Ordinal);
 
             var parseOptions = new CSharpParseOptions(

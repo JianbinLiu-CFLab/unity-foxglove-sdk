@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int MaximumDisposalDiagnosticCharacters = 512;
         private readonly object _gate = new object();
-        private readonly Queue<OwnedSample> _queue;
+        private Queue<OwnedSample> _queue;
         private readonly Func<long> _getTimestamp;
         private readonly long _minimumAdmissionTicks;
         private long _lastAdmissionTimestamp;
@@ -131,23 +131,38 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Unconditionally takes ownership at the call boundary. A false result
-        /// means the value was rejected and already disposed by this stream.
+        /// After validating the non-null disposer, unconditionally takes
+        /// ownership at the call boundary. A false result means the value was
+        /// rejected and already disposed by this stream. Generated providers
+        /// acquire this sample's admission through <see cref="TryAdmitInput"/>
+        /// before performing avoidable materialization work.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
 
-            var owned = new DirectOwnedSample(value, disposer);
+            DirectOwnedSample owned;
+            try
+            {
+                owned = new DirectOwnedSample(value, disposer);
+            }
+            catch
+            {
+                DisposeValue(value, disposer);
+                throw;
+            }
             return TryEnqueueOwnedCore(owned);
         }
 
         /// <summary>
-        /// Takes ownership of a provider-safe state object without invoking the
-        /// materializer. Materialization is deferred until a consumer drains or
-        /// takes the sample, so native producer callbacks never have to construct
-        /// or mutate the user-facing <typeparamref name="T"/> value.
+        /// After validating all non-null ownership callbacks, takes ownership
+        /// of a provider-safe state object without invoking the materializer.
+        /// Materialization is deferred until a consumer drains or takes the
+        /// sample, so native producer callbacks never have to construct or
+        /// mutate the user-facing <typeparamref name="T"/> value. Generated
+        /// providers acquire this state's admission through
+        /// <see cref="TryAdmitInput"/> before calling this transfer seam.
         /// </summary>
         public bool TryEnqueueDeferredOwned<TState>(
             TState state,
@@ -162,37 +177,60 @@ namespace Unity.FoxgloveSDK.Components
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
 
-            return TryEnqueueOwnedCore(
-                new DeferredOwnedSample<TState>(state, materializer, stateDisposer, disposer));
+            DeferredOwnedSample<TState> owned;
+            try
+            {
+                owned = new DeferredOwnedSample<TState>(
+                    state,
+                    materializer,
+                    stateDisposer,
+                    disposer);
+            }
+            catch
+            {
+                DisposeState(state, stateDisposer);
+                throw;
+            }
+            return TryEnqueueOwnedCore(owned);
         }
 
         private bool TryEnqueueOwnedCore(OwnedSample owned)
         {
             OwnedSample displaced = null;
             var accepted = false;
-            lock (_gate)
+            try
             {
-                if (_disposed)
+                lock (_gate)
                 {
-                    displaced = owned;
-                }
-                else if (_queue.Count >= Options.Capacity
-                         && Options.Overflow == FoxRunStreamOverflowPolicy.DropNewest)
-                {
-                    SaturatingIncrement(ref _droppedNewest);
-                    displaced = owned;
-                }
-                else
-                {
-                    if (_queue.Count >= Options.Capacity)
+                    if (_disposed)
                     {
-                        displaced = _queue.Dequeue();
-                        SaturatingIncrement(ref _droppedOldest);
+                        displaced = owned;
                     }
-                    _queue.Enqueue(owned);
-                    accepted = true;
-                    UpdateHighWater(_queue.Count);
+                    else if (_queue.Count >= Options.Capacity
+                             && Options.Overflow == FoxRunStreamOverflowPolicy.DropNewest)
+                    {
+                        SaturatingIncrement(ref _droppedNewest);
+                        displaced = owned;
+                    }
+                    else
+                    {
+                        if (_queue.Count >= Options.Capacity)
+                        {
+                            displaced = _queue.Dequeue();
+                            SaturatingIncrement(ref _droppedOldest);
+                        }
+                        _queue.Enqueue(owned);
+                        accepted = true;
+                        UpdateHighWater(_queue.Count);
+                    }
                 }
+            }
+            catch
+            {
+                DisposeOwned(displaced);
+                if (!accepted && !ReferenceEquals(displaced, owned))
+                    DisposeOwned(owned);
+                throw;
             }
 
             DisposeOwned(displaced);
@@ -260,8 +298,18 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool TryTakeLatest(out FoxRunStreamSample<T> sample)
         {
-            OwnedSample latest;
-            List<OwnedSample> older = null;
+            lock (_gate)
+            {
+                if (_queue.Count == 0)
+                {
+                    sample = null;
+                    return false;
+                }
+            }
+
+            var replacement = CreateEmptyQueue();
+            Queue<OwnedSample> detached;
+            int olderCount;
             lock (_gate)
             {
                 if (_queue.Count == 0)
@@ -270,16 +318,15 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
 
-                while (_queue.Count > 1)
-                {
-                    older ??= new List<OwnedSample>();
-                    older.Add(_queue.Dequeue());
-                }
-                latest = _queue.Dequeue();
-                SaturatingAdd(ref _cleared, older?.Count ?? 0);
+                detached = _queue;
+                _queue = replacement;
+                olderCount = detached.Count - 1;
+                SaturatingAdd(ref _cleared, olderCount);
             }
 
-            DisposeAll(older);
+            while (detached.Count > 1)
+                DisposeOwned(detached.Dequeue());
+            var latest = detached.Dequeue();
             sample = CreateLease(MaterializeOwned(latest));
             SaturatingIncrement(ref _taken);
             return true;
@@ -287,38 +334,49 @@ namespace Unity.FoxgloveSDK.Components
 
         public int Clear()
         {
-            List<OwnedSample> owned;
             lock (_gate)
             {
                 if (_queue.Count == 0)
                     return 0;
-                owned = new List<OwnedSample>(_queue.Count);
-                while (_queue.Count != 0)
-                    owned.Add(_queue.Dequeue());
-                SaturatingAdd(ref _cleared, owned.Count);
             }
 
-            DisposeAll(owned);
-            return owned.Count;
+            var replacement = CreateEmptyQueue();
+            Queue<OwnedSample> detached;
+            int count;
+            lock (_gate)
+            {
+                if (_queue.Count == 0)
+                    return 0;
+                detached = _queue;
+                _queue = replacement;
+                count = detached.Count;
+                SaturatingAdd(ref _cleared, count);
+            }
+
+            DisposeAll(detached);
+            return count;
         }
 
         public void Dispose()
         {
-            List<OwnedSample> owned = null;
+            lock (_gate)
+            {
+                if (_disposed)
+                    return;
+            }
+
+            var replacement = CreateEmptyQueue();
+            Queue<OwnedSample> detached;
             lock (_gate)
             {
                 if (_disposed)
                     return;
                 _disposed = true;
-                if (_queue.Count != 0)
-                {
-                    owned = new List<OwnedSample>(_queue.Count);
-                    while (_queue.Count != 0)
-                        owned.Add(_queue.Dequeue());
-                    SaturatingAdd(ref _cleared, owned.Count);
-                }
+                detached = _queue;
+                _queue = replacement;
+                SaturatingAdd(ref _cleared, detached.Count);
             }
-            DisposeAll(owned);
+            DisposeAll(detached);
         }
 
         private FoxRunStreamSample<T> CreateLease(MaterializedOwnedSample owned)
@@ -330,12 +388,15 @@ namespace Unity.FoxgloveSDK.Components
         private MaterializedOwnedSample MaterializeOwned(OwnedSample owned)
             => owned.Materialize(RecordDisposalFailure);
 
-        private void DisposeAll(IReadOnlyList<OwnedSample> owned)
+        private Queue<OwnedSample> CreateEmptyQueue()
+            => new Queue<OwnedSample>();
+
+        private void DisposeAll(Queue<OwnedSample> owned)
         {
             if (owned == null)
                 return;
-            for (var index = 0; index < owned.Count; index++)
-                DisposeOwned(owned[index]);
+            while (owned.Count != 0)
+                DisposeOwned(owned.Dequeue());
         }
 
         private void DisposeOwned(OwnedSample owned)
@@ -366,14 +427,47 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void DisposeValue(T value, Action<T> disposer)
+        {
+            try
+            {
+                disposer(value);
+            }
+            catch (Exception exception)
+            {
+                RecordDisposalFailure(exception);
+            }
+        }
+
+        private void DisposeState<TState>(TState state, Action<TState> disposer)
+        {
+            try
+            {
+                disposer(state);
+            }
+            catch (Exception exception)
+            {
+                RecordDisposalFailure(exception);
+            }
+        }
+
         private void RecordDisposalFailure(Exception exception)
         {
             SaturatingIncrement(ref _disposalFailures);
-            var diagnostic = exception == null
-                ? "Unknown disposer failure."
-                : exception.GetType().Name + ": " + exception.Message;
-            if (diagnostic.Length > MaximumDisposalDiagnosticCharacters)
-                diagnostic = diagnostic.Substring(0, MaximumDisposalDiagnosticCharacters);
+            var diagnostic = "Disposer failure (diagnostic unavailable).";
+            try
+            {
+                diagnostic = exception == null
+                    ? "Unknown disposer failure."
+                    : exception.GetType().Name + ": " + exception.Message;
+                if (diagnostic.Length > MaximumDisposalDiagnosticCharacters)
+                    diagnostic = diagnostic.Substring(0, MaximumDisposalDiagnosticCharacters);
+            }
+            catch
+            {
+                // Diagnostics must never interrupt disposal of remaining
+                // stream-owned values.
+            }
             Volatile.Write(ref _lastDisposalError, diagnostic);
         }
 

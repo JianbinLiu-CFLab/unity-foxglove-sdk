@@ -313,7 +313,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
             var bidirectional = new[]
             {
-                new KeyValuePair<string, string>("BidirectionalAuthority", "FOXRUN400"),
+                new KeyValuePair<string, string>("CustomNativeBidirectionalContract", "FOXRUN402"),
             };
             var infrastructure = new[]
             {
@@ -344,6 +344,10 @@ namespace Unity.FoxgloveSDK.Tests
                       unshipped,
                       "FOXRUN201",
                       "Retired before release; subscription policy now applies symmetrically and this ID is permanently reserved.")
+                  && HasReservedBeforeReleaseRow(
+                      unshipped,
+                      "FOXRUN400",
+                      "Retired before release; valid PublishAndSubscribe is an explicit flow and ownership guidance belongs in documentation, so this ID remains permanently reserved.")
                   && HasReservedBeforeReleaseRow(
                       unshipped,
                       "FOXRUN401",
@@ -407,7 +411,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
 
             Check(diagnostics.Contains(
-                      "Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 401, and 601 are permanently retired and must never be reused.",
+                      "Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 400, 401, and 601 are permanently retired and must never be reused.",
                       StringComparison.Ordinal)
                   && retired.All(pair => shipped.Contains(pair.Key + " | FoxRun |", StringComparison.Ordinal))
                   && retired.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))

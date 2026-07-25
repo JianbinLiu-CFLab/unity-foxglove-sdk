@@ -16,7 +16,7 @@ using UnityEngine.Scripting;
 using Unity.FoxgloveSDK.Components;
 
 [Preserve]
-partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicSinkSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource
+partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishTargetSource, IFoxglovePublishRecordingSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource
 {
     int IFoxgloveLogSource.FoxgloveLog_TopicCount => 5;
 
@@ -24,16 +24,16 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     {
         switch (index)
         {
-            case 0: return new FoxgloveLogTopicInfo("/debug/conditional_health", 15f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, hasExplicitQos: false);
-            case 1: return new FoxgloveLogTopicInfo("/debug/conditional_position", 15f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, hasExplicitQos: false);
-            case 2: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, hasExplicitQos: false);
-            case 3: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, hasExplicitQos: false, hasExplicitHz: false);
-            case 4: return new FoxgloveLogTopicInfo("/debug/position2", 1f, FoxRunPolicy.Change, 0.01f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, hasExplicitQos: false);
+            case 0: return new FoxgloveLogTopicInfo("/debug/conditional_health", 15f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
+            case 1: return new FoxgloveLogTopicInfo("/debug/conditional_position", 15f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
+            case 2: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
+            case 3: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
+            case 4: return new FoxgloveLogTopicInfo("/debug/position2", 1f, FoxRunPolicy.Change, 0.01f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
             default: return default;
         }
     }
 
-    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => "TestLog";
+    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;
 
     FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)
     {
@@ -48,6 +48,228 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         }
     }
 
+    private readonly string __foxRunOrigin = "unity2foxglove-" + global::System.Guid.NewGuid().ToString("N");
+    private bool __foxRunCaptureActive_0;
+    private int __foxRunCapture_0_0;
+    private bool __foxRunCaptureActive_1;
+    private global::UnityEngine.Vector3 __foxRunCapture_1_0;
+    private bool __foxRunCaptureActive_2;
+    private float __foxRunCapture_2_0;
+    private bool __foxRunCaptureActive_3;
+    private global::UnityEngine.Vector3 __foxRunCapture_3_0;
+    private bool __foxRunCaptureActive_4;
+    private global::UnityEngine.Vector3 __foxRunCapture_4_0;
+
+    bool IFoxglovePublishCaptureSource.FoxgloveLog_BeginCapture(int topicIndex)
+    {
+        switch (topicIndex)
+        {
+            case 0:
+                if (__foxRunCaptureActive_0) return false;
+                try
+                {
+                    __foxRunCapture_0_0 = this.conditionalHealth;
+                    __foxRunCaptureActive_0 = true;
+                    return true;
+                }
+                catch
+                {
+                    __foxRunCapture_0_0 = default;
+                    __foxRunCaptureActive_0 = false;
+                    throw;
+                }
+            case 1:
+                if (__foxRunCaptureActive_1) return false;
+                try
+                {
+                    __foxRunCapture_1_0 = this.conditionalPosition;
+                    __foxRunCaptureActive_1 = true;
+                    return true;
+                }
+                catch
+                {
+                    __foxRunCapture_1_0 = default;
+                    __foxRunCaptureActive_1 = false;
+                    throw;
+                }
+            case 2:
+                if (__foxRunCaptureActive_2) return false;
+                try
+                {
+                    __foxRunCapture_2_0 = this._health;
+                    __foxRunCaptureActive_2 = true;
+                    return true;
+                }
+                catch
+                {
+                    __foxRunCapture_2_0 = default;
+                    __foxRunCaptureActive_2 = false;
+                    throw;
+                }
+            case 3:
+                if (__foxRunCaptureActive_3) return false;
+                try
+                {
+                    __foxRunCapture_3_0 = this._pos;
+                    __foxRunCaptureActive_3 = true;
+                    return true;
+                }
+                catch
+                {
+                    __foxRunCapture_3_0 = default;
+                    __foxRunCaptureActive_3 = false;
+                    throw;
+                }
+            case 4:
+                if (__foxRunCaptureActive_4) return false;
+                try
+                {
+                    __foxRunCapture_4_0 = this._position2;
+                    __foxRunCaptureActive_4 = true;
+                    return true;
+                }
+                catch
+                {
+                    __foxRunCapture_4_0 = default;
+                    __foxRunCaptureActive_4 = false;
+                    throw;
+                }
+            default: return false;
+        }
+    }
+
+    void IFoxglovePublishCaptureSource.FoxgloveLog_EndCapture(int topicIndex)
+    {
+        switch (topicIndex)
+        {
+            case 0:
+                __foxRunCapture_0_0 = default;
+                __foxRunCaptureActive_0 = false;
+                break;
+            case 1:
+                __foxRunCapture_1_0 = default;
+                __foxRunCaptureActive_1 = false;
+                break;
+            case 2:
+                __foxRunCapture_2_0 = default;
+                __foxRunCaptureActive_2 = false;
+                break;
+            case 3:
+                __foxRunCapture_3_0 = default;
+                __foxRunCaptureActive_3 = false;
+                break;
+            case 4:
+                __foxRunCapture_4_0 = default;
+                __foxRunCaptureActive_4 = false;
+                break;
+        }
+    }
+
+    bool IFoxglovePublishOriginSource.FoxgloveLog_CanPublishOrigin(int topicIndex, bool explicitTrigger)
+    {
+        if (explicitTrigger) return true;
+        switch (topicIndex)
+        {
+            case 0: return true;
+            case 1: return true;
+            case 2: return true;
+            case 3: return true;
+            case 4: return true;
+            default: return false;
+        }
+    }
+
+    bool IFoxglovePublishTargetSource.FoxgloveLog_IsTargetReady(
+        int topicIndex, FoxRunEndpoint target, FoxRunResolvedPublishContract resolved,
+        FoxgloveManager mgr, FoxTopicBus bus, FoxTopicSinkRouter router, out string reason)
+    {
+        reason = string.Empty;
+        if (resolved == null || !resolved.Selects(target)) { reason = "Target was not selected."; return false; }
+        if (mgr == null) { reason = "Foxglove Manager is unavailable."; return false; }
+        if (mgr.SuppressLivePublishersForReplay) { reason = "Replay is suppressing live publishers."; return false; }
+        if (target == FoxRunEndpoint.Foxglove)
+        {
+            if (mgr.IsRunning) return true;
+            reason = "Foxglove output is unavailable."; return false;
+        }
+        var __contract = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(topicIndex);
+        if (target == FoxRunEndpoint.Ros2Native)
+        {
+            switch (topicIndex)
+            {
+            }
+            switch (topicIndex)
+            {
+            }
+            reason = "No exact native ROS 2 serializer is available for this declaration."; return false;
+        }
+        if (target == FoxRunEndpoint.Ros2Bridge)
+        {
+            switch (topicIndex)
+            {
+            }
+            reason = "No exact ROS 2 Bridge serializer is available for this declaration."; return false;
+        }
+        reason = "Unknown publish target."; return false;
+    }
+
+    bool IFoxglovePublishTargetSource.FoxgloveLog_PublishCaptured(
+        int topicIndex, FoxRunEndpoint target, FoxRunResolvedPublishContract resolved,
+        FoxgloveManager mgr, FoxTopicBus bus, FoxTopicSinkRouter router, ulong nowNs, out string reason)
+    {
+        reason = string.Empty;
+        if (target == FoxRunEndpoint.Foxglove)
+        {
+            ((IFoxgloveLogSource)this).FoxgloveLog_Publish(topicIndex, mgr, nowNs);
+            return true;
+        }
+        var __contract = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(topicIndex);
+        if (target == FoxRunEndpoint.Ros2Native)
+        {
+            switch (topicIndex)
+            {
+            }
+        }
+        if (target == FoxRunEndpoint.Ros2Native)
+        {
+            if (router == null) { reason = "Target router is unavailable."; return false; }
+            switch (topicIndex)
+            {
+                default: reason = "No exact native ROS 2 serializer is available for this declaration."; return false;
+            }
+        }
+        if (target == FoxRunEndpoint.Ros2Bridge)
+        {
+            switch (topicIndex)
+            {
+                default: reason = "No exact ROS 2 Bridge serializer is available for this declaration."; return false;
+            }
+        }
+        reason = "Unknown publish target."; return false;
+    }
+
+    bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady(
+        int topicIndex, FoxRunResolvedPublishContract resolved, FoxgloveManager mgr, out string reason)
+    {
+        reason = string.Empty;
+        if (resolved == null || resolved.Selects(FoxRunEndpoint.Foxglove)) return false;
+        if (mgr == null || mgr.SuppressLivePublishersForReplay) { reason = "MCAP recording is unavailable."; return false; }
+        switch (topicIndex)
+        {
+            default: return false;
+        }
+    }
+
+    bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured(
+        int topicIndex, FoxRunResolvedPublishContract resolved, FoxgloveManager mgr, ulong nowNs, out string reason)
+    {
+        reason = string.Empty;
+        if (resolved == null || resolved.Selects(FoxRunEndpoint.Foxglove) || mgr == null) return false;
+        switch (topicIndex)
+        {
+            default: return false;
+        }
+    }
     [Preserve]
     void IFoxgloveLogSource.FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs)
     {
@@ -57,31 +279,31 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                     mgr.PublishProto("/debug/conditional_health", "unity2foxglove.foxrun.TestLog_743e0649", __BuildFoxRunProtobuf_0(), nowNs);
                 else
-                    mgr.PublishJson("/debug/conditional_health", "", new Dictionary<string, object> { ["conditionalHealth"] = this.conditionalHealth }, nowNs);
+                    mgr.PublishJson("/debug/conditional_health", "", new Dictionary<string, object> { ["conditionalHealth"] = __foxRunCapture_0_0 }, nowNs);
                 break;
             case 1:
                 if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                     mgr.PublishProto("/debug/conditional_position", "unity2foxglove.foxrun.TestLog_2260e48c", __BuildFoxRunProtobuf_1(), nowNs);
                 else
-                    mgr.PublishJson("/debug/conditional_position", "", new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = this.conditionalPosition.x, ["y"] = this.conditionalPosition.y, ["z"] = this.conditionalPosition.z } }, nowNs);
+                    mgr.PublishJson("/debug/conditional_position", "", new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_1_0.x, ["y"] = __foxRunCapture_1_0.y, ["z"] = __foxRunCapture_1_0.z } }, nowNs);
                 break;
             case 2:
                 if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                     mgr.PublishProto("/debug/health", "unity2foxglove.foxrun.TestLog_59d09e18", __BuildFoxRunProtobuf_2(), nowNs);
                 else
-                    mgr.PublishJson("/debug/health", "", new Dictionary<string, object> { ["health"] = this._health }, nowNs);
+                    mgr.PublishJson("/debug/health", "", new Dictionary<string, object> { ["health"] = __foxRunCapture_2_0 }, nowNs);
                 break;
             case 3:
                 if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                     mgr.PublishProto("/debug/position", "unity2foxglove.foxrun.TestLog_dbbe28ed", __BuildFoxRunProtobuf_3(), nowNs);
                 else
-                    mgr.PublishJson("/debug/position", "", new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = this._pos.x, ["y"] = this._pos.y, ["z"] = this._pos.z } }, nowNs);
+                    mgr.PublishJson("/debug/position", "", new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_3_0.x, ["y"] = __foxRunCapture_3_0.y, ["z"] = __foxRunCapture_3_0.z } }, nowNs);
                 break;
             case 4:
                 if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                     mgr.PublishProto("/debug/position2", "unity2foxglove.foxrun.TestLog_cb5a570d", __BuildFoxRunProtobuf_4(), nowNs);
                 else
-                    mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = this._position2.x, ["y"] = this._position2.y, ["z"] = this._position2.z } }, nowNs);
+                    mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_4_0.x, ["y"] = __foxRunCapture_4_0.y, ["z"] = __foxRunCapture_4_0.z } }, nowNs);
                 break;
         }
     }
@@ -97,7 +319,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     {
         __json.Append('{');
         __json.Append("\"conditionalHealth\":");
-        __json.Append(this.conditionalHealth.ToString(global::System.Globalization.CultureInfo.InvariantCulture));
+        __json.Append(__foxRunCapture_0_0.ToString(global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append('}');
     }
 
@@ -114,11 +336,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         __json.Append("\"conditionalPosition\":");
         __json.Append('{');
         __json.Append("\"x\":");
-        if (float.IsNaN(this.conditionalPosition.x) || float.IsInfinity(this.conditionalPosition.x)) __json.Append("null"); else __json.Append(this.conditionalPosition.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_1_0.x) || float.IsInfinity(__foxRunCapture_1_0.x)) __json.Append("null"); else __json.Append(__foxRunCapture_1_0.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"y\":");
-        if (float.IsNaN(this.conditionalPosition.y) || float.IsInfinity(this.conditionalPosition.y)) __json.Append("null"); else __json.Append(this.conditionalPosition.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_1_0.y) || float.IsInfinity(__foxRunCapture_1_0.y)) __json.Append("null"); else __json.Append(__foxRunCapture_1_0.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"z\":");
-        if (float.IsNaN(this.conditionalPosition.z) || float.IsInfinity(this.conditionalPosition.z)) __json.Append("null"); else __json.Append(this.conditionalPosition.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_1_0.z) || float.IsInfinity(__foxRunCapture_1_0.z)) __json.Append("null"); else __json.Append(__foxRunCapture_1_0.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append('}');
         __json.Append('}');
     }
@@ -134,7 +356,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     {
         __json.Append('{');
         __json.Append("\"health\":");
-        if (float.IsNaN(this._health) || float.IsInfinity(this._health)) __json.Append("null"); else __json.Append(this._health.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_2_0) || float.IsInfinity(__foxRunCapture_2_0)) __json.Append("null"); else __json.Append(__foxRunCapture_2_0.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append('}');
     }
 
@@ -151,11 +373,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         __json.Append("\"pos\":");
         __json.Append('{');
         __json.Append("\"x\":");
-        if (float.IsNaN(this._pos.x) || float.IsInfinity(this._pos.x)) __json.Append("null"); else __json.Append(this._pos.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_3_0.x) || float.IsInfinity(__foxRunCapture_3_0.x)) __json.Append("null"); else __json.Append(__foxRunCapture_3_0.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"y\":");
-        if (float.IsNaN(this._pos.y) || float.IsInfinity(this._pos.y)) __json.Append("null"); else __json.Append(this._pos.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_3_0.y) || float.IsInfinity(__foxRunCapture_3_0.y)) __json.Append("null"); else __json.Append(__foxRunCapture_3_0.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"z\":");
-        if (float.IsNaN(this._pos.z) || float.IsInfinity(this._pos.z)) __json.Append("null"); else __json.Append(this._pos.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_3_0.z) || float.IsInfinity(__foxRunCapture_3_0.z)) __json.Append("null"); else __json.Append(__foxRunCapture_3_0.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append('}');
         __json.Append('}');
     }
@@ -173,11 +395,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         __json.Append("\"position2\":");
         __json.Append('{');
         __json.Append("\"x\":");
-        if (float.IsNaN(this._position2.x) || float.IsInfinity(this._position2.x)) __json.Append("null"); else __json.Append(this._position2.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_4_0.x) || float.IsInfinity(__foxRunCapture_4_0.x)) __json.Append("null"); else __json.Append(__foxRunCapture_4_0.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"y\":");
-        if (float.IsNaN(this._position2.y) || float.IsInfinity(this._position2.y)) __json.Append("null"); else __json.Append(this._position2.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_4_0.y) || float.IsInfinity(__foxRunCapture_4_0.y)) __json.Append("null"); else __json.Append(__foxRunCapture_4_0.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append(",\"z\":");
-        if (float.IsNaN(this._position2.z) || float.IsInfinity(this._position2.z)) __json.Append("null"); else __json.Append(this._position2.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+        if (float.IsNaN(__foxRunCapture_4_0.z) || float.IsInfinity(__foxRunCapture_4_0.z)) __json.Append("null"); else __json.Append(__foxRunCapture_4_0.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
         __json.Append('}');
         __json.Append('}');
     }
@@ -216,36 +438,82 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     private byte[] __BuildFoxRunProtobuf_0()
     {
         var __payload = new global::System.Collections.Generic.List<byte>(64);
-        FoxRunProtobufWire.WriteInt32(__payload, 243307063, this.conditionalHealth);
+        FoxRunProtobufWire.WriteInt32(__payload, 243307063, __foxRunCapture_0_0);
         return __payload.ToArray();
     }
 
     private byte[] __BuildFoxRunProtobuf_1()
     {
         var __payload = new global::System.Collections.Generic.List<byte>(64);
-        FoxRunProtobufWire.WriteVector3(__payload, 296537303, this.conditionalPosition);
+        FoxRunProtobufWire.WriteVector3(__payload, 296537303, __foxRunCapture_1_0);
         return __payload.ToArray();
     }
 
     private byte[] __BuildFoxRunProtobuf_2()
     {
         var __payload = new global::System.Collections.Generic.List<byte>(64);
-        FoxRunProtobufWire.WriteFloat(__payload, 305219031, this._health);
+        FoxRunProtobufWire.WriteFloat(__payload, 305219031, __foxRunCapture_2_0);
         return __payload.ToArray();
     }
 
     private byte[] __BuildFoxRunProtobuf_3()
     {
         var __payload = new global::System.Collections.Generic.List<byte>(64);
-        FoxRunProtobufWire.WriteVector3(__payload, 357058840, this._pos);
+        FoxRunProtobufWire.WriteVector3(__payload, 357058840, __foxRunCapture_3_0);
         return __payload.ToArray();
     }
 
     private byte[] __BuildFoxRunProtobuf_4()
     {
         var __payload = new global::System.Collections.Generic.List<byte>(64);
-        FoxRunProtobufWire.WriteVector3(__payload, 445095909, this._position2);
+        FoxRunProtobufWire.WriteVector3(__payload, 445095909, __foxRunCapture_4_0);
         return __payload.ToArray();
+    }
+
+    [Preserve]
+    bool IFoxgloveTopicObserverSource.FoxgloveLog_HasObservers(int topicIndex, FoxTopicBus bus)
+    {
+        if (bus == null)
+            return false;
+        switch (topicIndex)
+        {
+            case 0: return bus.HasObservers<Dictionary<string, object>>("/debug/conditional_health");
+            case 1: return bus.HasObservers<Dictionary<string, object>>("/debug/conditional_position");
+            case 2: return bus.HasObservers<Dictionary<string, object>>("/debug/health");
+            case 3: return bus.HasObservers<Dictionary<string, object>>("/debug/position");
+            case 4: return bus.HasObservers<Dictionary<string, object>>("/debug/position2");
+            default: return false;
+        }
+    }
+
+    [Preserve]
+    void IFoxgloveTopicObserverSource.FoxgloveLog_PublishCapturedToObservers(int topicIndex, FoxTopicBus bus, ulong nowNs)
+    {
+        if (bus == null)
+            return;
+        switch (topicIndex)
+        {
+            case 0:
+                var __foxRunObserverPayload_0 = new Dictionary<string, object> { ["conditionalHealth"] = __foxRunCapture_0_0 };
+                bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __foxRunObserverPayload_0, __foxRunOrigin, 0UL);
+                break;
+            case 1:
+                var __foxRunObserverPayload_1 = new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_1_0.x, ["y"] = __foxRunCapture_1_0.y, ["z"] = __foxRunCapture_1_0.z } };
+                bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, in __foxRunObserverPayload_1, __foxRunOrigin, 0UL);
+                break;
+            case 2:
+                var __foxRunObserverPayload_2 = new Dictionary<string, object> { ["health"] = __foxRunCapture_2_0 };
+                bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, in __foxRunObserverPayload_2, __foxRunOrigin, 0UL);
+                break;
+            case 3:
+                var __foxRunObserverPayload_3 = new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_3_0.x, ["y"] = __foxRunCapture_3_0.y, ["z"] = __foxRunCapture_3_0.z } };
+                bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, in __foxRunObserverPayload_3, __foxRunOrigin, 0UL);
+                break;
+            case 4:
+                var __foxRunObserverPayload_4 = new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_4_0.x, ["y"] = __foxRunCapture_4_0.y, ["z"] = __foxRunCapture_4_0.z } };
+                bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, in __foxRunObserverPayload_4, __foxRunOrigin, 0UL);
+                break;
+        }
     }
 
     [Preserve]
@@ -257,23 +525,23 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         {
             case 0:
                 if (!bus.HasSubscribers("/debug/conditional_health")) break;
-                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, new Dictionary<string, object> { ["conditionalHealth"] = this.conditionalHealth }, "TestLog");
+                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, new Dictionary<string, object> { ["conditionalHealth"] = __foxRunCapture_0_0 }, __foxRunOrigin);
                 break;
             case 1:
                 if (!bus.HasSubscribers("/debug/conditional_position")) break;
-                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = this.conditionalPosition.x, ["y"] = this.conditionalPosition.y, ["z"] = this.conditionalPosition.z } }, "TestLog");
+                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_1_0.x, ["y"] = __foxRunCapture_1_0.y, ["z"] = __foxRunCapture_1_0.z } }, __foxRunOrigin);
                 break;
             case 2:
                 if (!bus.HasSubscribers("/debug/health")) break;
-                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, new Dictionary<string, object> { ["health"] = this._health }, "TestLog");
+                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, new Dictionary<string, object> { ["health"] = __foxRunCapture_2_0 }, __foxRunOrigin);
                 break;
             case 3:
                 if (!bus.HasSubscribers("/debug/position")) break;
-                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = this._pos.x, ["y"] = this._pos.y, ["z"] = this._pos.z } }, "TestLog");
+                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_3_0.x, ["y"] = __foxRunCapture_3_0.y, ["z"] = __foxRunCapture_3_0.z } }, __foxRunOrigin);
                 break;
             case 4:
                 if (!bus.HasSubscribers("/debug/position2")) break;
-                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = this._position2.x, ["y"] = this._position2.y, ["z"] = this._position2.z } }, "TestLog");
+                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_4_0.x, ["y"] = __foxRunCapture_4_0.y, ["z"] = __foxRunCapture_4_0.z } }, __foxRunOrigin);
                 break;
         }
     }
@@ -287,23 +555,23 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         {
             case 0:
                 var __sink_0 = __BuildFoxRunJson_0();
-                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0, "TestLog");
+                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0, __foxRunOrigin);
                 break;
             case 1:
                 var __sink_1 = __BuildFoxRunJson_1();
-                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, __sink_1, "TestLog");
+                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, __sink_1, __foxRunOrigin);
                 break;
             case 2:
                 var __sink_2 = __BuildFoxRunJson_2();
-                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, __sink_2, "TestLog");
+                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, __sink_2, __foxRunOrigin);
                 break;
             case 3:
                 var __sink_3 = __BuildFoxRunJson_3();
-                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, __sink_3, "TestLog");
+                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, __sink_3, __foxRunOrigin);
                 break;
             case 4:
                 var __sink_4 = __BuildFoxRunJson_4();
-                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, __sink_4, "TestLog");
+                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, __sink_4, __foxRunOrigin);
                 break;
         }
     }

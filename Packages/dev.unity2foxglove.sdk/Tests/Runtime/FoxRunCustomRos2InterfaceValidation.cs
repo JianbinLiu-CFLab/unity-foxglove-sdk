@@ -828,14 +828,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && !acceptanceComponent.Contains("public sealed class Phase181NestedState", StringComparison.Ordinal),
                 "181F-13: the imported sample is the sole Unity compile-surface owner of the locked custom DTO identity");
 
-            const string authorityWarningDisable = "#pragma warning disable FOXRUN400";
-            const string authorityWarningRestore = "#pragma warning restore FOXRUN400";
             const string bidirectionalField = "[SerializeField] private Phase181State _nativeInputWebSocketOutput";
-            Check(sample.IndexOf(authorityWarningDisable, StringComparison.Ordinal) < sample.IndexOf(bidirectionalField, StringComparison.Ordinal)
-                  && sample.IndexOf(authorityWarningRestore, StringComparison.Ordinal) > sample.IndexOf(bidirectionalField, StringComparison.Ordinal)
-                  && importedSample.IndexOf(authorityWarningDisable, StringComparison.Ordinal) < importedSample.IndexOf(bidirectionalField, StringComparison.Ordinal)
-                  && importedSample.IndexOf(authorityWarningRestore, StringComparison.Ordinal) > importedSample.IndexOf(bidirectionalField, StringComparison.Ordinal),
-                "181F-14: the sample suppression spans the member declaration where the authority diagnostic is reported");
+            const string bidirectionalOwnership =
+                "Native ROS2 is the inbound source while Foxglove is the explicit JSON output target.";
+            Check(sample.Contains(bidirectionalField, StringComparison.Ordinal)
+                  && importedSample.Contains(bidirectionalField, StringComparison.Ordinal)
+                  && sample.Contains(bidirectionalOwnership, StringComparison.Ordinal)
+                  && importedSample.Contains(bidirectionalOwnership, StringComparison.Ordinal)
+                  && !sample.Contains("FOXRUN400", StringComparison.Ordinal)
+                  && !importedSample.Contains("FOXRUN400", StringComparison.Ordinal),
+                "181F-14: valid full-duplex declarations compile without a per-use warning while the sample documents ownership");
 
             const string inputPortField = "[SerializeField] private Phase181State _inputPort";
             const string inputPortView = "public Phase181State NativeInputPort => _inputPort;";
@@ -884,7 +886,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && acceptanceComponent.IndexOf(acceptanceInputPort, StringComparison.Ordinal)
                      < acceptanceComponent.IndexOf(unavailableGuard, StringComparison.Ordinal)
                   && acceptanceComponent.Contains("public Phase181State InputPort => _inputPort;", StringComparison.Ordinal)
-                  && acceptanceComponent.Contains("#pragma warning restore FOXRUN400", StringComparison.Ordinal),
+                  && acceptanceComponent.Contains(
+                      "The peer protocol explicitly owns the native inbound/output-loop evidence.",
+                      StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("FOXRUN400", StringComparison.Ordinal),
                 "181F-16: acceptance contracts stay generator-visible before add-on selection, while native bindings remain conditional");
 
             Check(playerBuilder.Contains("CreateAcceptanceScene", StringComparison.Ordinal)

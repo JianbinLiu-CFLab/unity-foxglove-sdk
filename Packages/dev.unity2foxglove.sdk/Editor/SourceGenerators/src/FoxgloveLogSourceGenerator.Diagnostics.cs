@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     /// </summary>
     internal static class Diags
     {
-        // Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 401, and 601 are permanently retired and must never be reused.
+        // Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 400, 401, and 601 are permanently retired and must never be reused.
 
         #region FoxRun publish diagnostics (FOXRUN001-199)
 
@@ -204,11 +204,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         #endregion
 
         #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
-
-        public static readonly DiagnosticDescriptor BidirectionalAuthority = new DiagnosticDescriptor(
-            "FOXRUN400", "PublishAndSubscribe authority",
-            "{0}: PublishAndSubscribe requires explicit authority ownership",
-            "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static readonly DiagnosticDescriptor CustomNativeBidirectionalContract = new DiagnosticDescriptor(
             "FOXRUN402", "Custom native PublishAndSubscribe contract invalid",
@@ -410,7 +405,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN022": return DuplicateAggregateJsonName;
                 case "FOXRUN600": return InvalidFoxRunFlow;
                 case "FOXRUN200": return UnsupportedInboundShape;
-                case "FOXRUN400": return BidirectionalAuthority;
                 case "FOXRUN202": return InboundNaming;
                 case "FOXRUN203": return SharedInboundTargetNotWritable;
                 default:

@@ -87,6 +87,82 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void NullMaterializerResultIsRejectedBeforeOwnershipTransfer()
+        {
+            var backend = new FakeBackend();
+            var transferred = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (_, __) => null,
+                transferOwned: _ => transferred++);
+
+            Assert.True(binding.TryRegister().Succeeded);
+            backend.Invoke(new FakeMessage());
+
+            Assert.Equal(0, transferred);
+            Assert.True(binding.TryGetSnapshot(7, out var snapshot));
+            Assert.Equal(1, snapshot.CopyFailed);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void BorrowedMaterializerResultIsRejectedBeforeOwnershipTransfer()
+        {
+            var backend = new FakeBackend();
+            var transferred = 0;
+            var binding = new FoxRunRos2StreamSubscriptionBinding<FakeMessage, FakeMessage>(
+                Contract(),
+                7,
+                () => 7,
+                1024,
+                () => true,
+                (message, _) => message,
+                _ => transferred++,
+                () => { },
+                backend,
+                FoxRunResolvedQos.Default,
+                new ManagedQosFactory());
+
+            Assert.True(binding.TryRegister().Succeeded);
+            backend.Invoke(new FakeMessage());
+
+            Assert.Equal(0, transferred);
+            Assert.True(binding.TryGetSnapshot(7, out var snapshot));
+            Assert.Equal(1, snapshot.CopyFailed);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void StreamMaterializationReusesTheThreadLocalCopyContext()
+        {
+            var backend = new FakeBackend();
+            FoxRunRos2CopyContext first = null;
+            FoxRunRos2CopyContext second = null;
+            var calls = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, context) =>
+                {
+                    if (calls++ == 0)
+                        first = context;
+                    else
+                        second = context;
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: sample => sample.DisposeCount++);
+
+            Assert.True(binding.TryRegister().Succeeded);
+            backend.Invoke(new FakeMessage { Data = "first" });
+            backend.Invoke(new FakeMessage { Data = "second" });
+
+            Assert.NotNull(first);
+            Assert.Same(first, second);
+            binding.Stop();
+        }
+
+        [Fact]
         public void StopClosesAdmissionBeforeRemovalThenDrainsClearsAndReleases()
         {
             var backend = new FakeBackend();
@@ -114,6 +190,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             binding.Stop();
 
             Assert.Equal(1, admitted);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, cleared);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+        }
+
+        [Fact]
+        public void StopStillClearsAndReleasesWhenNativeRemovalThrows()
+        {
+            var backend = new FakeBackend
+            {
+                RemoveException = new InvalidOperationException("native removal failed")
+            };
+            var cleared = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => new OwnedSample(message.Data),
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    cleared++;
+                    backend.Events.Add("clear");
+                });
+
+            Assert.True(binding.TryRegister().Succeeded);
+
+            var exception = Assert.Throws<InvalidOperationException>(binding.Stop);
+
+            Assert.Equal("native removal failed", exception.Message);
             Assert.Equal(1, backend.RemoveCount);
             Assert.Equal(1, cleared);
             Assert.Equal(1, backend.ReleaseCount);
@@ -159,6 +265,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, stats.DisposalFailures);
             Assert.Contains("owned disposal failed", stats.LastDisposalError, StringComparison.Ordinal);
             Assert.Equal(1, stats.Cleared);
+        }
+
+        [Fact]
+        public async Task StopReturnsWithoutWaitingForAnInFlightNativeCallback()
+        {
+            var backend = new FakeBackend();
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () => backend.Events.Add("clear"));
+
+            Assert.True(binding.TryRegister().Succeeded);
+            var callback = Task.Run(() => backend.Invoke(new FakeMessage { Data = "blocked" }));
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+            var stop = Task.Run(binding.Stop);
+            Assert.True(SpinWait.SpinUntil(
+                () => Volatile.Read(ref backend.RemoveCount) == 1,
+                TimeSpan.FromSeconds(5)));
+            var returnedBeforeCallback = await Task.WhenAny(
+                stop,
+                Task.Delay(TimeSpan.FromSeconds(1))) == stop;
+
+            finishMaterialize.Set();
+            await Task.WhenAll(callback, stop).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(returnedBeforeCallback);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
         }
 
         [Theory]
@@ -423,6 +566,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 = new FakeToken();
             public bool InvokeSynchronouslyOnRegister { get; set; }
             public int RegistrationFailuresRemaining { get; set; }
+            public Exception RemoveException { get; set; }
             public ManualResetEventSlim RegisterEntered { get; set; }
             public ManualResetEventSlim ReleaseRegister { get; set; }
 
@@ -457,6 +601,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Interlocked.Increment(ref RemoveCount);
                 Events.Add("remove");
                 _callback = null;
+                if (RemoveException != null)
+                    throw RemoveException;
             }
 
             public void ReleaseNodeOwnership()

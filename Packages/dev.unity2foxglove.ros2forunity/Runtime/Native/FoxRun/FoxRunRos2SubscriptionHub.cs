@@ -1074,10 +1074,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Action clearOwned)
             where TTransport : ROS2.Message, new()
         {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+
             var identity = source.InstanceId + "|" + contract.Id;
             _seenEndpoints.Add(identity);
             if (_existingBindings.Contains(identity) || _bindings.Count >= MaximumContracts)
                 return;
+
+            if (tryAdmitInput == null)
+            {
+                throw new InvalidOperationException(
+                    "FoxRunStream field '" + contract.MemberName
+                    + "' is null when the native subscription session is captured.");
+            }
+            if (materializeOwned == null)
+                throw new ArgumentNullException(nameof(materializeOwned));
+            if (transferOwned == null)
+                throw new ArgumentNullException(nameof(transferOwned));
+            if (clearOwned == null)
+                throw new ArgumentNullException(nameof(clearOwned));
 
             if (!FoxRunRos2ContractActivation.TryResolve(
                     contract, _policy, out var qos, out var activationError,

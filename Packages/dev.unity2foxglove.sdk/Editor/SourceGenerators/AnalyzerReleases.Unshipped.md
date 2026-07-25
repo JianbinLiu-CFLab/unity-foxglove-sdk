@@ -17,7 +17,6 @@ FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
 FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
 FOXRUN215 | FoxRun | Error | FoxRunStream<T> must be one initialized Subscribe field with stream-safe arguments.
 FOXRUN216 | FoxRun | Error | FoxRunStream<T> fields must have a non-null initializer.
-FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
 FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe.
 FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
@@ -69,5 +68,6 @@ FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently 
 ; FOXRUN206 | FoxRun | Error | Retired before release; directional Encoding legality now uses FOXRUN612 and this ID remains permanently reserved.
 ; FOXRUN214 | FoxRun | Error | Retired before release; directional Source legality now uses FOXRUN612 and this ID remains permanently reserved.
 ; FOXRUN213 | FoxRun | Warning | Retired before release; explicit QoS without a ROS 2 direction now fails with FOXRUN614 and this ID remains permanently reserved.
+; FOXRUN400 | FoxRun | Warning | Retired before release; valid PublishAndSubscribe is an explicit flow and ownership guidance belongs in documentation, so this ID remains permanently reserved.
 ; FOXRUN401 | FoxRun | Error | Retired before release; directional profiles resolve full-duplex encodings independently and this ID remains permanently reserved.
 ; FOXRUN601 | FoxRun | Error | Retired before release with the removed Unless declaration and remains permanently reserved.

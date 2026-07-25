@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection;
 using System.Threading;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -2448,6 +2449,66 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.Equal(1, failures);
             Assert.Equal(1, laterRegistrations);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-F")]
+        public void NullStreamRegistrationStillMarksTheEndpointSeenForStableDiagnostics()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var source = new NativeOnlySource();
+            var sourceCandidateType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "SourceCandidate",
+                BindingFlags.NonPublic);
+            Assert.NotNull(sourceCandidateType);
+            var sourceCandidate = Activator.CreateInstance(
+                sourceCandidateType,
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                args: new object[] { source, source, null },
+                culture: null);
+            var registrarType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "CollectingRegistrar",
+                BindingFlags.NonPublic);
+            Assert.NotNull(registrarType);
+            var registrar = Assert.IsAssignableFrom<IFoxRunRos2SubscriptionRegistrar>(
+                Activator.CreateInstance(
+                    registrarType,
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    args: new[] { (object)hub, sourceCandidate },
+                    culture: null));
+
+            var contract = Contract("ros2-native", "default");
+            registrar.RegisterStream<FakeHostMessage, FakeHostMessage>(
+                contract,
+                tryAdmitInput: null,
+                materializeOwned: (message, _) => message,
+                transferOwned: _ => { },
+                clearOwned: () => { });
+
+            var seenField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_seenEndpoints",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(seenField);
+            var seen = Assert.IsType<HashSet<string>>(seenField.GetValue(hub));
+            var identity = source.GetInstanceID() + "|" + contract.Id;
+            Assert.Contains(identity, seen);
+
+            var diagnosticsField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_diagnostics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(diagnosticsField);
+            var diagnostics = Assert.IsType<FoxRunRos2SubscriptionDiagnostics>(
+                diagnosticsField.GetValue(hub));
+            Assert.True(diagnostics.TryGet(identity, out var beforeReconcile));
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, beforeReconcile.State);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, beforeReconcile.Error);
+
+            diagnostics.RemoveExcept(seen);
+
+            Assert.True(diagnostics.TryGet(identity, out var afterReconcile));
+            Assert.Equal(beforeReconcile, afterReconcile);
         }
 
         [Fact]

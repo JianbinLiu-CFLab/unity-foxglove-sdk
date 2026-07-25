@@ -323,6 +323,47 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void DisposalDiagnosticsCannotAbortRemainingOwnedCleanup()
+        {
+            var attempts = new List<int>();
+            using var stream = new FoxRunStream<int>();
+            for (var value = 1; value <= 3; value++)
+            {
+                stream.TryEnqueueOwned(
+                    value,
+                    item =>
+                    {
+                        attempts.Add(item);
+                        throw new ThrowingMessageException();
+                    });
+            }
+
+            var cleared = stream.Clear();
+
+            Assert.Equal(3, cleared);
+            Assert.Equal(new[] { 1, 2, 3 }, attempts);
+            Assert.Equal(3, stream.Stats.DisposalFailures);
+            Assert.False(string.IsNullOrWhiteSpace(stream.Stats.LastDisposalError));
+            Assert.True(stream.Stats.LastDisposalError.Length <= 512);
+        }
+
+        [Fact]
+        public void BulkCleanupDetachesTheQueueBeforeInvokingUserDisposers()
+        {
+            using var stream = new FoxRunStream<int>();
+            var originalQueue = GetQueueReference(stream);
+            object queueSeenByDisposer = null;
+            stream.TryEnqueueOwned(
+                1,
+                _ => queueSeenByDisposer = GetQueueReference(stream));
+
+            Assert.Equal(1, stream.Clear());
+
+            Assert.NotNull(queueSeenByDisposer);
+            Assert.NotSame(originalQueue, queueSeenByDisposer);
+        }
+
+        [Fact]
         public void DisposedStreamRejectsAndDisposesProducerOwnership()
         {
             var disposed = 0;
@@ -431,6 +472,21 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             field.SetValue(stream, value);
+        }
+
+        private static object GetQueueReference<T>(FoxRunStream<T> stream)
+        {
+            var field = typeof(FoxRunStream<T>).GetField(
+                "_queue",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            return field.GetValue(stream);
+        }
+
+        private sealed class ThrowingMessageException : Exception
+        {
+            public override string Message
+                => throw new InvalidOperationException("diagnostic accessor failed");
         }
     }
 }

@@ -1777,6 +1777,14 @@ namespace Demo
                 "RegisterStream<global::std_msgs.msg.String, global::std_msgs.msg.String>",
                 generated,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "var __foxRunRos2TryAdmit_0 = __foxRunRos2Stream_0 == null ? null : new global::System.Func<bool>(__foxRunRos2Stream_0.TryAdmitInput);",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "throw new global::System.InvalidOperationException(\"FoxRunStream field is null",
+                generated,
+                StringComparison.Ordinal);
             Assert.Contains(".TryAdmitInput", generated, StringComparison.Ordinal);
             Assert.Contains(".TryEnqueueOwned(", generated, StringComparison.Ordinal);
             Assert.Contains(".Clear()", generated, StringComparison.Ordinal);

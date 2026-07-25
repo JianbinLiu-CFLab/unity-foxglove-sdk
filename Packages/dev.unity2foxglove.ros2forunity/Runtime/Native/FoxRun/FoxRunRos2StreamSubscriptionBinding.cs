@@ -370,7 +370,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
             }
 
-            ExceptionDispatchInfo fatal = null;
+            Exception fatal = null;
             if (token != null)
             {
                 try
@@ -379,35 +379,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 catch (Exception exception)
                 {
-                    fatal = ExceptionDispatchInfo.Capture(exception);
+                    fatal = exception;
                 }
             }
 
-            var spinner = new SpinWait();
-            while (Volatile.Read(ref _callbacksInFlight) != 0)
-                spinner.SpinOnce();
-
-            if (Interlocked.CompareExchange(ref _cleanupComplete, 1, 0) == 0)
-            {
-                try
-                {
-                    _clearOwned();
-                }
-                catch (Exception exception)
-                {
-                    fatal ??= ExceptionDispatchInfo.Capture(exception);
-                }
-            }
-
-            try
-            {
-                ReleaseNodeOnce();
-            }
-            catch (Exception exception)
-            {
-                fatal ??= ExceptionDispatchInfo.Capture(exception);
-            }
-            fatal?.Throw();
+            var cleanupFatal = TryCompleteStoppedCleanup();
+            fatal ??= cleanupFatal;
+            if (fatal != null)
+                ExceptionDispatchInfo.Capture(fatal).Throw();
         }
 
         private void OnBorrowedMessage(long registrationAttempt, TTransport borrowed)
@@ -437,17 +416,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
 
                 TSample owned;
+                var context = FoxRunRos2CopyContext.Rent(_maximumCopyBytes);
                 try
                 {
-                    owned = _materializeOwned(
-                        borrowed,
-                        new FoxRunRos2CopyContext(_maximumCopyBytes));
+                    owned = _materializeOwned(borrowed, context);
+                    if (ReferenceEquals(owned, null))
+                        throw new InvalidOperationException(
+                            "Generated ROS2 stream materializer must not return null.");
+                    if (ReferenceEquals(owned, borrowed))
+                    {
+                        throw new InvalidOperationException(
+                            "Generated ROS2 stream materializer must not retain the callback-owned message.");
+                    }
                 }
                 catch (Exception exception) when (
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     Interlocked.Increment(ref _copyFailed);
                     return;
+                }
+                finally
+                {
+                    context.Return();
                 }
 
                 Interlocked.Increment(ref _received);
@@ -474,8 +464,56 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             finally
             {
-                Interlocked.Decrement(ref _callbacksInFlight);
+                if (Interlocked.Decrement(ref _callbacksInFlight) == 0
+                    && Volatile.Read(ref _stopping) != 0)
+                {
+                    try
+                    {
+                        // Stop must remain non-blocking. The final callback
+                        // completes ordered clear/release without unwinding
+                        // into the native executor.
+                        TryCompleteStoppedCleanup();
+                    }
+                    catch
+                    {
+                        // Cleanup failures cannot escape a native callback.
+                    }
+                }
             }
+        }
+
+        private Exception TryCompleteStoppedCleanup()
+        {
+            if (Volatile.Read(ref _callbacksInFlight) != 0)
+                return null;
+            lock (_lifecycleLock)
+            {
+                if (_registrationInFlight)
+                    return null;
+            }
+
+            Exception fatal = null;
+            if (Interlocked.CompareExchange(ref _cleanupComplete, 1, 0) == 0)
+            {
+                try
+                {
+                    _clearOwned();
+                }
+                catch (Exception exception)
+                {
+                    fatal = exception;
+                }
+            }
+
+            try
+            {
+                ReleaseNodeOnce();
+            }
+            catch (Exception exception)
+            {
+                fatal ??= exception;
+            }
+            return fatal;
         }
 
         private bool IsActiveGeneration()

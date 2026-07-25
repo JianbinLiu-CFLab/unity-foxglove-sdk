@@ -87,8 +87,11 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var access = TypeExprEmitter.MemberAccess(member.MemberName);
                 sb.AppendLine(pad + "        var __foxRunRos2Stream_" + index + " = " + access + ";");
-                sb.AppendLine(pad + "        if (__foxRunRos2Stream_" + index + " == null)");
-                sb.AppendLine(pad + "            throw new global::System.InvalidOperationException(\"FoxRunStream field is null when the native subscription session is captured.\");");
+                sb.AppendLine(
+                    pad + "        var __foxRunRos2TryAdmit_" + index
+                    + " = __foxRunRos2Stream_" + index
+                    + " == null ? null : new global::System.Func<bool>(__foxRunRos2Stream_"
+                    + index + ".TryAdmitInput);");
             }
             sb.AppendLine(
                 pad + "        registrar."
@@ -114,7 +117,7 @@ namespace Unity.FoxgloveSDK.Editor
                     : 0f) + "),");
             sb.AppendLine(pad + "            "
                 + (member.IsStream
-                    ? "__foxRunRos2Stream_" + index + ".TryAdmitInput,"
+                    ? "__foxRunRos2TryAdmit_" + index + ","
                     : "static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),"));
             if (member.IsStream)
                 sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
