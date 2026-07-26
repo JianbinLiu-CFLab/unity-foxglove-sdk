@@ -212,8 +212,12 @@ namespace Unity.FoxgloveSDK.Editor
             switch (shape.CanonicalType)
             {
                 case "bool": return "TryDecodeBool";
-                case "int8": case "int16": case "int32": return "TryDecodeInt32";
-                case "uint8": case "uint16": case "uint32": return "TryDecodeUInt32";
+                case "int8": return "TryDecodeInt8";
+                case "int16": return "TryDecodeInt16";
+                case "int32": return "TryDecodeInt32";
+                case "uint8": return "TryDecodeUInt8";
+                case "uint16": return "TryDecodeUInt16";
+                case "uint32": return "TryDecodeUInt32";
                 case "int64": return "TryDecodeInt64";
                 case "uint64": return "TryDecodeUInt64";
                 case "float32": return "TryDecodeFloat";
@@ -232,8 +236,12 @@ namespace Unity.FoxgloveSDK.Editor
             switch (shape.CanonicalType)
             {
                 case "bool": reader = "TryReadRepeatedBool"; return true;
-                case "int8": case "int16": case "int32": reader = "TryReadRepeatedInt32"; return true;
-                case "uint8": case "uint16": case "uint32": reader = "TryReadRepeatedUInt32"; return true;
+                case "int8": reader = "TryReadRepeatedInt8"; return true;
+                case "int16": reader = "TryReadRepeatedInt16"; return true;
+                case "int32": reader = "TryReadRepeatedInt32"; return true;
+                case "uint8": reader = "TryReadRepeatedUInt8"; return true;
+                case "uint16": reader = "TryReadRepeatedUInt16"; return true;
+                case "uint32": reader = "TryReadRepeatedUInt32"; return true;
                 case "int64": reader = "TryReadRepeatedInt64"; return true;
                 case "uint64": reader = "TryReadRepeatedUInt64"; return true;
                 case "float32": reader = "TryReadRepeatedFloat"; return true;
@@ -268,8 +276,12 @@ namespace Unity.FoxgloveSDK.Editor
             switch (shape.CanonicalType)
             {
                 case "bool": return "bool";
-                case "int8": case "int16": case "int32": return "int";
-                case "uint8": case "uint16": case "uint32": return "uint";
+                case "int8": return "sbyte";
+                case "int16": return "short";
+                case "int32": return "int";
+                case "uint8": return "byte";
+                case "uint16": return "ushort";
+                case "uint32": return "uint";
                 case "int64": return "long";
                 case "uint64": return "ulong";
                 case "float32": return "float";

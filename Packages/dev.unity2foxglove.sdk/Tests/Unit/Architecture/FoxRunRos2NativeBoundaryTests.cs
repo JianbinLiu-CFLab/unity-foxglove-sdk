@@ -105,6 +105,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void NativeAssemblyCanReachSharedFatalExceptionPolicy()
+        {
+            var root = FindRepoRoot();
+            var adapterRuntime = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime");
+            var nativeAsmdef = File.ReadAllText(Path.Combine(
+                adapterRuntime,
+                "Native",
+                "Unity2Foxglove.Ros2ForUnity.Native.asmdef"));
+            var assemblyInfoPath = Path.Combine(adapterRuntime, "AssemblyInfo.cs");
+            var policy = File.ReadAllText(Path.Combine(
+                adapterRuntime,
+                "FoxRunRos2NativeExceptionPolicy.cs"));
+
+            Assert.Contains(
+                "\"Unity2Foxglove.Ros2ForUnity\"",
+                nativeAsmdef,
+                StringComparison.Ordinal);
+            Assert.True(
+                File.Exists(assemblyInfoPath),
+                "The adapter runtime assembly must explicitly expose internals to its Native assembly.");
+            var assemblyInfo = File.ReadAllText(assemblyInfoPath);
+            Assert.Contains(
+                "InternalsVisibleTo(\"Unity2Foxglove.Ros2ForUnity.Native\")",
+                assemblyInfo,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "internal static class FoxRunRos2NativeExceptionPolicy",
+                policy,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomTypesupportCatalogHasOnlyTheDocumentedOptionalFacadeSeam()
         {
             var root = FindRepoRoot();

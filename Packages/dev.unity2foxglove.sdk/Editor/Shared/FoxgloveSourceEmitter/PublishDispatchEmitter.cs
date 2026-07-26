@@ -752,6 +752,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return typeName;
             if (typeName.EndsWith("[]", System.StringComparison.Ordinal))
                 return CaptureTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";
+            if (typeName.EndsWith("?", System.StringComparison.Ordinal))
+                return CaptureTypeName(typeName.Substring(0, typeName.Length - 1)) + "?";
             switch (typeName)
             {
                 case "bool":
@@ -940,6 +942,14 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var type = NormalizeType(field.TypeName);
             var access = $"__foxRunCapture_{topicIndex}_{fieldIndex}";
+            if (field.ProtobufTypeShape != null
+                && (field.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
+                    || field.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum))
+            {
+                sb.AppendLine(
+                    $"{pad}global::Unity.FoxgloveSDK.Components.FoxRunInboundJson.AppendObject(__json, {access});");
+                return;
+            }
             if (TryGetCollectionElementType(type, out var elementType, out var countProperty))
             {
                 EmitCollectionJsonValueAppend(sb, elementType, countProperty, access, fieldIndex, pad);

@@ -90,5 +90,39 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(2f, vector.y);
             Assert.Equal(0f, vector.z);
         }
+
+        [Fact]
+        public void NarrowIntegerReadersPreserveValidValuesAndRejectOverflowAtomically()
+        {
+            var payload = new System.Collections.Generic.List<byte>();
+            FoxRunProtobufWire.WriteUInt32(payload, 3, byte.MaxValue);
+
+            Assert.True(FoxRunInboundProtobuf.TryRead(payload.ToArray(), 3, out byte scalar, out var scalarError));
+            Assert.Empty(scalarError);
+            Assert.Equal(byte.MaxValue, scalar);
+
+            var validPacked = new FoxRunProtobufField(3, 2, new byte[] { 1, 0xff, 0x01 });
+            var validValues = new System.Collections.Generic.List<byte>();
+            Assert.True(FoxRunInboundProtobuf.TryReadRepeatedUInt8(validPacked, validValues, out var validError));
+            Assert.Empty(validError);
+            Assert.Equal(new byte[] { 1, byte.MaxValue }, validValues);
+
+            var overflowPacked = new FoxRunProtobufField(3, 2, new byte[] { 1, 0x80, 0x02 });
+            var unchangedValues = new System.Collections.Generic.List<byte> { 7 };
+            Assert.False(FoxRunInboundProtobuf.TryReadRepeatedUInt8(
+                overflowPacked,
+                unchangedValues,
+                out var overflowError));
+            Assert.Equal(new byte[] { 7 }, unchangedValues);
+            Assert.Equal("Protobuf uint8 value is out of range.", overflowError);
+
+            var overflowScalar = new FoxRunProtobufField(3, 0, new byte[] { 0x80, 0x02 });
+            Assert.False(FoxRunInboundProtobuf.TryDecodeUInt8(
+                overflowScalar,
+                out var rejected,
+                out var rejectedError));
+            Assert.Equal(0, rejected);
+            Assert.Equal("Protobuf uint8 value is out of range.", rejectedError);
+        }
     }
 }

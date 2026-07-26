@@ -231,6 +231,55 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void JsonDecoderRoundTripsGeneratorValidatedDtoWithoutTypeMetadata()
+        {
+            var expected = new GeneratedJsonProbe
+            {
+                Count = 184,
+                Kind = GeneratedJsonProbeKind.Active,
+                Label = "p184g_roundtrip",
+                Nested = new GeneratedJsonNestedProbe { Enabled = true }
+            };
+            var json = new StringBuilder("{\"state\":");
+            FoxRunInboundJson.AppendObject(json, expected);
+            json.Append('}');
+
+            var encoded = json.ToString();
+            var ok = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes(encoded),
+                "state",
+                out GeneratedJsonProbe actual,
+                out var error);
+
+            Assert.True(ok, error);
+            Assert.DoesNotContain("$type", encoded, StringComparison.Ordinal);
+            Assert.NotNull(actual);
+            Assert.Equal(expected.Count, actual.Count);
+            Assert.Equal(expected.Kind, actual.Kind);
+            Assert.Equal(expected.Label, actual.Label);
+            Assert.NotNull(actual.Nested);
+            Assert.True(actual.Nested.Enabled);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void JsonDecoderRejectsTypeMetadataInsideGeneratedDto()
+        {
+            var payload = Encoding.UTF8.GetBytes(
+                "{\"state\":{\"Count\":184,\"$type\":\"System.Version\"}}");
+
+            var ok = FoxRunInboundJson.TryReadObject(
+                payload,
+                "state",
+                out GeneratedJsonProbe _,
+                out var error);
+
+            Assert.False(ok);
+            Assert.Contains("$type", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void JsonDecoderRejectsExcessiveNestingBeforeRecursiveScanOverflows()
         {
             var sb = new StringBuilder("{\"value\":");
@@ -1826,6 +1875,25 @@ namespace Demo
                 }
                 return applied;
             }
+        }
+
+        private enum GeneratedJsonProbeKind
+        {
+            Inactive,
+            Active
+        }
+
+        private sealed class GeneratedJsonNestedProbe
+        {
+            public bool Enabled { get; set; }
+        }
+
+        private sealed class GeneratedJsonProbe
+        {
+            public int Count { get; set; }
+            public GeneratedJsonProbeKind Kind { get; set; }
+            public string Label { get; set; }
+            public GeneratedJsonNestedProbe Nested { get; set; }
         }
 
         private sealed class RestartInputTransport : IFoxgloveTransport

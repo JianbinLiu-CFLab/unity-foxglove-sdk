@@ -300,8 +300,13 @@ namespace Unity.FoxgloveSDK.Editor
             if (requiresWebSocketShapeValidation
                 && !IsNativeCustomBidirectionalOutputContract(member)
                 && !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
-                && (!string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
-                    || member.ProtobufTypeShape == null))
+                && (member.ProtobufTypeShape == null
+                    || (!string.Equals(
+                            member.Encoding,
+                            FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                            StringComparison.Ordinal)
+                        && member.ProtobufTypeShape.Kind != FoxRunProtobufTypeShapeKind.Object
+                        && member.ProtobufTypeShape.Kind != FoxRunProtobufTypeShapeKind.Enum)))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
                 var message = string.IsNullOrWhiteSpace(raw)

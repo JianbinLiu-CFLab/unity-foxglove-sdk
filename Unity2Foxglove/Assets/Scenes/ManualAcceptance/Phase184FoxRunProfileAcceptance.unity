@@ -1,0 +1,622 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!29 &1
+OcclusionCullingSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_OcclusionBakeSettings:
+    smallestOccluder: 5
+    smallestHole: 0.25
+    backfaceThreshold: 100
+  m_SceneGUID: 00000000000000000000000000000000
+  m_OcclusionCullingData: {fileID: 0}
+--- !u!104 &2
+RenderSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 10
+  m_Fog: 0
+  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  m_FogMode: 3
+  m_FogDensity: 0.01
+  m_LinearFogStart: 0
+  m_LinearFogEnd: 300
+  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
+  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
+  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
+  m_AmbientIntensity: 1
+  m_AmbientMode: 0
+  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
+  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_HaloStrength: 0.5
+  m_FlareStrength: 1
+  m_FlareFadeSpeed: 3
+  m_HaloTexture: {fileID: 0}
+  m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
+  m_DefaultReflectionMode: 0
+  m_DefaultReflectionResolution: 128
+  m_ReflectionBounces: 1
+  m_ReflectionIntensity: 1
+  m_CustomReflection: {fileID: 0}
+  m_Sun: {fileID: 0}
+  m_UseRadianceAmbientProbe: 0
+--- !u!157 &3
+LightmapSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 13
+  m_BakeOnSceneLoad: 0
+  m_GISettings:
+    serializedVersion: 2
+    m_BounceScale: 1
+    m_IndirectOutputScale: 1
+    m_AlbedoBoost: 1
+    m_EnvironmentLightingMode: 0
+    m_EnableBakedLightmaps: 1
+    m_EnableRealtimeLightmaps: 0
+  m_LightmapEditorSettings:
+    serializedVersion: 12
+    m_Resolution: 2
+    m_BakeResolution: 40
+    m_AtlasSize: 1024
+    m_AO: 0
+    m_AOMaxDistance: 1
+    m_CompAOExponent: 1
+    m_CompAOExponentDirect: 0
+    m_ExtractAmbientOcclusion: 0
+    m_Padding: 2
+    m_LightmapParameters: {fileID: 0}
+    m_LightmapsBakeMode: 1
+    m_TextureCompression: 1
+    m_ReflectionCompression: 2
+    m_MixedBakeMode: 2
+    m_BakeBackend: 2
+    m_PVRSampling: 1
+    m_PVRDirectSampleCount: 32
+    m_PVRSampleCount: 512
+    m_PVRBounces: 2
+    m_PVREnvironmentSampleCount: 256
+    m_PVREnvironmentReferencePointCount: 2048
+    m_PVRFilteringMode: 1
+    m_PVRDenoiserTypeDirect: 1
+    m_PVRDenoiserTypeIndirect: 1
+    m_PVRDenoiserTypeAO: 1
+    m_PVRFilterTypeDirect: 0
+    m_PVRFilterTypeIndirect: 0
+    m_PVRFilterTypeAO: 0
+    m_PVREnvironmentMIS: 1
+    m_PVRCulling: 1
+    m_PVRFilteringGaussRadiusDirect: 1
+    m_PVRFilteringGaussRadiusIndirect: 1
+    m_PVRFilteringGaussRadiusAO: 1
+    m_PVRFilteringAtrousPositionSigmaDirect: 0.5
+    m_PVRFilteringAtrousPositionSigmaIndirect: 2
+    m_PVRFilteringAtrousPositionSigmaAO: 1
+    m_ExportTrainingData: 0
+    m_TrainingDataDestination: TrainingData
+    m_LightProbeSampleCountMultiplier: 4
+  m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
+  m_LightingSettings: {fileID: 0}
+--- !u!196 &4
+NavMeshSettings:
+  serializedVersion: 2
+  m_ObjectHideFlags: 0
+  m_BuildSettings:
+    serializedVersion: 3
+    agentTypeID: 0
+    agentRadius: 0.5
+    agentHeight: 2
+    agentSlope: 45
+    agentClimb: 0.4
+    ledgeDropHeight: 0
+    maxJumpAcrossDistance: 0
+    minRegionArea: 2
+    manualCellSize: 0
+    cellSize: 0.16666667
+    manualTileSize: 0
+    tileSize: 256
+    buildHeightMesh: 0
+    maxJobWorkers: 0
+    preserveTilesOutsideBounds: 0
+    debug:
+      m_Flags: 0
+  m_NavMeshData: {fileID: 0}
+--- !u!1 &143534974
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 143534976}
+  - component: {fileID: 143534975}
+  m_Layer: 0
+  m_Name: Case - Stream 640 Hz
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &143534975
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 143534974}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f08839578006415a9d94a9ce4ef663a9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184StreamRoute
+  _caseId:
+  _status: Inactive
+  _emittedMarkers: 0
+  _terminal: 0
+  _passed: 0
+  _offered: 0
+  _accepted: 0
+  _drained: 0
+  _replaced: 0
+  _rateDropped: 0
+  _maximumQueueDepth: 0
+  _disposalFailures: 0
+  _lastRetainedSequence: -1
+  _retainedOrdered: 1
+  _ownershipBalanced: 0
+  _remoteOriginApplied: 0
+  _sameOriginDrops: 0
+  _laterLocalOrigin: 0
+--- !u!4 &143534976
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 143534974}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &727549010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 727549012}
+  - component: {fileID: 727549011}
+  m_Layer: 0
+  m_Name: Case - Degraded Target
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &727549011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 727549010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f1320889ffd4aae8580cf5507278c6a, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184DegradedTargetRoute
+  _caseId:
+  _status: Inactive
+  _emittedMarkers: 0
+  _terminal: 0
+  _passed: 0
+  _targetStatus: Waiting
+  _succeededTargets:
+  _failedTargets:
+  _degradedObservedAt: -1
+--- !u!4 &727549012
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 727549010}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &877278916
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 877278918}
+  - component: {fileID: 877278917}
+  m_Layer: 0
+  m_Name: Case - Foxglove Profile
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &877278917
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 877278916}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 983acb559504477ebd0c4d69a7d1edbe, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184FoxgloveProfileRoute
+  _caseId:
+  _status: Inactive
+  _emittedMarkers: 0
+  _terminal: 0
+  _passed: 0
+  _acceptExplicitJson: 1
+  _inboundApplyStages: 0
+  _disabledWindowPreservedValue: 0
+  _sameValueAppliedAfterRecovery: 0
+  _laterLocalMutation: 0
+--- !u!4 &877278918
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 877278916}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1049645478
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1049645480}
+  - component: {fileID: 1049645479}
+  m_Layer: 0
+  m_Name: Phase184 Profile Acceptance
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1049645479
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1049645478}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b14099543264181bef8eb4dd8c743b2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184FoxRunProfileAcceptance
+  _manager: {fileID: 2041068851}
+  _foxgloveProfile: {fileID: 877278917}
+  _multiTarget: {fileID: 1298538958}
+  _degradedTarget: {fileID: 727549011}
+  _qosContract: {fileID: 1507483995}
+  _stream: {fileID: 143534975}
+  _selectedCase:
+  _status: Waiting for a Phase184-G run context.
+  _requestedPublishProfile:
+  _requestedSubscribeProfile:
+  _effectivePublishProfile:
+  _effectiveSubscribeProfile:
+  _tokenDigestPrefix:
+  _contextValidated: 0
+--- !u!4 &1049645480
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1049645478}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1298538957
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1298538959}
+  - component: {fileID: 1298538958}
+  m_Layer: 0
+  m_Name: Case - Multi Target
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1298538958
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1298538957}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b052fef51264defb3b5934d0271da7a, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184MultiTargetRoute
+  _caseId:
+  _status: Inactive
+  _emittedMarkers: 0
+  _terminal: 0
+  _passed: 0
+  _targetStatus: Waiting
+  _sameOriginDrops: 0
+  _remoteApplied: 0
+  _laterLocalMutation: 0
+--- !u!4 &1298538959
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1298538957}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1507483994
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1507483996}
+  - component: {fileID: 1507483995}
+  m_Layer: 0
+  m_Name: Case - QoS Contract
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1507483995
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1507483994}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae2bf84a4ef244ccb4185841a415279b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase184QosContractRoute
+  _caseId:
+  _status: Inactive
+  _emittedMarkers: 0
+  _terminal: 0
+  _passed: 0
+  _readyContracts: 0
+--- !u!4 &1507483996
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1507483994}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2041068850
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2041068852}
+  - component: {fileID: 2041068851}
+  m_Layer: 0
+  m_Name: FoxgloveManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2041068851
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2041068850}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
+  _publishCadenceDiagnosticsEnabled: 0
+  _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
+  _frameStallDiagnosticsEnabled: 0
+  _frameStallDiagnosticsThresholdMs: 200
+  _frameStallStageTimingDiagnosticsEnabled: 0
+  _foxRunPolicySerializationVersion: 3
+  _coordinateTransportPolicySerializationVersion: 1
+  _defaultFoxRunPublishTargets: 1
+  _defaultFoxRunPublishEncoding: 1
+  _legacyDefaultFoxRunNativePublishRos2Qos: 1
+  _defaultFoxRunNativePublishQos:
+    _profile: 1
+    _overrideReliability: 0
+    _reliability: 2
+    _overrideDurability: 0
+    _durability: 2
+    _overrideHistory: 0
+    _history: 2
+    _overrideDepth: 0
+    _depth: 10
+  _defaultFoxRunEncoding: 1
+  _defaultFoxRunSubscriptionEncoding: 1
+  _defaultFoxRunSubscriptionSource: 2
+  _legacyDefaultFoxRunRos2Qos: 1
+  _defaultFoxRunNativeSubscribeQos:
+    _profile: 1
+    _overrideReliability: 0
+    _reliability: 2
+    _overrideDurability: 0
+    _durability: 2
+    _overrideHistory: 0
+    _history: 2
+    _overrideDepth: 0
+    _depth: 10
+  _foxRunRos2NativeCopyBudgetBytes: 4194304
+  _enableFoxRunInbound: 1
+  _allowRemoteFoxRunInboundWithSharedToken: 0
+  _foxRunInboundMaxPayloadBytes: 65536
+  _foxRunInboundMaxMessagesPerSecondPerTopic: 1000
+  _foxRunDefaultSubscribeRateHz: 60
+  _serverName: Unity Foxglove SDK
+  _host: 127.0.0.1
+  _port: 8765
+  _startOnEnable: 1
+  _runInBackground: 1
+  _transportMode: 0
+  _transportModeBeforeOutputDisabled: 0
+  _foxgloveOutputEnabled: 1
+  _ros2NativeEnabled: 1
+  _profilingEnabled: 0
+  _defaultPublishRateHz: 60
+  _defaultPublisherEncoding: 1
+  _allowPublisherOverride: 1
+  _ros2BridgeEnabled: 1
+  _ros2BridgeHost: 127.0.0.1
+  _ros2BridgePort: 8767
+  _ros2BridgeAutoConnect: 1
+  _defaultRos2BridgeOutputEnabled: 0
+  _allowPublisherRos2BridgeOverride: 1
+  _ros2BridgeNamespace:
+  _legacyRos2BridgeQosPreset: 0
+  _legacyRos2BridgeCustomReliability: 0
+  _legacyRos2BridgeCustomDurability: 0
+  _legacyRos2BridgeCustomDepth: 10
+  _ros2BridgeQosSerializationVersion: 1
+  _ros2BridgeQos:
+    _profile: 1
+    _overrideReliability: 0
+    _reliability: 2
+    _overrideDurability: 0
+    _durability: 2
+    _overrideHistory: 0
+    _history: 2
+    _overrideDepth: 0
+    _depth: 10
+  _ros2BridgeQueueCapacity: 1024
+  _ros2BridgeReconnectIntervalMs: 1000
+  _ros2BridgeSendTimeoutMs: 1000
+  _coordinateMode: 1
+  _outputCoordinateMode: 1
+  _inputCoordinateMode: 1
+  _assetRoots: []
+  _enablePlaybackControl: 0
+  _playbackStartOffsetSeconds: 0
+  _playbackDurationSeconds: 60
+  _enableRecording: 0
+  _recordingPrefix: foxglove
+  _recordingDirectory:
+  _recordingChunkSizeKB: 1024
+  _recordingCompression: 0
+  _enableReplay: 0
+  _replayFilePath:
+  _replayAutoPlay: 0
+  _disableLivePublishers: 0
+  _enableRemoteMcapFileServer: 0
+  _remoteMcapFileServerHost: 127.0.0.1
+  _remoteMcapFileServerPort: 8891
+  _remoteMcapFileServerSourceId: local-mcap
+  _remoteMcapFileServerToken:
+  _enableReplayCursorBridge: 0
+  _replayCursorBridgeHost: 127.0.0.1
+  _replayCursorBridgePort: 8892
+  _replayCursorBridgeToken:
+  _identityModeSource: 0
+  _identityModeOverride: 0
+  _projectSettingsIdentityMode: 0
+  _schemaEvidenceRoot: Assets/Generated
+  _allowHostedFoxgloveWeb: 1
+  _allowedBrowserOrigins: []
+  _certificatePfxPath:
+  _certificatePassword:
+  _rootCaDistributorEnabled: 0
+  _rootCaDistributorHost: 127.0.0.1
+  _rootCaDistributorPort: 8766
+  _rootCaFilePath:
+  _sharedToken:
+--- !u!4 &2041068852
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2041068850}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1660057539 &9223372036854775807
+SceneRoots:
+  m_ObjectHideFlags: 0
+  m_Roots:
+  - {fileID: 2041068852}
+  - {fileID: 1049645480}
+  - {fileID: 877278918}
+  - {fileID: 1298538959}
+  - {fileID: 727549012}
+  - {fileID: 1507483996}
+  - {fileID: 143534976}

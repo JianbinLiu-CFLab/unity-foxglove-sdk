@@ -126,7 +126,9 @@ namespace Unity.FoxgloveSDK.Editor
                     member.ProtobufTypeShape,
                     index)
                 : string.Empty;
-            var jsonReader = $"FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error)";
+            var jsonReader = SupportsGeneratedJsonObject(member)
+                ? $"FoxRunInboundJson.TryReadObject(payload, \"{fieldName}\", out {typeName} __value, out error)"
+                : $"FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error)";
 
             sb.AppendLine($"{pad}            case {index}:");
             sb.AppendLine($"{pad}                {{");
@@ -512,12 +514,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool SupportsJsonInbound(FoxgloveSourceEmitter.TopicMember member)
         {
-            if (member.ProtobufTypeShape != null
-                && (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
-                    || member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum))
-            {
-                return false;
-            }
+            if (SupportsGeneratedJsonObject(member))
+                return true;
 
             var type = member.TypeName ?? string.Empty;
             return !type.EndsWith("[]", System.StringComparison.Ordinal)
@@ -525,5 +523,11 @@ namespace Unity.FoxgloveSDK.Editor
                    && type.IndexOf("IList<", System.StringComparison.Ordinal) < 0
                    && type.IndexOf("IReadOnlyList<", System.StringComparison.Ordinal) < 0;
         }
+
+        private static bool SupportsGeneratedJsonObject(
+            FoxgloveSourceEmitter.TopicMember member)
+            => member?.ProtobufTypeShape != null
+               && (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
+                   || member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum);
     }
 }

@@ -1582,6 +1582,12 @@ namespace Demo
     {
         public int Sequence { get; set; }
         public float Confidence { get; set; }
+        public sbyte SignedByte { get; set; }
+        public short SignedShort { get; set; }
+        public byte UnsignedByte { get; set; }
+        public ushort UnsignedShort { get; set; }
+        public byte[] Bytes { get; set; }
+        public List<short> Offsets { get; set; }
         public List<int> Values { get; set; }
         public List<CommandKind> Kinds { get; set; }
     }
@@ -1593,6 +1599,15 @@ namespace Demo
 
         [FoxRun(""/phase175/ints"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private int[] _incomingInts;
+
+        [FoxRun(""/phase175/bytes"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
+        private byte[] _incomingBytes;
+
+        [FoxRun(""/phase175/shorts"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
+        private List<short> _incomingShorts;
+
+        [FoxRun(""/phase175/byte"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
+        private byte _incomingByte;
 
         [FoxRun(""/phase175/kind"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private CommandKind _incomingKind;
@@ -2160,7 +2175,7 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynGeneratorDoesNotEmitNullableProtobufWriterConversionErrors()
+        public void RoslynGeneratorDoesNotEmitNullableProtobufWriterSyntaxOrConversionErrors()
         {
             var output = RunGeneratorAndUpdateCompilation(@"
 using System.Collections.Generic;
@@ -2192,7 +2207,7 @@ namespace Demo
 
             Assert.DoesNotContain(
                 output.GetDiagnostics(),
-                diagnostic => diagnostic.Id == "CS1503");
+                diagnostic => diagnostic.Id == "CS1001" || diagnostic.Id == "CS1503");
         }
 
         [Fact]
@@ -2453,6 +2468,216 @@ namespace Demo
             Assert.DoesNotContain(
                 output.GetDiagnostics(),
                 diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase184AcceptanceDeclarationsGenerateEveryLockedRoute()
+        {
+            const string source = @"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+namespace Demo
+{
+    public enum Phase181StateKind : ushort
+    {
+        Unknown,
+        Active
+    }
+
+    public sealed class Phase181NestedState
+    {
+        public bool Enabled { get; set; }
+        public string Label { get; set; }
+    }
+
+    public sealed class Phase181State
+    {
+        public int Count { get; set; }
+        public Phase181StateKind Kind { get; set; }
+        public string Message { get; set; }
+        public byte[] Bytes { get; set; }
+        public List<long> Values { get; set; }
+        public Phase181NestedState Nested { get; set; }
+        public int? OptionalCount { get; set; }
+        public string OptionalText { get; set; }
+    }
+
+    public partial class Phase184Acceptance
+    {
+        [FoxRun(""/foxrun/phase184/profile/default"",
+            Mode = FoxRunFlow.PublishAndSubscribe)]
+        private Phase181State _inheritedFoxglove;
+
+        [FoxRun(""/foxrun/phase184/profile/json"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Foxglove,
+            Targets = FoxRunEndpoint.Foxglove,
+            Encoding = FoxRunEncoding.JSON,
+            Policy = FoxRunPolicy.Change,
+            OnlyIf = nameof(AcceptExplicitJson))]
+        private Phase181State _explicitJson;
+
+        [FoxRun(""/foxrun/phase184/multi/state"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            Encoding = FoxRunEncoding.Protobuf,
+            QoS = FoxRunQosProfile.Default,
+            Policy = FoxRunPolicy.Change)]
+        private Phase181State _multiTarget;
+
+        [FoxRun(""/foxrun/phase184/degraded/state"",
+            Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
+            Encoding = FoxRunEncoding.Protobuf,
+            Policy = FoxRunPolicy.Change)]
+        private Phase181State _degradedTarget;
+
+        [FoxRun(""/foxrun/phase184/qos/system-default"",
+            Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            QoS = FoxRunQosProfile.SystemDefault)]
+        private Phase181State _qosSystemDefault;
+
+        [FoxRun(""/foxrun/phase184/qos/keep-all"",
+            Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            QoS = FoxRunQosProfile.Default,
+            History = FoxRunQosHistory.KeepAll)]
+        private Phase181State _qosKeepAll;
+
+        [FoxRun(""/foxrun/phase184/qos/keep-last-depth"",
+            Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            QoS = FoxRunQosProfile.Default,
+            Reliability = FoxRunQosReliability.BestEffort,
+            Durability = FoxRunQosDurability.TransientLocal,
+            History = FoxRunQosHistory.KeepLast,
+            Depth = 7)]
+        private Phase181State _qosKeepLastDepth;
+
+        [FoxRun(""/foxrun/phase184/stream/state"",
+            Mode = FoxRunFlow.Subscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.SensorData)]
+        private FoxRunStream<Phase181State> _streamInputPort =
+            new FoxRunStream<Phase181State>(
+                new FoxRunStreamOptions(
+                    32,
+                    1000d,
+                    16,
+                    FoxRunStreamOverflowPolicy.DropOldest));
+
+        [FoxRun(""/foxrun/phase184/zenoh/origin"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.SensorData,
+            Policy = FoxRunPolicy.Change)]
+        private Phase181State _zenohOrigin;
+
+        private bool AcceptExplicitJson() => true;
+    }
+}";
+            var result = RunGenerator(source);
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains(
+                    "partial class Phase184Acceptance",
+                    StringComparison.Ordinal));
+            var allGenerated = string.Join(
+                Environment.NewLine,
+                result.GeneratedTrees.Select(tree => tree.GetText().ToString()));
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            var output = RunGeneratorAndUpdateCompilation(source);
+            var compilationErrors = output.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+            Assert.True(
+                compilationErrors.Length == 0,
+                string.Join(Environment.NewLine, compilationErrors.Select(error => error.ToString()))
+                + Environment.NewLine
+                + generated);
+#endif
+            foreach (var topic in new[]
+                     {
+                         "/foxrun/phase184/profile/default",
+                         "/foxrun/phase184/profile/json",
+                         "/foxrun/phase184/multi/state",
+                         "/foxrun/phase184/degraded/state",
+                         "/foxrun/phase184/qos/system-default",
+                         "/foxrun/phase184/qos/keep-all",
+                         "/foxrun/phase184/qos/keep-last-depth",
+                         "/foxrun/phase184/stream/state",
+                         "/foxrun/phase184/zenoh/origin",
+                     })
+            {
+                Assert.Contains(topic, generated, StringComparison.Ordinal);
+            }
+            Assert.Contains("RegisterStream<", allGenerated, StringComparison.Ordinal);
+            Assert.Contains("_streamInputPort", allGenerated, StringComparison.Ordinal);
+            Assert.Contains("() => AcceptExplicitJson()", generated, StringComparison.Ordinal);
+
+            var acceptanceSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase184FoxRunProfileAcceptance.cs");
+            foreach (var declarationAnchor in new[]
+                     {
+                         "private Phase181State _inheritedFoxglove;",
+                         "private Phase181State _explicitJson;",
+                         "private Phase181State _multiTarget;",
+                         "private Phase181State _degradedTarget;",
+                         "private Phase181State _qosSystemDefault;",
+                         "private Phase181State _qosKeepAll;",
+                         "private Phase181State _qosKeepLastDepth;",
+                         "private FoxRunStream<Phase181State> _streamInputPort =",
+                         "private Phase181State _zenohOrigin;",
+                     })
+            {
+                Assert.Contains(declarationAnchor, acceptanceSource, StringComparison.Ordinal);
+            }
+            Assert.Contains(
+                "\" token=\" + Phase184AcceptanceText.SafeMarker(context.Token)",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            foreach (var routeType in new[]
+                     {
+                         "Phase184FoxgloveProfileRoute",
+                         "Phase184MultiTargetRoute",
+                         "Phase184DegradedTargetRoute",
+                         "Phase184QosContractRoute",
+                         "Phase184StreamRoute",
+                     })
+            {
+                var routeSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                    "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                    + routeType
+                    + ".cs");
+                Assert.Contains(
+                    "partial class " + routeType,
+                    routeSource,
+                    StringComparison.Ordinal);
+            }
+
+            var batchProbeSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184BatchModeProfileProbe.cs");
+            Assert.Contains(
+                "PHASE184G_MANUAL_PLAY_EXITED case=",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SessionState.SetString(ManualTokenSessionKey, _manualToken);",
+                batchProbeSource,
+                StringComparison.Ordinal);
         }
 
         [Theory]
