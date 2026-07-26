@@ -491,6 +491,114 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(nullable_empty["has_optional_count"])
         self.assertFalse(nullable_empty["has_optional_text"])
 
+    def test_initial_bidirectional_probe_retries_after_graph_readiness_until_unity_applies(self):
+        """Verify Phase181 behavior: a volatile first P&S sample is not a one-shot discovery race."""
+        peer = load_peer_module()
+
+        self.assertFalse(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=False,
+                origin_probe_ready=True,
+                initial_remote_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=True,
+                origin_probe_ready=False,
+                initial_remote_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertTrue(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=True,
+                origin_probe_ready=True,
+                initial_remote_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=True,
+                origin_probe_ready=True,
+                initial_remote_applied=False,
+                now=10.5,
+                next_publish_time=10.75,
+            )
+        )
+        self.assertTrue(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=True,
+                origin_probe_ready=True,
+                initial_remote_applied=False,
+                now=10.75,
+                next_publish_time=10.75,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                graph_evidence=True,
+                origin_probe_ready=True,
+                initial_remote_applied=True,
+                now=11.0,
+                next_publish_time=10.75,
+            )
+        )
+
+    def test_same_origin_probe_reuses_a_pre_remote_unity_envelope(self):
+        """Verify Phase181 behavior: origin proof does not wait for a correctly suppressed remote echo."""
+        peer = load_peer_module()
+        token = "opaque-local-token"
+        initial_local = peer.custom_payload_fields(token, null_empty=True)
+        correlated_remote = peer.custom_payload_fields(token, null_empty=False)
+
+        self.assertTrue(peer.is_unity_origin_probe("unity-origin", initial_local, token))
+        self.assertFalse(peer.is_unity_origin_probe("", initial_local, token))
+        self.assertFalse(peer.is_unity_origin_probe("remote-" + token, initial_local, token))
+        self.assertFalse(peer.is_unity_origin_probe("remote-final-" + token, initial_local, token))
+        self.assertFalse(peer.is_unity_origin_probe("unity-origin", correlated_remote, token))
+
+    def test_bidirectional_apply_count_requires_the_exact_token_and_topic(self):
+        """Verify Phase181 behavior: nullable proof comes only from Unity's second correlated apply."""
+        peer = load_peer_module()
+        token = "opaque-local-token"
+        topic = peer.DEFAULT_TOPICS["bidirectional"]
+        markers = [
+            peer.protocol.UnityMarker(
+                "PHASE181_CUSTOM_ROS2_APPLIED",
+                {"token": token, "topic": topic, "applied": "1"},
+                "first",
+            ),
+            peer.protocol.UnityMarker(
+                "PHASE181_CUSTOM_ROS2_APPLIED",
+                {"token": token, "topic": topic, "applied": "2"},
+                "second",
+            ),
+            peer.protocol.UnityMarker(
+                "PHASE181_CUSTOM_ROS2_APPLIED",
+                {"token": "foreign-token", "topic": topic, "applied": "3"},
+                "foreign-token",
+            ),
+            peer.protocol.UnityMarker(
+                "PHASE181_CUSTOM_ROS2_APPLIED",
+                {"token": token, "topic": peer.DEFAULT_TOPICS["subscribe"], "applied": "4"},
+                "foreign-topic",
+            ),
+        ]
+
+        self.assertEqual(2, peer.count_bidirectional_apply_markers(markers, token))
+
     def test_final_bidirectional_probe_retries_until_unity_reports_the_remote_apply(self):
         """Verify Phase181 behavior: the final nullable probe is retried after the same-origin replay barrier."""
         peer = load_peer_module()
