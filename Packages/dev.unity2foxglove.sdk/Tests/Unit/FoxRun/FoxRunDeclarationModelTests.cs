@@ -1580,6 +1580,8 @@ namespace Demo
 
     public sealed class Command
     {
+        public int Sequence { get; set; }
+        public float Confidence { get; set; }
         public List<int> Values { get; set; }
         public List<CommandKind> Kinds { get; set; }
     }

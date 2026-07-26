@@ -678,8 +678,8 @@ namespace Unity.FoxgloveSDK.Editor
                 else if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
-                    sb.AppendLine($"{pad}                var __payload = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
-                    sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload, __foxRunOrigin);");
+                    sb.AppendLine($"{pad}                var __payload_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
+                    sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload_{i}, __foxRunOrigin);");
                 }
                 else
                 {

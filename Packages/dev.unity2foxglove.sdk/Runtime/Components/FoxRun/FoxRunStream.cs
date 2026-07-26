@@ -111,10 +111,7 @@ namespace Unity.FoxgloveSDK.Components
             lock (_gate)
             {
                 if (_disposed)
-                {
-                    SaturatingIncrement(ref _rateDropped);
                     return false;
-                }
 
                 if (_hasAdmissionTimestamp
                     && now - _lastAdmissionTimestamp < _minimumAdmissionTicks)
@@ -389,7 +386,7 @@ namespace Unity.FoxgloveSDK.Components
             => owned.Materialize(RecordDisposalFailure);
 
         private Queue<OwnedSample> CreateEmptyQueue()
-            => new Queue<OwnedSample>();
+            => new Queue<OwnedSample>(Math.Min(Options.Capacity, 4096));
 
         private void DisposeAll(Queue<OwnedSample> owned)
         {

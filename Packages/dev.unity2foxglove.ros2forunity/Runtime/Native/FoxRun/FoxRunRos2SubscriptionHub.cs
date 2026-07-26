@@ -475,6 +475,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RuntimeDiagnosticContext.Unknown;
         private ROS2.ROS2UnityComponent _ros2Unity;
         private Ros2ForUnityFoxRunNodeOwner _nodeOwner;
+        private SynchronizationContext _hostSynchronizationContext;
+        private int _hostThreadId;
         private float _managerSearchCooldown;
         private float _scanCooldown;
         private bool _stopping;
@@ -642,6 +644,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Awake()
         {
+            _hostSynchronizationContext = SynchronizationContext.Current;
+            _hostThreadId = Thread.CurrentThread.ManagedThreadId;
             if (_instance != null && _instance != this)
             {
                 _duplicate = true;
@@ -1164,6 +1168,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     materializeOwned,
                     transferOwned,
                     clearOwned,
+                    DispatchCleanupToHostThread,
                     backend,
                     qos,
                     qosFactory: null,
@@ -1219,6 +1224,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private long ActiveGeneration()
             => _activeSession.ReadGeneration();
+
+        private void DispatchCleanupToHostThread(Action cleanup)
+        {
+            if (cleanup == null)
+                throw new ArgumentNullException(nameof(cleanup));
+            if (Thread.CurrentThread.ManagedThreadId == _hostThreadId)
+            {
+                cleanup();
+                return;
+            }
+            var context = _hostSynchronizationContext;
+            if (context == null)
+            {
+                throw new InvalidOperationException(
+                    "The Unity host synchronization context is unavailable for deferred ROS2 stream cleanup.");
+            }
+            context.Post(_ => cleanup(), null);
+        }
 
         private void RecordUnsupported(
             string endpointIdentity,

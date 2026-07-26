@@ -86,8 +86,10 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var number = FoxRunProtobufFieldNumber.Resolve(shape.TypeName + "|" + field.MemberName, field.ProtobufFieldNumber);
                 sb.AppendLine($"{pad}                case {number}:");
+                sb.AppendLine($"{pad}                {{");
                 EmitFieldDecode(sb, field, rootIndex, shapes, pad + "                    ");
                 sb.AppendLine($"{pad}                    break;");
+                sb.AppendLine($"{pad}                }}");
             }
             sb.AppendLine($"{pad}            }}");
             sb.AppendLine($"{pad}        }}");

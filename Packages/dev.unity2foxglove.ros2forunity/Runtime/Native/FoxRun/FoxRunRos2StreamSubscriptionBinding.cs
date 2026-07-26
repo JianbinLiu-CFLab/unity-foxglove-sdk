@@ -21,6 +21,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         : IFoxRunRos2HostBinding
         where TTransport : ROS2.Message, new()
     {
+        private const int CleanupNotStarted = 0;
+        private const int CleanupInProgress = 1;
+        private const int CleanupFinished = 2;
         private readonly object _lifecycleLock = new object();
         private readonly Func<long> _activeGeneration;
         private readonly long _maximumCopyBytes;
@@ -28,6 +31,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<TTransport, FoxRunRos2CopyContext, TSample> _materializeOwned;
         private readonly Action<TSample> _transferOwned;
         private readonly Action _clearOwned;
+        private readonly Action<Action> _dispatchCleanup;
         private readonly Func<TTransport, bool> _dropBorrowed;
         private readonly IFoxRunRos2NativeBackend _backend;
         private readonly FoxRunResolvedQos _qos;
@@ -39,8 +43,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _callbacksInFlight;
         private int _stopping;
         private int _cleanupComplete;
+        private int _cleanupDispatchPending;
+        private int _failedRegistrationCleanupPending;
         private int _nodeReleased;
+        private bool _teardownFailureRecorded;
         private bool _registrationInFlight;
+        private ExceptionDispatchInfo _failedRegistrationFatal;
         private long _registrationAttemptSequence;
         private long _activeRegistrationAttempt;
         private long _received;
@@ -57,6 +65,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
             Action<TSample> transferOwned,
             Action clearOwned,
+            Action<Action> dispatchCleanup,
             IFoxRunRos2NativeBackend backend,
             FoxRunResolvedQos? qos = null,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
@@ -74,6 +83,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _materializeOwned = materializeOwned ?? throw new ArgumentNullException(nameof(materializeOwned));
             _transferOwned = transferOwned ?? throw new ArgumentNullException(nameof(transferOwned));
             _clearOwned = clearOwned ?? throw new ArgumentNullException(nameof(clearOwned));
+            _dispatchCleanup = dispatchCleanup ?? throw new ArgumentNullException(nameof(dispatchCleanup));
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qos = qos ?? FoxRunResolvedQos.Default;
             _qosFactory = qosFactory;
@@ -307,13 +317,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 snapshot = default;
                 return false;
             }
+            FoxRunRos2RegistrationResult registration;
+            lock (_lifecycleLock)
+                registration = _lastRegistration;
             snapshot = new FoxRunRos2SubscriptionBindingSnapshot(
                 Contract,
                 _qos,
                 SessionGeneration,
                 State,
-                _lastRegistration.Error,
-                _lastRegistration.Diagnostic,
+                registration.Error,
+                registration.Diagnostic,
                 Interlocked.Read(ref _received),
                 0,
                 0,
@@ -354,23 +367,47 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public void Stop()
         {
-            if (Interlocked.CompareExchange(ref _stopping, 1, 0) != 0)
-                return;
+            var beginStop = Interlocked.CompareExchange(ref _stopping, 1, 0) == 0;
+            if (beginStop)
+                Volatile.Write(ref _admissionOpen, 0);
 
-            Volatile.Write(ref _admissionOpen, 0);
+            var fatal = TryCompleteFailedRegistrationCleanupForStop();
+            if (!beginStop)
+            {
+                var retryFatal = TryCompleteStoppedCleanup();
+                if (retryFatal != null)
+                    RecordTeardownFailure("stream cleanup retry", retryFatal);
+                if (Volatile.Read(ref _cleanupComplete) != CleanupFinished)
+                    RecordPendingCleanup();
+                fatal ??= retryFatal;
+                if (fatal != null)
+                    ExceptionDispatchInfo.Capture(fatal).Throw();
+                return;
+            }
+
             IFoxRunRos2NativeSubscriptionToken token;
+            var registrationPending = false;
             lock (_lifecycleLock)
             {
                 token = _token;
                 _token = null;
                 Volatile.Write(ref _activeRegistrationAttempt, 0L);
                 Volatile.Write(ref _state, (int)FoxRunRos2SubscriptionBindingState.Stopped);
-                _lastRegistration = StoppedResult();
+                if (!_teardownFailureRecorded)
+                    _lastRegistration = StoppedResult();
                 if (_registrationInFlight)
-                    return;
+                {
+                    RecordPendingCleanupUnderLock();
+                    registrationPending = true;
+                }
+            }
+            if (registrationPending)
+            {
+                if (fatal != null)
+                    ExceptionDispatchInfo.Capture(fatal).Throw();
+                return;
             }
 
-            Exception fatal = null;
             if (token != null)
             {
                 try
@@ -380,13 +417,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 catch (Exception exception)
                 {
                     fatal = exception;
+                    RecordTeardownFailure("remove stream subscription", exception);
                 }
             }
 
             var cleanupFatal = TryCompleteStoppedCleanup();
+            if (cleanupFatal != null)
+                RecordTeardownFailure("stream cleanup", cleanupFatal);
+            if (Volatile.Read(ref _cleanupComplete) != CleanupFinished)
+                RecordPendingCleanup();
             fatal ??= cleanupFatal;
             if (fatal != null)
                 ExceptionDispatchInfo.Capture(fatal).Throw();
+        }
+
+        private Exception TryCompleteFailedRegistrationCleanupForStop()
+        {
+            try
+            {
+                CompleteFailedRegistrationCleanup(throwFatal: true);
+                return null;
+            }
+            catch (Exception exception)
+            {
+                RecordTeardownFailure(
+                    "failed-registration stream cleanup retry",
+                    exception);
+                return exception;
+            }
         }
 
         private void OnBorrowedMessage(long registrationAttempt, TTransport borrowed)
@@ -465,26 +523,44 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             finally
             {
                 if (Interlocked.Decrement(ref _callbacksInFlight) == 0
-                    && Volatile.Read(ref _stopping) != 0)
+                    && (Volatile.Read(ref _stopping) != 0
+                        || Volatile.Read(ref _failedRegistrationCleanupPending) != 0))
                 {
-                    try
-                    {
-                        // Stop must remain non-blocking. The final callback
-                        // completes ordered clear/release without unwinding
-                        // into the native executor.
-                        TryCompleteStoppedCleanup();
-                    }
-                    catch
-                    {
-                        // Cleanup failures cannot escape a native callback.
-                    }
+                    DispatchDeferredCleanup();
                 }
+            }
+        }
+
+        private void DispatchDeferredCleanup()
+        {
+            if (Interlocked.CompareExchange(ref _cleanupDispatchPending, 1, 0) != 0)
+                return;
+            try
+            {
+                // The callback producer only signals readiness. Generated
+                // disposers and node release must run through the Unity host
+                // thread dispatcher.
+                _dispatchCleanup(() =>
+                {
+                    Interlocked.Exchange(ref _cleanupDispatchPending, 0);
+                    CompleteFailedRegistrationCleanup(throwFatal: false);
+                    var cleanupFatal = TryCompleteStoppedCleanup();
+                    if (cleanupFatal != null)
+                        RecordTeardownFailure("deferred stream cleanup", cleanupFatal);
+                });
+            }
+            catch (Exception exception)
+            {
+                Interlocked.Exchange(ref _cleanupDispatchPending, 0);
+                RecordTeardownFailure("dispatch deferred stream cleanup", exception);
+                // Dispatcher failures cannot escape a native callback.
             }
         }
 
         private Exception TryCompleteStoppedCleanup()
         {
-            if (Volatile.Read(ref _callbacksInFlight) != 0)
+            if (Volatile.Read(ref _stopping) == 0
+                || Volatile.Read(ref _callbacksInFlight) != 0)
                 return null;
             lock (_lifecycleLock)
             {
@@ -492,17 +568,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return null;
             }
 
+            if (Interlocked.CompareExchange(
+                    ref _cleanupComplete,
+                    CleanupInProgress,
+                    CleanupNotStarted) != CleanupNotStarted)
+                return null;
+
             Exception fatal = null;
-            if (Interlocked.CompareExchange(ref _cleanupComplete, 1, 0) == 0)
+            try
             {
-                try
-                {
-                    _clearOwned();
-                }
-                catch (Exception exception)
-                {
-                    fatal = exception;
-                }
+                _clearOwned();
+            }
+            catch (Exception exception)
+            {
+                fatal = exception;
             }
 
             try
@@ -513,6 +592,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 fatal ??= exception;
             }
+            finally
+            {
+                Volatile.Write(ref _cleanupComplete, CleanupFinished);
+            }
+            if (fatal == null)
+                MarkStoppedCleanupComplete();
             return fatal;
         }
 
@@ -581,10 +666,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
             }
 
-            var spinner = new SpinWait();
-            while (Volatile.Read(ref _callbacksInFlight) != 0)
-                spinner.SpinOnce();
+            lock (_lifecycleLock)
+            {
+                _failedRegistrationFatal = fatal;
+                Volatile.Write(ref _failedRegistrationCleanupPending, 1);
+            }
+            if (Volatile.Read(ref _callbacksInFlight) == 0)
+                CompleteFailedRegistrationCleanup(throwFatal: true);
+        }
 
+        private void CompleteFailedRegistrationCleanup(bool throwFatal)
+        {
+            if (Volatile.Read(ref _callbacksInFlight) != 0
+                || Interlocked.CompareExchange(
+                    ref _failedRegistrationCleanupPending,
+                    0,
+                    1) != 1)
+                return;
+
+            ExceptionDispatchInfo fatal;
+            lock (_lifecycleLock)
+            {
+                fatal = _failedRegistrationFatal;
+                _failedRegistrationFatal = null;
+            }
             try
             {
                 _clearOwned();
@@ -600,6 +705,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             var terminalCleanup = false;
+            var terminalCleanupClaimed = false;
             lock (_lifecycleLock)
             {
                 _registrationInFlight = false;
@@ -610,10 +716,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 terminalCleanup = Volatile.Read(ref _stopping) != 0;
                 if (terminalCleanup)
-                    Interlocked.CompareExchange(ref _cleanupComplete, 1, 0);
+                {
+                    terminalCleanupClaimed = Interlocked.CompareExchange(
+                        ref _cleanupComplete,
+                        CleanupInProgress,
+                        CleanupNotStarted) == CleanupNotStarted;
+                }
             }
 
-            if (terminalCleanup)
+            if (terminalCleanup && terminalCleanupClaimed)
             {
                 try
                 {
@@ -628,8 +739,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     fatal ??= ExceptionDispatchInfo.Capture(exception);
                 }
+                finally
+                {
+                    Volatile.Write(ref _cleanupComplete, CleanupFinished);
+                }
             }
-            fatal?.Throw();
+            if (terminalCleanup && terminalCleanupClaimed && fatal == null)
+                MarkStoppedCleanupComplete();
+            if (fatal != null && !throwFatal)
+            {
+                RecordTeardownFailure(
+                    "deferred failed-registration cleanup",
+                    fatal.SourceException);
+            }
+            if (throwFatal)
+                fatal?.Throw();
         }
 
         private void RethrowRegistrationFatal(
@@ -662,6 +786,45 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (Interlocked.CompareExchange(ref _nodeReleased, 1, 0) == 0)
                 _backend.ReleaseNodeOwnership();
+        }
+
+        private void RecordTeardownFailure(string stage, Exception exception)
+        {
+            var diagnostic = exception.GetType().Name + ": " + stage;
+            lock (_lifecycleLock)
+            {
+                if (_teardownFailureRecorded)
+                    return;
+                _teardownFailureRecorded = true;
+                _lastRegistration = FoxRunRos2RegistrationResult.Failure(
+                    FoxRunRos2RegistrationError.TeardownFailure,
+                    diagnostic);
+            }
+        }
+
+        private void RecordPendingCleanup()
+        {
+            lock (_lifecycleLock)
+                RecordPendingCleanupUnderLock();
+        }
+
+        private void RecordPendingCleanupUnderLock()
+        {
+            if (_teardownFailureRecorded
+                || Volatile.Read(ref _cleanupComplete) == CleanupFinished)
+                return;
+            _lastRegistration = FoxRunRos2RegistrationResult.Failure(
+                FoxRunRos2RegistrationError.TeardownFailure,
+                "CleanupPending");
+        }
+
+        private void MarkStoppedCleanupComplete()
+        {
+            lock (_lifecycleLock)
+            {
+                if (!_teardownFailureRecorded)
+                    _lastRegistration = StoppedResult();
+            }
         }
 
         private static FoxRunRos2RegistrationResult StoppedResult()

@@ -125,8 +125,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("var __payload = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
-            Assert.Contains("bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __payload,", source, StringComparison.Ordinal);
+            Assert.Contains("var __payload_0 = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __payload_0,", source, StringComparison.Ordinal);
         }
 
         [Fact]

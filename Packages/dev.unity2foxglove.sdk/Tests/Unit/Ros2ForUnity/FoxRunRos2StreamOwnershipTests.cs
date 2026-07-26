@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Components;
@@ -120,6 +121,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 (message, _) => message,
                 _ => transferred++,
                 () => { },
+                action => action(),
                 backend,
                 FoxRunResolvedQos.Default,
                 new ManagedQosFactory());
@@ -304,6 +306,225 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
         }
 
+        [Fact]
+        public void InFlightCallbackMakesPendingTeardownObservableUntilHostCleanupRuns()
+        {
+            var dispatcher = new TestHostDispatcher(Thread.CurrentThread.ManagedThreadId);
+            var backend = new FakeBackend();
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () => backend.Events.Add("clear"),
+                dispatchCleanup: dispatcher.Dispatch);
+            Assert.True(binding.TryRegister().Succeeded);
+            var callback = new Thread(
+                () => backend.Invoke(new FakeMessage { Data = "blocked" }))
+            {
+                IsBackground = true
+            };
+            callback.Start();
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            binding.Stop();
+
+            Assert.True(binding.TryGetSnapshot(7, out var pending));
+            Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, pending.Error);
+            Assert.Equal(0, backend.ReleaseCount);
+            finishMaterialize.Set();
+            Assert.True(callback.Join(TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, dispatcher.PendingCount);
+
+            dispatcher.RunPending();
+
+            Assert.True(binding.TryGetSnapshot(7, out var stopped));
+            Assert.Equal(FoxRunRos2RegistrationError.Stopped, stopped.Error);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+        }
+
+        [Fact]
+        public void RepeatedStopRetriesCleanupAfterHostDispatchFailure()
+        {
+            var hostThreadId = Thread.CurrentThread.ManagedThreadId;
+            var backend = new FakeBackend();
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var clearThreadId = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    clearThreadId = Thread.CurrentThread.ManagedThreadId;
+                    backend.Events.Add("clear");
+                },
+                dispatchCleanup: _ => throw new InvalidOperationException("host unavailable"));
+            Assert.True(binding.TryRegister().Succeeded);
+            var callback = new Thread(
+                () => backend.Invoke(new FakeMessage { Data = "blocked" }))
+            {
+                IsBackground = true
+            };
+            callback.Start();
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            binding.Stop();
+            finishMaterialize.Set();
+            Assert.True(callback.Join(TimeSpan.FromSeconds(5)));
+
+            Assert.True(binding.TryGetSnapshot(7, out var failedDispatch));
+            Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, failedDispatch.Error);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            binding.Stop();
+
+            Assert.Equal(hostThreadId, clearThreadId);
+            Assert.Equal(hostThreadId, backend.ReleaseThreadId);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.True(binding.TryGetSnapshot(7, out var retainedFailure));
+            Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, retainedFailure.Error);
+        }
+
+        [Fact]
+        public async Task CompetingCleanupCannotReleaseNodeBeforeOwnedValuesFinishClearing()
+        {
+            var backend = new FakeBackend();
+            using var clearEntered = new ManualResetEventSlim();
+            using var finishClear = new ManualResetEventSlim();
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => new OwnedSample(message.Data),
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    backend.Events.Add("clear");
+                    clearEntered.Set();
+                    Assert.True(finishClear.Wait(TimeSpan.FromSeconds(5)));
+                });
+            var cleanup = binding.GetType().GetMethod(
+                "TryCompleteStoppedCleanup",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(cleanup);
+            Assert.True(binding.TryRegister().Succeeded);
+
+            var stop = Task.Run(binding.Stop);
+            Assert.True(clearEntered.Wait(TimeSpan.FromSeconds(5)));
+            var competitor = Task.Run(() => cleanup.Invoke(binding, null));
+            await competitor.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(0, backend.ReleaseCount);
+            finishClear.Set();
+            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+        }
+
+        [Fact]
+        public async Task DeferredCleanupFailureRemainsVisibleInTheBindingSnapshot()
+        {
+            var backend = new FakeBackend();
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () => throw new InvalidOperationException("deferred clear failed"));
+            Assert.True(binding.TryRegister().Succeeded);
+            var callback = Task.Run(() => backend.Invoke(new FakeMessage { Data = "blocked" }));
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            binding.Stop();
+            finishMaterialize.Set();
+            await callback.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(binding.TryGetSnapshot(7, out var snapshot));
+            Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, snapshot.Error);
+            Assert.Equal(
+                "The native ROS2 subscription did not complete teardown.",
+                snapshot.Diagnostic);
+            var lastRegistration = binding.GetType().GetField(
+                "_lastRegistration",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(lastRegistration);
+            var registration = Assert.IsType<FoxRunRos2RegistrationResult>(
+                lastRegistration.GetValue(binding));
+            Assert.Equal("InvalidOperationException", registration.FailureKind);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void DeferredCleanupRunsOnlyThroughTheHostThreadDispatcher()
+        {
+            var hostThreadId = Thread.CurrentThread.ManagedThreadId;
+            var dispatcher = new TestHostDispatcher(hostThreadId);
+            var backend = new FakeBackend();
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var clearThreadId = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    clearThreadId = Thread.CurrentThread.ManagedThreadId;
+                    backend.Events.Add("clear");
+                },
+                dispatchCleanup: dispatcher.Dispatch);
+            Assert.True(binding.TryRegister().Succeeded);
+            var callback = new Thread(
+                () => backend.Invoke(new FakeMessage { Data = "blocked" }))
+            {
+                IsBackground = true
+            };
+            callback.Start();
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            binding.Stop();
+            finishMaterialize.Set();
+            Assert.True(callback.Join(TimeSpan.FromSeconds(5)));
+
+            Assert.Equal(1, dispatcher.PendingCount);
+            Assert.Equal(0, clearThreadId);
+            Assert.Equal(0, backend.ReleaseCount);
+            dispatcher.RunPending();
+
+            Assert.Equal(hostThreadId, clearThreadId);
+            Assert.Equal(hostThreadId, backend.ReleaseThreadId);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -407,6 +628,117 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FailedRegistrationReturnsWhileItsSynchronousOwnedCallbackIsStillInFlight()
+        {
+            var hostThreadId = Thread.CurrentThread.ManagedThreadId;
+            var dispatcher = new TestHostDispatcher(hostThreadId);
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var backend = new FakeBackend
+            {
+                ReturnedToken = new FakeToken(isUsable: false),
+                InvokeAsynchronouslyOnRegister = true,
+                AsyncCallbackEntered = materializeEntered
+            };
+            var cleared = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    cleared++;
+                    backend.Events.Add("clear");
+                },
+                dispatchCleanup: dispatcher.Dispatch);
+            FoxRunRos2RegistrationResult registration = default;
+            Exception registrationFailure = null;
+            var registerThread = new Thread(() =>
+            {
+                try
+                {
+                    registration = binding.TryRegister();
+                }
+                catch (Exception exception)
+                {
+                    registrationFailure = exception;
+                }
+            }) { IsBackground = true };
+            registerThread.Start();
+            Assert.True(materializeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            var returnedBeforeCallback = registerThread.Join(TimeSpan.FromSeconds(1));
+            finishMaterialize.Set();
+            Assert.True(backend.JoinRegistrationCallback(TimeSpan.FromSeconds(5)));
+            Assert.True(registerThread.Join(TimeSpan.FromSeconds(5)));
+            dispatcher.RunPending();
+
+            Assert.True(returnedBeforeCallback);
+            Assert.Null(registrationFailure);
+            Assert.False(registration.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.InvalidSubscriptionToken, registration.Error);
+            Assert.Equal(1, cleared);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.InvokeAsynchronouslyOnRegister = false;
+            backend.ReturnedToken = new FakeToken();
+            Assert.True(binding.TryRegister().Succeeded);
+            binding.Stop();
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void StopRetriesFailedRegistrationCleanupAfterHostDispatchFailure()
+        {
+            using var materializeEntered = new ManualResetEventSlim();
+            using var finishMaterialize = new ManualResetEventSlim();
+            var backend = new FakeBackend
+            {
+                ReturnedToken = new FakeToken(isUsable: false),
+                InvokeAsynchronouslyOnRegister = true,
+                AsyncCallbackEntered = materializeEntered
+            };
+            var cleared = 0;
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) =>
+                {
+                    materializeEntered.Set();
+                    Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
+                    return new OwnedSample(message.Data);
+                },
+                transferOwned: _ => { },
+                clearOwned: () =>
+                {
+                    cleared++;
+                    backend.Events.Add("clear");
+                },
+                dispatchCleanup: _ => throw new InvalidOperationException("host unavailable"));
+
+            var registration = binding.TryRegister();
+            Assert.False(registration.Succeeded);
+            finishMaterialize.Set();
+            Assert.True(backend.JoinRegistrationCallback(TimeSpan.FromSeconds(5)));
+            Assert.Equal(0, cleared);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            binding.Stop();
+            binding.Stop();
+
+            Assert.Equal(1, cleared);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.True(binding.TryGetSnapshot(7, out var snapshot));
+            Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, snapshot.Error);
+        }
+
+        [Fact]
         public void StopDefersCleanupUntilBlockedRegistrationRollsBackInOwnershipOrder()
         {
             using var registerEntered = new ManualResetEventSlim();
@@ -504,7 +836,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Func<bool> tryAdmitInput,
             Func<FakeMessage, FoxRunRos2CopyContext, OwnedSample> materializeOwned,
             Action<OwnedSample> transferOwned,
-            Action clearOwned = null)
+            Action clearOwned = null,
+            Action<Action> dispatchCleanup = null)
             => new FoxRunRos2StreamSubscriptionBinding<FakeMessage, OwnedSample>(
                 Contract(),
                 7,
@@ -514,6 +847,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 materializeOwned,
                 transferOwned,
                 clearOwned ?? (() => { }),
+                dispatchCleanup ?? (action => action()),
                 backend,
                 FoxRunResolvedQos.Default,
                 new ManagedQosFactory());
@@ -562,13 +896,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 = new System.Collections.Generic.List<string>();
             public int RemoveCount;
             public int ReleaseCount { get; private set; }
+            public int ReleaseThreadId { get; private set; }
             public IFoxRunRos2NativeSubscriptionToken ReturnedToken { get; set; }
                 = new FakeToken();
             public bool InvokeSynchronouslyOnRegister { get; set; }
+            public bool InvokeAsynchronouslyOnRegister { get; set; }
             public int RegistrationFailuresRemaining { get; set; }
             public Exception RemoveException { get; set; }
             public ManualResetEventSlim RegisterEntered { get; set; }
             public ManualResetEventSlim ReleaseRegister { get; set; }
+            public ManualResetEventSlim AsyncCallbackEntered { get; set; }
+            private Thread _registrationCallback;
 
             public FoxRunRos2NativeBackendRegistration Register<T>(
                 FoxRunRos2GeneratedContract contract,
@@ -580,6 +918,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 _lateCallback = _callback;
                 if (InvokeSynchronouslyOnRegister)
                     _callback(new FakeMessage { Data = "synchronous" });
+                if (InvokeAsynchronouslyOnRegister)
+                {
+                    var registrationCallback = _callback;
+                    _registrationCallback = new Thread(
+                        () => registrationCallback(new FakeMessage { Data = "asynchronous" }))
+                    {
+                        IsBackground = true
+                    };
+                    _registrationCallback.Start();
+                    if (AsyncCallbackEntered != null
+                        && !AsyncCallbackEntered.Wait(TimeSpan.FromSeconds(5)))
+                    {
+                        throw new TimeoutException(
+                            "Timed out waiting for the asynchronous registration callback.");
+                    }
+                }
                 RegisterEntered?.Set();
                 if (ReleaseRegister != null
                     && !ReleaseRegister.Wait(TimeSpan.FromSeconds(5)))
@@ -608,11 +962,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public void ReleaseNodeOwnership()
             {
                 ReleaseCount++;
+                ReleaseThreadId = Thread.CurrentThread.ManagedThreadId;
                 Events.Add("release");
             }
 
             public void Invoke(FakeMessage message) => _callback(message);
             public void InvokeLate(FakeMessage message) => _lateCallback(message);
+            public bool JoinRegistrationCallback(TimeSpan timeout)
+                => _registrationCallback == null || _registrationCallback.Join(timeout);
+        }
+
+        private sealed class TestHostDispatcher
+        {
+            private readonly int _hostThreadId;
+            private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _pending =
+                new System.Collections.Concurrent.ConcurrentQueue<Action>();
+
+            public TestHostDispatcher(int hostThreadId) => _hostThreadId = hostThreadId;
+
+            public int PendingCount => _pending.Count;
+
+            public void Dispatch(Action action)
+            {
+                if (Thread.CurrentThread.ManagedThreadId == _hostThreadId)
+                    action();
+                else
+                    _pending.Enqueue(action);
+            }
+
+            public void RunPending()
+            {
+                Assert.Equal(_hostThreadId, Thread.CurrentThread.ManagedThreadId);
+                while (_pending.TryDequeue(out var action))
+                    action();
+            }
         }
 
         private sealed class FakeToken : IFoxRunRos2NativeSubscriptionToken

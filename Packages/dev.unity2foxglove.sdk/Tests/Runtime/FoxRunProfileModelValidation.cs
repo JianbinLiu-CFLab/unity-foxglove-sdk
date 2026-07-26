@@ -16,6 +16,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.SourceGenerators;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -82,6 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
             Begin("Phase 184B: frozen directional FoxRun profiles");
             VerifyDirectionalProfileFreeze();
             VerifyExplicitTargetsReplaceOnlyThePublishProfile();
+            VerifyIndependentEndpointInheritanceAndProfileFailures();
             End("Phase 184B");
         }
 
@@ -96,6 +98,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Begin("Phase 184D: conditional input, fanout, and origin governance");
             VerifySubscribeOnlyIfStaleClearBehavior();
+            VerifyPublishConditionAndToleranceBehavior();
             VerifyFanoutFailureIsolation();
             VerifyOriginGovernance();
             End("Phase 184D");
@@ -545,6 +548,78 @@ class Combined
                 "Behavioral 184B-3: explicit Targets replace only publish defaults while omitted Source still inherits the frozen subscribe profile");
         }
 
+        private static void VerifyIndependentEndpointInheritanceAndProfileFailures()
+        {
+            var explicitSource = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: FoxRunEndpoint.Foxglove,
+                hasExplicitSource: true,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Ros2Native,
+                defaultTargets: FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+            var invalidSourceProfile = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.Subscribe,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: 0,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+            var invalidTargetsProfile = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.Publish,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: 0,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+            var invalidEncodingProfile = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.Publish,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: 0,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+
+            Check(
+                explicitSource.Success
+                && explicitSource.Topology.Source == FoxRunEndpoint.Foxglove
+                && explicitSource.Topology.Targets
+                   == (FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge)
+                && explicitSource.Topology.PublishEncoding == FoxRunEncoding.Protobuf
+                && explicitSource.Topology.SubscribeEncoding == FoxRunEncoding.JSON,
+                "Behavioral 184B-4: explicit Source replaces only subscribe defaults while omitted Targets still inherit the frozen publish profile");
+            Check(
+                !invalidSourceProfile.Success
+                && invalidSourceProfile.DiagnosticCode
+                   == FoxRunEndpointDiagnosticCode.InvalidProfileSource
+                && !invalidTargetsProfile.Success
+                && invalidTargetsProfile.DiagnosticCode
+                   == FoxRunEndpointDiagnosticCode.InvalidProfileTargets
+                && !invalidEncodingProfile.Success
+                && invalidEncodingProfile.DiagnosticCode
+                   == FoxRunEndpointDiagnosticCode.InvalidProfileEncoding,
+                "Behavioral 184B-5: invalid inherited source, targets, and encoding profiles fail closed with their stable diagnostics");
+        }
+
         private static void VerifyPortableQosResolution()
         {
             var sensorOverride = FoxRunRos2QosProfileResolver.Resolve(
@@ -562,6 +637,18 @@ class Combined
             var inherited = FoxRunRos2QosProfileResolver.Resolve(
                 0, false, 0, false, 0, false, 0, false, 0, false,
                 FoxRunResolvedQos.SystemDefault);
+            var explicitSystemDefault = FoxRunRos2QosProfileResolver.Resolve(
+                FoxRunQosProfile.SystemDefault,
+                hasProfile: true,
+                0,
+                hasReliability: false,
+                0,
+                hasDurability: false,
+                0,
+                hasHistory: false,
+                depth: 0,
+                hasDepth: false,
+                inherited: FoxRunResolvedQos.Default);
             var keepAllDepth = FoxRunRos2QosProfileResolver.Resolve(
                 FoxRunQosProfile.Default,
                 hasProfile: true,
@@ -591,6 +678,18 @@ class Combined
                 !keepAllDepth.Success
                 && keepAllDepth.DiagnosticCode == FoxRunQosDiagnosticCode.DepthRequiresKeepLast,
                 "Behavioral 184C-3: Keep All plus Depth fails closed instead of being silently rewritten");
+            Check(
+                explicitSystemDefault.Success
+                && explicitSystemDefault.Qos == FoxRunResolvedQos.SystemDefault
+                && explicitSystemDefault.Qos.Profile == FoxRunQosProfile.SystemDefault
+                && explicitSystemDefault.Qos.Reliability
+                   == FoxRunQosReliability.SystemDefault
+                && explicitSystemDefault.Qos.Durability
+                   == FoxRunQosDurability.SystemDefault
+                && explicitSystemDefault.Qos.History
+                   == FoxRunQosHistory.SystemDefault
+                && explicitSystemDefault.Qos.Depth == 0,
+                "Behavioral 184C-4: an explicit System Default profile remains the real transport value instead of collapsing to Default");
         }
 
         private static void VerifySubscribeOnlyIfStaleClearBehavior()
@@ -631,8 +730,10 @@ namespace Phase184RuntimeFixture
                 "json",
                 1d);
             var rejected = router.Flush(1d, 60);
+            var valueAfterRejected = Convert.ToInt32(value.GetValue(receiver));
             enabled.SetValue(receiver, true);
             var stale = router.Flush(2d, 60);
+            var valueAfterRecovery = Convert.ToInt32(value.GetValue(receiver));
             var second = router.Dispatch(
                 "/phase184/runtime/conditional",
                 Encoding.UTF8.GetBytes("{\"Value\":2}"),
@@ -643,11 +744,120 @@ namespace Phase184RuntimeFixture
             Check(
                 first.Status == FoxRunInputDispatchStatus.Staged
                 && rejected == 0
+                && valueAfterRejected == 0
                 && stale == 0
+                && valueAfterRecovery == 0
                 && second.Status == FoxRunInputDispatchStatus.Staged
                 && applied == 1
                 && Convert.ToInt32(value.GetValue(receiver)) == 2,
                 "Behavioral 184D-1: Subscribe OnlyIf keeps routing registered, clears false-condition input, and applies only a later message after recovery");
+        }
+
+        private static void VerifyPublishConditionAndToleranceBehavior()
+        {
+            const string topic = "/phase184/runtime/publish-condition";
+            var topics = new List<string> { topic };
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "Value",
+                "System.Single",
+                topic,
+                0f,
+                string.Empty,
+                policy: (int)FoxRunPolicy.Change,
+                tolerance: 0.5f,
+                onlyIf: "Enabled",
+                hasExplicitHz: false,
+                conditionMemberKind: FoxRunConditionMemberKind.Field);
+            var topicMap = new Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>>
+            {
+                [topic] = new List<FoxgloveSourceEmitter.TopicMember> { member }
+            };
+            var topicModes = new Dictionary<string, int>
+            {
+                [topic] = (int)FoxRunPolicy.Change
+            };
+            var sourceBuilder = new StringBuilder();
+            sourceBuilder.AppendLine("using Unity.FoxgloveSDK.Components;");
+            var componentAssembly = typeof(FoxRunAttribute).Assembly;
+            var needsPolicyInterface = componentAssembly.GetType(
+                "Unity.FoxgloveSDK.Components.IFoxgloveLogPolicySource",
+                throwOnError: false) == null;
+            var needsConditionInterface = componentAssembly.GetType(
+                "Unity.FoxgloveSDK.Components.IFoxgloveLogConditionSource",
+                throwOnError: false) == null;
+            if (needsPolicyInterface || needsConditionInterface)
+            {
+                sourceBuilder.AppendLine("namespace Unity.FoxgloveSDK.Components");
+                sourceBuilder.AppendLine("{");
+                if (needsPolicyInterface)
+                {
+                    sourceBuilder.AppendLine("    public interface IFoxgloveLogPolicySource");
+                    sourceBuilder.AppendLine("    {");
+                    sourceBuilder.AppendLine("        bool FoxgloveLog_ShouldPublish(int topicIndex, double nowSeconds);");
+                    sourceBuilder.AppendLine("        void FoxgloveLog_MarkPublished(int topicIndex, double nowSeconds);");
+                    sourceBuilder.AppendLine("    }");
+                }
+                if (needsConditionInterface)
+                {
+                    sourceBuilder.AppendLine("    public interface IFoxgloveLogConditionSource");
+                    sourceBuilder.AppendLine("    {");
+                    sourceBuilder.AppendLine("        bool FoxgloveLog_CanPublish(int topicIndex);");
+                    sourceBuilder.AppendLine("    }");
+                }
+                sourceBuilder.AppendLine("}");
+            }
+            sourceBuilder.AppendLine("namespace Phase184RuntimeFixture");
+            sourceBuilder.AppendLine("{");
+            sourceBuilder.AppendLine(
+                "    public partial class ConditionalInput : IFoxgloveLogPolicySource, IFoxgloveLogConditionSource");
+            sourceBuilder.AppendLine("    {");
+            sourceBuilder.AppendLine("        public bool Enabled;");
+            sourceBuilder.AppendLine("        public float Value;");
+            ConditionEmitter.EmitConditions(sourceBuilder, topics, topicMap, "    ");
+            PolicyEmitter.EmitPolicy(sourceBuilder, topics, topicMap, topicModes, "    ");
+            sourceBuilder.AppendLine("    }");
+            sourceBuilder.AppendLine("}");
+
+            var source = sourceBuilder.ToString();
+            var sourceInstance = CompileFixture(source, "Phase184PublishCondition");
+            var type = sourceInstance.GetType();
+            var enabled = type.GetField("Enabled");
+            var value = type.GetField("Value");
+            var methods = type.GetMethods(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            var canPublish = methods.Single(method =>
+                method.Name.EndsWith(
+                    ".FoxgloveLog_CanPublish",
+                    StringComparison.Ordinal));
+            var shouldPublish = methods.Single(method =>
+                method.Name.EndsWith(
+                    ".FoxgloveLog_ShouldPublish",
+                    StringComparison.Ordinal));
+            var markPublished = methods.Single(method =>
+                method.Name.EndsWith(
+                    ".FoxgloveLog_MarkPublished",
+                    StringComparison.Ordinal));
+
+            var disabled = Convert.ToBoolean(canPublish.Invoke(sourceInstance, new object[] { 0 }));
+            enabled.SetValue(sourceInstance, true);
+            var enabledNow = Convert.ToBoolean(canPublish.Invoke(sourceInstance, new object[] { 0 }));
+            var initial = Convert.ToBoolean(
+                shouldPublish.Invoke(sourceInstance, new object[] { 0, 0d }));
+            markPublished.Invoke(sourceInstance, new object[] { 0, 0d });
+            value.SetValue(sourceInstance, 0.25f);
+            var withinTolerance = Convert.ToBoolean(
+                shouldPublish.Invoke(sourceInstance, new object[] { 0, 0.1d }));
+            value.SetValue(sourceInstance, 0.75f);
+            var outsideTolerance = Convert.ToBoolean(
+                shouldPublish.Invoke(sourceInstance, new object[] { 0, 0.2d }));
+
+            Check(
+                !disabled
+                && enabledNow
+                && initial
+                && !withinTolerance
+                && outsideTolerance,
+                "Behavioral 184D-2: publish OnlyIf gates the topic and Change tolerance suppresses only values inside the configured band");
         }
 
         private static void VerifyFanoutFailureIsolation()
@@ -676,7 +886,7 @@ namespace Phase184RuntimeFixture
                     FoxRunEncoding.Protobuf,
                     out var contract,
                     out var diagnostic),
-                "Behavioral 184D-2: the selected three-target publication resolves before dispatch"
+                "Behavioral 184D-3: the selected three-target publication resolves before dispatch"
                 + (string.IsNullOrEmpty(diagnostic) ? string.Empty : " (" + diagnostic + ")"));
 
             var sample = new object();
@@ -712,7 +922,57 @@ namespace Phase184RuntimeFixture
                 && deliveries.All(delivery => ReferenceEquals(delivery.Item2, sample)
                                               && delivery.Item3 == timestamp)
                 && faults.SequenceEqual(new[] { FoxRunEndpoint.Ros2Native }),
-                "Behavioral 184D-3: one capture and timestamp fan out deterministically while one target failure is isolated without rerouting");
+                "Behavioral 184D-4: one capture and timestamp fan out deterministically while one target failure is isolated without rerouting");
+
+            var readinessCaptureCount = 0;
+            var readinessDeliveries = new List<FoxRunEndpoint>();
+            var degradedReadiness = FoxRunPublishFanout.Dispatch(
+                contract,
+                timestamp,
+                capture: () =>
+                {
+                    readinessCaptureCount++;
+                    return sample;
+                },
+                isReady: target => target != FoxRunEndpoint.Ros2Native,
+                publish: (target, _, __) =>
+                {
+                    readinessDeliveries.Add(target);
+                    return true;
+                });
+            Check(
+                readinessCaptureCount == 1
+                && degradedReadiness.Status == FoxRunPublishTargetStatus.Degraded
+                && degradedReadiness.SucceededTargets
+                   == (FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge)
+                && degradedReadiness.FailedTargets == FoxRunEndpoint.Ros2Native
+                && readinessDeliveries.SequenceEqual(
+                    new[] { FoxRunEndpoint.Foxglove, FoxRunEndpoint.Ros2Bridge }),
+                "Behavioral 184D-5: one unavailable selected target produces Degraded readiness while ready siblings still publish in deterministic order");
+
+            var unavailableCaptureCount = 0;
+            var unavailablePublishCount = 0;
+            var unavailable = FoxRunPublishFanout.Dispatch(
+                contract,
+                timestamp,
+                capture: () =>
+                {
+                    unavailableCaptureCount++;
+                    return sample;
+                },
+                isReady: _ => false,
+                publish: (_, __, ___) =>
+                {
+                    unavailablePublishCount++;
+                    return true;
+                });
+            Check(
+                unavailable.Status == FoxRunPublishTargetStatus.Unavailable
+                && unavailable.SucceededTargets == 0
+                && unavailable.FailedTargets == contract.Targets
+                && unavailableCaptureCount == 0
+                && unavailablePublishCount == 0,
+                "Behavioral 184D-6: all selected targets unavailable stops before capture and performs no publish");
         }
 
         private static void VerifyOriginGovernance()
@@ -733,7 +993,7 @@ namespace Phase184RuntimeFixture
                 && localMutation
                 && released
                 && explicitTrigger,
-                "Behavioral 184D-4: remote-owned values suppress scheduled echo, local mutation releases ownership, and explicit Trigger remains authoritative");
+                "Behavioral 184D-7: remote-owned values suppress scheduled echo, local mutation releases ownership, and explicit Trigger remains authoritative");
         }
 
         private static void VerifyBoundedStreamBehavior()

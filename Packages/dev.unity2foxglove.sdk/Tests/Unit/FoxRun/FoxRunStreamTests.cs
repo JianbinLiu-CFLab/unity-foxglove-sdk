@@ -364,6 +364,29 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void ReplacementQueuesPreserveTheConfiguredInitialCapacity()
+        {
+            var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(257, 1000d, 128));
+            var configuredCapacity = GetQueueCapacity(stream);
+            Assert.True(configuredCapacity > 0);
+
+            Assert.True(stream.TryEnqueueOwned(1, static _ => { }));
+            Assert.Equal(1, stream.Clear());
+            Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
+
+            Assert.True(stream.TryEnqueueOwned(2, static _ => { }));
+            Assert.True(stream.TryEnqueueOwned(3, static _ => { }));
+            Assert.True(stream.TryTakeLatest(out var latest));
+            latest.Dispose();
+            Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
+
+            Assert.True(stream.TryEnqueueOwned(4, static _ => { }));
+            stream.Dispose();
+            Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
+        }
+
+        [Fact]
         public void DisposedStreamRejectsAndDisposesProducerOwnership()
         {
             var disposed = 0;
@@ -375,6 +398,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(1, disposed);
             Assert.True(stream.IsDisposed);
             Assert.Equal(0, stream.Count);
+            Assert.Equal(1, stream.Stats.Received);
+            Assert.Equal(0, stream.Stats.Admitted);
+            Assert.Equal(0, stream.Stats.RateDropped);
         }
 
         [Fact]
@@ -481,6 +507,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             return field.GetValue(stream);
+        }
+
+        private static int GetQueueCapacity<T>(FoxRunStream<T> stream)
+        {
+            var queue = GetQueueReference(stream);
+            var field = queue.GetType().GetField(
+                "_array",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var array = Assert.IsAssignableFrom<Array>(field.GetValue(queue));
+            return array.Length;
         }
 
         private sealed class ThrowingMessageException : Exception
