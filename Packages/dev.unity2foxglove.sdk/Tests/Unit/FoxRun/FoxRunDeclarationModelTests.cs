@@ -1498,6 +1498,63 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void WebSocketValidationAllowsJsonDtoAndEnumShapesButRejectsUnknownScalars()
+        {
+            var objectShape = FoxRunProtobufTypeShape.Object(
+                "Demo.Payload",
+                Array.Empty<FoxRunProtobufTypeField>());
+            var enumShape = FoxRunProtobufTypeShape.Enum(
+                "Demo.State",
+                new[]
+                {
+                    new FoxRunProtobufEnumValue("UNSPECIFIED", 0),
+                    new FoxRunProtobufEnumValue("READY", 1),
+                });
+            var members = new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "JsonInputs", "_incomingPayload", "field", "Demo.Payload",
+                    false, false, "", "/phase184/json/payload", 10f, "",
+                    1, 0.1f, "UnitTest", 0, "",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    protobufTypeShape: objectShape),
+                new FoxRunGenerationMember(
+                    "Demo", "JsonInputs", "_incomingState", "field", "Demo.State",
+                    true, false, "", "/phase184/json/state", 10f, "",
+                    1, 0.1f, "UnitTest", 1, "",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    protobufTypeShape: enumShape),
+                new FoxRunGenerationMember(
+                    "Demo", "JsonInputs", "_incomingUnknown", "field", "Demo.CustomScalar",
+                    true, false, "", "/phase184/json/unknown", 10f, "",
+                    1, 0.1f, "UnitTest", 2, "",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    protobufTypeShape: FoxRunProtobufTypeShape.Canonical(
+                        "demo.custom.scalar")),
+            };
+
+            var diagnostics = FoxRunGenerationModelValidator.Validate(
+                FoxRunGenerationModel.FromMembers(members));
+
+            Assert.DoesNotContain(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN006"
+                              && diagnostic.MemberName == "_incomingPayload");
+            Assert.DoesNotContain(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN006"
+                              && diagnostic.MemberName == "_incomingState");
+            Assert.Contains(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN006"
+                              && diagnostic.MemberName == "_incomingUnknown");
+        }
+
+        [Fact]
         public void RoslynGeneratorEmitsRecursiveDtoAndCollectionProtobufInputs()
         {
             var result = RunGenerator(@"
@@ -2647,6 +2704,14 @@ namespace Demo
             }
             Assert.Contains(
                 "\" token=\" + Phase184AcceptanceText.SafeMarker(context.Token)",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "\" succeeded=\" + _succeededTargets",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "\" foxgloveState=Ready ros2BridgeState=Unavailable bridgeDiagnostics=\"",
                 acceptanceSource,
                 StringComparison.Ordinal);
             foreach (var routeType in new[]
