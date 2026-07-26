@@ -153,7 +153,7 @@ MonoBehaviour:
   _emittedMarkers: 0
   _terminal: 0
   _passed: 0
-  _offered: 0
+  _received: 0
   _accepted: 0
   _drained: 0
   _replaced: 0

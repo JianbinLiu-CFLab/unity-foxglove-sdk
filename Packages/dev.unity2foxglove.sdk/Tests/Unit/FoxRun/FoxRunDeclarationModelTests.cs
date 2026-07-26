@@ -2723,6 +2723,26 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "private const float StreamEvidenceTimeoutSeconds = 5f;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Fail(BuildStreamFailureReason());",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "\"stream_evidence_incomplete_received_\"",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (_firstSampleAt < 0f && stats.Received > 0)",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Time.realtimeSinceStartup - _firstSampleAt >= InitialDrainDelaySeconds",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
                 "public bool Passed => _passed;",
                 acceptanceSource,
                 StringComparison.Ordinal);

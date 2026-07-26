@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import os
 import pathlib
@@ -583,6 +584,46 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
         module.protocol.validate_run_config(manual, ROOT)
         self.assertEqual("manual", manual["executionMode"])
+        self.assertEqual(
+            str(
+                ROOT
+                / "build"
+                / "phase184"
+                / "bridge-cache"
+                / "jazzy-fastrtps"
+                / "bridge-overlay"
+                / "install"
+            ),
+            manual["bridgeOverlayInstall"],
+        )
+
+        another = module.make_run_config(
+            repository=ROOT,
+            run_id="phase184g-20260726-cache02",
+            token="p184g_C3d4E5f6A1b2",
+            case="qos-contract",
+            profile="jazzy-fastrtps",
+            output_root=ROOT
+            / "build"
+            / "phase184"
+            / "acceptance"
+            / "phase184g-20260726-cache02",
+            domain_id=86,
+            foxglove_port=18770,
+            bridge_port=18771,
+            phase181_workspace=ROOT
+            / "build"
+            / "phase181"
+            / "jazzy-fastrtps"
+            / "peer-workspace",
+            interface_package="unity2foxglove_foxrun_interfaces_v1",
+            interface_type="unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope",
+            interface_digest="c" * 64,
+        )
+        self.assertEqual(
+            manual["bridgeOverlayInstall"],
+            another["bridgeOverlayInstall"],
+        )
 
     def test_environment_prefix_order_is_bridge_peer_ros_and_ambient_is_removed(self):
         module = load_module()
@@ -616,6 +657,209 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual("LOCALHOST", environment["ROS_AUTOMATIC_DISCOVERY_RANGE"])
         self.assertNotIn("ROS_DISCOVERY_SERVER", environment)
         self.assertNotIn("ZENOH_SESSION_CONFIG_URI", environment)
+
+    def test_zenoh_router_uses_the_exact_unity_project_endpoint(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="zenoh-endpoint-", dir=TEST_ROOT) as raw:
+            repository = pathlib.Path(raw)
+            settings = (
+                repository
+                / "Unity2Foxglove"
+                / "Library"
+                / "Unity2Foxglove"
+                / "R2fuZenohRouterSettings.json"
+            )
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "routerAddress": "127.0.0.1",
+                        "routerPort": 8778,
+                        "endpoint": "tcp/127.0.0.1:8778",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            endpoint = module.load_unity_zenoh_router_endpoint(repository)
+
+            self.assertEqual("tcp/127.0.0.1:8778", endpoint.endpoint)
+            self.assertEqual("127.0.0.1", endpoint.host)
+            self.assertEqual(8778, endpoint.port)
+
+            invalid = json.loads(settings.read_text(encoding="utf-8"))
+            invalid["endpoint"] = "tcp/127.0.0.1:7447"
+            settings.write_text(json.dumps(invalid), encoding="utf-8")
+            with self.assertRaisesRegex(
+                module.AcceptanceFailure,
+                "FAIL_RUNTIME_SELECTION",
+            ):
+                module.load_unity_zenoh_router_endpoint(repository)
+
+            invalid["endpoint"] = "tcp/192.0.2.1:8778"
+            invalid["routerAddress"] = "192.0.2.1"
+            settings.write_text(json.dumps(invalid), encoding="utf-8")
+            with self.assertRaisesRegex(
+                module.AcceptanceFailure,
+                "FAIL_RUNTIME_SELECTION",
+            ):
+                module.load_unity_zenoh_router_endpoint(repository)
+
+    def test_zenoh_router_readiness_requires_marker_and_listening_socket(self):
+        module = load_module()
+        process = FakeProcess(pid=18403)
+        endpoint = module.UnityZenohRouterEndpoint(
+            endpoint="tcp/127.0.0.1:8778",
+            host="127.0.0.1",
+            port=8778,
+        )
+        connection = mock.MagicMock()
+
+        with mock.patch.object(
+            module,
+            "read_log_lines",
+            return_value=["Started Zenoh router with id abc"],
+        ), mock.patch.object(
+            module.socket,
+            "create_connection",
+            return_value=connection,
+        ) as connect:
+            evidence = module.wait_for_owned_zenoh_router(
+                process,
+                pathlib.Path("router.log"),
+                endpoint,
+                timeout_seconds=0.1,
+            )
+
+        connect.assert_called_once_with(("127.0.0.1", 8778), timeout=0.25)
+        connection.close.assert_called_once_with()
+        self.assertEqual(
+            {
+                "state": "owned-router-ready",
+                "endpoint": "tcp/127.0.0.1:8778",
+            },
+            evidence,
+        )
+
+    def test_publisher_gid_supports_current_and_legacy_rclpy_shapes(self):
+        module = load_module()
+        raw = bytes(range(24))
+        current = {
+            "publisher_gid": {
+                "implementation_identifier": "rmw_zenoh_cpp",
+                "data": raw,
+            }
+        }
+        legacy_mapping = {"publisher_gid": raw}
+
+        class LegacyObject:
+            publisher_gid = raw
+
+        self.assertEqual(raw.hex(), module._publisher_gid(current))
+        self.assertEqual(raw.hex(), module._publisher_gid(legacy_mapping))
+        self.assertEqual(raw.hex(), module._publisher_gid(LegacyObject()))
+        self.assertEqual("", module._publisher_gid({"publisher_gid": None}))
+        self.assertEqual(
+            "",
+            module._publisher_gid(
+                {
+                    "publisher_gid": {
+                        "implementation_identifier": "rmw_zenoh_cpp",
+                        "data": b"",
+                    }
+                }
+            ),
+        )
+
+    def test_stream_peer_waits_for_transport_graph_before_production(self):
+        module = load_module()
+        source = inspect.getsource(module._run_stream_peer)
+
+        self.assertLess(
+            source.index("_wait_for_stream_subscription"),
+            source.index("offered = 1280"),
+        )
+
+    def test_stream_production_gate_requires_exact_external_subscription(self):
+        module = load_module()
+        expected_type = "example_interfaces/msg/Envelope"
+        config = {
+            "case": "stream-640hz",
+            "interfaceType": expected_type,
+            "topics": ["/stream", "/origin"],
+        }
+
+        helper = {
+            "node": "/phase184g_peer_deadbeef",
+            "gid": "01",
+            "topicType": expected_type,
+            "qos": {},
+        }
+        external = {
+            "node": "/unity2foxglove_foxrun_input",
+            "gid": "",
+            "topicType": expected_type,
+            "qos": {},
+        }
+        wrong_type = dict(external, topicType="std_msgs/msg/String")
+
+        self.assertFalse(
+            module._stream_subscription_ready(
+                config,
+                {"/stream": {"publishers": [], "subscriptions": [helper]}},
+            )
+        )
+        self.assertFalse(
+            module._stream_subscription_ready(
+                config,
+                {"/stream": {"publishers": [], "subscriptions": [wrong_type]}},
+            )
+        )
+        self.assertTrue(
+            module._stream_subscription_ready(
+                config,
+                {"/stream": {"publishers": [], "subscriptions": [external]}},
+            )
+        )
+
+    def test_graph_timeout_snapshot_is_persisted_below_owned_run_root(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory(dir=TEST_ROOT) as temp:
+            output = pathlib.Path(temp)
+            config = {
+                "case": "stream-640hz",
+                "outputRoot": str(output),
+            }
+            graphs = {
+                "/stream": {
+                    "publishers": [],
+                    "subscriptions": [
+                        {
+                            "node": "/unity2foxglove_foxrun_input",
+                            "gid": "01",
+                            "topicType": "example_interfaces/msg/Envelope",
+                            "qos": {
+                                "reliability": "best_effort",
+                                "durability": "volatile",
+                                "history": "keep_last",
+                                "depth": 5,
+                            },
+                        }
+                    ],
+                }
+            }
+
+            path = module._write_graph_timeout_snapshot(config, graphs)
+
+            self.assertEqual(
+                output / "diagnostics" / "ros2-peer-graph-timeout.json",
+                path,
+            )
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual("stream-640hz", payload["case"])
+            self.assertEqual(graphs, payload["topics"])
 
     def test_windows_job_assignment_is_required_and_close_is_idempotent(self):
         module = load_module()
@@ -653,6 +897,24 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             {"foxglove-client": 0, "ros2-peer": 0},
             owner.exit_codes(),
         )
+        self.assertTrue(owner.all_stopped())
+
+    def test_process_owner_can_stop_one_preflight_child_without_closing_others(self):
+        module = load_module()
+        preflight = FakeProcess(1)
+        actual = FakeProcess(2)
+        owner = module.OwnedProcessSet(job=None)
+        owner.register("bridge-health", preflight)
+        owner.register("bridge", actual)
+
+        self.assertEqual(0, owner.stop("bridge-health"))
+        self.assertEqual(1, preflight.terminated)
+        self.assertIsNone(actual.poll())
+        self.assertEqual({"bridge-health": 0}, owner.exit_codes())
+        self.assertEqual({"bridge-health"}, owner.owner_stopped_roles())
+
+        owner.close()
+        self.assertEqual(1, actual.terminated)
         self.assertTrue(owner.all_stopped())
 
     def test_failed_job_registration_terminates_the_untracked_child(self):
@@ -1035,9 +1297,88 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             main[: main.index("create_listen_socket(")],
         )
 
-    def test_bridge_cases_defer_launch_until_unity_native_is_ready(self):
+    def test_bridge_health_preflight_is_disposable_before_unity(self):
         module = load_module()
+        process = FakeProcess(18404)
+        owner = mock.Mock()
+        owner.process.return_value = None
+        owner.stop.return_value = 0
+        runtime = mock.Mock()
+        runtime.bridge_install = ROOT / "build" / "bridge-overlay"
+        runtime.bridge_runtime_workspace = ROOT
+        runtime.actor_environment = {}
+        config = {
+            "token": "p184g_A1b2C3d4E5f6",
+            "bridgeHost": "127.0.0.1",
+            "bridgePort": 18767,
+        }
+        health = {
+            "op": "health_pong",
+            "requestId": config["token"],
+            "protocolVersion": 1,
+            "status": "ok",
+            "sidecarName": "unity2foxglove_ros2_bridge",
+            "sidecarVersion": "0.1.0",
+        }
+        events = []
 
+        def launch(*args, **kwargs):
+            del args, kwargs
+            events.append("launch")
+            return process
+
+        def wait(*args, **kwargs):
+            del args, kwargs
+            events.append("health")
+            return health
+
+        def stop(role):
+            events.append("stop")
+            self.assertEqual("bridge-health", role)
+            return 0
+
+        def port(port, label):
+            events.append("port")
+            self.assertEqual(18767, port)
+            self.assertEqual("Bridge", label)
+            return port
+
+        owner.stop.side_effect = stop
+        with mock.patch.object(
+            module,
+            "_require_file",
+            return_value=ROOT / "bridge.exe",
+        ), mock.patch.object(
+            module,
+            "_launch_logged_process",
+            side_effect=launch,
+        ), mock.patch.object(
+            module,
+            "wait_for_bridge_health",
+            side_effect=wait,
+        ), mock.patch.object(
+            module,
+            "require_available_loopback_port",
+            side_effect=port,
+        ):
+            evidence = module._preflight_bridge_health(
+                config=config,
+                output=TEST_ROOT,
+                runtime=runtime,
+                owner=owner,
+                streams=[],
+            )
+
+        self.assertEqual(["launch", "health", "stop", "port"], events)
+        self.assertEqual(health, evidence["response"])
+        self.assertEqual(0, evidence["processExitCode"])
+        self.assertTrue(evidence["portReleased"])
+
+    def test_bridge_cases_start_actual_sidecar_only_after_native_marker(self):
+        source = (
+            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
+        ).read_text(encoding="utf-8")
+        module = load_module()
         deferred = {
             case
             for case in module.protocol.CASE_CONTRACTS
@@ -1045,23 +1386,75 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         }
         self.assertEqual({"multi-target", "qos-contract"}, deferred)
 
-        source = (
-            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
-        ).read_text(encoding="utf-8")
+        actors = source[
+            source.index("def _start_case_actors(") : source.index(
+                "def _write_parent_actor_results(",
+                source.index("def _start_case_actors("),
+            )
+        ]
         batch = source[
             source.index("def run_batch_parent(") : source.index(
                 "def main(",
                 source.index("def run_batch_parent("),
             )
         ]
+        health_preflight = actors.index("_preflight_bridge_health(")
+        worker_launch = actors.index("_start_case_workers_serially(")
+        self.assertLess(health_preflight, worker_launch)
+        self.assertIn("defer_bridge", actors)
+
         unity_launch = batch.index("unity = _launch_logged_process(")
         native_gate = batch.index("_wait_for_deferred_bridge_gate(config)")
-        bridge_launch = batch.index(
-            "_start_bridge_actor(",
-            native_gate,
-        )
+        bridge_launch = batch.index("_start_bridge_actor(", native_gate)
         self.assertLess(unity_launch, native_gate)
         self.assertLess(native_gate, bridge_launch)
+
+        actual_bridge = source[
+            source.index("def _start_bridge_actor(") : source.index(
+                "def _start_case_actors(",
+                source.index("def _start_bridge_actor("),
+            )
+        ]
+        self.assertIn("wait_for_bridge_listening(", actual_bridge)
+        self.assertNotIn("wait_for_bridge_health(", actual_bridge)
+
+    def test_manual_bridge_starts_actual_sidecar_only_after_native_marker(self):
+        source = (
+            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
+        ).read_text(encoding="utf-8")
+        manual = source[
+            source.index("def run_manual_parent(") : source.index(
+                "def run_batch_parent(",
+                source.index("def run_manual_parent("),
+            )
+        ]
+
+        play_wait = manual.index("_wait_for_manual_session(")
+        self.assertIn("deferred_bridge_start", manual)
+        self.assertIn("_start_bridge_actor(", manual[:play_wait])
+
+    def test_actual_bridge_readiness_reads_owned_log_without_connecting(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="bridge-ready-", dir=TEST_ROOT) as raw:
+            log = pathlib.Path(raw) / "bridge.log"
+            log.write_text(
+                "[INFO] [unity2foxglove_ros2_bridge] listening on 127.0.0.1:18767\n",
+                encoding="utf-8",
+            )
+            process = FakeProcess(18405)
+            config = {"bridgeHost": "127.0.0.1", "bridgePort": 18767}
+            with mock.patch.object(module.socket, "create_connection") as connect:
+                ready = module.wait_for_bridge_listening(
+                    config,
+                    process,
+                    log,
+                    timeout_seconds=0.1,
+                )
+
+        connect.assert_not_called()
+        self.assertEqual("127.0.0.1", ready["host"])
+        self.assertEqual(18767, ready["port"])
 
     def test_deferred_bridge_gate_starts_native_deadline_after_unity_context(self):
         module = load_module()
@@ -1202,6 +1595,96 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 module.prepare_windows_bridge_build_environment(
                     {"CMAKE_PREFIX_PATH": str(ros_root)},
                     ros_root,
+                )
+
+    def test_bridge_build_cache_is_stable_exact_and_owned(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="bridge-cache-", dir=TEST_ROOT) as raw:
+            root = pathlib.Path(raw)
+            cache_root = root / "cache"
+            toolchain = mock.Mock()
+            toolchain.ros2_root = root / "ros"
+            toolchain.python_executable = root / "python.exe"
+            toolchain.colcon_executable = root / "colcon.exe"
+            command = ["colcon.exe", "build", "--merge-install"]
+            environment = {
+                "VCToolsVersion": "14.51",
+                "WindowsSDKVersion": "10.0.26100.0",
+                "CMAKE_PREFIX_PATH": str(root / "ros" / "Library"),
+            }
+            key = module.bridge_build_cache_key(
+                ROOT,
+                "jazzy-fastrtps",
+                "jazzy",
+                "rmw_fastrtps_cpp",
+                toolchain,
+                command,
+                environment,
+            )
+            self.assertRegex(key, r"\A[0-9a-f]{64}\Z")
+            self.assertNotEqual(
+                key,
+                module.bridge_build_cache_key(
+                    ROOT,
+                    "jazzy-fastrtps",
+                    "jazzy",
+                    "rmw_fastrtps_cpp",
+                    toolchain,
+                    [*command, "--changed"],
+                    environment,
+                ),
+            )
+
+            overlay, reused = module.prepare_bridge_build_workspace(
+                cache_root,
+                "jazzy-fastrtps",
+                key,
+            )
+            self.assertFalse(reused)
+            install = overlay / "install"
+            (install / "lib" / "unity2foxglove_ros2_bridge").mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            (install / "share" / "unity2foxglove_ros2_bridge").mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            (install / "local_setup.bat").write_text("@echo off\n", encoding="utf-8")
+            (
+                install
+                / "share"
+                / "unity2foxglove_ros2_bridge"
+                / "package.xml"
+            ).write_text("<package/>\n", encoding="utf-8")
+            (
+                install
+                / "lib"
+                / "unity2foxglove_ros2_bridge"
+                / "unity2foxglove_ros2_bridge.exe"
+            ).write_bytes(b"bridge")
+            module.seal_bridge_build_workspace(
+                overlay,
+                "jazzy-fastrtps",
+                key,
+            )
+
+            cached, reused = module.prepare_bridge_build_workspace(
+                cache_root,
+                "jazzy-fastrtps",
+                key,
+            )
+            self.assertTrue(reused)
+            self.assertEqual(overlay, cached)
+
+            unowned = cache_root / "lyrical-zenoh" / "bridge-overlay"
+            unowned.mkdir(parents=True)
+            with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_BUILD"):
+                module.prepare_bridge_build_workspace(
+                    cache_root,
+                    "lyrical-zenoh",
+                    "b" * 64,
                 )
 
     def test_existing_acceptance_scene_still_runs_the_cold_start_preflight(self):
@@ -1356,6 +1839,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             log.write_text("\n".join(lines) + "\n", encoding="utf-8")
             evidence = module.parse_bridge_publisher_evidence(config, log)
             self.assertEqual(set(expected), set(evidence["publishers"]))
+            self.assertNotIn("healthReady", evidence)
 
             log.write_text(
                 ("\n".join(lines)).replace(
@@ -1652,13 +2136,14 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "PASS",
             "PHASE184G_CASE_PASS",
             {
-                "offered": "1280",
-                "accepted": "1000",
-                "drained": "968",
+                "received": "792",
+                "accepted": "792",
+                "drained": "760",
                 "replaced": "32",
-                "rateDropped": "280",
+                "rateDropped": "0",
                 "highWater": "32",
                 "disposalFailures": "0",
+                "lastSequence": "1279",
                 "ordered": "True",
                 "ownershipBalanced": "True",
             },
@@ -1672,12 +2157,30 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             },
         )
         self.assertEqual(1280, evidence["offered"])
+        self.assertEqual(792, evidence["received"])
+        self.assertEqual(488, evidence["transportDropped"])
+        self.assertEqual(488, evidence["dropped"])
+        self.assertEqual(1279, evidence["lastSequence"])
 
         with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_STREAM"):
             module._validated_stream_evidence(
                 terminal,
                 {
                     "offered": 1279,
+                    "nominalHz": 640,
+                    "productionElapsedSeconds": 2.0,
+                },
+            )
+        too_many_received = module.TerminalMarker(
+            terminal.verdict,
+            terminal.line,
+            dict(terminal.fields, received="1281"),
+        )
+        with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_STREAM"):
+            module._validated_stream_evidence(
+                too_many_received,
+                {
+                    "offered": 1280,
                     "nominalHz": 640,
                     "productionElapsedSeconds": 2.0,
                 },

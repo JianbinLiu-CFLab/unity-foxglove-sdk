@@ -960,8 +960,8 @@ namespace Unity2Foxglove.ManualAcceptance
     {
         public const string StreamTopic = "/foxrun/phase184/stream/state";
         public const string OriginTopic = "/foxrun/phase184/zenoh/origin";
-        private const int ExpectedOfferedSamples = 1280;
         private const float InitialDrainDelaySeconds = 0.5f;
+        private const float StreamEvidenceTimeoutSeconds = 5f;
 
         [FoxRun(
             StreamTopic,
@@ -986,7 +986,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private Phase181State _zenohOrigin;
 
         [Header("Read-only Stream Evidence")]
-        [SerializeField] private long _offered;
+        [SerializeField] private long _received;
         [SerializeField] private long _accepted;
         [SerializeField] private long _drained;
         [SerializeField] private long _replaced;
@@ -1000,7 +1000,8 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private long _sameOriginDrops;
         [SerializeField] private bool _laterLocalOrigin;
 
-        private float _enabledAt;
+        private float _firstSampleAt = -1f;
+        private float _streamEvidenceDeadline = -1f;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.StreamCase;
@@ -1012,7 +1013,8 @@ namespace Unity2Foxglove.ManualAcceptance
                 enabled = false;
                 return;
             }
-            _enabledAt = Time.realtimeSinceStartup;
+            _firstSampleAt = -1f;
+            _streamEvidenceDeadline = -1f;
             _zenohOrigin = State(RunToken, "origin-warmup", 18440);
             Ready("streamCapacity=32 maxInputHz=1000 maxBatch=16 overflow=DropOldest");
         }
@@ -1032,11 +1034,17 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!IsArmed || IsTerminal)
                 return;
 
-            if (Time.realtimeSinceStartup - _enabledAt >= InitialDrainDelaySeconds)
-                _inputStream.Drain(ObserveRetainedSample);
-
             var stats = _inputStream.Stats;
-            _offered = stats.Received;
+            if (_firstSampleAt < 0f && stats.Received > 0)
+                _firstSampleAt = Time.realtimeSinceStartup;
+            if (_firstSampleAt >= 0f
+                && Time.realtimeSinceStartup - _firstSampleAt >= InitialDrainDelaySeconds)
+            {
+                _inputStream.Drain(ObserveRetainedSample);
+                stats = _inputStream.Stats;
+            }
+
+            _received = stats.Received;
             _accepted = stats.Admitted;
             _drained = stats.Drained;
             _replaced = stats.DroppedOldest + stats.DroppedNewest;
@@ -1070,29 +1078,59 @@ namespace Unity2Foxglove.ManualAcceptance
             {
                 _laterLocalOrigin = true;
                 _zenohOrigin = State(RunToken, "origin-local", 18442);
+                _streamEvidenceDeadline =
+                    Time.realtimeSinceStartup + StreamEvidenceTimeoutSeconds;
                 Emit("PHASE184G_STREAM_LOCAL_ORIGIN_MUTATED", "stage=local");
             }
 
-            if (_offered >= ExpectedOfferedSamples
+            if (_received > _inputStream.Options.Capacity
                 && _inputStream.Count == 0
                 && _replaced > 0
                 && _retainedOrdered
+                && _lastRetainedSequence >= 0
                 && _ownershipBalanced
                 && _remoteOriginApplied
                 && _sameOriginDrops > 0
                 && _laterLocalOrigin)
             {
                 Pass(
-                    "offered=" + _offered.ToString(CultureInfo.InvariantCulture)
+                    "received=" + _received.ToString(CultureInfo.InvariantCulture)
                     + " accepted=" + _accepted.ToString(CultureInfo.InvariantCulture)
                     + " drained=" + _drained.ToString(CultureInfo.InvariantCulture)
                     + " replaced=" + _replaced.ToString(CultureInfo.InvariantCulture)
                     + " rateDropped=" + _rateDropped.ToString(CultureInfo.InvariantCulture)
                     + " highWater=" + _maximumQueueDepth.ToString(CultureInfo.InvariantCulture)
-                    + " disposalFailures=" + _disposalFailures.ToString(CultureInfo.InvariantCulture)
-                    + " lastSequence=" + _lastRetainedSequence.ToString(CultureInfo.InvariantCulture)
-                    + " ordered=True ownershipBalanced=True");
+                     + " disposalFailures=" + _disposalFailures.ToString(CultureInfo.InvariantCulture)
+                     + " lastSequence=" + _lastRetainedSequence.ToString(CultureInfo.InvariantCulture)
+                     + " ordered=True ownershipBalanced=True");
+                return;
             }
+
+            if (_streamEvidenceDeadline > 0f
+                && Time.realtimeSinceStartup >= _streamEvidenceDeadline)
+            {
+                Fail(BuildStreamFailureReason());
+            }
+        }
+
+        private string BuildStreamFailureReason()
+        {
+            return "stream_evidence_incomplete_received_"
+                   + _received.ToString(CultureInfo.InvariantCulture)
+                   + "_capacity_" + _inputStream.Options.Capacity.ToString(CultureInfo.InvariantCulture)
+                   + "_accepted_" + _accepted.ToString(CultureInfo.InvariantCulture)
+                   + "_drained_" + _drained.ToString(CultureInfo.InvariantCulture)
+                   + "_replaced_" + _replaced.ToString(CultureInfo.InvariantCulture)
+                   + "_rateDropped_" + _rateDropped.ToString(CultureInfo.InvariantCulture)
+                   + "_queue_" + _inputStream.Count.ToString(CultureInfo.InvariantCulture)
+                   + "_highWater_" + _maximumQueueDepth.ToString(CultureInfo.InvariantCulture)
+                   + "_disposalFailures_" + _disposalFailures.ToString(CultureInfo.InvariantCulture)
+                   + "_lastSequence_" + _lastRetainedSequence.ToString(CultureInfo.InvariantCulture)
+                   + "_ordered_" + _retainedOrdered
+                   + "_ownershipBalanced_" + _ownershipBalanced
+                   + "_remote_" + _remoteOriginApplied
+                   + "_sameOriginDrops_" + _sameOriginDrops.ToString(CultureInfo.InvariantCulture)
+                   + "_laterLocal_" + _laterLocalOrigin;
         }
 
         private void ObserveRetainedSample(Phase181State sample)

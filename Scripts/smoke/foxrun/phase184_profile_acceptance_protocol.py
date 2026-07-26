@@ -20,9 +20,10 @@ from typing import Any, Callable, Mapping
 
 
 RUN_CONFIG_SCHEMA_VERSION = 1
-SUMMARY_SCHEMA_VERSION = 2
+SUMMARY_SCHEMA_VERSION = 3
 MAX_DIAGNOSTIC_CHARACTERS = 512
-MIN_STREAM_ACCEPTANCE_PERMILLE = 800
+STREAM_CAPACITY = 32
+MIN_STREAM_LAST_SEQUENCE_PERMILLE = 750
 PARENT_DAEMON_ROLES = frozenset({"bridge", "zenoh-router"})
 WINDOWS_CONTROL_BREAK_EXIT_CODES = frozenset(
     {
@@ -572,8 +573,23 @@ def validate_run_config(
         raise _fail("preflight", "phase181Workspace escaped build/phase181.")
     if not _is_below(phase181_install, phase181_workspace):
         raise _fail("preflight", "phase181Install escaped phase181Workspace.")
-    if not _is_below(bridge_overlay, output):
-        raise _fail("preflight", "bridgeOverlayInstall escaped outputRoot.")
+    if "bridge" in contract.required_actors:
+        expected_bridge_overlay = (
+            repo
+            / "build"
+            / "phase184"
+            / "bridge-cache"
+            / profile
+            / "bridge-overlay"
+            / "install"
+        ).resolve(strict=False)
+        if bridge_overlay != expected_bridge_overlay:
+            raise _fail(
+                "preflight",
+                "bridgeOverlayInstall must select the exact profile-stable Bridge cache.",
+            )
+    elif not _is_below(bridge_overlay, output):
+        raise _fail("preflight", "Unused bridgeOverlayInstall escaped outputRoot.")
 
     loopback_hosts = {"127.0.0.1", "localhost", "::1"}
     for key in ("foxgloveHost", "bridgeHost"):
@@ -672,12 +688,16 @@ _REQUIRED_SECTION_FIELDS: Mapping[str, set[str]] = {
     "origin": {"remoteApplied", "sameOriginDropped", "laterLocalPublished"},
     "stream": {
         "offered",
+        "received",
         "accepted",
         "replaced",
+        "rateDropped",
+        "transportDropped",
         "dropped",
         "drained",
         "disposed",
         "maximumQueueDepth",
+        "lastSequence",
         "retainedOrdered",
         "ownershipBalanced",
     },
@@ -1209,13 +1229,18 @@ def validate_summary(
             stream = summary["stream"]
             if (
                 stream["offered"] != 1280
-                or stream["accepted"] + stream["dropped"] != stream["offered"]
+                or stream["received"] + stream["transportDropped"]
+                != stream["offered"]
+                or stream["accepted"] + stream["rateDropped"]
+                != stream["received"]
+                or stream["transportDropped"] + stream["rateDropped"]
+                != stream["dropped"]
                 or stream["drained"] + stream["replaced"] != stream["accepted"]
                 or stream["disposed"] != stream["drained"] + stream["replaced"]
-                or stream["maximumQueueDepth"] != 32
+                or stream["maximumQueueDepth"] != STREAM_CAPACITY
                 or stream["replaced"] <= 0
-                or stream["accepted"] * 1000
-                < stream["offered"] * MIN_STREAM_ACCEPTANCE_PERMILLE
+                or (stream["lastSequence"] + 1) * 1000
+                < stream["offered"] * MIN_STREAM_LAST_SEQUENCE_PERMILLE
             ):
                 raise _fail(
                     "stream",

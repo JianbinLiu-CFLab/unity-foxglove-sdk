@@ -51,8 +51,12 @@ WORKER_ROLES = ("foxglove-client", "ros2-peer", "graph-observer")
 UNITY_EXECUTE_METHOD = "Unity2Foxglove.Phase184BatchModeProfileProbe.Run"
 INTERFACE_PACKAGE_ID = "dev.unity2foxglove.foxrun.ros2.interfaces"
 LOCK_RELATIVE_PATH = pathlib.Path("RuntimeSupport/foxrun-ros2-interface-lock.json")
+UNITY_ZENOH_SETTINGS_RELATIVE_PATH = pathlib.Path(
+    "Unity2Foxglove/Library/Unity2Foxglove/R2fuZenohRouterSettings.json"
+)
 DEFAULT_UNITY_VERSION = "6000.3.14f1"
 MAX_CONFIG_BYTES = 1024 * 1024
+MAX_UNITY_ZENOH_SETTINGS_BYTES = 16 * 1024
 MAX_FRAME_HEADER_BYTES = 64 * 1024
 MAX_FRAME_PAYLOAD_BYTES = 64 * 1024 * 1024
 U2R2_MAGIC = b"U2R2"
@@ -73,6 +77,14 @@ _UNITY_RUNTIME_DEFINE = "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
 _UNITY_TYPESUPPORT_DEFINE = "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES"
 _DEFERRED_BRIDGE_START_MARKER = "PHASE184G_NATIVE_READY_FOR_BRIDGE"
 _DEFERRED_BRIDGE_CASES = frozenset({"multi-target", "qos-contract"})
+_BRIDGE_PACKAGE_NAME = "unity2foxglove_ros2_bridge"
+_BRIDGE_CACHE_FORMAT = 1
+_BRIDGE_CACHE_OWNER = "phase184g-windows-bridge-cache"
+_BRIDGE_CACHE_OWNERSHIP_NAME = ".phase184g-bridge-cache-owned.json"
+_BRIDGE_CACHE_MANIFEST_NAME = ".phase184g-bridge-cache.json"
+_BRIDGE_SOURCE_IGNORES = frozenset(
+    {"build", "install", "log", "bin", "obj", "__pycache__"}
+)
 
 
 class AcceptanceFailure(protocol.ProtocolFailure):
@@ -99,8 +111,17 @@ class StaticInterfaceIdentity:
     revision: int
 
 
+@dataclass(frozen=True)
+class UnityZenohRouterEndpoint:
+    """Exact loopback router endpoint that the selected Unity Editor will use."""
+
+    endpoint: str
+    host: str
+    port: int
+
+
 def _requires_deferred_bridge_start(config: Mapping[str, object]) -> bool:
-    """Keep the C++ participant absent until Unity's native node is ready."""
+    """Keep the real C++ participant absent until Unity's native node is ready."""
 
     return str(config.get("case", "")) in _DEFERRED_BRIDGE_CASES
 
@@ -112,6 +133,25 @@ def repository_root() -> pathlib.Path:
         if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
             return candidate
     raise AcceptanceFailure("FAIL_PREFLIGHT", "Could not resolve the repository root.")
+
+
+def _bridge_cache_install_path(
+    repository: pathlib.Path,
+    profile: str,
+) -> pathlib.Path:
+    """Return the profile-stable Bridge path used by Windows Firewall identity."""
+
+    if profile not in protocol.PROFILE_CONTRACTS:
+        raise AcceptanceFailure("FAIL_RUNTIME_SELECTION", "Unknown Bridge cache profile.")
+    return (
+        pathlib.Path(repository)
+        / "build"
+        / "phase184"
+        / "bridge-cache"
+        / profile
+        / "bridge-overlay"
+        / "install"
+    ).resolve()
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -397,6 +437,11 @@ def make_run_config(
     selected = protocol.PROFILE_CONTRACTS[contract.profile]
     output = pathlib.Path(output_root).resolve()
     workspace = pathlib.Path(phase181_workspace).resolve()
+    bridge_install = (
+        _bridge_cache_install_path(repository, contract.profile)
+        if "bridge" in contract.required_actors
+        else (output / "bridge-overlay" / "install").resolve()
+    )
     actors = sorted(
         contract.required_actors | frozenset(contract.deliberately_absent_actors)
     )
@@ -418,7 +463,7 @@ def make_run_config(
         ),
         "phase181Workspace": str(workspace),
         "phase181Install": str((workspace / "install").resolve()),
-        "bridgeOverlayInstall": str((output / "bridge-overlay" / "install").resolve()),
+        "bridgeOverlayInstall": str(bridge_install),
         "foxgloveHost": "127.0.0.1",
         "foxglovePort": int(foxglove_port),
         "bridgeHost": "127.0.0.1",
@@ -687,6 +732,26 @@ class OwnedProcessSet:
 
     def process(self, role: str):
         return self._processes.get(role)
+
+    def stop(self, role: str) -> int:
+        """Stop one registered child while retaining exact owner evidence."""
+
+        if self._closed:
+            raise AcceptanceFailure(
+                "FAIL_CLEANUP",
+                "A closed process owner cannot stop another child.",
+            )
+        process = self._processes.get(role)
+        if process is None:
+            raise AcceptanceFailure(
+                "FAIL_CLEANUP",
+                "The requested process role is not owned.",
+            )
+        if process.poll() is None:
+            self._owner_stopped_roles.add(role)
+        exit_code = terminate_owned_process(process)
+        self._exit_codes[role] = exit_code
+        return exit_code
 
     def close(self) -> None:
         if self._closed:
@@ -1577,11 +1642,20 @@ def _ros_count(envelope) -> int:
 
 
 def _publisher_gid(message_info) -> str:
-    raw = getattr(message_info, "publisher_gid", b"")
+    raw = (
+        message_info.get("publisher_gid")
+        if isinstance(message_info, Mapping)
+        else getattr(message_info, "publisher_gid", None)
+    )
+    if isinstance(raw, Mapping):
+        raw = raw.get("data")
+    elif raw is not None and not isinstance(raw, (bytes, bytearray, memoryview)):
+        raw = getattr(raw, "data", raw)
     try:
-        return bytes(raw).hex()
+        value = bytes(raw) if raw is not None else b""
     except (TypeError, ValueError):
         return ""
+    return value.hex() if value and any(value) else ""
 
 
 def _helper_node_name(role: str, config: Mapping[str, object]) -> str:
@@ -1966,6 +2040,8 @@ def _run_stream_peer(
         raise AcceptanceFailure("FAIL_ORIGIN", "Unity origin warmup had no origin id.")
     peer_origin = "phase184-peer-" + protocol.token_sha256(token)[:16]
 
+    _worker_progress("ros2-peer", "stream-wait-transport-graph")
+    _wait_for_stream_subscription(config, rclpy_module, node)
     offered = 1280
     period = 1.0 / 640.0
     started = time.perf_counter()
@@ -2281,6 +2357,29 @@ def _graph_ready(
     return False
 
 
+def _stream_subscription_ready(
+    config: Mapping[str, object],
+    graphs: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
+) -> bool:
+    """Require the exact external stream subscription before timed production."""
+
+    stream_topic = str(config["topics"][0])
+    graph = graphs.get(stream_topic)
+    if not isinstance(graph, Mapping):
+        return False
+    subscriptions = graph.get("subscriptions")
+    if not isinstance(subscriptions, Sequence):
+        return False
+    expected_type = str(config["interfaceType"])
+    return any(
+        isinstance(item, Mapping)
+        and not _is_helper_endpoint(item)
+        and str(item.get("node", "")).strip("/") != ""
+        and item.get("topicType") == expected_type
+        for item in subscriptions
+    )
+
+
 def _graph_evidence_from_topics(
     config: Mapping[str, object],
     graphs: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
@@ -2346,6 +2445,58 @@ def _graph_evidence_from_topics(
     }
 
 
+def _write_graph_timeout_snapshot(
+    config: Mapping[str, object],
+    graphs: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
+    *,
+    stage: str = "graph",
+) -> pathlib.Path:
+    """Persist bounded raw graph facts only when an owned graph wait times out."""
+
+    destination = (
+        pathlib.Path(str(config["outputRoot"]))
+        / "diagnostics"
+        / f"ros2-peer-{stage}-timeout.json"
+    )
+    protocol.write_json_atomic(
+        destination,
+        {
+            "case": str(config["case"]),
+            "stage": stage,
+            "topics": dict(graphs),
+        },
+        repo_root=repository_root(),
+    )
+    return destination
+
+
+def _wait_for_stream_subscription(
+    config: Mapping[str, object],
+    rclpy_module,
+    node,
+    timeout_seconds: float = 30.0,
+) -> dict[str, dict[str, list[dict[str, object]]]]:
+    """Wait only for the typed Unity stream consumer needed before production."""
+
+    stream_topic = str(config["topics"][0])
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        rclpy_module.spin_once(node, timeout_sec=0.05)
+        graphs = {stream_topic: _graph_for_topic(node, stream_topic)}
+        if _stream_subscription_ready(config, graphs):
+            return graphs
+        if time.monotonic() >= deadline:
+            _write_graph_timeout_snapshot(
+                config,
+                graphs,
+                stage="stream-subscription",
+            )
+            raise AcceptanceFailure(
+                "FAIL_GRAPH",
+                "The ROS peer did not observe the typed Unity stream subscription.",
+            )
+
+
 def _wait_for_graph_snapshot(
     config: Mapping[str, object],
     rclpy_module,
@@ -2362,6 +2513,7 @@ def _wait_for_graph_snapshot(
         if _graph_ready(config, graphs):
             return graphs
         if time.monotonic() >= deadline:
+            _write_graph_timeout_snapshot(config, graphs)
             raise AcceptanceFailure(
                 "FAIL_GRAPH",
                 "The ROS peer did not capture the required transport graph.",
@@ -2553,6 +2705,7 @@ class PreparedRosRuntime:
     zenoh_router_environment: dict[str, str] | None
     zenoh_router_config: pathlib.Path | None
     zenoh_session_config: pathlib.Path | None
+    zenoh_router_endpoint: UnityZenohRouterEndpoint | None
     subst_roots: tuple[pathlib.Path, ...]
 
 
@@ -2590,6 +2743,117 @@ def require_available_loopback_port(port: int, label: str) -> int:
             f"{label} loopback port is already in use.",
         ) from exc
     return selected
+
+
+def load_unity_zenoh_router_endpoint(
+    repository: pathlib.Path,
+) -> UnityZenohRouterEndpoint:
+    """Load the exact project setting that Unity applies before ROS starts."""
+
+    settings_path = pathlib.Path(repository) / UNITY_ZENOH_SETTINGS_RELATIVE_PATH
+    try:
+        size = settings_path.stat().st_size
+        if size <= 0 or size > MAX_UNITY_ZENOH_SETTINGS_BYTES:
+            raise AcceptanceFailure(
+                "FAIL_RUNTIME_SELECTION",
+                "The Unity Zenoh router setting has an invalid size.",
+            )
+        document = json.loads(settings_path.read_text(encoding="utf-8"))
+    except AcceptanceFailure:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise AcceptanceFailure(
+            "FAIL_RUNTIME_SELECTION",
+            "The Unity Zenoh router setting is unavailable or malformed.",
+        ) from exc
+
+    expected_keys = {
+        "schemaVersion",
+        "routerAddress",
+        "routerPort",
+        "endpoint",
+    }
+    if (
+        not isinstance(document, dict)
+        or set(document) != expected_keys
+        or not isinstance(document.get("schemaVersion"), int)
+        or isinstance(document.get("schemaVersion"), bool)
+        or document["schemaVersion"] != 1
+    ):
+        raise AcceptanceFailure(
+            "FAIL_RUNTIME_SELECTION",
+            "The Unity Zenoh router setting has an unsupported schema.",
+        )
+
+    address = document["routerAddress"]
+    port = document["routerPort"]
+    if (
+        not isinstance(address, str)
+        or address not in {"localhost", "127.0.0.1"}
+        or not isinstance(port, int)
+        or isinstance(port, bool)
+        or not 1 <= port <= 65535
+    ):
+        raise AcceptanceFailure(
+            "FAIL_RUNTIME_SELECTION",
+            "The Unity Zenoh router setting is not a valid loopback endpoint.",
+        )
+
+    endpoint = f"tcp/{address}:{port}"
+    if document["endpoint"] != endpoint:
+        raise AcceptanceFailure(
+            "FAIL_RUNTIME_SELECTION",
+            "The Unity Zenoh router setting contains inconsistent endpoint fields.",
+        )
+    return UnityZenohRouterEndpoint(
+        endpoint=endpoint,
+        host="127.0.0.1",
+        port=port,
+    )
+
+
+def wait_for_owned_zenoh_router(
+    process,
+    log_path: pathlib.Path,
+    endpoint: UnityZenohRouterEndpoint,
+    timeout_seconds: float = 60.0,
+) -> dict[str, object]:
+    """Require both the owned marker and a live loopback listener."""
+
+    deadline = time.monotonic() + timeout_seconds
+    marker_observed = False
+    while True:
+        if process.poll() is not None:
+            raise AcceptanceFailure(
+                "FAIL_RUNTIME_SELECTION",
+                "The owned Zenoh router exited before listener readiness.",
+            )
+        if not marker_observed:
+            marker_observed = any(
+                "Started Zenoh router with id " in line
+                for line in read_log_lines(log_path)
+            )
+        if marker_observed:
+            try:
+                connection = socket.create_connection(
+                    (endpoint.host, endpoint.port),
+                    timeout=0.25,
+                )
+            except OSError:
+                connection = None
+            if connection is not None:
+                connection.close()
+                return {
+                    "state": "owned-router-ready",
+                    "endpoint": endpoint.endpoint,
+                }
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AcceptanceFailure(
+                "FAIL_RUNTIME_SELECTION",
+                "The owned Zenoh router did not reach listener readiness.",
+            )
+        time.sleep(min(0.1, remaining))
 
 
 def choose_domain_id(requested: int | None) -> int:
@@ -2861,7 +3125,7 @@ def wait_for_bridge_health(
     process,
     timeout_seconds: float = 120.0,
 ) -> dict[str, object]:
-    """Require one exact current-run U2R2 health response before Unity starts."""
+    """Require one exact current-run response from a disposable health sidecar."""
 
     request_id = str(config["token"])
     deadline = time.monotonic() + timeout_seconds
@@ -2886,6 +3150,33 @@ def wait_for_bridge_health(
         "FAIL_BRIDGE",
         "Bridge health readiness expired"
         + (f" ({type(last_error).__name__})." if last_error is not None else "."),
+    )
+
+
+def wait_for_bridge_listening(
+    config: Mapping[str, object],
+    process,
+    log_path: pathlib.Path,
+    timeout_seconds: float = 120.0,
+) -> dict[str, object]:
+    """Prove the real sidecar is listening without consuming its only client."""
+
+    host = str(config["bridgeHost"])
+    port = int(config["bridgePort"])
+    marker = f"[unity2foxglove_ros2_bridge] listening on {host}:{port}"
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AcceptanceFailure(
+                "FAIL_BRIDGE",
+                "Bridge exited before its owned listening marker.",
+            )
+        if any(marker in line for line in read_log_lines(log_path)):
+            return {"state": "u2r2-listening-ready", "host": host, "port": port}
+        time.sleep(0.1)
+    raise AcceptanceFailure(
+        "FAIL_BRIDGE",
+        "Bridge listening readiness expired.",
     )
 
 
@@ -2943,7 +3234,6 @@ def parse_bridge_publisher_evidence(
                 f"Bridge parsed QoS drifted for {topic}.",
             )
     return {
-        "healthReady": True,
         "nodeIdentity": "unity2foxglove_ros2_bridge",
         "publishers": observed,
     }
@@ -2980,13 +3270,14 @@ def _validated_stream_evidence(
 ) -> dict[str, object]:
     """Cross-check Unity ownership counters against the independent ROS producer."""
 
-    offered = _marker_int(terminal, "offered")
+    received = _marker_int(terminal, "received")
     accepted = _marker_int(terminal, "accepted")
     drained = _marker_int(terminal, "drained")
     replaced = _marker_int(terminal, "replaced")
-    dropped = _marker_int(terminal, "rateDropped")
+    rate_dropped = _marker_int(terminal, "rateDropped")
     high_water = _marker_int(terminal, "highWater")
     disposal_failures = _marker_int(terminal, "disposalFailures")
+    last_sequence = _marker_int(terminal, "lastSequence")
     try:
         peer_offered = int(peer.get("offered", -1))
         nominal_hz = int(peer.get("nominalHz", -1))
@@ -2996,10 +3287,10 @@ def _validated_stream_evidence(
             "FAIL_STREAM",
             "ROS stream producer evidence is malformed.",
         ) from exc
-    if peer_offered != offered or offered != 1280:
+    if peer_offered != 1280:
         raise AcceptanceFailure(
             "FAIL_STREAM",
-            "Unity and ROS stream offered counts do not match the locked 1280-sample run.",
+            "The ROS stream producer did not offer the locked 1280-sample run.",
         )
     if nominal_hz != 640 or elapsed < 1.8 or elapsed > 3.5:
         raise AcceptanceFailure(
@@ -3011,14 +3302,33 @@ def _validated_stream_evidence(
             "FAIL_STREAM",
             "Unity reported a stream disposal failure.",
         )
+    if (
+        received <= 0
+        or received > peer_offered
+        or accepted + rate_dropped != received
+        or drained + replaced != accepted
+        or high_water != protocol.STREAM_CAPACITY
+        or replaced <= 0
+        or (last_sequence + 1) * 1000
+        < peer_offered * protocol.MIN_STREAM_LAST_SEQUENCE_PERMILLE
+    ):
+        raise AcceptanceFailure(
+            "FAIL_STREAM",
+            "Unity stream counters do not prove bounded retained delivery.",
+        )
+    transport_dropped = peer_offered - received
     return {
-        "offered": offered,
+        "offered": peer_offered,
+        "received": received,
         "accepted": accepted,
         "replaced": replaced,
-        "dropped": dropped,
+        "rateDropped": rate_dropped,
+        "transportDropped": transport_dropped,
+        "dropped": transport_dropped + rate_dropped,
         "drained": drained,
         "disposed": drained + replaced,
         "maximumQueueDepth": high_water,
+        "lastSequence": last_sequence,
         "retainedOrdered": terminal.fields.get("ordered") == "True",
         "ownershipBalanced": terminal.fields.get("ownershipBalanced") == "True",
     }
@@ -3321,13 +3631,286 @@ def _current_unity_runtime_selection_evidence(
     }
 
 
-def _copy_bridge_source(repository: pathlib.Path, overlay: pathlib.Path) -> None:
-    source = (
+def _bridge_source_root(repository: pathlib.Path) -> pathlib.Path:
+    return (
         pathlib.Path(repository)
         / "Tools"
         / "ros2_bridge"
         / "unity2foxglove_ros2_bridge"
     )
+
+
+def _sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with pathlib.Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _bridge_source_digest(repository: pathlib.Path) -> str:
+    """Hash every staged Bridge source path and byte without build noise."""
+
+    source = _bridge_source_root(repository)
+    if not (source / "package.xml").is_file():
+        raise AcceptanceFailure("FAIL_BUILD", "The maintained Bridge source is absent.")
+    digest = hashlib.sha256()
+    files: list[pathlib.Path] = []
+    for path in source.rglob("*"):
+        relative = path.relative_to(source)
+        if any(part in _BRIDGE_SOURCE_IGNORES for part in relative.parts):
+            continue
+        if path.is_symlink():
+            raise AcceptanceFailure(
+                "FAIL_BUILD",
+                "The maintained Bridge source cannot contain symbolic links.",
+            )
+        if path.is_file():
+            files.append(path)
+    for path in sorted(files, key=lambda item: item.relative_to(source).as_posix()):
+        relative = path.relative_to(source).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(4, "little"))
+        digest.update(relative)
+        digest.update(path.stat().st_size.to_bytes(8, "little"))
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    return digest.hexdigest()
+
+
+def _bridge_build_path_identity(path: pathlib.Path) -> dict[str, object]:
+    candidate = pathlib.Path(path).resolve(strict=False)
+    try:
+        stat = candidate.stat()
+    except OSError:
+        return {"path": str(candidate), "available": False}
+    return {
+        "path": str(candidate),
+        "available": True,
+        "size": int(stat.st_size),
+        "modifiedNs": int(stat.st_mtime_ns),
+    }
+
+
+def bridge_build_cache_key(
+    repository: pathlib.Path,
+    profile: str,
+    distro: str,
+    rmw: str,
+    toolchain,
+    build_command: Sequence[str],
+    build_environment: Mapping[str, str],
+) -> str:
+    """Bind a reusable Windows Bridge build to all material local inputs."""
+
+    if (
+        profile not in protocol.PROFILE_CONTRACTS
+        or not distro
+        or not rmw
+        or not build_command
+    ):
+        raise AcceptanceFailure("FAIL_BUILD", "Bridge cache identity is incomplete.")
+    environment_keys = (
+        "VCToolsVersion",
+        "VisualStudioVersion",
+        "WindowsSDKVersion",
+        "VSCMD_ARG_TGT_ARCH",
+        "OPENSSL_ROOT_DIR",
+        "nlohmann_json_DIR",
+        "tinyxml2_DIR",
+    )
+    payload = {
+        "format": _BRIDGE_CACHE_FORMAT,
+        "sourceSha256": _bridge_source_digest(repository),
+        "profile": profile,
+        "distro": distro,
+        "rmw": rmw,
+        "buildCommand": list(build_command),
+        "environment": {
+            key: str(build_environment.get(key, ""))
+            for key in environment_keys
+        },
+        "toolchain": {
+            "ros2Root": _bridge_build_path_identity(toolchain.ros2_root),
+            "ros2LocalSetup": _bridge_build_path_identity(
+                pathlib.Path(toolchain.ros2_root) / "local_setup.bat"
+            ),
+            "python": _bridge_build_path_identity(toolchain.python_executable),
+            "colcon": _bridge_build_path_identity(toolchain.colcon_executable),
+        },
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _bridge_cache_owner(profile: str) -> dict[str, object]:
+    return {
+        "schemaVersion": _BRIDGE_CACHE_FORMAT,
+        "owner": _BRIDGE_CACHE_OWNER,
+        "profile": profile,
+    }
+
+
+def _read_bridge_cache_json(path: pathlib.Path) -> Mapping[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, Mapping) else None
+
+
+def _bridge_cache_is_owned(overlay: pathlib.Path, profile: str) -> bool:
+    marker = _read_bridge_cache_json(overlay / _BRIDGE_CACHE_OWNERSHIP_NAME)
+    return marker == _bridge_cache_owner(profile)
+
+
+def _bridge_cache_executable(overlay: pathlib.Path) -> pathlib.Path:
+    return (
+        overlay
+        / "install"
+        / "lib"
+        / _BRIDGE_PACKAGE_NAME
+        / f"{_BRIDGE_PACKAGE_NAME}.exe"
+    )
+
+
+def _bridge_cache_has_outputs(overlay: pathlib.Path) -> bool:
+    install = overlay / "install"
+    return (
+        _bridge_cache_executable(overlay).is_file()
+        and (install / "local_setup.bat").is_file()
+        and (install / "share" / _BRIDGE_PACKAGE_NAME / "package.xml").is_file()
+    )
+
+
+def _bridge_cache_matches(
+    overlay: pathlib.Path,
+    profile: str,
+    cache_key: str,
+) -> bool:
+    if not _bridge_cache_is_owned(overlay, profile) or not _bridge_cache_has_outputs(
+        overlay
+    ):
+        return False
+    manifest = _read_bridge_cache_json(overlay / _BRIDGE_CACHE_MANIFEST_NAME)
+    if (
+        manifest is None
+        or set(manifest)
+        != {
+            "schemaVersion",
+            "cacheKey",
+            "profile",
+            "executableSha256",
+        }
+        or manifest.get("schemaVersion") != _BRIDGE_CACHE_FORMAT
+        or manifest.get("cacheKey") != cache_key
+        or manifest.get("profile") != profile
+    ):
+        return False
+    try:
+        return manifest.get("executableSha256") == _sha256_file(
+            _bridge_cache_executable(overlay)
+        )
+    except OSError:
+        return False
+
+
+def prepare_bridge_build_workspace(
+    cache_root: pathlib.Path,
+    profile: str,
+    cache_key: str,
+) -> tuple[pathlib.Path, bool]:
+    """Reuse or replace only an exactly owned profile-stable Bridge cache."""
+
+    if profile not in protocol.PROFILE_CONTRACTS or not re.fullmatch(
+        r"[0-9a-f]{64}",
+        cache_key,
+    ):
+        raise AcceptanceFailure("FAIL_BUILD", "Bridge cache key or profile is invalid.")
+    root = pathlib.Path(cache_root).resolve(strict=False)
+    raw_overlay = pathlib.Path(
+        os.path.abspath(os.fspath(root / profile / "bridge-overlay"))
+    )
+    overlay = raw_overlay.resolve(strict=False)
+    if (
+        os.path.normcase(os.fspath(raw_overlay))
+        != os.path.normcase(os.fspath(overlay))
+        or overlay == root
+    ):
+        raise AcceptanceFailure("FAIL_BUILD", "Bridge cache path is redirected.")
+    try:
+        overlay.relative_to(root)
+    except ValueError as exc:
+        raise AcceptanceFailure("FAIL_BUILD", "Bridge cache path escaped its root.") from exc
+
+    if overlay.exists():
+        if _bridge_cache_matches(overlay, profile, cache_key):
+            return overlay, True
+        if not overlay.is_dir() or not _bridge_cache_is_owned(overlay, profile):
+            raise AcceptanceFailure(
+                "FAIL_BUILD",
+                "Refusing to replace an unowned Bridge cache workspace.",
+            )
+        try:
+            shutil.rmtree(overlay)
+        except OSError as exc:
+            raise AcceptanceFailure(
+                "FAIL_BUILD",
+                "The stale owned Bridge cache could not be replaced.",
+            ) from exc
+
+    try:
+        overlay.mkdir(parents=True, exist_ok=False)
+        write_private_json_atomic(
+            overlay / _BRIDGE_CACHE_OWNERSHIP_NAME,
+            _bridge_cache_owner(profile),
+        )
+    except OSError as exc:
+        raise AcceptanceFailure(
+            "FAIL_BUILD",
+            "The owned Bridge cache workspace could not be created.",
+        ) from exc
+    return overlay, False
+
+
+def seal_bridge_build_workspace(
+    overlay: pathlib.Path,
+    profile: str,
+    cache_key: str,
+) -> None:
+    """Seal a tested Bridge cache with its exact executable digest."""
+
+    candidate = pathlib.Path(overlay)
+    if (
+        profile not in protocol.PROFILE_CONTRACTS
+        or not re.fullmatch(r"[0-9a-f]{64}", cache_key)
+        or not _bridge_cache_is_owned(candidate, profile)
+        or not _bridge_cache_has_outputs(candidate)
+    ):
+        raise AcceptanceFailure(
+            "FAIL_BUILD",
+            "The Bridge cache cannot be sealed without owned tested outputs.",
+        )
+    write_private_json_atomic(
+        candidate / _BRIDGE_CACHE_MANIFEST_NAME,
+        {
+            "schemaVersion": _BRIDGE_CACHE_FORMAT,
+            "cacheKey": cache_key,
+            "profile": profile,
+            "executableSha256": _sha256_file(
+                _bridge_cache_executable(candidate)
+            ),
+        },
+    )
+
+
+def _copy_bridge_source(repository: pathlib.Path, overlay: pathlib.Path) -> None:
+    source = _bridge_source_root(repository)
     destination = overlay / "src" / "unity2foxglove_ros2_bridge"
     if not (source / "package.xml").is_file() or destination.exists():
         raise AcceptanceFailure(
@@ -3340,12 +3923,7 @@ def _copy_bridge_source(repository: pathlib.Path, overlay: pathlib.Path) -> None
             source,
             destination,
             ignore=shutil.ignore_patterns(
-                "build",
-                "install",
-                "log",
-                "bin",
-                "obj",
-                "__pycache__",
+                *_BRIDGE_SOURCE_IGNORES,
             ),
         )
     except OSError as exc:
@@ -3542,14 +4120,6 @@ def _prepare_ros_runtime(
     bridge_runtime_workspace: pathlib.Path | None = None
     case = str(config["case"])
     if case in {"multi-target", "qos-contract"}:
-        overlay = output / "bridge-overlay"
-        _copy_bridge_source(repository, overlay)
-        _physical_bridge, runtime_bridge = stack.enter_context(
-            peer.temporary_short_windows_peer_workspace(overlay)
-        )
-        bridge_runtime_workspace = runtime_bridge
-        if _paths_are_distinct(runtime_bridge, overlay):
-            subst_roots.append(runtime_bridge)
         bridge_underlay = build_ros_actor_environment(
             build_environment,
             bridge_install=None,
@@ -3586,46 +4156,100 @@ def _prepare_ros_runtime(
             "-DPYTHON_EXECUTABLE="
             + pathlib.Path(toolchain.python_executable).as_posix(),
         ]
-        _run_logged_preflight(
+        bridge_cache_key = bridge_build_cache_key(
+            repository,
+            profile,
+            distro,
+            rmw,
+            toolchain,
             bridge_build_command,
-            cwd=runtime_bridge,
-            environment=bridge_build_environment,
-            log_path=output / "bridge-build.log",
-            job=job,
-            failure_code="FAIL_BUILD",
-            operation="build",
+            bridge_build_environment,
         )
-        ctest = shutil.which("ctest.exe", path=bridge_build_environment.get("PATH"))
-        if not ctest:
-            raise AcceptanceFailure(
-                "FAIL_BUILD",
-                "The selected ROS/MSVC environment has no ctest executable.",
-            )
-        _run_logged_preflight(
-            [ctest, "--output-on-failure", "-C", "Release"],
-            cwd=runtime_bridge / "build" / "unity2foxglove_ros2_bridge",
-            environment=bridge_build_environment,
-            log_path=output / "bridge-tests.log",
-            job=job,
-            failure_code="FAIL_BUILD",
-            operation="build",
+        overlay, bridge_cache_reused = prepare_bridge_build_workspace(
+            repository / "build" / "phase184" / "bridge-cache",
+            profile,
+            bridge_cache_key,
         )
         bridge_install = overlay / "install"
-        if not (
-            bridge_install
-            / "lib"
-            / "unity2foxglove_ros2_bridge"
-            / "unity2foxglove_ros2_bridge.exe"
-        ).is_file():
+        if bridge_install.resolve(strict=False) != pathlib.Path(
+            str(config["bridgeOverlayInstall"])
+        ).resolve(strict=False):
+            raise AcceptanceFailure(
+                "FAIL_PREFLIGHT",
+                "The prepared Bridge cache does not match the immutable run configuration.",
+            )
+        _physical_bridge, runtime_bridge = stack.enter_context(
+            peer.temporary_short_windows_peer_workspace(overlay)
+        )
+        bridge_runtime_workspace = runtime_bridge
+        if _paths_are_distinct(runtime_bridge, overlay):
+            subst_roots.append(runtime_bridge)
+        if not bridge_cache_reused:
+            _copy_bridge_source(repository, overlay)
+            _run_logged_preflight(
+                bridge_build_command,
+                cwd=runtime_bridge,
+                environment=bridge_build_environment,
+                log_path=output / "bridge-build.log",
+                job=job,
+                failure_code="FAIL_BUILD",
+                operation="build",
+            )
+            ctest = shutil.which(
+                "ctest.exe",
+                path=bridge_build_environment.get("PATH"),
+            )
+            if not ctest:
+                raise AcceptanceFailure(
+                    "FAIL_BUILD",
+                    "The selected ROS/MSVC environment has no ctest executable.",
+                )
+            _run_logged_preflight(
+                [ctest, "--output-on-failure", "-C", "Release"],
+                cwd=runtime_bridge / "build" / _BRIDGE_PACKAGE_NAME,
+                environment=bridge_build_environment,
+                log_path=output / "bridge-tests.log",
+                job=job,
+                failure_code="FAIL_BUILD",
+                operation="build",
+            )
+            seal_bridge_build_workspace(
+                overlay,
+                profile,
+                bridge_cache_key,
+            )
+        manifest = _read_bridge_cache_json(
+            overlay / _BRIDGE_CACHE_MANIFEST_NAME
+        )
+        if manifest is None or not _bridge_cache_matches(
+            overlay,
+            profile,
+            bridge_cache_key,
+        ):
             raise AcceptanceFailure(
                 "FAIL_BUILD",
-                "Bridge overlay did not install its Windows executable.",
+                "The tested Bridge cache did not retain exact sealed evidence.",
             )
+        protocol.write_json_atomic(
+            output / "bridge-cache-evidence.json",
+            {
+                "schemaVersion": _BRIDGE_CACHE_FORMAT,
+                "profile": profile,
+                "cacheKey": bridge_cache_key,
+                "sourceSha256": _bridge_source_digest(repository),
+                "executableSha256": manifest["executableSha256"],
+                "reused": bridge_cache_reused,
+                "buildVerdict": "CACHE_VALIDATED" if bridge_cache_reused else "PASS",
+                "testVerdict": "CACHE_VALIDATED" if bridge_cache_reused else "PASS",
+            },
+            repo_root=repository,
+        )
 
     zenoh_router: pathlib.Path | None = None
     zenoh_router_environment: dict[str, str] | None = None
     zenoh_router_config: pathlib.Path | None = None
     zenoh_session_config: pathlib.Path | None = None
+    zenoh_router_endpoint: UnityZenohRouterEndpoint | None = None
     if rmw == "rmw_zenoh_cpp":
         try:
             import phase179_zenoh_topology as zenoh
@@ -3651,14 +4275,24 @@ def _prepare_ros_runtime(
             / "rmw_zenoh_cpp"
             / "config"
         )
-        router_port = choose_owned_loopback_port(
-            (int(config["foxglovePort"]), int(config["bridgePort"]))
+        zenoh_router_endpoint = load_unity_zenoh_router_endpoint(repository)
+        if zenoh_router_endpoint.port in {
+            int(config["foxglovePort"]),
+            int(config["bridgePort"]),
+        }:
+            raise AcceptanceFailure(
+                "FAIL_PREFLIGHT",
+                "The Unity Zenoh router port collides with another owned endpoint.",
+            )
+        require_available_loopback_port(
+            zenoh_router_endpoint.port,
+            "Zenoh router",
         )
         owned = zenoh.create_owned_local_router_config(
             router_template=templates / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
             session_template=templates / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
             output_directory=output / "zenoh",
-            endpoint=f"tcp/127.0.0.1:{router_port}",
+            endpoint=zenoh_router_endpoint.endpoint,
         )
         zenoh_router_config = owned.router_config
         zenoh_session_config = owned.session_config
@@ -3725,6 +4359,7 @@ def _prepare_ros_runtime(
         zenoh_router_environment=zenoh_router_environment,
         zenoh_router_config=zenoh_router_config,
         zenoh_session_config=zenoh_session_config,
+        zenoh_router_endpoint=zenoh_router_endpoint,
         subst_roots=tuple(subst_roots),
     )
 
@@ -3771,6 +4406,63 @@ def _start_case_workers_serially(
         _wait_for_actor_readiness(config, (role,), owner)
 
 
+def _installed_bridge_executable(runtime: PreparedRosRuntime | None) -> pathlib.Path:
+    if runtime is None or runtime.bridge_install is None:
+        raise AcceptanceFailure(
+            "FAIL_BRIDGE",
+            "The selected case has no built Bridge overlay.",
+        )
+    return _require_file(
+        runtime.bridge_install
+        / "lib"
+        / "unity2foxglove_ros2_bridge"
+        / "unity2foxglove_ros2_bridge.exe",
+        "FAIL_BRIDGE",
+        "Installed native Bridge executable",
+    )
+
+
+def _preflight_bridge_health(
+    *,
+    config: Mapping[str, object],
+    output: pathlib.Path,
+    runtime: PreparedRosRuntime | None,
+    owner: OwnedProcessSet,
+    streams: list[TextIO],
+) -> dict[str, object]:
+    """Health-check a disposable sidecar, stop it, and prove its port released."""
+
+    if owner.process("bridge-health") is not None or owner.process("bridge") is not None:
+        raise AcceptanceFailure(
+            "FAIL_BRIDGE",
+            "Bridge health preflight must run before either Bridge process exists.",
+        )
+    bridge_executable = _installed_bridge_executable(runtime)
+    health_process = _launch_logged_process(
+        "bridge-health",
+        build_bridge_command(
+            bridge_executable,
+            str(config["bridgeHost"]),
+            int(config["bridgePort"]),
+        ),
+        cwd=runtime.bridge_runtime_workspace or output,
+        environment=runtime.actor_environment,
+        log_path=output / "bridge-health.log",
+        owner=owner,
+        streams=streams,
+    )
+    try:
+        health = wait_for_bridge_health(config, health_process)
+    finally:
+        exit_code = owner.stop("bridge-health")
+    require_available_loopback_port(int(config["bridgePort"]), "Bridge")
+    return {
+        "response": health,
+        "processExitCode": exit_code,
+        "portReleased": True,
+    }
+
+
 def _start_bridge_actor(
     *,
     config: Mapping[str, object],
@@ -3779,26 +4471,21 @@ def _start_bridge_actor(
     owner: OwnedProcessSet,
     streams: list[TextIO],
 ) -> dict[str, object]:
-    """Start one owned Bridge and prove correlated health without DDS startup."""
+    """Start the real sidecar after native readiness without a second client."""
 
-    if runtime is None or runtime.bridge_install is None:
+    health_process = owner.process("bridge-health")
+    if health_process is None or health_process.poll() is None:
         raise AcceptanceFailure(
             "FAIL_BRIDGE",
-            "The selected case has no built Bridge overlay.",
+            "The disposable Bridge health preflight is absent or still running.",
         )
     if owner.process("bridge") is not None:
         raise AcceptanceFailure(
             "FAIL_BRIDGE",
             "The selected case attempted to start its Bridge more than once.",
         )
-    bridge_executable = _require_file(
-        runtime.bridge_install
-        / "lib"
-        / "unity2foxglove_ros2_bridge"
-        / "unity2foxglove_ros2_bridge.exe",
-        "FAIL_BRIDGE",
-        "Installed native Bridge executable",
-    )
+    bridge_executable = _installed_bridge_executable(runtime)
+    log_path = output / "bridge.log"
     bridge = _launch_logged_process(
         "bridge",
         build_bridge_command(
@@ -3808,18 +4495,14 @@ def _start_bridge_actor(
         ),
         cwd=runtime.bridge_runtime_workspace or output,
         environment=runtime.actor_environment,
-        log_path=output / "bridge.log",
+        log_path=log_path,
         owner=owner,
         streams=streams,
     )
-    health = wait_for_bridge_health(config, bridge)
-    ready = {
-        "state": "u2r2-health-ready",
-        "sidecarName": health["sidecarName"],
-        "sidecarVersion": health["sidecarVersion"],
-    }
+    ready = wait_for_bridge_listening(config, bridge, log_path)
+    ready["healthPreflight"] = True
     write_actor_ready(config, "bridge", ready)
-    return {"bridge-health": health}
+    return {"bridge-listening": ready}
 
 
 def _start_case_actors(
@@ -3842,6 +4525,7 @@ def _start_case_actors(
             runtime is None
             or runtime.zenoh_router is None
             or runtime.zenoh_router_environment is None
+            or runtime.zenoh_router_endpoint is None
         ):
             raise AcceptanceFailure(
                 "FAIL_RUNTIME_SELECTION",
@@ -3856,27 +4540,12 @@ def _start_case_actors(
             owner=owner,
             streams=streams,
         )
-        try:
-            import phase179_zenoh_topology as zenoh
-        except ImportError as exc:
-            raise AcceptanceFailure(
-                "FAIL_RUNTIME_SELECTION",
-                "Zenoh readiness helpers are unavailable.",
-            ) from exc
-        if not zenoh.wait_for_marker(output / "zenoh-router.log", "Started", 60.0):
-            raise AcceptanceFailure(
-                "FAIL_RUNTIME_SELECTION",
-                "The owned Zenoh router did not reach its ready marker.",
-            )
-        if router.poll() is not None:
-            raise AcceptanceFailure(
-                "FAIL_RUNTIME_SELECTION",
-                "The owned Zenoh router exited after its ready marker.",
-            )
-        ready = {
-            "state": "owned-router-ready",
-            "topologyId": config["zenohTopologyId"],
-        }
+        ready = wait_for_owned_zenoh_router(
+            router,
+            output / "zenoh-router.log",
+            runtime.zenoh_router_endpoint,
+        )
+        ready["topologyId"] = config["zenohTopologyId"]
         write_actor_ready(config, "zenoh-router", ready)
         parent_ready_roles.add("zenoh-router")
         parent_evidence["zenoh-router"] = ready
@@ -3885,16 +4554,25 @@ def _start_case_actors(
         "bridge" in contract.required_actors
         and _requires_deferred_bridge_start(config)
     )
-    if "bridge" in contract.required_actors and not defer_bridge:
-        bridge_evidence = _start_bridge_actor(
+    if "bridge" in contract.required_actors:
+        parent_evidence["bridge-health"] = _preflight_bridge_health(
             config=config,
             output=output,
             runtime=runtime,
             owner=owner,
             streams=streams,
         )
-        parent_ready_roles.add("bridge")
-        parent_evidence.update(bridge_evidence)
+        if not defer_bridge:
+            parent_evidence.update(
+                _start_bridge_actor(
+                    config=config,
+                    output=output,
+                    runtime=runtime,
+                    owner=owner,
+                    streams=streams,
+                )
+            )
+            parent_ready_roles.add("bridge")
 
     worker_roles = set(contract.required_actors) - {"bridge", "zenoh-router"}
     _start_case_workers_serially(
@@ -3974,7 +4652,47 @@ def _write_parent_actor_results(
 ) -> None:
     contract = protocol.CASE_CONTRACTS[str(config["case"])]
     if "bridge" in contract.required_actors:
+        health_record = parent_evidence.get("bridge-health")
+        listening = parent_evidence.get("bridge-listening")
+        if not isinstance(health_record, Mapping) or not isinstance(listening, Mapping):
+            raise AcceptanceFailure(
+                "FAIL_BRIDGE",
+                "Bridge preflight or listening evidence is absent.",
+            )
+        response = health_record.get("response")
+        if (
+            not isinstance(response, Mapping)
+            or health_record.get("portReleased") is not True
+            or not isinstance(health_record.get("processExitCode"), int)
+        ):
+            raise AcceptanceFailure(
+                "FAIL_BRIDGE",
+                "Disposable Bridge health evidence is incomplete.",
+            )
+        validate_bridge_health_response(response, b"", str(config["token"]))
+        if (
+            listening.get("state") != "u2r2-listening-ready"
+            or listening.get("host") != config["bridgeHost"]
+            or listening.get("port") != config["bridgePort"]
+            or listening.get("healthPreflight") is not True
+        ):
+            raise AcceptanceFailure(
+                "FAIL_BRIDGE",
+                "The real Bridge listening evidence is incomplete.",
+            )
         bridge = parse_bridge_publisher_evidence(config, output / "bridge.log")
+        bridge.update(
+            {
+                "healthReady": True,
+                "healthProcess": "bridge-health",
+                "publisherProcess": "bridge",
+                "sidecarVersion": response["sidecarVersion"],
+                "healthTokenSha256": protocol.token_sha256(str(config["token"])),
+                "healthPreflightExitCode": health_record["processExitCode"],
+                "portReleasedBeforeUnity": True,
+                "listeningReady": True,
+            }
+        )
         write_actor_result(config, "bridge", verdict="PASS", evidence=bridge)
     if "zenoh-router" in contract.required_actors:
         evidence = parent_evidence.get("zenoh-router")
@@ -4697,7 +5415,7 @@ def _wait_for_manual_session(
                 deferred_bridge_start()
                 bridge_started = True
                 print(
-                    "[phase184] Unity native ROS is ready; the owned Bridge is now healthy.",
+                    "[phase184] Unity native ROS is ready; the owned Bridge is now listening.",
                     flush=True,
                 )
                 break

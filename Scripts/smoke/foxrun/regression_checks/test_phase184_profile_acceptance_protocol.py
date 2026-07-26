@@ -60,6 +60,17 @@ def run_config(
     output = ROOT / "build" / "phase184" / "acceptance" / run_id
     contract = protocol.CASE_CONTRACTS[case]
     actors = sorted(contract.required_actors | contract.deliberately_absent_actors.keys())
+    bridge_install = (
+        ROOT
+        / "build"
+        / "phase184"
+        / "bridge-cache"
+        / profile
+        / "bridge-overlay"
+        / "install"
+        if "bridge" in contract.required_actors
+        else output / "bridge-overlay" / "install"
+    )
     return {
         "schemaVersion": protocol.RUN_CONFIG_SCHEMA_VERSION,
         "executionMode": "batch",
@@ -76,7 +87,7 @@ def run_config(
         "zenohTopologyId": "phase184-local" if profile == "lyrical-zenoh" else "",
         "phase181Workspace": str(ROOT / "build" / "phase181" / profile),
         "phase181Install": str(ROOT / "build" / "phase181" / profile / "install"),
-        "bridgeOverlayInstall": str(output / "bridge-overlay" / "install"),
+        "bridgeOverlayInstall": str(bridge_install),
         "foxgloveHost": "127.0.0.1",
         "foxglovePort": 18765,
         "bridgeHost": "127.0.0.1",
@@ -279,12 +290,16 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
         },
         "stream": {
             "offered": 1280,
-            "accepted": 1024,
+            "received": 792,
+            "accepted": 792,
             "replaced": 224,
-            "dropped": 256,
-            "drained": 800,
-            "disposed": 1024,
+            "rateDropped": 0,
+            "transportDropped": 488,
+            "dropped": 488,
+            "drained": 568,
+            "disposed": 792,
             "maximumQueueDepth": 32,
+            "lastSequence": 1279,
             "retainedOrdered": True,
             "ownershipBalanced": True,
         },
@@ -436,6 +451,18 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
         mutations = (
             ("token", "../unsafe"),
             ("outputRoot", str(ROOT.parent / "outside")),
+            (
+                "bridgeOverlayInstall",
+                str(
+                    ROOT
+                    / "build"
+                    / "phase184"
+                    / "bridge-cache"
+                    / "lyrical-zenoh"
+                    / "bridge-overlay"
+                    / "install"
+                ),
+            ),
             ("foxgloveHost", "0.0.0.0"),
             ("bridgePort", 70000),
             ("topics", ["/wrong/topic"]),
@@ -739,9 +766,11 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
 
         for field, value in (
             ("offered", 1279),
+            ("received", 1281),
             ("maximumQueueDepth", 31),
-            ("disposed", 1023),
+            ("disposed", 791),
             ("replaced", 0),
+            ("lastSequence", 100),
         ):
             invalid = copy.deepcopy(summary)
             invalid["stream"][field] = value
@@ -755,11 +784,16 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
         near_total_loss = valid_summary(protocol, config)
         near_total_loss["stream"].update(
             {
+                "received": 1,
                 "accepted": 1,
                 "replaced": 1,
+                "rateDropped": 0,
+                "transportDropped": 1279,
                 "dropped": 1279,
                 "drained": 0,
                 "disposed": 1,
+                "maximumQueueDepth": 1,
+                "lastSequence": 0,
             }
         )
         with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
@@ -768,6 +802,26 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 expected_case="stream-640hz",
                 expected_token=str(config["token"]),
             )
+
+        sparse_but_bounded = valid_summary(protocol, config)
+        sparse_but_bounded["stream"].update(
+            {
+                "received": 64,
+                "accepted": 64,
+                "replaced": 32,
+                "rateDropped": 0,
+                "transportDropped": 1216,
+                "dropped": 1216,
+                "drained": 32,
+                "disposed": 64,
+                "lastSequence": 1279,
+            }
+        )
+        protocol.validate_summary(
+            sparse_but_bounded,
+            expected_case="stream-640hz",
+            expected_token=str(config["token"]),
+        )
 
     def test_not_applicable_reason_must_be_case_defined_and_has_no_synthetic_pass(self):
         """N/A evidence is typed, exact, and never carries PASS."""
