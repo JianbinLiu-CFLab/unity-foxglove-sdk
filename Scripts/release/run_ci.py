@@ -397,6 +397,10 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
                 [sys.executable, script, "--only", "phase181-ros2-regression"],
             ),
             CiJob(
+                "phase184-acceptance-tooling",
+                [sys.executable, script, "--only", "phase184-acceptance-tooling"],
+            ),
+            CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
                 disable_timeout=True,
@@ -628,7 +632,8 @@ def main() -> int:
         help=(
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
-            "phase181-ros2-regression, mcap-conformance, packages, boundary"
+            "phase181-ros2-regression, phase184-acceptance-tooling, "
+            "mcap-conformance, packages, boundary"
         ),
     )
     parser.add_argument(
@@ -845,8 +850,8 @@ def main() -> int:
             "Phase179 Zenoh topology ownership and readiness regressions",
         )
 
-    # --- pure Phase181 custom-interface helper and source-package regressions ---
-    if args.only in (None, "phase181-ros2-regression"):
+    # --- pure Phase184 acceptance protocol and orchestrator tooling regressions ---
+    if args.only in (None, "phase184-acceptance-tooling"):
         results["phase184-profile-acceptance-protocol"] = run(
             [
                 sys.executable,
@@ -854,7 +859,7 @@ def main() -> int:
                 "unittest",
                 PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
             ],
-            "Phase184 profile acceptance evidence protocol regressions",
+            "Phase184 acceptance protocol tooling regressions",
         )
         results["phase184-profile-acceptance-orchestrator"] = run(
             [
@@ -863,8 +868,11 @@ def main() -> int:
                 "unittest",
                 PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
             ],
-            "Phase184 profile acceptance owned-orchestrator regressions",
+            "Phase184 acceptance orchestrator tooling regressions",
         )
+
+    # --- pure Phase181 custom-interface helper and source-package regressions ---
+    if args.only in (None, "phase181-ros2-regression"):
         results["phase181-ros2-peer-protocol"] = run(
             [sys.executable, "-m", "unittest", PHASE181_ROS2_PEER_PROTOCOL_REGRESSION],
             "Phase181 custom ROS2 peer protocol regressions",

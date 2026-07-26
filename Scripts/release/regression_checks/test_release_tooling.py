@@ -681,6 +681,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
+                "phase184-acceptance-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",
@@ -695,9 +696,42 @@ class RunCiTests(unittest.TestCase):
         self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
         self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
 
-    def test_phase184_acceptance_regressions_are_in_the_python_tooling_lane(self) -> None:
-        """The default Phase181 helper lane must execute both fail-closed Phase184 suites."""
+    def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
+        """The Phase184 tooling selector must execute only its two fail-closed suites."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase184-acceptance-tooling"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        observed = [(call.args[0], call.args[1]) for call in run.call_args_list]
+        self.assertEqual(
+            [
+                (
+                    [
+                        sys.executable,
+                        "-m",
+                        "unittest",
+                        self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
+                    ],
+                    "Phase184 acceptance protocol tooling regressions",
+                ),
+                (
+                    [
+                        sys.executable,
+                        "-m",
+                        "unittest",
+                        self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
+                    ],
+                    "Phase184 acceptance orchestrator tooling regressions",
+                ),
+            ],
+            observed,
+        )
+
+        with mock.patch.object(self.run_ci, "run", return_value=True) as phase181_run:
             with mock.patch.object(
                 sys,
                 "argv",
@@ -705,30 +739,71 @@ class RunCiTests(unittest.TestCase):
             ):
                 self.assertEqual(0, self.run_ci.main())
 
-        observed = [(call.args[0], call.args[1]) for call in run.call_args_list]
-        self.assertIn(
-            (
-                [
-                    sys.executable,
-                    "-m",
-                    "unittest",
-                    self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
-                ],
-                "Phase184 profile acceptance evidence protocol regressions",
-            ),
-            observed,
+        phase181_commands = [call.args[0] for call in phase181_run.call_args_list]
+        self.assertNotIn(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
+            ],
+            phase181_commands,
         )
-        self.assertIn(
+        self.assertNotIn(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
+            ],
+            phase181_commands,
+        )
+
+    def test_phase184_acceptance_tooling_lane_propagates_failure(self) -> None:
+        """A failing Phase184 tooling suite must fail its dedicated selector."""
+
+        with mock.patch.object(
+            self.run_ci,
+            "run",
+            side_effect=(False, True),
+        ):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase184-acceptance-tooling"],
+            ):
+                self.assertEqual(1, self.run_ci.main())
+
+    def test_only_help_lists_phase184_acceptance_tooling_selector(self) -> None:
+        """CLI help must name the dedicated Phase184 tooling lane honestly."""
+
+        with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with self.assertRaises(SystemExit) as context:
+                    self.run_ci.main()
+
+        self.assertEqual(0, context.exception.code)
+        self.assertIn("phase184-acceptance-tooling", stdout.getvalue())
+
+    def test_phase184_acceptance_tooling_command_is_exact(self) -> None:
+        """The dedicated lane must remain a tooling test, not claim runtime execution."""
+
+        jobs = self.run_ci.build_default_ci_jobs(
+            types.SimpleNamespace(skip_analyzer=False)
+        )
+        job = next(
+            candidate
+            for candidate in jobs
+            if candidate.name == "phase184-acceptance-tooling"
+        )
+        self.assertEqual(
             (
-                [
-                    sys.executable,
-                    "-m",
-                    "unittest",
-                    self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
-                ],
-                "Phase184 profile acceptance owned-orchestrator regressions",
+                sys.executable,
+                str(RUN_CI_PATH.resolve()),
+                "--only",
+                "phase184-acceptance-tooling",
             ),
-            observed,
+            tuple(job.command),
         )
 
     def test_only_help_lists_dotnet_lane_selectors(self) -> None:
@@ -758,6 +833,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel": None,
                 "phase179-ros2-regression": None,
                 "phase181-ros2-regression": None,
+                "phase184-acceptance-tooling": None,
                 "mcap-conformance": None,
                 "packages": None,
                 "boundary": None,
@@ -1254,6 +1330,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
+                "phase184-acceptance-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",
