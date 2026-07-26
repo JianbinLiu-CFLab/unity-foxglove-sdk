@@ -689,6 +689,8 @@ namespace Unity2Foxglove.ManualAcceptance
         private int _warmupPulses;
         private bool _nativeReadyForBridge;
         private bool _initialArmed;
+        private FoxgloveManager _manager;
+        private string _lastBridgeRuntimeError = string.Empty;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.MultiTargetCase;
@@ -701,6 +703,8 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
 
+            _manager = FindFirstObjectByType<FoxgloveManager>();
+            _lastBridgeRuntimeError = string.Empty;
             PulseWarmupUntilTargetsReady();
             Ready("topic=" + Topic + " targets=foxglove,native,bridge");
         }
@@ -716,6 +720,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 PulseWarmupUntilTargetsReady();
             }
 
+            EmitBridgeRuntimeFailure();
             if (TryGetTargetStatus(Topic, out var status))
             {
                 _targetStatus = status.Status.ToString();
@@ -784,6 +789,33 @@ namespace Unity2Foxglove.ManualAcceptance
                 State(RunToken, "multi-warmup", 18410 + _warmupPulses++);
             _nextWarmupPulseAt =
                 Time.realtimeSinceStartup + WarmupPulseIntervalSeconds;
+        }
+
+        private void EmitBridgeRuntimeFailure()
+        {
+            if (_manager == null)
+                _manager = FindFirstObjectByType<FoxgloveManager>();
+            if (_manager == null)
+                return;
+
+            var stats = _manager.GetRos2BridgeStatsSnapshot();
+            var error = stats.LastError ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(error)
+                || string.Equals(
+                    error,
+                    _lastBridgeRuntimeError,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastBridgeRuntimeError = error;
+            Emit(
+                "PHASE184G_BRIDGE_RUNTIME_FAILURE",
+                "connected=" + stats.Connected
+                + " connecting=" + stats.Connecting
+                + " lastError="
+                + Phase184AcceptanceText.SafeMarker(error));
         }
     }
 

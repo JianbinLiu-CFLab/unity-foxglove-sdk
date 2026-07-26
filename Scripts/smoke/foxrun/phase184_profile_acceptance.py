@@ -34,7 +34,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping, Sequence, TextIO
+from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
@@ -75,8 +75,6 @@ _UNITY_TYPESUPPORT_PACKAGE_PREFIX = (
 )
 _UNITY_RUNTIME_DEFINE = "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
 _UNITY_TYPESUPPORT_DEFINE = "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES"
-_DEFERRED_BRIDGE_START_MARKER = "PHASE184G_NATIVE_READY_FOR_BRIDGE"
-_DEFERRED_BRIDGE_CASES = frozenset({"multi-target", "qos-contract"})
 _BRIDGE_PACKAGE_NAME = "unity2foxglove_ros2_bridge"
 _BRIDGE_CACHE_FORMAT = 1
 _BRIDGE_CACHE_OWNER = "phase184g-windows-bridge-cache"
@@ -118,12 +116,6 @@ class UnityZenohRouterEndpoint:
     endpoint: str
     host: str
     port: int
-
-
-def _requires_deferred_bridge_start(config: Mapping[str, object]) -> bool:
-    """Keep the real C++ participant absent until Unity's native node is ready."""
-
-    return str(config.get("case", "")) in _DEFERRED_BRIDGE_CASES
 
 
 def repository_root() -> pathlib.Path:
@@ -1062,17 +1054,6 @@ def _wait_for_unity_context(config: Mapping[str, object]) -> None:
         config,
         "PHASE184G_CONTEXT_READY",
         900.0,
-    )
-
-
-def _wait_for_deferred_bridge_gate(config: Mapping[str, object]) -> None:
-    """Bound native readiness only after the correlated Play context exists."""
-
-    _wait_for_unity_context(config)
-    wait_for_log_marker(
-        config,
-        _DEFERRED_BRIDGE_START_MARKER,
-        120.0,
     )
 
 
@@ -3153,33 +3134,6 @@ def wait_for_bridge_health(
     )
 
 
-def wait_for_bridge_listening(
-    config: Mapping[str, object],
-    process,
-    log_path: pathlib.Path,
-    timeout_seconds: float = 120.0,
-) -> dict[str, object]:
-    """Prove the real sidecar is listening without consuming its only client."""
-
-    host = str(config["bridgeHost"])
-    port = int(config["bridgePort"])
-    marker = f"[unity2foxglove_ros2_bridge] listening on {host}:{port}"
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise AcceptanceFailure(
-                "FAIL_BRIDGE",
-                "Bridge exited before its owned listening marker.",
-            )
-        if any(marker in line for line in read_log_lines(log_path)):
-            return {"state": "u2r2-listening-ready", "host": host, "port": port}
-        time.sleep(0.1)
-    raise AcceptanceFailure(
-        "FAIL_BRIDGE",
-        "Bridge listening readiness expired.",
-    )
-
-
 _BRIDGE_PUBLISHER_LINE = re.compile(
     r"publisher (?P<topic>/\S+) (?P<type>\S+) "
     r"profile=(?P<profile>\S+) reliability=(?P<reliability>\S+) "
@@ -4422,47 +4376,6 @@ def _installed_bridge_executable(runtime: PreparedRosRuntime | None) -> pathlib.
     )
 
 
-def _preflight_bridge_health(
-    *,
-    config: Mapping[str, object],
-    output: pathlib.Path,
-    runtime: PreparedRosRuntime | None,
-    owner: OwnedProcessSet,
-    streams: list[TextIO],
-) -> dict[str, object]:
-    """Health-check a disposable sidecar, stop it, and prove its port released."""
-
-    if owner.process("bridge-health") is not None or owner.process("bridge") is not None:
-        raise AcceptanceFailure(
-            "FAIL_BRIDGE",
-            "Bridge health preflight must run before either Bridge process exists.",
-        )
-    bridge_executable = _installed_bridge_executable(runtime)
-    health_process = _launch_logged_process(
-        "bridge-health",
-        build_bridge_command(
-            bridge_executable,
-            str(config["bridgeHost"]),
-            int(config["bridgePort"]),
-        ),
-        cwd=runtime.bridge_runtime_workspace or output,
-        environment=runtime.actor_environment,
-        log_path=output / "bridge-health.log",
-        owner=owner,
-        streams=streams,
-    )
-    try:
-        health = wait_for_bridge_health(config, health_process)
-    finally:
-        exit_code = owner.stop("bridge-health")
-    require_available_loopback_port(int(config["bridgePort"]), "Bridge")
-    return {
-        "response": health,
-        "processExitCode": exit_code,
-        "portReleased": True,
-    }
-
-
 def _start_bridge_actor(
     *,
     config: Mapping[str, object],
@@ -4471,14 +4384,8 @@ def _start_bridge_actor(
     owner: OwnedProcessSet,
     streams: list[TextIO],
 ) -> dict[str, object]:
-    """Start the real sidecar after native readiness without a second client."""
+    """Start one Bridge and prove its correlated health before Unity starts."""
 
-    health_process = owner.process("bridge-health")
-    if health_process is None or health_process.poll() is None:
-        raise AcceptanceFailure(
-            "FAIL_BRIDGE",
-            "The disposable Bridge health preflight is absent or still running.",
-        )
     if owner.process("bridge") is not None:
         raise AcceptanceFailure(
             "FAIL_BRIDGE",
@@ -4499,10 +4406,14 @@ def _start_bridge_actor(
         owner=owner,
         streams=streams,
     )
-    ready = wait_for_bridge_listening(config, bridge, log_path)
-    ready["healthPreflight"] = True
+    health = wait_for_bridge_health(config, bridge)
+    ready = {
+        "state": "u2r2-health-ready",
+        "sidecarName": health["sidecarName"],
+        "sidecarVersion": health["sidecarVersion"],
+    }
     write_actor_ready(config, "bridge", ready)
-    return {"bridge-listening": ready}
+    return {"bridge-health": health}
 
 
 def _start_case_actors(
@@ -4550,29 +4461,17 @@ def _start_case_actors(
         parent_ready_roles.add("zenoh-router")
         parent_evidence["zenoh-router"] = ready
 
-    defer_bridge = (
-        "bridge" in contract.required_actors
-        and _requires_deferred_bridge_start(config)
-    )
     if "bridge" in contract.required_actors:
-        parent_evidence["bridge-health"] = _preflight_bridge_health(
-            config=config,
-            output=output,
-            runtime=runtime,
-            owner=owner,
-            streams=streams,
-        )
-        if not defer_bridge:
-            parent_evidence.update(
-                _start_bridge_actor(
-                    config=config,
-                    output=output,
-                    runtime=runtime,
-                    owner=owner,
-                    streams=streams,
-                )
+        parent_evidence.update(
+            _start_bridge_actor(
+                config=config,
+                output=output,
+                runtime=runtime,
+                owner=owner,
+                streams=streams,
             )
-            parent_ready_roles.add("bridge")
+        )
+        parent_ready_roles.add("bridge")
 
     worker_roles = set(contract.required_actors) - {"bridge", "zenoh-router"}
     _start_case_workers_serially(
@@ -4586,8 +4485,6 @@ def _start_case_actors(
     )
     all_ready = worker_roles | parent_ready_roles
     expected_ready = set(contract.required_actors)
-    if defer_bridge:
-        expected_ready.remove("bridge")
     if all_ready != expected_ready:
         raise AcceptanceFailure(
             "FAIL_PREFLIGHT",
@@ -4652,45 +4549,22 @@ def _write_parent_actor_results(
 ) -> None:
     contract = protocol.CASE_CONTRACTS[str(config["case"])]
     if "bridge" in contract.required_actors:
-        health_record = parent_evidence.get("bridge-health")
-        listening = parent_evidence.get("bridge-listening")
-        if not isinstance(health_record, Mapping) or not isinstance(listening, Mapping):
+        health = parent_evidence.get("bridge-health")
+        if not isinstance(health, Mapping):
             raise AcceptanceFailure(
                 "FAIL_BRIDGE",
-                "Bridge preflight or listening evidence is absent.",
+                "Bridge health evidence is absent.",
             )
-        response = health_record.get("response")
-        if (
-            not isinstance(response, Mapping)
-            or health_record.get("portReleased") is not True
-            or not isinstance(health_record.get("processExitCode"), int)
-        ):
-            raise AcceptanceFailure(
-                "FAIL_BRIDGE",
-                "Disposable Bridge health evidence is incomplete.",
-            )
-        validate_bridge_health_response(response, b"", str(config["token"]))
-        if (
-            listening.get("state") != "u2r2-listening-ready"
-            or listening.get("host") != config["bridgeHost"]
-            or listening.get("port") != config["bridgePort"]
-            or listening.get("healthPreflight") is not True
-        ):
-            raise AcceptanceFailure(
-                "FAIL_BRIDGE",
-                "The real Bridge listening evidence is incomplete.",
-            )
+        validate_bridge_health_response(health, b"", str(config["token"]))
         bridge = parse_bridge_publisher_evidence(config, output / "bridge.log")
         bridge.update(
             {
                 "healthReady": True,
-                "healthProcess": "bridge-health",
+                "healthProcess": "bridge",
                 "publisherProcess": "bridge",
-                "sidecarVersion": response["sidecarVersion"],
+                "sameProcessHealthAndPublisher": True,
+                "sidecarVersion": health["sidecarVersion"],
                 "healthTokenSha256": protocol.token_sha256(str(config["token"])),
-                "healthPreflightExitCode": health_record["processExitCode"],
-                "portReleasedBeforeUnity": True,
-                "listeningReady": True,
             }
         )
         write_actor_result(config, "bridge", verdict="PASS", evidence=bridge)
@@ -5381,7 +5255,6 @@ def _wait_for_manual_session(
     mirror: EditorLogMirror,
     owner: OwnedProcessSet,
     worker_roles: Iterable[str],
-    deferred_bridge_start: Callable[[], None] | None = None,
 ) -> TerminalMarker:
     """Wait for current-token Play entry, route proof, and user-owned Play exit."""
 
@@ -5390,7 +5263,6 @@ def _wait_for_manual_session(
     terminal: TerminalMarker | None = None
     context_ready = False
     announced_terminal = False
-    bridge_started = deferred_bridge_start is None
     while True:
         mirror.poll()
         lines = read_log_lines(pathlib.Path(str(config["unityLog"])))
@@ -5405,20 +5277,6 @@ def _wait_for_manual_session(
                     context_ready = True
                     review_deadline = time.monotonic() + MANUAL_REVIEW_TIMEOUT_SECONDS
                     break
-        if not bridge_started:
-            for line in lines:
-                if _DEFERRED_BRIDGE_START_MARKER not in line:
-                    continue
-                fields = _parse_marker_fields(line)
-                if fields.get("case") != case or fields.get("token") != token:
-                    continue
-                deferred_bridge_start()
-                bridge_started = True
-                print(
-                    "[phase184] Unity native ROS is ready; the owned Bridge is now listening.",
-                    flush=True,
-                )
-                break
         observed_terminal = find_terminal_marker(lines, case, token)
         if observed_terminal is not None:
             terminal = observed_terminal
@@ -5641,31 +5499,9 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             expires_utc=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
         )
         pointer_written = True
-        deferred_bridge_start: Callable[[], None] | None = None
-        if _requires_deferred_bridge_start(config):
-            def start_deferred_bridge() -> None:
-                parent_evidence.update(
-                    _start_bridge_actor(
-                        config=config,
-                        output=output,
-                        runtime=runtime,
-                        owner=owner,
-                        streams=streams,
-                    )
-                )
-
-            deferred_bridge_start = start_deferred_bridge
-        instruction = (
-            "[phase184] External peers are ready. Open the Phase184 acceptance "
-            "scene, select the Manager, and Enter Play Mode now; the Bridge will "
-            "start after Unity native ROS is ready."
-            if deferred_bridge_start is not None
-            else
-            "[phase184] External endpoints are ready. Open the Phase184 acceptance "
-            "scene, select the Manager, and Enter Play Mode now."
-        )
         print(
-            instruction,
+            "[phase184] External endpoints are ready. Open the Phase184 acceptance "
+            "scene, select the Manager, and Enter Play Mode now.",
             flush=True,
         )
         terminal = _wait_for_manual_session(
@@ -5673,7 +5509,6 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             mirror,
             owner,
             worker_roles,
-            deferred_bridge_start,
         )
         _write_parent_actor_results(config, output, parent_evidence)
         results = _wait_for_actor_results(
@@ -5866,17 +5701,6 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             owner=owner,
             streams=streams,
         )
-        if _requires_deferred_bridge_start(config):
-            _wait_for_deferred_bridge_gate(config)
-            parent_evidence.update(
-                _start_bridge_actor(
-                    config=config,
-                    output=output,
-                    runtime=runtime,
-                    owner=owner,
-                    streams=streams,
-                )
-            )
         terminal = _wait_for_unity_exit(config, unity, owner, worker_roles)
         _write_parent_actor_results(config, output, parent_evidence)
         results = _wait_for_actor_results(

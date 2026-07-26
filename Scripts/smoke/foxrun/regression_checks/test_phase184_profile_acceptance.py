@@ -1297,12 +1297,11 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             main[: main.index("create_listen_socket(")],
         )
 
-    def test_bridge_health_preflight_is_disposable_before_unity(self):
+    def test_bridge_actor_health_checks_the_same_owned_process_before_unity(self):
         module = load_module()
         process = FakeProcess(18404)
         owner = mock.Mock()
         owner.process.return_value = None
-        owner.stop.return_value = 0
         runtime = mock.Mock()
         runtime.bridge_install = ROOT / "build" / "bridge-overlay"
         runtime.bridge_runtime_workspace = ROOT
@@ -1332,21 +1331,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             events.append("health")
             return health
 
-        def stop(role):
-            events.append("stop")
-            self.assertEqual("bridge-health", role)
-            return 0
-
-        def port(port, label):
-            events.append("port")
-            self.assertEqual(18767, port)
-            self.assertEqual("Bridge", label)
-            return port
-
-        owner.stop.side_effect = stop
         with mock.patch.object(
             module,
-            "_require_file",
+            "_installed_bridge_executable",
             return_value=ROOT / "bridge.exe",
         ), mock.patch.object(
             module,
@@ -1358,10 +1345,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             side_effect=wait,
         ), mock.patch.object(
             module,
-            "require_available_loopback_port",
-            side_effect=port,
+            "write_actor_ready",
         ):
-            evidence = module._preflight_bridge_health(
+            evidence = module._start_bridge_actor(
                 config=config,
                 output=TEST_ROOT,
                 runtime=runtime,
@@ -1369,22 +1355,14 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 streams=[],
             )
 
-        self.assertEqual(["launch", "health", "stop", "port"], events)
-        self.assertEqual(health, evidence["response"])
-        self.assertEqual(0, evidence["processExitCode"])
-        self.assertTrue(evidence["portReleased"])
+        self.assertEqual(["launch", "health"], events)
+        self.assertEqual(health, evidence["bridge-health"])
+        owner.stop.assert_not_called()
 
-    def test_bridge_cases_start_actual_sidecar_only_after_native_marker(self):
+    def test_bridge_cases_health_check_actual_sidecar_before_workers_and_unity(self):
         source = (
             ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
         ).read_text(encoding="utf-8")
-        module = load_module()
-        deferred = {
-            case
-            for case in module.protocol.CASE_CONTRACTS
-            if module._requires_deferred_bridge_start({"case": case})
-        }
-        self.assertEqual({"multi-target", "qos-contract"}, deferred)
 
         actors = source[
             source.index("def _start_case_actors(") : source.index(
@@ -1398,16 +1376,15 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 source.index("def run_batch_parent("),
             )
         ]
-        health_preflight = actors.index("_preflight_bridge_health(")
+        bridge_launch = actors.index("_start_bridge_actor(")
         worker_launch = actors.index("_start_case_workers_serially(")
-        self.assertLess(health_preflight, worker_launch)
-        self.assertIn("defer_bridge", actors)
+        self.assertLess(bridge_launch, worker_launch)
+        self.assertNotIn("_preflight_bridge_health(", actors)
+        self.assertNotIn("defer_bridge", actors)
 
         unity_launch = batch.index("unity = _launch_logged_process(")
-        native_gate = batch.index("_wait_for_deferred_bridge_gate(config)")
-        bridge_launch = batch.index("_start_bridge_actor(", native_gate)
-        self.assertLess(unity_launch, native_gate)
-        self.assertLess(native_gate, bridge_launch)
+        self.assertNotIn("_wait_for_deferred_bridge_gate(", batch)
+        self.assertNotIn("_start_bridge_actor(", batch[unity_launch:])
 
         actual_bridge = source[
             source.index("def _start_bridge_actor(") : source.index(
@@ -1415,74 +1392,16 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 source.index("def _start_bridge_actor("),
             )
         ]
-        self.assertIn("wait_for_bridge_listening(", actual_bridge)
-        self.assertNotIn("wait_for_bridge_health(", actual_bridge)
+        self.assertIn("wait_for_bridge_health(", actual_bridge)
+        self.assertNotIn("wait_for_bridge_listening(", actual_bridge)
 
-    def test_manual_bridge_starts_actual_sidecar_only_after_native_marker(self):
-        source = (
-            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
-        ).read_text(encoding="utf-8")
         manual = source[
             source.index("def run_manual_parent(") : source.index(
                 "def run_batch_parent(",
                 source.index("def run_manual_parent("),
             )
         ]
-
-        play_wait = manual.index("_wait_for_manual_session(")
-        self.assertIn("deferred_bridge_start", manual)
-        self.assertIn("_start_bridge_actor(", manual[:play_wait])
-
-    def test_actual_bridge_readiness_reads_owned_log_without_connecting(self):
-        module = load_module()
-        TEST_ROOT.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="bridge-ready-", dir=TEST_ROOT) as raw:
-            log = pathlib.Path(raw) / "bridge.log"
-            log.write_text(
-                "[INFO] [unity2foxglove_ros2_bridge] listening on 127.0.0.1:18767\n",
-                encoding="utf-8",
-            )
-            process = FakeProcess(18405)
-            config = {"bridgeHost": "127.0.0.1", "bridgePort": 18767}
-            with mock.patch.object(module.socket, "create_connection") as connect:
-                ready = module.wait_for_bridge_listening(
-                    config,
-                    process,
-                    log,
-                    timeout_seconds=0.1,
-                )
-
-        connect.assert_not_called()
-        self.assertEqual("127.0.0.1", ready["host"])
-        self.assertEqual(18767, ready["port"])
-
-    def test_deferred_bridge_gate_starts_native_deadline_after_unity_context(self):
-        module = load_module()
-        calls = []
-        config = {
-            "case": "multi-target",
-            "token": "p184g_A1b2C3d4E5f6",
-        }
-        with mock.patch.object(
-            module,
-            "_wait_for_unity_context",
-            side_effect=lambda value: calls.append(("context", value)),
-        ), mock.patch.object(
-            module,
-            "wait_for_log_marker",
-            side_effect=lambda value, marker, timeout: calls.append(
-                ("marker", value, marker, timeout)
-            ),
-        ):
-            module._wait_for_deferred_bridge_gate(config)
-
-        self.assertEqual(
-            [
-                ("context", config),
-                ("marker", config, module._DEFERRED_BRIDGE_START_MARKER, 120.0),
-            ],
-            calls,
-        )
+        self.assertNotIn("deferred_bridge_start", manual)
 
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
         source = (

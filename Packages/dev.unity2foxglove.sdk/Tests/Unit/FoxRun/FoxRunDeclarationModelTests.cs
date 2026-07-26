@@ -2812,6 +2812,14 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "PHASE184G_BRIDGE_RUNTIME_FAILURE",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "GetRos2BridgeStatsSnapshot()",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
                 "FoxgloveLogHub.TryGetActivePublishTargetStatus(",
                 acceptanceSource,
                 StringComparison.Ordinal);
