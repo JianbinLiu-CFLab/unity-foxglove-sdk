@@ -2125,6 +2125,109 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void NativeHubIgnoresFoxgloveOnlyContractsButStillRejectsInvalidSources()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var policy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
+                14,
+                true,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                4096,
+                120,
+                20);
+            var policyField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_policy",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(policyField);
+            policyField.SetValue(hub, policy);
+
+            var source = new NativeOnlySource();
+            var sourceCandidateType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "SourceCandidate",
+                BindingFlags.NonPublic);
+            Assert.NotNull(sourceCandidateType);
+            var sourceCandidate = Activator.CreateInstance(
+                sourceCandidateType,
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                args: new object[] { source, source, null },
+                culture: null);
+            var registrarType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "CollectingRegistrar",
+                BindingFlags.NonPublic);
+            Assert.NotNull(registrarType);
+            var registrar = Assert.IsAssignableFrom<IFoxRunRos2SubscriptionRegistrar>(
+                Activator.CreateInstance(
+                    registrarType,
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    args: new[] { (object)hub, sourceCandidate },
+                    culture: null));
+
+            var foxglove = Contract("foxglove", "default", supportsNative: false);
+            registrar.Register<FakeHostMessage>(
+                foxglove,
+                (message, _) => message,
+                message => message.Dispose(),
+                _ => { },
+                _ => false,
+                valuesEqual: null,
+                consumeTrigger: null,
+                canApply: null);
+            var foxgloveStream = Contract("foxglove-stream", "default", supportsNative: false);
+            registrar.RegisterStream<FakeHostMessage, FakeHostMessage>(
+                foxgloveStream,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => message,
+                transferOwned: _ => { },
+                clearOwned: () => { });
+            var invalid = Contract("invalid", "default");
+            registrar.Register<FakeHostMessage>(
+                invalid,
+                (message, _) => message,
+                message => message.Dispose(),
+                _ => { },
+                _ => false,
+                valuesEqual: null,
+                consumeTrigger: null,
+                canApply: null);
+
+            var seenField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_seenEndpoints",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(seenField);
+            var seen = Assert.IsType<HashSet<string>>(seenField.GetValue(hub));
+            Assert.Contains(source.GetInstanceID() + "|" + foxglove.Id, seen);
+            Assert.Contains(source.GetInstanceID() + "|" + foxgloveStream.Id, seen);
+            Assert.Contains(source.GetInstanceID() + "|" + invalid.Id, seen);
+
+            var diagnosticsField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_diagnostics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(diagnosticsField);
+            var diagnostics = Assert.IsType<FoxRunRos2SubscriptionDiagnostics>(
+                diagnosticsField.GetValue(hub));
+            Assert.False(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + foxglove.Id,
+                out _));
+            Assert.False(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + foxgloveStream.Id,
+                out _));
+            Assert.True(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + invalid.Id,
+                out var invalidSnapshot));
+            Assert.Equal(
+                FoxRunRos2SubscriptionBindingState.Unsupported,
+                invalidSnapshot.State);
+            Assert.Equal(
+                FoxRunRos2RegistrationError.RegistrationRejected,
+                invalidSnapshot.Error);
+        }
+
+        [Fact]
         public void ExplicitNativeContractDoesNotDependOnOutputOrManagerDefaultSource()
         {
             var policy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
@@ -2711,7 +2814,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         private static Unity.FoxgloveSDK.Components.FoxRunEndpoint ParseProvider(string provider)
             => provider == "ros2-native"
                 ? Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native
-                : (Unity.FoxgloveSDK.Components.FoxRunEndpoint)0;
+                : provider == "foxglove" || provider == "foxglove-stream"
+                    ? Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove
+                    : provider == "invalid"
+                        ? (Unity.FoxgloveSDK.Components.FoxRunEndpoint)99
+                        : (Unity.FoxgloveSDK.Components.FoxRunEndpoint)0;
 
         private static bool TryParseQosProfile(
             string qos,

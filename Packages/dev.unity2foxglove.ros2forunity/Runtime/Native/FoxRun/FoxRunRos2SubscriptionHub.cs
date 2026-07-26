@@ -393,6 +393,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
     }
 
+    internal enum FoxRunRos2ContractActivationDisposition
+    {
+        Rejected = 0,
+        NotApplicable = 1,
+        Active = 2
+    }
+
     internal static class FoxRunRos2ContractActivation
     {
         internal static bool TryResolve(
@@ -400,9 +407,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunSubscriptionSessionPolicy policy,
             out FoxRunResolvedQos qos,
             out string diagnostic)
-            => TryResolve(contract, policy, out qos, out _, out diagnostic);
+            => Resolve(
+                   contract,
+                   policy,
+                   out qos,
+                   out _,
+                   out diagnostic)
+               == FoxRunRos2ContractActivationDisposition.Active;
 
         internal static bool TryResolve(
+            FoxRunRos2GeneratedContract contract,
+            FoxRunSubscriptionSessionPolicy policy,
+            out FoxRunResolvedQos qos,
+            out FoxRunRos2RegistrationError error,
+            out string diagnostic)
+            => Resolve(contract, policy, out qos, out error, out diagnostic)
+               == FoxRunRos2ContractActivationDisposition.Active;
+
+        internal static FoxRunRos2ContractActivationDisposition Resolve(
             FoxRunRos2GeneratedContract contract,
             FoxRunSubscriptionSessionPolicy policy,
             out FoxRunResolvedQos qos,
@@ -414,34 +436,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (contract == null)
             {
                 diagnostic = "Generated ROS2 contract is missing.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (!contract.HasCompleteMetadata)
             {
                 diagnostic = "Generated ROS2 contract does not carry complete native metadata.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface
                 && !contract.HasCompleteCustomMetadata)
             {
                 diagnostic = "Generated custom ROS2 contract does not carry complete interface metadata.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (policy == null || !policy.SubscriptionsEnabled)
             {
                 diagnostic = "FoxRun subscriptions are disabled for the captured session.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (contract.Source != 0
                 && !Enum.IsDefined(typeof(FoxRunEndpoint), contract.Source))
             {
                 diagnostic = "Generated ROS2 contract has an invalid Source declaration.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (!Enum.IsDefined(typeof(FoxRunFlow), contract.Mode))
             {
                 diagnostic = "Generated ROS2 contract has an invalid mode declaration.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (!Enum.IsDefined(typeof(FoxRunPolicy), contract.Policy)
                 || float.IsNaN(contract.Hz)
@@ -454,7 +476,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 || (contract.Policy == FoxRunPolicy.Trigger && contract.HasExplicitHz))
             {
                 diagnostic = "Generated ROS2 contract has invalid update-policy metadata.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             var permitsNativePublishAndSubscribe =
                 contract.Mode == FoxRunFlow.PublishAndSubscribe
@@ -464,13 +486,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 && !permitsNativePublishAndSubscribe)
             {
                 diagnostic = "Native ROS2 subscriptions require Subscribe mode.";
-                return false;
-            }
-            if (!contract.SupportsRos2Native)
-            {
-                error = FoxRunRos2RegistrationError.UnsupportedMessageType;
-                diagnostic = "The generated input type has no native ROS2 capability.";
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
 
             var topology = FoxRunEndpointResolver.Resolve(
@@ -485,14 +501,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 defaultTargets: FoxRunEndpoint.Foxglove,
                 publishDefaultEncoding: FoxRunEncoding.Protobuf,
                 subscribeDefaultEncoding: policy.FoxgloveEncoding);
-            if (!topology.Success
-                || topology.Topology.Source != FoxRunEndpoint.Ros2Native)
+            if (!topology.Success)
             {
                 error = FoxRunRos2RegistrationError.RegistrationRejected;
-                diagnostic = topology.Success
-                    ? "The captured provider is not native ROS2."
-                    : topology.DiagnosticMessage;
-                return false;
+                diagnostic = topology.DiagnosticMessage;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
+            }
+            if (topology.Topology.Source != FoxRunEndpoint.Ros2Native)
+            {
+                error = FoxRunRos2RegistrationError.None;
+                diagnostic = "The captured provider is not native ROS2.";
+                return FoxRunRos2ContractActivationDisposition.NotApplicable;
+            }
+            if (!contract.SupportsRos2Native)
+            {
+                error = FoxRunRos2RegistrationError.UnsupportedMessageType;
+                diagnostic = "The generated input type has no native ROS2 capability.";
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
 
             var qosResolution = contract.ResolveQos(policy.DefaultRos2Qos);
@@ -500,13 +525,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 error = FoxRunRos2RegistrationError.UnsupportedQos;
                 diagnostic = qosResolution.DiagnosticMessage;
-                return false;
+                return FoxRunRos2ContractActivationDisposition.Rejected;
             }
 
             qos = qosResolution.Qos;
             error = FoxRunRos2RegistrationError.None;
             diagnostic = string.Empty;
-            return true;
+            return FoxRunRos2ContractActivationDisposition.Active;
         }
 
     }
@@ -1062,9 +1087,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (_existingBindings.Contains(identity) || _bindings.Count >= MaximumContracts)
                 return;
 
-            if (!FoxRunRos2ContractActivation.TryResolve(
-                    contract, _policy, out var qos, out var activationError,
-                    out var activationDiagnostic))
+            var activation = FoxRunRos2ContractActivation.Resolve(
+                contract,
+                _policy,
+                out var qos,
+                out var activationError,
+                out var activationDiagnostic);
+            if (activation == FoxRunRos2ContractActivationDisposition.NotApplicable)
+                return;
+            if (activation != FoxRunRos2ContractActivationDisposition.Active)
             {
                 RecordUnsupported(identity, contract, activationError, activationDiagnostic);
                 return;
@@ -1215,9 +1246,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (clearOwned == null)
                 throw new ArgumentNullException(nameof(clearOwned));
 
-            if (!FoxRunRos2ContractActivation.TryResolve(
-                    contract, _policy, out var qos, out var activationError,
-                    out var activationDiagnostic))
+            var activation = FoxRunRos2ContractActivation.Resolve(
+                contract,
+                _policy,
+                out var qos,
+                out var activationError,
+                out var activationDiagnostic);
+            if (activation == FoxRunRos2ContractActivationDisposition.NotApplicable)
+                return;
+            if (activation != FoxRunRos2ContractActivationDisposition.Active)
             {
                 RecordUnsupported(identity, contract, activationError, activationDiagnostic);
                 return;
