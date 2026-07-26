@@ -18,7 +18,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// once and transferred directly into the stream without a latest slot.
     /// </summary>
     internal sealed class FoxRunRos2StreamSubscriptionBinding<TTransport, TSample>
-        : IFoxRunRos2HostBinding
+        : IFoxRunRos2HostBinding, IFoxRunRos2DeferredCleanupStatus
         where TTransport : ROS2.Message, new()
     {
         private const int CleanupNotStarted = 0;
@@ -300,6 +300,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         public bool TryApplyLatest(long activeSessionGeneration) => false;
+
+        bool IFoxRunRos2DeferredCleanupStatus.CleanupComplete
+            => Volatile.Read(ref _cleanupComplete) == CleanupFinished;
 
         public void RecordApplyFailure(Exception exception)
         {
@@ -669,7 +672,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             lock (_lifecycleLock)
             {
                 _failedRegistrationFatal = fatal;
-                Volatile.Write(ref _failedRegistrationCleanupPending, 1);
+                Interlocked.Exchange(ref _failedRegistrationCleanupPending, 1);
             }
             if (Volatile.Read(ref _callbacksInFlight) == 0)
                 CompleteFailedRegistrationCleanup(throwFatal: true);

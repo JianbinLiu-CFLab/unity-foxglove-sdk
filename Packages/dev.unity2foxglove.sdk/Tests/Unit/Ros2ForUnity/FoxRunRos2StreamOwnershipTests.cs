@@ -339,6 +339,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(binding.TryGetSnapshot(7, out var pending));
             Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, pending.Error);
             Assert.Equal(0, backend.ReleaseCount);
+            Assert.False(
+                ((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
             finishMaterialize.Set();
             Assert.True(callback.Join(TimeSpan.FromSeconds(5)));
             Assert.Equal(1, dispatcher.PendingCount);
@@ -348,6 +350,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(binding.TryGetSnapshot(7, out var stopped));
             Assert.Equal(FoxRunRos2RegistrationError.Stopped, stopped.Error);
             Assert.Equal(1, backend.ReleaseCount);
+            Assert.True(
+                ((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
             Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
         }
 

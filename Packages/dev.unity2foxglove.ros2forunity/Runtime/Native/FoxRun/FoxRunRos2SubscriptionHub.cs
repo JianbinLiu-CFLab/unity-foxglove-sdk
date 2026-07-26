@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -17,7 +18,107 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     internal interface IFoxRunRos2SubscriptionHostedCleanup
     {
+        bool CleanupComplete { get; }
         void Stop();
+    }
+
+    internal interface IFoxRunRos2DeferredCleanupStatus
+    {
+        bool CleanupComplete { get; }
+    }
+
+    internal sealed class FoxRunRos2HostCleanupQueue
+    {
+        private readonly int _hostThreadId;
+        private readonly ConcurrentQueue<Action> _pending =
+            new ConcurrentQueue<Action>();
+
+        internal FoxRunRos2HostCleanupQueue(int hostThreadId)
+        {
+            if (hostThreadId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(hostThreadId));
+            _hostThreadId = hostThreadId;
+        }
+
+        internal void Dispatch(Action cleanup)
+        {
+            if (cleanup == null)
+                throw new ArgumentNullException(nameof(cleanup));
+            if (Thread.CurrentThread.ManagedThreadId == _hostThreadId)
+            {
+                cleanup();
+                return;
+            }
+            _pending.Enqueue(cleanup);
+        }
+
+        internal int Drain(Action<Exception> reportFailure)
+        {
+            if (Thread.CurrentThread.ManagedThreadId != _hostThreadId)
+            {
+                throw new InvalidOperationException(
+                    "Deferred ROS2 stream cleanup must drain on the Unity host thread.");
+            }
+
+            var drained = 0;
+            ExceptionDispatchInfo fatal = null;
+            while (_pending.TryDequeue(out var cleanup))
+            {
+                drained++;
+                try
+                {
+                    cleanup();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    try
+                    {
+                        reportFailure?.Invoke(exception);
+                    }
+                    catch (Exception reportException) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(reportException))
+                    {
+                        // Diagnostics cannot interrupt remaining cleanup.
+                    }
+                    catch (Exception reportException)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+            fatal?.Throw();
+            return drained;
+        }
+
+        internal bool DrainUntil(
+            Func<bool> cleanupComplete,
+            TimeSpan timeout,
+            Action<Exception> reportFailure)
+        {
+            if (cleanupComplete == null)
+                throw new ArgumentNullException(nameof(cleanupComplete));
+            if (timeout < TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout));
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                Drain(reportFailure);
+                if (cleanupComplete())
+                    return true;
+                if (stopwatch.Elapsed >= timeout)
+                {
+                    Drain(reportFailure);
+                    return cleanupComplete();
+                }
+                Thread.Sleep(1);
+            }
+        }
     }
 
     internal static class FoxRunRos2RegistrationIsolation
@@ -447,6 +548,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const int MaximumContracts = 4096;
         private const int MaxNodeCreateAttempts = 4;
         private const double NodeCreateRetryCooldownSeconds = 5.0;
+        private const int DeferredCleanupDrainTimeoutMilliseconds = 1000;
 
         private static readonly ProfilerMarker ScanMarker =
             new ProfilerMarker("Unity2Foxglove.FoxRunRos2Subscription.Scan");
@@ -475,7 +577,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RuntimeDiagnosticContext.Unknown;
         private ROS2.ROS2UnityComponent _ros2Unity;
         private Ros2ForUnityFoxRunNodeOwner _nodeOwner;
-        private SynchronizationContext _hostSynchronizationContext;
+        private FoxRunRos2HostCleanupQueue _hostCleanupQueue;
         private int _hostThreadId;
         private float _managerSearchCooldown;
         private float _scanCooldown;
@@ -644,8 +746,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Awake()
         {
-            _hostSynchronizationContext = SynchronizationContext.Current;
             _hostThreadId = Thread.CurrentThread.ManagedThreadId;
+            _hostCleanupQueue = new FoxRunRos2HostCleanupQueue(_hostThreadId);
             if (_instance != null && _instance != this)
             {
                 _duplicate = true;
@@ -670,6 +772,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Update()
         {
+            DrainPendingHostCleanup();
             if (_stopping)
             {
                 BeginShutdown();
@@ -819,15 +922,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     binding.Binding.TryRegister();
             }
             ExceptionDispatchInfo staleFatal = null;
+            var staleCleanupComplete = false;
             try
             {
-                StopHostedBindings(
+                StopHostedBindingsAndDrainDeferredCleanup(
                     _stale,
+                    _hostCleanupQueue,
+                    TimeSpan.FromMilliseconds(DeferredCleanupDrainTimeoutMilliseconds),
                     exception => WarnHostOnce(
                         "stale-binding|" + exception.GetType().Name,
                         "Native ROS2 subscription teardown failed: "
                         + FoxRunRos2PublicDiagnostic.Describe(
-                            FoxRunRos2RegistrationError.TeardownFailure)));
+                            FoxRunRos2RegistrationError.TeardownFailure)),
+                    out staleCleanupComplete);
             }
             catch (Exception exception)
             {
@@ -835,12 +942,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             finally
             {
-                for (var i = 0; i < _stale.Count; i++)
+                if (staleCleanupComplete)
                 {
-                    var stale = _stale[i];
-                    _bindings.Remove(stale);
-                    _existingBindings.Remove(stale.Identity);
-                    _diagnostics.Remove(stale.Identity);
+                    for (var i = 0; i < _stale.Count; i++)
+                    {
+                        var stale = _stale[i];
+                        _bindings.Remove(stale);
+                        _existingBindings.Remove(stale.Identity);
+                        _diagnostics.Remove(stale.Identity);
+                    }
+                }
+                else
+                {
+                    WarnHostOnce(
+                        "stale-binding|deferred-cleanup-timeout",
+                        "Native ROS2 subscription teardown remains pending after the bounded host cleanup window.");
                 }
             }
             _diagnostics.RemoveExcept(_seenEndpoints);
@@ -1227,20 +1343,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void DispatchCleanupToHostThread(Action cleanup)
         {
-            if (cleanup == null)
-                throw new ArgumentNullException(nameof(cleanup));
-            if (Thread.CurrentThread.ManagedThreadId == _hostThreadId)
-            {
-                cleanup();
-                return;
-            }
-            var context = _hostSynchronizationContext;
-            if (context == null)
+            var queue = _hostCleanupQueue;
+            if (queue == null)
             {
                 throw new InvalidOperationException(
-                    "The Unity host synchronization context is unavailable for deferred ROS2 stream cleanup.");
+                    "The Unity host cleanup queue is unavailable for deferred ROS2 stream cleanup.");
             }
-            context.Post(_ => cleanup(), null);
+            queue.Dispatch(cleanup);
+        }
+
+        private void DrainPendingHostCleanup()
+        {
+            _hostCleanupQueue?.Drain(exception => WarnHostOnce(
+                "deferred-cleanup|" + exception.GetType().Name,
+                "Deferred native ROS2 stream cleanup failed: "
+                + FoxRunRos2PublicDiagnostic.Describe(
+                    FoxRunRos2RegistrationError.TeardownFailure)));
         }
 
         private void RecordUnsupported(
@@ -1294,19 +1412,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void StopBindingsAndNode()
         {
             ExceptionDispatchInfo fatal = null;
+            var cleanupComplete = false;
             try
             {
-                StopHostedBindings(
+                StopHostedBindingsAndDrainDeferredCleanup(
                     _bindings,
+                    _hostCleanupQueue,
+                    TimeSpan.FromMilliseconds(DeferredCleanupDrainTimeoutMilliseconds),
                     exception => WarnHostOnce(
                         "stop-binding|" + exception.GetType().Name,
                         "Native ROS2 subscription teardown failed: "
                         + FoxRunRos2PublicDiagnostic.Describe(
-                            FoxRunRos2RegistrationError.TeardownFailure)));
+                            FoxRunRos2RegistrationError.TeardownFailure)),
+                    out cleanupComplete);
             }
             catch (Exception exception)
             {
                 fatal = ExceptionDispatchInfo.Capture(exception);
+            }
+            if (!cleanupComplete)
+            {
+                WarnHostOnce(
+                    "stop-binding|deferred-cleanup-timeout",
+                    "Native ROS2 subscription teardown remains pending after the bounded host cleanup window.");
+                fatal?.Throw();
+                return;
             }
             _bindings.Clear();
             _stale.Clear();
@@ -1380,6 +1510,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             fatal?.Throw();
+        }
+
+        internal static void StopHostedBindingsAndDrainDeferredCleanup(
+            IReadOnlyList<IFoxRunRos2SubscriptionHostedCleanup> bindings,
+            FoxRunRos2HostCleanupQueue cleanupQueue,
+            TimeSpan timeout,
+            Action<Exception> reportFailure,
+            out bool cleanupComplete)
+        {
+            if (cleanupQueue == null)
+                throw new ArgumentNullException(nameof(cleanupQueue));
+
+            cleanupComplete = false;
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                StopHostedBindings(bindings, reportFailure);
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
+
+            try
+            {
+                cleanupComplete = cleanupQueue.DrainUntil(
+                    () => HostedCleanupIsComplete(bindings),
+                    timeout,
+                    reportFailure);
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+                cleanupComplete = HostedCleanupIsComplete(bindings);
+            }
+
+            fatal?.Throw();
+        }
+
+        private static bool HostedCleanupIsComplete(
+            IReadOnlyList<IFoxRunRos2SubscriptionHostedCleanup> bindings)
+        {
+            if (bindings == null)
+                return true;
+            for (var index = 0; index < bindings.Count; index++)
+            {
+                var binding = bindings[index];
+                if (binding != null && !binding.CleanupComplete)
+                    return false;
+            }
+            return true;
         }
 
         private void BeginShutdown()
@@ -1556,6 +1737,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             internal void Stop() => Binding.Stop();
+
+            internal bool CleanupComplete
+                => !(Binding is IFoxRunRos2DeferredCleanupStatus deferred)
+                   || deferred.CleanupComplete;
+
+            bool IFoxRunRos2SubscriptionHostedCleanup.CleanupComplete
+                => CleanupComplete;
 
             void IFoxRunRos2SubscriptionHostedCleanup.Stop()
                 => Stop();

@@ -559,6 +559,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void SubscriptionHubDrainsDeferredCleanupBeforeReleasingHostedBindings()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: true);
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanup(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.FromSeconds(1),
+                _ => { },
+                out var cleanupComplete);
+
+            Assert.True(cleanupComplete);
+            Assert.Equal(new[] { "stop", "cleanup" }, cleanupOrder);
+        }
+
+        [Fact]
+        public void SubscriptionHubDeferredCleanupTimeoutRemainsExplicit()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: false);
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanup(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.Zero,
+                _ => { },
+                out var cleanupComplete);
+
+            Assert.False(cleanupComplete);
+            Assert.Equal(new[] { "stop" }, cleanupOrder);
+        }
+
+        [Fact]
         public void StopDoesNotWaitForBlockedRegisterAndDeferredReleaseIsUnique()
         {
             using var registerEntered = new ManualResetEventSlim();
@@ -1803,6 +1847,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 _stopOrder.Add(_name);
                 if (_failure != null)
                     throw _failure;
+            }
+
+            public bool CleanupComplete => true;
+        }
+
+        private sealed class FakeDeferredHostedCleanup :
+            IFoxRunRos2SubscriptionHostedCleanup
+        {
+            private readonly FoxRunRos2HostCleanupQueue _queue;
+            private readonly List<string> _cleanupOrder;
+            private readonly bool _dispatchCleanup;
+            private int _cleanupComplete;
+            private int _stopped;
+
+            public FakeDeferredHostedCleanup(
+                FoxRunRos2HostCleanupQueue queue,
+                List<string> cleanupOrder,
+                bool dispatchCleanup)
+            {
+                _queue = queue;
+                _cleanupOrder = cleanupOrder;
+                _dispatchCleanup = dispatchCleanup;
+            }
+
+            public bool CleanupComplete
+                => Volatile.Read(ref _cleanupComplete) != 0;
+
+            public void Stop()
+            {
+                if (Interlocked.Exchange(ref _stopped, 1) != 0)
+                    return;
+                _cleanupOrder.Add("stop");
+                if (!_dispatchCleanup)
+                    return;
+                var callback = new Thread(() => _queue.Dispatch(() =>
+                {
+                    _cleanupOrder.Add("cleanup");
+                    Volatile.Write(ref _cleanupComplete, 1);
+                }))
+                {
+                    IsBackground = true
+                };
+                callback.Start();
             }
         }
 
