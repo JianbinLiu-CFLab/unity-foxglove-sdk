@@ -2623,7 +2623,7 @@ namespace Demo
             Mode = FoxRunFlow.Subscribe,
             Source = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.SensorData)]
-        private FoxRunStream<Phase181State> _streamInputPort =
+        private FoxRunStream<Phase181State> _inputStream =
             new FoxRunStream<Phase181State>(
                 new FoxRunStreamOptions(
                     32,
@@ -2682,7 +2682,7 @@ namespace Demo
                 Assert.Contains(topic, generated, StringComparison.Ordinal);
             }
             Assert.Contains("RegisterStream<", allGenerated, StringComparison.Ordinal);
-            Assert.Contains("_streamInputPort", allGenerated, StringComparison.Ordinal);
+            Assert.Contains("_inputStream", allGenerated, StringComparison.Ordinal);
             Assert.Contains("() => AcceptExplicitJson()", generated, StringComparison.Ordinal);
 
             var acceptanceSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
@@ -2696,7 +2696,7 @@ namespace Demo
                          "private Phase181State _qosSystemDefault;",
                          "private Phase181State _qosKeepAll;",
                          "private Phase181State _qosKeepLastDepth;",
-                         "private FoxRunStream<Phase181State> _streamInputPort =",
+                         "private FoxRunStream<Phase181State> _inputStream =",
                          "private Phase181State _zenohOrigin;",
                      })
             {
@@ -2719,7 +2719,11 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_streamInputPort?.Dispose();",
+                "_inputStream?.Dispose();",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "public bool Passed => _passed;",
                 acceptanceSource,
                 StringComparison.Ordinal);
             foreach (var routeType in new[]

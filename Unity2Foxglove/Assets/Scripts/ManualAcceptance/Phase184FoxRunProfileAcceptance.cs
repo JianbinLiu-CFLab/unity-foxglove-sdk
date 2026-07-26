@@ -407,6 +407,7 @@ namespace Unity2Foxglove.ManualAcceptance
         protected int NegativeSeconds => _context.NegativeSeconds;
         protected bool IsArmed => _armed;
         protected bool IsTerminal => _terminal;
+        public bool Passed => _passed;
         protected abstract string RouteCaseId { get; }
 
         internal void Arm(Phase184AcceptanceRunContext context)
@@ -968,7 +969,7 @@ namespace Unity2Foxglove.ManualAcceptance
             Mode = FoxRunFlow.Subscribe,
             Source = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.SensorData)]
-        private FoxRunStream<Phase181State> _streamInputPort =
+        private FoxRunStream<Phase181State> _inputStream =
             new FoxRunStream<Phase181State>(
                 new FoxRunStreamOptions(
                     32,
@@ -1019,12 +1020,12 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void OnDisable()
         {
-            _streamInputPort?.Clear();
+            _inputStream?.Clear();
         }
 
         private void OnDestroy()
         {
-            _streamInputPort?.Dispose();
+            _inputStream?.Dispose();
         }
 
         private void Update()
@@ -1033,9 +1034,9 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
 
             if (Time.realtimeSinceStartup - _enabledAt >= InitialDrainDelaySeconds)
-                _streamInputPort.Drain(ObserveRetainedSample);
+                _inputStream.Drain(ObserveRetainedSample);
 
-            var stats = _streamInputPort.Stats;
+            var stats = _inputStream.Stats;
             _offered = stats.Received;
             _accepted = stats.Admitted;
             _drained = stats.Drained;
@@ -1049,7 +1050,7 @@ namespace Unity2Foxglove.ManualAcceptance
                    + stats.DroppedOldest
                    + stats.DroppedNewest
                    + stats.Cleared
-                   + _streamInputPort.Count;
+                   + _inputStream.Count;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
             if (FoxRunRos2SubscriptionAcceptanceDiagnostics.TryGet(
@@ -1074,7 +1075,7 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
             if (_offered >= ExpectedOfferedSamples
-                && _streamInputPort.Count == 0
+                && _inputStream.Count == 0
                 && _replaced > 0
                 && _retainedOrdered
                 && _ownershipBalanced
