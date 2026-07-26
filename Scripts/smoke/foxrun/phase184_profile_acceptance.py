@@ -990,11 +990,9 @@ def wait_for_terminal_marker(
         time.sleep(min(0.1, remaining))
 
 
-def _wait_for_manual_context(config: Mapping[str, object]) -> None:
-    """Hold finite worker windows until the user-owned Play session is current."""
+def _wait_for_unity_context(config: Mapping[str, object]) -> None:
+    """Start finite actor windows only after the correlated Play session exists."""
 
-    if config.get("executionMode") != "manual":
-        return
     wait_for_log_marker(
         config,
         "PHASE184G_CONTEXT_READY",
@@ -1336,7 +1334,7 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
         "foxglove-client",
         {"state": "connect-loop-ready", "host": "loopback", "topicCount": len(topics)},
     )
-    await asyncio.to_thread(_wait_for_manual_context, config)
+    await asyncio.to_thread(_wait_for_unity_context, config)
     url = f"ws://{config['foxgloveHost']}:{config['foxglovePort']}"
     connection_deadline = time.monotonic() + 120.0
     websocket = None
@@ -1722,7 +1720,7 @@ def _run_multi_target_peer(
         "ros2-peer",
         {"state": "typed-endpoints-ready", "topicCount": 1},
     )
-    _wait_for_manual_context(config)
+    _wait_for_unity_context(config)
 
     local1 = token + "-multi-local-1"
 
@@ -1864,7 +1862,7 @@ def _run_qos_peer(
         "ros2-peer",
         {"state": "qos-subscriptions-ready", "topicCount": len(topic_kinds)},
     )
-    _wait_for_manual_context(config)
+    _wait_for_unity_context(config)
 
     def all_delivered():
         for topic, _kind, stage in topic_kinds:
@@ -1938,7 +1936,7 @@ def _run_stream_peer(
         "ros2-peer",
         {"state": "stream-publishers-ready", "topicCount": 2, "nominalHz": 640},
     )
-    _wait_for_manual_context(config)
+    _wait_for_unity_context(config)
 
     warmup_stage = token + "-origin-warmup"
     _spin_until(
@@ -2456,7 +2454,7 @@ def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Map
         "graph-observer",
         {"state": "graph-observer-ready", "topicCount": len(topics)},
     )
-    _wait_for_manual_context(config)
+    _wait_for_unity_context(config)
 
     wait_for_log_marker(config, "PHASE184G_DEGRADED_WINDOW_STARTED", 60.0)
     deadline = (

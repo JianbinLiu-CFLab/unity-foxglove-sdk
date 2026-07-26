@@ -1219,6 +1219,26 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 command,
             )
 
+    def test_workers_wait_for_correlated_unity_context_in_batch_and_manual_modes(self):
+        """Cold Batch imports cannot consume finite actor deadlines before Play."""
+
+        module = load_module()
+        for execution_mode in ("batch", "manual"):
+            with self.subTest(execution_mode=execution_mode):
+                config = {
+                    "executionMode": execution_mode,
+                    "case": "foxglove-profile",
+                    "token": "p184g_A1b2C3d4E5f6",
+                }
+                with mock.patch.object(module, "wait_for_log_marker") as wait:
+                    module._wait_for_unity_context(config)
+
+                wait.assert_called_once_with(
+                    config,
+                    "PHASE184G_CONTEXT_READY",
+                    900.0,
+                )
+
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"
