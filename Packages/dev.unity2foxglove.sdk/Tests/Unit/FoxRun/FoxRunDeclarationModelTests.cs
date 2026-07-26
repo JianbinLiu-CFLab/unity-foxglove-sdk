@@ -2706,11 +2706,23 @@ namespace Demo
                 "MaximumBootstrapPulses",
                 acceptanceSource,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "PulseWarmupUntilTargetsReady();",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE184G_NATIVE_READY_FOR_BRIDGE",
+                acceptanceSource,
+                StringComparison.Ordinal);
 
             var builderSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184FoxRunProfileAcceptanceBuilder.cs");
             Assert.Contains(
                 "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+                builderSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SetInteger(serialized, \"_ros2BridgeSendTimeoutMs\", 30000);",
                 builderSource,
                 StringComparison.Ordinal);
         }

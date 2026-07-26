@@ -265,6 +265,7 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         SetInteger(serialized, "_port", foxglovePort);
         SetString(serialized, "_ros2BridgeHost", "127.0.0.1");
         SetInteger(serialized, "_ros2BridgePort", bridgePort);
+        SetInteger(serialized, "_ros2BridgeSendTimeoutMs", 30000);
         SetInteger(serialized, "_foxRunInboundMaxMessagesPerSecondPerTopic", 1000);
         SetInteger(serialized, "_foxRunDefaultSubscribeRateHz", 60);
         SetFloat(serialized, "_defaultPublishRateHz", 60f);

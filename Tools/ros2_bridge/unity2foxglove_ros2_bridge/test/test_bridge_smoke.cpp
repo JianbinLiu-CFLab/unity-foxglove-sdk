@@ -806,6 +806,41 @@ TEST(
 
 TEST(
   Unity2FoxgloveRos2BridgeProtocol,
+  HealthReadinessDoesNotInitializeTheDeferredRosNode)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+
+  size_t node_creation_attempts = 0;
+  DeferredBridgeSession session(
+    PayloadFormat::CdrWithEncapsulation,
+    [&]() -> rclcpp::Node::SharedPtr {
+      ++node_creation_attempts;
+      throw std::runtime_error("health readiness must not initialize ROS");
+    });
+  RawFrame health;
+  health.header = {
+    {"op", "health_ping"},
+    {"requestId", "phase184-deferred-health"},
+    {"protocolVersion", 1}
+  };
+
+  dispatch_deferred_frame(server_socket.get(), health, session);
+  const auto response = read_raw_frame(
+    client_socket.get(),
+    rclcpp::Node::SharedPtr {});
+
+  EXPECT_EQ("health_pong", response.header.value("op", ""));
+  EXPECT_EQ("phase184-deferred-health", response.header.value("requestId", ""));
+  EXPECT_EQ("ok", response.header.value("status", ""));
+  EXPECT_EQ(0U, node_creation_attempts);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
   LegacyPublishContractFailureDoesNotDropHealthyPublishersInTheSameSession)
 {
   auto context = std::make_shared<rclcpp::Context>();

@@ -219,6 +219,7 @@ MonoBehaviour:
   _succeededTargets:
   _failedTargets:
   _degradedObservedAt: -1
+  _bridgeDiagnosticCount: 0
 --- !u!4 &727549012
 Transform:
   m_ObjectHideFlags: 0
@@ -434,6 +435,7 @@ MonoBehaviour:
   _terminal: 0
   _passed: 0
   _readyContracts: 0
+  _nativeReadyForBridge: 0
 --- !u!4 &1507483996
 Transform:
   m_ObjectHideFlags: 0
@@ -555,7 +557,7 @@ MonoBehaviour:
     _depth: 10
   _ros2BridgeQueueCapacity: 1024
   _ros2BridgeReconnectIntervalMs: 1000
-  _ros2BridgeSendTimeoutMs: 1000
+  _ros2BridgeSendTimeoutMs: 30000
   _coordinateMode: 1
   _outputCoordinateMode: 1
   _inputCoordinateMode: 1

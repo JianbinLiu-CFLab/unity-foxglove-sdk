@@ -324,7 +324,7 @@ class ClientReadTimeoutException : public std::runtime_error
 public:
   explicit ClientReadTimeoutException(size_t expected_bytes)
   : std::runtime_error(
-      "bridge client stalled while sending " + std::to_string(expected_bytes) + " bytes")
+      "bridge client stalled while receiving " + std::to_string(expected_bytes) + " bytes")
   {
   }
 };
@@ -869,6 +869,14 @@ bool read_exact(
         continue;
       }
       if (socket_error_is_retryable_timeout(error)) {
+        // A receive timeout before the first byte is an ordinary idle session.
+        // Only a partially received frame is subject to the bounded stall clock.
+        if (offset == 0) {
+          if (node) {
+            rclcpp::spin_some(node);
+          }
+          continue;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (stalled_since == std::chrono::steady_clock::time_point {}) {
           stalled_since = now;
@@ -876,7 +884,9 @@ bool read_exact(
         if (now - stalled_since >= kReadStallTimeout) {
           throw ClientReadTimeoutException(count);
         }
-        rclcpp::spin_some(node);
+        if (node) {
+          rclcpp::spin_some(node);
+        }
         continue;
       }
       throw std::runtime_error("socket read failed: " + socket_error_text(error));
@@ -1341,6 +1351,55 @@ private:
   std::vector<uint8_t> payload_scratch_;
 };
 
+using NodeFactory = std::function<rclcpp::Node::SharedPtr()>;
+
+class DeferredBridgeSession
+{
+public:
+  DeferredBridgeSession(PayloadFormat payload_format, NodeFactory node_factory)
+  : payload_format_(payload_format), node_factory_(std::move(node_factory))
+  {
+    if (!node_factory_) {
+      throw std::invalid_argument("deferred bridge node factory is required");
+    }
+  }
+
+  BridgeNode & require_bridge()
+  {
+    if (!bridge_) {
+      node_ = node_factory_();
+      if (!node_) {
+        throw std::runtime_error("deferred bridge node factory returned no node");
+      }
+      bridge_ = std::make_unique<BridgeNode>(node_, payload_format_);
+    }
+    return *bridge_;
+  }
+
+  const rclcpp::Node::SharedPtr & node() const
+  {
+    return node_;
+  }
+
+  rclcpp::Logger logger() const
+  {
+    return node_ ? node_->get_logger() : rclcpp::get_logger(kSidecarName);
+  }
+
+  void spin_some() const
+  {
+    if (node_) {
+      rclcpp::spin_some(node_);
+    }
+  }
+
+private:
+  PayloadFormat payload_format_;
+  NodeFactory node_factory_;
+  rclcpp::Node::SharedPtr node_;
+  std::unique_ptr<BridgeNode> bridge_;
+};
+
 nlohmann::json publisher_ready_ok(const std::string & request_id)
 {
   return {
@@ -1397,6 +1456,90 @@ nlohmann::json handle_prepare_publisher_frame(const RawFrame & raw, BridgeNode &
       request.request_id,
       "publisher_unavailable",
       ex.what());
+  }
+}
+
+std::string publisher_request_id(const RawFrame & raw)
+{
+  if (
+    raw.header.is_object() &&
+    raw.header.contains("requestId") &&
+    raw.header["requestId"].is_string())
+  {
+    return raw.header["requestId"].get<std::string>();
+  }
+  return {};
+}
+
+void dispatch_deferred_frame(
+  SocketHandle client_fd,
+  const RawFrame & raw,
+  DeferredBridgeSession & session)
+{
+  if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
+    throw std::runtime_error("reject frame: missing or invalid op");
+  }
+
+  const auto op = raw.header.at("op").get<std::string>();
+  if (op == "health_ping") {
+    handle_health_ping(client_fd, raw);
+    return;
+  }
+
+  if (op == "prepare_publisher") {
+    nlohmann::json response;
+    try {
+      response = handle_prepare_publisher_frame(raw, session.require_bridge());
+    } catch (const std::exception & ex) {
+      response = publisher_ready_error(
+        publisher_request_id(raw),
+        "publisher_unavailable",
+        ex.what());
+    }
+    write_u2r2_frame(client_fd, response, {});
+    return;
+  }
+
+  if (op == "publish") {
+    const auto frame = parse_publish_frame(raw);
+    try {
+      session.require_bridge().publish(frame);
+    } catch (const std::exception & ex) {
+      RCLCPP_WARN(
+        session.logger(),
+        "[unity2foxglove_ros2_bridge] dropped publish frame for topic '%s': %s",
+        frame.topic.c_str(),
+        ex.what());
+    }
+    return;
+  }
+
+  throw std::runtime_error("reject frame: unsupported op '" + op + "'");
+}
+
+void process_deferred_client(
+  SocketHandle client_fd,
+  DeferredBridgeSession & session)
+{
+  while (rclcpp::ok()) {
+    try {
+      const auto raw = read_raw_frame(client_fd, session.node());
+      dispatch_deferred_frame(client_fd, raw, session);
+      session.spin_some();
+    } catch (const ClientClosedException &) {
+      break;
+    } catch (const ClientReadTimeoutException & ex) {
+      RCLCPP_WARN(session.logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (const std::exception & ex) {
+      RCLCPP_WARN(session.logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (...) {
+      RCLCPP_WARN(
+        session.logger(),
+        "[unity2foxglove_ros2_bridge] client session failed with an unknown exception");
+      break;
+    }
   }
 }
 
@@ -1482,14 +1625,15 @@ int main(int argc, char ** argv)
 #endif
 
   auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
-  auto node = std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");
+  auto logger = rclcpp::get_logger(kSidecarName);
+  rclcpp::Node::SharedPtr node;
 
   try {
     const auto options = parse_args(non_ros_args);
-    ScopedFd listen_fd(create_listen_socket(options.host, options.port, node->get_logger()));
+    ScopedFd listen_fd(create_listen_socket(options.host, options.port, logger));
 
     RCLCPP_INFO(
-      node->get_logger(),
+      logger,
       "[unity2foxglove_ros2_bridge] listening on %s:%d",
       options.host.c_str(),
       options.port);
@@ -1497,27 +1641,38 @@ int main(int argc, char ** argv)
     while (rclcpp::ok()) {
       ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
       if (!client_fd.valid()) {
-        rclcpp::spin_some(node);
+        if (node) {
+          rclcpp::spin_some(node);
+        }
         continue;
       }
 
-      RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
+      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client connected");
       try {
-        process_client(client_fd.get(), node, options.payload_format);
+        DeferredBridgeSession session(
+          options.payload_format,
+          [&node]()
+          {
+            if (!node) {
+              node = std::make_shared<rclcpp::Node>(kSidecarName);
+            }
+            return node;
+          });
+        process_deferred_client(client_fd.get(), session);
       } catch (const std::exception & ex) {
         RCLCPP_WARN(
-          node->get_logger(),
+          logger,
           "[unity2foxglove_ros2_bridge] client session escaped: %s",
           ex.what());
       } catch (...) {
         RCLCPP_WARN(
-          node->get_logger(),
+          logger,
           "[unity2foxglove_ros2_bridge] client session escaped with an unknown exception");
       }
-      RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
+      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client disconnected");
     }
   } catch (const std::exception & ex) {
-    RCLCPP_ERROR(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+    RCLCPP_ERROR(logger, "[unity2foxglove_ros2_bridge] %s", ex.what());
     rclcpp::shutdown();
     return 1;
   }

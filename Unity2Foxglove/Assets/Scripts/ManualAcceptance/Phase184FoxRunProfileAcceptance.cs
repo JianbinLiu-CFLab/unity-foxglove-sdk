@@ -664,6 +664,7 @@ namespace Unity2Foxglove.ManualAcceptance
     public sealed partial class Phase184MultiTargetRoute : Phase184AcceptanceRoute
     {
         public const string Topic = "/foxrun/phase184/multi/state";
+        private const float WarmupPulseIntervalSeconds = 0.25f;
 
         [FoxRun(
             Topic,
@@ -684,6 +685,9 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private bool _laterLocalMutation;
 
         private float _remoteObservedAt;
+        private float _nextWarmupPulseAt;
+        private int _warmupPulses;
+        private bool _nativeReadyForBridge;
         private bool _initialArmed;
 
         protected override string RouteCaseId =>
@@ -697,7 +701,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
 
-            _multiTarget = State(RunToken, "multi-warmup", 18410);
+            PulseWarmupUntilTargetsReady();
             Ready("topic=" + Topic + " targets=foxglove,native,bridge");
         }
 
@@ -706,9 +710,23 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!IsArmed || IsTerminal)
                 return;
 
+            if (!_initialArmed
+                && Time.realtimeSinceStartup >= _nextWarmupPulseAt)
+            {
+                PulseWarmupUntilTargetsReady();
+            }
+
             if (TryGetTargetStatus(Topic, out var status))
             {
                 _targetStatus = status.Status.ToString();
+                if (!_nativeReadyForBridge
+                    && (status.SucceededTargets & FoxRunEndpoint.Ros2Native) != 0)
+                {
+                    _nativeReadyForBridge = true;
+                    Emit(
+                        "PHASE184G_NATIVE_READY_FOR_BRIDGE",
+                        "topic=" + Topic + " target=native");
+                }
                 if (!_initialArmed
                     && status.Status == FoxRunPublishTargetStatus.Ready
                     && status.SucceededTargets
@@ -759,6 +777,14 @@ namespace Unity2Foxglove.ManualAcceptance
                     + " laterLocal=True");
             }
         }
+
+        private void PulseWarmupUntilTargetsReady()
+        {
+            _multiTarget =
+                State(RunToken, "multi-warmup", 18410 + _warmupPulses++);
+            _nextWarmupPulseAt =
+                Time.realtimeSinceStartup + WarmupPulseIntervalSeconds;
+        }
     }
 
     [DisallowMultipleComponent]
@@ -779,6 +805,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private string _succeededTargets = string.Empty;
         [SerializeField] private string _failedTargets = string.Empty;
         [SerializeField] private float _degradedObservedAt = -1f;
+        [SerializeField] private int _bridgeDiagnosticCount;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.DegradedTargetCase;
@@ -790,6 +817,11 @@ namespace Unity2Foxglove.ManualAcceptance
                 enabled = false;
                 return;
             }
+            _targetStatus = "Waiting";
+            _succeededTargets = string.Empty;
+            _failedTargets = string.Empty;
+            _degradedObservedAt = -1f;
+            _bridgeDiagnosticCount = 0;
             _degradedTarget = State(RunToken, "degraded-local", 18420);
             Ready("topic=" + Topic + " bridge=deliberately-absent");
         }
@@ -811,14 +843,21 @@ namespace Unity2Foxglove.ManualAcceptance
                 if (_degradedObservedAt < 0f)
                 {
                     _degradedObservedAt = Time.realtimeSinceStartup;
+                    _bridgeDiagnosticCount++;
                     Emit(
                         "PHASE184G_DEGRADED_WINDOW_STARTED",
-                        "healthy=foxglove failed=bridge");
+                        "healthy=foxglove failed=bridge bridgeDiagnostics="
+                        + _bridgeDiagnosticCount.ToString(CultureInfo.InvariantCulture));
                     return;
                 }
                 if (Time.realtimeSinceStartup - _degradedObservedAt < NegativeSeconds)
                     return;
-                Pass("healthy=foxglove failed=bridge status=Degraded");
+                Pass(
+                    "status=" + _targetStatus
+                    + " succeeded=" + _succeededTargets
+                    + " failed=" + _failedTargets
+                    + " foxgloveState=Ready ros2BridgeState=Unavailable bridgeDiagnostics="
+                    + _bridgeDiagnosticCount.ToString(CultureInfo.InvariantCulture));
                 return;
             }
             _degradedObservedAt = -1f;
@@ -863,6 +902,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         [Header("Read-only QoS Evidence")]
         [SerializeField] private int _readyContracts;
+        [SerializeField] private bool _nativeReadyForBridge;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.QosContractCase;
@@ -884,6 +924,16 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             if (!IsArmed || IsTerminal)
                 return;
+
+            if (!_nativeReadyForBridge
+                && TryGetTargetStatus(SystemDefaultTopic, out var nativeStatus)
+                && (nativeStatus.SucceededTargets & FoxRunEndpoint.Ros2Native) != 0)
+            {
+                _nativeReadyForBridge = true;
+                Emit(
+                    "PHASE184G_NATIVE_READY_FOR_BRIDGE",
+                    "topic=" + SystemDefaultTopic + " target=native");
+            }
 
             _readyContracts = 0;
             CountReady(SystemDefaultTopic);
