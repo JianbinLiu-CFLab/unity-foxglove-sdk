@@ -531,6 +531,45 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     ros_root,
                 )
 
+    def test_existing_acceptance_scene_still_runs_the_cold_start_preflight(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="scene-preflight-", dir=TEST_ROOT) as raw:
+            repository = pathlib.Path(raw) / "repository"
+            output = repository / "build" / "phase184" / "acceptance" / "run"
+            scene = (
+                repository
+                / "Unity2Foxglove"
+                / "Assets"
+                / "Scenes"
+                / "ManualAcceptance"
+                / "Phase184FoxRunProfileAcceptance.unity"
+            )
+            scene.parent.mkdir(parents=True, exist_ok=True)
+            scene.write_text("tracked scene\n", encoding="utf-8")
+            output.mkdir(parents=True, exist_ok=True)
+
+            with mock.patch.object(module, "_run_logged_preflight") as run:
+                with mock.patch.object(
+                    module,
+                    "read_log_lines",
+                    return_value=["PHASE184G_SCENE_BUILDER_PASS"],
+                ):
+                    actual = module._ensure_acceptance_scene(
+                        pathlib.Path(r"C:\Unity.exe"),
+                        repository,
+                        output,
+                        job=None,
+                    )
+
+            self.assertEqual(scene, actual)
+            run.assert_called_once()
+            command = run.call_args.args[0]
+            self.assertIn(
+                "Unity2Foxglove.Phase184FoxRunProfileAcceptanceBuilder.CreateOrRefreshAcceptanceScene",
+                command,
+            )
+
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"

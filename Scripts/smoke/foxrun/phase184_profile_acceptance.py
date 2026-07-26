@@ -2824,8 +2824,6 @@ def _ensure_acceptance_scene(
         / "ManualAcceptance"
         / "Phase184FoxRunProfileAcceptance.unity"
     )
-    if scene.is_file():
-        return scene
     command = [
         str(editor),
         "-batchmode",

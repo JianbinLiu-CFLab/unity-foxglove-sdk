@@ -11,6 +11,7 @@ using System.IO;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Editor;
 using Unity2Foxglove.ManualAcceptance;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -129,6 +130,13 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
                     "Unity did not save the Phase184 acceptance scene.");
             }
 
+            var manifestRefresh =
+                FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
+            Debug.Log(
+                "PHASE184G_SCENE_ARTIFACTS_READY manifest="
+                + manifestRefresh.Manifest.GlobalManifestHash
+                + " schemaInfoChanged="
+                + manifestRefresh.SchemaInfoChanged);
             AssetDatabase.SaveAssets();
             NormalizeUnityTextWhitespace(AcceptanceSceneAssetPath);
             NormalizeUnityTextWhitespace(AcceptanceSceneAssetPath + ".meta");

@@ -521,6 +521,8 @@ namespace Unity2Foxglove.ManualAcceptance
     {
         public const string InheritedTopic = "/foxrun/phase184/profile/default";
         public const string JsonTopic = "/foxrun/phase184/profile/json";
+        private const float BootstrapPulseIntervalSeconds = 0.25f;
+        private const int MaximumBootstrapPulses = 120;
 
         [FoxRun(InheritedTopic, Mode = FoxRunFlow.PublishAndSubscribe)]
         [SerializeField] private Phase181State _inheritedFoxglove;
@@ -547,6 +549,8 @@ namespace Unity2Foxglove.ManualAcceptance
         private float _localMutationAt;
         private bool _gateClosed;
         private bool _gateReopened;
+        private float _nextBootstrapPulseAt;
+        private int _bootstrapPulses;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.FoxgloveProfileCase;
@@ -568,8 +572,8 @@ namespace Unity2Foxglove.ManualAcceptance
             _disabledWindowPreservedValue = false;
             _sameValueAppliedAfterRecovery = false;
             _laterLocalMutation = false;
-            _inheritedFoxglove = State(RunToken, "profile-outbound", 18401);
-            _explicitJson = State(RunToken, "json-outbound", 18402);
+            _bootstrapPulses = 0;
+            PulseOutboundBootstrap();
             Ready("topics=2 encodings=protobuf,json");
         }
 
@@ -577,6 +581,17 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             if (!IsArmed || IsTerminal)
                 return;
+
+            if (!_gateClosed
+                && Time.realtimeSinceStartup >= _nextBootstrapPulseAt)
+            {
+                if (_bootstrapPulses >= MaximumBootstrapPulses)
+                {
+                    Fail("Foxglove profile bootstrap was not observed.");
+                    return;
+                }
+                PulseOutboundBootstrap();
+            }
 
             if (!_gateClosed && IsState(_explicitJson, "profile-a"))
             {
@@ -631,6 +646,17 @@ namespace Unity2Foxglove.ManualAcceptance
                     "applies=" + _inboundApplyStages.ToString(CultureInfo.InvariantCulture)
                     + " disabledPreserved=True recoveryApplied=True laterLocal=True");
             }
+        }
+
+        private void PulseOutboundBootstrap()
+        {
+            var pulse = _bootstrapPulses++;
+            _inheritedFoxglove =
+                State(RunToken, "profile-outbound", 18401 + pulse);
+            _explicitJson =
+                State(RunToken, "json-outbound", 18402 + pulse);
+            _nextBootstrapPulseAt =
+                Time.realtimeSinceStartup + BootstrapPulseIntervalSeconds;
         }
     }
 

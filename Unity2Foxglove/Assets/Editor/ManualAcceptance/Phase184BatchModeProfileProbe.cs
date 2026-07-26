@@ -6,6 +6,7 @@
 
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -21,7 +22,14 @@ public static class Phase184BatchModeProfileProbe
         "Unity2Foxglove.Phase184BatchModeProfileProbe.Run";
     private const string RunConfigArgument = "-phase184RunConfig";
     private const double StartupAndEvidenceTimeoutSeconds = 900d;
+    private const double WorkerResultDrainTimeoutSeconds = 30d;
     private const int MaximumPlayEntryRetries = 3;
+    private static readonly string[] WorkerRoles =
+    {
+        "foxglove-client",
+        "ros2-peer",
+        "graph-observer",
+    };
     private static readonly string SessionPrefix =
         "Unity2Foxglove.Phase184BatchModeProfileProbe."
         + Process.GetCurrentProcess().Id + ".";
@@ -30,6 +38,9 @@ public static class Phase184BatchModeProfileProbe
     private static string _caseId = string.Empty;
     private static string _token = string.Empty;
     private static double _startedAt;
+    private static bool _terminalPassObserved;
+    private static double _terminalPassAt;
+    private static string[] _requiredWorkerResultPaths = Array.Empty<string>();
 
     [InitializeOnLoadMethod]
     private static void RegisterFromCommandLine()
@@ -56,12 +67,15 @@ public static class Phase184BatchModeProfileProbe
         SessionState.SetBool(SessionKey("requested"), true);
         SessionState.SetBool(SessionKey("exit-requested"), false);
         SessionState.SetInt(SessionKey("play-entry-retries"), 0);
+        _terminalPassObserved = false;
+        _requiredWorkerResultPaths = Array.Empty<string>();
         _startedAt = EditorApplication.timeSinceStartup;
         EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
     private static void AttachHandlers()
     {
+        RestoreRunIdentity();
         if (_handlersAttached)
             return;
         _handlersAttached = true;
@@ -98,6 +112,7 @@ public static class Phase184BatchModeProfileProbe
             var config = LoadRunConfig();
             _caseId = (string)config["case"] ?? string.Empty;
             _token = (string)config["token"] ?? string.Empty;
+            PersistRunIdentity();
             EditorSceneManager.OpenScene(
                 Phase184FoxRunProfileAcceptanceBuilder.AcceptanceSceneAssetPath);
             Phase184FoxRunProfileAcceptanceBuilder.ConfigureOpenSceneForRun(config);
@@ -114,6 +129,20 @@ public static class Phase184BatchModeProfileProbe
                 + exception.GetType().Name);
             RequestEditorExit(5, "invalid-preplay");
         }
+    }
+
+    private static void PersistRunIdentity()
+    {
+        SessionState.SetString(SessionKey("case"), _caseId);
+        SessionState.SetString(SessionKey("token"), _token);
+    }
+
+    private static void RestoreRunIdentity()
+    {
+        if (string.IsNullOrEmpty(_caseId))
+            _caseId = SessionState.GetString(SessionKey("case"), string.Empty);
+        if (string.IsNullOrEmpty(_token))
+            _token = SessionState.GetString(SessionKey("token"), string.Empty);
     }
 
     private static JObject LoadRunConfig()
@@ -168,6 +197,22 @@ public static class Phase184BatchModeProfileProbe
         {
             return;
         }
+        if (_terminalPassObserved)
+        {
+            if (AllRequiredWorkerResultsReady())
+            {
+                RequestExit(0, "case-proof-and-worker-results-complete");
+                return;
+            }
+            if (EditorApplication.timeSinceStartup - _terminalPassAt
+                >= WorkerResultDrainTimeoutSeconds)
+            {
+                Debug.LogError(
+                    "PHASE184G_BATCH_DRAIN_TIMEOUT case=" + _caseId);
+                RequestExit(7, "worker-result-drain-timeout");
+            }
+            return;
+        }
         if (EditorApplication.timeSinceStartup - _startedAt
             < StartupAndEvidenceTimeoutSeconds)
         {
@@ -199,7 +244,69 @@ public static class Phase184BatchModeProfileProbe
             return;
         }
         if (condition.IndexOf("PHASE184G_CASE_PASS", StringComparison.Ordinal) >= 0)
-            RequestExit(0, "case-proof-complete");
+            BeginSuccessfulExit();
+    }
+
+    private static void BeginSuccessfulExit()
+    {
+        if (_terminalPassObserved)
+            return;
+        try
+        {
+            var config = LoadRunConfig();
+            var resultFiles = config["resultFiles"] as JObject
+                ?? throw new InvalidOperationException(
+                    "Run config resultFiles are missing.");
+            var paths = new List<string>();
+            foreach (var role in WorkerRoles)
+            {
+                if (resultFiles[role] == null)
+                    continue;
+                var path = (string)resultFiles[role];
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    throw new InvalidOperationException(
+                        "Worker result path is malformed.");
+                }
+                paths.Add(Path.GetFullPath(path));
+            }
+            if (paths.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Run config declares no required worker results.");
+            }
+            _requiredWorkerResultPaths = paths.ToArray();
+            _terminalPassAt = EditorApplication.timeSinceStartup;
+            _terminalPassObserved = true;
+            Debug.Log(
+                "PHASE184G_BATCH_DRAINING case=" + _caseId
+                + " workers=" + paths.Count);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "PHASE184G_BATCH_DRAIN_CONFIG_FAIL type="
+                + exception.GetType().Name);
+            RequestExit(7, "worker-result-drain-config");
+        }
+    }
+
+    private static bool AllRequiredWorkerResultsReady()
+    {
+        foreach (var path in _requiredWorkerResultPaths)
+        {
+            try
+            {
+                var result = new FileInfo(path);
+                if (!result.Exists || result.Length <= 0)
+                    return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static bool HasExactRunToken(string condition)

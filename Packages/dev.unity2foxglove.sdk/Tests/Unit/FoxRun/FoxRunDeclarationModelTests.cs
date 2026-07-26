@@ -2678,6 +2678,41 @@ namespace Demo
                 "SessionState.SetString(ManualTokenSessionKey, _manualToken);",
                 batchProbeSource,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "SessionState.SetString(SessionKey(\"case\"), _caseId);",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "RestoreRunIdentity();",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "WorkerResultDrainTimeoutSeconds",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "BeginSuccessfulExit();",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "AllRequiredWorkerResultsReady()",
+                batchProbeSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PulseOutboundBootstrap();",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "MaximumBootstrapPulses",
+                acceptanceSource,
+                StringComparison.Ordinal);
+
+            var builderSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184FoxRunProfileAcceptanceBuilder.cs");
+            Assert.Contains(
+                "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+                builderSource,
+                StringComparison.Ordinal);
         }
 
         [Theory]
