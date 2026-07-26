@@ -323,7 +323,13 @@ def build_ros_actor_environment(
         raise AcceptanceFailure("FAIL_RUNTIME_SELECTION", "Unsupported ROS distribution.")
     if rmw not in {"rmw_fastrtps_cpp", "rmw_zenoh_cpp"}:
         raise AcceptanceFailure("FAIL_RUNTIME_SELECTION", "Unsupported RMW implementation.")
-    if not 0 <= int(domain_id) <= 232 or discovery_range != "LOCALHOST":
+    expected_discovery_range = (
+        "SUBNET" if rmw == "rmw_fastrtps_cpp" else "LOCALHOST"
+    )
+    if (
+        not 0 <= int(domain_id) <= 232
+        or discovery_range != expected_discovery_range
+    ):
         raise AcceptanceFailure("FAIL_PREFLIGHT", "ROS domain/discovery selection is invalid.")
     if rmw == "rmw_zenoh_cpp":
         if not topology_id or zenoh_session_config is None:
@@ -449,7 +455,7 @@ def make_run_config(
         "rosDistro": selected.runtime,
         "rmw": selected.rmw,
         "domainId": int(domain_id),
-        "discoveryRange": "LOCALHOST",
+        "discoveryRange": selected.discovery_range,
         "zenohTopologyId": (
             f"phase184g-{run_id[-12:]}" if selected.rmw == "rmw_zenoh_cpp" else ""
         ),
@@ -1639,6 +1645,60 @@ def _publisher_gid(message_info) -> str:
     return value.hex() if value and any(value) else ""
 
 
+def _publication_sequence_number(message_info) -> int | None:
+    """Read the per-writer DDS sequence exposed by Windows Jazzy rclpy."""
+
+    raw = (
+        message_info.get("publication_sequence_number")
+        if isinstance(message_info, Mapping)
+        else getattr(message_info, "publication_sequence_number", None)
+    )
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return None
+    return raw
+
+
+def _attribute_sample_publishers(
+    *,
+    direct_gids: Iterable[str],
+    publication_sequences: Iterable[int | None],
+    graph_publishers: Sequence[Mapping[str, object]],
+    minimum_publishers: int,
+) -> tuple[list[str], str]:
+    """Attribute one logical sample without fabricating unavailable rclpy GIDs."""
+
+    graph_gids = sorted(
+        {
+            str(item.get("gid", ""))
+            for item in graph_publishers
+            if str(item.get("gid", ""))
+        }
+    )
+    if len(graph_gids) != minimum_publishers:
+        return [], ""
+
+    observed_gids = sorted(
+        {
+            str(gid)
+            for gid in direct_gids
+            if str(gid) and str(gid) in graph_gids
+        }
+    )
+    if len(observed_gids) >= minimum_publishers:
+        return observed_gids, "message-info-publisher-gid"
+
+    sequences = [
+        value
+        for value in publication_sequences
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
+    if minimum_publishers == 1 and sequences:
+        return graph_gids, "sole-external-graph-gid"
+    if minimum_publishers == 2 and len(sequences) != len(set(sequences)):
+        return graph_gids, "publication-sequence-plus-graph-gid"
+    return [], ""
+
+
 def _helper_node_name(role: str, config: Mapping[str, object]) -> str:
     digest = protocol.token_sha256(str(config["token"]))[:12]
     return f"phase184g_{role.replace('-', '_')}_{digest}"
@@ -1769,10 +1829,40 @@ def _run_multi_target_peer(
     token = str(config["token"])
     _worker_progress("ros2-peer", "multi-qos")
     qos = _qos_profile("default")
-    messages: list[tuple[object, str]] = []
+    messages: list[tuple[object, str, int | None]] = []
+    observed_sample_gids: set[tuple[str, str]] = set()
 
     def receive(message, info):
-        messages.append((message, _publisher_gid(info)))
+        gid = _publisher_gid(info)
+        publication_sequence = _publication_sequence_number(info)
+        stage = _ros_stage(message)
+        messages.append((message, gid, publication_sequence))
+        if stage in {
+            token + "-multi-local-1",
+            token + "-multi-local-3",
+        }:
+            evidence_key = gid or (
+                "publication-sequence"
+                if publication_sequence is not None
+                else "unattributed"
+            )
+            if (stage, evidence_key) not in observed_sample_gids:
+                observed_sample_gids.add((stage, evidence_key))
+                _worker_progress(
+                    "ros2-peer",
+                    "multi-sample-"
+                    + stage.rsplit("-", 1)[-1]
+                    + "-gid-"
+                    + (
+                        gid
+                        or (
+                            "publication-sequence-"
+                            + str(publication_sequence)
+                            if publication_sequence is not None
+                            else "unattributed"
+                        )
+                    ),
+                )
         if len(messages) > 4096:
             del messages[: len(messages) - 4096]
 
@@ -1789,16 +1879,33 @@ def _run_multi_target_peer(
     _wait_for_unity_context(config)
 
     local1 = token + "-multi-local-1"
+    wait_for_log_marker(config, "PHASE184G_MULTI_LOCAL_ARMED", 120.0)
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
+    graph_publishers = _external_endpoints(
+        graph_topics[topic],
+        "publishers",
+        str(config["interfaceType"]),
+    )
+
+    def sample_attribution(stage: str) -> tuple[list[str], str]:
+        matching = [
+            (gid, sequence)
+            for message, gid, sequence in messages
+            if _ros_stage(message) == stage
+        ]
+        return _attribute_sample_publishers(
+            direct_gids=(gid for gid, _sequence in matching),
+            publication_sequences=(
+                sequence for _gid, sequence in matching
+            ),
+            graph_publishers=graph_publishers,
+            minimum_publishers=2,
+        )
 
     def local_one_ready():
-        gids = {
-            gid
-            for message, gid in messages
-            if _ros_stage(message) == local1 and gid
-        }
+        gids, _source = sample_attribution(local1)
         return len(gids) >= 2
 
-    wait_for_log_marker(config, "PHASE184G_MULTI_LOCAL_ARMED", 120.0)
     _spin_until(
         rclpy_module,
         node,
@@ -1808,13 +1915,13 @@ def _run_multi_target_peer(
         "Native and Bridge did not both deliver local token 1.",
     )
     local_one = [
-        (message, gid)
-        for message, gid in messages
-        if _ros_stage(message) == local1 and gid
+        (message, gid, sequence)
+        for message, gid, sequence in messages
+        if _ros_stage(message) == local1
     ]
     unity_origins = {
         str(getattr(message, "foxrun_origin_id", ""))
-        for message, _gid in local_one
+        for message, _gid, _sequence in local_one
         if getattr(message, "foxrun_origin_id", "")
     }
     if len(unity_origins) != 1:
@@ -1862,13 +1969,8 @@ def _run_multi_target_peer(
     local3 = token + "-multi-local-3"
 
     def local_three_ready():
-        return len(
-            {
-                gid
-                for message, gid in messages
-                if _ros_stage(message) == local3 and gid
-            }
-        ) >= 2
+        gids, _source = sample_attribution(local3)
+        return len(gids) >= 2
 
     _spin_until(
         rclpy_module,
@@ -1879,13 +1981,19 @@ def _run_multi_target_peer(
         "Native and Bridge did not both deliver later local token 3.",
     )
     graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
+    graph_publishers = _external_endpoints(
+        graph_topics[topic],
+        "publishers",
+        str(config["interfaceType"]),
+    )
     wait_for_terminal_marker(config, 30.0)
-    local1_gids = sorted(
-        {gid for message, gid in messages if _ros_stage(message) == local1 and gid}
-    )
-    local3_gids = sorted(
-        {gid for message, gid in messages if _ros_stage(message) == local3 and gid}
-    )
+    local1_gids, local1_attribution = sample_attribution(local1)
+    local3_gids, local3_attribution = sample_attribution(local3)
+    if len(local1_gids) < 2 or len(local3_gids) < 2:
+        raise AcceptanceFailure(
+            "FAIL_FANOUT",
+            "Native and Bridge sample attribution drifted before terminal evidence.",
+        )
     del subscription
     return {
         "remoteApplied": True,
@@ -1894,6 +2002,8 @@ def _run_multi_target_peer(
         "unityOriginDigest": hashlib.sha256(unity_origin.encode("utf-8")).hexdigest(),
         "local1PublisherGids": local1_gids,
         "local3PublisherGids": local3_gids,
+        "local1Attribution": local1_attribution,
+        "local3Attribution": local3_attribution,
         "distinctFanoutPublishers": len(local1_gids),
         "graphEvidence": {
             "source": "ros2-peer-rclpy-graph-api",
@@ -1914,11 +2024,19 @@ def _run_qos_peer(
         (str(config["topics"][1]), "keep-all", token + "-qos-keep-all"),
         (str(config["topics"][2]), "keep-last-depth", token + "-qos-keep-last-depth"),
     )
-    received: dict[str, list[tuple[object, str]]] = {topic: [] for topic, _, _ in topic_kinds}
+    received: dict[str, list[tuple[object, str, int | None]]] = {
+        topic: [] for topic, _, _ in topic_kinds
+    }
     subscriptions = []
     for topic, kind, _stage in topic_kinds:
         def receive(message, info, *, selected=topic):
-            received[selected].append((message, _publisher_gid(info)))
+            received[selected].append(
+                (
+                    message,
+                    _publisher_gid(info),
+                    _publication_sequence_number(info),
+                )
+            )
 
         subscriptions.append(
             node.create_subscription(envelope_type, topic, receive, _qos_profile(kind))
@@ -1929,14 +2047,38 @@ def _run_qos_peer(
         {"state": "qos-subscriptions-ready", "topicCount": len(topic_kinds)},
     )
     _wait_for_unity_context(config)
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
+    expected_type = str(config["interfaceType"])
+    graph_publishers = {
+        topic: _external_endpoints(
+            graph_topics[topic],
+            "publishers",
+            expected_type,
+        )
+        for topic, _kind, _stage in topic_kinds
+    }
+
+    def topic_attribution(
+        topic: str,
+        stage: str,
+    ) -> tuple[list[str], str]:
+        matching = [
+            (gid, sequence)
+            for message, gid, sequence in received[topic]
+            if _ros_stage(message) == stage
+        ]
+        return _attribute_sample_publishers(
+            direct_gids=(gid for gid, _sequence in matching),
+            publication_sequences=(
+                sequence for _gid, sequence in matching
+            ),
+            graph_publishers=graph_publishers[topic],
+            minimum_publishers=2,
+        )
 
     def all_delivered():
         for topic, _kind, stage in topic_kinds:
-            gids = {
-                gid
-                for message, gid in received[topic]
-                if _ros_stage(message) == stage and gid
-            }
+            gids, _source = topic_attribution(topic, stage)
             if len(gids) < 2:
                 return False
         return True
@@ -1949,18 +2091,15 @@ def _run_qos_peer(
         "FAIL_QOS",
         "QoS case did not deliver every topic from Native and Bridge.",
     )
-    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
     wait_for_terminal_marker(config, 30.0)
     del subscriptions
     return {
         "deliveryByTopic": {
-            topic: sorted(
-                {
-                    gid
-                    for message, gid in received[topic]
-                    if _ros_stage(message) == stage and gid
-                }
-            )
+            topic: topic_attribution(topic, stage)[0]
+            for topic, _kind, stage in topic_kinds
+        },
+        "deliveryAttributionByTopic": {
+            topic: topic_attribution(topic, stage)[1]
             for topic, _kind, stage in topic_kinds
         },
         "graphEvidence": {
@@ -1982,10 +2121,16 @@ def _run_stream_peer(
     stream_topic, origin_topic = (str(item) for item in config["topics"])
     token = str(config["token"])
     sensor_qos = _qos_profile("sensor-data")
-    origin_messages: list[tuple[object, str]] = []
+    origin_messages: list[tuple[object, str, int | None]] = []
 
     def receive_origin(message, info):
-        origin_messages.append((message, _publisher_gid(info)))
+        origin_messages.append(
+            (
+                message,
+                _publisher_gid(info),
+                _publication_sequence_number(info),
+            )
+        )
         if len(origin_messages) > 256:
             del origin_messages[: len(origin_messages) - 256]
 
@@ -2008,13 +2153,18 @@ def _run_stream_peer(
     _spin_until(
         rclpy_module,
         node,
-        lambda: any(_ros_stage(message) == warmup_stage for message, _ in origin_messages),
+        lambda: any(
+            _ros_stage(message) == warmup_stage
+            for message, _gid, _sequence in origin_messages
+        ),
         60.0,
         "FAIL_ORIGIN",
         "Unity origin warmup was not observed.",
     )
     warmup = next(
-        message for message, _ in origin_messages if _ros_stage(message) == warmup_stage
+        message
+        for message, _gid, _sequence in origin_messages
+        if _ros_stage(message) == warmup_stage
     )
     unity_origin = str(getattr(warmup, "foxrun_origin_id", ""))
     if not unity_origin:
@@ -2087,24 +2237,38 @@ def _run_stream_peer(
     _spin_until(
         rclpy_module,
         node,
-        lambda: any(_ros_stage(message) == local_stage for message, _ in origin_messages),
+        lambda: any(
+            _ros_stage(message) == local_stage
+            for message, _gid, _sequence in origin_messages
+        ),
         30.0,
         "FAIL_ORIGIN",
         "Later local Zenoh origin mutation was not observed.",
     )
-    local_origin_gids = sorted(
-        {
-            gid
-            for message, gid in origin_messages
-            if _ros_stage(message) == local_stage and gid
-        }
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
+    origin_publishers = _external_endpoints(
+        graph_topics[origin_topic],
+        "publishers",
+        str(config["interfaceType"]),
+    )
+    local_observations = [
+        (gid, sequence)
+        for message, gid, sequence in origin_messages
+        if _ros_stage(message) == local_stage
+    ]
+    local_origin_gids, local_origin_attribution = _attribute_sample_publishers(
+        direct_gids=(gid for gid, _sequence in local_observations),
+        publication_sequences=(
+            sequence for _gid, sequence in local_observations
+        ),
+        graph_publishers=origin_publishers,
+        minimum_publishers=1,
     )
     if not local_origin_gids:
         raise AcceptanceFailure(
             "FAIL_GRAPH",
             "Later local Zenoh origin sample had no publisher GID.",
         )
-    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
     terminal = wait_for_terminal_marker(config, 60.0)
     del origin_subscription
     return {
@@ -2116,6 +2280,7 @@ def _run_stream_peer(
         "laterLocalPublished": True,
         "unityOriginDigest": hashlib.sha256(unity_origin.encode("utf-8")).hexdigest(),
         "localOriginPublisherGids": local_origin_gids,
+        "localOriginAttribution": local_origin_attribution,
         "terminalFields": dict(terminal.fields),
         "graphEvidence": {
             "source": "ros2-peer-rclpy-graph-api",
@@ -2197,15 +2362,30 @@ def _endpoint_snapshot(info) -> dict[str, object]:
         gid = bytes(raw_gid).hex()
     except (TypeError, ValueError):
         gid = ""
+    reliability = _policy_name(getattr(qos, "reliability", ""))
+    durability = _policy_name(getattr(qos, "durability", ""))
+    history = _policy_name(getattr(qos, "history", ""))
+    depth = int(getattr(qos, "depth", 0))
+    represented_axes = [
+        axis
+        for axis, represented in (
+            ("reliability", reliability != "unknown"),
+            ("durability", durability != "unknown"),
+            ("history", history != "unknown"),
+            ("depth", history != "unknown"),
+        )
+        if represented
+    ]
     return {
         "node": _endpoint_identity(info),
         "gid": gid,
         "topicType": str(getattr(info, "topic_type", "")),
         "qos": {
-            "reliability": _policy_name(getattr(qos, "reliability", "")),
-            "durability": _policy_name(getattr(qos, "durability", "")),
-            "history": _policy_name(getattr(qos, "history", "")),
-            "depth": int(getattr(qos, "depth", 0)),
+            "reliability": reliability,
+            "durability": durability,
+            "history": history,
+            "depth": depth,
+            "representedAxes": represented_axes,
         },
     }
 
@@ -2246,6 +2426,27 @@ def _normalized_policy(value: object) -> str:
     return aliases.get(text, text)
 
 
+_RESOLVED_SYSTEM_DEFAULT_POLICIES = {
+    "reliability": frozenset({"system_default", "reliable", "best_effort"}),
+    "durability": frozenset({"system_default", "volatile", "transient_local"}),
+    "history": frozenset({"system_default", "keep_last", "keep_all"}),
+}
+
+
+def _observable_policy_matches(
+    actual: object,
+    expected: object,
+    axis: str,
+) -> bool:
+    normalized_actual = _normalized_policy(actual)
+    normalized_expected = _normalized_policy(expected)
+    if normalized_actual == "unknown":
+        return True
+    if normalized_expected == "system_default":
+        return normalized_actual in _RESOLVED_SYSTEM_DEFAULT_POLICIES[axis]
+    return normalized_actual == normalized_expected
+
+
 def _qos_equals(actual: Mapping[str, object], expected: Mapping[str, object]) -> bool:
     return (
         _normalized_policy(actual.get("reliability")) == expected["reliability"]
@@ -2253,6 +2454,52 @@ def _qos_equals(actual: Mapping[str, object], expected: Mapping[str, object]) ->
         and _normalized_policy(actual.get("history")) == expected["history"]
         and int(actual.get("depth", -1)) == int(expected["depth"])
     )
+
+
+def _qos_observable_axes_match(
+    actual: Mapping[str, object],
+    expected: Mapping[str, object],
+) -> bool:
+    """Match FastDDS graph QoS without inventing unreported History/Depth."""
+
+    reliability = _normalized_policy(actual.get("reliability"))
+    durability = _normalized_policy(actual.get("durability"))
+    history = _normalized_policy(actual.get("history"))
+    depth = int(actual.get("depth", -1))
+    return (
+        _observable_policy_matches(reliability, expected["reliability"], "reliability")
+        and _observable_policy_matches(durability, expected["durability"], "durability")
+        and _observable_policy_matches(history, expected["history"], "history")
+        and (
+            depth == int(expected["depth"])
+            or (history == "unknown" and depth == 0)
+            or (
+                expected["history"] == "system_default"
+                and history != "unknown"
+                and depth >= 0
+            )
+        )
+    )
+
+
+def _resolved_system_default_publishers_agree(
+    publishers: Sequence[Mapping[str, object]],
+    expected: Mapping[str, object],
+) -> bool:
+    for axis in ("reliability", "durability", "history"):
+        if expected[axis] != "system_default":
+            continue
+        actual_values = {
+            _normalized_policy(item["qos"].get(axis))
+            for item in publishers
+        }
+        if len(actual_values) != 1:
+            return False
+    if expected["history"] == "system_default":
+        depths = {int(item["qos"].get("depth", -1)) for item in publishers}
+        if len(depths) != 1:
+            return False
+    return True
 
 
 def _external_endpoints(
@@ -2303,11 +2550,22 @@ def _graph_ready(
     if case in {"multi-target", "qos-contract"}:
         for topic in topics:
             publishers = _external_endpoints(graphs[topic], "publishers", expected_type)
-            if len({item["gid"] for item in publishers}) < 2:
+            if len(publishers) != 2 or len({item["gid"] for item in publishers}) != 2:
                 return False
             if not _has_distinct_native_and_bridge_publishers(publishers):
                 return False
-            if any(not _qos_equals(item["qos"], expected_qos[topic]) for item in publishers):
+            if any(
+                not _qos_observable_axes_match(
+                    item["qos"],
+                    expected_qos[topic],
+                )
+                for item in publishers
+            ):
+                return False
+            if not _resolved_system_default_publishers_agree(
+                publishers,
+                expected_qos[topic],
+            ):
                 return False
         return True
     if case == "stream-640hz":
@@ -4796,9 +5054,15 @@ def build_pass_summary(
             ("multi-local-1", "local1PublisherGids"),
             ("multi-local-3", "local3PublisherGids"),
         ):
+            attribution_field = (
+                "local1Attribution"
+                if suffix == "multi-local-1"
+                else "local3Attribution"
+            )
             sample_publisher_gids[suffix] = {
                 "sampleSha256": protocol.token_sha256(token + "-" + suffix),
                 "publisherGids": list(peer.get(field, [])),
+                "attribution": str(peer.get(attribution_field, "")),
             }
     elif case == "qos-contract":
         suffixes = (
@@ -4816,11 +5080,15 @@ def build_pass_summary(
             sample_publisher_gids[str(topic)] = {
                 "sampleSha256": protocol.token_sha256(token + "-" + suffix),
                 "publisherGids": list(delivery.get(topic, [])),
+                "attribution": str(
+                    peer.get("deliveryAttributionByTopic", {}).get(topic, "")
+                ),
             }
     elif case == "stream-640hz":
         sample_publisher_gids["origin-local"] = {
             "sampleSha256": protocol.token_sha256(token + "-origin-local"),
             "publisherGids": list(peer.get("localOriginPublisherGids", [])),
+            "attribution": str(peer.get("localOriginAttribution", "")),
         }
 
     section_values: dict[str, Mapping[str, object]] = {

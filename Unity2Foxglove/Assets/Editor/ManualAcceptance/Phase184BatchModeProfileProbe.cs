@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using Unity2Foxglove.ManualAcceptance;
 using Process = System.Diagnostics.Process;
 
 namespace Unity2Foxglove
@@ -381,9 +382,30 @@ public static class Phase184BatchModeProfileProbe
             + " outcome=" + outcome
             + " exitCode=" + exitCode);
         if (EditorApplication.isPlaying)
+        {
+            QuiesceAcceptanceSources();
             EditorApplication.delayCall += EditorApplication.ExitPlaymode;
+        }
         else
             RequestEditorExit(exitCode, outcome);
+    }
+
+    private static void QuiesceAcceptanceSources()
+    {
+        var routes = UnityEngine.Object.FindObjectsByType<Phase184AcceptanceRoute>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        var disabled = 0;
+        foreach (var route in routes)
+        {
+            if (route == null || !route.enabled)
+                continue;
+            route.enabled = false;
+            disabled++;
+        }
+        Debug.Log(
+            "PHASE184G_BATCH_SOURCES_QUIESCED case=" + _caseId
+            + " count=" + disabled);
     }
 
     private static void RequestEditorExit(int exitCode, string outcome)

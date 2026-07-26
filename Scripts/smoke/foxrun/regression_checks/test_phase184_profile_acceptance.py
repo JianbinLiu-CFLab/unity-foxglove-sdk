@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import inspect
 import json
@@ -543,6 +544,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             interface_digest="a" * 64,
         )
         module.protocol.validate_run_config(config, ROOT)
+        self.assertEqual("SUBNET", config["discoveryRange"])
         self.assertEqual(
             {"foxglove-client", "graph-observer", "bridge"},
             set(config["readyFiles"]),
@@ -645,7 +647,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             distro="jazzy",
             rmw="rmw_fastrtps_cpp",
             domain_id=84,
-            discovery_range="LOCALHOST",
+            discovery_range="SUBNET",
             topology_id="",
             zenoh_session_config=None,
         )
@@ -654,9 +656,26 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             environment["AMENT_PREFIX_PATH"].split(os.pathsep),
         )
         self.assertEqual("84", environment["ROS_DOMAIN_ID"])
-        self.assertEqual("LOCALHOST", environment["ROS_AUTOMATIC_DISCOVERY_RANGE"])
+        self.assertEqual("SUBNET", environment["ROS_AUTOMATIC_DISCOVERY_RANGE"])
         self.assertNotIn("ROS_DISCOVERY_SERVER", environment)
         self.assertNotIn("ZENOH_SESSION_CONFIG_URI", environment)
+
+        zenoh_environment = module.build_ros_actor_environment(
+            source,
+            bridge_install=bridge,
+            peer_install=peer,
+            ros2_root=ros,
+            distro="lyrical",
+            rmw="rmw_zenoh_cpp",
+            domain_id=85,
+            discovery_range="LOCALHOST",
+            topology_id="phase184-local",
+            zenoh_session_config=ROOT / "build" / "phase184" / "zenoh.json5",
+        )
+        self.assertEqual(
+            "LOCALHOST",
+            zenoh_environment["ROS_AUTOMATIC_DISCOVERY_RANGE"],
+        )
 
     def test_zenoh_router_uses_the_exact_unity_project_endpoint(self):
         module = load_module()
@@ -772,6 +791,184 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 }
             ),
         )
+
+    def test_publication_sequence_supports_the_jazzy_message_info_shape(self):
+        module = load_module()
+
+        self.assertEqual(
+            17,
+            module._publication_sequence_number(
+                {"publication_sequence_number": 17}
+            ),
+        )
+        self.assertEqual(
+            23,
+            module._publication_sequence_number(
+                type(
+                    "MessageInfo",
+                    (),
+                    {"publication_sequence_number": 23},
+                )()
+            ),
+        )
+        self.assertIsNone(
+            module._publication_sequence_number(
+                {"publication_sequence_number": None}
+            )
+        )
+        self.assertIsNone(
+            module._publication_sequence_number(
+                {"publication_sequence_number": True}
+            )
+        )
+
+    def test_sample_attribution_uses_duplicate_sequences_and_exact_graph_gids(self):
+        module = load_module()
+        publishers = [
+            {"node": "/unity_native", "gid": "native-gid"},
+            {
+                "node": "/unity2foxglove_ros2_bridge",
+                "gid": "bridge-gid",
+            },
+        ]
+
+        gids, source = module._attribute_sample_publishers(
+            direct_gids=[],
+            publication_sequences=[41, 41, 42, 42],
+            graph_publishers=publishers,
+            minimum_publishers=2,
+        )
+
+        self.assertEqual(["bridge-gid", "native-gid"], gids)
+        self.assertEqual(
+            "publication-sequence-plus-graph-gid",
+            source,
+        )
+        self.assertEqual(
+            ([], ""),
+            module._attribute_sample_publishers(
+                direct_gids=[],
+                publication_sequences=[41, 42, 43],
+                graph_publishers=publishers,
+                minimum_publishers=2,
+            ),
+        )
+        self.assertEqual(
+            ([], ""),
+            module._attribute_sample_publishers(
+                direct_gids=[],
+                publication_sequences=[41, 41],
+                graph_publishers=publishers + [
+                    {"node": "/unexpected", "gid": "third-gid"}
+                ],
+                minimum_publishers=2,
+            ),
+        )
+
+    def test_multi_graph_allows_only_unrepresented_history_and_depth(self):
+        module = load_module()
+        topic = "/foxrun/phase184/multi/state"
+        topic_type = "demo/msg/State"
+        publishers = [
+            {
+                "node": "/unity_native",
+                "gid": "native-gid",
+                "topicType": topic_type,
+                "qos": {
+                    "reliability": "reliable",
+                    "durability": "volatile",
+                    "history": "unknown",
+                    "depth": 0,
+                },
+            },
+            {
+                "node": "/unity2foxglove_ros2_bridge",
+                "gid": "bridge-gid",
+                "topicType": topic_type,
+                "qos": {
+                    "reliability": "reliable",
+                    "durability": "volatile",
+                    "history": "unknown",
+                    "depth": 0,
+                },
+            },
+        ]
+        config = {
+            "case": "multi-target",
+            "interfaceType": topic_type,
+            "topics": [topic],
+        }
+        graphs = {
+            topic: {
+                "publishers": publishers,
+                "subscriptions": [],
+            }
+        }
+
+        self.assertTrue(module._graph_ready(config, graphs))
+        contradicted = copy.deepcopy(graphs)
+        contradicted[topic]["publishers"][0]["qos"][
+            "reliability"
+        ] = "best_effort"
+        self.assertFalse(module._graph_ready(config, contradicted))
+
+    def test_qos_graph_accepts_matching_system_default_resolution_only(self):
+        module = load_module()
+        topic_type = "demo/msg/State"
+        topics = list(module.protocol.CASE_CONTRACTS["qos-contract"].topics)
+        config = {
+            "case": "qos-contract",
+            "interfaceType": topic_type,
+            "topics": topics,
+        }
+        actual_qos = (
+            {
+                "reliability": "reliable",
+                "durability": "transient_local",
+                "history": "unknown",
+                "depth": 0,
+                "representedAxes": ["reliability", "durability"],
+            },
+            {
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "unknown",
+                "depth": 0,
+                "representedAxes": ["reliability", "durability"],
+            },
+            {
+                "reliability": "best_effort",
+                "durability": "transient_local",
+                "history": "unknown",
+                "depth": 0,
+                "representedAxes": ["reliability", "durability"],
+            },
+        )
+        graphs = {}
+        for topic, qos in zip(topics, actual_qos):
+            graphs[topic] = {
+                "publishers": [
+                    {
+                        "node": "/unity_native",
+                        "gid": f"native-{topic}",
+                        "topicType": topic_type,
+                        "qos": copy.deepcopy(qos),
+                    },
+                    {
+                        "node": "/unity2foxglove_ros2_bridge",
+                        "gid": f"bridge-{topic}",
+                        "topicType": topic_type,
+                        "qos": copy.deepcopy(qos),
+                    },
+                ],
+                "subscriptions": [],
+            }
+
+        self.assertTrue(module._graph_ready(config, graphs))
+
+        divergent = copy.deepcopy(graphs)
+        divergent[topics[0]]["publishers"][1]["qos"]["durability"] = "volatile"
+        self.assertFalse(module._graph_ready(config, divergent))
 
     def test_stream_peer_waits_for_transport_graph_before_production(self):
         module = load_module()
@@ -1818,6 +2015,10 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 "verdict": "PASS",
                 "evidence": {
                     "deliveryByTopic": delivery_by_topic,
+                    "deliveryAttributionByTopic": {
+                        topic: "publication-sequence-plus-graph-gid"
+                        for topic in config["topics"]
+                    },
                 },
             },
             "graph-observer": {
@@ -1839,14 +2040,30 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                         topic: {
                             "publishers": [
                                 {
-                                    key: value
-                                    for key, value in qos.items()
-                                    if key != "profile"
+                                    **{
+                                        key: value
+                                        for key, value in qos.items()
+                                        if key != "profile"
+                                    },
+                                    "representedAxes": [
+                                        "reliability",
+                                        "durability",
+                                        "history",
+                                        "depth",
+                                    ],
                                 },
                                 {
-                                    key: value
-                                    for key, value in qos.items()
-                                    if key != "profile"
+                                    **{
+                                        key: value
+                                        for key, value in qos.items()
+                                        if key != "profile"
+                                    },
+                                    "representedAxes": [
+                                        "reliability",
+                                        "durability",
+                                        "history",
+                                        "depth",
+                                    ],
                                 },
                             ],
                             "subscriptions": [],

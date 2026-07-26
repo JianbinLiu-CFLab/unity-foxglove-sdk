@@ -2586,7 +2586,8 @@ namespace Demo
             Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
             Encoding = FoxRunEncoding.Protobuf,
             QoS = FoxRunQosProfile.Default,
-            Policy = FoxRunPolicy.Change)]
+            Policy = FoxRunPolicy.Change,
+            Hz = 4f)]
         private Phase181State _multiTarget;
 
         [FoxRun(""/foxrun/phase184/degraded/state"",
@@ -2596,20 +2597,20 @@ namespace Demo
             Policy = FoxRunPolicy.Change)]
         private Phase181State _degradedTarget;
 
-        [FoxRun(""/foxrun/phase184/qos/system-default"",
+        [FoxRun(""/foxrun/phase184/qos/system_default"",
             Mode = FoxRunFlow.Publish,
             Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
             QoS = FoxRunQosProfile.SystemDefault)]
         private Phase181State _qosSystemDefault;
 
-        [FoxRun(""/foxrun/phase184/qos/keep-all"",
+        [FoxRun(""/foxrun/phase184/qos/keep_all"",
             Mode = FoxRunFlow.Publish,
             Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
             QoS = FoxRunQosProfile.Default,
             History = FoxRunQosHistory.KeepAll)]
         private Phase181State _qosKeepAll;
 
-        [FoxRun(""/foxrun/phase184/qos/keep-last-depth"",
+        [FoxRun(""/foxrun/phase184/qos/keep_last_depth"",
             Mode = FoxRunFlow.Publish,
             Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
             QoS = FoxRunQosProfile.Default,
@@ -2672,9 +2673,9 @@ namespace Demo
                          "/foxrun/phase184/profile/json",
                          "/foxrun/phase184/multi/state",
                          "/foxrun/phase184/degraded/state",
-                         "/foxrun/phase184/qos/system-default",
-                         "/foxrun/phase184/qos/keep-all",
-                         "/foxrun/phase184/qos/keep-last-depth",
+                         "/foxrun/phase184/qos/system_default",
+                         "/foxrun/phase184/qos/keep_all",
+                         "/foxrun/phase184/qos/keep_last_depth",
                          "/foxrun/phase184/stream/state",
                          "/foxrun/phase184/zenoh/origin",
                      })
@@ -2708,6 +2709,10 @@ namespace Demo
                 StringComparison.Ordinal);
             Assert.Contains(
                 "\" succeeded=\" + _succeededTargets",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Hz = 4f)]",
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -2816,6 +2821,14 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "PHASE184G_MULTI_TARGET_STATUS",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "status.SucceededTargets",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
                 "GetRos2BridgeStatsSnapshot()",
                 acceptanceSource,
                 StringComparison.Ordinal);
@@ -2861,6 +2874,31 @@ namespace Demo
                 + "            Targets = FoxRunEndpoint.Ros2Native,",
                 source,
                 StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase184BatchExitQuiescesFoxRunSourcesBeforePlayModeShutdown()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase184BatchModeProfileProbe.cs");
+
+            Assert.Contains(
+                "PHASE184G_BATCH_SOURCES_QUIESCED",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "route.enabled = false;",
+                source,
+                StringComparison.Ordinal);
+            Assert.True(
+                source.IndexOf(
+                    "QuiesceAcceptanceSources();",
+                    StringComparison.Ordinal)
+                < source.IndexOf(
+                    "EditorApplication.delayCall += EditorApplication.ExitPlaymode;",
+                    StringComparison.Ordinal));
         }
 
         [Fact]

@@ -675,7 +675,8 @@ namespace Unity2Foxglove.ManualAcceptance
                       | FoxRunEndpoint.Ros2Bridge,
             Encoding = FoxRunEncoding.Protobuf,
             QoS = FoxRunQosProfile.Default,
-            Policy = FoxRunPolicy.Change)]
+            Policy = FoxRunPolicy.Change,
+            Hz = 4f)]
         [SerializeField] private Phase181State _multiTarget;
 
         [Header("Read-only Fanout/Origin Evidence")]
@@ -691,6 +692,7 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _initialArmed;
         private FoxgloveManager _manager;
         private string _lastBridgeRuntimeError = string.Empty;
+        private string _lastTargetEvidence = string.Empty;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.MultiTargetCase;
@@ -705,6 +707,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
             _manager = FindFirstObjectByType<FoxgloveManager>();
             _lastBridgeRuntimeError = string.Empty;
+            _lastTargetEvidence = string.Empty;
             PulseWarmupUntilTargetsReady();
             Ready("topic=" + Topic + " targets=foxglove,native,bridge");
         }
@@ -723,6 +726,7 @@ namespace Unity2Foxglove.ManualAcceptance
             EmitBridgeRuntimeFailure();
             if (TryGetTargetStatus(Topic, out var status))
             {
+                EmitTargetStatus(status);
                 _targetStatus = status.Status.ToString();
                 if (!_nativeReadyForBridge
                     && (status.SucceededTargets & FoxRunEndpoint.Ros2Native) != 0)
@@ -817,6 +821,24 @@ namespace Unity2Foxglove.ManualAcceptance
                 + " lastError="
                 + Phase184AcceptanceText.SafeMarker(error));
         }
+
+        private void EmitTargetStatus(FoxRunPublishDispatchResult status)
+        {
+            var evidence =
+                "status=" + status.Status
+                + " succeeded=" + status.SucceededTargets
+                + " failed=" + status.FailedTargets;
+            if (string.Equals(
+                    evidence,
+                    _lastTargetEvidence,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastTargetEvidence = evidence;
+            Emit("PHASE184G_MULTI_TARGET_STATUS", evidence);
+        }
     }
 
     [DisallowMultipleComponent]
@@ -900,11 +922,11 @@ namespace Unity2Foxglove.ManualAcceptance
     public sealed partial class Phase184QosContractRoute : Phase184AcceptanceRoute
     {
         public const string SystemDefaultTopic =
-            "/foxrun/phase184/qos/system-default";
+            "/foxrun/phase184/qos/system_default";
         public const string KeepAllTopic =
-            "/foxrun/phase184/qos/keep-all";
+            "/foxrun/phase184/qos/keep_all";
         public const string KeepLastDepthTopic =
-            "/foxrun/phase184/qos/keep-last-depth";
+            "/foxrun/phase184/qos/keep_last_depth";
 
         [FoxRun(
             SystemDefaultTopic,

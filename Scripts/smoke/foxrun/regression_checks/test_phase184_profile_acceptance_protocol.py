@@ -83,7 +83,9 @@ def run_config(
         "rosDistro": protocol.PROFILE_CONTRACTS[profile].runtime,
         "rmw": protocol.PROFILE_CONTRACTS[profile].rmw,
         "domainId": 48,
-        "discoveryRange": "LOCALHOST",
+        "discoveryRange": (
+            "SUBNET" if profile == "jazzy-fastrtps" else "LOCALHOST"
+        ),
         "zenohTopologyId": "phase184-local" if profile == "lyrical-zenoh" else "",
         "phase181Workspace": str(ROOT / "build" / "phase181" / profile),
         "phase181Install": str(ROOT / "build" / "phase181" / profile / "install"),
@@ -131,11 +133,18 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
     publisher_gids: set[str] = set()
 
     def transport_qos(topic: str) -> dict[str, object]:
-        return {
+        value = {
             key: value
             for key, value in expected_qos[topic].items()
             if key != "profile"
         }
+        value["representedAxes"] = [
+            "reliability",
+            "durability",
+            "history",
+            "depth",
+        ]
+        return value
 
     for topic_index, topic in enumerate(contract.topics):
         publisher_count = (
@@ -187,6 +196,7 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
             sample_publisher_gids[suffix] = {
                 "sampleSha256": protocol.token_sha256(token + "-" + suffix),
                 "publisherGids": list(gids),
+                "attribution": "publication-sequence-plus-graph-gid",
             }
     elif case == "qos-contract":
         suffixes = (
@@ -200,6 +210,7 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
                 "publisherGids": [
                     item["gid"] for item in publishers_by_topic[topic]
                 ],
+                "attribution": "publication-sequence-plus-graph-gid",
             }
     elif case == "stream-640hz":
         origin_topic = contract.topics[1]
@@ -208,6 +219,7 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
             "publisherGids": [
                 item["gid"] for item in publishers_by_topic[origin_topic]
             ],
+            "attribution": "message-info-publisher-gid",
         }
 
     expected_stages = {
@@ -441,6 +453,23 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_PREFLIGHT"):
                 protocol.validate_execution_mode(batch=batch, manual_editor=manual)
 
+    def test_case_contracts_use_concrete_ros_topic_names(self):
+        protocol = load_protocol_module()
+
+        for contract in protocol.CASE_CONTRACTS.values():
+            for topic in contract.topics:
+                self.assertTrue(
+                    protocol.is_valid_ros_topic_name(topic),
+                    topic,
+                )
+        for topic in (
+            "/foxrun/phase184/qos/system-default",
+            "/double//slash",
+            "relative/topic",
+            "/trailing/",
+        ):
+            self.assertFalse(protocol.is_valid_ros_topic_name(topic), topic)
+
     def test_run_config_rejects_unsafe_identity_profile_paths_hosts_ports_and_topics(self):
         """Run configuration fails closed before actors start."""
 
@@ -473,6 +502,37 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 invalid = copy.deepcopy(base)
                 invalid[key] = value
                 with self.assertRaises(protocol.ProtocolFailure):
+                    protocol.validate_run_config(invalid, ROOT)
+
+    def test_run_config_requires_the_profile_specific_discovery_range(self):
+        """Windows discovery stays explicit without breaking the proven FastDDS runtime."""
+
+        protocol = load_protocol_module()
+        expected = {
+            "core-foxglove": "LOCALHOST",
+            "jazzy-fastrtps": "SUBNET",
+            "lyrical-zenoh": "LOCALHOST",
+        }
+        for case, profile in (
+            ("foxglove-profile", "core-foxglove"),
+            ("multi-target", "jazzy-fastrtps"),
+            ("stream-640hz", "lyrical-zenoh"),
+        ):
+            with self.subTest(profile=profile):
+                config = run_config(protocol, case=case, profile=profile)
+                self.assertEqual(expected[profile], config["discoveryRange"])
+                protocol.validate_run_config(config, ROOT)
+
+                invalid = copy.deepcopy(config)
+                invalid["discoveryRange"] = (
+                    "LOCALHOST"
+                    if expected[profile] == "SUBNET"
+                    else "SUBNET"
+                )
+                with self.assertRaisesRegex(
+                    protocol.ProtocolFailure,
+                    "FAIL_PREFLIGHT",
+                ):
                     protocol.validate_run_config(invalid, ROOT)
 
     def test_run_config_requires_exact_actor_paths_below_the_owned_output(self):
@@ -572,6 +632,94 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             protocol.validate_summary(
                 summary,
                 expected_case=str(config["case"]),
+                expected_token=str(config["token"]),
+            )
+
+    def test_graph_qos_accepts_explicitly_unrepresented_axes_but_not_conflicts(self):
+        protocol = load_protocol_module()
+        config = run_config(protocol, case="multi-target")
+        summary = valid_summary(protocol, config)
+        topic = str(config["topics"][0])
+        for endpoint in summary["qos"]["transportObserved"]["graph"][topic][
+            "publishers"
+        ]:
+            endpoint["history"] = "unknown"
+            endpoint["depth"] = 0
+            endpoint["representedAxes"] = [
+                "reliability",
+                "durability",
+            ]
+        for endpoint in summary["qos"]["transportObserved"]["graph"][topic][
+            "subscriptions"
+        ]:
+            endpoint["history"] = "unknown"
+            endpoint["depth"] = 0
+            endpoint["representedAxes"] = [
+                "reliability",
+                "durability",
+            ]
+
+        protocol.validate_summary(
+            summary,
+            expected_case="multi-target",
+            expected_token=str(config["token"]),
+        )
+
+        conflict = copy.deepcopy(summary)
+        conflict["qos"]["transportObserved"]["graph"][topic]["publishers"][0][
+            "reliability"
+        ] = "best_effort"
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_QOS"):
+            protocol.validate_summary(
+                conflict,
+                expected_case="multi-target",
+                expected_token=str(config["token"]),
+            )
+
+        unlabeled = copy.deepcopy(summary)
+        del unlabeled["qos"]["transportObserved"]["graph"][topic]["publishers"][
+            0
+        ]["representedAxes"]
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_QOS"):
+            protocol.validate_summary(
+                unlabeled,
+                expected_case="multi-target",
+                expected_token=str(config["token"]),
+            )
+
+    def test_qos_system_default_requires_matching_actual_graph_resolution(self):
+        protocol = load_protocol_module()
+        config = run_config(protocol, case="qos-contract")
+        summary = valid_summary(protocol, config)
+        topic = str(config["topics"][0])
+        publishers = summary["qos"]["transportObserved"]["graph"][topic][
+            "publishers"
+        ]
+        for endpoint in publishers:
+            endpoint.update(
+                {
+                    "reliability": "reliable",
+                    "durability": "transient_local",
+                    "history": "unknown",
+                    "depth": 0,
+                    "representedAxes": ["reliability", "durability"],
+                }
+            )
+
+        protocol.validate_summary(
+            summary,
+            expected_case="qos-contract",
+            expected_token=str(config["token"]),
+        )
+
+        divergent = copy.deepcopy(summary)
+        divergent["qos"]["transportObserved"]["graph"][topic]["publishers"][1][
+            "durability"
+        ] = "volatile"
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_QOS"):
+            protocol.validate_summary(
+                divergent,
+                expected_case="qos-contract",
                 expected_token=str(config["token"]),
             )
 

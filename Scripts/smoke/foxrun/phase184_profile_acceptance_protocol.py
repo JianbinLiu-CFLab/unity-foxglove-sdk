@@ -96,6 +96,9 @@ _SAFE_INTERFACE_PACKAGE = re.compile(r"\A[a-z][a-z0-9_]{0,254}\Z")
 _SAFE_INTERFACE_TYPE = re.compile(
     r"\A[a-z][a-z0-9_]{0,254}/msg/[A-Za-z][A-Za-z0-9_]{0,254}\Z"
 )
+_CONCRETE_ROS_TOPIC = re.compile(
+    r"\A/(?:[A-Za-z_][A-Za-z0-9_]*/)*[A-Za-z_][A-Za-z0-9_]*\Z"
+)
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"\A(?:[A-Za-z]:[\\/]|\\\\)")
 _TOKEN_IN_TEXT = re.compile(r"p184g_[A-Za-z0-9]{1,64}")
 
@@ -107,6 +110,12 @@ _SUMMARY_SECTION_NAMES = (
     "origin",
     "stream",
 )
+
+
+def is_valid_ros_topic_name(topic: object) -> bool:
+    """Return whether one absolute topic is safe for concrete ROS2 actors."""
+
+    return isinstance(topic, str) and _CONCRETE_ROS_TOPIC.fullmatch(topic) is not None
 
 
 class ProtocolFailure(RuntimeError):
@@ -137,6 +146,7 @@ class ProfileContract:
 
     runtime: str
     rmw: str
+    discovery_range: str
 
 
 @dataclass(frozen=True)
@@ -159,9 +169,21 @@ def _not_applicable(reason: str) -> ApplicabilityRule:
 
 
 PROFILE_CONTRACTS: Mapping[str, ProfileContract] = {
-    "core-foxglove": ProfileContract(runtime="core", rmw="none"),
-    "jazzy-fastrtps": ProfileContract(runtime="jazzy", rmw="rmw_fastrtps_cpp"),
-    "lyrical-zenoh": ProfileContract(runtime="lyrical", rmw="rmw_zenoh_cpp"),
+    "core-foxglove": ProfileContract(
+        runtime="core",
+        rmw="none",
+        discovery_range="LOCALHOST",
+    ),
+    "jazzy-fastrtps": ProfileContract(
+        runtime="jazzy",
+        rmw="rmw_fastrtps_cpp",
+        discovery_range="SUBNET",
+    ),
+    "lyrical-zenoh": ProfileContract(
+        runtime="lyrical",
+        rmw="rmw_zenoh_cpp",
+        discovery_range="LOCALHOST",
+    ),
 }
 
 CASE_CONTRACTS: Mapping[str, CaseContract] = {
@@ -209,9 +231,9 @@ CASE_CONTRACTS: Mapping[str, CaseContract] = {
     "qos-contract": CaseContract(
         profile="jazzy-fastrtps",
         topics=(
-            "/foxrun/phase184/qos/system-default",
-            "/foxrun/phase184/qos/keep-all",
-            "/foxrun/phase184/qos/keep-last-depth",
+            "/foxrun/phase184/qos/system_default",
+            "/foxrun/phase184/qos/keep_all",
+            "/foxrun/phase184/qos/keep_last_depth",
         ),
         required_actors=frozenset({"ros2-peer", "graph-observer", "bridge"}),
         deliberately_absent_actors={},
@@ -248,6 +270,11 @@ CASE_CONTRACTS: Mapping[str, CaseContract] = {
 
 _QOS_FIELDS = {"profile", "reliability", "durability", "history", "depth"}
 _TRANSPORT_QOS_FIELDS = _QOS_FIELDS - {"profile"}
+_RESOLVED_SYSTEM_DEFAULT_POLICIES = {
+    "reliability": frozenset({"system_default", "reliable", "best_effort"}),
+    "durability": frozenset({"system_default", "volatile", "transient_local"}),
+    "history": frozenset({"system_default", "keep_last", "keep_all"}),
+}
 
 
 def expected_qos_by_topic(case: str) -> dict[str, dict[str, object]]:
@@ -381,6 +408,27 @@ _EXPECTED_PUBLISHER_SAMPLE_STAGES: Mapping[str, Mapping[str, str]] = {
         CASE_CONTRACTS["qos-contract"].topics[2]: "qos-keep-last-depth",
     },
     "stream-640hz": {"origin-local": "origin-local"},
+}
+
+_PUBLISHER_ATTRIBUTION_BY_CASE: Mapping[str, frozenset[str]] = {
+    "multi-target": frozenset(
+        {
+            "message-info-publisher-gid",
+            "publication-sequence-plus-graph-gid",
+        }
+    ),
+    "qos-contract": frozenset(
+        {
+            "message-info-publisher-gid",
+            "publication-sequence-plus-graph-gid",
+        }
+    ),
+    "stream-640hz": frozenset(
+        {
+            "message-info-publisher-gid",
+            "sole-external-graph-gid",
+        }
+    ),
 }
 
 
@@ -602,8 +650,12 @@ def validate_run_config(
     if foxglove_port == bridge_port:
         raise _fail("preflight", "Foxglove and Bridge ports must be distinct.")
     _require_bounded_int(config["domainId"], "domainId", 0, 232)
-    if config["discoveryRange"] != "LOCALHOST":
-        raise _fail("preflight", "discoveryRange must be LOCALHOST.")
+    if config["discoveryRange"] != profile_contract.discovery_range:
+        raise _fail(
+            "preflight",
+            f"Profile {profile!r} requires discoveryRange "
+            f"{profile_contract.discovery_range!r}.",
+        )
 
     topology_id = config["zenohTopologyId"]
     if profile == "lyrical-zenoh":
@@ -628,6 +680,11 @@ def validate_run_config(
     topics = config["topics"]
     if not isinstance(topics, list) or tuple(topics) != contract.topics:
         raise _fail("preflight", f"topics do not match case {case!r}.")
+    if any(not is_valid_ros_topic_name(topic) for topic in topics):
+        raise _fail(
+            "preflight",
+            f"Case {case!r} contains a non-concrete ROS2 topic name.",
+        )
 
     windows = _require_mapping(config["observationWindows"], "observationWindows")
     expected_windows = {
@@ -773,6 +830,106 @@ def _validate_qos_value(
         raise _fail("qos", f"{label}.depth drifted from the requested policy.")
 
 
+def _validate_graph_qos_value(
+    value: object,
+    expected: Mapping[str, object],
+    label: str,
+) -> None:
+    """Validate represented graph axes and preserve explicit unknowns."""
+
+    actual = _require_mapping(value, label, "qos")
+    _require_exact_keys(
+        actual,
+        _TRANSPORT_QOS_FIELDS | {"representedAxes"},
+        label,
+        "qos",
+    )
+    represented = _require_string_list(
+        actual["representedAxes"],
+        f"{label}.representedAxes",
+        "qos",
+        allow_empty=True,
+    )
+    represented_set = set(represented)
+    if (
+        len(represented_set) != len(represented)
+        or not represented_set.issubset(_TRANSPORT_QOS_FIELDS)
+    ):
+        raise _fail("qos", f"{label}.representedAxes is invalid.")
+
+    for key in _TRANSPORT_QOS_FIELDS - {"depth"}:
+        normalized = _normalized_policy(actual[key])
+        if key in represented_set:
+            expected_policy = expected[key]
+            if (
+                expected_policy == "system_default"
+                and normalized not in _RESOLVED_SYSTEM_DEFAULT_POLICIES[key]
+            ):
+                raise _fail(
+                    "qos",
+                    f"{label}.{key} is not a valid resolved SystemDefault policy.",
+                )
+            if expected_policy != "system_default" and normalized != expected_policy:
+                raise _fail(
+                    "qos",
+                    f"{label}.{key} drifted from the requested policy.",
+                )
+        elif normalized != "unknown":
+            raise _fail(
+                "qos",
+                f"{label}.{key} is unlabeled graph evidence.",
+            )
+
+    depth = actual["depth"]
+    if isinstance(depth, bool) or not isinstance(depth, int):
+        raise _fail("qos", f"{label}.depth must be an integer.")
+    if "depth" in represented_set:
+        if expected["history"] == "system_default":
+            if depth < 0:
+                raise _fail("qos", f"{label}.depth is invalid.")
+        elif depth != expected["depth"]:
+            raise _fail("qos", f"{label}.depth drifted from the requested policy.")
+    elif depth != 0:
+        raise _fail("qos", f"{label}.depth is unlabeled graph evidence.")
+
+
+def _validate_resolved_system_default_agreement(
+    values: Sequence[Mapping[str, object]],
+    expected: Mapping[str, object],
+    label: str,
+) -> None:
+    if len(values) < 2:
+        return
+    for axis in ("reliability", "durability", "history"):
+        if expected[axis] != "system_default":
+            continue
+        represented = [axis in value["representedAxes"] for value in values]
+        if any(represented) and not all(represented):
+            raise _fail(
+                "qos",
+                f"{label}.{axis} representation differs between endpoints.",
+            )
+        if all(represented) and len(
+            {_normalized_policy(value[axis]) for value in values}
+        ) != 1:
+            raise _fail(
+                "qos",
+                f"{label}.{axis} resolved differently between endpoints.",
+            )
+    if expected["history"] == "system_default":
+        represented = ["depth" in value["representedAxes"] for value in values]
+        if any(represented) and not all(represented):
+            raise _fail(
+                "qos",
+                f"{label}.depth representation differs between endpoints.",
+            )
+        if all(represented) and len({value["depth"] for value in values}) != 1:
+            raise _fail(
+                "qos",
+                f"{label}.depth resolved differently between endpoints.",
+            )
+
+
 def _expected_graph_direction_counts(
     case: str,
     topic: str,
@@ -838,12 +995,16 @@ def _validate_qos_evidence(
                     f"qos.transportObserved.graph.{topic}.{direction} is incomplete.",
                 )
             for index, value in enumerate(values):
-                _validate_qos_value(
+                _validate_graph_qos_value(
                     value,
                     expected,
                     f"qos.transportObserved.graph.{topic}.{direction}[{index}]",
-                    include_profile=False,
                 )
+            _validate_resolved_system_default_agreement(
+                values,
+                expected,
+                f"qos.transportObserved.graph.{topic}.{direction}",
+            )
 
     if "bridge" in expected_sources:
         bridge = _require_mapping(
@@ -888,7 +1049,7 @@ def _validate_sample_publisher_evidence(
         )
         _require_exact_keys(
             entry,
-            {"sampleSha256", "publisherGids"},
+            {"sampleSha256", "publisherGids", "attribution"},
             f"rosGraph.samplePublisherGids.{key}",
             "graph",
         )
@@ -902,6 +1063,16 @@ def _validate_sample_publisher_evidence(
         )
         if len(set(gids)) < minimum or not set(gids).issubset(graph_gids):
             raise _fail("graph", f"Publisher sample {key!r} has invalid endpoint GIDs.")
+        attribution = _require_string(
+            entry["attribution"],
+            f"rosGraph.samplePublisherGids.{key}.attribution",
+            "graph",
+        )
+        if attribution not in _PUBLISHER_ATTRIBUTION_BY_CASE.get(case, frozenset()):
+            raise _fail(
+                "graph",
+                f"Publisher sample {key!r} has an unsupported attribution source.",
+            )
 
 
 def _validate_graph_evidence(
