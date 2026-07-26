@@ -87,6 +87,233 @@ class FakeJobApi:
 class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
     """Lock command, ownership, configuration, and evidence boundaries."""
 
+    @staticmethod
+    def _write_reusable_runtime_selection(
+        repository: pathlib.Path,
+        *,
+        distro: str = "jazzy",
+        default_rmw: str = "rmw_fastrtps_cpp",
+    ) -> tuple[str, str]:
+        runtime_package = (
+            f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64"
+        )
+        addon_package = (
+            "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport."
+            f"{distro}.win64"
+        )
+        runtime_reference = f"file:../../Packages/{runtime_package}"
+        addon_reference = f"file:../../Packages/{addon_package}"
+        packages = repository / "Unity2Foxglove" / "Packages"
+        project_settings = repository / "Unity2Foxglove" / "ProjectSettings"
+        runtime_root = repository / "Packages" / runtime_package
+        addon_root = repository / "Packages" / addon_package
+        for directory in (
+            packages,
+            project_settings,
+            runtime_root / "RuntimeSupport",
+            addon_root,
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
+        (packages / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "dependencies": {
+                        runtime_package: runtime_reference,
+                        addon_package: addon_reference,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (packages / "packages-lock.json").write_text(
+            json.dumps(
+                {
+                    "dependencies": {
+                        runtime_package: {
+                            "version": runtime_reference,
+                            "depth": 0,
+                            "source": "local",
+                            "dependencies": {},
+                        },
+                        addon_package: {
+                            "version": addon_reference,
+                            "depth": 0,
+                            "source": "local",
+                            "dependencies": {
+                                runtime_package: "0.1.0-preview.1",
+                            },
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (runtime_root / "package.json").write_text(
+            json.dumps({"name": runtime_package, "version": "0.1.0-preview.1"}),
+            encoding="utf-8",
+        )
+        (runtime_root / "RuntimeSupport" / "runtime-manifest.json").write_text(
+            json.dumps(
+                {
+                    "packageName": runtime_package,
+                    "rosDistro": distro,
+                    "platform": "win64",
+                    "architecture": "x86_64",
+                    "rmwImplementation": default_rmw,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (addon_root / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": addon_package,
+                    "version": "0.1.0-preview.1",
+                    "dependencies": {
+                        runtime_package: "0.1.0-preview.1",
+                    },
+                    "unity2foxgloveFoxRunCustomTypesupportAddOn": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (project_settings / "ProjectSettings.asset").write_text(
+            "  applicationIdentifier:\n"
+            "    Standalone: dev.unity2foxglove.demo\n"
+            "  scriptingDefineSymbols:\n"
+            "    Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY;"
+            "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES\n",
+            encoding="utf-8",
+        )
+        return runtime_package, addon_package
+
+    def test_windows_domain_id_stays_below_the_dynamic_port_collision_range(self):
+        module = load_module()
+
+        self.assertEqual(0, module.choose_domain_id(0))
+        self.assertEqual(166, module.choose_domain_id(166))
+        for unsafe in (-1, 167, 202, 233):
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaisesRegex(
+                    module.AcceptanceFailure,
+                    r"FAIL_PREFLIGHT.*0\.\.166",
+                ):
+                    module.choose_domain_id(unsafe)
+
+        with mock.patch.object(module.secrets, "randbelow", return_value=0) as random:
+            self.assertEqual(64, module.choose_domain_id(None))
+            random.assert_called_once_with(96)
+        with mock.patch.object(module.secrets, "randbelow", return_value=95):
+            self.assertEqual(159, module.choose_domain_id(None))
+
+    def test_current_unity_runtime_is_reused_only_for_an_exact_default_selection(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="runtime-reuse-", dir=TEST_ROOT) as raw:
+            repository = pathlib.Path(raw) / "repository"
+            runtime_package, addon_package = self._write_reusable_runtime_selection(
+                repository
+            )
+
+            evidence = module._current_unity_runtime_selection_evidence(
+                repository,
+                "jazzy",
+                "rmw_fastrtps_cpp",
+            )
+            self.assertEqual(
+                {
+                    "mode": "reused",
+                    "runtimePackage": runtime_package,
+                    "typesupportPackage": addon_package,
+                    "rosDistro": "jazzy",
+                    "rmwImplementation": "rmw_fastrtps_cpp",
+                },
+                evidence,
+            )
+            self.assertIsNone(
+                module._current_unity_runtime_selection_evidence(
+                    repository,
+                    "jazzy",
+                    "rmw_zenoh_cpp",
+                )
+            )
+
+            lock_path = repository / "Unity2Foxglove" / "Packages" / "packages-lock.json"
+            lock_document = json.loads(lock_path.read_text(encoding="utf-8"))
+            lock_document["dependencies"][runtime_package]["depth"] = 1
+            lock_path.write_text(json.dumps(lock_document), encoding="utf-8")
+            self.assertIsNone(
+                module._current_unity_runtime_selection_evidence(
+                    repository,
+                    "jazzy",
+                    "rmw_fastrtps_cpp",
+                )
+            )
+
+    def test_runtime_selection_reuse_skips_unity_resolve_and_persists_evidence(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="runtime-skip-", dir=TEST_ROOT) as raw:
+            repository = pathlib.Path(raw) / "repository"
+            self._write_reusable_runtime_selection(repository)
+            output = repository / "build" / "phase184" / "acceptance" / "run"
+            output.mkdir(parents=True, exist_ok=True)
+            peer = mock.Mock()
+
+            with mock.patch.object(module, "_run_logged_preflight") as run:
+                module._select_unity_runtime(
+                    peer=peer,
+                    editor=pathlib.Path(r"C:\Unity.exe"),
+                    repository=repository,
+                    output=output,
+                    distro="jazzy",
+                    rmw="rmw_fastrtps_cpp",
+                    job=None,
+                )
+
+            run.assert_not_called()
+            peer.build_runtime_selection_batch_command.assert_not_called()
+            selection_log = (output / "runtime-selection.log").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("PHASE184G_RUNTIME_SELECTION_REUSED", selection_log)
+            self.assertIn("rmw=rmw_fastrtps_cpp", selection_log)
+
+    def test_nondefault_rmw_falls_back_to_the_validated_unity_selector(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="runtime-select-", dir=TEST_ROOT) as raw:
+            repository = pathlib.Path(raw) / "repository"
+            self._write_reusable_runtime_selection(repository)
+            output = repository / "build" / "phase184" / "acceptance" / "run"
+            output.mkdir(parents=True, exist_ok=True)
+            peer = mock.Mock()
+            peer._RUNTIME_SELECTION_READY_MARKER = "PHASE181_RUNTIME_SELECTION_READY"
+            peer.build_runtime_selection_batch_command.return_value = [
+                r"C:\Unity.exe",
+                "-batchmode",
+            ]
+            peer.ros2env.sanitized_subprocess_env.return_value = {}
+
+            with mock.patch.object(module, "_run_logged_preflight") as run:
+                with mock.patch.object(
+                    module,
+                    "read_log_lines",
+                    return_value=["PHASE181_RUNTIME_SELECTION_READY"],
+                ):
+                    module._select_unity_runtime(
+                        peer=peer,
+                        editor=pathlib.Path(r"C:\Unity.exe"),
+                        repository=repository,
+                        output=output,
+                        distro="jazzy",
+                        rmw="rmw_zenoh_cpp",
+                        job=None,
+                    )
+
+            run.assert_called_once()
+            peer.build_runtime_selection_batch_command.assert_called_once()
+
     def test_cli_has_exact_parent_and_worker_modes(self):
         module = load_module()
 
@@ -167,16 +394,19 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual(str(config), worker[-1])
 
         bridge = module.build_bridge_command(
-            pathlib.Path(r"C:\ros\ros2.exe"),
+            pathlib.Path(
+                r"C:\phase184\install\lib\unity2foxglove_ros2_bridge"
+                r"\unity2foxglove_ros2_bridge.exe"
+            ),
             "127.0.0.1",
             18767,
         )
         self.assertEqual(
             [
-                r"C:\ros\ros2.exe",
-                "run",
-                "unity2foxglove_ros2_bridge",
-                "unity2foxglove_ros2_bridge",
+                (
+                    r"C:\phase184\install\lib\unity2foxglove_ros2_bridge"
+                    r"\unity2foxglove_ros2_bridge.exe"
+                ),
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -186,6 +416,111 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             ],
             bridge,
         )
+
+    def test_ros_workers_are_launched_and_made_ready_serially(self):
+        module = load_module()
+        events = []
+        config = {
+            "outputRoot": str(
+                ROOT / "build" / "phase184" / "acceptance" / "serial-workers"
+            )
+        }
+        runtime = mock.Mock(
+            toolchain=mock.Mock(python_executable=pathlib.Path(r"C:\ros\python.exe")),
+            actor_environment={"ROS_DOMAIN_ID": "184"},
+            peer_runtime_workspace=ROOT / "build" / "phase181" / "peer",
+        )
+
+        def launch(role, *_args, **_kwargs):
+            events.append(("launch", role))
+            return FakeProcess()
+
+        def wait(_config, roles, _owner):
+            events.append(("ready", tuple(roles)[0]))
+            return {}
+
+        with mock.patch.object(module, "_launch_logged_process", side_effect=launch):
+            with mock.patch.object(module, "_wait_for_actor_readiness", side_effect=wait):
+                module._start_case_workers_serially(
+                    config=config,
+                    repository=ROOT,
+                    output=ROOT / "build" / "phase184" / "acceptance" / "serial-workers",
+                    runtime=runtime,
+                    worker_roles={"ros2-peer", "graph-observer"},
+                    owner=mock.Mock(),
+                    streams=[],
+                )
+
+        self.assertEqual(
+            [
+                ("launch", "graph-observer"),
+                ("ready", "graph-observer"),
+                ("launch", "ros2-peer"),
+                ("ready", "ros2-peer"),
+            ],
+            events,
+        )
+
+    def test_peer_graph_auditor_validates_raw_rclpy_snapshot(self):
+        module = load_module()
+        topic = "/foxrun/phase184/multi/state"
+        topic_type = "demo/msg/State"
+        qos = {
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10,
+        }
+        graphs = {
+            topic: {
+                "publishers": [
+                    {
+                        "node": "/unity_native",
+                        "gid": "01",
+                        "topicType": topic_type,
+                        "qos": qos,
+                    },
+                    {
+                        "node": "/unity2foxglove_ros2_bridge",
+                        "gid": "02",
+                        "topicType": topic_type,
+                        "qos": qos,
+                    },
+                ],
+                "subscriptions": [],
+            }
+        }
+        config = {
+            "case": "multi-target",
+            "topics": [topic],
+            "interfaceType": topic_type,
+        }
+        peer_result = {
+            "evidence": {
+                "graphEvidence": {
+                    "source": "ros2-peer-rclpy-graph-api",
+                    "topics": graphs,
+                }
+            }
+        }
+
+        with mock.patch.object(module, "write_actor_ready") as ready:
+            with mock.patch.object(
+                module,
+                "_wait_for_peer_result_document",
+                return_value=peer_result,
+            ):
+                with mock.patch.object(module, "wait_for_terminal_marker"):
+                    evidence = module._run_peer_graph_auditor(config)
+
+        ready.assert_called_once()
+        self.assertTrue(evidence["endpointsObserved"])
+        self.assertTrue(evidence["qosMatches"])
+        self.assertEqual(
+            ["/unity2foxglove_ros2_bridge", "/unity_native"],
+            evidence["nodeIdentities"],
+        )
+        self.assertEqual(graphs, evidence["topics"])
 
     def test_run_config_is_immutable_case_specific_and_protocol_valid(self):
         module = load_module()
@@ -320,6 +655,86 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
         self.assertTrue(owner.all_stopped())
 
+    def test_failed_job_registration_terminates_the_untracked_child(self):
+        """Job assignment failure cannot leave the just-spawned process orphaned."""
+
+        module = load_module()
+        process = FakeProcess(18402)
+        job = mock.Mock()
+        job.assign.side_effect = module.AcceptanceFailure(
+            "FAIL_PREFLIGHT",
+            "job assignment failed",
+        )
+        owner = module.OwnedProcessSet(job=job)
+
+        with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_PREFLIGHT"):
+            owner.register("bridge", process)
+
+        self.assertEqual(1, process.terminated)
+        self.assertTrue(owner.all_stopped())
+
+    def test_preflight_assignment_failure_terminates_the_spawned_process(self):
+        """Preparatory children are reclaimed before owner registration exists."""
+
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        process = FakeProcess(18403)
+        job = mock.Mock()
+        job.assign.side_effect = module.AcceptanceFailure(
+            "FAIL_PREFLIGHT",
+            "job assignment failed",
+        )
+        with tempfile.TemporaryDirectory(prefix="assign-fail-", dir=TEST_ROOT) as raw:
+            log = pathlib.Path(raw) / "preflight.log"
+            with mock.patch.object(module.subprocess, "Popen", return_value=process):
+                with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_PREFLIGHT"):
+                    module._run_logged_preflight(
+                        ["owned-tool"],
+                        cwd=ROOT,
+                        environment={},
+                        log_path=log,
+                        job=job,
+                        failure_code="FAIL_PREFLIGHT",
+                        operation="preflight",
+                    )
+
+        self.assertEqual(1, process.terminated)
+
+    def test_owner_requested_daemon_exit_preserves_raw_windows_semantics(self):
+        """Only owned Bridge/router control-break exits are accepted as clean stops."""
+
+        module = load_module()
+        for code in (-1073741510, 3221225786):
+            with self.subTest(code=code):
+                self.assertTrue(
+                    module.process_exit_is_acceptable(
+                        "bridge",
+                        code,
+                        owner_requested=True,
+                    )
+                )
+                self.assertTrue(
+                    module.process_exit_is_acceptable(
+                        "zenoh-router",
+                        code,
+                        owner_requested=True,
+                    )
+                )
+                self.assertFalse(
+                    module.process_exit_is_acceptable(
+                        "ros2-peer",
+                        code,
+                        owner_requested=True,
+                    )
+                )
+                self.assertFalse(
+                    module.process_exit_is_acceptable(
+                        "bridge",
+                        code,
+                        owner_requested=False,
+                    )
+                )
+
     def test_explicit_loopback_port_must_be_bindable(self):
         module = load_module()
         with module.socket.socket(module.socket.AF_INET, module.socket.SOCK_STREAM) as held:
@@ -346,6 +761,49 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             unity_log.write_text("first\nsecond\n", encoding="utf-8")
             after = module._progress_snapshot((process_log, unity_log))
             self.assertNotEqual(before, after)
+
+    def test_unity_wait_uses_progress_watchdog_instead_of_total_duration(self):
+        """A progressing cold import is bounded by silence, not total duration."""
+
+        module = load_module()
+        unity = mock.Mock()
+        unity.poll.side_effect = (None, 0)
+        unity.returncode = 0
+        terminal = module.TerminalMarker("PASS", "pass", {})
+        watchdog = mock.Mock()
+        config = {
+            "case": "multi-target",
+            "token": "p184g_A1b2C3d4E5f6",
+            "unityLog": str(TEST_ROOT / "unity-progress.log"),
+        }
+        snapshots = (
+            (("unity-progress.log", 10, 1),),
+            (("unity-progress.log", 20, 2),),
+        )
+        with mock.patch.object(
+            module.protocol,
+            "ProgressWatchdog",
+            return_value=watchdog,
+        ) as create_watchdog:
+            with mock.patch.object(module, "_progress_snapshot", side_effect=snapshots):
+                with mock.patch.object(module, "read_log_lines", return_value=[]):
+                    with mock.patch.object(
+                        module,
+                        "wait_for_terminal_marker",
+                        return_value=terminal,
+                    ):
+                        with mock.patch.object(module.time, "sleep"):
+                            observed = module._wait_for_unity_exit(
+                                config,
+                                unity,
+                                owner=mock.Mock(),
+                                worker_roles=(),
+                            )
+
+        self.assertIs(terminal, observed)
+        create_watchdog.assert_called_once_with("unity-startup")
+        self.assertGreaterEqual(watchdog.progress.call_count, 2)
+        watchdog.check.assert_called()
 
     def test_manual_editor_log_mirror_survives_truncation_and_correlates_token(self):
         module = load_module()
@@ -374,6 +832,42 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             copied = owned_log.read_text(encoding="utf-8")
             self.assertIn("PHASE184G_CONTEXT_READY", copied)
             self.assertIn("PHASE184G_MANUAL_PLAY_EXITED", copied)
+
+    def test_manual_session_does_not_latch_pass_over_a_later_failure(self):
+        """The latest correlated terminal marker remains authoritative until exit."""
+
+        module = load_module()
+        token = "p184g_A1b2C3d4E5f6"
+        config = {
+            "case": "multi-target",
+            "token": token,
+            "unityLog": str(TEST_ROOT / "manual-latch.log"),
+        }
+        context = f"PHASE184G_CONTEXT_READY case=multi-target token={token}"
+        passed = f"PHASE184G_CASE_PASS case=multi-target token={token}"
+        failed = f"PHASE184G_CASE_FAIL case=multi-target token={token}"
+
+        with mock.patch.object(
+            module,
+            "read_log_lines",
+            side_effect=([context, passed], [context, passed, failed]),
+        ):
+            with mock.patch.object(
+                module,
+                "_manual_exit_seen",
+                side_effect=(False, True),
+            ):
+                with mock.patch.object(module.time, "sleep"):
+                    with self.assertRaisesRegex(
+                        module.AcceptanceFailure,
+                        "FAIL_TERMINAL",
+                    ):
+                        module._wait_for_manual_session(
+                            config,
+                            mirror=mock.Mock(),
+                            owner=mock.Mock(),
+                            worker_roles=(),
+                        )
 
     def test_manual_editor_log_rescue_scan_is_rate_bounded(self):
         module = load_module()
@@ -484,6 +978,161 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             1,
             main_source.count("std::unique_ptr<WinsockRuntime> winsock;"),
         )
+
+    def test_windows_bridge_only_times_out_partial_frame_reads(self):
+        source = (
+            ROOT
+            / "Tools"
+            / "ros2_bridge"
+            / "unity2foxglove_ros2_bridge"
+            / "src"
+            / "unity2foxglove_ros2_bridge.cpp"
+        ).read_text(encoding="utf-8")
+        read_exact = source[
+            source.index("bool read_exact(") : source.index(
+                "void write_all(", source.index("bool read_exact(")
+            )
+        ]
+        retryable_timeout = read_exact[
+            read_exact.index("if (socket_error_is_retryable_timeout(error))") :
+        ]
+
+        idle_guard = retryable_timeout.index("if (offset == 0)")
+        stall_clock = retryable_timeout.index(
+            "if (stalled_since == std::chrono::steady_clock::time_point {})"
+        )
+        self.assertLess(idle_guard, stall_clock)
+        self.assertIn("rclcpp::spin_some(node);", retryable_timeout[:stall_clock])
+        self.assertIn("continue;", retryable_timeout[:stall_clock])
+
+    def test_bridge_health_readiness_does_not_create_a_ros_participant(self):
+        source = (
+            ROOT
+            / "Tools"
+            / "ros2_bridge"
+            / "unity2foxglove_ros2_bridge"
+            / "src"
+            / "unity2foxglove_ros2_bridge.cpp"
+        ).read_text(encoding="utf-8")
+        dispatch = source[
+            source.index("void dispatch_deferred_frame(") : source.index(
+                "void process_deferred_client(",
+                source.index("void dispatch_deferred_frame("),
+            )
+        ]
+        main = source[source.index("int main(int argc, char ** argv)") :]
+
+        health = dispatch.index('if (op == "health_ping")')
+        ros_bridge = dispatch.index("session.require_bridge()")
+        self.assertLess(health, ros_bridge)
+        self.assertIn("DeferredBridgeSession session(", main)
+        self.assertLess(
+            main.index("create_listen_socket("),
+            main.index("DeferredBridgeSession session("),
+        )
+        self.assertNotIn(
+            'std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");',
+            main[: main.index("create_listen_socket(")],
+        )
+
+    def test_bridge_cases_defer_launch_until_unity_native_is_ready(self):
+        module = load_module()
+
+        deferred = {
+            case
+            for case in module.protocol.CASE_CONTRACTS
+            if module._requires_deferred_bridge_start({"case": case})
+        }
+        self.assertEqual({"multi-target", "qos-contract"}, deferred)
+
+        source = (
+            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
+        ).read_text(encoding="utf-8")
+        batch = source[
+            source.index("def run_batch_parent(") : source.index(
+                "def main(",
+                source.index("def run_batch_parent("),
+            )
+        ]
+        unity_launch = batch.index("unity = _launch_logged_process(")
+        native_gate = batch.index(
+            'wait_for_log_marker(\n'
+            '                config,\n'
+            '                _DEFERRED_BRIDGE_START_MARKER,'
+        )
+        bridge_launch = batch.index(
+            "_start_bridge_actor(",
+            native_gate,
+        )
+        self.assertLess(unity_launch, native_gate)
+        self.assertLess(native_gate, bridge_launch)
+
+    def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
+        source = (
+            ROOT
+            / "Unity2Foxglove"
+            / "Assets"
+            / "Scripts"
+            / "ManualAcceptance"
+            / "Phase184FoxRunProfileAcceptance.cs"
+        ).read_text(encoding="utf-8")
+        multi = source[
+            source.index("public sealed partial class Phase184MultiTargetRoute") :
+            source.index("public sealed partial class Phase184DegradedTargetRoute")
+        ]
+        qos = source[
+            source.index("public sealed partial class Phase184QosContractRoute") :
+            source.index("public sealed partial class Phase184StreamRoute")
+        ]
+
+        marker = '"PHASE184G_NATIVE_READY_FOR_BRIDGE"'
+        self.assertIn(marker, multi)
+        self.assertIn(marker, qos)
+        self.assertLess(
+            multi.index(marker),
+            multi.index(
+                "status.SucceededTargets\n"
+                "                       == (FoxRunEndpoint.Foxglove"
+            ),
+        )
+        self.assertLess(qos.index(marker), qos.index("if (_readyContracts == 3)"))
+
+    def test_multi_target_peer_starts_delivery_window_after_unity_arms_local_token(self):
+        source = (
+            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
+        ).read_text(encoding="utf-8")
+        multi_peer = source[
+            source.index("def _run_multi_target_peer(") : source.index(
+                "def _run_qos_peer(", source.index("def _run_multi_target_peer(")
+            )
+        ]
+
+        armed_marker = multi_peer.index(
+            'wait_for_log_marker(config, "PHASE184G_MULTI_LOCAL_ARMED"'
+        )
+        delivery_window = multi_peer.index(
+            "_spin_until(",
+            multi_peer.index("def local_one_ready()"),
+        )
+        self.assertLess(armed_marker, delivery_window)
+
+    def test_multi_target_foxglove_starts_delivery_window_after_unity_arms_local_token(
+        self,
+    ):
+        source = (
+            ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
+        ).read_text(encoding="utf-8")
+        client_start = source.index("async def _run_foxglove_client_async(")
+        multi_start = source.index('if case == "multi-target":', client_start)
+        multi_client = source[
+            multi_start : source.index('if case == "degraded-target":', multi_start)
+        ]
+
+        armed_marker = multi_client.index(
+            '"PHASE184G_MULTI_LOCAL_ARMED"'
+        )
+        delivery_window = multi_client.index("_receive_foxglove_stages(")
+        self.assertLess(armed_marker, delivery_window)
 
     def test_windows_bridge_build_dependencies_are_selected_from_ros_prefix(self):
         module = load_module()
@@ -700,14 +1349,28 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             topic: dict(qos)
             for topic, qos in expected.items()
         }
+        delivery_by_topic = {
+            topic: [
+                "native-gid-" + str(index),
+                "bridge-gid-" + str(index),
+            ]
+            for index, topic in enumerate(config["topics"])
+        }
+        publishers_by_topic = {
+            topic: [
+                {"node": "/unity_native", "gid": gids[0]},
+                {
+                    "node": "/unity2foxglove_ros2_bridge",
+                    "gid": gids[1],
+                },
+            ]
+            for topic, gids in delivery_by_topic.items()
+        }
         results = {
             "ros2-peer": {
                 "verdict": "PASS",
                 "evidence": {
-                    "deliveryByTopic": {
-                        topic: ["native-gid-" + str(index), "bridge-gid-" + str(index)]
-                        for index, topic in enumerate(config["topics"])
-                    }
+                    "deliveryByTopic": delivery_by_topic,
                 },
             },
             "graph-observer": {
@@ -718,9 +1381,29 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                         "/unity_native",
                         "/unity2foxglove_ros2_bridge",
                     ],
-                    "publisherGids": ["native-gid", "bridge-gid"],
+                    "publisherGids": sorted(
+                        gid
+                        for gids in delivery_by_topic.values()
+                        for gid in gids
+                    ),
+                    "publishersByTopic": publishers_by_topic,
+                    "negativeObservationSeconds": 0,
                     "transportObservedQos": {
-                        topic: {"publishers": [dict(qos), dict(qos)]}
+                        topic: {
+                            "publishers": [
+                                {
+                                    key: value
+                                    for key, value in qos.items()
+                                    if key != "profile"
+                                },
+                                {
+                                    key: value
+                                    for key, value in qos.items()
+                                    if key != "profile"
+                                },
+                            ],
+                            "subscriptions": [],
+                        }
                         for topic, qos in expected.items()
                     },
                     "qosMatches": True,
@@ -783,6 +1466,141 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     "subst": True,
                 },
             )
+
+    def test_degraded_summary_consumes_exact_unity_target_status_fields(self):
+        """The parent must carry the runtime status marker instead of recreating it."""
+
+        module = load_module()
+        token = "p184g_A1b2C3d4E5f6"
+        run_id = "phase184g-20260726-degraded01"
+        output = ROOT / "build" / "phase184" / "acceptance" / run_id
+        config = module.make_run_config(
+            repository=ROOT,
+            run_id=run_id,
+            token=token,
+            case="degraded-target",
+            profile="jazzy-fastrtps",
+            output_root=output,
+            domain_id=84,
+            foxglove_port=18765,
+            bridge_port=18767,
+            phase181_workspace=(
+                ROOT
+                / "build"
+                / "phase181"
+                / "jazzy-fastrtps"
+                / "peer-workspace"
+            ),
+            interface_package="unity2foxglove_foxrun_interfaces_v1",
+            interface_type=(
+                "unity2foxglove_foxrun_interfaces_v1"
+                "/msg/Phase181State48D288ED82F1Envelope"
+            ),
+            interface_digest="a" * 64,
+        )
+        topic = str(config["topics"][0])
+        results = {
+            "foxglove-client": {
+                "verdict": "PASS",
+                "evidence": {
+                    "deliveryObserved": True,
+                    "channelEncodings": ["protobuf"],
+                    "sampleToken": module.protocol.token_sha256(token),
+                    "sampleStages": ["degraded-local"],
+                    "timestamp": 1.0,
+                },
+            },
+            "graph-observer": {
+                "verdict": "PASS",
+                "evidence": {
+                    "endpointsObserved": True,
+                    "nodeIdentities": [],
+                    "publisherGids": [],
+                    "publishersByTopic": {topic: []},
+                    "negativeObservationSeconds": 3.0,
+                    "noFallbackPublisher": True,
+                    "transportObservedQos": {},
+                    "qosMatches": False,
+                },
+            },
+        }
+        process_codes = {
+            "unity": 0,
+            "foxglove-client": 0,
+            "graph-observer": 0,
+        }
+        cleanup = {
+            "processes": True,
+            "files": True,
+            "junctions": True,
+            "subst": True,
+        }
+        runtime_fields = {
+            "status": "Degraded",
+            "succeeded": "Foxglove",
+            "failed": "Ros2Bridge",
+            "foxgloveState": "Ready",
+            "ros2BridgeState": "Unavailable",
+            "bridgeDiagnostics": "1",
+        }
+
+        summary = module.build_pass_summary(
+            config=config,
+            terminal=module.TerminalMarker(
+                "PASS",
+                "PHASE184G_CASE_PASS",
+                runtime_fields,
+            ),
+            results=results,
+            process_exit_codes=process_codes,
+            unity_version="6000.3.14f1",
+            cleanup=cleanup,
+        )
+
+        self.assertEqual(
+            {
+                "foxglove": runtime_fields["foxgloveState"],
+                "ros2Bridge": runtime_fields["ros2BridgeState"],
+            },
+            summary["targets"]["states"],
+        )
+        self.assertEqual(
+            {
+                "aggregate": runtime_fields["status"],
+                "succeeded": runtime_fields["succeeded"],
+                "failed": runtime_fields["failed"],
+                "bridgeDiagnostics": 1,
+            },
+            summary["targets"]["statusEvidence"],
+        )
+
+        for field, value in (
+            ("status", "Ready"),
+            ("succeeded", "Ros2Bridge"),
+            ("failed", "Foxglove"),
+            ("foxgloveState", "Degraded"),
+            ("ros2BridgeState", "Ready"),
+            ("bridgeDiagnostics", "0"),
+        ):
+            with self.subTest(field=field):
+                invalid_fields = dict(runtime_fields)
+                invalid_fields[field] = value
+                with self.assertRaisesRegex(
+                    module.AcceptanceFailure,
+                    "FAIL_FANOUT",
+                ):
+                    module.build_pass_summary(
+                        config=config,
+                        terminal=module.TerminalMarker(
+                            "PASS",
+                            "PHASE184G_CASE_PASS",
+                            invalid_fields,
+                        ),
+                        results=results,
+                        process_exit_codes=process_codes,
+                        unity_version="6000.3.14f1",
+                        cleanup=cleanup,
+                    )
 
     def test_stream_peer_evidence_must_match_unity_and_nominal_rate(self):
         module = load_module()

@@ -20,8 +20,34 @@ from typing import Any, Callable, Mapping
 
 
 RUN_CONFIG_SCHEMA_VERSION = 1
-SUMMARY_SCHEMA_VERSION = 1
+SUMMARY_SCHEMA_VERSION = 2
 MAX_DIAGNOSTIC_CHARACTERS = 512
+MIN_STREAM_ACCEPTANCE_PERMILLE = 800
+PARENT_DAEMON_ROLES = frozenset({"bridge", "zenoh-router"})
+WINDOWS_CONTROL_BREAK_EXIT_CODES = frozenset(
+    {
+        -1073741510,  # Signed 32-bit STATUS_CONTROL_C_EXIT.
+        3221225786,  # Unsigned 32-bit STATUS_CONTROL_C_EXIT.
+    }
+)
+
+
+def process_exit_is_acceptable(
+    role: str,
+    exit_code: int,
+    *,
+    owner_requested: bool,
+) -> bool:
+    """Accept only truthful zero exits or owned Windows daemon control breaks."""
+
+    if exit_code == 0:
+        return True
+    return (
+        owner_requested
+        and role in PARENT_DAEMON_ROLES
+        and exit_code in WINDOWS_CONTROL_BREAK_EXIT_CODES
+    )
+
 
 FAILURE_CODES = {
     "preflight",
@@ -216,6 +242,144 @@ CASE_CONTRACTS: Mapping[str, CaseContract] = {
             "stream": _required(),
         },
     ),
+}
+
+
+_QOS_FIELDS = {"profile", "reliability", "durability", "history", "depth"}
+_TRANSPORT_QOS_FIELDS = _QOS_FIELDS - {"profile"}
+
+
+def expected_qos_by_topic(case: str) -> dict[str, dict[str, object]]:
+    """Return the canonical portable QoS contract owned by the protocol."""
+
+    contract = CASE_CONTRACTS.get(case)
+    if contract is None:
+        raise _fail("preflight", f"Unknown Phase184-G case {case!r}.")
+    topics = contract.topics
+    if case == "multi-target":
+        return {
+            topics[0]: {
+                "profile": "default",
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "keep_last",
+                "depth": 10,
+            }
+        }
+    if case == "qos-contract":
+        return {
+            topics[0]: {
+                "profile": "system_default",
+                "reliability": "system_default",
+                "durability": "system_default",
+                "history": "system_default",
+                "depth": 0,
+            },
+            topics[1]: {
+                "profile": "default",
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "keep_all",
+                "depth": 0,
+            },
+            topics[2]: {
+                "profile": "default",
+                "reliability": "best_effort",
+                "durability": "transient_local",
+                "history": "keep_last",
+                "depth": 7,
+            },
+        }
+    if case == "stream-640hz":
+        sensor_data = {
+            "profile": "sensor_data",
+            "reliability": "best_effort",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 5,
+        }
+        return {topic: dict(sensor_data) for topic in topics}
+    return {}
+
+
+_EXPECTED_PROFILE_EVIDENCE: Mapping[
+    str, tuple[str, tuple[str, ...], str, str]
+] = {
+    "foxglove-profile": ("Foxglove", ("Foxglove",), "protobuf,json", "protobuf,json"),
+    "multi-target": (
+        "Ros2Native",
+        ("Foxglove", "Ros2Native", "Ros2Bridge"),
+        "protobuf",
+        "protobuf",
+    ),
+    "degraded-target": (
+        "None",
+        ("Foxglove", "Ros2Bridge"),
+        "protobuf",
+        "not_applicable",
+    ),
+    "qos-contract": (
+        "None",
+        ("Ros2Native", "Ros2Bridge"),
+        "protobuf",
+        "not_applicable",
+    ),
+    "stream-640hz": (
+        "Ros2Native",
+        ("Ros2Native",),
+        "protobuf",
+        "protobuf",
+    ),
+}
+
+_EXPECTED_TARGET_STATES: Mapping[str, Mapping[str, str]] = {
+    "foxglove-profile": {"foxglove": "Ready"},
+    "multi-target": {
+        "foxglove": "Ready",
+        "ros2Native": "Ready",
+        "ros2Bridge": "Ready",
+    },
+    "degraded-target": {
+        "foxglove": "Ready",
+        "ros2Bridge": "Unavailable",
+    },
+    "qos-contract": {
+        topic: "Ready" for topic in CASE_CONTRACTS["qos-contract"].topics
+    },
+    "stream-640hz": {"ros2Native": "Ready"},
+}
+
+_EXPECTED_TARGET_DIAGNOSTICS: Mapping[str, Mapping[str, int]] = {
+    "foxglove-profile": {"warning": 0, "error": 0},
+    "multi-target": {"warning": 0, "error": 0},
+    "degraded-target": {"bridge": 1, "error": 0},
+    "qos-contract": {"warning": 0, "error": 0},
+    "stream-640hz": {"warning": 0, "error": 0},
+}
+
+_EXPECTED_FOXGLOVE_SAMPLE_STAGES: Mapping[str, tuple[str, ...]] = {
+    "foxglove-profile": (
+        "profile-outbound",
+        "json-outbound",
+        "profile-a",
+        "profile-b",
+        "profile-local-after-remote",
+    ),
+    "multi-target": ("multi-local-1", "multi-local-3"),
+    "degraded-target": ("degraded-local",),
+}
+
+_EXPECTED_PUBLISHER_SAMPLE_STAGES: Mapping[str, Mapping[str, str]] = {
+    "multi-target": {
+        "multi-local-1": "multi-local-1",
+        "multi-local-3": "multi-local-3",
+    },
+    "qos-contract": {
+        CASE_CONTRACTS["qos-contract"].topics[0]: "qos-system-default",
+        CASE_CONTRACTS["qos-contract"].topics[1]: "qos-keep-all",
+        CASE_CONTRACTS["qos-contract"].topics[2]: "qos-keep-last-depth",
+    },
+    "stream-640hz": {"origin-local": "origin-local"},
 }
 
 
@@ -487,11 +651,24 @@ _REQUIRED_SECTION_FIELDS: Mapping[str, set[str]] = {
         "deliveryObserved",
         "channelEncodings",
         "sampleToken",
+        "sampleStages",
         "timestamp",
     },
-    "rosGraph": {"endpointsObserved", "nodeIdentities", "publisherGids"},
+    "rosGraph": {
+        "endpointsObserved",
+        "nodeIdentities",
+        "publisherGids",
+        "publishersByTopic",
+        "samplePublisherGids",
+        "negativeObservationSeconds",
+    },
     "qos": {"requested", "transportObserved", "matches"},
-    "targets": {"states", "diagnosticCounts", "healthyDelivery"},
+    "targets": {
+        "states",
+        "diagnosticCounts",
+        "healthyDelivery",
+        "statusEvidence",
+    },
     "origin": {"remoteApplied", "sameOriginDropped", "laterLocalPublished"},
     "stream": {
         "offered",
@@ -525,6 +702,256 @@ _SECTION_FAILURE_STAGE = {
 }
 
 
+def _require_string_list(
+    value: object,
+    label: str,
+    stage: str,
+    *,
+    allow_empty: bool,
+) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or (not allow_empty and not value)
+        or any(not isinstance(item, str) or not item for item in value)
+    ):
+        qualifier = "a string array" if allow_empty else "a non-empty string array"
+        raise _fail(stage, f"{label} must be {qualifier}.")
+    return value
+
+
+def _normalized_policy(value: object) -> str:
+    text = str(value).lower()
+    aliases = {
+        "qosreliabilitypolicy.reliable": "reliable",
+        "qosreliabilitypolicy.best_effort": "best_effort",
+        "qosreliabilitypolicy.system_default": "system_default",
+        "qosdurabilitypolicy.volatile": "volatile",
+        "qosdurabilitypolicy.transient_local": "transient_local",
+        "qosdurabilitypolicy.system_default": "system_default",
+        "qoshistorypolicy.keep_last": "keep_last",
+        "qoshistorypolicy.keep_all": "keep_all",
+        "qoshistorypolicy.system_default": "system_default",
+    }
+    return aliases.get(text, text)
+
+
+def _validate_qos_value(
+    value: object,
+    expected: Mapping[str, object],
+    label: str,
+    *,
+    include_profile: bool,
+) -> None:
+    actual = _require_mapping(value, label, "qos")
+    expected_keys = _QOS_FIELDS if include_profile else _TRANSPORT_QOS_FIELDS
+    _require_exact_keys(actual, expected_keys, label, "qos")
+    for key in expected_keys - {"depth"}:
+        if _normalized_policy(actual[key]) != expected[key]:
+            raise _fail("qos", f"{label}.{key} drifted from the requested policy.")
+    depth = actual["depth"]
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth != expected["depth"]:
+        raise _fail("qos", f"{label}.depth drifted from the requested policy.")
+
+
+def _expected_graph_direction_counts(
+    case: str,
+    topic: str,
+) -> tuple[int, int]:
+    if case in {"multi-target", "qos-contract"}:
+        return 2, 1 if case == "multi-target" else 0
+    if case == "stream-640hz":
+        stream_topic, origin_topic = CASE_CONTRACTS[case].topics
+        if topic == stream_topic:
+            return 0, 1
+        if topic == origin_topic:
+            return 1, 1
+    return 0, 0
+
+
+def _validate_qos_evidence(
+    summary: Mapping[str, Any],
+    case: str,
+) -> None:
+    expected_qos = expected_qos_by_topic(case)
+    if summary["profile"]["requestedQos"] != expected_qos:
+        raise _fail("qos", "profile.requestedQos drifted from the case contract.")
+    if summary["qos"]["requested"] != expected_qos:
+        raise _fail("qos", "qos.requested drifted from the case contract.")
+
+    transport = _require_mapping(
+        summary["qos"]["transportObserved"],
+        "qos.transportObserved",
+        "qos",
+    )
+    expected_sources = (
+        {"graph", "bridge"}
+        if case in {"multi-target", "qos-contract"}
+        else {"graph"}
+    )
+    _require_exact_keys(transport, expected_sources, "qos.transportObserved", "qos")
+    graph = _require_mapping(transport["graph"], "qos.transportObserved.graph", "qos")
+    _require_exact_keys(graph, set(expected_qos), "qos.transportObserved.graph", "qos")
+    for topic, expected in expected_qos.items():
+        topic_evidence = _require_mapping(
+            graph[topic],
+            f"qos.transportObserved.graph.{topic}",
+            "qos",
+        )
+        _require_exact_keys(
+            topic_evidence,
+            {"publishers", "subscriptions"},
+            f"qos.transportObserved.graph.{topic}",
+            "qos",
+        )
+        minimum_publishers, minimum_subscriptions = _expected_graph_direction_counts(
+            case,
+            topic,
+        )
+        for direction, minimum in (
+            ("publishers", minimum_publishers),
+            ("subscriptions", minimum_subscriptions),
+        ):
+            values = topic_evidence[direction]
+            if not isinstance(values, list) or len(values) < minimum:
+                raise _fail(
+                    "qos",
+                    f"qos.transportObserved.graph.{topic}.{direction} is incomplete.",
+                )
+            for index, value in enumerate(values):
+                _validate_qos_value(
+                    value,
+                    expected,
+                    f"qos.transportObserved.graph.{topic}.{direction}[{index}]",
+                    include_profile=False,
+                )
+
+    if "bridge" in expected_sources:
+        bridge = _require_mapping(
+            transport["bridge"],
+            "qos.transportObserved.bridge",
+            "qos",
+        )
+        _require_exact_keys(bridge, set(expected_qos), "qos.transportObserved.bridge", "qos")
+        for topic, expected in expected_qos.items():
+            _validate_qos_value(
+                bridge[topic],
+                expected,
+                f"qos.transportObserved.bridge.{topic}",
+                include_profile=True,
+            )
+
+
+def _validate_sample_publisher_evidence(
+    graph: Mapping[str, Any],
+    case: str,
+    expected_token: str,
+) -> None:
+    samples = _require_mapping(
+        graph["samplePublisherGids"],
+        "rosGraph.samplePublisherGids",
+        "graph",
+    )
+    expected_samples = _EXPECTED_PUBLISHER_SAMPLE_STAGES.get(case, {})
+    _require_exact_keys(
+        samples,
+        set(expected_samples),
+        "rosGraph.samplePublisherGids",
+        "graph",
+    )
+    graph_gids = set(graph["publisherGids"])
+    minimum = 2 if case in {"multi-target", "qos-contract"} else 1
+    for key, suffix in expected_samples.items():
+        entry = _require_mapping(
+            samples[key],
+            f"rosGraph.samplePublisherGids.{key}",
+            "graph",
+        )
+        _require_exact_keys(
+            entry,
+            {"sampleSha256", "publisherGids"},
+            f"rosGraph.samplePublisherGids.{key}",
+            "graph",
+        )
+        if entry["sampleSha256"] != token_sha256(expected_token + "-" + suffix):
+            raise _fail("graph", f"Publisher sample {key!r} is not token-correlated.")
+        gids = _require_string_list(
+            entry["publisherGids"],
+            f"rosGraph.samplePublisherGids.{key}.publisherGids",
+            "graph",
+            allow_empty=False,
+        )
+        if len(set(gids)) < minimum or not set(gids).issubset(graph_gids):
+            raise _fail("graph", f"Publisher sample {key!r} has invalid endpoint GIDs.")
+
+
+def _validate_graph_evidence(
+    graph: Mapping[str, Any],
+    case: str,
+    expected_token: str,
+) -> None:
+    allow_empty = case == "degraded-target"
+    nodes = _require_string_list(
+        graph["nodeIdentities"],
+        "rosGraph.nodeIdentities",
+        "graph",
+        allow_empty=allow_empty,
+    )
+    gids = _require_string_list(
+        graph["publisherGids"],
+        "rosGraph.publisherGids",
+        "graph",
+        allow_empty=allow_empty,
+    )
+    if len(nodes) != len(set(nodes)) or len(gids) != len(set(gids)):
+        raise _fail("graph", "ROS graph identities and GIDs must be unique.")
+    publishers = _require_mapping(
+        graph["publishersByTopic"],
+        "rosGraph.publishersByTopic",
+        "graph",
+    )
+    topics = CASE_CONTRACTS[case].topics
+    _require_exact_keys(publishers, set(topics), "rosGraph.publishersByTopic", "graph")
+    observed_gids: set[str] = set()
+    observed_nodes: set[str] = set()
+    for topic in topics:
+        entries = publishers[topic]
+        expected_count, _ = _expected_graph_direction_counts(case, topic)
+        if not isinstance(entries, list) or len(entries) != expected_count:
+            raise _fail("graph", f"rosGraph.publishersByTopic.{topic} count drifted.")
+        for index, raw in enumerate(entries):
+            entry = _require_mapping(
+                raw,
+                f"rosGraph.publishersByTopic.{topic}[{index}]",
+                "graph",
+            )
+            _require_exact_keys(
+                entry,
+                {"node", "gid"},
+                f"rosGraph.publishersByTopic.{topic}[{index}]",
+                "graph",
+            )
+            node = _require_string(entry["node"], "publisher node", "graph")
+            gid = _require_string(entry["gid"], "publisher gid", "graph")
+            observed_nodes.add(node)
+            observed_gids.add(gid)
+    if observed_gids != set(gids) or not observed_nodes.issubset(set(nodes)):
+        raise _fail("graph", "ROS graph publisher identities do not match their topic evidence.")
+
+    negative_seconds = graph["negativeObservationSeconds"]
+    if isinstance(negative_seconds, bool) or not isinstance(
+        negative_seconds,
+        (int, float),
+    ):
+        raise _fail("graph", "rosGraph.negativeObservationSeconds must be numeric.")
+    if case == "degraded-target":
+        if negative_seconds < 3 or nodes or gids:
+            raise _fail("graph", "Degraded graph evidence did not prove an empty negative window.")
+    elif negative_seconds != 0:
+        raise _fail("graph", "Positive graph evidence cannot claim a negative window.")
+
+    _validate_sample_publisher_evidence(graph, case, expected_token)
+
+
 def _validate_required_section(
     name: str,
     section: Mapping[str, Any],
@@ -546,14 +973,26 @@ def _validate_required_section(
         if not isinstance(section["channelEncodings"], list) or not section["channelEncodings"]:
             raise _fail("client", "foxglove.channelEncodings is empty.")
         _require_string(section["sampleToken"], "foxglove.sampleToken", "client")
+        _require_string_list(
+            section["sampleStages"],
+            "foxglove.sampleStages",
+            "client",
+            allow_empty=False,
+        )
         if isinstance(section["timestamp"], bool) or not isinstance(
             section["timestamp"], (int, float)
         ):
             raise _fail("client", "foxglove.timestamp must be numeric.")
     elif name == "rosGraph":
         for key in ("nodeIdentities", "publisherGids"):
-            if not isinstance(section[key], list) or not section[key]:
-                raise _fail("graph", f"rosGraph.{key} is empty.")
+            if not isinstance(section[key], list):
+                raise _fail("graph", f"rosGraph.{key} must be an array.")
+        _require_mapping(section["publishersByTopic"], "rosGraph.publishersByTopic", "graph")
+        _require_mapping(
+            section["samplePublisherGids"],
+            "rosGraph.samplePublisherGids",
+            "graph",
+        )
     elif name == "qos":
         _require_mapping(section["requested"], "qos.requested", "qos")
         _require_mapping(section["transportObserved"], "qos.transportObserved", "qos")
@@ -564,6 +1003,13 @@ def _validate_required_section(
         )
         if not states:
             raise _fail("fanout", "targets.states is empty.")
+        if any(
+            not isinstance(key, str)
+            or value not in {"Ready", "Degraded", "Unavailable"}
+            for key, value in states.items()
+        ):
+            raise _fail("fanout", "targets.states contains an invalid target state.")
+        _require_mapping(section["statusEvidence"], "targets.statusEvidence", "fanout")
         for key, count in counts.items():
             if (
                 not isinstance(key, str)
@@ -665,6 +1111,16 @@ def validate_summary(
     for key in ("publishEncoding", "subscribeEncoding"):
         _require_string(profile[key], f"profile.{key}", "terminal")
     _require_mapping(profile["requestedQos"], "profile.requestedQos", "qos")
+    expected_source, expected_targets, expected_publish, expected_subscribe = (
+        _EXPECTED_PROFILE_EVIDENCE[expected_case]
+    )
+    if (
+        profile["source"] != expected_source
+        or profile["targets"] != list(expected_targets)
+        or profile["publishEncoding"] != expected_publish
+        or profile["subscribeEncoding"] != expected_subscribe
+    ):
+        raise _fail("terminal", "Summary Source/Targets/Encoding drifted from the case contract.")
 
     verdict = summary["verdict"]
     if not isinstance(verdict, str) or (
@@ -696,6 +1152,14 @@ def validate_summary(
                 raise _fail("terminal", f"{name} has an unapproved N/A reason.")
 
     if require_positive:
+        if contract.applicability["foxglove"].required:
+            foxglove = summary["foxglove"]
+            if foxglove["sampleToken"] != token_sha256(expected_token):
+                raise _fail("client", "Foxglove sample evidence is not token-correlated.")
+            expected_stages = _EXPECTED_FOXGLOVE_SAMPLE_STAGES[expected_case]
+            if foxglove["sampleStages"] != list(expected_stages):
+                raise _fail("client", "Foxglove sample stages drifted from the case contract.")
+
         if expected_case == "foxglove-profile":
             encodings = set(summary["foxglove"]["channelEncodings"])
             if encodings != {"json", "protobuf"}:
@@ -711,60 +1175,35 @@ def validate_summary(
                 )
 
         if contract.applicability["qos"].required:
-            transport_observed = _require_mapping(
-                summary["qos"]["transportObserved"],
-                "qos.transportObserved",
-                "qos",
-            )
-            expected_sources = (
-                {"graph", "bridge"}
-                if expected_case in {"multi-target", "qos-contract"}
-                else {"graph"}
-            )
-            _require_exact_keys(
-                transport_observed,
-                expected_sources,
-                "qos.transportObserved",
-                "qos",
-            )
-            expected_topics = set(contract.topics)
-            for source_name in expected_sources:
-                source = _require_mapping(
-                    transport_observed[source_name],
-                    f"qos.transportObserved.{source_name}",
-                    "qos",
-                )
-                if set(source) != expected_topics:
-                    raise _fail(
-                        "qos",
-                        f"qos.transportObserved.{source_name} topics drifted.",
-                    )
+            _validate_qos_evidence(summary, expected_case)
 
-        if expected_case in {"multi-target", "qos-contract"}:
-            graph = summary["rosGraph"]
-            nodes = {str(value).rstrip("/") for value in graph["nodeIdentities"]}
-            has_bridge = any(
-                value.endswith("/unity2foxglove_ros2_bridge")
-                or value == "unity2foxglove_ros2_bridge"
-                for value in nodes
+        if contract.applicability["rosGraph"].required:
+            _validate_graph_evidence(
+                summary["rosGraph"],
+                expected_case,
+                expected_token,
             )
-            if not has_bridge or len(nodes) < 2 or len(set(graph["publisherGids"])) < 2:
-                raise _fail(
-                    "graph",
-                    "Native and Bridge graph identities/GIDs are not independently proven.",
-                )
+
+        targets = summary["targets"]
+        if targets["states"] != _EXPECTED_TARGET_STATES[expected_case]:
+            raise _fail("fanout", "Target states drifted from the exact case contract.")
+        if targets["diagnosticCounts"] != _EXPECTED_TARGET_DIAGNOSTICS[expected_case]:
+            raise _fail("fanout", "Target diagnostic counts drifted from the case contract.")
 
         if expected_case == "degraded-target":
-            targets = summary["targets"]
-            if (
-                targets["states"].get("foxglove") != "Ready"
-                or targets["states"].get("ros2Bridge") != "Unavailable"
-                or targets["diagnosticCounts"].get("bridge") != 1
-            ):
+            expected_status = {
+                "aggregate": "Degraded",
+                "succeeded": "Foxglove",
+                "failed": "Ros2Bridge",
+                "bridgeDiagnostics": 1,
+            }
+            if targets["statusEvidence"] != expected_status:
                 raise _fail(
                     "fanout",
-                    "Degraded target evidence must contain one bounded Bridge diagnostic.",
+                    "Degraded target evidence must come from the runtime status transition.",
                 )
+        elif targets["statusEvidence"] != {}:
+            raise _fail("fanout", "This case cannot claim synthetic target status evidence.")
 
         if expected_case == "stream-640hz":
             stream = summary["stream"]
@@ -775,10 +1214,12 @@ def validate_summary(
                 or stream["disposed"] != stream["drained"] + stream["replaced"]
                 or stream["maximumQueueDepth"] != 32
                 or stream["replaced"] <= 0
+                or stream["accepted"] * 1000
+                < stream["offered"] * MIN_STREAM_ACCEPTANCE_PERMILLE
             ):
                 raise _fail(
                     "stream",
-                    "Stream counters do not prove the locked 1280/capacity-32 ownership contract.",
+                    "Stream counters do not prove the locked delivery/capacity/ownership contract.",
                 )
 
     processes = summary["processes"]
@@ -802,16 +1243,35 @@ def validate_summary(
         entry = by_role[role]
         _require_exact_keys(
             entry,
-            {"role", "started", "exitCode"},
+            {"role", "started", "exitCode", "termination"},
             f"processes.{role}",
             "process-exit",
         )
         if entry["started"] is not True:
             raise _fail("process-exit", f"Required actor {role!r} was not started.")
-        if (
-            isinstance(entry["exitCode"], bool)
-            or not isinstance(entry["exitCode"], int)
-            or (require_positive and entry["exitCode"] != 0)
+        exit_code = entry["exitCode"]
+        termination = entry["termination"]
+        if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+            raise _fail("process-exit", f"Actor {role!r} has an invalid exit code.")
+        if termination not in {"self", "owner_requested"}:
+            raise _fail(
+                "process-exit",
+                f"Actor {role!r} has invalid termination provenance.",
+            )
+        if termination == "owner_requested":
+            if not process_exit_is_acceptable(
+                role,
+                exit_code,
+                owner_requested=True,
+            ):
+                raise _fail(
+                    "process-exit",
+                    f"Actor {role!r} has invalid owner-requested exit evidence.",
+                )
+        elif require_positive and not process_exit_is_acceptable(
+            role,
+            exit_code,
+            owner_requested=False,
         ):
             raise _fail("process-exit", f"Actor {role!r} has an invalid exit code.")
     for role, reason in contract.deliberately_absent_actors.items():

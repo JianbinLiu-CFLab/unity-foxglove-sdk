@@ -34,7 +34,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Sequence, TextIO
+from typing import Any, Callable, Iterable, Mapping, Sequence, TextIO
 
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
@@ -64,6 +64,15 @@ _UNITY_VERSION = re.compile(r"\bVersion is '([^']+)'")
 _PROCESS_IMPORTED_UNIX_SECONDS = time.time()
 MANUAL_ENTRY_TIMEOUT_SECONDS = 900.0
 MANUAL_REVIEW_TIMEOUT_SECONDS = 900.0
+WINDOWS_SAFE_ROS_DOMAIN_ID_MAX = 166
+_UNITY_RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
+_UNITY_TYPESUPPORT_PACKAGE_PREFIX = (
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport."
+)
+_UNITY_RUNTIME_DEFINE = "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+_UNITY_TYPESUPPORT_DEFINE = "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES"
+_DEFERRED_BRIDGE_START_MARKER = "PHASE184G_NATIVE_READY_FOR_BRIDGE"
+_DEFERRED_BRIDGE_CASES = frozenset({"multi-target", "qos-contract"})
 
 
 class AcceptanceFailure(protocol.ProtocolFailure):
@@ -88,6 +97,12 @@ class StaticInterfaceIdentity:
     payload_type: str
     digest: str
     revision: int
+
+
+def _requires_deferred_bridge_start(config: Mapping[str, object]) -> bool:
+    """Keep the C++ participant absent until Unity's native node is ready."""
+
+    return str(config.get("case", "")) in _DEFERRED_BRIDGE_CASES
 
 
 def repository_root() -> pathlib.Path:
@@ -212,19 +227,16 @@ def build_worker_command(
 
 
 def build_bridge_command(
-    ros2_executable: pathlib.Path,
+    bridge_executable: pathlib.Path,
     host: str,
     port: int,
 ) -> list[str]:
-    """Build the installed ROS executable invocation with app arguments."""
+    """Build the installed native Bridge invocation with app arguments."""
 
     if host not in {"127.0.0.1", "localhost", "::1"} or not 1 <= int(port) <= 65535:
         raise AcceptanceFailure("FAIL_BRIDGE", "Bridge endpoint is not a valid loopback endpoint.")
     return [
-        str(pathlib.Path(ros2_executable)),
-        "run",
-        "unity2foxglove_ros2_bridge",
-        "unity2foxglove_ros2_bridge",
+        str(pathlib.Path(bridge_executable)),
         "--host",
         host,
         "--port",
@@ -633,6 +645,21 @@ def terminate_owned_process(process, *, grace_seconds: float = 10.0) -> int:
             return -1
 
 
+def process_exit_is_acceptable(
+    role: str,
+    exit_code: int,
+    *,
+    owner_requested: bool,
+) -> bool:
+    """Classify one raw child exit without rewriting Windows daemon evidence."""
+
+    return protocol.process_exit_is_acceptable(
+        role,
+        exit_code,
+        owner_requested=owner_requested,
+    )
+
+
 class OwnedProcessSet:
     """Single owner for named children and their retained exit evidence."""
 
@@ -640,15 +667,23 @@ class OwnedProcessSet:
         self._job = job
         self._processes: dict[str, Any] = {}
         self._exit_codes: dict[str, int] = {}
+        self._owner_stopped_roles: set[str] = set()
         self._closed = False
 
     def register(self, role: str, process):
-        if self._closed or role in self._processes:
-            raise AcceptanceFailure("FAIL_PREFLIGHT", "Duplicate or late process registration.")
-        if self._job is not None:
-            self._job.assign(process)
-        self._processes[role] = process
-        return process
+        try:
+            if self._closed or role in self._processes:
+                raise AcceptanceFailure(
+                    "FAIL_PREFLIGHT",
+                    "Duplicate or late process registration.",
+                )
+            if self._job is not None:
+                self._job.assign(process)
+            self._processes[role] = process
+            return process
+        except BaseException:
+            terminate_owned_process(process)
+            raise
 
     def process(self, role: str):
         return self._processes.get(role)
@@ -658,6 +693,8 @@ class OwnedProcessSet:
             return
         self._closed = True
         for role, process in reversed(tuple(self._processes.items())):
+            if process.poll() is None:
+                self._owner_stopped_roles.add(role)
             self._exit_codes[role] = terminate_owned_process(process)
         if self._job is not None:
             self._job.close()
@@ -674,6 +711,11 @@ class OwnedProcessSet:
         """Return cleanup state without exposing the owner's process registry."""
 
         return all(process.poll() is not None for process in self._processes.values())
+
+    def owner_stopped_roles(self) -> frozenset[str]:
+        """Return actors whose termination was initiated by this exact owner."""
+
+        return frozenset(self._owner_stopped_roles)
 
     def __enter__(self):
         return self
@@ -1397,7 +1439,14 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
             return {
                 "deliveryObserved": True,
                 "channelEncodings": encodings,
-                "sampleToken": "profile-outbound/profile-a/profile-b",
+                "sampleToken": protocol.token_sha256(token),
+                "sampleStages": [
+                    "profile-outbound",
+                    "json-outbound",
+                    "profile-a",
+                    "profile-b",
+                    "profile-local-after-remote",
+                ],
                 "timestamp": timestamp,
                 "remoteApplied": True,
                 "sameOriginDropped": True,
@@ -1407,6 +1456,12 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
             }
 
         if case == "multi-target":
+            await asyncio.to_thread(
+                wait_for_log_marker,
+                config,
+                "PHASE184G_MULTI_LOCAL_ARMED",
+                120.0,
+            )
             observed, forbidden, timestamp = await _receive_foxglove_stages(
                 websocket,
                 subscriptions,
@@ -1422,7 +1477,8 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
             return {
                 "deliveryObserved": True,
                 "channelEncodings": encodings,
-                "sampleToken": "multi-local-1/multi-local-3",
+                "sampleToken": protocol.token_sha256(token),
+                "sampleStages": ["multi-local-1", "multi-local-3"],
                 "timestamp": timestamp,
                 "remoteRepublishObserved": False,
             }
@@ -1441,7 +1497,8 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
             return {
                 "deliveryObserved": True,
                 "channelEncodings": encodings,
-                "sampleToken": "degraded-local",
+                "sampleToken": protocol.token_sha256(token),
+                "sampleStages": ["degraded-local"],
                 "timestamp": timestamp,
             }
         raise AcceptanceFailure("FAIL_CLIENT", "Selected case does not own a Foxglove worker.")
@@ -1521,6 +1578,15 @@ def _publisher_gid(message_info) -> str:
 def _helper_node_name(role: str, config: Mapping[str, object]) -> str:
     digest = protocol.token_sha256(str(config["token"]))[:12]
     return f"phase184g_{role.replace('-', '_')}_{digest}"
+
+
+def _worker_progress(role: str, stage: str) -> None:
+    """Emit one bounded stage marker to the owned worker log."""
+
+    print(
+        f"PHASE184G_WORKER_PROGRESS role={role} stage={stage}",
+        flush=True,
+    )
 
 
 def _qos_profile(kind: str):
@@ -1637,6 +1703,7 @@ def _run_multi_target_peer(
 ) -> Mapping[str, object]:
     topic = str(config["topics"][0])
     token = str(config["token"])
+    _worker_progress("ros2-peer", "multi-qos")
     qos = _qos_profile("default")
     messages: list[tuple[object, str]] = []
 
@@ -1645,8 +1712,11 @@ def _run_multi_target_peer(
         if len(messages) > 4096:
             del messages[: len(messages) - 4096]
 
+    _worker_progress("ros2-peer", "multi-create-subscription")
     subscription = node.create_subscription(envelope_type, topic, receive, qos)
+    _worker_progress("ros2-peer", "multi-create-publisher")
     publisher = node.create_publisher(envelope_type, topic, qos)
+    _worker_progress("ros2-peer", "multi-endpoints-ready")
     write_actor_ready(
         config,
         "ros2-peer",
@@ -1664,6 +1734,7 @@ def _run_multi_target_peer(
         }
         return len(gids) >= 2
 
+    wait_for_log_marker(config, "PHASE184G_MULTI_LOCAL_ARMED", 120.0)
     _spin_until(
         rclpy_module,
         node,
@@ -1743,6 +1814,7 @@ def _run_multi_target_peer(
         "FAIL_FANOUT",
         "Native and Bridge did not both deliver later local token 3.",
     )
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
     wait_for_terminal_marker(config, 30.0)
     local1_gids = sorted(
         {gid for message, gid in messages if _ros_stage(message) == local1 and gid}
@@ -1759,6 +1831,10 @@ def _run_multi_target_peer(
         "local1PublisherGids": local1_gids,
         "local3PublisherGids": local3_gids,
         "distinctFanoutPublishers": len(local1_gids),
+        "graphEvidence": {
+            "source": "ros2-peer-rclpy-graph-api",
+            "topics": graph_topics,
+        },
     }
 
 
@@ -1809,6 +1885,7 @@ def _run_qos_peer(
         "FAIL_QOS",
         "QoS case did not deliver every topic from Native and Bridge.",
     )
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
     wait_for_terminal_marker(config, 30.0)
     del subscriptions
     return {
@@ -1821,7 +1898,11 @@ def _run_qos_peer(
                 }
             )
             for topic, _kind, stage in topic_kinds
-        }
+        },
+        "graphEvidence": {
+            "source": "ros2-peer-rclpy-graph-api",
+            "topics": graph_topics,
+        },
     }
 
 
@@ -1945,6 +2026,19 @@ def _run_stream_peer(
         "FAIL_ORIGIN",
         "Later local Zenoh origin mutation was not observed.",
     )
+    local_origin_gids = sorted(
+        {
+            gid
+            for message, gid in origin_messages
+            if _ros_stage(message) == local_stage and gid
+        }
+    )
+    if not local_origin_gids:
+        raise AcceptanceFailure(
+            "FAIL_GRAPH",
+            "Later local Zenoh origin sample had no publisher GID.",
+        )
+    graph_topics = _wait_for_graph_snapshot(config, rclpy_module, node)
     terminal = wait_for_terminal_marker(config, 60.0)
     del origin_subscription
     return {
@@ -1955,7 +2049,12 @@ def _run_stream_peer(
         "sameOriginDropped": True,
         "laterLocalPublished": True,
         "unityOriginDigest": hashlib.sha256(unity_origin.encode("utf-8")).hexdigest(),
+        "localOriginPublisherGids": local_origin_gids,
         "terminalFields": dict(terminal.fields),
+        "graphEvidence": {
+            "source": "ros2-peer-rclpy-graph-api",
+            "topics": graph_topics,
+        },
     }
 
 
@@ -1964,13 +2063,18 @@ def run_ros2_peer_worker(config: Mapping[str, object]) -> int:
 
     role = "ros2-peer"
     try:
+        _worker_progress(role, "import-rclpy")
         import rclpy
 
+        _worker_progress(role, "load-message-types")
         peer, _lock, envelope, payload, nested = _load_ros_message_types(config)
+        _worker_progress(role, "rclpy-init")
         rclpy.init(args=None)
+        _worker_progress(role, "create-node")
         node = rclpy.create_node(_helper_node_name("peer", config))
         try:
             case = str(config["case"])
+            _worker_progress(role, "run-" + case)
             if case == "multi-target":
                 evidence = _run_multi_target_peer(
                     config, rclpy, node, peer, envelope, payload, nested
@@ -2057,52 +2161,7 @@ def _graph_for_topic(node, topic: str) -> dict[str, list[dict[str, object]]]:
 
 
 def _expected_qos_by_topic(config: Mapping[str, object]) -> dict[str, dict[str, object]]:
-    case = str(config["case"])
-    topics = [str(item) for item in config["topics"]]
-    if case == "multi-target":
-        return {
-            topics[0]: {
-                "profile": "default",
-                "reliability": "reliable",
-                "durability": "volatile",
-                "history": "keep_last",
-                "depth": 10,
-            }
-        }
-    if case == "qos-contract":
-        return {
-            topics[0]: {
-                "profile": "system_default",
-                "reliability": "system_default",
-                "durability": "system_default",
-                "history": "system_default",
-                "depth": 0,
-            },
-            topics[1]: {
-                "profile": "default",
-                "reliability": "reliable",
-                "durability": "volatile",
-                "history": "keep_all",
-                "depth": 0,
-            },
-            topics[2]: {
-                "profile": "default",
-                "reliability": "best_effort",
-                "durability": "transient_local",
-                "history": "keep_last",
-                "depth": 7,
-            },
-        }
-    if case == "stream-640hz":
-        sensor = {
-            "profile": "sensor_data",
-            "reliability": "best_effort",
-            "durability": "volatile",
-            "history": "keep_last",
-            "depth": 5,
-        }
-        return {topics[0]: sensor, topics[1]: sensor}
-    return {}
+    return protocol.expected_qos_by_topic(str(config["case"]))
 
 
 def _normalized_policy(value: object) -> str:
@@ -2213,72 +2272,53 @@ def _graph_ready(
     return False
 
 
-def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Mapping[str, object]:
-    case = str(config["case"])
+def _graph_evidence_from_topics(
+    config: Mapping[str, object],
+    graphs: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
+) -> dict[str, object]:
+    """Build strict graph evidence from one current rclpy topic snapshot."""
+
+    if not _graph_ready(config, graphs):
+        raise AcceptanceFailure(
+            "FAIL_GRAPH",
+            "Required transport endpoints and exact QoS were not observed.",
+        )
     topics = [str(item) for item in config["topics"]]
     expected_type = str(config["interfaceType"])
-    write_actor_ready(
-        config,
-        "graph-observer",
-        {"state": "graph-observer-ready", "topicCount": len(topics)},
-    )
-    _wait_for_manual_context(config)
-
-    if case == "degraded-target":
-        wait_for_log_marker(config, "PHASE184G_DEGRADED_WINDOW_STARTED", 60.0)
-        deadline = (
-            time.monotonic()
-            + float(config["observationWindows"]["negativeSeconds"])
-            + 0.25
-        )
-        final_graphs: dict[str, dict[str, list[dict[str, object]]]] = {}
-        while time.monotonic() < deadline:
-            rclpy_module.spin_once(node, timeout_sec=0.05)
-            final_graphs = {topic: _graph_for_topic(node, topic) for topic in topics}
-            if not _graph_ready(config, final_graphs):
-                raise AcceptanceFailure(
-                    "FAIL_GRAPH",
-                    "Degraded case exposed a forbidden Native or Bridge publisher.",
-                )
-        wait_for_terminal_marker(config, 30.0)
-        return {
-            "endpointsObserved": True,
-            "negativeWindowSeconds": config["observationWindows"]["negativeSeconds"],
-            "noFallbackPublisher": True,
-            "nodeIdentities": ["negative-observer"],
-            "publisherGids": ["none-observed"],
-            "topics": final_graphs,
-            "requestedQos": {},
-            "transportObservedQos": {},
-            "qosMatches": True,
-        }
-
-    deadline = time.monotonic() + 90.0
-    graphs: dict[str, dict[str, list[dict[str, object]]]] = {}
-    while True:
-        rclpy_module.spin_once(node, timeout_sec=0.05)
-        graphs = {topic: _graph_for_topic(node, topic) for topic in topics}
-        if _graph_ready(config, graphs):
-            break
-        if time.monotonic() >= deadline:
-            raise AcceptanceFailure(
-                "FAIL_GRAPH",
-                "Required transport endpoints and exact QoS were not observed.",
-            )
-    wait_for_terminal_marker(config, 90.0)
     all_external: list[dict[str, object]] = []
     for topic in topics:
         for direction in ("publishers", "subscriptions"):
             all_external.extend(
                 _external_endpoints(graphs[topic], direction, expected_type)
             )
-    gids = sorted({str(item["gid"]) for item in all_external})
+    publishers_by_topic = {
+        topic: [
+            {"node": str(item["node"]), "gid": str(item["gid"])}
+            for item in _external_endpoints(
+                graphs[topic],
+                "publishers",
+                expected_type,
+            )
+        ]
+        for topic in topics
+    }
+    gids = sorted(
+        {
+            str(item["gid"])
+            for publishers in publishers_by_topic.values()
+            for item in publishers
+        }
+    )
     nodes = sorted({str(item["node"]) for item in all_external})
     observed_qos = {
         topic: {
             direction: [
                 item["qos"]
-                for item in _external_endpoints(graphs[topic], direction, expected_type)
+                for item in _external_endpoints(
+                    graphs[topic],
+                    direction,
+                    expected_type,
+                )
             ]
             for direction in ("publishers", "subscriptions")
         }
@@ -2288,9 +2328,163 @@ def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Map
         "endpointsObserved": True,
         "nodeIdentities": nodes,
         "publisherGids": gids,
-        "topics": graphs,
+        "publishersByTopic": publishers_by_topic,
+        "negativeObservationSeconds": 0,
+        "topics": dict(graphs),
         "requestedQos": _expected_qos_by_topic(config),
         "transportObservedQos": observed_qos,
+        "qosMatches": True,
+    }
+
+
+def _wait_for_graph_snapshot(
+    config: Mapping[str, object],
+    rclpy_module,
+    node,
+    timeout_seconds: float = 30.0,
+) -> dict[str, dict[str, list[dict[str, object]]]]:
+    """Capture the exact transport graph from an already-owned ROS peer node."""
+
+    topics = [str(item) for item in config["topics"]]
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        rclpy_module.spin_once(node, timeout_sec=0.05)
+        graphs = {topic: _graph_for_topic(node, topic) for topic in topics}
+        if _graph_ready(config, graphs):
+            return graphs
+        if time.monotonic() >= deadline:
+            raise AcceptanceFailure(
+                "FAIL_GRAPH",
+                "The ROS peer did not capture the required transport graph.",
+            )
+
+
+def _wait_for_peer_result_document(
+    config: Mapping[str, object],
+    timeout_seconds: float = 180.0,
+) -> dict[str, object]:
+    """Wait for the peer's atomic PASS document without creating another ROS node."""
+
+    path = _actor_path(config, "resultFiles", "ros2-peer")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if path.is_file():
+            try:
+                return read_actor_document(
+                    config,
+                    "ros2-peer",
+                    "resultFiles",
+                )
+            except AcceptanceFailure as exc:
+                raise AcceptanceFailure(
+                    "FAIL_GRAPH",
+                    "The ROS peer did not produce auditable graph evidence.",
+                ) from exc
+        if time.monotonic() >= deadline:
+            raise AcceptanceFailure(
+                "FAIL_GRAPH",
+                "The ROS peer graph snapshot did not arrive.",
+            )
+        time.sleep(0.1)
+
+
+def _run_peer_graph_auditor(
+    config: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Independently validate a raw graph snapshot captured by the ROS peer."""
+
+    write_actor_ready(
+        config,
+        "graph-observer",
+        {"state": "peer-graph-auditor-ready", "topicCount": len(config["topics"])},
+    )
+    peer_result = _wait_for_peer_result_document(config)
+    evidence = peer_result.get("evidence")
+    graph_evidence = (
+        evidence.get("graphEvidence")
+        if isinstance(evidence, Mapping)
+        else None
+    )
+    if (
+        not isinstance(graph_evidence, Mapping)
+        or graph_evidence.get("source") != "ros2-peer-rclpy-graph-api"
+    ):
+        raise AcceptanceFailure(
+            "FAIL_GRAPH",
+            "The ROS peer graph evidence source is missing or invalid.",
+        )
+    raw_topics = graph_evidence.get("topics")
+    expected_topics = [str(item) for item in config["topics"]]
+    if not isinstance(raw_topics, Mapping) or set(raw_topics) != set(expected_topics):
+        raise AcceptanceFailure(
+            "FAIL_GRAPH",
+            "The ROS peer graph snapshot topics are incomplete.",
+        )
+    graphs: dict[str, dict[str, list[dict[str, object]]]] = {}
+    for topic in expected_topics:
+        raw_graph = raw_topics.get(topic)
+        if not isinstance(raw_graph, Mapping):
+            raise AcceptanceFailure("FAIL_GRAPH", "A graph topic entry is malformed.")
+        graph: dict[str, list[dict[str, object]]] = {}
+        for direction in ("publishers", "subscriptions"):
+            entries = raw_graph.get(direction)
+            if (
+                not isinstance(entries, list)
+                or any(not isinstance(entry, Mapping) for entry in entries)
+            ):
+                raise AcceptanceFailure(
+                    "FAIL_GRAPH",
+                    "A graph endpoint collection is malformed.",
+                )
+            graph[direction] = [dict(entry) for entry in entries]
+        graphs[topic] = graph
+    result = _graph_evidence_from_topics(config, graphs)
+    wait_for_terminal_marker(config, 30.0)
+    return result
+
+
+def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Mapping[str, object]:
+    case = str(config["case"])
+    topics = [str(item) for item in config["topics"]]
+    if case != "degraded-target":
+        raise AcceptanceFailure(
+            "FAIL_GRAPH",
+            "Only the degraded case uses an independent rclpy graph node.",
+        )
+    write_actor_ready(
+        config,
+        "graph-observer",
+        {"state": "graph-observer-ready", "topicCount": len(topics)},
+    )
+    _wait_for_manual_context(config)
+
+    wait_for_log_marker(config, "PHASE184G_DEGRADED_WINDOW_STARTED", 60.0)
+    deadline = (
+        time.monotonic()
+        + float(config["observationWindows"]["negativeSeconds"])
+        + 0.25
+    )
+    final_graphs: dict[str, dict[str, list[dict[str, object]]]] = {}
+    while time.monotonic() < deadline:
+        rclpy_module.spin_once(node, timeout_sec=0.05)
+        final_graphs = {topic: _graph_for_topic(node, topic) for topic in topics}
+        if not _graph_ready(config, final_graphs):
+            raise AcceptanceFailure(
+                "FAIL_GRAPH",
+                "Degraded case exposed a forbidden Native or Bridge publisher.",
+            )
+    wait_for_terminal_marker(config, 30.0)
+    return {
+        "endpointsObserved": True,
+        "negativeWindowSeconds": config["observationWindows"]["negativeSeconds"],
+        "noFallbackPublisher": True,
+        "nodeIdentities": [],
+        "publisherGids": [],
+        "publishersByTopic": {topic: [] for topic in topics},
+        "negativeObservationSeconds": config["observationWindows"]["negativeSeconds"],
+        "topics": final_graphs,
+        "requestedQos": {},
+        "transportObservedQos": {},
         "qosMatches": True,
     }
 
@@ -2298,16 +2492,19 @@ def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Map
 def run_graph_observer_worker(config: Mapping[str, object]) -> int:
     role = "graph-observer"
     try:
-        import rclpy
+        if str(config["case"]) == "degraded-target":
+            import rclpy
 
-        _load_ros_message_types(config)
-        rclpy.init(args=None)
-        node = rclpy.create_node(_helper_node_name("graph", config))
-        try:
-            evidence = _run_graph_observer(config, rclpy, node)
-        finally:
-            node.destroy_node()
-            rclpy.shutdown()
+            _load_ros_message_types(config)
+            rclpy.init(args=None)
+            node = rclpy.create_node(_helper_node_name("graph", config))
+            try:
+                evidence = _run_graph_observer(config, rclpy, node)
+            finally:
+                node.destroy_node()
+                rclpy.shutdown()
+        else:
+            evidence = _run_peer_graph_auditor(config)
         write_actor_result(config, role, verdict="PASS", evidence=evidence)
         return 0
     except AcceptanceFailure as exc:
@@ -2390,10 +2587,13 @@ def choose_domain_id(requested: int | None) -> int:
     """Return one explicit ROS domain without inheriting ambient process state."""
 
     if requested is not None:
-        if not 0 <= int(requested) <= 232:
-            raise AcceptanceFailure("FAIL_PREFLIGHT", "ROS domain id must be in 0..232.")
+        if not 0 <= int(requested) <= WINDOWS_SAFE_ROS_DOMAIN_ID_MAX:
+            raise AcceptanceFailure(
+                "FAIL_PREFLIGHT",
+                "Windows ROS domain id must be in 0..166.",
+            )
         return int(requested)
-    return 100 + secrets.randbelow(100)
+    return 64 + secrets.randbelow(96)
 
 
 def _require_file(path: pathlib.Path, code: str, description: str) -> pathlib.Path:
@@ -2502,6 +2702,8 @@ def _run_logged_preflight(
                 time.sleep(0.1)
             exit_code = int(process.returncode)
     except AcceptanceFailure:
+        if process is not None:
+            terminate_owned_process(process)
         raise
     except OSError as exc:
         if process is not None:
@@ -2528,6 +2730,7 @@ def _launch_logged_process(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     stream: TextIO | None = None
+    process = None
     try:
         stream = log_path.open("w", encoding="utf-8", errors="replace")
         process = subprocess.Popen(
@@ -2544,6 +2747,8 @@ def _launch_logged_process(
         streams.append(stream)
         return process
     except BaseException:
+        if process is not None:
+            terminate_owned_process(process)
         if stream is not None:
             with contextlib.suppress(Exception):
                 stream.close()
@@ -2867,6 +3072,28 @@ def _select_unity_runtime(
     job: WindowsKillOnCloseJob | None,
 ) -> None:
     selection_log = output / "runtime-selection.log"
+    current_selection = _current_unity_runtime_selection_evidence(
+        repository,
+        distro,
+        rmw,
+    )
+    if current_selection is not None:
+        try:
+            selection_log.write_text(
+                "PHASE184G_RUNTIME_SELECTION_REUSED "
+                f"distro={current_selection['rosDistro']} "
+                f"rmw={current_selection['rmwImplementation']} "
+                f"runtime={current_selection['runtimePackage']} "
+                f"typesupport={current_selection['typesupportPackage']}\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            raise AcceptanceFailure(
+                "FAIL_RUNTIME_SELECTION",
+                "The reused Unity runtime selection evidence could not be persisted.",
+            ) from exc
+        return
+
     command = peer.build_runtime_selection_batch_command(
         editor,
         repository / "Unity2Foxglove",
@@ -2891,6 +3118,198 @@ def _select_unity_runtime(
             "FAIL_RUNTIME_SELECTION",
             "Unity runtime selection exited without its validated readiness marker.",
         )
+
+
+def _current_unity_runtime_selection_evidence(
+    repository: pathlib.Path,
+    distro: str,
+    rmw: str,
+) -> dict[str, str] | None:
+    """Prove an exact default-RMW selection before skipping Package Manager."""
+
+    runtime_package = (
+        f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64"
+    )
+    typesupport_package = (
+        "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport."
+        f"{distro}.win64"
+    )
+    runtime_reference = f"file:../../Packages/{runtime_package}"
+    typesupport_reference = f"file:../../Packages/{typesupport_package}"
+    root = pathlib.Path(repository)
+    project = root / "Unity2Foxglove"
+    runtime_root = root / "Packages" / runtime_package
+    typesupport_root = root / "Packages" / typesupport_package
+
+    def read_mapping(path: pathlib.Path) -> Mapping[str, Any] | None:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return document if isinstance(document, Mapping) else None
+
+    def selected_package_ids(
+        dependencies: Mapping[str, Any],
+        prefix: str,
+    ) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                key
+                for key in dependencies
+                if isinstance(key, str) and key.startswith(prefix)
+            )
+        )
+
+    try:
+        manifest = read_mapping(project / "Packages" / "manifest.json")
+        lock = read_mapping(project / "Packages" / "packages-lock.json")
+        runtime_manifest = read_mapping(
+            runtime_root / "RuntimeSupport" / "runtime-manifest.json"
+        )
+        runtime_identity = read_mapping(runtime_root / "package.json")
+        typesupport_identity = read_mapping(typesupport_root / "package.json")
+        project_settings = (
+            project / "ProjectSettings" / "ProjectSettings.asset"
+        ).read_text(encoding="utf-8")
+        if any(
+            document is None
+            for document in (
+                manifest,
+                lock,
+                runtime_manifest,
+                runtime_identity,
+                typesupport_identity,
+            )
+        ):
+            return None
+
+        manifest_dependencies = manifest.get("dependencies")
+        lock_dependencies = lock.get("dependencies")
+        if not isinstance(manifest_dependencies, Mapping) or not isinstance(
+            lock_dependencies,
+            Mapping,
+        ):
+            return None
+        if selected_package_ids(
+            manifest_dependencies,
+            _UNITY_RUNTIME_PACKAGE_PREFIX,
+        ) != (runtime_package,):
+            return None
+        if selected_package_ids(
+            manifest_dependencies,
+            _UNITY_TYPESUPPORT_PACKAGE_PREFIX,
+        ) != (typesupport_package,):
+            return None
+        if selected_package_ids(
+            lock_dependencies,
+            _UNITY_RUNTIME_PACKAGE_PREFIX,
+        ) != (runtime_package,):
+            return None
+        if selected_package_ids(
+            lock_dependencies,
+            _UNITY_TYPESUPPORT_PACKAGE_PREFIX,
+        ) != (typesupport_package,):
+            return None
+        if manifest_dependencies.get(runtime_package) != runtime_reference:
+            return None
+        if (
+            manifest_dependencies.get(typesupport_package)
+            != typesupport_reference
+        ):
+            return None
+
+        runtime_lock = lock_dependencies.get(runtime_package)
+        typesupport_lock = lock_dependencies.get(typesupport_package)
+        if not isinstance(runtime_lock, Mapping) or not isinstance(
+            typesupport_lock,
+            Mapping,
+        ):
+            return None
+        for entry, reference in (
+            (runtime_lock, runtime_reference),
+            (typesupport_lock, typesupport_reference),
+        ):
+            if (
+                entry.get("version") != reference
+                or entry.get("source") != "local"
+                or type(entry.get("depth")) is not int
+                or entry.get("depth") != 0
+            ):
+                return None
+
+        runtime_version = runtime_identity.get("version")
+        typesupport_dependencies = typesupport_identity.get("dependencies")
+        lock_typesupport_dependencies = typesupport_lock.get("dependencies")
+        if (
+            runtime_identity.get("name") != runtime_package
+            or not isinstance(runtime_version, str)
+            or not runtime_version
+            or typesupport_identity.get("name") != typesupport_package
+            or typesupport_identity.get(
+                "unity2foxgloveFoxRunCustomTypesupportAddOn"
+            )
+            is not True
+            or not isinstance(typesupport_dependencies, Mapping)
+            or typesupport_dependencies.get(runtime_package) != runtime_version
+            or not isinstance(lock_typesupport_dependencies, Mapping)
+            or lock_typesupport_dependencies.get(runtime_package)
+            != runtime_version
+        ):
+            return None
+
+        default_rmw = runtime_manifest.get(
+            "defaultRmwImplementation",
+            runtime_manifest.get("rmwImplementation"),
+        )
+        if (
+            runtime_manifest.get("packageName") != runtime_package
+            or runtime_manifest.get("rosDistro") != distro
+            or runtime_manifest.get("platform") != "win64"
+            or runtime_manifest.get("architecture") != "x86_64"
+            or default_rmw != rmw
+        ):
+            return None
+
+        defines_header = re.search(
+            r"(?m)^(?P<indent>[ \t]*)scriptingDefineSymbols:[ \t]*$",
+            project_settings,
+        )
+        if defines_header is None:
+            return None
+        defines_indent = len(defines_header.group("indent"))
+        standalone_value: str | None = None
+        for line in project_settings[defines_header.end() :].splitlines():
+            if not line.strip():
+                continue
+            line_indent = len(line) - len(line.lstrip(" \t"))
+            if line_indent <= defines_indent:
+                break
+            standalone_match = re.match(
+                r"^[ \t]*Standalone:[ \t]*(.*)$",
+                line,
+            )
+            if standalone_match is not None:
+                standalone_value = standalone_match.group(1)
+                break
+        if standalone_value is None:
+            return None
+        standalone_defines = {
+            value.strip()
+            for value in standalone_value.split(";")
+            if value.strip()
+        }
+        if not {
+            _UNITY_RUNTIME_DEFINE,
+            _UNITY_TYPESUPPORT_DEFINE,
+        }.issubset(standalone_defines):
+            return None
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+    return {
+        "mode": "reused",
+        "runtimePackage": runtime_package,
+        "typesupportPackage": typesupport_package,
+        "rosDistro": distro,
+        "rmwImplementation": rmw,
+    }
 
 
 def _copy_bridge_source(repository: pathlib.Path, overlay: pathlib.Path) -> None:
@@ -3301,6 +3720,99 @@ def _prepare_ros_runtime(
     )
 
 
+def _start_case_workers_serially(
+    *,
+    config: Mapping[str, object],
+    repository: pathlib.Path,
+    output: pathlib.Path,
+    runtime: PreparedRosRuntime | None,
+    worker_roles: Iterable[str],
+    owner: OwnedProcessSet,
+    streams: list[TextIO],
+) -> None:
+    """Start one worker at a time so ROS participants cannot race initialization."""
+
+    for role in sorted(worker_roles):
+        if role == "foxglove-client":
+            python_executable = pathlib.Path(sys.executable)
+            environment = _clean_environment(os.environ)
+            cwd = repository
+        else:
+            if runtime is None:
+                raise AcceptanceFailure(
+                    "FAIL_RUNTIME_SELECTION",
+                    f"{role} requires a selected ROS runtime.",
+                )
+            python_executable = pathlib.Path(runtime.toolchain.python_executable)
+            environment = runtime.actor_environment
+            cwd = runtime.peer_runtime_workspace
+        _launch_logged_process(
+            role,
+            build_worker_command(
+                python_executable,
+                role,
+                pathlib.Path(str(config["outputRoot"])) / "run-config.json",
+            ),
+            cwd=cwd,
+            environment=environment,
+            log_path=output / f"{role}.log",
+            owner=owner,
+            streams=streams,
+        )
+        _wait_for_actor_readiness(config, (role,), owner)
+
+
+def _start_bridge_actor(
+    *,
+    config: Mapping[str, object],
+    output: pathlib.Path,
+    runtime: PreparedRosRuntime | None,
+    owner: OwnedProcessSet,
+    streams: list[TextIO],
+) -> dict[str, object]:
+    """Start one owned Bridge and prove correlated health without DDS startup."""
+
+    if runtime is None or runtime.bridge_install is None:
+        raise AcceptanceFailure(
+            "FAIL_BRIDGE",
+            "The selected case has no built Bridge overlay.",
+        )
+    if owner.process("bridge") is not None:
+        raise AcceptanceFailure(
+            "FAIL_BRIDGE",
+            "The selected case attempted to start its Bridge more than once.",
+        )
+    bridge_executable = _require_file(
+        runtime.bridge_install
+        / "lib"
+        / "unity2foxglove_ros2_bridge"
+        / "unity2foxglove_ros2_bridge.exe",
+        "FAIL_BRIDGE",
+        "Installed native Bridge executable",
+    )
+    bridge = _launch_logged_process(
+        "bridge",
+        build_bridge_command(
+            bridge_executable,
+            str(config["bridgeHost"]),
+            int(config["bridgePort"]),
+        ),
+        cwd=runtime.bridge_runtime_workspace or output,
+        environment=runtime.actor_environment,
+        log_path=output / "bridge.log",
+        owner=owner,
+        streams=streams,
+    )
+    health = wait_for_bridge_health(config, bridge)
+    ready = {
+        "state": "u2r2-health-ready",
+        "sidecarName": health["sidecarName"],
+        "sidecarVersion": health["sidecarVersion"],
+    }
+    write_actor_ready(config, "bridge", ready)
+    return {"bridge-health": health}
+
+
 def _start_case_actors(
     *,
     config: Mapping[str, object],
@@ -3360,72 +3872,36 @@ def _start_case_actors(
         parent_ready_roles.add("zenoh-router")
         parent_evidence["zenoh-router"] = ready
 
-    if "bridge" in contract.required_actors:
-        if runtime is None or runtime.bridge_install is None:
-            raise AcceptanceFailure(
-                "FAIL_BRIDGE",
-                "The selected case has no built Bridge overlay.",
-            )
-        ros2_executable = _require_file(
-            runtime.ros2_root / "Scripts" / "ros2.exe",
-            "FAIL_BRIDGE",
-            "Installed ROS 2 command",
-        )
-        bridge = _launch_logged_process(
-            "bridge",
-            build_bridge_command(
-                ros2_executable,
-                str(config["bridgeHost"]),
-                int(config["bridgePort"]),
-            ),
-            cwd=runtime.bridge_runtime_workspace or output,
-            environment=runtime.actor_environment,
-            log_path=output / "bridge.log",
+    defer_bridge = (
+        "bridge" in contract.required_actors
+        and _requires_deferred_bridge_start(config)
+    )
+    if "bridge" in contract.required_actors and not defer_bridge:
+        bridge_evidence = _start_bridge_actor(
+            config=config,
+            output=output,
+            runtime=runtime,
             owner=owner,
             streams=streams,
         )
-        health = wait_for_bridge_health(config, bridge)
-        ready = {
-            "state": "u2r2-health-ready",
-            "sidecarName": health["sidecarName"],
-            "sidecarVersion": health["sidecarVersion"],
-        }
-        write_actor_ready(config, "bridge", ready)
         parent_ready_roles.add("bridge")
-        parent_evidence["bridge-health"] = health
+        parent_evidence.update(bridge_evidence)
 
     worker_roles = set(contract.required_actors) - {"bridge", "zenoh-router"}
-    for role in sorted(worker_roles):
-        if role == "foxglove-client":
-            python_executable = pathlib.Path(sys.executable)
-            environment = _clean_environment(os.environ)
-            cwd = repository
-        else:
-            if runtime is None:
-                raise AcceptanceFailure(
-                    "FAIL_RUNTIME_SELECTION",
-                    f"{role} requires a selected ROS runtime.",
-                )
-            python_executable = pathlib.Path(runtime.toolchain.python_executable)
-            environment = runtime.actor_environment
-            cwd = runtime.peer_runtime_workspace
-        _launch_logged_process(
-            role,
-            build_worker_command(
-                python_executable,
-                role,
-                pathlib.Path(str(config["outputRoot"])) / "run-config.json",
-            ),
-            cwd=cwd,
-            environment=environment,
-            log_path=output / f"{role}.log",
-            owner=owner,
-            streams=streams,
-        )
-
-    _wait_for_actor_readiness(config, worker_roles, owner)
+    _start_case_workers_serially(
+        config=config,
+        repository=repository,
+        output=output,
+        runtime=runtime,
+        worker_roles=worker_roles,
+        owner=owner,
+        streams=streams,
+    )
     all_ready = worker_roles | parent_ready_roles
-    if all_ready != set(contract.required_actors):
+    expected_ready = set(contract.required_actors)
+    if defer_bridge:
+        expected_ready.remove("bridge")
+    if all_ready != expected_ready:
         raise AcceptanceFailure(
             "FAIL_PREFLIGHT",
             "Actor readiness did not cover the exact selected case.",
@@ -3439,10 +3915,17 @@ def _wait_for_unity_exit(
     owner: OwnedProcessSet,
     worker_roles: Iterable[str],
 ) -> TerminalMarker:
-    deadline = time.monotonic() + 900.0
+    unity_log = pathlib.Path(str(config["unityLog"]))
+    watchdog = protocol.ProgressWatchdog("unity-startup")
+    last_progress = _progress_snapshot((unity_log,))
+    watchdog.progress("Unity Batch process started")
     while unity.poll() is None:
+        progress = _progress_snapshot((unity_log,))
+        if progress != last_progress:
+            last_progress = progress
+            watchdog.progress(f"Unity log bytes={max(0, progress[0][1])}")
         marker = find_terminal_marker(
-            read_log_lines(pathlib.Path(str(config["unityLog"]))),
+            read_log_lines(unity_log),
             str(config["case"]),
             str(config["token"]),
         )
@@ -3462,11 +3945,10 @@ def _wait_for_unity_exit(
                     f"{role} exited before producing result evidence.",
                 )
             read_actor_document(config, role, "resultFiles")
-        if time.monotonic() >= deadline:
-            raise AcceptanceFailure(
-                "FAIL_UNITY_STARTUP",
-                "Unity Batch exceeded the bounded Phase184-G case window.",
-            )
+        try:
+            watchdog.check()
+        except protocol.ProtocolFailure as exc:
+            raise AcceptanceFailure("FAIL_UNITY_STARTUP", str(exc)) from exc
         time.sleep(0.1)
     if int(unity.returncode) != 0:
         raise AcceptanceFailure(
@@ -3540,10 +4022,12 @@ def build_pass_summary(
     process_exit_codes: Mapping[str, int],
     unity_version: str,
     cleanup: Mapping[str, bool],
+    owner_stopped_roles: Iterable[str] = (),
 ) -> dict[str, object]:
     """Compose one strict case-specific PASS summary from independent evidence."""
 
     case = str(config["case"])
+    token = str(config["token"])
     contract = protocol.CASE_CONTRACTS[case]
     if set(results) != set(contract.required_actors):
         raise AcceptanceFailure(
@@ -3583,6 +4067,7 @@ def build_pass_summary(
             "states": {"foxglove": "Ready"},
             "diagnosticCounts": {"warning": 0, "error": 0},
             "healthyDelivery": bool(fox.get("deliveryObserved")),
+            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(fox.get("remoteApplied")),
@@ -3605,6 +4090,7 @@ def build_pass_summary(
                 bool(fox.get("deliveryObserved"))
                 and int(peer.get("distinctFanoutPublishers", 0)) >= 2
             ),
+            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(peer.get("remoteApplied")),
@@ -3612,17 +4098,44 @@ def build_pass_summary(
             "laterLocalPublished": bool(peer.get("laterLocalPublished")),
         }
     elif case == "degraded-target":
+        bridge_diagnostics = _marker_int(terminal, "bridgeDiagnostics")
+        aggregate_status = terminal.fields.get("status")
+        succeeded_targets = terminal.fields.get("succeeded")
+        failed_targets = terminal.fields.get("failed")
+        foxglove_state = terminal.fields.get("foxgloveState")
+        bridge_state = terminal.fields.get("ros2BridgeState")
+        if (
+            aggregate_status != "Degraded"
+            or succeeded_targets != "Foxglove"
+            or failed_targets != "Ros2Bridge"
+            or foxglove_state != "Ready"
+            or bridge_state != "Unavailable"
+            or bridge_diagnostics != 1
+        ):
+            raise AcceptanceFailure(
+                "FAIL_FANOUT",
+                "Unity did not report the exact degraded Bridge status transition.",
+            )
         source = "None"
         targets = ["Foxglove", "Ros2Bridge"]
         publish_encoding = "protobuf"
         subscribe_encoding = "not_applicable"
         target_values = {
-            "states": {"foxglove": "Ready", "ros2Bridge": "Unavailable"},
-            "diagnosticCounts": {"bridge": 1, "error": 0},
+            "states": {
+                "foxglove": foxglove_state,
+                "ros2Bridge": bridge_state,
+            },
+            "diagnosticCounts": {"bridge": bridge_diagnostics, "error": 0},
             "healthyDelivery": (
                 bool(fox.get("deliveryObserved"))
                 and bool(graph.get("noFallbackPublisher"))
             ),
+            "statusEvidence": {
+                "aggregate": aggregate_status,
+                "succeeded": succeeded_targets,
+                "failed": failed_targets,
+                "bridgeDiagnostics": bridge_diagnostics,
+            },
         }
         origin_values = {}
     elif case == "qos-contract":
@@ -3637,6 +4150,7 @@ def build_pass_summary(
                 len(gids) >= 2
                 for gids in peer.get("deliveryByTopic", {}).values()
             ),
+            "statusEvidence": {},
         }
         origin_values = {}
     elif case == "stream-640hz":
@@ -3648,6 +4162,7 @@ def build_pass_summary(
             "states": {"ros2Native": "Ready"},
             "diagnosticCounts": {"warning": 0, "error": 0},
             "healthyDelivery": bool(graph.get("endpointsObserved")),
+            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(peer.get("remoteApplied")),
@@ -3674,17 +4189,56 @@ def build_pass_summary(
             )
         transport_observed["bridge"] = dict(publishers)
 
+    sample_publisher_gids: dict[str, object] = {}
+    if case == "multi-target":
+        for suffix, field in (
+            ("multi-local-1", "local1PublisherGids"),
+            ("multi-local-3", "local3PublisherGids"),
+        ):
+            sample_publisher_gids[suffix] = {
+                "sampleSha256": protocol.token_sha256(token + "-" + suffix),
+                "publisherGids": list(peer.get(field, [])),
+            }
+    elif case == "qos-contract":
+        suffixes = (
+            "qos-system-default",
+            "qos-keep-all",
+            "qos-keep-last-depth",
+        )
+        delivery = peer.get("deliveryByTopic", {})
+        if not isinstance(delivery, Mapping):
+            raise AcceptanceFailure(
+                "FAIL_QOS",
+                "QoS peer delivery evidence is malformed.",
+            )
+        for topic, suffix in zip(config["topics"], suffixes):
+            sample_publisher_gids[str(topic)] = {
+                "sampleSha256": protocol.token_sha256(token + "-" + suffix),
+                "publisherGids": list(delivery.get(topic, [])),
+            }
+    elif case == "stream-640hz":
+        sample_publisher_gids["origin-local"] = {
+            "sampleSha256": protocol.token_sha256(token + "-origin-local"),
+            "publisherGids": list(peer.get("localOriginPublisherGids", [])),
+        }
+
     section_values: dict[str, Mapping[str, object]] = {
         "foxglove": {
             "deliveryObserved": bool(fox.get("deliveryObserved")),
             "channelEncodings": list(fox.get("channelEncodings", [])),
             "sampleToken": str(fox.get("sampleToken", "")),
+            "sampleStages": list(fox.get("sampleStages", [])),
             "timestamp": float(fox.get("timestamp", 0.0)),
         },
         "rosGraph": {
             "endpointsObserved": bool(graph.get("endpointsObserved")),
             "nodeIdentities": list(graph.get("nodeIdentities", [])),
             "publisherGids": list(graph.get("publisherGids", [])),
+            "publishersByTopic": dict(graph.get("publishersByTopic", {})),
+            "samplePublisherGids": sample_publisher_gids,
+            "negativeObservationSeconds": float(
+                graph.get("negativeObservationSeconds", 0)
+            ),
         },
         "qos": {
             "requested": expected_qos,
@@ -3706,11 +4260,15 @@ def build_pass_summary(
             else _not_applicable_section(rule)
         )
 
+    owner_stopped = frozenset(owner_stopped_roles)
     process_entries = [
         {
             "role": role,
             "started": True,
             "exitCode": int(process_exit_codes[role]),
+            "termination": (
+                "owner_requested" if role in owner_stopped else "self"
+            ),
         }
         for role in sorted(contract.required_actors | {"unity"})
     ]
@@ -3723,7 +4281,7 @@ def build_pass_summary(
         "identity": {
             "runId": config["runId"],
             "case": case,
-            "tokenSha256": protocol.token_sha256(str(config["token"])),
+            "tokenSha256": protocol.token_sha256(token),
             "unityVersion": unity_version,
             "interfaceIdentity": config["interfaceType"],
             "interfaceDigest": config["interfaceDigest"],
@@ -3746,7 +4304,7 @@ def build_pass_summary(
     protocol.validate_summary(
         summary,
         expected_case=case,
-        expected_token=str(config["token"]),
+        expected_token=token,
     )
     return summary
 
@@ -4096,6 +4654,7 @@ def _wait_for_manual_session(
     mirror: EditorLogMirror,
     owner: OwnedProcessSet,
     worker_roles: Iterable[str],
+    deferred_bridge_start: Callable[[], None] | None = None,
 ) -> TerminalMarker:
     """Wait for current-token Play entry, route proof, and user-owned Play exit."""
 
@@ -4104,6 +4663,7 @@ def _wait_for_manual_session(
     terminal: TerminalMarker | None = None
     context_ready = False
     announced_terminal = False
+    bridge_started = deferred_bridge_start is None
     while True:
         mirror.poll()
         lines = read_log_lines(pathlib.Path(str(config["unityLog"])))
@@ -4118,7 +4678,23 @@ def _wait_for_manual_session(
                     context_ready = True
                     review_deadline = time.monotonic() + MANUAL_REVIEW_TIMEOUT_SECONDS
                     break
-        terminal = terminal or find_terminal_marker(lines, case, token)
+        if not bridge_started:
+            for line in lines:
+                if _DEFERRED_BRIDGE_START_MARKER not in line:
+                    continue
+                fields = _parse_marker_fields(line)
+                if fields.get("case") != case or fields.get("token") != token:
+                    continue
+                deferred_bridge_start()
+                bridge_started = True
+                print(
+                    "[phase184] Unity native ROS is ready; the owned Bridge is now healthy.",
+                    flush=True,
+                )
+                break
+        observed_terminal = find_terminal_marker(lines, case, token)
+        if observed_terminal is not None:
+            terminal = observed_terminal
         if terminal is not None and terminal.verdict == "FAIL":
             raise AcceptanceFailure(
                 "FAIL_TERMINAL",
@@ -4292,6 +4868,7 @@ def run_manual_parent(args: argparse.Namespace) -> int:
     terminal: TerminalMarker | None = None
     results: dict[str, dict[str, object]] = {}
     process_codes: dict[str, int] = {}
+    owner_stopped_roles: frozenset[str] = frozenset()
     cleanup = {"processes": False, "files": False, "junctions": False, "subst": False}
     pointer_written = False
     failure: AcceptanceFailure | None = None
@@ -4337,12 +4914,40 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             expires_utc=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
         )
         pointer_written = True
-        print(
+        deferred_bridge_start: Callable[[], None] | None = None
+        if _requires_deferred_bridge_start(config):
+            def start_deferred_bridge() -> None:
+                parent_evidence.update(
+                    _start_bridge_actor(
+                        config=config,
+                        output=output,
+                        runtime=runtime,
+                        owner=owner,
+                        streams=streams,
+                    )
+                )
+
+            deferred_bridge_start = start_deferred_bridge
+        instruction = (
+            "[phase184] External peers are ready. Open the Phase184 acceptance "
+            "scene, select the Manager, and Enter Play Mode now; the Bridge will "
+            "start after Unity native ROS is ready."
+            if deferred_bridge_start is not None
+            else
             "[phase184] External endpoints are ready. Open the Phase184 acceptance "
-            "scene, select the Manager, and Enter Play Mode now.",
+            "scene, select the Manager, and Enter Play Mode now."
+        )
+        print(
+            instruction,
             flush=True,
         )
-        terminal = _wait_for_manual_session(config, mirror, owner, worker_roles)
+        terminal = _wait_for_manual_session(
+            config,
+            mirror,
+            owner,
+            worker_roles,
+            deferred_bridge_start,
+        )
         _write_parent_actor_results(config, output, parent_evidence)
         results = _wait_for_actor_results(
             config,
@@ -4371,6 +4976,7 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             try:
                 owner.close()
                 process_codes = owner.exit_codes()
+                owner_stopped_roles = owner.owner_stopped_roles()
             except Exception:
                 failure = failure or AcceptanceFailure(
                     "FAIL_CLEANUP",
@@ -4412,15 +5018,20 @@ def run_manual_parent(args: argparse.Namespace) -> int:
         )
     required = protocol.CASE_CONTRACTS[str(config["case"])].required_actors
     missing = set(required) - set(process_codes)
-    nonzero = {
+    unacceptable = {
         role: process_codes[role]
         for role in required & set(process_codes)
-        if process_codes[role] != 0
+        if not process_exit_is_acceptable(
+            role,
+            process_codes[role],
+            owner_requested=role in owner_stopped_roles,
+        )
     }
-    if missing or nonzero or not all(cleanup.values()):
+    if missing or unacceptable or not all(cleanup.values()):
         failure = AcceptanceFailure(
             "FAIL_CLEANUP",
-            f"Manual helper cleanup was incomplete; missing={sorted(missing)}, nonzero={nonzero}.",
+            "Manual helper cleanup was incomplete; "
+            f"missing={sorted(missing)}, unacceptable={unacceptable}.",
         )
         _write_failure_record(
             output,
@@ -4443,6 +5054,14 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             "routeTerminal": terminal.verdict,
             "actorEvidenceComplete": set(results) == set(required),
             "processExitCodes": process_codes,
+            "processTerminations": {
+                role: (
+                    "owner_requested"
+                    if role in owner_stopped_roles
+                    else "self"
+                )
+                for role in sorted(required)
+            },
             "cleanup": cleanup,
             "status": "USER_CONFIRMATION_REQUIRED",
         },
@@ -4472,6 +5091,7 @@ def run_batch_parent(args: argparse.Namespace) -> int:
     terminal: TerminalMarker | None = None
     results: dict[str, dict[str, object]] = {}
     process_codes: dict[str, int] = {}
+    owner_stopped_roles: frozenset[str] = frozenset()
     cleanup: dict[str, bool] = {
         "processes": False,
         "files": False,
@@ -4519,6 +5139,21 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             owner=owner,
             streams=streams,
         )
+        if _requires_deferred_bridge_start(config):
+            wait_for_log_marker(
+                config,
+                _DEFERRED_BRIDGE_START_MARKER,
+                120.0,
+            )
+            parent_evidence.update(
+                _start_bridge_actor(
+                    config=config,
+                    output=output,
+                    runtime=runtime,
+                    owner=owner,
+                    streams=streams,
+                )
+            )
         terminal = _wait_for_unity_exit(config, unity, owner, worker_roles)
         _write_parent_actor_results(config, output, parent_evidence)
         results = _wait_for_actor_results(
@@ -4539,6 +5174,7 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             try:
                 owner.close()
                 process_codes = owner.exit_codes()
+                owner_stopped_roles = owner.owner_stopped_roles()
             except Exception:
                 failure = failure or AcceptanceFailure(
                     "FAIL_CLEANUP",
@@ -4583,15 +5219,20 @@ def run_batch_parent(args: argparse.Namespace) -> int:
         | {"unity"}
     )
     missing_codes = set(required_processes) - set(process_codes)
-    nonzero = {
+    unacceptable = {
         role: process_codes[role]
         for role in required_processes & set(process_codes)
-        if process_codes[role] != 0
+        if not process_exit_is_acceptable(
+            role,
+            process_codes[role],
+            owner_requested=role in owner_stopped_roles,
+        )
     }
-    if missing_codes or nonzero:
+    if missing_codes or unacceptable:
         failure = AcceptanceFailure(
             "FAIL_PROCESS_EXIT",
-            f"Process exits are incomplete; missing={sorted(missing_codes)}, nonzero={nonzero}.",
+            "Process exits are incomplete; "
+            f"missing={sorted(missing_codes)}, unacceptable={unacceptable}.",
         )
         _write_failure_record(
             output,
@@ -4624,6 +5265,7 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             pathlib.Path(str(config["unityLog"]))
         ),
         cleanup=cleanup,
+        owner_stopped_roles=owner_stopped_roles,
     )
     protocol.write_json_atomic(
         output / "summary.json",

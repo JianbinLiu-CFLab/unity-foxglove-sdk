@@ -69,8 +69,8 @@ def run_config(
         "profile": profile,
         "projectPath": str(ROOT / "Unity2Foxglove"),
         "outputRoot": str(output),
-        "rosDistro": "jazzy" if profile == "jazzy-fastrtps" else "lyrical",
-        "rmw": "rmw_fastrtps_cpp" if profile == "jazzy-fastrtps" else "rmw_zenoh_cpp",
+        "rosDistro": protocol.PROFILE_CONTRACTS[profile].runtime,
+        "rmw": protocol.PROFILE_CONTRACTS[profile].rmw,
         "domainId": 48,
         "discoveryRange": "LOCALHOST",
         "zenohTopologyId": "phase184-local" if profile == "lyrical-zenoh" else "",
@@ -108,44 +108,169 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
     """Build one positive summary satisfying the canonical section contract."""
 
     case = str(config["case"])
+    token = str(config["token"])
     contract = protocol.CASE_CONTRACTS[case]
     applicability = contract.applicability
-    transport_observed = {
-        "graph": {
-            topic: {"publishers": [{"reliability": "reliable"}]}
-            for topic in contract.topics
-        },
+    expected_qos = protocol.expected_qos_by_topic(case)
+    publishers_by_topic: dict[str, list[dict[str, str]]] = {
+        topic: [] for topic in contract.topics
     }
+    graph_transport: dict[str, object] = {}
+    node_identities: set[str] = set()
+    publisher_gids: set[str] = set()
+
+    def transport_qos(topic: str) -> dict[str, object]:
+        return {
+            key: value
+            for key, value in expected_qos[topic].items()
+            if key != "profile"
+        }
+
+    for topic_index, topic in enumerate(contract.topics):
+        publisher_count = (
+            2
+            if case in {"multi-target", "qos-contract"}
+            else 1
+            if case == "stream-640hz" and topic_index == 1
+            else 0
+        )
+        subscription_count = (
+            1
+            if case == "multi-target"
+            or case == "stream-640hz"
+            else 0
+        )
+        topic_publishers: list[dict[str, str]] = []
+        for publisher_index in range(publisher_count):
+            node = (
+                "/unity2foxglove_ros2_bridge"
+                if publisher_index == 1
+                else "/unity2foxglove_foxrun"
+            )
+            gid = f"gid-{topic_index}-{publisher_index}"
+            topic_publishers.append({"node": node, "gid": gid})
+            node_identities.add(node)
+            publisher_gids.add(gid)
+        publishers_by_topic[topic] = topic_publishers
+        if topic in expected_qos:
+            graph_transport[topic] = {
+                "publishers": [
+                    transport_qos(topic) for _ in range(publisher_count)
+                ],
+                "subscriptions": [
+                    transport_qos(topic) for _ in range(subscription_count)
+                ],
+            }
+            if subscription_count:
+                node_identities.add("/unity2foxglove_foxrun")
+
+    transport_observed = {"graph": graph_transport}
     if case in {"multi-target", "qos-contract"}:
         transport_observed["bridge"] = {
-            topic: {"reliability": "reliable"}
-            for topic in contract.topics
+            topic: copy.deepcopy(expected_qos[topic]) for topic in contract.topics
         }
+    sample_publisher_gids: dict[str, object] = {}
+    if case == "multi-target":
+        gids = [item["gid"] for item in publishers_by_topic[contract.topics[0]]]
+        for suffix in ("multi-local-1", "multi-local-3"):
+            sample_publisher_gids[suffix] = {
+                "sampleSha256": protocol.token_sha256(token + "-" + suffix),
+                "publisherGids": list(gids),
+            }
+    elif case == "qos-contract":
+        suffixes = (
+            "qos-system-default",
+            "qos-keep-all",
+            "qos-keep-last-depth",
+        )
+        for topic, suffix in zip(contract.topics, suffixes):
+            sample_publisher_gids[topic] = {
+                "sampleSha256": protocol.token_sha256(token + "-" + suffix),
+                "publisherGids": [
+                    item["gid"] for item in publishers_by_topic[topic]
+                ],
+            }
+    elif case == "stream-640hz":
+        origin_topic = contract.topics[1]
+        sample_publisher_gids["origin-local"] = {
+            "sampleSha256": protocol.token_sha256(token + "-origin-local"),
+            "publisherGids": [
+                item["gid"] for item in publishers_by_topic[origin_topic]
+            ],
+        }
+
+    expected_stages = {
+        "foxglove-profile": [
+            "profile-outbound",
+            "json-outbound",
+            "profile-a",
+            "profile-b",
+            "profile-local-after-remote",
+        ],
+        "multi-target": ["multi-local-1", "multi-local-3"],
+        "degraded-target": ["degraded-local"],
+    }
+    expected_states = {
+        "foxglove-profile": {"foxglove": "Ready"},
+        "multi-target": {
+            "foxglove": "Ready",
+            "ros2Native": "Ready",
+            "ros2Bridge": "Ready",
+        },
+        "degraded-target": {
+            "foxglove": "Ready",
+            "ros2Bridge": "Unavailable",
+        },
+        "qos-contract": {topic: "Ready" for topic in contract.topics},
+        "stream-640hz": {"ros2Native": "Ready"},
+    }
+    expected_diagnostics = {
+        "foxglove-profile": {"warning": 0, "error": 0},
+        "multi-target": {"warning": 0, "error": 0},
+        "degraded-target": {"bridge": 1, "error": 0},
+        "qos-contract": {"warning": 0, "error": 0},
+        "stream-640hz": {"warning": 0, "error": 0},
+    }
     sections: dict[str, object] = {}
     evidence = {
         "foxglove": {
             "deliveryObserved": True,
-            "channelEncodings": ["protobuf"],
-            "sampleToken": "logical-1",
+            "channelEncodings": (
+                ["protobuf", "json"]
+                if case == "foxglove-profile"
+                else ["protobuf"]
+            ),
+            "sampleToken": protocol.token_sha256(token),
+            "sampleStages": expected_stages.get(case, []),
             "timestamp": 42,
         },
         "rosGraph": {
             "endpointsObserved": True,
-            "nodeIdentities": [
-                "/unity2foxglove_foxrun",
-                "/unity2foxglove_ros2_bridge",
-            ],
-            "publisherGids": ["gid-native", "gid-bridge"],
+            "nodeIdentities": sorted(node_identities),
+            "publisherGids": sorted(publisher_gids),
+            "publishersByTopic": publishers_by_topic,
+            "samplePublisherGids": sample_publisher_gids,
+            "negativeObservationSeconds": 3 if case == "degraded-target" else 0,
         },
         "qos": {
-            "requested": {"profile": "default"},
+            "requested": copy.deepcopy(expected_qos),
             "transportObserved": transport_observed,
             "matches": True,
         },
         "targets": {
-            "states": {"foxglove": "Ready", "ros2Native": "Ready"},
-            "diagnosticCounts": {"warning": 0, "error": 0},
+            "states": expected_states[case],
+            "diagnosticCounts": expected_diagnostics[case],
             "healthyDelivery": True,
+            "statusEvidence": (
+                {
+                    "aggregate": "Degraded",
+                    "succeeded": "Foxglove",
+                    "failed": "Ros2Bridge",
+                    "bridgeDiagnostics": 1,
+                }
+                if case == "degraded-target"
+                else {}
+            ),
         },
         "origin": {
             "remoteApplied": True,
@@ -175,27 +300,54 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
                 "applicability": "not_applicable",
                 "reason": rule.reason,
             }
-    if case == "degraded-target":
-        sections["targets"] = {
-            "applicability": "required",
-            "states": {
-                "foxglove": "Ready",
-                "ros2Bridge": "Unavailable",
-            },
-            "diagnosticCounts": {"bridge": 1, "error": 0},
-            "healthyDelivery": True,
-        }
-
     required_actors = protocol.CASE_CONTRACTS[case].required_actors
     absent_actors = protocol.CASE_CONTRACTS[case].deliberately_absent_actors
     process_entries = [
-        {"role": actor, "started": True, "exitCode": 0}
+        {
+            "role": actor,
+            "started": True,
+            "exitCode": 0,
+            "termination": "self",
+        }
         for actor in sorted(required_actors | {"unity"})
     ]
     process_entries.extend(
         {"role": actor, "started": False, "reason": reason}
         for actor, reason in sorted(absent_actors.items())
     )
+    profile_evidence = {
+        "foxglove-profile": (
+            "Foxglove",
+            ["Foxglove"],
+            "protobuf,json",
+            "protobuf,json",
+        ),
+        "multi-target": (
+            "Ros2Native",
+            ["Foxglove", "Ros2Native", "Ros2Bridge"],
+            "protobuf",
+            "protobuf",
+        ),
+        "degraded-target": (
+            "None",
+            ["Foxglove", "Ros2Bridge"],
+            "protobuf",
+            "not_applicable",
+        ),
+        "qos-contract": (
+            "None",
+            ["Ros2Native", "Ros2Bridge"],
+            "protobuf",
+            "not_applicable",
+        ),
+        "stream-640hz": (
+            "Ros2Native",
+            ["Ros2Native"],
+            "protobuf",
+            "protobuf",
+        ),
+    }
+    source, targets, publish_encoding, subscribe_encoding = profile_evidence[case]
     return {
         "summarySchemaVersion": protocol.SUMMARY_SCHEMA_VERSION,
         "identity": {
@@ -210,11 +362,11 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
             "profile": config["profile"],
             "runtime": config["rosDistro"],
             "rmw": config["rmw"],
-            "source": "Ros2Native",
-            "targets": ["Foxglove", "Ros2Native", "Ros2Bridge"],
-            "publishEncoding": "protobuf",
-            "subscribeEncoding": "protobuf",
-            "requestedQos": {"profile": "default"},
+            "source": source,
+            "targets": targets,
+            "publishEncoding": publish_encoding,
+            "subscribeEncoding": subscribe_encoding,
+            "requestedQos": copy.deepcopy(expected_qos),
         },
         **sections,
         "processes": process_entries,
@@ -362,6 +514,25 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 expected_token="p184g_StaleToken000",
             )
 
+    def test_every_case_fixture_reaches_the_real_summary_validator(self):
+        """All five canonical fixtures exercise their case-specific PASS rules."""
+
+        protocol = load_protocol_module()
+        for case, profile in (
+            ("foxglove-profile", "core-foxglove"),
+            ("multi-target", "jazzy-fastrtps"),
+            ("degraded-target", "jazzy-fastrtps"),
+            ("qos-contract", "jazzy-fastrtps"),
+            ("stream-640hz", "lyrical-zenoh"),
+        ):
+            with self.subTest(case=case):
+                config = run_config(protocol, case=case, profile=profile)
+                protocol.validate_summary(
+                    valid_summary(protocol, config),
+                    expected_case=case,
+                    expected_token=str(config["token"]),
+                )
+
     def test_positive_summary_rejects_false_required_evidence(self):
         """Exit zero or a terminal marker cannot mask a false proof field."""
 
@@ -441,6 +612,115 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 expected_token=str(config["token"]),
             )
 
+    def test_qos_transport_policy_mismatch_cannot_hide_behind_matches_true(self):
+        """Every observed policy axis is compared with the requested contract."""
+
+        protocol = load_protocol_module()
+        config = run_config(
+            protocol,
+            case="qos-contract",
+            profile="jazzy-fastrtps",
+        )
+        summary = valid_summary(protocol, config)
+        topic = protocol.CASE_CONTRACTS["qos-contract"].topics[0]
+        summary["qos"]["transportObserved"]["graph"][topic]["publishers"][0][
+            "reliability"
+        ] = "reliable"
+        summary["qos"]["matches"] = True
+
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_QOS"):
+            protocol.validate_summary(
+                summary,
+                expected_case="qos-contract",
+                expected_token=str(config["token"]),
+            )
+
+    def test_multi_target_rejects_unbound_sample_and_invalid_publisher_gids(self):
+        """A delivery boolean cannot replace token-correlated publisher identity."""
+
+        protocol = load_protocol_module()
+        config = run_config(protocol, case="multi-target")
+        summary = valid_summary(protocol, config)
+        summary["foxglove"]["sampleToken"] = "not-the-current-token"
+        summary["rosGraph"]["publisherGids"] = [None, ""]
+        summary["targets"]["healthyDelivery"] = True
+
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_(?:CLIENT|GRAPH)"):
+            protocol.validate_summary(
+                summary,
+                expected_case="multi-target",
+                expected_token=str(config["token"]),
+            )
+
+        wrong_sample = valid_summary(protocol, config)
+        wrong_sample["rosGraph"]["samplePublisherGids"]["multi-local-1"][
+            "sampleSha256"
+        ] = "0" * 64
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_GRAPH"):
+            protocol.validate_summary(
+                wrong_sample,
+                expected_case="multi-target",
+                expected_token=str(config["token"]),
+            )
+
+        empty_gid = valid_summary(protocol, config)
+        empty_gid["rosGraph"]["samplePublisherGids"]["multi-local-1"][
+            "publisherGids"
+        ] = ["", "gid-0-1"]
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_GRAPH"):
+            protocol.validate_summary(
+                empty_gid,
+                expected_case="multi-target",
+                expected_token=str(config["token"]),
+            )
+
+    def test_profile_targets_and_target_state_vocabulary_are_case_exact(self):
+        """Empty targets, unknown states, and undeclared fallbacks fail closed."""
+
+        protocol = load_protocol_module()
+        profile_config = run_config(
+            protocol,
+            case="foxglove-profile",
+            profile="core-foxglove",
+        )
+        empty_targets = valid_summary(protocol, profile_config)
+        empty_targets["profile"]["targets"] = []
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_TERMINAL"):
+            protocol.validate_summary(
+                empty_targets,
+                expected_case="foxglove-profile",
+                expected_token=str(profile_config["token"]),
+            )
+
+        degraded_config = run_config(
+            protocol,
+            case="degraded-target",
+            profile="jazzy-fastrtps",
+        )
+        fallback = valid_summary(protocol, degraded_config)
+        fallback["targets"]["states"]["ros2Native"] = "Ready"
+        fallback["targets"]["states"]["foxglove"] = "ON_FIRE"
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_FANOUT"):
+            protocol.validate_summary(
+                fallback,
+                expected_case="degraded-target",
+                expected_token=str(degraded_config["token"]),
+            )
+
+        hidden_publisher = valid_summary(protocol, degraded_config)
+        topic = protocol.CASE_CONTRACTS["degraded-target"].topics[0]
+        hidden_publisher["rosGraph"]["publishersByTopic"][topic] = [
+            {"node": "/fallback_native", "gid": "fallback-gid"}
+        ]
+        hidden_publisher["rosGraph"]["nodeIdentities"] = ["/fallback_native"]
+        hidden_publisher["rosGraph"]["publisherGids"] = ["fallback-gid"]
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_GRAPH"):
+            protocol.validate_summary(
+                hidden_publisher,
+                expected_case="degraded-target",
+                expected_token=str(degraded_config["token"]),
+            )
+
     def test_stream_summary_locks_rate_capacity_and_ownership_arithmetic(self):
         """A plausible-looking stream summary cannot hide lost ownership."""
 
@@ -471,6 +751,23 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                     expected_case="stream-640hz",
                     expected_token=str(config["token"]),
                 )
+
+        near_total_loss = valid_summary(protocol, config)
+        near_total_loss["stream"].update(
+            {
+                "accepted": 1,
+                "replaced": 1,
+                "dropped": 1279,
+                "drained": 0,
+                "disposed": 1,
+            }
+        )
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
+            protocol.validate_summary(
+                near_total_loss,
+                expected_case="stream-640hz",
+                expected_token=str(config["token"]),
+            )
 
     def test_not_applicable_reason_must_be_case_defined_and_has_no_synthetic_pass(self):
         """N/A evidence is typed, exact, and never carries PASS."""
@@ -537,6 +834,66 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
         summary["processes"] = [
             entry for entry in summary["processes"] if entry["role"] != "unity"
         ]
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_PROCESS_EXIT"):
+            protocol.validate_summary(
+                summary,
+                expected_case=str(config["case"]),
+                expected_token=str(config["token"]),
+            )
+
+    def test_owner_requested_daemon_exit_preserves_raw_windows_evidence(self):
+        """Only an owned Bridge/router stop may explain Windows CTRL_BREAK."""
+
+        protocol = load_protocol_module()
+        config = run_config(protocol)
+        summary = valid_summary(protocol, config)
+        bridge = next(item for item in summary["processes"] if item["role"] == "bridge")
+
+        for raw_code in (-1073741510, 3221225786):
+            with self.subTest(raw_code=raw_code):
+                candidate = copy.deepcopy(summary)
+                candidate_bridge = next(
+                    item for item in candidate["processes"] if item["role"] == "bridge"
+                )
+                candidate_bridge["exitCode"] = raw_code
+                candidate_bridge["termination"] = "owner_requested"
+                protocol.validate_summary(
+                    candidate,
+                    expected_case=str(config["case"]),
+                    expected_token=str(config["token"]),
+                )
+
+        bridge["exitCode"] = -1073741510
+        bridge["termination"] = "self"
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_PROCESS_EXIT"):
+            protocol.validate_summary(
+                summary,
+                expected_case=str(config["case"]),
+                expected_token=str(config["token"]),
+            )
+
+        wrong_role = valid_summary(protocol, config)
+        peer = next(
+            item for item in wrong_role["processes"] if item["role"] == "ros2-peer"
+        )
+        peer["exitCode"] = -1073741510
+        peer["termination"] = "owner_requested"
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_PROCESS_EXIT"):
+            protocol.validate_summary(
+                wrong_role,
+                expected_case=str(config["case"]),
+                expected_token=str(config["token"]),
+            )
+
+    def test_process_exit_requires_explicit_termination_provenance(self):
+        """Raw exit codes cannot be interpreted without owner/self provenance."""
+
+        protocol = load_protocol_module()
+        config = run_config(protocol)
+        summary = valid_summary(protocol, config)
+        unity = next(item for item in summary["processes"] if item["role"] == "unity")
+        unity.pop("termination")
+
         with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_PROCESS_EXIT"):
             protocol.validate_summary(
                 summary,
