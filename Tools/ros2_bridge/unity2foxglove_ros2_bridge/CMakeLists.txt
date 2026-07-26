@@ -20,6 +20,9 @@ ament_target_dependencies(unity2foxglove_ros2_bridge
 target_link_libraries(unity2foxglove_ros2_bridge
   nlohmann_json::nlohmann_json
 )
+if(WIN32)
+  target_link_libraries(unity2foxglove_ros2_bridge ws2_32)
+endif()
 
 install(TARGETS unity2foxglove_ros2_bridge
   DESTINATION lib/${PROJECT_NAME}
@@ -46,6 +49,9 @@ if(BUILD_TESTING)
   target_link_libraries(test_bridge_smoke
     nlohmann_json::nlohmann_json
   )
+  if(WIN32)
+    target_link_libraries(test_bridge_smoke ws2_32)
+  endif()
 endif()
 
 ament_package()

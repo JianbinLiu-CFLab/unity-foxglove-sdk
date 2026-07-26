@@ -459,6 +459,78 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertTrue(module._paths_are_distinct(alias, physical))
         self.assertFalse(module._paths_are_distinct(physical, physical))
 
+    def test_windows_bridge_runtime_encloses_ros_initialization_and_shutdown(self):
+        source = (
+            ROOT
+            / "Tools"
+            / "ros2_bridge"
+            / "unity2foxglove_ros2_bridge"
+            / "src"
+            / "unity2foxglove_ros2_bridge.cpp"
+        ).read_text(encoding="utf-8")
+        main_source = source[source.index("int main(int argc, char ** argv)") :]
+        winsock = main_source.index("std::unique_ptr<WinsockRuntime> winsock;")
+        winsock_start = main_source.index(
+            "winsock = std::make_unique<WinsockRuntime>();"
+        )
+        ros_init = main_source.index("rclcpp::init_and_remove_ros_arguments")
+        final_shutdown = main_source.rindex("rclcpp::shutdown();")
+
+        self.assertLess(winsock, winsock_start)
+        self.assertLess(winsock_start, ros_init)
+        self.assertLess(ros_init, final_shutdown)
+        self.assertNotIn("winsock.reset(", main_source)
+        self.assertEqual(
+            1,
+            main_source.count("std::unique_ptr<WinsockRuntime> winsock;"),
+        )
+
+    def test_windows_bridge_build_dependencies_are_selected_from_ros_prefix(self):
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="bridge-deps-", dir=TEST_ROOT) as raw:
+            ros_root = pathlib.Path(raw) / "ros2_jazzy"
+            library = ros_root / ".pixi" / "envs" / "default" / "Library"
+            required = (
+                library / "include" / "openssl" / "opensslv.h",
+                library / "lib" / "libcrypto.lib",
+                library / "lib" / "libssl.lib",
+                library / "lib" / "cmake" / "tinyxml2" / "tinyxml2-config.cmake",
+                library
+                / "share"
+                / "cmake"
+                / "nlohmann_json"
+                / "nlohmann_jsonConfig.cmake",
+            )
+            for path in required:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture\n", encoding="utf-8")
+
+            environment = module.prepare_windows_bridge_build_environment(
+                {"CMAKE_PREFIX_PATH": str(ros_root)},
+                ros_root,
+            )
+            self.assertEqual(str(library), environment["OPENSSL_ROOT_DIR"])
+            self.assertEqual(
+                str(library / "share" / "cmake" / "nlohmann_json"),
+                environment["nlohmann_json_DIR"],
+            )
+            self.assertEqual(
+                str(library / "lib" / "cmake" / "tinyxml2"),
+                environment["tinyxml2_DIR"],
+            )
+            self.assertEqual(
+                [str(library), str(ros_root)],
+                environment["CMAKE_PREFIX_PATH"].split(os.pathsep),
+            )
+
+            required[-1].unlink()
+            with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_BUILD"):
+                module.prepare_windows_bridge_build_environment(
+                    {"CMAKE_PREFIX_PATH": str(ros_root)},
+                    ros_root,
+                )
+
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"

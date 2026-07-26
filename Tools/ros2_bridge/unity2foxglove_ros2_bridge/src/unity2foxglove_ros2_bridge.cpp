@@ -4,16 +4,26 @@
 // Module: Tools/ros2_bridge
 // Purpose: Experimental localhost TCP to ROS 2 GenericPublisher sidecar.
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -42,6 +52,181 @@ constexpr int kHealthProtocolVersion = 1;
 constexpr int kPublisherPreparationProtocolVersion = 1;
 constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
 constexpr const char * kSidecarVersion = "0.1.0";
+
+#ifdef _WIN32
+using SocketHandle = SOCKET;
+using SocketLength = int;
+constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+#else
+using SocketHandle = int;
+using SocketLength = socklen_t;
+constexpr SocketHandle kInvalidSocket = -1;
+#endif
+
+int last_socket_error()
+{
+#ifdef _WIN32
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
+
+bool socket_error_is_interrupted(int error)
+{
+#ifdef _WIN32
+  return error == WSAEINTR;
+#else
+  return error == EINTR;
+#endif
+}
+
+bool socket_error_is_retryable_timeout(int error)
+{
+#ifdef _WIN32
+  return error == WSAEWOULDBLOCK || error == WSAETIMEDOUT;
+#else
+  return error == EAGAIN || error == EWOULDBLOCK;
+#endif
+}
+
+std::string socket_error_text(int error)
+{
+#ifdef _WIN32
+  return "WinSock error " + std::to_string(error);
+#else
+  return std::strerror(error);
+#endif
+}
+
+void close_socket(SocketHandle socket)
+{
+  if (socket == kInvalidSocket) {
+    return;
+  }
+#ifdef _WIN32
+  ::closesocket(socket);
+#else
+  ::close(socket);
+#endif
+}
+
+int socket_select_width(SocketHandle socket)
+{
+#ifdef _WIN32
+  (void)socket;
+  return 0;
+#else
+  return socket + 1;
+#endif
+}
+
+int set_socket_option(
+  SocketHandle socket,
+  int level,
+  int option,
+  const void * value,
+  SocketLength length)
+{
+#ifdef _WIN32
+  return ::setsockopt(
+    socket,
+    level,
+    option,
+    reinterpret_cast<const char *>(value),
+    length);
+#else
+  return ::setsockopt(socket, level, option, value, length);
+#endif
+}
+
+std::ptrdiff_t receive_socket(SocketHandle socket, uint8_t * data, size_t size)
+{
+  const auto bounded = static_cast<int>(
+    std::min(size, static_cast<size_t>(std::numeric_limits<int>::max())));
+#ifdef _WIN32
+  return static_cast<std::ptrdiff_t>(
+    ::recv(socket, reinterpret_cast<char *>(data), bounded, 0));
+#else
+  return static_cast<std::ptrdiff_t>(::recv(socket, data, static_cast<size_t>(bounded), 0));
+#endif
+}
+
+std::ptrdiff_t send_socket(SocketHandle socket, const uint8_t * data, size_t size)
+{
+  const auto bounded = static_cast<int>(
+    std::min(size, static_cast<size_t>(std::numeric_limits<int>::max())));
+#ifdef _WIN32
+  return static_cast<std::ptrdiff_t>(
+    ::send(socket, reinterpret_cast<const char *>(data), bounded, 0));
+#else
+  return static_cast<std::ptrdiff_t>(::send(socket, data, static_cast<size_t>(bounded), 0));
+#endif
+}
+
+void configure_client_timeouts(SocketHandle socket)
+{
+#ifdef _WIN32
+  const DWORD timeout_ms = 250;
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_RCVTIMEO,
+    &timeout_ms,
+    static_cast<SocketLength>(sizeof(timeout_ms)));
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_SNDTIMEO,
+    &timeout_ms,
+    static_cast<SocketLength>(sizeof(timeout_ms)));
+#else
+  timeval timeout {};
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 250000;
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_RCVTIMEO,
+    &timeout,
+    static_cast<SocketLength>(sizeof(timeout)));
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_SNDTIMEO,
+    &timeout,
+    static_cast<SocketLength>(sizeof(timeout)));
+#endif
+}
+
+#ifdef _WIN32
+class WinsockRuntime
+{
+public:
+  WinsockRuntime()
+  {
+    WSADATA data {};
+    const auto result = WSAStartup(MAKEWORD(2, 2), &data);
+    if (result != 0) {
+      throw std::runtime_error("WSAStartup failed: " + socket_error_text(result));
+    }
+    initialized_ = true;
+  }
+
+  ~WinsockRuntime()
+  {
+    if (initialized_) {
+      WSACleanup();
+    }
+  }
+
+  WinsockRuntime(const WinsockRuntime &) = delete;
+  WinsockRuntime & operator=(const WinsockRuntime &) = delete;
+
+private:
+  bool initialized_ = false;
+};
+#endif
 
 enum class PayloadFormat
 {
@@ -87,7 +272,7 @@ struct PayloadView
 class ScopedFd
 {
 public:
-  explicit ScopedFd(int fd = -1) : fd_(fd) {}
+  explicit ScopedFd(SocketHandle fd = kInvalidSocket) : fd_(fd) {}
   ~ScopedFd()
   {
     reset();
@@ -96,26 +281,33 @@ public:
   ScopedFd(const ScopedFd &) = delete;
   ScopedFd & operator=(const ScopedFd &) = delete;
 
-  int get() const
+  SocketHandle get() const
   {
     return fd_;
   }
 
   bool valid() const
   {
-    return fd_ >= 0;
+    return fd_ != kInvalidSocket;
   }
 
-  void reset(int fd = -1)
+  SocketHandle release()
   {
-    if (fd_ >= 0) {
-      ::close(fd_);
+    const auto released = fd_;
+    fd_ = kInvalidSocket;
+    return released;
+  }
+
+  void reset(SocketHandle fd = kInvalidSocket)
+  {
+    if (valid()) {
+      close_socket(fd_);
     }
     fd_ = fd;
   }
 
 private:
-  int fd_;
+  SocketHandle fd_;
 };
 
 class ClientClosedException : public std::runtime_error
@@ -547,42 +739,71 @@ Options parse_args(const std::vector<std::string> & args)
   return options;
 }
 
-int create_listen_socket(const std::string & host, int port, const rclcpp::Logger & logger)
+SocketHandle create_listen_socket(
+  const std::string & host,
+  int port,
+  const rclcpp::Logger & logger)
 {
   const auto resolved = resolve_loopback_ipv4(host);
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    throw std::runtime_error("socket() failed");
+  const SocketHandle fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd == kInvalidSocket) {
+    throw std::runtime_error(
+            "socket() failed: " + socket_error_text(last_socket_error()));
   }
 
   int opt = 1;
-  if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) != 0) {
+#ifdef _WIN32
+  if (set_socket_option(
+      fd,
+      SOL_SOCKET,
+      SO_EXCLUSIVEADDRUSE,
+      &opt,
+      static_cast<SocketLength>(sizeof(opt))) != 0)
+  {
+    const auto error = last_socket_error();
+    RCLCPP_WARN(
+      logger,
+      "[unity2foxglove_ros2_bridge] SO_EXCLUSIVEADDRUSE failed: %s",
+      socket_error_text(error).c_str());
+  }
+#else
+  if (set_socket_option(
+      fd,
+      SOL_SOCKET,
+      SO_REUSEADDR,
+      &opt,
+      static_cast<SocketLength>(sizeof(opt))) != 0)
+  {
+    const auto error = last_socket_error();
     RCLCPP_WARN(
       logger,
       "[unity2foxglove_ros2_bridge] SO_REUSEADDR failed, rapid restart may fail: %s",
-      std::strerror(errno));
+      socket_error_text(error).c_str());
   }
+#endif
 
   sockaddr_in address {};
   address.sin_family = AF_INET;
   address.sin_port = htons(static_cast<uint16_t>(port));
   if (inet_pton(AF_INET, resolved.c_str(), &address.sin_addr) != 1) {
-    ::close(fd);
+    close_socket(fd);
     throw std::runtime_error("failed to parse loopback bind address");
   }
 
   if (::bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
-    ::close(fd);
-    throw std::runtime_error("bind() failed");
+    const auto error = last_socket_error();
+    close_socket(fd);
+    throw std::runtime_error("bind() failed: " + socket_error_text(error));
   }
   if (::listen(fd, 4) != 0) {
-    ::close(fd);
-    throw std::runtime_error("listen() failed");
+    const auto error = last_socket_error();
+    close_socket(fd);
+    throw std::runtime_error("listen() failed: " + socket_error_text(error));
   }
   return fd;
 }
 
-int accept_with_timeout(int listen_fd)
+SocketHandle accept_with_timeout(SocketHandle listen_fd)
 {
   fd_set read_fds;
   FD_ZERO(&read_fds);
@@ -590,38 +811,43 @@ int accept_with_timeout(int listen_fd)
   timeval timeout {};
   timeout.tv_sec = 0;
   timeout.tv_usec = 250000;
-  const int ready = ::select(listen_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+  const int ready = ::select(
+    socket_select_width(listen_fd),
+    &read_fds,
+    nullptr,
+    nullptr,
+    &timeout);
   if (ready < 0) {
-    if (errno == EINTR) {
-      return -1;
+    const auto error = last_socket_error();
+    if (socket_error_is_interrupted(error)) {
+      return kInvalidSocket;
     }
-    throw std::runtime_error("select() failed");
+    throw std::runtime_error("select() failed: " + socket_error_text(error));
   }
   if (ready == 0) {
-    return -1;
+    return kInvalidSocket;
   }
 
   sockaddr_in client_address {};
-  socklen_t length = sizeof(client_address);
-  const int client_fd = ::accept(listen_fd, reinterpret_cast<sockaddr *>(&client_address), &length);
-  if (client_fd < 0) {
-    if (errno == EINTR) {
-      return -1;
+  SocketLength length = static_cast<SocketLength>(sizeof(client_address));
+  const SocketHandle client_fd = ::accept(
+    listen_fd,
+    reinterpret_cast<sockaddr *>(&client_address),
+    &length);
+  if (client_fd == kInvalidSocket) {
+    const auto error = last_socket_error();
+    if (socket_error_is_interrupted(error)) {
+      return kInvalidSocket;
     }
-    throw std::runtime_error("accept() failed");
+    throw std::runtime_error("accept() failed: " + socket_error_text(error));
   }
 
-  timeval receive_timeout {};
-  receive_timeout.tv_sec = 0;
-  receive_timeout.tv_usec = 250000;
-  ::setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof(receive_timeout));
-  timeval send_timeout = receive_timeout;
-  ::setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout));
+  configure_client_timeouts(client_fd);
   return client_fd;
 }
 
 bool read_exact(
-  int fd,
+  SocketHandle fd,
   std::vector<uint8_t> & buffer,
   size_t count,
   const rclcpp::Node::SharedPtr & node)
@@ -630,7 +856,7 @@ bool read_exact(
   size_t offset = 0;
   auto stalled_since = std::chrono::steady_clock::time_point {};
   while (offset < count) {
-    const ssize_t received = ::recv(fd, buffer.data() + offset, count - offset, 0);
+    const auto received = receive_socket(fd, buffer.data() + offset, count - offset);
     if (received == 0) {
       if (offset == 0) {
         return false;
@@ -638,10 +864,11 @@ bool read_exact(
       throw ClientClosedException();
     }
     if (received < 0) {
-      if (errno == EINTR) {
+      const auto error = last_socket_error();
+      if (socket_error_is_interrupted(error)) {
         continue;
       }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (socket_error_is_retryable_timeout(error)) {
         const auto now = std::chrono::steady_clock::now();
         if (stalled_since == std::chrono::steady_clock::time_point {}) {
           stalled_since = now;
@@ -652,7 +879,7 @@ bool read_exact(
         rclcpp::spin_some(node);
         continue;
       }
-      throw std::runtime_error("socket read failed");
+      throw std::runtime_error("socket read failed: " + socket_error_text(error));
     }
     offset += static_cast<size_t>(received);
     stalled_since = std::chrono::steady_clock::time_point {};
@@ -660,38 +887,47 @@ bool read_exact(
   return true;
 }
 
-void write_all(int fd, const std::vector<uint8_t> & bytes)
+void write_all(SocketHandle fd, const std::vector<uint8_t> & bytes)
 {
   size_t offset = 0;
   while (offset < bytes.size()) {
-    const ssize_t sent = ::send(fd, bytes.data() + offset, bytes.size() - offset, 0);
+    const auto sent = send_socket(fd, bytes.data() + offset, bytes.size() - offset);
     if (sent <= 0) {
-      if (errno == EINTR) {
+      const auto error = last_socket_error();
+      if (socket_error_is_interrupted(error)) {
         continue;
       }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (socket_error_is_retryable_timeout(error)) {
         fd_set write_fds;
         FD_ZERO(&write_fds);
         FD_SET(fd, &write_fds);
         timeval timeout {};
         timeout.tv_sec = 0;
         timeout.tv_usec = 250000;
-        const int ready = ::select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
+        const int ready = ::select(
+          socket_select_width(fd),
+          nullptr,
+          &write_fds,
+          nullptr,
+          &timeout);
         if (ready > 0) {
           continue;
         }
-        if (ready < 0 && errno == EINTR) {
+        if (ready < 0 && socket_error_is_interrupted(last_socket_error())) {
           continue;
         }
         throw std::runtime_error("socket write timed out");
       }
-      throw std::runtime_error("socket write failed");
+      throw std::runtime_error("socket write failed: " + socket_error_text(error));
     }
     offset += static_cast<size_t>(sent);
   }
 }
 
-void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<uint8_t> & payload)
+void write_u2r2_frame(
+  SocketHandle fd,
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload)
 {
   const auto header_text = header.dump();
   if (header_text.empty() || header_text.size() > kMaxHeaderBytes) {
@@ -716,7 +952,7 @@ void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<u
   write_all(fd, frame);
 }
 
-RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
+RawFrame read_raw_frame(SocketHandle fd, const rclcpp::Node::SharedPtr & node)
 {
   std::vector<uint8_t> fixed_header;
   if (!read_exact(fd, fixed_header, 16, node)) {
@@ -886,7 +1122,7 @@ PublisherPreparationRequest parse_prepare_publisher_frame(const RawFrame & raw)
   return request;
 }
 
-void write_health_pong_ok(int fd, const std::string & request_id)
+void write_health_pong_ok(SocketHandle fd, const std::string & request_id)
 {
   nlohmann::json response = {
     {"op", "health_pong"},
@@ -900,7 +1136,7 @@ void write_health_pong_ok(int fd, const std::string & request_id)
 }
 
 void write_health_pong_error(
-  int fd,
+  SocketHandle fd,
   const std::string & request_id,
   const std::string & error_code,
   const std::string & message)
@@ -916,7 +1152,7 @@ void write_health_pong_error(
   write_u2r2_frame(fd, response, {});
 }
 
-void handle_health_ping(int fd, const RawFrame & raw)
+void handle_health_ping(SocketHandle fd, const RawFrame & raw)
 {
   const auto request_id_it = raw.header.find("requestId");
   if (request_id_it == raw.header.end() || !request_id_it->is_string()) {
@@ -1165,7 +1401,7 @@ nlohmann::json handle_prepare_publisher_frame(const RawFrame & raw, BridgeNode &
 }
 
 void process_client(
-  int client_fd,
+  SocketHandle client_fd,
   BridgeNode & bridge,
   const rclcpp::Node::SharedPtr & node)
 {
@@ -1220,7 +1456,7 @@ void process_client(
 }
 
 void process_client(
-  int client_fd,
+  SocketHandle client_fd,
   const rclcpp::Node::SharedPtr & node,
   PayloadFormat payload_format)
 {
@@ -1232,6 +1468,19 @@ void process_client(
 #ifndef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
 int main(int argc, char ** argv)
 {
+#ifdef _WIN32
+  std::unique_ptr<WinsockRuntime> winsock;
+  try {
+    winsock = std::make_unique<WinsockRuntime>();
+  } catch (const std::exception & ex) {
+    std::fprintf(
+      stderr,
+      "[unity2foxglove_ros2_bridge] %s\n",
+      ex.what());
+    return 1;
+  }
+#endif
+
   auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");
 

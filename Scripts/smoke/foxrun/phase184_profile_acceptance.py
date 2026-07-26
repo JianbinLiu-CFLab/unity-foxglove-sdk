@@ -2937,6 +2937,54 @@ def _paths_are_distinct(first: pathlib.Path, second: pathlib.Path) -> bool:
     return left != right
 
 
+def prepare_windows_bridge_build_environment(
+    environment: Mapping[str, str],
+    ros2_root: pathlib.Path,
+) -> dict[str, str]:
+    """Pin native Bridge dependencies to the selected ROS 2 Pixi prefix."""
+
+    result = dict(environment)
+    library = (
+        pathlib.Path(ros2_root)
+        / ".pixi"
+        / "envs"
+        / "default"
+        / "Library"
+    )
+    nlohmann_directory = library / "share" / "cmake" / "nlohmann_json"
+    tinyxml_directory = library / "lib" / "cmake" / "tinyxml2"
+    required = {
+        "OpenSSL headers": library / "include" / "openssl" / "opensslv.h",
+        "OpenSSL crypto library": library / "lib" / "libcrypto.lib",
+        "OpenSSL TLS library": library / "lib" / "libssl.lib",
+        "tinyxml2 CMake package": tinyxml_directory / "tinyxml2-config.cmake",
+        "nlohmann_json CMake package": (
+            nlohmann_directory / "nlohmann_jsonConfig.cmake"
+        ),
+    }
+    missing = [label for label, path in required.items() if not path.is_file()]
+    if missing:
+        raise AcceptanceFailure(
+            "FAIL_BUILD",
+            "The selected Windows ROS 2 prefix is missing required Bridge "
+            "build dependencies: "
+            + ", ".join(missing)
+            + ".",
+        )
+
+    prefix_entries = [str(library)]
+    prefix_entries.extend(
+        entry
+        for entry in str(result.get("CMAKE_PREFIX_PATH", "")).split(os.pathsep)
+        if entry and _paths_are_distinct(pathlib.Path(entry), library)
+    )
+    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(prefix_entries)
+    result["OPENSSL_ROOT_DIR"] = str(library)
+    result["nlohmann_json_DIR"] = str(nlohmann_directory)
+    result["tinyxml2_DIR"] = str(tinyxml_directory)
+    return result
+
+
 def _prepare_ros_runtime(
     *,
     config: Mapping[str, object],
@@ -3091,6 +3139,10 @@ def _prepare_ros_runtime(
         bridge_build_environment = peer.merge_windows_peer_build_environment(
             bridge_underlay,
             msvc_environment,
+        )
+        bridge_build_environment = prepare_windows_bridge_build_environment(
+            bridge_build_environment,
+            toolchain.ros2_root,
         )
         bridge_build_command = [
             str(toolchain.colcon_executable),

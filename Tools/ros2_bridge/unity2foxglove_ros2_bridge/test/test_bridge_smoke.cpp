@@ -4,6 +4,14 @@
 // Module: Tools/ros2_bridge
 // Purpose: Protocol logic tests for the Unity2Foxglove ROS 2 bridge sidecar.
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 #include <gtest/gtest.h>
 
 #include <array>
@@ -88,6 +96,69 @@ void ExpectPublisherContractConflictRejectedWithoutMutation(
   EXPECT_EQ(
     PublisherContractDisposition::ReusePublisher,
     registry.register_or_validate(registered));
+}
+
+std::array<SocketHandle, 2> MakeConnectedSocketPair()
+{
+  std::array<SocketHandle, 2> sockets = {kInvalidSocket, kInvalidSocket};
+#ifdef _WIN32
+  static WinsockRuntime winsock;
+  ScopedFd listener(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!listener.valid()) {
+    return sockets;
+  }
+  sockaddr_in address {};
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = 0;
+  if (::bind(
+      listener.get(),
+      reinterpret_cast<sockaddr *>(&address),
+      static_cast<SocketLength>(sizeof(address))) != 0 ||
+    ::listen(listener.get(), 1) != 0)
+  {
+    return sockets;
+  }
+  SocketLength address_length = static_cast<SocketLength>(sizeof(address));
+  if (::getsockname(
+      listener.get(),
+      reinterpret_cast<sockaddr *>(&address),
+      &address_length) != 0)
+  {
+    return sockets;
+  }
+  ScopedFd client(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!client.valid() ||
+    ::connect(
+      client.get(),
+      reinterpret_cast<sockaddr *>(&address),
+      static_cast<SocketLength>(sizeof(address))) != 0)
+  {
+    return sockets;
+  }
+  ScopedFd server(::accept(listener.get(), nullptr, nullptr));
+  if (!server.valid()) {
+    return sockets;
+  }
+  sockets[0] = client.release();
+  sockets[1] = server.release();
+#else
+  int raw[2] = {-1, -1};
+  if (::socketpair(AF_UNIX, SOCK_STREAM, 0, raw) == 0) {
+    sockets[0] = raw[0];
+    sockets[1] = raw[1];
+  }
+#endif
+  return sockets;
+}
+
+int ShutdownSocketWrite(SocketHandle socket)
+{
+#ifdef _WIN32
+  return ::shutdown(socket, SD_SEND);
+#else
+  return ::shutdown(socket, SHUT_WR);
+#endif
 }
 }  // namespace
 
@@ -558,8 +629,9 @@ TEST(
     "phase184_bridge_session_loop_test",
     options);
 
-  int sockets[2] = {-1, -1};
-  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
   ScopedFd client_socket(sockets[0]);
   ScopedFd server_socket(sockets[1]);
 
@@ -614,7 +686,7 @@ TEST(
     client_failure = std::current_exception();
   }
 
-  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
   server_thread.join();
   context->shutdown("phase184 bridge session loop test complete");
 
@@ -662,8 +734,9 @@ TEST(
     "phase184_bridge_health_type_test",
     options);
 
-  int sockets[2] = {-1, -1};
-  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
   ScopedFd client_socket(sockets[0]);
   ScopedFd server_socket(sockets[1]);
   BridgeNode bridge(
@@ -719,7 +792,7 @@ TEST(
   EXPECT_EQ("phase184-health-recovery", recovered.header.value("requestId", ""));
   EXPECT_EQ("ok", recovered.header.value("status", ""));
 
-  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
   server_thread.join();
   context->shutdown("phase184 bridge health type test complete");
   if (server_failure) {
@@ -743,8 +816,9 @@ TEST(
     "phase184_bridge_publish_isolation_test",
     options);
 
-  int sockets[2] = {-1, -1};
-  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
   ScopedFd client_socket(sockets[0]);
   ScopedFd server_socket(sockets[1]);
 
@@ -780,7 +854,7 @@ TEST(
     "/phase184/healthy",
     available_type);
   write_u2r2_frame(client_socket.get(), available.header, available.payload);
-  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
 
   server_thread.join();
   context->shutdown("phase184 bridge publish isolation test complete");
