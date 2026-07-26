@@ -768,6 +768,34 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void ActiveStatusAccessorReadsTheSingletonWithoutSceneDiscovery()
+        {
+            var fixture = new TargetAwareHubFixture(FoxRunEndpoint.Ros2Native);
+            Assert.True(fixture.Trigger());
+            var instanceField = typeof(FoxgloveLogHub).GetField(
+                "_instance",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(instanceField);
+            var previous = instanceField.GetValue(null);
+
+            try
+            {
+                instanceField.SetValue(null, fixture.Hub);
+
+                Assert.True(FoxgloveLogHub.TryGetActivePublishTargetStatus(
+                    fixture.Source,
+                    0,
+                    out var status));
+                Assert.Equal(FoxRunPublishTargetStatus.Ready, status.Status);
+                Assert.Equal(FoxRunEndpoint.Ros2Native, status.SucceededTargets);
+            }
+            finally
+            {
+                instanceField.SetValue(null, previous);
+            }
+        }
+
+        [Fact]
         public void NativeQosRemainsFrozenForSourcesAddedMidSessionAndRecapturesAfterRestart()
         {
             var fixture = new NativeQosFreezeHubFixture(FoxRunResolvedQos.SensorData);
@@ -1119,6 +1147,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             }
 
             public TargetAwareSource Source { get; }
+            public FoxgloveLogHub Hub => _hub;
 
             public int WarningCount
             {

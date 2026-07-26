@@ -2791,6 +2791,14 @@ namespace Demo
                 "PHASE184G_NATIVE_READY_FOR_BRIDGE",
                 acceptanceSource,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxgloveLogHub.TryGetActivePublishTargetStatus(",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "FindFirstObjectByType<FoxgloveLogHub>()",
+                acceptanceSource,
+                StringComparison.Ordinal);
 
             var builderSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184FoxRunProfileAcceptanceBuilder.cs");
@@ -2801,6 +2809,29 @@ namespace Demo
             Assert.Contains(
                 "SetInteger(serialized, \"_ros2BridgeSendTimeoutMs\", 30000);",
                 builderSource,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase181NativeAcceptancePinsBothOutboundTargets()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase181FoxRunCustomRos2InterfaceAcceptance.cs");
+
+            Assert.Contains(
+                "NativePublishTopic,\n"
+                + "            Mode = FoxRunFlow.Publish,\n"
+                + "            Targets = FoxRunEndpoint.Ros2Native,",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "NativeBidirectionalTopic,\n"
+                + "            Mode = FoxRunFlow.PublishAndSubscribe,\n"
+                + "            Source = FoxRunEndpoint.Ros2Native,\n"
+                + "            Targets = FoxRunEndpoint.Ros2Native,",
+                source,
                 StringComparison.Ordinal);
         }
 

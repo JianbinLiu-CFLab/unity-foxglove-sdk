@@ -229,6 +229,18 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter;
 
+        /// <summary>Try to read target health from the active hidden hub.</summary>
+        public static bool TryGetActivePublishTargetStatus(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            out FoxRunPublishDispatchResult result)
+        {
+            result = default;
+            var instance = _instance;
+            return instance != null
+                && instance.TryGetPublishTargetStatus(source, topicIndex, out result);
+        }
+
         /// <summary>Try to read the latest target health for one declaration.</summary>
         public bool TryGetPublishTargetStatus(
             IFoxgloveLogSource source,

@@ -54,6 +54,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
+            Targets = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativePublish;
 
@@ -68,8 +69,8 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunEncoding.JSON,
             Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Ros2Native,
             QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
 

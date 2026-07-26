@@ -498,10 +498,6 @@ namespace Unity2Foxglove.ManualAcceptance
             var source = this as IFoxgloveLogSource;
             if (source == null)
                 return false;
-            var hub = FindFirstObjectByType<FoxgloveLogHub>();
-            if (hub == null)
-                return false;
-
             for (var index = 0; index < source.FoxgloveLog_TopicCount; index++)
             {
                 if (!string.Equals(
@@ -511,7 +507,10 @@ namespace Unity2Foxglove.ManualAcceptance
                 {
                     continue;
                 }
-                return hub.TryGetPublishTargetStatus(source, index, out result);
+                return FoxgloveLogHub.TryGetActivePublishTargetStatus(
+                    source,
+                    index,
+                    out result);
             }
             return false;
         }
