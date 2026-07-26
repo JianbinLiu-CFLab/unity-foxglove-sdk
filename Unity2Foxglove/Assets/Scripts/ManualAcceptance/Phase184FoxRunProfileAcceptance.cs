@@ -1022,6 +1022,11 @@ namespace Unity2Foxglove.ManualAcceptance
             _streamInputPort?.Clear();
         }
 
+        private void OnDestroy()
+        {
+            _streamInputPort?.Dispose();
+        }
+
         private void Update()
         {
             if (!IsArmed || IsTerminal)

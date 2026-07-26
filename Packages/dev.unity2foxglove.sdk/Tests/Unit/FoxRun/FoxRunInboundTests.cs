@@ -301,6 +301,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void JsonDecoderConfiguresInitialTokenReaderDepthExplicitly()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/"
+                + "FoxRunInboundJson.cs");
+
+            Assert.Contains("new JsonTextReader", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "MaxDepth = MaxTypeHintScanDepth",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "JToken.Parse(json, LoadSettings)",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void JsonDecoderReadsGeneratedDecimalAndCharInputs()
         {
             var payload = Encoding.UTF8.GetBytes("{\"amount\":12.5,\"key\":\"A\"}");

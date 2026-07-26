@@ -6,6 +6,7 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -53,7 +54,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 var json = Encoding.UTF8.GetString(payload);
-                var root = JToken.Parse(json, LoadSettings);
+                var root = ParseToken(json);
                 if (ContainsForbiddenTypeHint(root, 0, out var typeHintError))
                 {
                     error = typeHintError;
@@ -69,8 +70,31 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex) when (ex is JsonException || ex is DecoderFallbackException)
             {
-                error = "FoxRun inbound JSON is invalid: " + ex.Message;
+                var detail = ex.Message;
+                if (ex is JsonReaderException
+                    && detail.IndexOf("MaxDepth", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    detail = "JSON nesting exceeds the explicit depth limit.";
+                }
+                error = "FoxRun inbound JSON is invalid: " + detail;
                 return false;
+            }
+        }
+
+        private static JToken ParseToken(string json)
+        {
+            using (var textReader = new StringReader(json))
+            using (var jsonReader = new JsonTextReader(textReader)
+                   {
+                       DateParseHandling = DateParseHandling.None,
+                       MaxDepth = MaxTypeHintScanDepth
+                   })
+            {
+                var root = JToken.ReadFrom(jsonReader, LoadSettings);
+                if (jsonReader.Read())
+                    throw new JsonReaderException(
+                        "FoxRun inbound JSON contains more than one root value.");
+                return root;
             }
         }
 

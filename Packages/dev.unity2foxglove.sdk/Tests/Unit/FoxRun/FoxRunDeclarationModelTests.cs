@@ -2714,6 +2714,14 @@ namespace Demo
                 "\" foxgloveState=Ready ros2BridgeState=Unavailable bridgeDiagnostics=\"",
                 acceptanceSource,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "private void OnDestroy()",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_streamInputPort?.Dispose();",
+                acceptanceSource,
+                StringComparison.Ordinal);
             foreach (var routeType in new[]
                      {
                          "Phase184FoxgloveProfileRoute",
