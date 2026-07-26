@@ -50,7 +50,15 @@ public static class Phase184BatchModeProfileProbe
             return;
         AttachHandlers();
         if (!SessionState.GetBool(SessionKey("requested"), false))
+        {
             Run();
+            return;
+        }
+
+        if (SessionState.GetBool(SessionKey("play-entry-retry-queued"), false))
+            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+        else if (SessionState.GetBool(SessionKey("play-entry-pending"), false))
+            EditorApplication.delayCall += RetryCanceledPlayEntry;
     }
 
     public static void Run()
@@ -67,6 +75,8 @@ public static class Phase184BatchModeProfileProbe
         SessionState.SetBool(SessionKey("requested"), true);
         SessionState.SetBool(SessionKey("exit-requested"), false);
         SessionState.SetInt(SessionKey("play-entry-retries"), 0);
+        SessionState.SetBool(SessionKey("play-entry-pending"), false);
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
         _terminalPassObserved = false;
         _requiredWorkerResultPaths = Array.Empty<string>();
         _startedAt = EditorApplication.timeSinceStartup;
@@ -107,6 +117,8 @@ public static class Phase184BatchModeProfileProbe
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             return;
 
+        SessionState.SetBool(SessionKey("play-entry-pending"), false);
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
         try
         {
             var config = LoadRunConfig();
@@ -120,7 +132,9 @@ public static class Phase184BatchModeProfileProbe
                 "PHASE184G_BATCH_SCENE_OPENED case=" + _caseId
                 + " scene="
                 + Phase184FoxRunProfileAcceptanceBuilder.AcceptanceSceneAssetPath);
+            SessionState.SetBool(SessionKey("play-entry-pending"), true);
             EditorApplication.EnterPlaymode();
+            EditorApplication.delayCall += RetryCanceledPlayEntry;
         }
         catch (Exception exception)
         {
@@ -165,6 +179,8 @@ public static class Phase184BatchModeProfileProbe
     {
         if (state == PlayModeStateChange.EnteredPlayMode)
         {
+            SessionState.SetBool(SessionKey("play-entry-pending"), false);
+            SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
             _startedAt = EditorApplication.timeSinceStartup;
             Debug.Log("PHASE184G_BATCH_PLAY_ENTERED case=" + _caseId);
             return;
@@ -174,20 +190,55 @@ public static class Phase184BatchModeProfileProbe
 
         if (!SessionState.GetBool(SessionKey("exit-requested"), false))
         {
-            var retries = SessionState.GetInt(SessionKey("play-entry-retries"), 0) + 1;
-            SessionState.SetInt(SessionKey("play-entry-retries"), retries);
-            if (retries > MaximumPlayEntryRetries)
-            {
-                RequestEditorExit(6, "play-entry-retry-limit");
-                return;
-            }
-            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+            QueuePlayEntryRetry("editor-returned-before-entry");
             return;
         }
 
         var exitCode = SessionState.GetInt(SessionKey("exit-code"), 3);
         DetachHandlers();
         EditorApplication.delayCall += () => EditorApplication.Exit(exitCode);
+    }
+
+    private static void RetryCanceledPlayEntry()
+    {
+        if (!IsRequestedBatchRun()
+            || SessionState.GetBool(SessionKey("exit-requested"), false)
+            || !SessionState.GetBool(SessionKey("play-entry-pending"), false)
+            || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+        {
+            EditorApplication.delayCall += RetryCanceledPlayEntry;
+            return;
+        }
+
+        QueuePlayEntryRetry("play-canceled-before-edit-mode-transition");
+    }
+
+    private static void QueuePlayEntryRetry(string reason)
+    {
+        if (SessionState.GetBool(SessionKey("play-entry-retry-queued"), false))
+            return;
+
+        var retries = SessionState.GetInt(SessionKey("play-entry-retries"), 0) + 1;
+        SessionState.SetInt(SessionKey("play-entry-retries"), retries);
+        if (retries > MaximumPlayEntryRetries)
+        {
+            SessionState.SetBool(SessionKey("play-entry-pending"), false);
+            RequestEditorExit(6, "play-entry-retry-limit");
+            return;
+        }
+
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), true);
+        Debug.Log(
+            "PHASE184G_BATCH_PLAY_RETRY case=" + _caseId
+            + " reason=" + reason
+            + " attempt=" + retries
+            + " maximum=" + MaximumPlayEntryRetries);
+        EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
     private static void OnEditorUpdate()

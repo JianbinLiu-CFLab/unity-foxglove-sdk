@@ -127,6 +127,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void PlayModeGuardDoesNotLockAfterAnEarlierEntryHandlerCancelsPlay()
+        {
+            var source = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/"
+                + "Ros2ForUnityRuntimePlayModeGuard.cs");
+            const string methodMarker = "private static void OnExitingEditMode()";
+            var methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
+            var methodEnd = source.IndexOf(
+                "private static bool TryGetMissingZenohRouterDiagnostic(",
+                methodStart,
+                StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0 && methodEnd > methodStart);
+            var method = source.Substring(methodStart, methodEnd - methodStart);
+            var canceledGuard = method.IndexOf(
+                "if (!EditorApplication.isPlayingOrWillChangePlaymode)",
+                StringComparison.Ordinal);
+            var nativeDemandScan = method.IndexOf(
+                "InvalidateNativeDemandCache();",
+                StringComparison.Ordinal);
+
+            Assert.True(canceledGuard >= 0 && canceledGuard < nativeDemandScan);
+            Assert.Contains("ScheduleReloadAssembliesUnlock();", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomPublisherHubStopsOnSynchronousPublishSessionEnd()
         {
             var hub = Text(

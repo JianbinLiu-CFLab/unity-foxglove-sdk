@@ -64,7 +64,15 @@ public static class Phase181BatchModeCustomRos2InteropProbe
 
         AttachHandlers();
         if (!SessionState.GetBool(SessionKey("requested"), false))
+        {
             Run();
+            return;
+        }
+
+        if (SessionState.GetBool(SessionKey("play-entry-retry-queued"), false))
+            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+        else if (SessionState.GetBool(SessionKey("play-entry-pending"), false))
+            EditorApplication.delayCall += RetryCanceledPlayEntry;
     }
 
     /// <summary>
@@ -87,6 +95,8 @@ public static class Phase181BatchModeCustomRos2InteropProbe
 
         SessionState.SetBool(SessionKey("requested"), true);
         SessionState.SetInt(SessionKey("play-entry-retries"), 0);
+        SessionState.SetBool(SessionKey("play-entry-pending"), false);
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
         EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
@@ -126,6 +136,8 @@ public static class Phase181BatchModeCustomRos2InteropProbe
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             return;
 
+        SessionState.SetBool(SessionKey("play-entry-pending"), false);
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
         ResetEvidence();
         EditorSceneManager.OpenScene(Phase181CustomRos2InterfacePlayerBuilder.AcceptanceSceneAssetPath);
         if (!NormalizeLegacyDuplicateReceiver())
@@ -149,13 +161,17 @@ public static class Phase181BatchModeCustomRos2InteropProbe
         Debug.Log(
             "PHASE181_BATCH_CUSTOM_ROS2_PROBE_SCENE_OPENED scene="
             + Phase181CustomRos2InterfacePlayerBuilder.AcceptanceSceneAssetPath);
+        SessionState.SetBool(SessionKey("play-entry-pending"), true);
         EditorApplication.EnterPlaymode();
+        EditorApplication.delayCall += RetryCanceledPlayEntry;
     }
 
     private static void OnPlayModeStateChanged(PlayModeStateChange state)
     {
         if (state == PlayModeStateChange.EnteredPlayMode)
         {
+            SessionState.SetBool(SessionKey("play-entry-pending"), false);
+            SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
             _playStartedAt = EditorApplication.timeSinceStartup;
             _completionObservedAt = 0.0;
             Debug.Log("PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_ENTERED");
@@ -167,26 +183,55 @@ public static class Phase181BatchModeCustomRos2InteropProbe
 
         if (!SessionState.GetBool(SessionKey("exit-requested"), false))
         {
-            var retries = SessionState.GetInt(SessionKey("play-entry-retries"), 0) + 1;
-            SessionState.SetInt(SessionKey("play-entry-retries"), retries);
-            if (retries > MaximumPlayEntryRetries)
-            {
-                RequestEditorExit(6, "play-entry-retry-limit");
-                return;
-            }
-
-            Debug.Log(
-                "PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY"
-                + " reason=editor-returned-before-entry"
-                + " attempt=" + retries
-                + " maximum=" + MaximumPlayEntryRetries);
-            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+            QueuePlayEntryRetry("editor-returned-before-entry");
             return;
         }
 
         var exitCode = SessionState.GetInt(SessionKey("exit-code"), 3);
         DetachHandlers();
         EditorApplication.delayCall += () => EditorApplication.Exit(exitCode);
+    }
+
+    private static void RetryCanceledPlayEntry()
+    {
+        if (!IsRequestedBatchRun()
+            || SessionState.GetBool(SessionKey("exit-requested"), false)
+            || !SessionState.GetBool(SessionKey("play-entry-pending"), false)
+            || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+        {
+            EditorApplication.delayCall += RetryCanceledPlayEntry;
+            return;
+        }
+
+        QueuePlayEntryRetry("play-canceled-before-edit-mode-transition");
+    }
+
+    private static void QueuePlayEntryRetry(string reason)
+    {
+        if (SessionState.GetBool(SessionKey("play-entry-retry-queued"), false))
+            return;
+
+        var retries = SessionState.GetInt(SessionKey("play-entry-retries"), 0) + 1;
+        SessionState.SetInt(SessionKey("play-entry-retries"), retries);
+        if (retries > MaximumPlayEntryRetries)
+        {
+            SessionState.SetBool(SessionKey("play-entry-pending"), false);
+            RequestEditorExit(6, "play-entry-retry-limit");
+            return;
+        }
+
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), true);
+        Debug.Log(
+            "PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY"
+            + " reason=" + reason
+            + " attempt=" + retries
+            + " maximum=" + MaximumPlayEntryRetries);
+        EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
     private static void OnEditorUpdate()

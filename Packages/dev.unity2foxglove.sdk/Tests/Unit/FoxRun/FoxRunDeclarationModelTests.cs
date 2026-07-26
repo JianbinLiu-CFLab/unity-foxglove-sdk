@@ -2835,6 +2835,34 @@ namespace Demo
                 StringComparison.Ordinal);
         }
 
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void BatchNativeAcceptanceRetriesPlayCanceledBeforeEditModeTransition()
+        {
+            foreach (var path in new[]
+                     {
+                         "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                         + "Phase181BatchModeCustomRos2InteropProbe.cs",
+                         "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                         + "Phase184BatchModeProfileProbe.cs",
+                     })
+            {
+                var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(path);
+                Assert.Contains(
+                    "SessionState.SetBool(SessionKey(\"play-entry-pending\"), true);",
+                    source,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "RetryCanceledPlayEntry",
+                    source,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "SessionState.GetBool(SessionKey(\"play-entry-pending\"), false)",
+                    source,
+                    StringComparison.Ordinal);
+            }
+        }
+
         [Theory]
         [Trait("Phase", "184-E")]
         [InlineData("", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]

@@ -84,6 +84,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnExitingEditMode()
         {
+            // Another earlier Play Mode callback may cancel entry (for example,
+            // while refreshing generated FoxRun schema constants). Do not take
+            // the native reload lock after Unity has already abandoned entry.
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                ScheduleReloadAssembliesUnlock();
+                return;
+            }
+
             // Inspector property edits do not necessarily trigger hierarchyChanged.
             // Re-scan at the stable pre-Play boundary before any R2FU Ok() path.
             InvalidateNativeDemandCache();
