@@ -63,6 +63,12 @@ PHASE181_ROS2_MATRIX_PROFILES_REGRESSION = (
 PHASE181_ROS2_LINUX_PEER_REGRESSION = (
     "Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_linux_peer"
 )
+PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance_protocol"
+)
+PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance"
+)
 PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest",
     "Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface",
@@ -841,6 +847,24 @@ def main() -> int:
 
     # --- pure Phase181 custom-interface helper and source-package regressions ---
     if args.only in (None, "phase181-ros2-regression"):
+        results["phase184-profile-acceptance-protocol"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
+            ],
+            "Phase184 profile acceptance evidence protocol regressions",
+        )
+        results["phase184-profile-acceptance-orchestrator"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
+            ],
+            "Phase184 profile acceptance owned-orchestrator regressions",
+        )
         results["phase181-ros2-peer-protocol"] = run(
             [sys.executable, "-m", "unittest", PHASE181_ROS2_PEER_PROTOCOL_REGRESSION],
             "Phase181 custom ROS2 peer protocol regressions",

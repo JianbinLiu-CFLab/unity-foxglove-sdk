@@ -695,6 +695,42 @@ class RunCiTests(unittest.TestCase):
         self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
         self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
 
+    def test_phase184_acceptance_regressions_are_in_the_python_tooling_lane(self) -> None:
+        """The default Phase181 helper lane must execute both fail-closed Phase184 suites."""
+        with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase181-ros2-regression"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        observed = [(call.args[0], call.args[1]) for call in run.call_args_list]
+        self.assertIn(
+            (
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
+                ],
+                "Phase184 profile acceptance evidence protocol regressions",
+            ),
+            observed,
+        )
+        self.assertIn(
+            (
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
+                ],
+                "Phase184 profile acceptance owned-orchestrator regressions",
+            ),
+            observed,
+        )
+
     def test_only_help_lists_dotnet_lane_selectors(self) -> None:
         """CLI help should expose each direct dotnet lane selector."""
         with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
