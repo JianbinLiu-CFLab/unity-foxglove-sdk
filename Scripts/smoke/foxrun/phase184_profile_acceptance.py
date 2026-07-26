@@ -1000,6 +1000,17 @@ def _wait_for_unity_context(config: Mapping[str, object]) -> None:
     )
 
 
+def _wait_for_deferred_bridge_gate(config: Mapping[str, object]) -> None:
+    """Bound native readiness only after the correlated Play context exists."""
+
+    _wait_for_unity_context(config)
+    wait_for_log_marker(
+        config,
+        _DEFERRED_BRIDGE_START_MARKER,
+        120.0,
+    )
+
+
 def _message_contains_stage(value: object, expected: str) -> bool:
     """Search decoded JSON/Protobuf values for one exact correlation stage."""
 
@@ -5138,11 +5149,7 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             streams=streams,
         )
         if _requires_deferred_bridge_start(config):
-            wait_for_log_marker(
-                config,
-                _DEFERRED_BRIDGE_START_MARKER,
-                120.0,
-            )
+            _wait_for_deferred_bridge_gate(config)
             parent_evidence.update(
                 _start_bridge_actor(
                     config=config,

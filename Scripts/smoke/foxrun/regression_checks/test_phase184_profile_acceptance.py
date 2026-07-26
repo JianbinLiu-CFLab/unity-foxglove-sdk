@@ -1055,17 +1055,41 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             )
         ]
         unity_launch = batch.index("unity = _launch_logged_process(")
-        native_gate = batch.index(
-            'wait_for_log_marker(\n'
-            '                config,\n'
-            '                _DEFERRED_BRIDGE_START_MARKER,'
-        )
+        native_gate = batch.index("_wait_for_deferred_bridge_gate(config)")
         bridge_launch = batch.index(
             "_start_bridge_actor(",
             native_gate,
         )
         self.assertLess(unity_launch, native_gate)
         self.assertLess(native_gate, bridge_launch)
+
+    def test_deferred_bridge_gate_starts_native_deadline_after_unity_context(self):
+        module = load_module()
+        calls = []
+        config = {
+            "case": "multi-target",
+            "token": "p184g_A1b2C3d4E5f6",
+        }
+        with mock.patch.object(
+            module,
+            "_wait_for_unity_context",
+            side_effect=lambda value: calls.append(("context", value)),
+        ), mock.patch.object(
+            module,
+            "wait_for_log_marker",
+            side_effect=lambda value, marker, timeout: calls.append(
+                ("marker", value, marker, timeout)
+            ),
+        ):
+            module._wait_for_deferred_bridge_gate(config)
+
+        self.assertEqual(
+            [
+                ("context", config),
+                ("marker", config, module._DEFERRED_BRIDGE_START_MARKER, 120.0),
+            ],
+            calls,
+        )
 
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
         source = (
