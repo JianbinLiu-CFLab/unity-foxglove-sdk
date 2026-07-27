@@ -498,6 +498,18 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=False,
+                graph_evidence=True,
+                origin_probe_ready=True,
+                initial_remote_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_initial_bidirectional_probe(
+                requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=False,
                 origin_probe_ready=True,
                 initial_remote_applied=False,
@@ -508,6 +520,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=True,
                 origin_probe_ready=False,
                 initial_remote_applied=False,
@@ -518,6 +531,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertTrue(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=True,
                 origin_probe_ready=True,
                 initial_remote_applied=False,
@@ -528,6 +542,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=True,
                 origin_probe_ready=True,
                 initial_remote_applied=False,
@@ -538,6 +553,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertTrue(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=True,
                 origin_probe_ready=True,
                 initial_remote_applied=False,
@@ -548,6 +564,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(
             peer.should_publish_initial_bidirectional_probe(
                 requires_bidirectional=True,
+                inbound_applied=True,
                 graph_evidence=True,
                 origin_probe_ready=True,
                 initial_remote_applied=True,
@@ -874,6 +891,13 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(peer.PeerFailure, "FAIL_REMOTE_APPLY"):
+                peer.read_successful_worker_result(result_path, lock)
+
+            result_path.write_text(
+                json.dumps({"verdict": "FAIL_STATE_TRANSITION"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(peer.PeerFailure, "FAIL_STATE_TRANSITION"):
                 peer.read_successful_worker_result(result_path, lock)
 
             result_path.write_text(

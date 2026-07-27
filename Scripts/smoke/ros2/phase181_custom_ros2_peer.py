@@ -425,15 +425,15 @@ def read_successful_worker_result(path: pathlib.Path, lock: StaticInterfaceLock)
         raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker did not produce a valid result summary.") from exc
     if not isinstance(parsed, Mapping):
         raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker result was not an object.")
+    verdict = parsed.get("verdict")
+    if isinstance(verdict, str) and verdict.startswith("FAIL_"):
+        raise PeerFailure(verdict, "The helper-owned typed worker did not complete every required proof.")
     try:
         protocol.require_interface_digest(lock.interface_digest, parsed.get("interfaceDigest", ""))
     except protocol.ProtocolFailure as exc:
         raise PeerFailure(exc.code, "The typed worker result did not match the locked interface digest.") from exc
-    verdict = parsed.get("verdict")
     if verdict == "PASS":
         return parsed
-    if isinstance(verdict, str) and verdict.startswith("FAIL_"):
-        raise PeerFailure(verdict, "The helper-owned typed worker did not complete every required proof.")
     raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker emitted an invalid verdict.")
 
 
@@ -1374,6 +1374,7 @@ def can_complete_live_evidence(evidence: Mapping[str, object], probe_role: str =
 def should_publish_initial_bidirectional_probe(
     *,
     requires_bidirectional: bool,
+    inbound_applied: bool,
     graph_evidence: bool,
     origin_probe_ready: bool,
     initial_remote_applied: bool,
@@ -1384,6 +1385,7 @@ def should_publish_initial_bidirectional_probe(
 
     if (
         not requires_bidirectional
+        or not inbound_applied
         or not graph_evidence
         or not origin_probe_ready
         or initial_remote_applied
@@ -2090,6 +2092,7 @@ def run_typed_worker(args: argparse.Namespace) -> int:
 
             if should_publish_initial_bidirectional_probe(
                 requires_bidirectional=requires_bidirectional,
+                inbound_applied=evidence["inboundApplied"] is True,
                 graph_evidence=evidence["graphEvidence"] is True,
                 origin_probe_ready=unity_origin_probe is not None,
                 initial_remote_applied=initial_remote_applied,
