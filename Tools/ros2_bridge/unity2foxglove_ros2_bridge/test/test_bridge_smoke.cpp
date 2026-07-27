@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <array>
 #include <exception>
 #include <limits>
@@ -808,6 +809,7 @@ TEST(
   Unity2FoxgloveRos2BridgeProtocol,
   HealthReadinessDoesNotInitializeTheDeferredRosNode)
 {
+  rclcpp::init(0, nullptr);
   const auto sockets = MakeConnectedSocketPair();
   ASSERT_NE(kInvalidSocket, sockets[0]);
   ASSERT_NE(kInvalidSocket, sockets[1]);
@@ -837,6 +839,82 @@ TEST(
   EXPECT_EQ("phase184-deferred-health", response.header.value("requestId", ""));
   EXPECT_EQ("ok", response.header.value("status", ""));
   EXPECT_EQ(0U, node_creation_attempts);
+  rclcpp::shutdown();
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  IdleReadStopsWhenTheOwningRosContextStops)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(server_socket.get());
+
+  std::atomic<bool> context_ok {true};
+  std::atomic<int> outcome {0};
+  std::thread reader(
+    [&]() {
+      std::vector<uint8_t> buffer;
+      try {
+        (void)read_exact(
+          server_socket.get(),
+          buffer,
+          4,
+          rclcpp::Node::SharedPtr {},
+          [&]() {return context_ok.load();});
+        outcome.store(1);
+      } catch (const ClientClosedException &) {
+        outcome.store(2);
+      } catch (...) {
+        outcome.store(3);
+      }
+    });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  context_ok.store(false);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (outcome.load() == 0 && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  const bool stopped_before_socket_close = outcome.load() != 0;
+  if (!stopped_before_socket_close) {
+    EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  }
+  reader.join();
+
+  EXPECT_TRUE(stopped_before_socket_close);
+  EXPECT_EQ(2, outcome.load());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  LaterDeferredSessionRetainsTheProcessLevelRosNode)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto process_node = std::make_shared<rclcpp::Node>(
+    "phase184_bridge_deferred_process_node_test",
+    options);
+
+  size_t node_creation_attempts = 0;
+  DeferredBridgeSession session(
+    PayloadFormat::CdrWithEncapsulation,
+    process_node,
+    [&]() -> rclcpp::Node::SharedPtr {
+      ++node_creation_attempts;
+      return process_node;
+    });
+
+  EXPECT_EQ(process_node, session.node());
+  EXPECT_NO_THROW(session.spin_some());
+  EXPECT_EQ(0U, node_creation_attempts);
+  context->shutdown("phase184 deferred process node test complete");
 }
 
 TEST(

@@ -846,16 +846,25 @@ SocketHandle accept_with_timeout(SocketHandle listen_fd)
   return client_fd;
 }
 
+using RosContextOk = std::function<bool()>;
+
 bool read_exact(
   SocketHandle fd,
   std::vector<uint8_t> & buffer,
   size_t count,
-  const rclcpp::Node::SharedPtr & node)
+  const rclcpp::Node::SharedPtr & node,
+  const RosContextOk & context_ok)
 {
+  if (!context_ok) {
+    throw std::invalid_argument("ROS context predicate is required");
+  }
   buffer.assign(count, 0);
   size_t offset = 0;
   auto stalled_since = std::chrono::steady_clock::time_point {};
   while (offset < count) {
+    if (!context_ok()) {
+      throw ClientClosedException();
+    }
     const auto received = receive_socket(fd, buffer.data() + offset, count - offset);
     if (received == 0) {
       if (offset == 0) {
@@ -895,6 +904,26 @@ bool read_exact(
     stalled_since = std::chrono::steady_clock::time_point {};
   }
   return true;
+}
+
+bool read_exact(
+  SocketHandle fd,
+  std::vector<uint8_t> & buffer,
+  size_t count,
+  const rclcpp::Node::SharedPtr & node)
+{
+  return read_exact(
+    fd,
+    buffer,
+    count,
+    node,
+    [&node]()
+    {
+      if (!node) {
+        return rclcpp::ok();
+      }
+      return rclcpp::ok(node->get_node_base_interface()->get_context());
+    });
 }
 
 void write_all(SocketHandle fd, const std::vector<uint8_t> & bytes)
@@ -1357,7 +1386,17 @@ class DeferredBridgeSession
 {
 public:
   DeferredBridgeSession(PayloadFormat payload_format, NodeFactory node_factory)
-  : payload_format_(payload_format), node_factory_(std::move(node_factory))
+  : DeferredBridgeSession(payload_format, rclcpp::Node::SharedPtr {}, std::move(node_factory))
+  {
+  }
+
+  DeferredBridgeSession(
+    PayloadFormat payload_format,
+    rclcpp::Node::SharedPtr process_node,
+    NodeFactory node_factory)
+  : payload_format_(payload_format),
+    node_factory_(std::move(node_factory)),
+    node_(std::move(process_node))
   {
     if (!node_factory_) {
       throw std::invalid_argument("deferred bridge node factory is required");
@@ -1367,7 +1406,9 @@ public:
   BridgeNode & require_bridge()
   {
     if (!bridge_) {
-      node_ = node_factory_();
+      if (!node_) {
+        node_ = node_factory_();
+      }
       if (!node_) {
         throw std::runtime_error("deferred bridge node factory returned no node");
       }
@@ -1651,6 +1692,7 @@ int main(int argc, char ** argv)
       try {
         DeferredBridgeSession session(
           options.payload_format,
+          node,
           [&node]()
           {
             if (!node) {
