@@ -338,6 +338,39 @@ class VersionBumpTests(unittest.TestCase):
 class RunCiTests(unittest.TestCase):
     """Regression coverage for local CI runner reliability."""
 
+    PHASE184_ACCEPTANCE_TOOLING_SUITES = (
+        (
+            "PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance_protocol",
+            "Phase184 acceptance protocol tooling regressions",
+        ),
+        (
+            "PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance",
+            "Phase184 acceptance orchestrator tooling regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_DESKTOP_LIVE_PROTOCOL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_protocol",
+            "Phase184 Foxglove Desktop live protocol regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_CLI_INSTALL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install",
+            "Phase184 Foxglove CLI installer regressions",
+        ),
+        (
+            "PHASE184_WINDOWS_JOB_OWNER_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_windows_job_owner",
+            "Phase184 Windows Job owner regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance",
+            "Phase184 Foxglove Desktop live coordinator regressions",
+        ),
+    )
+
     def setUp(self) -> None:
         """Load a fresh run_ci module for each test."""
         self.run_ci = load_module("run_ci_under_test", RUN_CI_PATH)
@@ -693,11 +726,25 @@ class RunCiTests(unittest.TestCase):
                 [sys.executable, str(RUN_CI_PATH.resolve()), "--only", job.name],
                 job.command,
         )
-        self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
-        self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
+        self.assertEqual(
+            {"mcap-conformance", "phase184-acceptance-tooling"},
+            {job.name for job in jobs if job.disable_timeout},
+        )
+
+    def test_phase184_acceptance_regression_module_constants_are_exact(self) -> None:
+        """The tooling lane must name only the six maintained pure unittest modules."""
+        expected = {
+            name: module
+            for name, module, _label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
+        }
+
+        self.assertEqual(
+            expected,
+            {name: getattr(self.run_ci, name, None) for name in expected},
+        )
 
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
-        """The Phase184 tooling selector must execute only its two fail-closed suites."""
+        """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
             with mock.patch.object(
                 sys,
@@ -709,26 +756,41 @@ class RunCiTests(unittest.TestCase):
         observed = [(call.args[0], call.args[1]) for call in run.call_args_list]
         self.assertEqual(
             [
-                (
-                    [
-                        sys.executable,
-                        "-m",
-                        "unittest",
-                        self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
-                    ],
-                    "Phase184 acceptance protocol tooling regressions",
-                ),
-                (
-                    [
-                        sys.executable,
-                        "-m",
-                        "unittest",
-                        self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
-                    ],
-                    "Phase184 acceptance orchestrator tooling regressions",
-                ),
+                ([sys.executable, "-m", "unittest", module], label)
+                for _name, module, label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
             ],
             observed,
+        )
+        self.assertTrue(
+            all(
+                call.kwargs.get("disable_timeout", False) is False
+                for call in run.call_args_list
+            )
+        )
+
+        phase184_modules = [
+            module
+            for _name, module, _label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
+        ]
+        self.assertTrue(
+            all(
+                command[:3] == [sys.executable, "-m", "unittest"]
+                and len(command) == 4
+                for command, _label in observed
+            )
+        )
+        self.assertTrue(
+            all(
+                module.startswith("Scripts.smoke.foxrun.regression_checks.test_")
+                for module in phase184_modules
+            )
+        )
+        self.assertTrue(
+            {
+                "Scripts.smoke.foxrun.phase184_profile_acceptance",
+                "Scripts.smoke.foxrun.phase184_foxglove_cli_install",
+                "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance",
+            }.isdisjoint(phase184_modules)
         )
 
         with mock.patch.object(self.run_ci, "run", return_value=True) as phase181_run:
@@ -739,24 +801,16 @@ class RunCiTests(unittest.TestCase):
             ):
                 self.assertEqual(0, self.run_ci.main())
 
-        phase181_commands = [call.args[0] for call in phase181_run.call_args_list]
-        self.assertNotIn(
-            [
-                sys.executable,
-                "-m",
-                "unittest",
-                self.run_ci.PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION,
-            ],
-            phase181_commands,
-        )
-        self.assertNotIn(
-            [
-                sys.executable,
-                "-m",
-                "unittest",
-                self.run_ci.PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
-            ],
-            phase181_commands,
+        phase181_commands = {
+            tuple(call.args[0])
+            for call in phase181_run.call_args_list
+        }
+        self.assertTrue(
+            all(
+                (sys.executable, "-m", "unittest", module)
+                not in phase181_commands
+                for module in phase184_modules
+            )
         )
 
     def test_phase184_acceptance_tooling_lane_propagates_failure(self) -> None:
@@ -765,7 +819,7 @@ class RunCiTests(unittest.TestCase):
         with mock.patch.object(
             self.run_ci,
             "run",
-            side_effect=(False, True),
+            side_effect=(False, True, True, True, True, True),
         ):
             with mock.patch.object(
                 sys,

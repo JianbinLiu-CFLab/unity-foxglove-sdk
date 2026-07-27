@@ -69,6 +69,18 @@ PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION = (
 PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION = (
     "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance"
 )
+PHASE184_FOXGLOVE_DESKTOP_LIVE_PROTOCOL_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_protocol"
+)
+PHASE184_FOXGLOVE_CLI_INSTALL_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install"
+)
+PHASE184_WINDOWS_JOB_OWNER_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_windows_job_owner"
+)
+PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance"
+)
 PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest",
     "Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface",
@@ -399,6 +411,7 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
             CiJob(
                 "phase184-acceptance-tooling",
                 [sys.executable, script, "--only", "phase184-acceptance-tooling"],
+                disable_timeout=True,
             ),
             CiJob(
                 "mcap-conformance",
@@ -850,7 +863,7 @@ def main() -> int:
             "Phase179 Zenoh topology ownership and readiness regressions",
         )
 
-    # --- pure Phase184 acceptance protocol and orchestrator tooling regressions ---
+    # --- pure Phase184 acceptance tooling regressions ---
     if args.only in (None, "phase184-acceptance-tooling"):
         results["phase184-profile-acceptance-protocol"] = run(
             [
@@ -869,6 +882,42 @@ def main() -> int:
                 PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION,
             ],
             "Phase184 acceptance orchestrator tooling regressions",
+        )
+        results["phase184-foxglove-desktop-live-protocol"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_FOXGLOVE_DESKTOP_LIVE_PROTOCOL_REGRESSION,
+            ],
+            "Phase184 Foxglove Desktop live protocol regressions",
+        )
+        results["phase184-foxglove-cli-installer"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_FOXGLOVE_CLI_INSTALL_REGRESSION,
+            ],
+            "Phase184 Foxglove CLI installer regressions",
+        )
+        results["phase184-windows-job-owner"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_WINDOWS_JOB_OWNER_REGRESSION,
+            ],
+            "Phase184 Windows Job owner regressions",
+        )
+        results["phase184-foxglove-desktop-live-coordinator"] = run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION,
+            ],
+            "Phase184 Foxglove Desktop live coordinator regressions",
         )
 
     # --- pure Phase181 custom-interface helper and source-package regressions ---
