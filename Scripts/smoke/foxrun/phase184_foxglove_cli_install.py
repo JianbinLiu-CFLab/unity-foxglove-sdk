@@ -83,11 +83,14 @@ _MINIMAL_PROCESS_ENVIRONMENT_NAMES = frozenset(
 
 
 def _fail(message: object) -> protocol.AcceptanceFailure:
+    """Return a stable fail-closed CLI provenance error."""
     return protocol.AcceptanceFailure(protocol.FAIL_CLI_PROVENANCE, message)
 
 
 @dataclasses.dataclass(frozen=True)
 class ReleaseAsset:
+    """Official release metadata for the selected Windows CLI asset."""
+
     release_tag: str
     release_version: str
     asset_name: str
@@ -107,6 +110,8 @@ class VerifiedCliIdentity:
     receipt_path: str
 
     def __post_init__(self) -> None:
+        """Normalize and validate the externally supplied installation identity."""
+
         installed_path = _validated_windows_path(
             self.installed_path,
             "Verified Foxglove CLI installed path",
@@ -153,6 +158,8 @@ class VerifiedCliIdentity:
             raise _fail("Verified Foxglove CLI identity document is too large.")
 
     def _document(self) -> dict[str, str]:
+        """Build the validated identity document."""
+
         return {
             "architecture": self.architecture,
             "assetUrl": self.asset_url,
@@ -177,6 +184,8 @@ class ExecutableFileIdentity:
     file_id: int
 
     def __post_init__(self) -> None:
+        """Reject malformed Windows file identities."""
+
         if (
             isinstance(self.volume_serial, bool)
             or not isinstance(self.volume_serial, int)
@@ -196,6 +205,8 @@ class ExecutableSnapshot:
     sha256: str
 
     def __post_init__(self) -> None:
+        """Validate the leased executable identity and digest."""
+
         if not isinstance(self.identity, ExecutableFileIdentity):
             raise _fail("Executable snapshot identity is invalid.")
         object.__setattr__(
@@ -207,6 +218,8 @@ class ExecutableSnapshot:
 
 @dataclasses.dataclass(frozen=True)
 class _BoundedProcessResult:
+    """Captured result from one output-bounded child process."""
+
     returncode: int
     stdout: bytes
     stderr: bytes
@@ -214,6 +227,8 @@ class _BoundedProcessResult:
 
 @dataclasses.dataclass(frozen=True)
 class InstallerDependencies:
+    """Injectable side effects used by the reversible installer transaction."""
+
     release_fetcher: Callable[[str], object]
     downloader: Callable[[str, str], None]
     command_runner: Callable[
@@ -233,21 +248,33 @@ class LocalFilesystem:
 
     @staticmethod
     def _path(path: str) -> pathlib.Path:
+        """Convert a validated path string to a local path object."""
+
         return pathlib.Path(path)
 
     def ensure_parent(self, path: str) -> None:
+        """Create the destination parent directory when absent."""
+
         self._path(path).parent.mkdir(parents=True, exist_ok=True)
 
     def exists(self, path: str) -> bool:
+        """Return whether the path names a regular file."""
+
         return self._path(path).is_file()
 
     def size(self, path: str) -> int:
+        """Return the file size in bytes."""
+
         return self._path(path).stat().st_size
 
     def sha256(self, path: str) -> str:
+        """Return the file's lowercase SHA-256 digest."""
+
         return protocol.sha256_file(self._path(path))
 
     def new_sibling_temp(self, target: str, purpose: str) -> str:
+        """Allocate a unique sibling path without creating the file."""
+
         safe_purpose = re.sub(r"[^a-z0-9-]+", "-", purpose.lower()).strip("-")
         if not safe_purpose:
             raise _fail("CLI temporary-file purpose is invalid.")
@@ -262,6 +289,8 @@ class LocalFilesystem:
         return temporary
 
     def copy_exclusive(self, source: str, destination: str) -> None:
+        """Copy a file durably while refusing to overwrite the destination."""
+
         destination_path = self._path(destination)
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         with self._path(source).open("rb") as input_stream:
@@ -275,9 +304,13 @@ class LocalFilesystem:
                 os.fsync(output_stream.fileno())
 
     def publish_exclusive(self, source: str, destination: str) -> None:
+        """Publish a sibling temporary file without replacing an existing file."""
+
         os.rename(self._path(source), self._path(destination))
 
     def remove(self, path: str) -> None:
+        """Remove one file when present."""
+
         with contextlib.suppress(FileNotFoundError):
             self._path(path).unlink()
 
@@ -286,13 +319,19 @@ class LocalFilesystem:
         path: str,
         payload: Mapping[str, object],
     ) -> None:
+        """Write one bounded installer receipt atomically."""
+
         protocol.write_json_atomic(self._path(path), payload)
 
     def load_receipt(self, path: str) -> dict[str, object]:
+        """Load and validate one installer receipt."""
+
         return protocol.load_cli_receipt(self._path(path))
 
 
 def _validated_windows_path(path: object, label: str) -> str:
+    """Return one normalized absolute Windows path or fail closed."""
+
     try:
         value = os.fspath(path)
     except TypeError as exc:
@@ -337,6 +376,8 @@ def build_minimal_process_environment(
 
 
 class _BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+    """Win32 file metadata returned for an open executable handle."""
+
     _fields_ = (
         ("dwFileAttributes", wintypes.DWORD),
         ("ftCreationTime", wintypes.FILETIME),
@@ -365,6 +406,8 @@ class WindowsExecutableLease:
     _DUPLICATE_SAME_ACCESS = 0x00000002
 
     def __init__(self, path: os.PathLike[str] | str):
+        """Prepare a lease for one normalized executable path."""
+
         self.path = _validated_windows_path(
             path,
             "Executable lease path",
@@ -374,6 +417,8 @@ class WindowsExecutableLease:
         self._kernel32: Any | None = None
 
     def _configure_api(self) -> Any:
+        """Load and type the Win32 handle APIs used by the lease."""
+
         if os.name != "nt":
             raise _fail("Executable lease requires Windows.")
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -409,6 +454,8 @@ class WindowsExecutableLease:
         return kernel32
 
     def _close_handles(self) -> bool:
+        """Close all owned handles and report whether cleanup was complete."""
+
         kernel32 = self._kernel32
         handles = tuple(reversed(self._handles))
         self._handles.clear()
@@ -427,6 +474,8 @@ class WindowsExecutableLease:
         self,
         handle: int,
     ) -> tuple[ExecutableFileIdentity, int]:
+        """Read stable identity and attributes from one owned handle."""
+
         kernel32 = self._kernel32
         if kernel32 is None:
             raise _fail("Executable lease is not active.")
@@ -451,6 +500,8 @@ class WindowsExecutableLease:
         *,
         final: bool,
     ) -> int:
+        """Open one path component while rejecting reparse points."""
+
         kernel32 = self._kernel32
         if kernel32 is None:
             raise _fail("Executable lease is not active.")
@@ -491,6 +542,8 @@ class WindowsExecutableLease:
         return handle_value
 
     def __enter__(self) -> WindowsExecutableLease:
+        """Acquire handles for every path component and the executable."""
+
         self._kernel32 = self._configure_api()
         target = pathlib.Path(self.path)
         components = [*reversed(target.parents), target]
@@ -508,6 +561,8 @@ class WindowsExecutableLease:
             raise
 
     def __exit__(self, exc_type, exc, traceback) -> bool:
+        """Release every lease handle without suppressing body failures."""
+
         del exc, traceback
         clean = self._close_handles()
         if not clean and exc_type is None:
@@ -515,6 +570,8 @@ class WindowsExecutableLease:
         return False
 
     def path_identity(self) -> ExecutableFileIdentity:
+        """Reopen the path and return its current stable file identity."""
+
         if self._file_handle is None:
             raise _fail("Executable lease is not active.")
         handle = self._open_component(pathlib.Path(self.path), final=True)
@@ -529,6 +586,8 @@ class WindowsExecutableLease:
                 )
 
     def snapshot(self) -> ExecutableSnapshot:
+        """Hash the leased executable through a duplicated read handle."""
+
         handle = self._file_handle
         kernel32 = self._kernel32
         if handle is None or kernel32 is None:
@@ -573,6 +632,8 @@ class WindowsExecutableLease:
 
 
 def _resolve_receipt_path(path: object) -> str:
+    """Resolve an absolute or repository-relative receipt path safely."""
+
     try:
         value = os.fspath(path)
     except TypeError as exc:
@@ -635,6 +696,8 @@ def _resolve_receipt_path(path: object) -> str:
 def _require_distinct_windows_paths(
     paths: Sequence[tuple[str, object]],
 ) -> None:
+    """Reject transaction paths that alias under Windows path semantics."""
+
     seen: set[str] = set()
     for label, path in paths:
         key = protocol.windows_path_key(path, label=label)
@@ -646,6 +709,8 @@ def _require_distinct_windows_paths(
 
 
 def _revision_slug(revision: object) -> str:
+    """Return a bounded filesystem-safe release revision component."""
+
     if not isinstance(revision, str):
         return "unknown"
     candidate = revision.strip()
@@ -727,6 +792,8 @@ def select_release_asset(release: object) -> ReleaseAsset:
 
 
 def _fetch_release_production(endpoint: str) -> object:
+    """Fetch bounded release metadata from the official GitHub endpoint."""
+
     if endpoint != RELEASE_ENDPOINT:
         raise _fail("Foxglove CLI release endpoint is not official.")
     request = urllib.request.Request(
@@ -754,6 +821,8 @@ def _fetch_release_production(endpoint: str) -> object:
 
 
 def _download_production(asset_url: str, destination: str) -> None:
+    """Download one bounded official asset into an exclusive destination."""
+
     protocol.validate_official_asset_url(asset_url)
     request = urllib.request.Request(
         asset_url,
@@ -793,6 +862,8 @@ def _download_production(asset_url: str, destination: str) -> None:
 
 
 def _terminate_and_reap(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a child if needed and always reap it."""
+
     if process.poll() is None:
         with contextlib.suppress(OSError):
             process.terminate()
@@ -865,6 +936,8 @@ def _run_bounded_process(
     reader_failed = threading.Event()
 
     def drain(stream: Any, output: bytearray) -> None:
+        """Drain one child stream into a bounded shared buffer."""
+
         read_chunk = getattr(stream, "read1", stream.read)
         try:
             while True:
@@ -961,6 +1034,8 @@ def _run_command_production(
     arguments: tuple[str, ...],
     environment: Mapping[str, str] | None = None,
 ) -> str:
+    """Run the sole permitted CLI version command with bounded output."""
+
     if arguments != ("version",):
         raise _fail("Foxglove CLI command is not permitted.")
     try:
@@ -993,6 +1068,8 @@ def _run_command_production(
 def _resolve_command_production(
     environment: Mapping[str, str] | None = None,
 ) -> str:
+    """Resolve the active CLI path in a fresh non-interactive PowerShell."""
+
     command = (
         "$resolved = Get-Command foxglove -CommandType Application "
         "-ErrorAction Stop; [Console]::Out.Write($resolved.Source)"
@@ -1035,10 +1112,14 @@ def _resolve_command_production(
 
 
 def _atomic_replace_production(source: str, destination: str) -> None:
+    """Atomically replace the destination with one sibling source file."""
+
     os.replace(pathlib.Path(source), pathlib.Path(destination))
 
 
 def _production_dependencies() -> InstallerDependencies:
+    """Construct the Windows production dependency set."""
+
     if os.name != "nt":
         raise _fail("Foxglove CLI installation is supported only on Windows.")
     return InstallerDependencies(
@@ -1058,6 +1139,8 @@ def _run_version(
     path: str,
     dependencies: InstallerDependencies,
 ) -> str:
+    """Run and normalize the version reported by one CLI executable."""
+
     environment = build_minimal_process_environment(
         dependencies.process_environment
     )
@@ -1075,6 +1158,8 @@ def _run_version(
 
 
 def _installed_utc(clock: Callable[[], dt.datetime]) -> str:
+    """Return one timezone-aware installation timestamp in UTC."""
+
     try:
         value = clock()
     except Exception as exc:
@@ -1090,6 +1175,8 @@ def _installed_utc(clock: Callable[[], dt.datetime]) -> str:
 
 
 def _remove_quietly(filesystem: Any, path: str | None) -> None:
+    """Best-effort remove one installer-owned temporary file."""
+
     if path is None:
         return
     try:
@@ -1104,6 +1191,8 @@ def _prepare_backup(
     previous_revision: object | None,
     reserved_paths: Sequence[tuple[str, object]],
 ) -> tuple[str, str, bool, bool]:
+    """Preserve an existing installation in a verified immutable backup."""
+
     filesystem = dependencies.filesystem
     if not filesystem.exists(install_path):
         backup_path = build_backup_path(
@@ -1217,6 +1306,8 @@ def _restore_previous_binary(
     had_previous: bool,
     dependencies: InstallerDependencies,
 ) -> None:
+    """Restore the prior binary or remove a newly introduced installation."""
+
     filesystem = dependencies.filesystem
     if not had_previous:
         filesystem.remove(install_path)
@@ -1246,6 +1337,8 @@ def _verify_installed_identity(
     download_sha256: str,
     dependencies: InstallerDependencies,
 ) -> tuple[str, str]:
+    """Cross-check installed and freshly resolved CLI version and digest."""
+
     filesystem = dependencies.filesystem
     installed_version = _run_version(install_path, dependencies)
     installed_sha256 = protocol.validate_sha256(
@@ -1296,6 +1389,8 @@ def _capture_leased_executable(
     *,
     expected: ExecutableSnapshot | None = None,
 ) -> ExecutableSnapshot:
+    """Capture a stable leased snapshot and reject path replacement."""
+
     try:
         snapshot = lease.snapshot()
         path_identity = lease.path_identity()
@@ -1433,6 +1528,8 @@ def _restore_previous_receipt(
     receipt_previous_sha256: str | None,
     dependencies: InstallerDependencies,
 ) -> None:
+    """Restore the prior receipt or remove a newly written receipt."""
+
     filesystem = dependencies.filesystem
     if not receipt_preexisted:
         filesystem.remove(receipt_path)
@@ -1469,6 +1566,8 @@ def _restore_previous_receipt(
 
 
 def _coerce_failure(exc: Exception) -> protocol.AcceptanceFailure:
+    """Preserve stable failures and wrap unexpected installer errors."""
+
     if isinstance(exc, protocol.AcceptanceFailure):
         return exc
     return _fail("Foxglove CLI installation failed.")
@@ -1719,6 +1818,8 @@ def install_cli(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the direct installer command line."""
+
     parser = argparse.ArgumentParser(
         description=(
             "Install and provenance-check the official Windows amd64 "
@@ -1734,6 +1835,8 @@ def main(
     argv: Sequence[str] | None = None,
     dependencies: InstallerDependencies | None = None,
 ) -> int:
+    """Install the requested official CLI and return a process status."""
+
     args = parse_args(argv)
     active_dependencies = dependencies or _production_dependencies()
     install_cli(
@@ -1745,6 +1848,8 @@ def main(
 
 
 def _entrypoint() -> int:
+    """Translate stable acceptance failures into a nonzero process status."""
+
     try:
         return main()
     except protocol.AcceptanceFailure as exc:

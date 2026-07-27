@@ -62,6 +62,8 @@ OWNERSHIP_FAILURE_CODES = frozenset(
 
 
 def _bounded_message(value: object) -> str:
+    """Handle the bounded message step."""
+
     text = value if isinstance(value, str) else type(value).__name__
     text = re.sub(r"[ \t]+", " ", text.replace("\r", " ").replace("\n", " ")).strip()
     if not text:
@@ -75,6 +77,8 @@ class OwnershipFailure(RuntimeError):
     """Stable machine code plus a bounded one-line ownership diagnostic."""
 
     def __init__(self, code: str, message: object):
+        """Initialize the ownership failure."""
+
         if code not in OWNERSHIP_FAILURE_CODES:
             raise ValueError("Unknown Windows ownership failure code.")
         self.code = code
@@ -86,6 +90,8 @@ class ProcessOpenFailure(OSError):
     """OpenProcess failure that retains the exact Win32 error code."""
 
     def __init__(self, win32_error: int):
+        """Initialize the process open failure."""
+
         self.win32_error = int(win32_error)
         super().__init__(
             self.win32_error,
@@ -97,6 +103,8 @@ class HandleCloseFailure(OSError):
     """CloseHandle failure that retains the exact Win32 error code."""
 
     def __init__(self, win32_error: int):
+        """Initialize the handle close failure."""
+
         self.win32_error = int(win32_error)
         super().__init__(
             self.win32_error,
@@ -105,10 +113,14 @@ class HandleCloseFailure(OSError):
 
 
 def _fail(code: str, message: str) -> OwnershipFailure:
+    """Handle the fail step."""
+
     return OwnershipFailure(code, message)
 
 
 def _path_text(value: os.PathLike[str] | str, *, label: str) -> str:
+    """Handle the path text step."""
+
     try:
         text = os.fspath(value)
         protocol.windows_path_key(text, label=label)
@@ -120,6 +132,8 @@ def _path_text(value: os.PathLike[str] | str, *, label: str) -> str:
 
 
 def _same_path(left: str, right: str) -> bool:
+    """Handle the same path step."""
+
     try:
         return protocol.windows_paths_equal(left, right)
     except (TypeError, ValueError, protocol.AcceptanceFailure):
@@ -135,6 +149,8 @@ class ProcessIdentity:
     executable: str
 
     def __post_init__(self) -> None:
+        """Validate the process identity invariants."""
+
         if (
             isinstance(self.pid, bool)
             or not isinstance(self.pid, int)
@@ -169,6 +185,8 @@ class CloseSummary:
 
 @dataclasses.dataclass(slots=True)
 class _CreatedProcess:
+    """Represent the created process contract."""
+
     pid: int
     process_handle: int
     thread_handle: int
@@ -179,6 +197,8 @@ class _CreatedProcess:
     )
 
     def cleanup_now(self) -> bool:
+        """Handle the cleanup now step."""
+
         cleanup = self._cleanup
         self._cleanup = None
         if not callable(cleanup):
@@ -189,13 +209,19 @@ class _CreatedProcess:
             return False
 
     def disarm_cleanup(self) -> None:
+        """Handle the disarm cleanup step."""
+
         self._cleanup = None
 
     def __del__(self) -> None:
+        """Handle the del step."""
+
         self.cleanup_now()
 
 
 def _identity_key(identity: ProcessIdentity) -> tuple[int, int, str]:
+    """Handle the identity key step."""
+
     return (
         identity.pid,
         identity.creation_time_100ns,
@@ -204,6 +230,8 @@ def _identity_key(identity: ProcessIdentity) -> tuple[int, int, str]:
 
 
 def _identities_match(left: ProcessIdentity, right: ProcessIdentity) -> bool:
+    """Handle the identities match step."""
+
     return (
         left.pid == right.pid
         and left.creation_time_100ns == right.creation_time_100ns
@@ -212,6 +240,8 @@ def _identities_match(left: ProcessIdentity, right: ProcessIdentity) -> bool:
 
 
 def _validate_timeout(value: object, *, allow_zero: bool = True) -> float:
+    """Validate timeout."""
+
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
@@ -231,6 +261,8 @@ def _validate_launch(
     stdout_log: os.PathLike[str] | str,
     stderr_log: os.PathLike[str] | str,
 ) -> tuple[str, tuple[str, ...], str, dict[str, str], str, str, str]:
+    """Validate launch."""
+
     application = _path_text(application_path, label="Application path")
     working_directory = _path_text(cwd, label="Working directory")
     standard_output = _path_text(stdout_log, label="Standard-output log")
@@ -312,6 +344,8 @@ class WindowsJobOwner:
             RootHandoffPolicy.DESKTOP_SINGLE_INSTANCE
         ),
     ) -> None:
+        """Initialize the windows job owner."""
+
         self._platform_name = os.name if platform_name is None else platform_name
         if self._platform_name != "nt":
             raise _fail(
@@ -356,6 +390,8 @@ class WindowsJobOwner:
 
     @property
     def recorded_external_processes(self) -> tuple[ProcessIdentity, ...]:
+        """Handle the recorded external processes step."""
+
         return tuple(
             sorted(
                 self._recorded_externals.values(),
@@ -364,11 +400,15 @@ class WindowsJobOwner:
         )
 
     def _require_active(self) -> tuple[object, int]:
+        """Require active."""
+
         if self._closed or self._api is None or self._job_handle is None:
             raise _fail(FAIL_PROCESS_OWNERSHIP, "Windows Job ownership is closed.")
         return self._api, self._job_handle
 
     def _abort_created(self, created: object) -> bool:
+        """Handle the abort created step."""
+
         api = self._api
         if api is None:
             return False
@@ -408,6 +448,8 @@ class WindowsJobOwner:
         code: str,
         message: str,
     ) -> None:
+        """Handle the raise launch stage failure step."""
+
         cleanup_succeeded = self._abort_created(created)
         if not cleanup_succeeded:
             raise _fail(
@@ -872,6 +914,8 @@ class WindowsJobOwner:
         self,
         executable: os.PathLike[str] | str | None = None,
     ) -> None:
+        """Require no external processes."""
+
         if self.external_processes(executable):
             raise _fail(
                 FAIL_DESKTOP_PREFLIGHT,
@@ -914,6 +958,8 @@ class WindowsJobOwner:
         return current
 
     def _root_handle(self, identity: ProcessIdentity) -> int | None:
+        """Handle the root handle step."""
+
         for expected, handle in self._roots.items():
             if _identities_match(expected, identity):
                 return handle
@@ -923,6 +969,8 @@ class WindowsJobOwner:
         self,
         identity: ProcessIdentity,
     ) -> RootHandoffPolicy | None:
+        """Handle the root policy step."""
+
         for expected, policy in self._root_handoff_policies.items():
             if _identities_match(expected, identity):
                 return policy
@@ -932,6 +980,8 @@ class WindowsJobOwner:
         self,
         identity: ProcessIdentity,
     ) -> tuple[object, int, int, RootHandoffPolicy]:
+        """Require retained root."""
+
         if not isinstance(identity, ProcessIdentity):
             raise _fail(FAIL_PROCESS_IDENTITY, "Owned process identity is invalid.")
         api, job_handle = self._require_active()
@@ -952,6 +1002,8 @@ class WindowsJobOwner:
         job_handle: int,
         process_handle: int,
     ) -> None:
+        """Validate live retained root."""
+
         try:
             if not bool(api.is_process_in_job(process_handle, job_handle)):
                 raise OSError("Retained root left the exact Job.")
@@ -981,6 +1033,8 @@ class WindowsJobOwner:
         identity: ProcessIdentity,
         policy: RootHandoffPolicy,
     ) -> None:
+        """Handle the check root handoff step."""
+
         if (
             policy is RootHandoffPolicy.DESKTOP_SINGLE_INSTANCE
             and self.external_processes(identity.executable)
@@ -991,6 +1045,8 @@ class WindowsJobOwner:
             )
 
     def poll(self, identity: ProcessIdentity) -> int | None:
+        """Handle the poll step."""
+
         api, job_handle, handle, policy = self._require_retained_root(identity)
         try:
             exit_code = api.poll_process(handle)
@@ -1016,6 +1072,8 @@ class WindowsJobOwner:
         *,
         timeout_seconds: float,
     ) -> bool:
+        """Wait for the configured owned process."""
+
         timeout = _validate_timeout(timeout_seconds)
         api, job_handle, handle, policy = self._require_retained_root(identity)
         try:
@@ -1140,10 +1198,14 @@ class WindowsJobOwner:
             ) from None
 
     def __enter__(self) -> "WindowsJobOwner":
+        """Enter the windows job owner context."""
+
         self._require_active()
         return self
 
     def __exit__(self, _type, _value, _traceback) -> None:
+        """Exit the windows job owner context without suppressing failures."""
+
         self.close()
 
 
@@ -1183,6 +1245,8 @@ class _Win32Api:
     ERROR_NO_MORE_FILES = 18
 
     def __init__(self) -> None:
+        """Initialize the Win32 API."""
+
         if os.name != "nt":
             raise OSError("Win32 API is unavailable.")
         import ctypes
@@ -1197,10 +1261,14 @@ class _Win32Api:
         self._bind_functions()
 
     def _define_structures(self) -> None:
+        """Handle the define structures step."""
+
         ctypes = self.ctypes
         wintypes = self.wintypes
 
         class SECURITY_ATTRIBUTES(ctypes.Structure):
+            """Represent the security attributes contract."""
+
             _fields_ = [
                 ("nLength", wintypes.DWORD),
                 ("lpSecurityDescriptor", wintypes.LPVOID),
@@ -1208,12 +1276,16 @@ class _Win32Api:
             ]
 
         class FILETIME(ctypes.Structure):
+            """Represent the filetime contract."""
+
             _fields_ = [
                 ("dwLowDateTime", wintypes.DWORD),
                 ("dwHighDateTime", wintypes.DWORD),
             ]
 
         class STARTUPINFOW(ctypes.Structure):
+            """Represent the startupinfow contract."""
+
             _fields_ = [
                 ("cb", wintypes.DWORD),
                 ("lpReserved", wintypes.LPWSTR),
@@ -1236,12 +1308,16 @@ class _Win32Api:
             ]
 
         class STARTUPINFOEXW(ctypes.Structure):
+            """Represent the startupinfoexw contract."""
+
             _fields_ = [
                 ("StartupInfo", STARTUPINFOW),
                 ("lpAttributeList", wintypes.LPVOID),
             ]
 
         class PROCESS_INFORMATION(ctypes.Structure):
+            """Represent the process information contract."""
+
             _fields_ = [
                 ("hProcess", wintypes.HANDLE),
                 ("hThread", wintypes.HANDLE),
@@ -1250,6 +1326,8 @@ class _Win32Api:
             ]
 
         class IO_COUNTERS(ctypes.Structure):
+            """Represent the I/O counters contract."""
+
             _fields_ = [
                 ("ReadOperationCount", ctypes.c_uint64),
                 ("WriteOperationCount", ctypes.c_uint64),
@@ -1260,6 +1338,8 @@ class _Win32Api:
             ]
 
         class BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            """Represent the basic limit information contract."""
+
             _fields_ = [
                 ("PerProcessUserTimeLimit", ctypes.c_int64),
                 ("PerJobUserTimeLimit", ctypes.c_int64),
@@ -1273,6 +1353,8 @@ class _Win32Api:
             ]
 
         class EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            """Represent the extended limit information contract."""
+
             _fields_ = [
                 ("BasicLimitInformation", BASIC_LIMIT_INFORMATION),
                 ("IoInfo", IO_COUNTERS),
@@ -1283,6 +1365,8 @@ class _Win32Api:
             ]
 
         class PROCESSENTRY32W(ctypes.Structure):
+            """Represent the processentry32 w contract."""
+
             _fields_ = [
                 ("dwSize", wintypes.DWORD),
                 ("cntUsage", wintypes.DWORD),
@@ -1310,6 +1394,8 @@ class _Win32Api:
         )
 
     def _bind_functions(self) -> None:
+        """Handle the bind functions step."""
+
         ctypes = self.ctypes
         wintypes = self.wintypes
         kernel32 = self.kernel32
@@ -1462,13 +1548,19 @@ class _Win32Api:
         user32.PostMessageW.restype = wintypes.BOOL
 
     def _error(self) -> OSError:
+        """Handle the error step."""
+
         return OSError(int(self.ctypes.get_last_error()))
 
     def _is_valid_handle(self, handle: object) -> bool:
+        """Return whether valid handle."""
+
         value = int(handle or 0)
         return value not in (0, self._invalid_handle)
 
     def close_handle(self, handle: int) -> None:
+        """Handle the close handle step."""
+
         if handle:
             self.ctypes.set_last_error(0)
             if not self.kernel32.CloseHandle(handle):
@@ -1477,6 +1569,8 @@ class _Win32Api:
                 )
 
     def create_kill_on_close_job(self) -> int:
+        """Handle the create kill on close job step."""
+
         handle = self.kernel32.CreateJobObjectW(None, None)
         if not self._is_valid_handle(handle):
             raise self._error()
@@ -1513,6 +1607,8 @@ class _Win32Api:
         access: int,
         disposition: int,
     ) -> int:
+        """Handle the open inheritable file step."""
+
         security = self.SECURITY_ATTRIBUTES()
         security.nLength = self.ctypes.sizeof(security)
         security.bInheritHandle = True
@@ -1530,6 +1626,8 @@ class _Win32Api:
         return int(handle)
 
     def _created_process_result(self, process_info) -> _CreatedProcess:
+        """Handle the created process result step."""
+
         return _CreatedProcess(
             pid=int(process_info.dwProcessId),
             process_handle=int(process_info.hProcess),
@@ -1538,6 +1636,8 @@ class _Win32Api:
         )
 
     def _cleanup_created_process_info(self, process_info) -> bool:
+        """Handle the cleanup created process info step."""
+
         process_handle = int(getattr(process_info, "hProcess", 0) or 0)
         thread_handle = int(getattr(process_info, "hThread", 0) or 0)
         if not process_handle and not thread_handle:
@@ -1574,6 +1674,8 @@ class _Win32Api:
         self,
         process_info,
     ) -> _CreatedProcess:
+        """Handle the transfer created process or cleanup step."""
+
         try:
             return self._created_process_result(process_info)
         except BaseException as exc:
@@ -1592,6 +1694,8 @@ class _Win32Api:
         stdout_log: str,
         stderr_log: str,
     ) -> _CreatedProcess:
+        """Handle the create process suspended step."""
+
         del arguments
         ctypes = self.ctypes
         log_handles: list[int] = []
@@ -1714,11 +1818,15 @@ class _Win32Api:
                     self.close_handle(handle)
 
     def assign_process_to_job(self, job_handle: int, process_handle: int) -> bool:
+        """Handle the assign process to job step."""
+
         return bool(
             self.kernel32.AssignProcessToJobObject(job_handle, process_handle)
         )
 
     def is_process_in_job(self, process_handle: int, job_handle: int) -> bool:
+        """Return whether process in job."""
+
         result = self.wintypes.BOOL()
         if not self.kernel32.IsProcessInJob(
             process_handle,
@@ -1729,9 +1837,13 @@ class _Win32Api:
         return bool(result.value)
 
     def resume_thread(self, thread_handle: int) -> bool:
+        """Handle the resume thread step."""
+
         return int(self.kernel32.ResumeThread(thread_handle)) != 0xFFFFFFFF
 
     def terminate_process(self, process_handle: int) -> None:
+        """Handle the terminate process step."""
+
         if not self.kernel32.TerminateProcess(process_handle, 184):
             raise self._error()
 
@@ -1740,6 +1852,8 @@ class _Win32Api:
         process_handle: int,
         pid: int,
     ) -> ProcessIdentity:
+        """Capture process identity."""
+
         actual_pid = int(self.kernel32.GetProcessId(process_handle))
         if actual_pid <= 0 or actual_pid != int(pid):
             raise self._error()
@@ -1775,6 +1889,8 @@ class _Win32Api:
         )
 
     def job_member_pids(self, job_handle: int) -> tuple[int, ...]:
+        """Handle the job member pids step."""
+
         ctypes = self.ctypes
         capacity = 16
         header_size = ctypes.sizeof(self.wintypes.DWORD) * 2
@@ -1803,6 +1919,8 @@ class _Win32Api:
         raise OSError("Job member bound exceeded.")
 
     def open_process_for_query(self, pid: int) -> int:
+        """Handle the open process for query step."""
+
         self.ctypes.set_last_error(0)
         handle = self.kernel32.OpenProcess(
             self.PROCESS_QUERY_LIMITED_INFORMATION,
@@ -1860,6 +1978,8 @@ class _Win32Api:
             self.close_handle(int(snapshot))
 
     def query_process_identity(self, pid: int) -> ProcessIdentity | None:
+        """Handle the query process identity step."""
+
         try:
             handle = self.open_process_for_query(pid)
         except OSError:
@@ -1874,6 +1994,8 @@ class _Win32Api:
             self.close_handle(handle)
 
     def enumerate_process_identities(self) -> tuple[ProcessIdentity, ...]:
+        """Handle the enumerate process identities step."""
+
         snapshot = self.kernel32.CreateToolhelp32Snapshot(
             self.TH32CS_SNAPPROCESS,
             0,
@@ -1917,6 +2039,8 @@ class _Win32Api:
         expected_identities: tuple[ProcessIdentity, ...],
         job_handle: int,
     ) -> int:
+        """Handle the post close to top level windows step."""
+
         expected_by_pid = {
             identity.pid: identity for identity in expected_identities
         }
@@ -1930,6 +2054,8 @@ class _Win32Api:
 
         @self.WNDENUMPROC
         def visit(window, _parameter):
+            """Handle the visit step."""
+
             nonlocal callback_error, posted
             pid = self.wintypes.DWORD()
             self.user32.GetWindowThreadProcessId(window, self.ctypes.byref(pid))
@@ -1970,6 +2096,8 @@ class _Win32Api:
         return posted
 
     def poll_process(self, process_handle: int) -> int | None:
+        """Handle the poll process step."""
+
         exit_code = self.wintypes.DWORD()
         if not self.kernel32.GetExitCodeProcess(
             process_handle,
@@ -1979,6 +2107,8 @@ class _Win32Api:
         return None if int(exit_code.value) == self.STILL_ACTIVE else int(exit_code.value)
 
     def wait_process(self, process_handle: int, timeout_seconds: float) -> bool:
+        """Handle the wait process step."""
+
         timeout = _validate_timeout(timeout_seconds)
         milliseconds = min(
             0xFFFFFFFE,
@@ -1998,6 +2128,8 @@ class _Win32Api:
         identity: ProcessIdentity,
         timeout_seconds: float,
     ) -> bool:
+        """Handle the wait identity step."""
+
         handle = self.kernel32.OpenProcess(
             self.SYNCHRONIZE | self.PROCESS_QUERY_LIMITED_INFORMATION,
             False,

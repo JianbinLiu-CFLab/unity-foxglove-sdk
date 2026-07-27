@@ -133,6 +133,8 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
     publisher_gids: set[str] = set()
 
     def transport_qos(topic: str) -> dict[str, object]:
+        """Handle the transport QoS step."""
+
         value = {
             key: value
             for key, value in expected_qos[topic].items()
@@ -454,6 +456,8 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 protocol.validate_execution_mode(batch=batch, manual_editor=manual)
 
     def test_case_contracts_use_concrete_ros_topic_names(self):
+        """Verify case contracts use concrete ROS topic names."""
+
         protocol = load_protocol_module()
 
         for contract in protocol.CASE_CONTRACTS.values():
@@ -636,6 +640,8 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             )
 
     def test_graph_qos_accepts_explicitly_unrepresented_axes_but_not_conflicts(self):
+        """Verify graph QoS accepts explicitly unrepresented axes but not conflicts."""
+
         protocol = load_protocol_module()
         config = run_config(protocol, case="multi-target")
         summary = valid_summary(protocol, config)
@@ -688,6 +694,8 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             )
 
     def test_qos_system_default_requires_matching_actual_graph_resolution(self):
+        """Verify QoS system default requires matching actual graph resolution."""
+
         protocol = load_protocol_module()
         config = run_config(protocol, case="qos-contract")
         summary = valid_summary(protocol, config)

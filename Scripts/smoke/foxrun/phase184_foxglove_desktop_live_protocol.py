@@ -127,6 +127,8 @@ _TRANSPORT_CLIENT_MARKER = re.compile(
 
 
 def _bounded_message(message: object) -> str:
+    """Handle the bounded message step."""
+
     if isinstance(message, str):
         text = message
     else:
@@ -144,6 +146,8 @@ class AcceptanceFailure(RuntimeError):
     """Machine-classifiable Phase184-H failure with a bounded diagnostic."""
 
     def __init__(self, code: str, bounded_message: object):
+        """Initialize the acceptance failure."""
+
         if code not in TERMINAL_FAILURE_CODES:
             raise ValueError("Unknown Phase184-H terminal failure code.")
         self.code = code
@@ -152,6 +156,8 @@ class AcceptanceFailure(RuntimeError):
 
 
 def _fail(message: object) -> AcceptanceFailure:
+    """Handle the fail step."""
+
     return AcceptanceFailure(FAIL_CLI_PROVENANCE, message)
 
 
@@ -245,6 +251,8 @@ def _require_receipt_string(
     *,
     maximum: int,
 ) -> str:
+    """Require receipt string."""
+
     value = receipt[key]
     if (
         not isinstance(value, str)
@@ -262,6 +270,8 @@ def _windows_path_key(
     *,
     allow_pathlike: bool,
 ) -> str:
+    """Handle the windows path key step."""
+
     if allow_pathlike:
         try:
             value = os.fspath(value)
@@ -331,6 +341,8 @@ def _normalize_windows_path(
 
 
 def _validate_installed_utc(value: object) -> str:
+    """Validate installed UTC."""
+
     if not isinstance(value, str) or _UTC_TIMESTAMP.fullmatch(value) is None:
         raise _fail("CLI receipt installedUtc must be a canonical UTC timestamp.")
     parse_value = value[:-1] + "+00:00"
@@ -344,6 +356,8 @@ def _validate_installed_utc(value: object) -> str:
 
 
 def _validate_receipt(receipt: object) -> tuple[dict[str, object], str, str, str]:
+    """Validate receipt."""
+
     if not isinstance(receipt, Mapping):
         raise _fail("CLI receipt root must be an object.")
     try:
@@ -466,10 +480,14 @@ def validate_cli_receipt(
 
 
 class _DuplicateJsonKey(ValueError):
+    """Represent the duplicate JSON key contract."""
+
     pass
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Handle the unique object step."""
+
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
@@ -567,20 +585,28 @@ def write_json_atomic(
 
 
 def _client_failure(message: object) -> AcceptanceFailure:
+    """Handle the client failure step."""
+
     return AcceptanceFailure(FAIL_CLIENT, message)
 
 
 def _evidence_failure(message: object) -> AcceptanceFailure:
+    """Handle the evidence failure step."""
+
     return AcceptanceFailure(FAIL_EVIDENCE, message)
 
 
 def _is_reparse_point(info: os.stat_result) -> bool:
+    """Return whether reparse point."""
+
     attributes = getattr(info, "st_file_attributes", 0)
     reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
     return bool(attributes & reparse_flag)
 
 
 def _plain_resolved_output_root(value: object) -> pathlib.Path:
+    """Handle the plain resolved output root step."""
+
     try:
         raw = os.fspath(value)
     except TypeError as exc:
@@ -626,6 +652,8 @@ def resolve_desktop_client_barrier_path(
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _DesktopBarrierContract:
+    """Represent the desktop barrier contract contract."""
+
     output_root: pathlib.Path
     run_id: str
     token_digest: str
@@ -633,6 +661,8 @@ class _DesktopBarrierContract:
 
 
 def _desktop_barrier_contract(config: object) -> _DesktopBarrierContract:
+    """Handle the desktop barrier contract step."""
+
     if not isinstance(config, Mapping):
         raise _client_failure("Desktop barrier configuration is invalid.")
 
@@ -668,6 +698,8 @@ def _exact_desktop_barrier_path(
     value: os.PathLike[str] | str,
     output_root: pathlib.Path,
 ) -> pathlib.Path:
+    """Handle the exact desktop barrier path step."""
+
     try:
         raw = os.fspath(value)
     except TypeError as exc:
@@ -705,6 +737,8 @@ def _exact_desktop_barrier_path(
 
 
 def _same_file_snapshot(left: os.stat_result, right: os.stat_result) -> bool:
+    """Handle the same file snapshot step."""
+
     return (
         left.st_dev,
         left.st_ino,
@@ -722,6 +756,8 @@ def _load_visible_desktop_barrier(
     path: pathlib.Path,
     contract: _DesktopBarrierContract,
 ) -> dict[str, object] | None:
+    """Load visible desktop barrier."""
+
     try:
         before = path.lstat()
     except FileNotFoundError:
@@ -798,6 +834,8 @@ def _load_visible_desktop_barrier(
 
 
 def _monotonic_value(clock: Callable[[], float]) -> float:
+    """Handle the monotonic value step."""
+
     try:
         value = clock()
     except Exception as exc:
@@ -871,10 +909,14 @@ class TransportClientMarker:
     accepted: int
 
     def to_document(self) -> dict[str, int]:
+        """Handle the to document step."""
+
         return {"active": self.active, "accepted": self.accepted}
 
 
 def _validate_transport_identity(case: object, token: object) -> tuple[str, str]:
+    """Validate transport identity."""
+
     if not isinstance(case, str) or _SAFE_CASE.fullmatch(case) is None:
         raise _evidence_failure("Transport marker case identity is invalid.")
     if not isinstance(token, str) or _SAFE_TOKEN.fullmatch(token) is None:

@@ -52,10 +52,14 @@ OLD_BYTES = b"local foxglove development build"
 
 
 def sha256_bytes(payload: bytes) -> str:
+    """Handle the SHA-256 bytes step."""
+
     return hashlib.sha256(payload).hexdigest().upper()
 
 
 def extended_windows_path(path: str) -> str:
+    """Handle the extended windows path step."""
+
     normalized = ntpath.normpath(path)
     if normalized.startswith("\\\\"):
         return "\\\\?\\UNC\\" + normalized[2:]
@@ -63,6 +67,8 @@ def extended_windows_path(path: str) -> str:
 
 
 def ordinary_windows_path(path: str) -> str:
+    """Handle the ordinary windows path step."""
+
     normalized = ntpath.normpath(path)
     lowered = normalized.lower()
     if lowered.startswith("\\\\?\\unc\\"):
@@ -76,6 +82,8 @@ class MappedFilesystem:
     """Maps pure Windows paths into one disposable physical test root."""
 
     def __init__(self, physical_root: pathlib.Path, events: list[tuple]):
+        """Initialize the mapped filesystem."""
+
         self.physical_root = physical_root
         self.events = events
         self._temporary_counter = 0
@@ -92,6 +100,8 @@ class MappedFilesystem:
         self.backup_publication_interrupt_after = False
 
     def physical(self, virtual_path: str) -> pathlib.Path:
+        """Handle the physical step."""
+
         normalized = ntpath.normcase(
             ordinary_windows_path(str(virtual_path))
         )
@@ -105,16 +115,24 @@ class MappedFilesystem:
         return self.physical_root / drive_name / pathlib.Path(*parts)
 
     def ensure_parent(self, path: str) -> None:
+        """Handle the ensure parent step."""
+
         self.events.append(("ensure-parent", ntpath.normpath(path)))
         self.physical(path).parent.mkdir(parents=True, exist_ok=True)
 
     def exists(self, path: str) -> bool:
+        """Handle the exists step."""
+
         return self.physical(path).is_file()
 
     def size(self, path: str) -> int:
+        """Handle the size step."""
+
         return self.physical(path).stat().st_size
 
     def sha256(self, path: str) -> str:
+        """Handle the SHA-256 step."""
+
         self.events.append(("sha256", ntpath.normpath(path)))
         digest = protocol.sha256_file(self.physical(path))
         if (
@@ -130,6 +148,8 @@ class MappedFilesystem:
         return digest
 
     def new_sibling_temp(self, target: str, purpose: str) -> str:
+        """Handle the new sibling temp step."""
+
         if purpose in self.forced_temps:
             temporary = self.forced_temps[purpose]
             self.events.append(("temp", purpose, ntpath.normpath(temporary)))
@@ -147,6 +167,8 @@ class MappedFilesystem:
         return temporary
 
     def copy_exclusive(self, source: str, destination: str) -> None:
+        """Handle the copy exclusive step."""
+
         self.events.append(
             (
                 "copy-exclusive",
@@ -166,6 +188,8 @@ class MappedFilesystem:
                 shutil.copyfileobj(input_stream, output_stream)
 
     def publish_exclusive(self, source: str, destination: str) -> None:
+        """Handle the publish exclusive step."""
+
         self.events.append(
             (
                 "publish-exclusive",
@@ -195,6 +219,8 @@ class MappedFilesystem:
             raise interruption
 
     def remove(self, path: str) -> None:
+        """Handle the remove step."""
+
         self.events.append(("remove", ntpath.normpath(path)))
         try:
             self.physical(path).unlink()
@@ -202,6 +228,8 @@ class MappedFilesystem:
             pass
 
     def write_receipt(self, path: str, payload: dict[str, object]) -> None:
+        """Write receipt."""
+
         self.events.append(("write-receipt", ntpath.normpath(path)))
         protocol.write_json_atomic(self.physical(path), payload)
         if self.after_receipt_write is not None:
@@ -214,6 +242,8 @@ class MappedFilesystem:
             raise interruption
 
     def load_receipt(self, path: str) -> dict[str, object]:
+        """Load receipt."""
+
         self.events.append(("load-receipt", ntpath.normpath(path)))
         loaded = protocol.load_cli_receipt(self.physical(path))
         if self.corrupt_loaded_receipt:
@@ -227,6 +257,8 @@ class MappedFilesystem:
         *,
         exclusive: bool = False,
     ) -> None:
+        """Write bytes."""
+
         physical = self.physical(path)
         physical.parent.mkdir(parents=True, exist_ok=True)
         if exclusive:
@@ -236,13 +268,19 @@ class MappedFilesystem:
             physical.write_bytes(payload)
 
     def read_bytes(self, path: str) -> bytes:
+        """Read bytes."""
+
         return self.physical(path).read_bytes()
 
     def file_identity(self, path: str) -> tuple[int, int]:
+        """Handle the file identity step."""
+
         info = self.physical(path).stat()
         return int(info.st_dev), int(info.st_ino)
 
     def atomic_replace(self, source: str, destination: str) -> None:
+        """Handle the atomic replace step."""
+
         physical_source = self.physical(source)
         physical_destination = self.physical(destination)
         physical_destination.parent.mkdir(parents=True, exist_ok=True)
@@ -250,6 +288,8 @@ class MappedFilesystem:
 
 
 class FakeEnvironment:
+    """Represent the fake environment contract."""
+
     def __init__(
         self,
         physical_root: pathlib.Path,
@@ -257,6 +297,8 @@ class FakeEnvironment:
         existing: bytes | None = None,
         install_path: str = INSTALL_PATH,
     ):
+        """Initialize the fake environment."""
+
         self.events: list[tuple] = []
         self.fs = MappedFilesystem(physical_root, self.events)
         self.fetch_urls: list[str] = []
@@ -310,11 +352,15 @@ class FakeEnvironment:
             self.fs.write_bytes(install_path, existing)
 
     def fetch_release(self, endpoint: str):
+        """Handle the fetch release step."""
+
         self.fetch_urls.append(endpoint)
         self.events.append(("fetch-release", endpoint))
         return self.release
 
     def download(self, asset_url: str, destination: str) -> None:
+        """Handle the download step."""
+
         self.events.append(
             ("download", asset_url, ntpath.normpath(destination))
         )
@@ -326,6 +372,8 @@ class FakeEnvironment:
         arguments: tuple[str, ...],
         environment: dict[str, str] | None = None,
     ) -> str:
+        """Run command."""
+
         normalized = ntpath.normpath(executable)
         self.events.append(("run", normalized, tuple(arguments)))
         self.command_environments.append(
@@ -354,6 +402,8 @@ class FakeEnvironment:
 
     @staticmethod
     def assert_version_command(arguments: tuple[str, ...]) -> None:
+        """Handle the assert version command step."""
+
         if tuple(arguments) != ("version",):
             raise AssertionError("Only the exact version command is permitted.")
 
@@ -361,6 +411,8 @@ class FakeEnvironment:
         self,
         environment: dict[str, str] | None = None,
     ) -> str:
+        """Resolve command."""
+
         self.events.append(
             (
                 "resolve",
@@ -380,12 +432,18 @@ class FakeEnvironment:
         return self.resolved_path
 
     class _ExecutableLease:
+        """Represent the executable lease contract."""
+
         def __init__(self, environment, path: str):
+            """Initialize the executable lease."""
+
             self.environment = environment
             self.path = path
             self.active = False
 
         def __enter__(self):
+            """Enter the executable lease context."""
+
             self.active = True
             self.environment.active_leases += 1
             self.environment.events.append(
@@ -394,6 +452,8 @@ class FakeEnvironment:
             return self
 
         def __exit__(self, exc_type, exc, traceback):
+            """Exit the executable lease context without suppressing failures."""
+
             del exc_type, exc, traceback
             if self.active:
                 self.active = False
@@ -404,6 +464,8 @@ class FakeEnvironment:
             return False
 
         def snapshot(self):
+            """Handle the snapshot step."""
+
             self.environment.lease_snapshot_count += 1
             if self.environment.before_lease_snapshot_hook is not None:
                 hook = self.environment.before_lease_snapshot_hook
@@ -424,6 +486,8 @@ class FakeEnvironment:
             )
 
         def path_identity(self):
+            """Handle the path identity step."""
+
             volume, file_id = self.environment.fs.file_identity(self.path)
             self.environment.events.append(
                 ("lease-path-identity", ntpath.normpath(self.path))
@@ -434,9 +498,13 @@ class FakeEnvironment:
             )
 
     def executable_lease(self, path: str):
+        """Handle the executable lease step."""
+
         return self._ExecutableLease(self, path)
 
     def atomic_replace(self, source: str, destination: str) -> None:
+        """Handle the atomic replace step."""
+
         self.events.append(
             (
                 "replace",
@@ -462,6 +530,8 @@ class FakeEnvironment:
             raise failure
 
     def dependencies(self):
+        """Handle the dependencies step."""
+
         arguments = {
             "release_fetcher": self.fetch_release,
             "downloader": self.download,
@@ -493,7 +563,11 @@ class FakeEnvironment:
 
 
 class Phase184FoxgloveCliInstallTests(unittest.TestCase):
+    """Exercise the phase184 foxglove CLI install tests behavior."""
+
     def setUp(self):
+        """Prepare isolated test state."""
+
         if installer is None:
             self.fail("phase184_foxglove_cli_install is not implemented")
         self.temporary = tempfile.TemporaryDirectory()
@@ -501,6 +575,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.physical_root = pathlib.Path(self.temporary.name)
 
     def assert_provenance_failure(self, callback) -> protocol.AcceptanceFailure:
+        """Handle the assert provenance failure step."""
+
         with self.assertRaises(protocol.AcceptanceFailure) as raised:
             callback()
         self.assertEqual(protocol.FAIL_CLI_PROVENANCE, raised.exception.code)
@@ -511,6 +587,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         return raised.exception
 
     def verify_cli(self, *args, **kwargs):
+        """Handle the verify CLI step."""
+
         verifier = getattr(
             installer,
             "verify_installed_cli_provenance",
@@ -530,6 +608,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         receipt_argument: str = RECEIPT_PATH,
         receipt_overrides: dict[str, object] | None = None,
     ) -> tuple[str, dict[str, object]]:
+        """Prepare verifier fixture."""
+
         environment.fs.write_bytes(INSTALL_PATH, binary_bytes)
         receipt_destination = installer._resolve_receipt_path(
             receipt_argument
@@ -561,6 +641,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         return receipt_destination, receipt
 
     def assert_verifier_read_only(self, environment: FakeEnvironment) -> None:
+        """Handle the assert verifier read only step."""
+
         mutation_events = {
             "copy-exclusive",
             "download",
@@ -577,6 +659,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertEqual([], environment.fetch_urls)
 
     def test_cli_contract_locks_endpoint_required_path_and_default_receipt(self):
+        """Verify CLI contract locks endpoint required path and default receipt."""
+
         self.assertEqual(
             "https://api.github.com/repos/foxglove/foxglove-cli/releases/latest",
             installer.RELEASE_ENDPOINT,
@@ -602,6 +686,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             installer.parse_args([])
 
     def test_direct_script_entrypoint_bootstraps_repository_imports(self):
+        """Verify direct script entrypoint bootstraps repository imports."""
+
         environment = dict(os.environ)
         environment.pop("PYTHONHOME", None)
         environment.pop("PYTHONPATH", None)
@@ -632,6 +718,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertNotIn("ModuleNotFoundError", completed.stderr)
 
     def test_read_only_verifier_returns_immutable_exact_identity_and_document(self):
+        """Verify read only verifier returns immutable exact identity and document."""
+
         environment = FakeEnvironment(self.physical_root)
         secret_backup = (
             r"C:\Phase184Tests\DO_NOT_REPORT_SECRET\foxglove.previous.exe"
@@ -705,6 +793,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assert_verifier_read_only(environment)
 
     def test_read_only_verifier_accepts_scoped_relative_and_default_receipts(self):
+        """Verify read only verifier accepts scoped relative and default receipts."""
+
         cases = (
             ("relative", RELATIVE_RECEIPT_PATH),
             ("default", str(installer.DEFAULT_RECEIPT_PATH)),
@@ -727,6 +817,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assert_verifier_read_only(environment)
 
     def test_read_only_verifier_rejects_stale_dev_and_live_mismatches(self):
+        """Verify read only verifier rejects stale dev and live mismatches."""
+
         cases = (
             "stale-path",
             "stale-hash",
@@ -799,6 +891,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assert_verifier_read_only(environment)
 
     def test_verifier_rejects_swapped_or_stale_candidate_before_execution(self):
+        """Verify verifier rejects swapped or stale candidate before execution."""
+
         cases = ("swapped-bytes", "stale-path", "stale-hash")
         for case in cases:
             with self.subTest(case=case):
@@ -837,6 +931,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assert_verifier_read_only(environment)
 
     def test_candidate_version_children_receive_only_explicit_minimal_environment(self):
+        """Verify candidate version children receive only explicit minimal environment."""
+
         environment = FakeEnvironment(self.physical_root)
         self.prepare_verifier_fixture(environment)
 
@@ -881,6 +977,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             self.assertNotIn(forbidden, serialized)
 
     def test_minimal_environment_rejects_case_insensitive_windows_duplicates(self):
+        """Verify minimal environment rejects case insensitive windows duplicates."""
+
         for first, second in (
             ("PATH", "Path"),
             ("SystemRoot", "SYSTEMROOT"),
@@ -896,6 +994,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     )
 
     def test_resolver_mutation_is_hash_rejected_before_resolved_execution(self):
+        """Verify resolver mutation is hash rejected before resolved execution."""
+
         environment = FakeEnvironment(self.physical_root)
         self.prepare_verifier_fixture(environment)
         environment.after_resolve_hook = lambda: environment.fs.write_bytes(
@@ -924,6 +1024,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_verifier_holds_read_only_lease_across_pre_post_hash_and_execution(self):
+        """Verify verifier holds read only lease across pre post hash and execution."""
+
         environment = FakeEnvironment(self.physical_root)
         self.prepare_verifier_fixture(environment)
 
@@ -953,6 +1055,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assert_verifier_read_only(environment)
 
     def test_version_execution_mutation_fails_and_releases_lease(self):
+        """Verify version execution mutation fails and releases lease."""
+
         environment = FakeEnvironment(self.physical_root)
         self.prepare_verifier_fixture(environment)
         environment.after_command_hook = lambda: environment.fs.write_bytes(
@@ -978,6 +1082,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_read_only_verifier_rejects_missing_and_malformed_receipts(self):
+        """Verify read only verifier rejects missing and malformed receipts."""
+
         for case in ("missing", "malformed-json", "extra-key"):
             with self.subTest(case=case):
                 environment = FakeEnvironment(
@@ -1006,6 +1112,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assert_verifier_read_only(environment)
 
     def test_read_only_verifier_production_rejects_non_windows_before_io(self):
+        """Verify read only verifier production rejects non windows before I/O."""
+
         with (
             mock.patch.object(installer.os, "name", "posix"),
             mock.patch(
@@ -1021,6 +1129,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             )
 
     def test_release_selection_requires_one_exact_official_asset_and_matching_tag(self):
+        """Verify release selection requires one exact official asset and matching tag."""
+
         valid = {
             "tag_name": "v1.2.3",
             "assets": [
@@ -1100,6 +1210,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 )
 
     def test_successful_new_install_verifies_fresh_resolution_then_writes_receipt(self):
+        """Verify successful new install verifies fresh resolution then writes receipt."""
+
         environment = FakeEnvironment(self.physical_root)
         with mock.patch(
             "urllib.request.urlopen",
@@ -1186,6 +1298,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertLess(resolve_indexes[1], load_index)
 
     def test_install_receipt_records_the_exact_selected_official_asset_alias(self):
+        """Verify install receipt records the exact selected official asset alias."""
+
         environment = FakeEnvironment(self.physical_root)
         environment.release = {
             "tag_name": "v1.2.3",
@@ -1214,6 +1328,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertEqual(CURRENT_OFFICIAL_ASSET_URL, receipt["assetUrl"])
 
     def test_replacement_preserves_revision_and_hash_qualified_backup(self):
+        """Verify replacement preserves revision and hash qualified backup."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         installer.main(
             ["--install-path", INSTALL_PATH, "--receipt", RECEIPT_PATH],
@@ -1234,6 +1350,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertEqual(expected_backup, receipt["backupPath"])
 
     def test_supplied_old_revision_changes_only_backup_name(self):
+        """Verify supplied old revision changes only backup name."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         receipt = installer.install_cli(
             INSTALL_PATH,
@@ -1262,6 +1380,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_backup_creation_interruptions_clean_owned_temp_and_reraise(self):
+        """Verify backup creation interruptions clean owned temp and reraise."""
+
         interruption_factories = (
             ("keyboard", lambda: KeyboardInterrupt("synthetic interrupt")),
             ("system-exit", lambda: SystemExit(75)),
@@ -1359,6 +1479,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     )
 
     def test_competitor_winning_backup_publication_is_never_unlinked(self):
+        """Verify competitor winning backup publication is never unlinked."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         old_hash = sha256_bytes(OLD_BYTES)
         deterministic_backup = installer.build_backup_path(
@@ -1408,6 +1530,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_local_backup_publication_has_no_overwrite_semantics(self):
+        """Verify local backup publication has no overwrite semantics."""
+
         publisher = getattr(
             installer.LocalFilesystem(),
             "publish_exclusive",
@@ -1432,6 +1556,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertEqual(b"competitor", destination.read_bytes())
 
     def test_backup_collision_never_overwrites_different_existing_file(self):
+        """Verify backup collision never overwrites different existing file."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         old_hash = sha256_bytes(OLD_BYTES)
         collision = installer.build_backup_path(
@@ -1454,6 +1580,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertFalse(environment.fs.exists(RECEIPT_PATH))
 
     def test_receipt_windows_alias_of_install_target_fails_before_mutation(self):
+        """Verify receipt windows alias of install target fails before mutation."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         receipt_alias = INSTALL_PATH.lower().replace("\\", "/")
 
@@ -1472,6 +1600,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_receipt_windows_alias_of_backup_fails_without_overwriting_either_file(self):
+        """Verify receipt windows alias of backup fails without overwriting either file."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         old_hash = sha256_bytes(OLD_BYTES)
         backup_path = installer.build_backup_path(
@@ -1500,6 +1630,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_extended_receipt_alias_of_install_target_rejects_drive_and_unc_forms(self):
+        """Verify extended receipt alias of install target rejects drive and unc forms."""
+
         variants = (
             ("drive-ordinary-target", INSTALL_PATH, extended_windows_path(INSTALL_PATH)),
             ("drive-extended-target", extended_windows_path(INSTALL_PATH), INSTALL_PATH),
@@ -1546,6 +1678,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 )
 
     def test_extended_receipt_alias_of_backup_rejects_drive_and_unc_forms(self):
+        """Verify extended receipt alias of backup rejects drive and unc forms."""
+
         variants = (
             ("drive", INSTALL_PATH),
             ("drive-extended-target", extended_windows_path(INSTALL_PATH)),
@@ -1596,6 +1730,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 )
 
     def test_extended_receipt_alias_of_download_temp_rejects_drive_and_unc_forms(self):
+        """Verify extended receipt alias of download temp rejects drive and unc forms."""
+
         for name, install_path in (
             ("drive", INSTALL_PATH),
             ("unc", UNC_INSTALL_PATH),
@@ -1638,6 +1774,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 )
 
     def test_relative_receipt_resolves_against_repository_root_for_locked_command(self):
+        """Verify relative receipt resolves against repository root for locked command."""
+
         repository_root = pathlib.PureWindowsPath(r"C:\Phase184Repository")
         expected_receipt = ntpath.normpath(
             ntpath.join(str(repository_root), RELATIVE_RECEIPT_PATH)
@@ -1672,6 +1810,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertFalse(environment.fs.exists(RELATIVE_RECEIPT_PATH))
 
     def test_download_version_failure_happens_before_replacement(self):
+        """Verify download version failure happens before replacement."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         environment.download_version = "9.9.9"
 
@@ -1686,6 +1826,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertFalse(environment.fs.exists(RECEIPT_PATH))
 
     def test_post_replace_path_version_and_hash_failures_restore_old_binary(self):
+        """Verify post replace path version and hash failures restore old binary."""
+
         cases = (
             "resolver",
             "installed-version",
@@ -1712,6 +1854,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 else:
                     if case == "hash":
                         def tamper_after_replace(_source, destination):
+                            """Handle the tamper after replace step."""
+
                             environment.fs.write_bytes(destination, b"tampered")
 
                         environment.after_replace_hook = tamper_after_replace
@@ -1736,6 +1880,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assertFalse(environment.fs.exists(RECEIPT_PATH))
 
     def test_post_replace_failure_for_new_install_removes_new_target(self):
+        """Verify post replace failure for new install removes new target."""
+
         environment = FakeEnvironment(self.physical_root)
         environment.fail_resolver = True
         self.assert_provenance_failure(
@@ -1748,6 +1894,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertFalse(environment.fs.exists(RECEIPT_PATH))
 
     def test_receipt_write_or_revalidation_failure_rolls_back_and_prevents_success(self):
+        """Verify receipt write or revalidation failure rolls back and prevents success."""
+
         failure_points = (
             "writer",
             "revalidation",
@@ -1777,6 +1925,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     alternate = r"C:\Phase184Tests\other\foxglove.exe"
 
                     def change_resolution(_path, _payload):
+                        """Handle the change resolution step."""
+
                         environment.resolved_path = alternate
                         environment.fs.write_bytes(alternate, NEW_BYTES)
 
@@ -1821,6 +1971,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     )
 
     def test_interruptions_after_binary_replacement_restore_and_reraise(self):
+        """Verify interruptions after binary replacement restore and reraise."""
+
         interruption_factories = (
             ("keyboard", lambda: KeyboardInterrupt("synthetic interrupt")),
             ("system-exit", lambda: SystemExit(73)),
@@ -1868,6 +2020,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 )
 
     def test_interruptions_after_receipt_write_restore_or_remove_receipt_and_reraise(self):
+        """Verify interruptions after receipt write restore or remove receipt and reraise."""
+
         interruption_factories = (
             ("keyboard", lambda: KeyboardInterrupt("synthetic interrupt")),
             ("system-exit", lambda: SystemExit(74)),
@@ -1921,6 +2075,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                         )
 
     def test_interruption_rollback_failure_is_bounded_and_receipt_recovery_is_independent(self):
+        """Verify interruption rollback failure is bounded and receipt recovery is independent."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         previous_receipt = b"pre-existing receipt"
         environment.fs.write_bytes(RECEIPT_PATH, previous_receipt)
@@ -1959,6 +2115,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         )
 
     def test_bounded_process_terminates_and_reaps_stdout_and_stderr_overflow(self):
+        """Verify bounded process terminates and reaps stdout and stderr overflow."""
+
         runner = getattr(installer, "_run_bounded_process", None)
         self.assertIsNotNone(
             runner,
@@ -1983,6 +2141,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 captured: list[subprocess.Popen] = []
 
                 def capture_process(*args, **kwargs):
+                    """Capture process."""
+
                     process = real_popen(*args, **kwargs)
                     captured.append(process)
                     return process
@@ -2007,6 +2167,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assertTrue(process.stderr.closed)
 
     def test_bounded_process_preserves_bounded_output_exit_code_and_backs_both_adapters(self):
+        """Verify bounded process preserves bounded output exit code and backs both adapters."""
+
         runner = getattr(installer, "_run_bounded_process", None)
         result_type = getattr(installer, "_BoundedProcessResult", None)
         self.assertIsNotNone(runner)
@@ -2067,6 +2229,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             bounded.assert_called_once()
 
     def test_bounded_process_timeout_terminates_and_reaps_child(self):
+        """Verify bounded process timeout terminates and reaps child."""
+
         runner = getattr(installer, "_run_bounded_process", None)
         self.assertIsNotNone(runner)
         if runner is None:
@@ -2076,6 +2240,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         captured: list[subprocess.Popen] = []
 
         def capture_process(*args, **kwargs):
+            """Capture process."""
+
             process = real_popen(*args, **kwargs)
             captured.append(process)
             return process
@@ -2105,6 +2271,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertTrue(process.stderr.closed)
 
     def test_installer_delegates_windows_identity_to_protocol_helpers(self):
+        """Verify installer delegates windows identity to protocol helpers."""
+
         source = inspect.getsource(installer)
         self.assertNotIn("def _path_key(", source)
         self.assertNotIn("startswith(\"\\\\\\\\?\\\\unc\\\\\")", source)
@@ -2112,6 +2280,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertIn("protocol.windows_paths_equal", source)
 
     def test_production_dependencies_fail_closed_off_windows_before_network(self):
+        """Verify production dependencies fail closed off windows before network."""
+
         with (
             mock.patch.object(installer.os, "name", "posix"),
             mock.patch(
@@ -2124,6 +2294,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             )
 
     def test_injected_run_never_mutates_real_user_path_and_keeps_diagnostics_stable(self):
+        """Verify injected run never mutates real user path and keeps diagnostics stable."""
+
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)
         environment.download_version = "secret\r\n" + ("x" * 4096)
         failure = self.assert_provenance_failure(

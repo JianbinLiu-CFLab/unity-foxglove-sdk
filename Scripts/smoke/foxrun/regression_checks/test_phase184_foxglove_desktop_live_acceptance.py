@@ -37,6 +37,8 @@ PHASE184_TEST_ROOT = ROOT / "build" / "Tests" / "Phase184"
 
 
 def valid_process(pid: int = 101) -> job_owner.ProcessIdentity:
+    """Handle the valid process step."""
+
     return job_owner.ProcessIdentity(
         pid=pid,
         creation_time_100ns=13_400_000_000_000_000 + pid,
@@ -49,6 +51,8 @@ def valid_process(pid: int = 101) -> job_owner.ProcessIdentity:
 
 
 def expected_barrier_digest(run_id: str, token_digest: str) -> str:
+    """Handle the expected barrier digest step."""
+
     payload = {
         "acceptedClients": 1,
         "runId": run_id,
@@ -70,6 +74,8 @@ def expected_barrier_digest(run_id: str, token_digest: str) -> str:
 
 
 def valid_summary() -> dict[str, object]:
+    """Handle the valid summary step."""
+
     root = valid_process(202)
     member = valid_process(203)
     run_id = "phase184g-20260727-desktop01"
@@ -193,6 +199,8 @@ def valid_summary() -> dict[str, object]:
 
 
 def temporary_directory(prefix: str):
+    """Handle the temporary directory step."""
+
     PHASE184_TEST_ROOT.mkdir(parents=True, exist_ok=True)
     return tempfile.TemporaryDirectory(prefix=prefix, dir=PHASE184_TEST_ROOT)
 
@@ -203,6 +211,8 @@ def base_run_config(
     token: str,
     port: int,
 ) -> dict[str, object]:
+    """Handle the base run config step."""
+
     output = (
         repository / "build" / "phase184" / "acceptance" / run_id
     ).resolve()
@@ -278,6 +288,8 @@ def base_run_config(
 
 
 def base_pass_summary(config: dict[str, object]) -> dict[str, object]:
+    """Handle the base pass summary step."""
+
     token = str(config["token"])
     return {
         "summarySchemaVersion": base_protocol.SUMMARY_SCHEMA_VERSION,
@@ -363,31 +375,49 @@ def base_pass_summary(config: dict[str, object]) -> dict[str, object]:
 
 
 class FakeClock:
+    """Represent the fake clock contract."""
+
     def __init__(self):
+        """Initialize the fake clock."""
+
         self.value = 100.0
 
     def __call__(self) -> float:
+        """Handle the call step."""
+
         self.value += 0.01
         return self.value
 
     def sleep(self, seconds: float) -> None:
+        """Handle the sleep step."""
+
         self.value += max(float(seconds), 5.0)
 
 
 class FakeReservation:
+    """Represent the fake reservation contract."""
+
     def __init__(self, harness, port: int):
+        """Initialize the fake reservation."""
+
         self.harness = harness
         self.port = port
         self.released = False
 
     def release(self) -> None:
+        """Release the owned reservation."""
+
         if not self.released:
             self.released = True
             self.harness.events.append("port:release")
 
 
 class FakeJobOwner:
+    """Represent the fake job owner contract."""
+
     def __init__(self, harness, desktop_executable: pathlib.Path):
+        """Initialize the fake job owner."""
+
         self.harness = harness
         self.desktop_executable = str(desktop_executable)
         self.base_identity = job_owner.ProcessIdentity(
@@ -424,9 +454,13 @@ class FakeJobOwner:
 
     @property
     def recorded_external_processes(self):
+        """Handle the recorded external processes step."""
+
         return tuple(self._recorded_external)
 
     def require_no_external_processes(self, executable=None) -> None:
+        """Require no external processes."""
+
         self.harness.events.append("job:preflight-no-external")
         if self.harness.mode == "preexisting":
             self._recorded_external.append(self.external_identity)
@@ -446,6 +480,8 @@ class FakeJobOwner:
         stderr_log,
         handoff_policy=None,
     ):
+        """Handle the launch suspended owned step."""
+
         record = {
             "application": str(application_path),
             "arguments": tuple(arguments),
@@ -485,6 +521,8 @@ class FakeJobOwner:
         return self.desktop_identity
 
     def members(self):
+        """Handle the members step."""
+
         if self.closed:
             raise AssertionError("closed Job handle was queried")
         self.harness.events.append("job:members")
@@ -503,6 +541,8 @@ class FakeJobOwner:
         return tuple(members)
 
     def external_processes(self, executable=None):
+        """Handle the external processes step."""
+
         self.harness.events.append("job:external-scan")
         if (
             self.harness.mode == "external-after-desktop"
@@ -517,6 +557,8 @@ class FakeJobOwner:
         return ()
 
     def require_owned_identity(self, identity):
+        """Require owned identity."""
+
         if (
             self.harness.mode
             in {"external-after-desktop", "late-external"}
@@ -530,6 +572,8 @@ class FakeJobOwner:
         return identity
 
     def poll(self, identity):
+        """Handle the poll step."""
+
         if identity != self.base_identity:
             return None
         if self.harness.mode == "base-exit-nonzero":
@@ -547,6 +591,8 @@ class FakeJobOwner:
         grace_seconds=10.0,
         reject_external=True,
     ):
+        """Handle the request owned desktop close step."""
+
         self.harness.events.append("desktop:close-request")
         if self.harness.mode == "external-during-close":
             self._recorded_external.append(self.external_identity)
@@ -564,13 +610,19 @@ class FakeJobOwner:
         )
 
     def close(self) -> None:
+        """Close all resources owned by this helper."""
+
         if not self.closed:
             self.closed = True
             self.harness.events.append("job:close")
 
 
 class CoordinatorHarness:
+    """Represent the coordinator harness contract."""
+
     def __init__(self, repository: pathlib.Path, *, mode: str = "success"):
+        """Initialize the coordinator harness."""
+
         self.repository = repository.resolve()
         self.mode = mode
         self.run_id = "phase184g-20260727-desktop01"
@@ -595,6 +647,8 @@ class CoordinatorHarness:
 
     @property
     def output(self) -> pathlib.Path:
+        """Handle the output step."""
+
         return (
             self.repository
             / "build"
@@ -605,6 +659,8 @@ class CoordinatorHarness:
 
     @property
     def coordinator_output(self) -> pathlib.Path:
+        """Handle the coordinator output step."""
+
         return (
             self.repository
             / "build"
@@ -615,19 +671,27 @@ class CoordinatorHarness:
 
     @property
     def barrier(self) -> pathlib.Path:
+        """Handle the barrier step."""
+
         return self.output / live_protocol.DESKTOP_CLIENT_BARRIER_FILENAME
 
     @property
     def base_ready(self) -> pathlib.Path:
+        """Handle the base ready step."""
+
         return self.output / "ready" / "foxglove-client.json"
 
     def _write_file(self, relative: str, payload: bytes = b"x") -> pathlib.Path:
+        """Write file."""
+
         path = self.repository / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
         return path
 
     def _prepare_files(self) -> None:
+        """Prepare files."""
+
         self.unity = self._write_file("tools/Unity.exe")
         self.cli = self._write_file("tools/foxglove.exe", b"cli")
         self.desktop = self._write_file(
@@ -644,6 +708,8 @@ class CoordinatorHarness:
         )
 
     def args(self) -> argparse.Namespace:
+        """Handle the args step."""
+
         return argparse.Namespace(
             unity_editor=self.unity,
             foxglove_cli=self.cli,
@@ -654,6 +720,8 @@ class CoordinatorHarness:
         )
 
     def create_base_run(self) -> None:
+        """Handle the create base run step."""
+
         self.output.mkdir(parents=True, exist_ok=False)
         (self.output / "ready").mkdir()
         (self.output / "results").mkdir()
@@ -685,6 +753,8 @@ class CoordinatorHarness:
         self,
         config: dict[str, object] | None = None,
     ) -> None:
+        """Write base ready."""
+
         if self.base_ready.exists():
             return
         if config is None:
@@ -725,6 +795,8 @@ class CoordinatorHarness:
         self.events.append("base:ready")
 
     def write_base_summary(self) -> None:
+        """Write base summary."""
+
         path = self.output / "summary.json"
         if path.exists():
             return
@@ -741,6 +813,8 @@ class CoordinatorHarness:
         )
 
     def read_log_lines(self, path: pathlib.Path, max_bytes: int):
+        """Read log lines."""
+
         self.events.append("log:read")
         if (
             self.mode
@@ -812,11 +886,15 @@ class CoordinatorHarness:
         return tuple(lines)
 
     def _event_once(self, event: str) -> None:
+        """Handle the event once step."""
+
         if event not in self._noted_events:
             self._noted_events.add(event)
             self.events.append(event)
 
     def load_json_snapshot(self, path: pathlib.Path, max_bytes: int):
+        """Load JSON snapshot."""
+
         self.events.append(
             "json:read-summary"
             if pathlib.Path(path).name == "summary.json"
@@ -834,6 +912,8 @@ class CoordinatorHarness:
         *,
         max_bytes: int,
     ) -> None:
+        """Write JSON atomic."""
+
         path = pathlib.Path(path)
         self.events.append(
             "summary:write"
@@ -851,6 +931,8 @@ class CoordinatorHarness:
             self.summary_writes.append(path)
 
     def remove_owned_file(self, path: pathlib.Path) -> bool:
+        """Remove owned file."""
+
         self.events.append("barrier:remove")
         try:
             pathlib.Path(path).unlink()
@@ -859,6 +941,8 @@ class CoordinatorHarness:
         return not pathlib.Path(path).exists()
 
     def verify_cli(self, install_path, receipt_path):
+        """Handle the verify CLI step."""
+
         self.events.append("cli:verify")
         if self.mode == "cli-fail":
             raise live_protocol.AcceptanceFailure(
@@ -879,6 +963,8 @@ class CoordinatorHarness:
         )
 
     def read_desktop_version(self, _path):
+        """Read desktop version."""
+
         if self.mode == "desktop-version-fail":
             raise OSError("injected version failure")
         if self.mode == "desktop-version-race":
@@ -886,6 +972,8 @@ class CoordinatorHarness:
         return "2.9.0.0"
 
     def hash_file(self, path):
+        """Handle the hash file step."""
+
         if (
             self.mode == "desktop-hash-fail"
             and pathlib.Path(path) == self.desktop
@@ -894,6 +982,8 @@ class CoordinatorHarness:
         return live_protocol.sha256_file(path)
 
     def read_uri_handler(self):
+        """Read URI handler."""
+
         if self.mode == "desktop-handler-fail":
             return r'"D:\Other\Foxglove.exe" "%1"'
         if self.mode == "desktop-handler-race":
@@ -901,17 +991,25 @@ class CoordinatorHarness:
         return f'"{self.desktop}" "%1"'
 
     class _DesktopExecutableLease:
+        """Represent the desktop executable lease contract."""
+
         def __init__(self, harness):
+            """Initialize the desktop executable lease."""
+
             self.harness = harness
             self.active = False
 
         def __enter__(self):
+            """Enter the desktop executable lease context."""
+
             self.active = True
             self.harness.desktop_lease_active = True
             self.harness.events.append("desktop-lease:open")
             return self
 
         def __exit__(self, exc_type, exc, traceback):
+            """Exit the desktop executable lease context without suppressing failures."""
+
             del exc_type, exc, traceback
             if self.active:
                 self.active = False
@@ -920,6 +1018,8 @@ class CoordinatorHarness:
             return False
 
         def _identity(self):
+            """Handle the identity step."""
+
             info = self.harness.desktop.stat()
             return cli_install.ExecutableFileIdentity(
                 volume_serial=int(info.st_dev),
@@ -927,6 +1027,8 @@ class CoordinatorHarness:
             )
 
         def snapshot(self):
+            """Handle the snapshot step."""
+
             self.harness.desktop_lease_snapshot_count += 1
             count = self.harness.desktop_lease_snapshot_count
             if (
@@ -955,10 +1057,14 @@ class CoordinatorHarness:
             )
 
         def path_identity(self):
+            """Handle the path identity step."""
+
             self.harness.events.append("desktop-lease:path-identity")
             return self._identity()
 
     def make_desktop_lease(self, _path):
+        """Build desktop lease."""
+
         if self.mode == "desktop-reparse":
             raise live_protocol.AcceptanceFailure(
                 live_protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -967,6 +1073,8 @@ class CoordinatorHarness:
         return self._DesktopExecutableLease(self)
 
     def make_owner(self, desktop_executable):
+        """Build owner."""
+
         if self.mode == "job-create-fail":
             self.events.append("job:create-fail")
             raise job_owner.OwnershipFailure(
@@ -977,6 +1085,8 @@ class CoordinatorHarness:
         return self.owner
 
     def verify_identity_exits(self, identities, timeout_seconds):
+        """Handle the verify identity exits step."""
+
         frozen = tuple(identities)
         self.events.append("identity-exit:verify")
         self.exit_verifier_inputs.append(frozen)
@@ -1000,6 +1110,8 @@ class CoordinatorHarness:
         )
 
     def dependencies(self):
+        """Handle the dependencies step."""
+
         arguments = {
             "repository_root": self.repository,
             "platform_name": "nt",
@@ -1067,6 +1179,8 @@ class CoordinatorHarness:
         )
 
     def path_exists(self, path):
+        """Handle the path exists step."""
+
         candidate = pathlib.Path(path)
         if (
             self.mode == "base-ready-path-error"
@@ -1084,6 +1198,8 @@ class CoordinatorHarness:
         return candidate.exists()
 
     def _reserve_port(self, requested):
+        """Handle the reserve port step."""
+
         self.events.append("port:reserve")
         if self.mode == "busy-port":
             raise live_protocol.AcceptanceFailure(
@@ -1094,10 +1210,14 @@ class CoordinatorHarness:
         return FakeReservation(self, self.port)
 
     def assert_loopback_port(self, requested):
+        """Handle the assert loopback port step."""
+
         if requested is not None:
             assert requested == self.port
 
     def _port_is_bindable(self, host, port):
+        """Handle the port is bindable step."""
+
         self.events.append("port:probe")
         return (
             host == "127.0.0.1"
@@ -1110,12 +1230,16 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
     """Lock the coordinator into the focused, owned Windows live route."""
 
     def test_coordinator_module_exists(self):
+        """Verify coordinator module exists."""
+
         self.assertTrue(
             COORDINATOR_PATH.is_file(),
             "Phase184-H Desktop-live coordinator has not been implemented.",
         )
 
     def test_argument_surface_has_exact_required_paths_and_defaults(self):
+        """Verify argument surface has exact required paths and defaults."""
+
         args = coordinator.parse_args(
             [
                 "--unity-editor",
@@ -1153,6 +1277,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_argument_validation_rejects_non_windows_relative_missing_and_unsafe_values(self):
+        """Verify argument validation rejects non windows relative missing and unsafe values."""
+
         args = argparse.Namespace(
             unity_editor=pathlib.Path(r"C:\Unity\Editor\Unity.exe"),
             foxglove_cli=pathlib.Path(r"C:\Tools\foxglove.exe"),
@@ -1204,6 +1330,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_generated_run_identity_is_safe_deterministic_and_base_compatible(self):
+        """Verify generated run identity is safe deterministic and base compatible."""
+
         self.assertEqual(
             coordinator.generate_run_id(
                 timestamp="20260727-153045",
@@ -1226,6 +1354,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     coordinator.validate_run_id(value)
 
     def test_deeplink_uses_fixed_query_order_and_percent_encoding(self):
+        """Verify deeplink uses fixed query order and percent encoding."""
+
         self.assertEqual(
             coordinator.build_deeplink(8765),
             "foxglove://open?ds=foxglove-websocket&"
@@ -1235,6 +1365,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
             coordinator.build_deeplink(0)
 
     def test_windows_command_line_parser_and_uri_handler_are_exact(self):
+        """Verify windows command line parser and URI handler are exact."""
+
         executable = r"D:\Apps\Foxglove\Foxglove.exe"
         command = rf'"{executable}" "%1"'
 
@@ -1259,6 +1391,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     coordinator.validate_uri_handler(invalid, executable)
 
     def test_clean_environment_is_explicit_and_drops_tokens_credentials_and_ros_state(self):
+        """Verify clean environment is explicit and drops tokens credentials and ROS state."""
+
         source = {
             "SystemRoot": r"C:\Windows",
             "PATH": r"C:\Windows\System32",
@@ -1281,6 +1415,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_process_identity_document_has_only_pid_time_and_executable(self):
+        """Verify process identity document has only PID time and executable."""
+
         document = coordinator.process_identity_document(valid_process(202))
         self.assertEqual(
             set(document),
@@ -1289,6 +1425,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertEqual(document["pid"], 202)
 
     def test_log_scan_preserves_raw_context_and_transport_indices(self):
+        """Verify log scan preserves raw context and transport indices."""
+
         token = "p184g_A1b2C3d4E5f6"
         case = "foxglove-profile"
         initial = (
@@ -1310,6 +1448,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertEqual((1,), evidence.transport_indices)
 
     def test_summary_schema_has_exact_top_and_section_keys(self):
+        """Verify summary schema has exact top and section keys."""
+
         summary = valid_summary()
 
         self.assertIs(
@@ -1418,6 +1558,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_pass_summary_rejects_raw_token_external_identity_and_bad_order(self):
+        """Verify pass summary rejects raw token external identity and bad order."""
+
         raw_token = "p184g_A1b2C3d4E5f6"
         for mutate in (
             lambda value: value["connection"].__setitem__(
@@ -1438,6 +1580,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 coordinator.validate_desktop_live_summary(summary)
 
     def test_pass_summary_rejects_cross_field_semantic_mutations(self):
+        """Verify pass summary rejects cross field semantic mutations."""
+
         coordinator.validate_desktop_live_summary(valid_summary())
         mutations = (
             (
@@ -1631,6 +1775,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     coordinator.validate_desktop_live_summary(summary)
 
     def test_every_false_cleanup_axis_overrides_pass(self):
+        """Verify every false cleanup axis overrides pass."""
+
         for key in (
             "jobClosed",
             "processes",
@@ -1653,6 +1799,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_failure_summary_still_has_exact_schema_and_stable_terminal_code(self):
+        """Verify failure summary still has exact schema and stable terminal code."""
+
         summary = valid_summary()
         summary["verdict"] = live_protocol.FAIL_DESKTOP_CONNECTION
         summary["desktop"]["rootIdentity"] = None
@@ -1696,6 +1844,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertNotIn("p184g_", encoded)
 
     def test_injected_success_locks_launch_order_commands_policies_and_evidence(self):
+        """Verify injected success locks launch order commands policies and evidence."""
+
         with temporary_directory("desktop-live-success-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -1819,6 +1969,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_connection_window_starts_after_current_client_readiness(self):
+        """Verify connection window starts after current client readiness."""
+
         with temporary_directory("desktop-live-delayed-ready-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -1842,6 +1994,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_base_readiness_is_required_and_exactly_correlated(self):
+        """Verify base readiness is required and exactly correlated."""
+
         for mode in (
             "missing-base-ready",
             "stale-base-ready",
@@ -1873,6 +2027,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_success_records_graceful_forced_cleanup_and_removes_barrier(self):
+        """Verify success records graceful forced cleanup and removes barrier."""
+
         with temporary_directory("desktop-live-cleanup-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -1911,6 +2067,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertEqual(summary["desktop"]["externalIdentities"], [])
 
     def test_all_captured_members_are_identity_verified_after_job_close(self):
+        """Verify all captured members are identity verified after job close."""
+
         with temporary_directory("desktop-live-exit-proof-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -1944,6 +2102,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertEqual(captured, summarized)
 
     def test_residual_owned_member_forces_cleanup_failure(self):
+        """Verify residual owned member forces cleanup failure."""
+
         with temporary_directory("desktop-live-residual-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -1963,6 +2123,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_late_spawn_is_refreshed_recorded_and_exit_verified(self):
+        """Verify late spawn is refreshed recorded and exit verified."""
+
         with temporary_directory("desktop-live-late-spawn-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2001,6 +2163,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_preexisting_exact_path_process_rejects_before_any_root(self):
+        """Verify preexisting exact path process rejects before any root."""
+
         with temporary_directory("desktop-live-preexisting-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2025,6 +2189,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_external_single_instance_and_close_races_are_never_close_targets(self):
+        """Verify external single instance and close races are never close targets."""
+
         for mode in (
             "external-after-desktop",
             "late-external",
@@ -2058,6 +2224,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     self.assertNotIn("desktop:close-request", harness.events)
 
     def test_transport_and_child_failure_modes_have_stable_terminal_classes(self):
+        """Verify transport and child failure modes have stable terminal classes."""
+
         expected = {
             "cli-fail": live_protocol.FAIL_CLI_PROVENANCE,
             "job-create-fail": live_protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -2107,6 +2275,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_job_create_and_desktop_preflight_failures_never_launch_desktop(self):
+        """Verify job create and desktop preflight failures never launch desktop."""
+
         expected = {
             "job-create-fail": live_protocol.FAIL_DESKTOP_PREFLIGHT,
             "busy-port": live_protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -2136,6 +2306,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_desktop_executable_reparse_and_updater_races_fail_closed(self):
+        """Verify desktop executable reparse and updater races fail closed."""
+
         expected = {
             "desktop-reparse": (
                 live_protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -2187,6 +2359,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     self.assertIn("desktop-lease:close", harness.events)
 
     def test_desktop_process_identity_is_bound_before_lease_release(self):
+        """Verify desktop process identity is bound before lease release."""
+
         with temporary_directory("desktop-live-identity-bind-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2210,6 +2384,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_desktop_lease_baseexception_releases_before_cleanup_finishes(self):
+        """Verify desktop lease baseexception releases before cleanup finishes."""
+
         with temporary_directory("desktop-live-lease-interrupt-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2227,6 +2403,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertIn("job:close", harness.events)
 
     def test_success_launches_desktop_while_production_shaped_lease_is_active(self):
+        """Verify success launches desktop while production shaped lease is active."""
+
         with temporary_directory("desktop-live-lease-shape-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -2253,6 +2431,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_root_absence_and_unstable_zero_state_fail_before_desktop_proof(self):
+        """Verify root absence and unstable zero state fail before desktop proof."""
+
         expected = {
             "root-absent": live_protocol.FAIL_DESKTOP_IDENTITY,
             "unstable-initial": live_protocol.FAIL_DESKTOP_CONNECTION,
@@ -2281,6 +2461,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                     )
 
     def test_raw_context_order_and_transport_regression_never_pass(self):
+        """Verify raw context order and transport regression never pass."""
+
         expected = {
             "context-after-initial": False,
             "transport-regression": True,
@@ -2313,6 +2495,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
                 )
 
     def test_base_summary_is_validated_before_desktop_close(self):
+        """Verify base summary is validated before desktop close."""
+
         with temporary_directory("desktop-live-summary-order-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -2327,6 +2511,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_barrier_written_only_after_first_client_and_second_follows_barrier(self):
+        """Verify barrier written only after first client and second follows barrier."""
+
         with temporary_directory("desktop-live-barrier-order-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
 
@@ -2354,6 +2540,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         )
 
     def test_failure_after_barrier_still_closes_job_and_removes_only_owned_barrier(self):
+        """Verify failure after barrier still closes job and removes only owned barrier."""
+
         with temporary_directory("desktop-live-failure-cleanup-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2374,6 +2562,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertNotIn("desktop:close-request", harness.events)
 
     def test_cleanup_port_failure_prevents_pass(self):
+        """Verify cleanup port failure prevents pass."""
+
         with temporary_directory("desktop-live-port-busy-") as temporary:
             harness = CoordinatorHarness(
                 pathlib.Path(temporary),
@@ -2389,6 +2579,8 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
         self.assertFalse(summary["cleanup"]["port"])
 
     def test_main_returns_zero_only_for_validated_pass(self):
+        """Verify main returns zero only for validated pass."""
+
         with temporary_directory("desktop-live-main-pass-") as temporary:
             harness = CoordinatorHarness(pathlib.Path(temporary))
             argv = [

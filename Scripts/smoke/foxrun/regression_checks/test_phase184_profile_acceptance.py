@@ -42,24 +42,34 @@ class FakeProcess:
     """Minimal helper-owned child used by cleanup and Job tests."""
 
     def __init__(self, pid: int = 184):
+        """Initialize the fake process."""
+
         self.pid = pid
         self.returncode = None
         self.terminated = 0
 
     def poll(self):
+        """Handle the poll step."""
+
         return self.returncode
 
     def send_signal(self, _signal):
+        """Handle the send signal step."""
+
         self.terminated += 1
         self.returncode = 0
 
     def wait(self, timeout=None):
+        """Wait for the configured owned process."""
+
         del timeout
         if self.returncode is None:
             self.returncode = 0
         return self.returncode
 
     def kill(self):
+        """Handle the kill step."""
+
         self.terminated += 1
         self.returncode = -9
 
@@ -68,6 +78,8 @@ class FakeJobApi:
     """Records the exact hard-close ownership operations."""
 
     def __init__(self, *, assign_ok: bool = True):
+        """Initialize the fake job API."""
+
         self.assign_ok = assign_ok
         self.created = 0
         self.configured = 0
@@ -75,14 +87,20 @@ class FakeJobApi:
         self.closed: list[int] = []
 
     def create_kill_on_close_job(self):
+        """Handle the create kill on close job step."""
+
         self.created += 1
         return 731
 
     def assign_pid(self, handle, pid):
+        """Handle the assign PID step."""
+
         self.assigned.append((handle, pid))
         return self.assign_ok
 
     def close_handle(self, handle):
+        """Handle the close handle step."""
+
         self.closed.append(handle)
 
 
@@ -96,6 +114,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         distro: str = "jazzy",
         default_rmw: str = "rmw_fastrtps_cpp",
     ) -> tuple[str, str]:
+        """Write reusable runtime selection."""
+
         runtime_package = (
             f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64"
         )
@@ -190,6 +210,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         return runtime_package, addon_package
 
     def test_windows_domain_id_stays_below_the_dynamic_port_collision_range(self):
+        """Verify windows domain id stays below the dynamic port collision range."""
+
         module = load_module()
 
         self.assertEqual(0, module.choose_domain_id(0))
@@ -209,6 +231,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertEqual(159, module.choose_domain_id(None))
 
     def test_current_unity_runtime_is_reused_only_for_an_exact_default_selection(self):
+        """Verify current unity runtime is reused only for an exact default selection."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="runtime-reuse-", dir=TEST_ROOT) as raw:
@@ -253,6 +277,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             )
 
     def test_runtime_selection_reuse_skips_unity_resolve_and_persists_evidence(self):
+        """Verify runtime selection reuse skips unity resolve and persists evidence."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="runtime-skip-", dir=TEST_ROOT) as raw:
@@ -282,6 +308,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertIn("rmw=rmw_fastrtps_cpp", selection_log)
 
     def test_nondefault_rmw_falls_back_to_the_validated_unity_selector(self):
+        """Verify nondefault rmw falls back to the validated unity selector."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="runtime-select-", dir=TEST_ROOT) as raw:
@@ -317,6 +345,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             peer.build_runtime_selection_batch_command.assert_called_once()
 
     def test_cli_has_exact_parent_and_worker_modes(self):
+        """Verify CLI has exact parent and worker modes."""
+
         module = load_module()
 
         parent = module.parse_args(
@@ -368,6 +398,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             module.validate_arguments(missing_profile)
 
     def test_desktop_client_wait_is_parent_only_and_foxglove_batch_only(self):
+        """Verify desktop client wait is parent only and foxglove batch only."""
+
         module = load_module()
         editor = r"C:\Unity.exe"
 
@@ -440,6 +472,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             )
 
     def test_command_arrays_are_direct_and_carry_only_owned_state(self):
+        """Verify command arrays are direct and carry only owned state."""
+
         module = load_module()
         editor = pathlib.Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe")
         project = ROOT / "Unity2Foxglove"
@@ -492,6 +526,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_ros_workers_are_launched_and_made_ready_serially(self):
+        """Verify ROS workers are launched and made ready serially."""
+
         module = load_module()
         events = []
         config = {
@@ -509,10 +545,14 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
         def launch(role, *_args, **_kwargs):
+            """Launch the configured owned process."""
+
             events.append(("launch", role))
             return FakeProcess()
 
         def wait(_config, roles, _owner):
+            """Wait for the configured owned process."""
+
             events.append(("ready", tuple(roles)[0]))
             return {}
 
@@ -539,6 +579,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_desktop_barrier_environment_is_injected_only_into_foxglove_worker(self):
+        """Verify desktop barrier environment is injected only into foxglove worker."""
+
         module = load_module()
         output = ROOT / "build" / "phase184" / "acceptance" / "barrier-workers"
         barrier = output / "desktop-client-barrier.json"
@@ -550,9 +592,13 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
         def capture_environments(desktop_barrier):
+            """Capture environments."""
+
             environments = {}
 
             def launch(role, *_args, **kwargs):
+                """Launch the configured owned process."""
+
                 environments[role] = dict(kwargs["environment"])
                 return FakeProcess()
 
@@ -595,6 +641,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", environment)
 
     def test_case_actor_threads_the_optional_barrier_only_to_worker_startup(self):
+        """Verify case actor threads the optional barrier only to worker startup."""
+
         module = load_module()
         output = ROOT / "build" / "phase184" / "acceptance" / "barrier-actors"
         barrier = output / "desktop-client-barrier.json"
@@ -616,6 +664,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual(barrier, workers.call_args.kwargs["desktop_barrier"])
 
     def test_desktop_barrier_is_excluded_from_owned_router_environment(self):
+        """Verify desktop barrier is excluded from owned router environment."""
+
         module = load_module()
         output = ROOT / "build" / "phase184" / "acceptance" / "barrier-router"
         barrier = output / "desktop-client-barrier.json"
@@ -630,6 +680,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         launched_environment = {}
 
         def launch(_role, *_args, **kwargs):
+            """Launch the configured owned process."""
+
             launched_environment.update(kwargs["environment"])
             return FakeProcess()
 
@@ -667,6 +719,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_peer_graph_auditor_validates_raw_rclpy_snapshot(self):
+        """Verify peer graph auditor validates raw rclpy snapshot."""
+
         module = load_module()
         topic = "/foxrun/phase184/multi/state"
         topic_type = "demo/msg/State"
@@ -728,6 +782,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual(graphs, evidence["topics"])
 
     def test_run_config_is_immutable_case_specific_and_protocol_valid(self):
+        """Verify run config is immutable case specific and protocol valid."""
+
         module = load_module()
         run_id = "phase184g-20260726-config01"
         output = ROOT / "build" / "phase184" / "acceptance" / run_id
@@ -865,6 +921,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_environment_prefix_order_is_bridge_peer_ros_and_ambient_is_removed(self):
+        """Verify environment prefix order is bridge peer ROS and ambient is removed."""
+
         module = load_module()
         source = {
             "PATH": r"C:\host",
@@ -917,6 +975,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_zenoh_router_uses_the_exact_unity_project_endpoint(self):
+        """Verify zenoh router uses the exact unity project endpoint."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="zenoh-endpoint-", dir=TEST_ROOT) as raw:
@@ -966,6 +1026,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 module.load_unity_zenoh_router_endpoint(repository)
 
     def test_zenoh_router_readiness_requires_marker_and_listening_socket(self):
+        """Verify zenoh router readiness requires marker and listening socket."""
+
         module = load_module()
         process = FakeProcess(pid=18403)
         endpoint = module.UnityZenohRouterEndpoint(
@@ -1002,6 +1064,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_publisher_gid_supports_current_and_legacy_rclpy_shapes(self):
+        """Verify publisher GID supports current and legacy rclpy shapes."""
+
         module = load_module()
         raw = bytes(range(24))
         current = {
@@ -1013,6 +1077,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         legacy_mapping = {"publisher_gid": raw}
 
         class LegacyObject:
+            """Represent the legacy object contract."""
+
             publisher_gid = raw
 
         self.assertEqual(raw.hex(), module._publisher_gid(current))
@@ -1032,6 +1098,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_publication_sequence_supports_the_jazzy_message_info_shape(self):
+        """Verify publication sequence supports the jazzy message info shape."""
+
         module = load_module()
 
         self.assertEqual(
@@ -1062,6 +1130,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_sample_attribution_uses_duplicate_sequences_and_exact_graph_gids(self):
+        """Verify sample attribution uses duplicate sequences and exact graph gids."""
+
         module = load_module()
         publishers = [
             {"node": "/unity_native", "gid": "native-gid"},
@@ -1105,6 +1175,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_multi_graph_allows_only_unrepresented_history_and_depth(self):
+        """Verify multi graph allows only unrepresented history and depth."""
+
         module = load_module()
         topic = "/foxrun/phase184/multi/state"
         topic_type = "demo/msg/State"
@@ -1152,6 +1224,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertFalse(module._graph_ready(config, contradicted))
 
     def test_qos_graph_accepts_matching_system_default_resolution_only(self):
+        """Verify QoS graph accepts matching system default resolution only."""
+
         module = load_module()
         topic_type = "demo/msg/State"
         topics = list(module.protocol.CASE_CONTRACTS["qos-contract"].topics)
@@ -1210,6 +1284,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertFalse(module._graph_ready(config, divergent))
 
     def test_stream_peer_waits_for_transport_graph_before_production(self):
+        """Verify stream peer waits for transport graph before production."""
+
         module = load_module()
         source = inspect.getsource(module._run_stream_peer)
 
@@ -1219,6 +1295,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_stream_production_gate_requires_exact_external_subscription(self):
+        """Verify stream production gate requires exact external subscription."""
+
         module = load_module()
         expected_type = "example_interfaces/msg/Envelope"
         config = {
@@ -1261,6 +1339,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_graph_timeout_snapshot_is_persisted_below_owned_run_root(self):
+        """Verify graph timeout snapshot is persisted below owned run root."""
+
         module = load_module()
         with tempfile.TemporaryDirectory(dir=TEST_ROOT) as temp:
             output = pathlib.Path(temp)
@@ -1298,6 +1378,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertEqual(graphs, payload["topics"])
 
     def test_windows_job_assignment_is_required_and_close_is_idempotent(self):
+        """Verify windows job assignment is required and close is idempotent."""
+
         module = load_module()
         api = FakeJobApi()
         job = module.WindowsKillOnCloseJob(api=api, platform_name="nt")
@@ -1319,6 +1401,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         failed.close()
 
     def test_process_owner_terminates_only_registered_children(self):
+        """Verify process owner terminates only registered children."""
+
         module = load_module()
         first = FakeProcess(1)
         second = FakeProcess(2)
@@ -1336,6 +1420,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertTrue(owner.all_stopped())
 
     def test_process_owner_can_stop_one_preflight_child_without_closing_others(self):
+        """Verify process owner can stop one preflight child without closing others."""
+
         module = load_module()
         preflight = FakeProcess(1)
         actual = FakeProcess(2)
@@ -1434,6 +1520,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 )
 
     def test_explicit_loopback_port_must_be_bindable(self):
+        """Verify explicit loopback port must be bindable."""
+
         module = load_module()
         with module.socket.socket(module.socket.AF_INET, module.socket.SOCK_STREAM) as held:
             exclusive = getattr(module.socket, "SO_EXCLUSIVEADDRUSE", None)
@@ -1447,6 +1535,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         module.require_available_loopback_port(port, "Foxglove")
 
     def test_progress_snapshot_observes_secondary_unity_log(self):
+        """Verify progress snapshot observes secondary unity log."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="progress-", dir=TEST_ROOT) as raw:
@@ -1504,6 +1594,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         watchdog.check.assert_called()
 
     def test_manual_editor_log_mirror_survives_truncation_and_correlates_token(self):
+        """Verify manual editor log mirror survives truncation and correlates token."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         token = "p184g_A1b2C3d4E5f6"
@@ -1568,6 +1660,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                         )
 
     def test_manual_editor_log_rescue_scan_is_rate_bounded(self):
+        """Verify manual editor log rescue scan is rate bounded."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         token = "p184g_A1b2C3d4E5f6"
@@ -1583,6 +1677,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             editor_reads = 0
 
             def read_text_spy(path, *args, **kwargs):
+                """Read text spy."""
+
                 nonlocal editor_reads
                 if path == editor_log:
                     editor_reads += 1
@@ -1606,6 +1702,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertEqual(2, editor_reads)
 
     def test_manual_pointer_is_removed_only_by_its_owner(self):
+        """Verify manual pointer is removed only by its owner."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="pointer-", dir=TEST_ROOT) as raw:
@@ -1645,6 +1743,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertFalse(pointer.exists())
 
     def test_short_workspace_alias_uses_path_identity_not_resolved_target(self):
+        """Verify short workspace alias uses path identity not resolved target."""
+
         module = load_module()
         physical = ROOT / "build" / "phase184" / "long-workspace"
         alias = pathlib.Path(r"X:\phase184")
@@ -1652,6 +1752,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertFalse(module._paths_are_distinct(physical, physical))
 
     def test_windows_bridge_runtime_encloses_ros_initialization_and_shutdown(self):
+        """Verify windows bridge runtime encloses ROS initialization and shutdown."""
+
         source = (
             ROOT
             / "Tools"
@@ -1678,6 +1780,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_windows_bridge_only_times_out_partial_frame_reads(self):
+        """Verify windows bridge only times out partial frame reads."""
+
         source = (
             ROOT
             / "Tools"
@@ -1704,6 +1808,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertIn("continue;", retryable_timeout[:stall_clock])
 
     def test_bridge_health_readiness_does_not_create_a_ros_participant(self):
+        """Verify bridge health readiness does not create a ROS participant."""
+
         source = (
             ROOT
             / "Tools"
@@ -1734,6 +1840,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_bridge_actor_health_checks_the_same_owned_process_before_unity(self):
+        """Verify bridge actor health checks the same owned process before unity."""
+
         module = load_module()
         process = FakeProcess(18404)
         owner = mock.Mock()
@@ -1761,12 +1869,16 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         launched_environment = {}
 
         def launch(*args, **kwargs):
+            """Launch the configured owned process."""
+
             del args
             launched_environment.update(kwargs["environment"])
             events.append("launch")
             return process
 
         def wait(*args, **kwargs):
+            """Wait for the configured owned process."""
+
             del args, kwargs
             events.append("health")
             return health
@@ -1804,6 +1916,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         owner.stop.assert_not_called()
 
     def test_bridge_cases_health_check_actual_sidecar_before_workers_and_unity(self):
+        """Verify bridge cases health check actual sidecar before workers and unity."""
+
         source = (
             ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
         ).read_text(encoding="utf-8")
@@ -1848,6 +1962,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertNotIn("deferred_bridge_start", manual)
 
     def test_batch_parent_computes_only_the_fixed_barrier_and_excludes_unity(self):
+        """Verify batch parent computes only the fixed barrier and excludes unity."""
+
         module = load_module()
         output = (
             ROOT
@@ -1890,6 +2006,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
         def stop_at_unity(role, *_args, **kwargs):
+            """Handle the stop at unity step."""
+
             self.assertEqual("unity", role)
             unity_environment.update(kwargs["environment"])
             raise module.AcceptanceFailure("FAIL_PREFLIGHT", "test stop")
@@ -1950,6 +2068,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", unity_environment)
 
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
+        """Verify unity routes emit native gate before full bridge readiness."""
+
         source = (
             ROOT
             / "Unity2Foxglove"
@@ -1980,6 +2100,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertLess(qos.index(marker), qos.index("if (_readyContracts == 3)"))
 
     def test_multi_target_peer_starts_delivery_window_after_unity_arms_local_token(self):
+        """Verify multi target peer starts delivery window after unity arms local token."""
+
         source = (
             ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
         ).read_text(encoding="utf-8")
@@ -2001,6 +2123,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
     def test_multi_target_foxglove_starts_delivery_window_after_unity_arms_local_token(
         self,
     ):
+        """Verify multi target foxglove starts delivery window after unity arms local token."""
+
         source = (
             ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
         ).read_text(encoding="utf-8")
@@ -2017,6 +2141,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertLess(armed_marker, delivery_window)
 
     def test_windows_bridge_build_dependencies_are_selected_from_ros_prefix(self):
+        """Verify windows bridge build dependencies are selected from ROS prefix."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="bridge-deps-", dir=TEST_ROOT) as raw:
@@ -2063,6 +2189,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 )
 
     def test_bridge_build_cache_is_stable_exact_and_owned(self):
+        """Verify bridge build cache is stable exact and owned."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="bridge-cache-", dir=TEST_ROOT) as raw:
@@ -2153,6 +2281,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 )
 
     def test_existing_acceptance_scene_still_runs_the_cold_start_preflight(self):
+        """Verify existing acceptance scene still runs the cold start preflight."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="scene-preflight-", dir=TEST_ROOT) as raw:
@@ -2212,6 +2342,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 )
 
     def test_foxglove_connect_waits_for_optional_desktop_barrier_after_context(self):
+        """Verify foxglove connect waits for optional desktop barrier after context."""
+
         module = load_module()
         config = {
             "case": "foxglove-profile",
@@ -2226,15 +2358,23 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
         class StopAfterConnect(RuntimeError):
+            """Represent the stop after connect contract."""
+
             pass
 
         def run_client(environment, *, barrier_failure=None):
+            """Run client."""
+
             events = []
 
             def context_ready(_config):
+                """Handle the context ready step."""
+
                 events.append("context")
 
             def wait_for_barrier(actual_config, actual_path):
+                """Wait for barrier."""
+
                 self.assertIs(config, actual_config)
                 self.assertEqual(str(barrier), actual_path)
                 events.append("barrier")
@@ -2242,6 +2382,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     raise barrier_failure
 
             async def connect(*_args, **_kwargs):
+                """Handle the connect step."""
+
                 events.append("connect")
                 raise StopAfterConnect()
 
@@ -2293,6 +2435,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         connect.assert_not_awaited()
 
     def test_foxglove_profile_requests_bootstrap_only_after_subscribing(self):
+        """Verify foxglove profile requests bootstrap only after subscribing."""
+
         module = load_module()
         topics = ("/profile/default", "/profile/json")
         config = {
@@ -2315,6 +2459,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         }
 
         async def subscribe(_websocket, _channels):
+            """Handle the subscribe step."""
+
             events.append("subscribe")
             return {184001: topics[0], 184002: topics[1]}
 
@@ -2329,17 +2475,23 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             *,
             advertise,
         ):
+            """Handle the send JSON step."""
+
             events.append(f"send:{stage}:advertise={advertise}")
 
         receive_count = 0
 
         async def receive(*_args, **_kwargs):
+            """Receive one correlated acceptance sample."""
+
             nonlocal receive_count
             receive_count += 1
             events.append(f"receive:{receive_count}")
             return {}, [], float(receive_count)
 
         def wait_marker(_config, marker, _timeout):
+            """Handle the wait marker step."""
+
             events.append(f"marker:{marker}")
 
         websockets = mock.Mock(
@@ -2446,6 +2598,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         websocket.close.assert_awaited_once()
 
     def test_foxglove_profile_rejects_client_ready_echo_before_profile_input(self):
+        """Verify foxglove profile rejects client ready echo before profile input."""
+
         module = load_module()
         token = "p184g_A1b2C3d4E5f6"
         topics = ("/profile/default", "/profile/json")
@@ -2527,6 +2681,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         websocket.close.assert_awaited_once()
 
     def test_degraded_client_requests_delivery_only_after_subscribing(self):
+        """Verify degraded client requests delivery only after subscribing."""
+
         module = load_module()
         token = "p184g_A1b2C3d4E5f6"
         topic = "/foxrun/phase184/degraded/state"
@@ -2547,19 +2703,27 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         channels = {topic: mock.Mock(encoding="protobuf")}
 
         async def subscribe(_websocket, _channels):
+            """Handle the subscribe step."""
+
             events.append("subscribe")
             return {184001: topic}
 
         async def send_json(*args, **kwargs):
+            """Handle the send JSON step."""
+
             events.append(
                 f"send:{args[4]}:advertise={kwargs['advertise']}"
             )
 
         async def receive(*_args, **_kwargs):
+            """Receive one correlated acceptance sample."""
+
             events.append("receive")
             return {}, [], 1.0
 
         def wait_marker(_config, marker, _timeout):
+            """Handle the wait marker step."""
+
             events.append(f"marker:{marker}")
 
         send = mock.AsyncMock(side_effect=send_json)
@@ -2637,6 +2801,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         websocket.close.assert_awaited_once()
 
     def test_bridge_health_frame_is_correlated_and_strict(self):
+        """Verify bridge health frame is correlated and strict."""
+
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"
         frame = module.build_u2r2_health_frame(request_id)
@@ -2667,6 +2833,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             module.validate_bridge_health_response(parsed, payload, request_id)
 
     def test_marker_parser_requires_exact_case_and_token(self):
+        """Verify marker parser requires exact case and token."""
+
         module = load_module()
         token = "p184g_A1b2C3d4E5f6"
         lines = [
@@ -2679,6 +2847,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual("PASS", marker.verdict)
 
     def test_atomic_config_writer_leaves_no_temporary_file(self):
+        """Verify atomic config writer leaves no temporary file."""
+
         module = load_module()
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="atomic-", dir=TEST_ROOT) as raw:
@@ -2688,6 +2858,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertEqual([], list(target.parent.glob("*.tmp")))
 
     def test_bridge_parser_requires_the_exact_qos_profile(self):
+        """Verify bridge parser requires the exact QoS profile."""
+
         module = load_module()
         run_id = "phase184g-20260726-bridge01"
         output = ROOT / "build" / "phase184" / "acceptance" / run_id
@@ -2744,6 +2916,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 module.parse_bridge_publisher_evidence(config, log)
 
     def test_qos_summary_requires_and_carries_bridge_parser_evidence(self):
+        """Verify QoS summary requires and carries bridge parser evidence."""
+
         module = load_module()
         run_id = "phase184g-20260726-qossum01"
         output = ROOT / "build" / "phase184" / "acceptance" / run_id
@@ -3041,6 +3215,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     )
 
     def test_stream_peer_evidence_must_match_unity_and_nominal_rate(self):
+        """Verify stream peer evidence must match unity and nominal rate."""
+
         module = load_module()
         terminal = module.TerminalMarker(
             "PASS",
@@ -3106,10 +3282,14 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             )
 
     def test_foxglove_worker_persists_unexpected_failure(self):
+        """Verify foxglove worker persists unexpected failure."""
+
         module = load_module()
         config = {"case": "foxglove-profile"}
 
         async def fail_unexpectedly(_config):
+            """Handle the fail unexpectedly step."""
+
             raise ValueError("boom")
 
         with mock.patch.object(
@@ -3126,6 +3306,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
 
     def test_main_dispatches_manual_mode_without_launching_batch_parent(self):
+        """Verify main dispatches manual mode without launching batch parent."""
+
         module = load_module()
         with mock.patch.object(module, "run_manual_parent", return_value=0) as manual:
             with mock.patch.object(module, "run_batch_parent") as batch:

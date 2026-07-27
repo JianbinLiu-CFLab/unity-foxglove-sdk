@@ -25,6 +25,8 @@ TEST_ROOT = ROOT / "build" / "Tests" / "Phase184HProtocol"
 
 
 def valid_receipt() -> dict[str, object]:
+    """Handle the valid receipt step."""
+
     return {
         "schemaVersion": 1,
         "releaseTag": "v1.2.3",
@@ -53,6 +55,8 @@ def valid_barrier_config(
     token: str = "p184g_A1b2C3d4E5f6",
     positive_seconds: int = 1,
 ) -> dict[str, object]:
+    """Handle the valid barrier config step."""
+
     return {
         "runId": run_id,
         "token": token,
@@ -62,6 +66,8 @@ def valid_barrier_config(
 
 
 def valid_barrier_document(config: dict[str, object]) -> dict[str, object]:
+    """Handle the valid barrier document step."""
+
     token = config["token"]
     assert isinstance(token, str)
     return {
@@ -74,7 +80,11 @@ def valid_barrier_document(config: dict[str, object]) -> dict[str, object]:
 
 
 class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
+    """Exercise the phase184 foxglove desktop live protocol tests behavior."""
+
     def assert_provenance_failure(self, callback) -> protocol.AcceptanceFailure:
+        """Handle the assert provenance failure step."""
+
         with self.assertRaises(protocol.AcceptanceFailure) as raised:
             callback()
         self.assertEqual(protocol.FAIL_CLI_PROVENANCE, raised.exception.code)
@@ -85,6 +95,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         return raised.exception
 
     def test_public_constants_lock_receipt_and_terminal_protocol(self):
+        """Verify public constants lock receipt and terminal protocol."""
+
         self.assertEqual(1, protocol.CLI_RECEIPT_SCHEMA_VERSION)
         self.assertEqual("windows-amd64", protocol.CLI_ARCHITECTURE)
         self.assertEqual(
@@ -155,6 +167,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         )
 
     def test_acceptance_failure_keeps_stable_code_and_bounds_one_line_message(self):
+        """Verify acceptance failure keeps stable code and bounds one line message."""
+
         failure = protocol.AcceptanceFailure(
             protocol.FAIL_CLI_PROVENANCE,
             "unsafe\r\n" + ("x" * (protocol.MAX_DIAGNOSTIC_CHARACTERS * 2)),
@@ -169,6 +183,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         self.assertTrue(str(failure).startswith("FAIL_CLI_PROVENANCE: "))
 
     def test_semantic_version_normalizes_only_one_stable_version(self):
+        """Verify semantic version normalizes only one stable version."""
+
         for value in ("1.2.3", "v1.2.3", "  v184.0.27\r\n"):
             with self.subTest(value=value):
                 expected = value.strip().removeprefix("v")
@@ -204,6 +220,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_sha256_helpers_use_exact_uppercase_hex(self):
+        """Verify SHA-256 helpers use exact uppercase hex."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="sha-", dir=TEST_ROOT) as raw:
             path = pathlib.Path(raw) / "payload.bin"
@@ -228,6 +246,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_official_asset_url_requires_exact_origin_repo_route_tag_and_asset(self):
+        """Verify official asset url requires exact origin repo route tag and asset."""
+
         for tag in ("v1.2.3", "1.2.3"):
             for asset_name in (
                 "foxglove-windows-amd64",
@@ -290,6 +310,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_receipt_accepts_each_exact_asset_alias_only_when_url_matches(self):
+        """Verify receipt accepts each exact asset alias only when url matches."""
+
         for asset_name in (
             "foxglove-windows-amd64",
             "foxglove-windows-amd64.exe",
@@ -322,6 +344,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_valid_receipt_matches_live_cli_with_windows_path_normalization(self):
+        """Verify valid receipt matches live CLI with windows path normalization."""
+
         receipt = valid_receipt()
         original = copy.deepcopy(receipt)
         validated = protocol.validate_cli_receipt(
@@ -334,6 +358,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         self.assertEqual(receipt, validated)
 
     def test_receipt_rejects_every_missing_key_and_any_extra_or_secret_field(self):
+        """Verify receipt rejects every missing key and any extra or secret field."""
+
         baseline = valid_receipt()
         for key in protocol.CLI_RECEIPT_KEYS:
             with self.subTest(missing=key):
@@ -361,6 +387,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_receipt_rejects_schema_architecture_asset_and_official_url_drift(self):
+        """Verify receipt rejects schema architecture asset and official url drift."""
+
         mutations = {
             "schema": ("schemaVersion", 2),
             "boolean-schema": ("schemaVersion", True),
@@ -386,6 +414,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_receipt_rejects_every_version_or_hash_mismatch(self):
+        """Verify receipt rejects every version or hash mismatch."""
+
         baseline = valid_receipt()
         for key in (
             "releaseTag",
@@ -442,6 +472,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         )
 
     def test_receipt_rejects_drive_and_unc_namespace_aliases_in_both_directions(self):
+        """Verify receipt rejects drive and unc namespace aliases in both directions."""
+
         baseline = valid_receipt()
         aliases = (
             (
@@ -483,6 +515,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_public_windows_path_identity_normalizes_aliases_case_and_separators(self):
+        """Verify public windows path identity normalizes aliases case and separators."""
+
         path_key = getattr(protocol, "windows_path_key", None)
         paths_equal = getattr(protocol, "windows_paths_equal", None)
         self.assertTrue(callable(path_key))
@@ -521,6 +555,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_receipt_requires_absolute_windows_paths_and_exact_live_path(self):
+        """Verify receipt requires absolute windows paths and exact live path."""
+
         baseline = valid_receipt()
         unc_receipt = dict(
             baseline,
@@ -576,6 +612,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         )
 
     def test_receipt_accepts_canonical_utc_timestamps_and_rejects_malformed_values(self):
+        """Verify receipt accepts canonical UTC timestamps and rejects malformed values."""
+
         baseline = valid_receipt()
         for value in (
             "2026-07-27T12:34:56Z",
@@ -613,6 +651,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_bounded_receipt_loader_rejects_malformed_duplicate_and_oversize_json(self):
+        """Verify bounded receipt loader rejects malformed duplicate and oversize JSON."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="load-", dir=TEST_ROOT) as raw:
             root = pathlib.Path(raw)
@@ -640,6 +680,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                     self.assertNotIn("x" * 128, failure.message)
 
     def test_atomic_json_writer_is_deterministic_bounded_and_uses_sibling_replace(self):
+        """Verify atomic JSON writer is deterministic bounded and uses sibling replace."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="write-", dir=TEST_ROOT) as raw:
             root = pathlib.Path(raw)
@@ -648,6 +690,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             replacements: list[tuple[pathlib.Path, pathlib.Path]] = []
 
             def recording_replace(source, destination):
+                """Handle the recording replace step."""
+
                 replacements.append((pathlib.Path(source), pathlib.Path(destination)))
                 real_replace(source, destination)
 
@@ -689,6 +733,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             self.assertEqual([], list(target.parent.glob("*.tmp")))
 
     def assert_client_failure(self, callback, token: str) -> protocol.AcceptanceFailure:
+        """Handle the assert client failure step."""
+
         with self.assertRaises(protocol.AcceptanceFailure) as raised:
             callback()
         self.assertEqual(protocol.FAIL_CLIENT, raised.exception.code)
@@ -704,6 +750,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         callback,
         token: str,
     ) -> protocol.AcceptanceFailure:
+        """Handle the assert evidence failure step."""
+
         with self.assertRaises(protocol.AcceptanceFailure) as raised:
             callback()
         self.assertEqual(protocol.FAIL_EVIDENCE, raised.exception.code)
@@ -715,6 +763,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         return raised.exception
 
     def test_desktop_client_barrier_path_and_document_are_exact_and_token_bound(self):
+        """Verify desktop client barrier path and document are exact and token bound."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -738,6 +788,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_desktop_client_barrier_rejects_non_owned_paths_and_traversal(self):
+        """Verify desktop client barrier rejects non owned paths and traversal."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-path-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -767,6 +819,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_desktop_client_barrier_rejects_every_malformed_schema_shape_immediately(self):
+        """Verify desktop client barrier rejects every malformed schema shape immediately."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-json-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -855,6 +909,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                     sleep.assert_not_called()
 
     def test_desktop_client_barrier_missing_wait_uses_injected_bounded_deadline(self):
+        """Verify desktop client barrier missing wait uses injected bounded deadline."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-wait-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -864,9 +920,13 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             sleeps: list[float] = []
 
             def clock() -> float:
+                """Handle the clock step."""
+
                 return now[0]
 
             def sleep(seconds: float) -> None:
+                """Handle the sleep step."""
+
                 sleeps.append(seconds)
                 now[0] += seconds
 
@@ -890,6 +950,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_desktop_client_barrier_default_deadline_uses_window_plus_allowance(self):
+        """Verify desktop client barrier default deadline uses window plus allowance."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-window-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -898,9 +960,13 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             now = [100.0]
 
             def clock() -> float:
+                """Handle the clock step."""
+
                 return now[0]
 
             def sleep(seconds: float) -> None:
+                """Handle the sleep step."""
+
                 now[0] += seconds
 
             self.assert_client_failure(
@@ -920,6 +986,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_desktop_client_barrier_polls_then_accepts_atomic_document(self):
+        """Verify desktop client barrier polls then accepts atomic document."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-appears-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -930,6 +998,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             sleeps: list[float] = []
 
             def sleep(seconds: float) -> None:
+                """Handle the sleep step."""
+
                 sleeps.append(seconds)
                 now[0] += seconds
                 protocol.write_json_atomic(
@@ -951,6 +1021,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             self.assertEqual(1, len(sleeps))
 
     def test_desktop_client_barrier_rejects_valid_document_created_after_deadline(self):
+        """Verify desktop client barrier rejects valid document created after deadline."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-late-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -961,6 +1033,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             sleeps: list[float] = []
 
             def sleep(seconds: float) -> None:
+                """Handle the sleep step."""
+
                 sleeps.append(seconds)
                 now[0] = 1.25
                 protocol.write_json_atomic(
@@ -988,6 +1062,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             self.assertTrue(barrier.is_file())
 
     def test_desktop_client_barrier_at_exact_deadline_times_out_before_read(self):
+        """Verify desktop client barrier at exact deadline times out before read."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-equal-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -1011,6 +1087,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_desktop_client_barrier_clock_failure_precedes_visible_document(self):
+        """Verify desktop client barrier clock failure precedes visible document."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         token = "p184g_ClockFailureRawToken77"
         with tempfile.TemporaryDirectory(prefix="barrier-clock-", dir=TEST_ROOT) as raw:
@@ -1040,6 +1118,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                     )
 
     def test_desktop_client_barrier_rejects_symlink_or_reparse_alias(self):
+        """Verify desktop client barrier rejects symlink or reparse alias."""
+
         TEST_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="barrier-link-", dir=TEST_ROOT) as raw:
             output = pathlib.Path(raw).resolve()
@@ -1065,6 +1145,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             )
 
     def test_transport_client_marker_parser_accepts_only_exact_bounded_envelopes(self):
+        """Verify transport client marker parser accepts only exact bounded envelopes."""
+
         token = "p184g_A1b2C3d4E5f6"
         case = "foxglove-profile"
         normal = protocol.parse_transport_client_marker(
@@ -1091,6 +1173,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             normal.active = 9
 
     def test_transport_client_marker_parser_rejects_every_malformed_envelope(self):
+        """Verify transport client marker parser rejects every malformed envelope."""
+
         token = "p184g_UniqueRawToken77"
         case = "foxglove-profile"
         marker = protocol.TRANSPORT_CLIENTS_MARKER
@@ -1129,6 +1213,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_transport_client_markers_require_zero_one_two_in_strict_order(self):
+        """Verify transport client markers require zero one two in strict order."""
+
         token = "p184g_A1b2C3d4E5f6"
         case = "foxglove-profile"
         lines = [
@@ -1148,6 +1234,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         self.assertEqual([0, 1, 3], [marker.accepted for marker in markers])
 
     def test_transport_client_markers_reject_overflow_wrong_identity_and_order(self):
+        """Verify transport client markers reject overflow wrong identity and order."""
+
         token = "p184g_A1b2C3d4E5f6"
         case = "foxglove-profile"
         zero = (
@@ -1198,10 +1286,14 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_transport_chronology_rejects_regression_and_nonconsecutive_reappearance(self):
+        """Verify transport chronology rejects regression and nonconsecutive reappearance."""
+
         token = "p184g_A1b2C3d4E5f6"
         case = "foxglove-profile"
 
         def marker(active: int, accepted: int) -> str:
+            """Handle the marker step."""
+
             return (
                 f"{protocol.TRANSPORT_CLIENTS_MARKER} "
                 f"case={case} token={token} "
@@ -1237,6 +1329,8 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                 )
 
     def test_protocol_has_no_ambient_environment_network_or_process_access(self):
+        """Verify protocol has no ambient environment network or process access."""
+
         source = inspect.getsource(protocol)
         self.assertNotIn("os.environ", source)
         self.assertNotIn("os.getenv", source)

@@ -248,12 +248,16 @@ _PROCESS_IDENTITY_KEYS = frozenset(
 
 
 def _failure(code: str, message: object) -> protocol.AcceptanceFailure:
+    """Handle the failure step."""
+
     if code not in COORDINATOR_FAILURE_CODES:
         raise ValueError("Unknown Desktop-live coordinator failure code.")
     return protocol.AcceptanceFailure(code, message)
 
 
 def _raise(code: str, message: object) -> None:
+    """Handle the raise step."""
+
     raise _failure(code, message)
 
 
@@ -279,6 +283,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def validate_run_id(value: object) -> str:
+    """Validate run id."""
+
     if not isinstance(value, str) or _SAFE_RUN_ID.fullmatch(value) is None:
         _raise(
             protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -304,6 +310,8 @@ def generate_run_id(*, timestamp: object, nonce: object) -> str:
 
 
 def _validate_port(value: object) -> int:
+    """Validate port."""
+
     if (
         isinstance(value, bool)
         or not isinstance(value, int)
@@ -323,6 +331,8 @@ def _absolute_windows_file(
     *,
     is_file: Callable[[pathlib.Path], bool],
 ) -> pathlib.Path:
+    """Handle the absolute windows file step."""
+
     try:
         text = os.fspath(value)
         protocol.windows_path_key(text, label=label)
@@ -578,6 +588,8 @@ def process_identity_document(
 def _process_identity_key(
     identity: job_owner.ProcessIdentity,
 ) -> tuple[int, int, str]:
+    """Handle the process identity key step."""
+
     if not isinstance(identity, job_owner.ProcessIdentity):
         _raise(
             protocol.FAIL_EVIDENCE,
@@ -596,6 +608,8 @@ def _capture_desktop_executable(
     failure_code: str,
     expected: cli_install.ExecutableSnapshot | None = None,
 ) -> cli_install.ExecutableSnapshot:
+    """Capture desktop executable."""
+
     try:
         snapshot = lease.snapshot()
         path_identity = lease.path_identity()
@@ -626,6 +640,8 @@ def _release_executable_lease(
     manager: Any,
     active_exception: BaseException | None = None,
 ) -> None:
+    """Handle the release executable lease step."""
+
     if active_exception is None:
         result = manager.__exit__(None, None, None)
     else:
@@ -646,6 +662,8 @@ def _exact_mapping(
     expected_keys: frozenset[str],
     label: str,
 ) -> Mapping[str, Any]:
+    """Handle the exact mapping step."""
+
     if not isinstance(value, Mapping) or frozenset(value) != expected_keys:
         _raise(
             protocol.FAIL_EVIDENCE,
@@ -660,6 +678,8 @@ def _bounded_string(
     *,
     allow_none: bool,
 ) -> str | None:
+    """Handle the bounded string step."""
+
     if value is None and allow_none:
         return None
     if (
@@ -675,12 +695,16 @@ def _bounded_string(
 
 
 def _bool(value: object, label: str) -> bool:
+    """Handle the bool step."""
+
     if not isinstance(value, bool):
         _raise(protocol.FAIL_EVIDENCE, f"{label} must be boolean.")
     return value
 
 
 def _time_value(value: object, label: str, *, allow_none: bool) -> float | None:
+    """Handle the time value step."""
+
     if value is None and allow_none:
         return None
     if (
@@ -699,6 +723,8 @@ def _identity_document(
     *,
     allow_none: bool,
 ) -> Mapping[str, Any] | None:
+    """Handle the identity document step."""
+
     if value is None and allow_none:
         return None
     document = _exact_mapping(
@@ -730,6 +756,8 @@ def _identity_document(
 
 
 def _identity_list(value: object, label: str) -> list[Mapping[str, Any]]:
+    """Handle the identity list step."""
+
     if (
         not isinstance(value, list)
         or len(value) > MAX_SUMMARY_IDENTITIES
@@ -759,6 +787,8 @@ def _identity_list(value: object, label: str) -> list[Mapping[str, Any]]:
 def _identity_evidence_key(
     document: Mapping[str, Any],
 ) -> tuple[int, int, str]:
+    """Handle the identity evidence key step."""
+
     return (
         int(document["pid"]),
         int(document["creationTime100ns"]),
@@ -767,6 +797,8 @@ def _identity_evidence_key(
 
 
 def _expected_barrier_digest(run_id: str, token_digest: str) -> str:
+    """Handle the expected barrier digest step."""
+
     serialized = (
         json.dumps(
             {
@@ -794,6 +826,8 @@ def _validate_marker_excerpt(
     *,
     allow_none: bool,
 ) -> str | None:
+    """Validate marker excerpt."""
+
     text = _bounded_string(value, label, allow_none=allow_none)
     if text is not None and "token=<redacted>" not in text:
         _raise(protocol.FAIL_EVIDENCE, f"{label} is not token-redacted.")
@@ -1248,6 +1282,8 @@ class IdentityExitVerification:
     residual: tuple[job_owner.ProcessIdentity, ...]
 
     def __post_init__(self) -> None:
+        """Validate the identity exit verification invariants."""
+
         if not isinstance(self.exited, tuple) or not isinstance(
             self.residual,
             tuple,
@@ -1316,6 +1352,8 @@ class _LoopbackPortReservation:
     """One exclusive 127.0.0.1 bind held until the owned child launch."""
 
     def __init__(self, requested_port: int | None):
+        """Initialize the loopback port reservation."""
+
         if requested_port is not None:
             requested_port = _validate_port(requested_port)
         selected = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1337,6 +1375,8 @@ class _LoopbackPortReservation:
             raise
 
     def release(self) -> None:
+        """Release the owned reservation."""
+
         selected = self._socket
         self._socket = None
         if selected is not None:
@@ -1344,6 +1384,8 @@ class _LoopbackPortReservation:
 
 
 def _reserve_port_production(requested_port: int | None) -> _LoopbackPortReservation:
+    """Handle the reserve port production step."""
+
     try:
         return _LoopbackPortReservation(requested_port)
     except protocol.AcceptanceFailure:
@@ -1356,6 +1398,8 @@ def _reserve_port_production(requested_port: int | None) -> _LoopbackPortReserva
 
 
 def _port_is_bindable_production(host: str, port: int) -> bool:
+    """Handle the port is bindable production step."""
+
     if host != LOOPBACK_HOST:
         return False
     selected: socket.socket | None = None
@@ -1378,6 +1422,8 @@ def _port_is_bindable_production(host: str, port: int) -> bool:
 
 
 class _FILETIME(ctypes.Structure):
+    """Mirror the Win32 filetime structure."""
+
     _fields_ = (
         ("dwLowDateTime", wintypes.DWORD),
         ("dwHighDateTime", wintypes.DWORD),
@@ -1385,6 +1431,8 @@ class _FILETIME(ctypes.Structure):
 
 
 def _filetime_value(value: _FILETIME) -> int:
+    """Handle the filetime value step."""
+
     return (
         int(value.dwHighDateTime) << 32
     ) | int(value.dwLowDateTime)
@@ -1553,6 +1601,8 @@ def _read_desktop_file_version_production(path: pathlib.Path) -> str:
     """Read the selected executable's fixed Windows version resource."""
 
     class VS_FIXEDFILEINFO(ctypes.Structure):
+        """Represent the vs fixedfileinfo contract."""
+
         _fields_ = [
             ("dwSignature", ctypes.c_uint32),
             ("dwStrucVersion", ctypes.c_uint32),
@@ -1632,6 +1682,8 @@ def _read_desktop_file_version_production(path: pathlib.Path) -> str:
 
 
 def _read_uri_handler_command_production() -> str:
+    """Read URI handler command production."""
+
     try:
         import winreg
 
@@ -1657,6 +1709,8 @@ def _read_uri_handler_command_production() -> str:
 
 
 def _read_repository_head_production(repository: pathlib.Path) -> str:
+    """Read repository head production."""
+
     try:
         completed = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -1686,6 +1740,8 @@ def _read_repository_head_production(repository: pathlib.Path) -> str:
 
 
 def _read_windows_version_production() -> str:
+    """Read windows version production."""
+
     value = platform.platform(aliased=False, terse=False)
     if not value:
         _raise(
@@ -1696,12 +1752,16 @@ def _read_windows_version_production() -> str:
 
 
 class _DuplicateJsonKey(ValueError):
+    """Represent the duplicate JSON key contract."""
+
     pass
 
 
 def _unique_json_object(
     pairs: list[tuple[str, object]],
 ) -> dict[str, object]:
+    """Handle the unique JSON object step."""
+
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
@@ -1711,6 +1771,8 @@ def _unique_json_object(
 
 
 def _same_file_snapshot(left: os.stat_result, right: os.stat_result) -> bool:
+    """Handle the same file snapshot step."""
+
     return (
         left.st_dev,
         left.st_ino,
@@ -1728,6 +1790,8 @@ def _read_json_snapshot_production(
     path: pathlib.Path,
     max_bytes: int,
 ) -> object:
+    """Read JSON snapshot production."""
+
     if (
         isinstance(max_bytes, bool)
         or not isinstance(max_bytes, int)
@@ -1767,6 +1831,8 @@ def _read_log_lines_production(
     path: pathlib.Path,
     max_bytes: int,
 ) -> tuple[str, ...]:
+    """Read log lines production."""
+
     if max_bytes != MAX_UNITY_LOG_BYTES:
         raise ValueError("Unity log bound drifted.")
     target = pathlib.Path(path)
@@ -1789,6 +1855,8 @@ def _coordinator_logs_within_bound_production(
     paths: Sequence[pathlib.Path],
     max_bytes: int,
 ) -> bool:
+    """Handle the coordinator logs within bound production step."""
+
     if (
         isinstance(paths, (str, bytes))
         or max_bytes != MAX_COORDINATOR_LOG_BYTES
@@ -1821,6 +1889,8 @@ def _write_json_atomic_production(
     *,
     max_bytes: int,
 ) -> None:
+    """Write JSON atomic production."""
+
     protocol.write_json_atomic(
         path,
         payload,
@@ -1829,6 +1899,8 @@ def _write_json_atomic_production(
 
 
 def _remove_owned_file_production(path: pathlib.Path) -> bool:
+    """Remove owned file production."""
+
     target = pathlib.Path(path)
     try:
         target.unlink()
@@ -1838,6 +1910,8 @@ def _remove_owned_file_production(path: pathlib.Path) -> bool:
 
 
 def _default_dependencies() -> CoordinatorDependencies:
+    """Handle the default dependencies step."""
+
     return CoordinatorDependencies(
         repository_root=REPOSITORY_ROOT,
         platform_name=os.name,
@@ -1886,6 +1960,8 @@ def _empty_summary(
     desktop_executable: object,
     receipt_path: object,
 ) -> dict[str, object]:
+    """Handle the empty summary step."""
+
     desktop_text = (
         os.fspath(desktop_executable)
         if isinstance(desktop_executable, (str, os.PathLike))
@@ -1972,6 +2048,8 @@ def _empty_summary(
 
 
 def _clock_value(dependencies: CoordinatorDependencies) -> float:
+    """Handle the clock value step."""
+
     try:
         value = dependencies.clock()
     except Exception:
@@ -1993,6 +2071,8 @@ def _clock_value(dependencies: CoordinatorDependencies) -> float:
 
 
 def _sleep_poll(dependencies: CoordinatorDependencies) -> None:
+    """Handle the sleep poll step."""
+
     try:
         dependencies.sleep(POLL_SECONDS)
     except Exception:
@@ -2006,6 +2086,8 @@ def _require_coordinator_log_bounds(
     dependencies: CoordinatorDependencies,
     paths: Sequence[pathlib.Path],
 ) -> None:
+    """Require coordinator log bounds."""
+
     try:
         within_bound = dependencies.coordinator_logs_within_bound(
             paths,
@@ -2021,6 +2103,8 @@ def _require_coordinator_log_bounds(
 
 
 def _marker_tail(line: object, marker: str) -> str | None:
+    """Handle the marker tail step."""
+
     if not isinstance(line, str):
         _raise(
             protocol.FAIL_DESKTOP_CONNECTION,
@@ -2046,6 +2130,8 @@ def _marker_tail(line: object, marker: str) -> str | None:
 
 
 def _redact_excerpt(line: str, token: str) -> str:
+    """Handle the redact excerpt step."""
+
     redacted = line.replace(token, "<redacted>")
     if token in redacted or _RAW_TOKEN.search(redacted):
         _raise(
@@ -2062,6 +2148,8 @@ def _redact_excerpt(line: str, token: str) -> str:
 
 @dataclasses.dataclass(frozen=True)
 class _LogEvidence:
+    """Represent the log evidence contract."""
+
     context: str | None
     context_index: int | None
     transport_lines: tuple[str, ...]
@@ -2075,6 +2163,8 @@ def _scan_unity_log(
     case: str,
     token: str,
 ) -> _LogEvidence:
+    """Handle the scan unity log step."""
+
     if isinstance(lines, (str, bytes)) or len(lines) > 1_000_000:
         _raise(
             protocol.FAIL_DESKTOP_CONNECTION,
@@ -2151,6 +2241,8 @@ def _unique_transport_sequence(
     tuple[protocol.TransportClientMarker, str],
     ...,
 ]:
+    """Handle the unique transport sequence step."""
+
     result: list[tuple[protocol.TransportClientMarker, str]] = []
     previous: tuple[protocol.TransportClientMarker, str] | None = None
     for marker, line in zip(
@@ -2179,6 +2271,8 @@ def _validate_transport_prefix(
     *,
     maximum_stage: int,
 ) -> None:
+    """Validate transport prefix."""
+
     if not sequence:
         return
     for index, (marker, _line) in enumerate(sequence):
@@ -2198,6 +2292,8 @@ def _validate_transport_prefix(
 
 
 def _poll_base_running(owner: Any, identity: Any) -> None:
+    """Handle the poll base running step."""
+
     try:
         exit_code = owner.poll(identity)
     except job_owner.OwnershipFailure:
@@ -2227,6 +2323,8 @@ def _wait_for_run_config(
     run_id: str,
     port: int,
 ) -> Mapping[str, Any]:
+    """Wait for run config."""
+
     deadline = _clock_value(dependencies) + RUN_CONFIG_TIMEOUT_SECONDS
     while _clock_value(dependencies) < deadline:
         if dependencies.path_exists(path):
@@ -2271,6 +2369,8 @@ def _wait_for_foxglove_client_ready(
     config: Mapping[str, Any],
     coordinator_logs: Sequence[pathlib.Path],
 ) -> None:
+    """Wait for foxglove client ready."""
+
     ready_files = config.get("readyFiles")
     if not isinstance(ready_files, Mapping):
         _raise(
@@ -2362,6 +2462,8 @@ def _wait_for_context_and_initial(
     case: str,
     token: str,
 ) -> tuple[str, float, str, float]:
+    """Wait for context and initial."""
+
     deadline = _clock_value(dependencies) + CONNECTION_TIMEOUT_SECONDS
     context_line: str | None = None
     context_time: float | None = None
@@ -2460,6 +2562,8 @@ def _record_job_member_snapshot(
         job_owner.ProcessIdentity,
     ],
 ) -> tuple[job_owner.ProcessIdentity, ...]:
+    """Handle the record job member snapshot step."""
+
     try:
         members = owner.members()
     except job_owner.OwnershipFailure:
@@ -2506,6 +2610,8 @@ def _refresh_owned_members(
         job_owner.ProcessIdentity,
     ],
 ) -> tuple[job_owner.ProcessIdentity, ...]:
+    """Handle the refresh owned members step."""
+
     try:
         desktop_key = _process_identity_key(desktop_identity)
         captured.setdefault(desktop_key, desktop_identity)
@@ -2552,6 +2658,8 @@ def _wait_for_transport_stage(
     token: str,
     stage: int,
 ) -> tuple[str, float, tuple[str, ...]]:
+    """Wait for transport stage."""
+
     if stage not in (1, 2):
         raise ValueError("Transport stage must be one or two.")
     deadline = _clock_value(dependencies) + CONNECTION_TIMEOUT_SECONDS
@@ -2610,6 +2718,8 @@ def _wait_for_base_exit(
     desktop_identity: Any,
     coordinator_logs: Sequence[pathlib.Path],
 ) -> int:
+    """Wait for base exit."""
+
     deadline = _clock_value(dependencies) + BASE_EXIT_TIMEOUT_SECONDS
     while _clock_value(dependencies) < deadline:
         _require_coordinator_log_bounds(
@@ -2654,6 +2764,8 @@ def _mapped_failure(
     *,
     stage: str,
 ) -> protocol.AcceptanceFailure:
+    """Handle the mapped failure step."""
+
     stage_code = {
         "cli": protocol.FAIL_CLI_PROVENANCE,
         "desktop-preflight": protocol.FAIL_DESKTOP_PREFLIGHT,
@@ -2707,6 +2819,8 @@ def _base_command(
     port: int,
     run_id: str,
 ) -> tuple[str, ...]:
+    """Handle the base command step."""
+
     return (
         str(
             repository
@@ -2732,6 +2846,8 @@ def _allocated_run_id(
     args: argparse.Namespace,
     dependencies: CoordinatorDependencies,
 ) -> str:
+    """Handle the allocated run id step."""
+
     if getattr(args, "run_id", None) is not None:
         return validate_run_id(args.run_id)
     try:
@@ -2759,6 +2875,8 @@ def _allocated_run_id(
 def _identity_documents(
     identities: Sequence[job_owner.ProcessIdentity],
 ) -> list[dict[str, object]]:
+    """Handle the identity documents step."""
+
     if (
         isinstance(identities, (str, bytes))
         or len(identities) > MAX_SUMMARY_IDENTITIES
@@ -3559,6 +3677,8 @@ def main(
 
 
 def _entrypoint() -> int:
+    """Translate stable failures into a process exit code."""
+
     return main()
 
 

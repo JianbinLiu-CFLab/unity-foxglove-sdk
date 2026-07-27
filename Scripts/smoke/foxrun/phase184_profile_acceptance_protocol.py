@@ -122,6 +122,8 @@ class ProtocolFailure(RuntimeError):
     """A stable, machine-classifiable acceptance protocol failure."""
 
     def __init__(self, code: str, message: str):
+        """Initialize the protocol failure."""
+
         self.code = code
         super().__init__(f"{code}: {message}")
 
@@ -134,6 +136,8 @@ class ApplicabilityRule:
     reason: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate the applicability rule invariants."""
+
         if self.required and self.reason is not None:
             raise ValueError("Required applicability rules cannot have an N/A reason.")
         if not self.required and not self.reason:
@@ -161,10 +165,14 @@ class CaseContract:
 
 
 def _required() -> ApplicabilityRule:
+    """Handle the required step."""
+
     return ApplicabilityRule(required=True)
 
 
 def _not_applicable(reason: str) -> ApplicabilityRule:
+    """Handle the not applicable step."""
+
     return ApplicabilityRule(required=False, reason=reason)
 
 
@@ -442,6 +450,8 @@ def failure_code(stage: str, *, blocked: bool = False) -> str:
 
 
 def _fail(stage: str, message: str, *, blocked: bool = False) -> ProtocolFailure:
+    """Handle the fail step."""
+
     return ProtocolFailure(failure_code(stage, blocked=blocked), message)
 
 
@@ -477,12 +487,16 @@ def token_sha256(token: str) -> str:
 
 
 def _require_mapping(value: object, label: str, stage: str = "preflight") -> Mapping[str, Any]:
+    """Require mapping."""
+
     if not isinstance(value, Mapping):
         raise _fail(stage, f"{label} must be an object.")
     return value
 
 
 def _require_string(value: object, label: str, stage: str = "preflight") -> str:
+    """Require string."""
+
     if not isinstance(value, str) or not value:
         raise _fail(stage, f"{label} must be a non-empty string.")
     return value
@@ -495,6 +509,8 @@ def _require_bounded_int(
     maximum: int,
     stage: str = "preflight",
 ) -> int:
+    """Require bounded int."""
+
     if isinstance(value, bool) or not isinstance(value, int):
         raise _fail(stage, f"{label} must be an integer.")
     if value < minimum or value > maximum:
@@ -503,6 +519,8 @@ def _require_bounded_int(
 
 
 def _resolved_absolute_path(value: object, label: str) -> pathlib.Path:
+    """Handle the resolved absolute path step."""
+
     text = _require_string(value, label)
     candidate = pathlib.Path(text)
     if not candidate.is_absolute():
@@ -514,6 +532,8 @@ def _resolved_absolute_path(value: object, label: str) -> pathlib.Path:
 
 
 def _is_below(candidate: pathlib.Path, parent: pathlib.Path) -> bool:
+    """Return whether below."""
+
     return candidate == parent or parent in candidate.parents
 
 
@@ -523,6 +543,8 @@ def _require_exact_keys(
     label: str,
     stage: str = "preflight",
 ) -> None:
+    """Require exact keys."""
+
     actual = set(value)
     if actual != expected:
         missing = sorted(expected - actual)
@@ -786,6 +808,8 @@ def _require_string_list(
     *,
     allow_empty: bool,
 ) -> list[str]:
+    """Require string list."""
+
     if (
         not isinstance(value, list)
         or (not allow_empty and not value)
@@ -797,6 +821,8 @@ def _require_string_list(
 
 
 def _normalized_policy(value: object) -> str:
+    """Handle the normalized policy step."""
+
     text = str(value).lower()
     aliases = {
         "qosreliabilitypolicy.reliable": "reliable",
@@ -819,6 +845,8 @@ def _validate_qos_value(
     *,
     include_profile: bool,
 ) -> None:
+    """Validate QoS value."""
+
     actual = _require_mapping(value, label, "qos")
     expected_keys = _QOS_FIELDS if include_profile else _TRANSPORT_QOS_FIELDS
     _require_exact_keys(actual, expected_keys, label, "qos")
@@ -898,6 +926,8 @@ def _validate_resolved_system_default_agreement(
     expected: Mapping[str, object],
     label: str,
 ) -> None:
+    """Validate resolved system default agreement."""
+
     if len(values) < 2:
         return
     for axis in ("reliability", "durability", "history"):
@@ -934,6 +964,8 @@ def _expected_graph_direction_counts(
     case: str,
     topic: str,
 ) -> tuple[int, int]:
+    """Handle the expected graph direction counts step."""
+
     if case in {"multi-target", "qos-contract"}:
         return 2, 1 if case == "multi-target" else 0
     if case == "stream-640hz":
@@ -949,6 +981,8 @@ def _validate_qos_evidence(
     summary: Mapping[str, Any],
     case: str,
 ) -> None:
+    """Validate QoS evidence."""
+
     expected_qos = expected_qos_by_topic(case)
     if summary["profile"]["requestedQos"] != expected_qos:
         raise _fail("qos", "profile.requestedQos drifted from the case contract.")
@@ -1027,6 +1061,8 @@ def _validate_sample_publisher_evidence(
     case: str,
     expected_token: str,
 ) -> None:
+    """Validate sample publisher evidence."""
+
     samples = _require_mapping(
         graph["samplePublisherGids"],
         "rosGraph.samplePublisherGids",
@@ -1080,6 +1116,8 @@ def _validate_graph_evidence(
     case: str,
     expected_token: str,
 ) -> None:
+    """Validate graph evidence."""
+
     allow_empty = case == "degraded-target"
     nodes = _require_string_list(
         graph["nodeIdentities"],
@@ -1149,6 +1187,8 @@ def _validate_required_section(
     *,
     require_positive: bool,
 ) -> None:
+    """Validate required section."""
+
     expected = {"applicability"} | _REQUIRED_SECTION_FIELDS[name]
     _require_exact_keys(section, expected, name, "terminal")
     if section["applicability"] != "required":
@@ -1498,6 +1538,8 @@ def validate_summary(
 
 
 def _redact_for_json(value: object, repo_root: pathlib.Path) -> object:
+    """Handle the redact for JSON step."""
+
     if isinstance(value, Mapping):
         result: dict[str, object] = {}
         for key, nested in value.items():
@@ -1568,6 +1610,8 @@ class ProgressWatchdog:
         stall_seconds: float | None = None,
         now: Callable[[], float] = time.monotonic,
     ):
+        """Initialize the progress watchdog."""
+
         if not operation or not isinstance(operation, str):
             raise ValueError("operation must be a non-empty string")
         if stall_seconds is None:
@@ -1585,10 +1629,14 @@ class ProgressWatchdog:
         self.last_progress = "operation started"
 
     def progress(self, description: str) -> None:
+        """Record one bounded progress update."""
+
         self.last_progress = description
         self.last_progress_at = self._now()
 
     def check(self) -> None:
+        """Run one bounded progress check."""
+
         age = self._now() - self.last_progress_at
         if age > self.stall_seconds:
             normalized = self.operation.replace("-", "_").upper()

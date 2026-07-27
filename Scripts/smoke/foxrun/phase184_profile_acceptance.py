@@ -565,6 +565,8 @@ class _Win32JobApi:
     JobObjectExtendedLimitInformation = 9
 
     class _IO_COUNTERS(ctypes.Structure):
+        """Mirror the Win32 I/O counters structure."""
+
         _fields_ = [
             ("ReadOperationCount", ctypes.c_uint64),
             ("WriteOperationCount", ctypes.c_uint64),
@@ -575,6 +577,8 @@ class _Win32JobApi:
         ]
 
     class _BASIC_LIMIT_INFORMATION(ctypes.Structure):
+        """Mirror the Win32 basic limit information structure."""
+
         _fields_ = [
             ("PerProcessUserTimeLimit", ctypes.c_int64),
             ("PerJobUserTimeLimit", ctypes.c_int64),
@@ -588,6 +592,8 @@ class _Win32JobApi:
         ]
 
     class _EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+        """Mirror the Win32 extended limit information structure."""
+
         pass
 
     _EXTENDED_LIMIT_INFORMATION._fields_ = [
@@ -600,9 +606,13 @@ class _Win32JobApi:
     ]
 
     def __init__(self) -> None:
+        """Initialize the Win32 job API."""
+
         self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
     def create_kill_on_close_job(self) -> int:
+        """Handle the create kill on close job step."""
+
         handle = self.kernel32.CreateJobObjectW(None, None)
         if not handle:
             raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
@@ -621,6 +631,8 @@ class _Win32JobApi:
         return int(handle)
 
     def assign_pid(self, handle: int, pid: int) -> bool:
+        """Handle the assign PID step."""
+
         access = (
             self.PROCESS_SET_QUOTA
             | self.PROCESS_TERMINATE
@@ -635,6 +647,8 @@ class _Win32JobApi:
             self.kernel32.CloseHandle(process_handle)
 
     def close_handle(self, handle: int) -> None:
+        """Handle the close handle step."""
+
         self.kernel32.CloseHandle(handle)
 
 
@@ -642,6 +656,8 @@ class WindowsKillOnCloseJob:
     """Parent-held hard-close owner for every Batch helper child."""
 
     def __init__(self, *, api=None, platform_name: str | None = None) -> None:
+        """Initialize the windows kill on close job."""
+
         self._platform = platform_name or os.name
         self._api = api
         self._handle: int | None = None
@@ -656,6 +672,8 @@ class WindowsKillOnCloseJob:
                 ) from exc
 
     def assign(self, process) -> None:
+        """Assign one process to the owned job."""
+
         if self._platform != "nt":
             return
         if self._handle is None or self._api is None:
@@ -667,6 +685,8 @@ class WindowsKillOnCloseJob:
             )
 
     def close(self) -> None:
+        """Close all resources owned by this helper."""
+
         if self._handle is None or self._api is None:
             return
         handle = self._handle
@@ -674,9 +694,13 @@ class WindowsKillOnCloseJob:
         self._api.close_handle(handle)
 
     def __enter__(self):
+        """Enter the windows kill on close job context."""
+
         return self
 
     def __exit__(self, _type, _value, _traceback):
+        """Exit the windows kill on close job context without suppressing failures."""
+
         self.close()
 
 
@@ -729,6 +753,8 @@ class OwnedProcessSet:
     """Single owner for named children and their retained exit evidence."""
 
     def __init__(self, job: WindowsKillOnCloseJob | None) -> None:
+        """Initialize the owned process set."""
+
         self._job = job
         self._processes: dict[str, Any] = {}
         self._exit_codes: dict[str, int] = {}
@@ -736,6 +762,8 @@ class OwnedProcessSet:
         self._closed = False
 
     def register(self, role: str, process):
+        """Register one owned process."""
+
         try:
             if self._closed or role in self._processes:
                 raise AcceptanceFailure(
@@ -751,6 +779,8 @@ class OwnedProcessSet:
             raise
 
     def process(self, role: str):
+        """Return one registered owned process."""
+
         return self._processes.get(role)
 
     def stop(self, role: str) -> int:
@@ -774,6 +804,8 @@ class OwnedProcessSet:
         return exit_code
 
     def close(self) -> None:
+        """Close all resources owned by this helper."""
+
         if self._closed:
             return
         self._closed = True
@@ -785,6 +817,8 @@ class OwnedProcessSet:
             self._job.close()
 
     def exit_codes(self) -> dict[str, int]:
+        """Handle the exit codes step."""
+
         result = dict(self._exit_codes)
         for role, process in self._processes.items():
             exit_code = process.poll()
@@ -803,9 +837,13 @@ class OwnedProcessSet:
         return frozenset(self._owner_stopped_roles)
 
     def __enter__(self):
+        """Enter the owned process set context."""
+
         return self
 
     def __exit__(self, _type, _value, _traceback):
+        """Exit the owned process set context without suppressing failures."""
+
         self.close()
 
 
@@ -890,6 +928,8 @@ def validate_bridge_health_response(
 
 
 def _parse_marker_fields(line: str) -> dict[str, str]:
+    """Parse marker fields."""
+
     fields: dict[str, str] = {}
     for part in line.split()[1:]:
         if "=" not in part:
@@ -923,6 +963,8 @@ def find_terminal_marker(
 
 
 def _actor_path(config: Mapping[str, object], collection: str, role: str) -> pathlib.Path:
+    """Handle the actor path step."""
+
     paths = config.get(collection)
     if not isinstance(paths, Mapping) or role not in paths:
         raise AcceptanceFailure("FAIL_PREFLIGHT", f"{role} has no configured {collection} path.")
@@ -1107,6 +1149,8 @@ def _message_contains_stage(value: object, expected: str) -> bool:
 
 @dataclass(frozen=True)
 class _FoxgloveChannel:
+    """Represent the foxglove channel contract."""
+
     channel_id: int
     topic: str
     encoding: str
@@ -1252,6 +1296,8 @@ def _set_dynamic_dto(message, *, token: str, stage: str, count: int) -> None:
 
 
 def _json_dto(token: str, stage: str, count: int) -> dict[str, object]:
+    """Handle the JSON DTO step."""
+
     label = token + "-" + stage
     return {
         "Count": count,
@@ -1266,6 +1312,8 @@ def _json_dto(token: str, stage: str, count: int) -> dict[str, object]:
 
 
 async def _foxglove_subscribe(websocket, channels: Mapping[str, _FoxgloveChannel]):
+    """Handle the foxglove subscribe step."""
+
     subscription_to_topic: dict[int, str] = {}
     subscriptions: list[dict[str, int]] = []
     for index, topic in enumerate(channels, start=1):
@@ -1294,6 +1342,8 @@ async def _foxglove_advertise_and_send_json(
     *,
     advertise: bool,
 ) -> None:
+    """Handle the foxglove advertise and send JSON step."""
+
     if advertise:
         await websocket.send(
             json.dumps(
@@ -1639,6 +1689,8 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
 
 
 def run_foxglove_client_worker(config: Mapping[str, object]) -> int:
+    """Run foxglove client worker."""
+
     try:
         evidence = asyncio.run(_run_foxglove_client_async(config))
         write_actor_result(config, "foxglove-client", verdict="PASS", evidence=evidence)
@@ -1662,6 +1714,8 @@ def run_foxglove_client_worker(config: Mapping[str, object]) -> int:
 
 
 def _phase181_peer_module():
+    """Handle the phase181 peer module step."""
+
     try:
         import phase181_custom_ros2_peer as peer
     except ImportError as exc:
@@ -1670,6 +1724,8 @@ def _phase181_peer_module():
 
 
 def _ros_payload_fields(token: str, stage: str, count: int) -> dict[str, object]:
+    """Handle the ROS payload fields step."""
+
     label = token + "-" + stage
     return {
         "count": count,
@@ -1690,16 +1746,22 @@ def _ros_payload_fields(token: str, stage: str, count: int) -> dict[str, object]
 
 
 def _ros_stage(envelope) -> str:
+    """Handle the ROS stage step."""
+
     payload = getattr(envelope, "payload", None)
     return str(getattr(payload, "message", ""))
 
 
 def _ros_count(envelope) -> int:
+    """Handle the ROS count step."""
+
     payload = getattr(envelope, "payload", None)
     return int(getattr(payload, "count", -1))
 
 
 def _publisher_gid(message_info) -> str:
+    """Handle the publisher GID step."""
+
     raw = (
         message_info.get("publisher_gid")
         if isinstance(message_info, Mapping)
@@ -1771,6 +1833,8 @@ def _attribute_sample_publishers(
 
 
 def _helper_node_name(role: str, config: Mapping[str, object]) -> str:
+    """Handle the helper node name step."""
+
     digest = protocol.token_sha256(str(config["token"]))[:12]
     return f"phase184g_{role.replace('-', '_')}_{digest}"
 
@@ -1835,6 +1899,8 @@ def _qos_profile(kind: str):
 
 
 def _load_ros_message_types(config: Mapping[str, object]):
+    """Load ROS message types."""
+
     peer = _phase181_peer_module()
     static_package = repository_root() / "Packages" / INTERFACE_PACKAGE_ID
     lock = peer.load_static_interface_lock(static_package)
@@ -1860,6 +1926,8 @@ def _make_ros_envelope(
     origin: str,
     sequence: int,
 ):
+    """Build ROS envelope."""
+
     return peer._make_envelope(
         node,
         envelope_type,
@@ -1879,6 +1947,8 @@ def _spin_until(
     failure_code: str,
     message: str,
 ) -> None:
+    """Handle the spin until step."""
+
     deadline = time.monotonic() + timeout_seconds
     while not predicate():
         remaining = deadline - time.monotonic()
@@ -1896,6 +1966,8 @@ def _run_multi_target_peer(
     payload_type,
     nested_type,
 ) -> Mapping[str, object]:
+    """Run multi target peer."""
+
     topic = str(config["topics"][0])
     token = str(config["token"])
     _worker_progress("ros2-peer", "multi-qos")
@@ -1904,6 +1976,8 @@ def _run_multi_target_peer(
     observed_sample_gids: set[tuple[str, str]] = set()
 
     def receive(message, info):
+        """Receive one correlated acceptance sample."""
+
         gid = _publisher_gid(info)
         publication_sequence = _publication_sequence_number(info)
         stage = _ros_stage(message)
@@ -1959,6 +2033,8 @@ def _run_multi_target_peer(
     )
 
     def sample_attribution(stage: str) -> tuple[list[str], str]:
+        """Handle the sample attribution step."""
+
         matching = [
             (gid, sequence)
             for message, gid, sequence in messages
@@ -1974,6 +2050,8 @@ def _run_multi_target_peer(
         )
 
     def local_one_ready():
+        """Handle the local one ready step."""
+
         gids, _source = sample_attribution(local1)
         return len(gids) >= 2
 
@@ -2040,6 +2118,8 @@ def _run_multi_target_peer(
     local3 = token + "-multi-local-3"
 
     def local_three_ready():
+        """Handle the local three ready step."""
+
         gids, _source = sample_attribution(local3)
         return len(gids) >= 2
 
@@ -2089,6 +2169,8 @@ def _run_qos_peer(
     node,
     envelope_type,
 ) -> Mapping[str, object]:
+    """Run QoS peer."""
+
     token = str(config["token"])
     topic_kinds = (
         (str(config["topics"][0]), "system-default", token + "-qos-system-default"),
@@ -2101,6 +2183,8 @@ def _run_qos_peer(
     subscriptions = []
     for topic, kind, _stage in topic_kinds:
         def receive(message, info, *, selected=topic):
+            """Receive one correlated acceptance sample."""
+
             received[selected].append(
                 (
                     message,
@@ -2133,6 +2217,8 @@ def _run_qos_peer(
         topic: str,
         stage: str,
     ) -> tuple[list[str], str]:
+        """Handle the topic attribution step."""
+
         matching = [
             (gid, sequence)
             for message, gid, sequence in received[topic]
@@ -2148,6 +2234,8 @@ def _run_qos_peer(
         )
 
     def all_delivered():
+        """Handle the all delivered step."""
+
         for topic, _kind, stage in topic_kinds:
             gids, _source = topic_attribution(topic, stage)
             if len(gids) < 2:
@@ -2189,12 +2277,16 @@ def _run_stream_peer(
     payload_type,
     nested_type,
 ) -> Mapping[str, object]:
+    """Run stream peer."""
+
     stream_topic, origin_topic = (str(item) for item in config["topics"])
     token = str(config["token"])
     sensor_qos = _qos_profile("sensor-data")
     origin_messages: list[tuple[object, str, int | None]] = []
 
     def receive_origin(message, info):
+        """Handle the receive origin step."""
+
         origin_messages.append(
             (
                 message,
@@ -2413,6 +2505,8 @@ def run_ros2_peer_worker(config: Mapping[str, object]) -> int:
 
 
 def _policy_name(value: object) -> str:
+    """Handle the policy name step."""
+
     name = getattr(value, "name", None)
     if isinstance(name, str):
         return name.lower()
@@ -2421,12 +2515,16 @@ def _policy_name(value: object) -> str:
 
 
 def _endpoint_identity(info) -> str:
+    """Handle the endpoint identity step."""
+
     namespace = str(getattr(info, "node_namespace", "") or "/")
     name = str(getattr(info, "node_name", ""))
     return namespace.rstrip("/") + "/" + name
 
 
 def _endpoint_snapshot(info) -> dict[str, object]:
+    """Handle the endpoint snapshot step."""
+
     qos = getattr(info, "qos_profile", None)
     raw_gid = getattr(info, "endpoint_gid", b"")
     try:
@@ -2462,10 +2560,14 @@ def _endpoint_snapshot(info) -> dict[str, object]:
 
 
 def _is_helper_endpoint(snapshot: Mapping[str, object]) -> bool:
+    """Return whether helper endpoint."""
+
     return str(snapshot.get("node", "")).rsplit("/", 1)[-1].startswith("phase184g_")
 
 
 def _graph_for_topic(node, topic: str) -> dict[str, list[dict[str, object]]]:
+    """Handle the graph for topic step."""
+
     publishers = [
         _endpoint_snapshot(info)
         for info in node.get_publishers_info_by_topic(topic)
@@ -2478,10 +2580,14 @@ def _graph_for_topic(node, topic: str) -> dict[str, list[dict[str, object]]]:
 
 
 def _expected_qos_by_topic(config: Mapping[str, object]) -> dict[str, dict[str, object]]:
+    """Handle the expected QoS by topic step."""
+
     return protocol.expected_qos_by_topic(str(config["case"]))
 
 
 def _normalized_policy(value: object) -> str:
+    """Handle the normalized policy step."""
+
     text = str(value).lower()
     aliases = {
         "qosreliabilitypolicy.reliable": "reliable",
@@ -2509,6 +2615,8 @@ def _observable_policy_matches(
     expected: object,
     axis: str,
 ) -> bool:
+    """Handle the observable policy matches step."""
+
     normalized_actual = _normalized_policy(actual)
     normalized_expected = _normalized_policy(expected)
     if normalized_actual == "unknown":
@@ -2519,6 +2627,8 @@ def _observable_policy_matches(
 
 
 def _qos_equals(actual: Mapping[str, object], expected: Mapping[str, object]) -> bool:
+    """Handle the QoS equals step."""
+
     return (
         _normalized_policy(actual.get("reliability")) == expected["reliability"]
         and _normalized_policy(actual.get("durability")) == expected["durability"]
@@ -2557,6 +2667,8 @@ def _resolved_system_default_publishers_agree(
     publishers: Sequence[Mapping[str, object]],
     expected: Mapping[str, object],
 ) -> bool:
+    """Handle the resolved system default publishers agree step."""
+
     for axis in ("reliability", "durability", "history"):
         if expected[axis] != "system_default":
             continue
@@ -2578,6 +2690,8 @@ def _external_endpoints(
     direction: str,
     expected_type: str,
 ) -> list[dict[str, object]]:
+    """Handle the external endpoints step."""
+
     return [
         dict(item)
         for item in graph[direction]
@@ -2590,6 +2704,8 @@ def _external_endpoints(
 def _has_distinct_native_and_bridge_publishers(
     publishers: Sequence[Mapping[str, object]],
 ) -> bool:
+    """Return whether distinct native and bridge publishers."""
+
     bridge = [
         item
         for item in publishers
@@ -2614,6 +2730,8 @@ def _graph_ready(
     config: Mapping[str, object],
     graphs: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
 ) -> bool:
+    """Handle the graph ready step."""
+
     case = str(config["case"])
     expected_type = str(config["interfaceType"])
     topics = [str(item) for item in config["topics"]]
@@ -2915,6 +3033,8 @@ def _run_peer_graph_auditor(
 
 
 def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Mapping[str, object]:
+    """Run graph observer."""
+
     case = str(config["case"])
     topics = [str(item) for item in config["topics"]]
     if case != "degraded-target":
@@ -2961,6 +3081,8 @@ def _run_graph_observer(config: Mapping[str, object], rclpy_module, node) -> Map
 
 
 def run_graph_observer_worker(config: Mapping[str, object]) -> int:
+    """Run graph observer worker."""
+
     role = "graph-observer"
     try:
         if str(config["case"]) == "degraded-target":
@@ -3180,6 +3302,8 @@ def choose_domain_id(requested: int | None) -> int:
 
 
 def _require_file(path: pathlib.Path, code: str, description: str) -> pathlib.Path:
+    """Require file."""
+
     candidate = pathlib.Path(path).resolve()
     if not candidate.is_file():
         raise AcceptanceFailure(code, f"{description} is unavailable.")
@@ -3187,6 +3311,8 @@ def _require_file(path: pathlib.Path, code: str, description: str) -> pathlib.Pa
 
 
 def _new_run_identity(requested_run_id: str | None) -> tuple[str, str]:
+    """Handle the new run identity step."""
+
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
     suffix = uuid.uuid4().hex[:10]
     run_id = requested_run_id or f"phase184g-{now}-{suffix}"
@@ -3196,6 +3322,8 @@ def _new_run_identity(requested_run_id: str | None) -> tuple[str, str]:
 
 
 def _prepare_run_directory(repository: pathlib.Path, run_id: str) -> pathlib.Path:
+    """Prepare run directory."""
+
     output = (
         pathlib.Path(repository)
         / "build"
@@ -3344,6 +3472,8 @@ def _wait_for_actor_readiness(
     owner: OwnedProcessSet,
     timeout_seconds: float = 120.0,
 ) -> dict[str, dict[str, object]]:
+    """Wait for actor readiness."""
+
     pending = set(roles)
     ready: dict[str, dict[str, object]] = {}
     deadline = time.monotonic() + timeout_seconds
@@ -3378,6 +3508,8 @@ def _wait_for_actor_results(
     owner: OwnedProcessSet,
     timeout_seconds: float = 60.0,
 ) -> dict[str, dict[str, object]]:
+    """Wait for actor results."""
+
     pending = set(roles)
     results: dict[str, dict[str, object]] = {}
     deadline = time.monotonic() + timeout_seconds
@@ -3406,6 +3538,8 @@ def _wait_for_actor_results(
 
 
 def _read_one_u2r2_frame(connection: socket.socket) -> bytes:
+    """Read one u2r2 frame."""
+
     fixed = bytearray()
     while len(fixed) < 16:
         chunk = connection.recv(16 - len(fixed))
@@ -3523,6 +3657,8 @@ def parse_bridge_publisher_evidence(
 
 
 def _unity_version_from_log(log_path: pathlib.Path) -> str:
+    """Handle the unity version from log step."""
+
     for line in read_log_lines(log_path):
         match = _UNITY_VERSION.search(line)
         if match is not None and match.group(1).strip():
@@ -3531,6 +3667,8 @@ def _unity_version_from_log(log_path: pathlib.Path) -> str:
 
 
 def _marker_int(marker: TerminalMarker, name: str) -> int:
+    """Handle the marker int step."""
+
     value = marker.fields.get(name)
     try:
         parsed = int(value) if value is not None else -1
@@ -3623,6 +3761,8 @@ def _ensure_acceptance_scene(
     output: pathlib.Path,
     job: WindowsKillOnCloseJob | None,
 ) -> pathlib.Path:
+    """Handle the ensure acceptance scene step."""
+
     scene = (
         pathlib.Path(repository)
         / "Unity2Foxglove"
@@ -3673,6 +3813,8 @@ def _select_unity_runtime(
     rmw: str,
     job: WindowsKillOnCloseJob | None,
 ) -> None:
+    """Handle the select unity runtime step."""
+
     selection_log = output / "runtime-selection.log"
     current_selection = _current_unity_runtime_selection_evidence(
         repository,
@@ -3744,6 +3886,8 @@ def _current_unity_runtime_selection_evidence(
     typesupport_root = root / "Packages" / typesupport_package
 
     def read_mapping(path: pathlib.Path) -> Mapping[str, Any] | None:
+        """Read mapping."""
+
         document = json.loads(path.read_text(encoding="utf-8"))
         return document if isinstance(document, Mapping) else None
 
@@ -3751,6 +3895,8 @@ def _current_unity_runtime_selection_evidence(
         dependencies: Mapping[str, Any],
         prefix: str,
     ) -> tuple[str, ...]:
+        """Handle the selected package ids step."""
+
         return tuple(
             sorted(
                 key
@@ -3915,6 +4061,8 @@ def _current_unity_runtime_selection_evidence(
 
 
 def _bridge_source_root(repository: pathlib.Path) -> pathlib.Path:
+    """Handle the bridge source root step."""
+
     return (
         pathlib.Path(repository)
         / "Tools"
@@ -3924,6 +4072,8 @@ def _bridge_source_root(repository: pathlib.Path) -> pathlib.Path:
 
 
 def _sha256_file(path: pathlib.Path) -> str:
+    """Handle the SHA-256 file step."""
+
     digest = hashlib.sha256()
     with pathlib.Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -3962,6 +4112,8 @@ def _bridge_source_digest(repository: pathlib.Path) -> str:
 
 
 def _bridge_build_path_identity(path: pathlib.Path) -> dict[str, object]:
+    """Handle the bridge build path identity step."""
+
     candidate = pathlib.Path(path).resolve(strict=False)
     try:
         stat = candidate.stat()
@@ -4032,6 +4184,8 @@ def bridge_build_cache_key(
 
 
 def _bridge_cache_owner(profile: str) -> dict[str, object]:
+    """Handle the bridge cache owner step."""
+
     return {
         "schemaVersion": _BRIDGE_CACHE_FORMAT,
         "owner": _BRIDGE_CACHE_OWNER,
@@ -4040,6 +4194,8 @@ def _bridge_cache_owner(profile: str) -> dict[str, object]:
 
 
 def _read_bridge_cache_json(path: pathlib.Path) -> Mapping[str, object] | None:
+    """Read bridge cache JSON."""
+
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -4048,11 +4204,15 @@ def _read_bridge_cache_json(path: pathlib.Path) -> Mapping[str, object] | None:
 
 
 def _bridge_cache_is_owned(overlay: pathlib.Path, profile: str) -> bool:
+    """Handle the bridge cache is owned step."""
+
     marker = _read_bridge_cache_json(overlay / _BRIDGE_CACHE_OWNERSHIP_NAME)
     return marker == _bridge_cache_owner(profile)
 
 
 def _bridge_cache_executable(overlay: pathlib.Path) -> pathlib.Path:
+    """Handle the bridge cache executable step."""
+
     return (
         overlay
         / "install"
@@ -4063,6 +4223,8 @@ def _bridge_cache_executable(overlay: pathlib.Path) -> pathlib.Path:
 
 
 def _bridge_cache_has_outputs(overlay: pathlib.Path) -> bool:
+    """Handle the bridge cache has outputs step."""
+
     install = overlay / "install"
     return (
         _bridge_cache_executable(overlay).is_file()
@@ -4076,6 +4238,8 @@ def _bridge_cache_matches(
     profile: str,
     cache_key: str,
 ) -> bool:
+    """Handle the bridge cache matches step."""
+
     if not _bridge_cache_is_owned(overlay, profile) or not _bridge_cache_has_outputs(
         overlay
     ):
@@ -4193,6 +4357,8 @@ def seal_bridge_build_workspace(
 
 
 def _copy_bridge_source(repository: pathlib.Path, overlay: pathlib.Path) -> None:
+    """Handle the copy bridge source step."""
+
     source = _bridge_source_root(repository)
     destination = overlay / "src" / "unity2foxglove_ros2_bridge"
     if not (source / "package.xml").is_file() or destination.exists():
@@ -4695,6 +4861,8 @@ def _start_case_workers_serially(
 
 
 def _installed_bridge_executable(runtime: PreparedRosRuntime | None) -> pathlib.Path:
+    """Handle the installed bridge executable step."""
+
     if runtime is None or runtime.bridge_install is None:
         raise AcceptanceFailure(
             "FAIL_BRIDGE",
@@ -4839,6 +5007,8 @@ def _wait_for_unity_exit(
     owner: OwnedProcessSet,
     worker_roles: Iterable[str],
 ) -> TerminalMarker:
+    """Wait for unity exit."""
+
     unity_log = pathlib.Path(str(config["unityLog"]))
     watchdog = protocol.ProgressWatchdog("unity-startup")
     last_progress = _progress_snapshot((unity_log,))
@@ -4887,6 +5057,8 @@ def _write_parent_actor_results(
     output: pathlib.Path,
     parent_evidence: Mapping[str, object],
 ) -> None:
+    """Write parent actor results."""
+
     contract = protocol.CASE_CONTRACTS[str(config["case"])]
     if "bridge" in contract.required_actors:
         health = parent_evidence.get("bridge-health")
@@ -4928,10 +5100,14 @@ def _write_parent_actor_results(
 
 
 def _required_section(values: Mapping[str, object]) -> dict[str, object]:
+    """Handle the required section step."""
+
     return {"applicability": "required", **dict(values)}
 
 
 def _not_applicable_section(rule: protocol.ApplicabilityRule) -> dict[str, object]:
+    """Handle the not applicable section step."""
+
     if rule.required or not rule.reason:
         raise ValueError("Only an approved N/A rule can create an N/A section.")
     return {"applicability": "not_applicable", "reason": rule.reason}
@@ -4941,6 +5117,8 @@ def _actor_evidence(
     results: Mapping[str, Mapping[str, object]],
     role: str,
 ) -> Mapping[str, object]:
+    """Handle the actor evidence step."""
+
     result = results.get(role)
     evidence = result.get("evidence") if isinstance(result, Mapping) else None
     if (
@@ -5265,6 +5443,8 @@ def _wait_for_clean_worker_exits(
     roles: Iterable[str],
     timeout_seconds: float = 30.0,
 ) -> None:
+    """Wait for clean worker exits."""
+
     deadline = time.monotonic() + timeout_seconds
     for role in roles:
         process = owner.process(role)
@@ -5298,6 +5478,8 @@ def _cleanup_evidence(
     owner: OwnedProcessSet,
     subst_roots: Iterable[pathlib.Path],
 ) -> dict[str, bool]:
+    """Handle the cleanup evidence step."""
+
     return {
         "processes": owner.all_stopped(),
         "files": not any(output.rglob("*.tmp")),
@@ -5314,6 +5496,8 @@ def _write_failure_record(
     run_id: str | None,
     failure: AcceptanceFailure,
 ) -> None:
+    """Write failure record."""
+
     if output is None:
         return
     protocol.write_json_atomic(
@@ -5350,6 +5534,8 @@ class EditorLogMirror:
         destination: pathlib.Path,
         token: str,
     ) -> None:
+        """Initialize the editor log mirror."""
+
         self._source = pathlib.Path(source)
         self._destination = pathlib.Path(destination)
         self._token = token
@@ -5360,6 +5546,8 @@ class EditorLogMirror:
 
     @staticmethod
     def _stat_identity(stat: os.stat_result) -> tuple[int, int]:
+        """Handle the stat identity step."""
+
         return int(stat.st_dev), int(stat.st_ino)
 
     def capture(self) -> None:
@@ -5378,6 +5566,8 @@ class EditorLogMirror:
         self._offset = int(stat.st_size)
 
     def _append(self, text: str) -> None:
+        """Handle the append step."""
+
         if not text:
             return
         with self._destination.open("a", encoding="utf-8", newline="") as stream:
@@ -5456,6 +5646,8 @@ def _process_creation_unix_seconds(pid: int) -> float | None:
         return None
     if os.name == "nt":
         class FileTime(ctypes.Structure):
+            """Represent the file time contract."""
+
             _fields_ = [
                 ("low", ctypes.c_uint32),
                 ("high", ctypes.c_uint32),
@@ -5589,6 +5781,8 @@ def _recover_abandoned_manual_pointer(pointer: pathlib.Path) -> None:
 
 
 def _manual_exit_seen(config: Mapping[str, object]) -> bool:
+    """Handle the manual exit seen step."""
+
     case = str(config["case"])
     token = str(config["token"])
     for line in read_log_lines(pathlib.Path(str(config["unityLog"]))):
@@ -5988,6 +6182,8 @@ def run_manual_parent(args: argparse.Namespace) -> int:
 
 
 def run_batch_parent(args: argparse.Namespace) -> int:
+    """Run batch parent."""
+
     prepared = _prepare_parent_run(args, "batch")
     repository = prepared.repository
     editor = prepared.editor
@@ -6184,6 +6380,8 @@ def run_batch_parent(args: argparse.Namespace) -> int:
 
 
 def _worker_main(args: argparse.Namespace) -> int:
+    """Handle the worker main step."""
+
     config = load_run_config(args.run_config)
     if args.worker == "foxglove-client":
         return run_foxglove_client_worker(config)
@@ -6195,6 +6393,8 @@ def _worker_main(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the Phase184 acceptance command."""
+
     try:
         args = validate_arguments(parse_args(argv))
         if args.execution_mode == "worker":
