@@ -336,9 +336,14 @@ def base_pass_summary(config: dict[str, object]) -> dict[str, object]:
         "targets": {
             "applicability": "required",
             "states": {"foxglove": "Ready"},
-            "diagnosticCounts": {"warning": 0, "error": 0},
+            "diagnosticCounts": {"failedTargets": 0},
             "healthyDelivery": True,
-            "statusEvidence": {},
+            "statusEvidence": {
+                "aggregate": "Ready",
+                "succeeded": "Foxglove",
+                "failed": "None",
+                "topics": 2,
+            },
         },
         "origin": {
             "applicability": "required",

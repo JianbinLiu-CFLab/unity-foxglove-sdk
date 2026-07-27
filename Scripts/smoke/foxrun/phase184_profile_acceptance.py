@@ -962,6 +962,310 @@ def find_terminal_marker(
     return result
 
 
+def _correlated_runtime_markers(
+    config: Mapping[str, object],
+    marker: str,
+) -> list[TerminalMarker]:
+    """Return current case/token runtime markers from the dedicated Unity log."""
+
+    case = str(config["case"])
+    token = str(config["token"])
+    prefix = marker + " "
+    result: list[TerminalMarker] = []
+    for raw in read_log_lines(pathlib.Path(str(config["unityLog"]))):
+        line = raw.strip()
+        if not line.startswith(prefix):
+            continue
+        fields = _parse_marker_fields(line)
+        if fields.get("case") == case and fields.get("token") == token:
+            result.append(TerminalMarker(marker, line[:2048], fields))
+    return result
+
+
+def _require_latest_runtime_marker(
+    config: Mapping[str, object],
+    marker: str,
+) -> TerminalMarker:
+    """Require the latest correlated runtime marker."""
+
+    markers = _correlated_runtime_markers(config, marker)
+    if not markers:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            f"Unity emitted no correlated {marker} evidence.",
+        )
+    return markers[-1]
+
+
+def _runtime_marker_int(marker: TerminalMarker, name: str) -> int:
+    """Parse one non-negative runtime marker counter."""
+
+    value = marker.fields.get(name)
+    try:
+        parsed = int(value) if value is not None else -1
+    except ValueError as exc:
+        raise AcceptanceFailure(
+            "FAIL_FANOUT",
+            f"Unity runtime field {name!r} is not an integer.",
+        ) from exc
+    if parsed < 0:
+        raise AcceptanceFailure(
+            "FAIL_FANOUT",
+            f"Unity runtime field {name!r} is missing or negative.",
+        )
+    return parsed
+
+
+def _split_runtime_endpoints(value: str | None) -> list[str]:
+    """Parse the stable endpoint list emitted by the Unity harness."""
+
+    if value == "None":
+        return []
+    endpoints = [] if value is None else value.split(",")
+    allowed = {"Foxglove", "Ros2Native", "Ros2Bridge"}
+    if (
+        not endpoints
+        or len(endpoints) != len(set(endpoints))
+        or any(endpoint not in allowed for endpoint in endpoints)
+    ):
+        raise AcceptanceFailure(
+            "FAIL_FANOUT",
+            "Unity runtime target evidence contains an invalid endpoint list.",
+        )
+    return endpoints
+
+
+def _endpoint_state_key(endpoint: str) -> str:
+    """Map one runtime endpoint name to the summary schema key."""
+
+    return {
+        "Foxglove": "foxglove",
+        "Ros2Native": "ros2Native",
+        "Ros2Bridge": "ros2Bridge",
+    }[endpoint]
+
+
+def _observed_profile_evidence(
+    config: Mapping[str, object],
+) -> dict[str, object]:
+    """Consume Source/Targets/Encoding resolved by the active Unity route."""
+
+    markers = _correlated_runtime_markers(config, "PHASE184G_PROFILE_EVIDENCE")
+    if not markers:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            "Unity emitted no correlated runtime profile evidence.",
+        )
+    observed = {
+        (
+            marker.fields.get("source"),
+            marker.fields.get("targets"),
+            marker.fields.get("publishEncoding"),
+            marker.fields.get("subscribeEncoding"),
+        )
+        for marker in markers
+    }
+    if len(observed) != 1:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            "Unity emitted conflicting runtime profile evidence.",
+        )
+    source, raw_targets, publish_encoding, subscribe_encoding = observed.pop()
+    if source not in {"None", "Foxglove", "Ros2Native", "Ros2Bridge"}:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            "Unity runtime profile source is invalid.",
+        )
+    if publish_encoding not in {"protobuf", "json", "protobuf,json", "not_applicable"}:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            "Unity runtime publish encoding evidence is invalid.",
+        )
+    if subscribe_encoding not in {
+        "protobuf",
+        "json",
+        "protobuf,json",
+        "not_applicable",
+    }:
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            "Unity runtime subscribe encoding evidence is invalid.",
+        )
+    return {
+        "source": source,
+        "targets": _split_runtime_endpoints(raw_targets),
+        "publishEncoding": publish_encoding,
+        "subscribeEncoding": subscribe_encoding,
+    }
+
+
+def _states_from_dispatch_marker(marker: TerminalMarker) -> dict[str, str]:
+    """Derive endpoint states from one observed publish dispatch."""
+
+    succeeded = _split_runtime_endpoints(marker.fields.get("succeeded"))
+    failed = _split_runtime_endpoints(marker.fields.get("failed"))
+    if set(succeeded) & set(failed):
+        raise AcceptanceFailure(
+            "FAIL_FANOUT",
+            "Unity runtime dispatch marks one endpoint both succeeded and failed.",
+        )
+    return {
+        **{_endpoint_state_key(endpoint): "Ready" for endpoint in succeeded},
+        **{_endpoint_state_key(endpoint): "Unavailable" for endpoint in failed},
+    }
+
+
+def _observed_target_evidence(
+    config: Mapping[str, object],
+    terminal: TerminalMarker,
+) -> dict[str, object]:
+    """Consume target state and diagnostic counters observed by Unity."""
+
+    case = str(config["case"])
+    if case == "foxglove-profile":
+        marker = _require_latest_runtime_marker(
+            config,
+            "PHASE184G_FOXGLOVE_TARGET_STATUS",
+        )
+        topics = _runtime_marker_int(marker, "topics")
+        failed = _split_runtime_endpoints(marker.fields.get("failed"))
+        return {
+            "states": _states_from_dispatch_marker(marker),
+            "diagnosticCounts": {"failedTargets": len(failed)},
+            "statusEvidence": {
+                "aggregate": marker.fields.get("status"),
+                "succeeded": marker.fields.get("succeeded"),
+                "failed": marker.fields.get("failed"),
+                "topics": topics,
+            },
+        }
+    if case == "multi-target":
+        marker = _require_latest_runtime_marker(
+            config,
+            "PHASE184G_MULTI_TARGET_STATUS",
+        )
+        failed = _split_runtime_endpoints(marker.fields.get("failed"))
+        bridge_failures = _runtime_marker_int(
+            marker,
+            "bridgeRuntimeFailures",
+        )
+        return {
+            "states": _states_from_dispatch_marker(marker),
+            "diagnosticCounts": {
+                "failedTargets": len(failed),
+                "bridgeRuntimeFailures": bridge_failures,
+            },
+            "statusEvidence": {
+                "aggregate": marker.fields.get("status"),
+                "succeeded": marker.fields.get("succeeded"),
+                "failed": marker.fields.get("failed"),
+                "bridgeRuntimeFailures": bridge_failures,
+            },
+        }
+    if case == "degraded-target":
+        bridge_diagnostics = _marker_int(terminal, "bridgeDiagnostics")
+        aggregate_status = terminal.fields.get("status")
+        succeeded_targets = terminal.fields.get("succeeded")
+        failed_targets = terminal.fields.get("failed")
+        foxglove_state = terminal.fields.get("foxgloveState")
+        bridge_state = terminal.fields.get("ros2BridgeState")
+        if (
+            aggregate_status != "Degraded"
+            or succeeded_targets != "Foxglove"
+            or failed_targets != "Ros2Bridge"
+            or foxglove_state != "Ready"
+            or bridge_state != "Unavailable"
+            or bridge_diagnostics != 1
+        ):
+            raise AcceptanceFailure(
+                "FAIL_FANOUT",
+                "Unity did not report the exact degraded Bridge status transition.",
+            )
+        return {
+            "states": {
+                "foxglove": foxglove_state,
+                "ros2Bridge": bridge_state,
+            },
+            "diagnosticCounts": {
+                "failedTargets": 1,
+                "bridgeDiagnostics": bridge_diagnostics,
+            },
+            "statusEvidence": {
+                "aggregate": aggregate_status,
+                "succeeded": succeeded_targets,
+                "failed": failed_targets,
+                "bridgeDiagnostics": bridge_diagnostics,
+            },
+        }
+    if case == "qos-contract":
+        markers = _correlated_runtime_markers(
+            config,
+            "PHASE184G_QOS_TARGET_STATUS",
+        )
+        by_topic: dict[str, TerminalMarker] = {}
+        for marker in markers:
+            topic = marker.fields.get("topic")
+            if topic:
+                by_topic[topic] = marker
+        expected_topics = {str(topic) for topic in config["topics"]}
+        if set(by_topic) != expected_topics:
+            raise AcceptanceFailure(
+                "FAIL_FANOUT",
+                "Unity QoS target evidence does not cover the exact topic set.",
+            )
+        status_by_topic: dict[str, object] = {}
+        states: dict[str, str] = {}
+        failed_count = 0
+        for topic in sorted(expected_topics):
+            marker = by_topic[topic]
+            failed = _split_runtime_endpoints(marker.fields.get("failed"))
+            failed_count += len(failed)
+            status = str(marker.fields.get("status", ""))
+            states[topic] = status
+            status_by_topic[topic] = {
+                "aggregate": status,
+                "succeeded": marker.fields.get("succeeded"),
+                "failed": marker.fields.get("failed"),
+            }
+        return {
+            "states": states,
+            "diagnosticCounts": {"failedTargets": failed_count},
+            "statusEvidence": {"topics": status_by_topic},
+        }
+    if case == "stream-640hz":
+        marker = _require_latest_runtime_marker(
+            config,
+            "PHASE184G_STREAM_SUBSCRIPTION_STATUS",
+        )
+        binding_state = str(marker.fields.get("state", ""))
+        received = _runtime_marker_int(marker, "received")
+        copy_failed = _runtime_marker_int(marker, "copyFailed")
+        stale_callbacks = _runtime_marker_int(marker, "staleCallbacks")
+        rejected_after_stop = _runtime_marker_int(marker, "rejectedAfterStop")
+        return {
+            "states": {
+                "ros2Native": (
+                    "Ready"
+                    if binding_state in {"Ready", "Receiving"}
+                    else "Unavailable"
+                )
+            },
+            "diagnosticCounts": {
+                "copyFailed": copy_failed,
+                "staleCallbacks": stale_callbacks,
+                "rejectedAfterStop": rejected_after_stop,
+            },
+            "statusEvidence": {
+                "bindingState": binding_state,
+                "received": received,
+                "copyFailed": copy_failed,
+                "staleCallbacks": stale_callbacks,
+                "rejectedAfterStop": rejected_after_stop,
+            },
+        }
+    raise AcceptanceFailure("FAIL_TERMINAL", "Unknown case target evidence mapping.")
+
+
 def _actor_path(config: Mapping[str, object], collection: str, role: str) -> pathlib.Path:
     """Handle the actor path step."""
 
@@ -3724,8 +4028,7 @@ def _validated_stream_evidence(
             "Unity reported a stream disposal failure.",
         )
     if (
-        received <= 0
-        or received > peer_offered
+        received != peer_offered
         or accepted + rate_dropped != received
         or drained + replaced != accepted
         or high_water != protocol.STREAM_CAPACITY
@@ -5176,17 +5479,13 @@ def build_pass_summary(
         if "bridge" in results
         else {}
     )
+    profile_evidence = _observed_profile_evidence(config)
+    observed_targets = _observed_target_evidence(config, terminal)
 
     if case == "foxglove-profile":
-        source = "Foxglove"
-        targets = ["Foxglove"]
-        publish_encoding = "protobuf,json"
-        subscribe_encoding = "protobuf,json"
         target_values = {
-            "states": {"foxglove": "Ready"},
-            "diagnosticCounts": {"warning": 0, "error": 0},
+            **observed_targets,
             "healthyDelivery": bool(fox.get("deliveryObserved")),
-            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(fox.get("remoteApplied")),
@@ -5194,22 +5493,12 @@ def build_pass_summary(
             "laterLocalPublished": bool(fox.get("laterLocalPublished")),
         }
     elif case == "multi-target":
-        source = "Ros2Native"
-        targets = ["Foxglove", "Ros2Native", "Ros2Bridge"]
-        publish_encoding = "protobuf"
-        subscribe_encoding = "protobuf"
         target_values = {
-            "states": {
-                "foxglove": "Ready",
-                "ros2Native": "Ready",
-                "ros2Bridge": "Ready",
-            },
-            "diagnosticCounts": {"warning": 0, "error": 0},
+            **observed_targets,
             "healthyDelivery": (
                 bool(fox.get("deliveryObserved"))
                 and int(peer.get("distinctFanoutPublishers", 0)) >= 2
             ),
-            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(peer.get("remoteApplied")),
@@ -5217,71 +5506,33 @@ def build_pass_summary(
             "laterLocalPublished": bool(peer.get("laterLocalPublished")),
         }
     elif case == "degraded-target":
-        bridge_diagnostics = _marker_int(terminal, "bridgeDiagnostics")
-        aggregate_status = terminal.fields.get("status")
-        succeeded_targets = terminal.fields.get("succeeded")
-        failed_targets = terminal.fields.get("failed")
-        foxglove_state = terminal.fields.get("foxgloveState")
-        bridge_state = terminal.fields.get("ros2BridgeState")
-        if (
-            aggregate_status != "Degraded"
-            or succeeded_targets != "Foxglove"
-            or failed_targets != "Ros2Bridge"
-            or foxglove_state != "Ready"
-            or bridge_state != "Unavailable"
-            or bridge_diagnostics != 1
-        ):
-            raise AcceptanceFailure(
-                "FAIL_FANOUT",
-                "Unity did not report the exact degraded Bridge status transition.",
-            )
-        source = "None"
-        targets = ["Foxglove", "Ros2Bridge"]
-        publish_encoding = "protobuf"
-        subscribe_encoding = "not_applicable"
         target_values = {
-            "states": {
-                "foxglove": foxglove_state,
-                "ros2Bridge": bridge_state,
-            },
-            "diagnosticCounts": {"bridge": bridge_diagnostics, "error": 0},
+            **observed_targets,
             "healthyDelivery": (
                 bool(fox.get("deliveryObserved"))
                 and bool(graph.get("noFallbackPublisher"))
             ),
-            "statusEvidence": {
-                "aggregate": aggregate_status,
-                "succeeded": succeeded_targets,
-                "failed": failed_targets,
-                "bridgeDiagnostics": bridge_diagnostics,
-            },
         }
         origin_values = {}
     elif case == "qos-contract":
-        source = "None"
-        targets = ["Ros2Native", "Ros2Bridge"]
-        publish_encoding = "protobuf"
-        subscribe_encoding = "not_applicable"
+        delivery_by_topic = peer.get("deliveryByTopic", {})
+        exact_delivery_topics = (
+            isinstance(delivery_by_topic, Mapping)
+            and {str(topic) for topic in delivery_by_topic}
+            == {str(topic) for topic in config["topics"]}
+        )
         target_values = {
-            "states": {topic: "Ready" for topic in config["topics"]},
-            "diagnosticCounts": {"warning": 0, "error": 0},
-            "healthyDelivery": all(
+            **observed_targets,
+            "healthyDelivery": exact_delivery_topics and all(
                 len(gids) >= 2
-                for gids in peer.get("deliveryByTopic", {}).values()
+                for gids in delivery_by_topic.values()
             ),
-            "statusEvidence": {},
         }
         origin_values = {}
     elif case == "stream-640hz":
-        source = "Ros2Native"
-        targets = ["Ros2Native"]
-        publish_encoding = "protobuf"
-        subscribe_encoding = "protobuf"
         target_values = {
-            "states": {"ros2Native": "Ready"},
-            "diagnosticCounts": {"warning": 0, "error": 0},
+            **observed_targets,
             "healthyDelivery": bool(graph.get("endpointsObserved")),
-            "statusEvidence": {},
         }
         origin_values = {
             "remoteApplied": bool(peer.get("remoteApplied")),
@@ -5290,6 +5541,11 @@ def build_pass_summary(
         }
     else:
         raise AcceptanceFailure("FAIL_TERMINAL", "Unknown case summary mapping.")
+
+    source = str(profile_evidence["source"])
+    targets = list(profile_evidence["targets"])
+    publish_encoding = str(profile_evidence["publishEncoding"])
+    subscribe_encoding = str(profile_evidence["subscribeEncoding"])
 
     transport_observed: dict[str, object] = {
         "graph": dict(graph.get("transportObservedQos", {})),

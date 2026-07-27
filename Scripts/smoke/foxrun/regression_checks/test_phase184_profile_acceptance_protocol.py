@@ -250,11 +250,58 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
         "stream-640hz": {"ros2Native": "Ready"},
     }
     expected_diagnostics = {
-        "foxglove-profile": {"warning": 0, "error": 0},
-        "multi-target": {"warning": 0, "error": 0},
-        "degraded-target": {"bridge": 1, "error": 0},
-        "qos-contract": {"warning": 0, "error": 0},
-        "stream-640hz": {"warning": 0, "error": 0},
+        "foxglove-profile": {"failedTargets": 0},
+        "multi-target": {
+            "failedTargets": 0,
+            "bridgeRuntimeFailures": 0,
+        },
+        "degraded-target": {
+            "failedTargets": 1,
+            "bridgeDiagnostics": 1,
+        },
+        "qos-contract": {"failedTargets": 0},
+        "stream-640hz": {
+            "copyFailed": 0,
+            "staleCallbacks": 0,
+            "rejectedAfterStop": 0,
+        },
+    }
+    status_evidence = {
+        "foxglove-profile": {
+            "aggregate": "Ready",
+            "succeeded": "Foxglove",
+            "failed": "None",
+            "topics": 2,
+        },
+        "multi-target": {
+            "aggregate": "Ready",
+            "succeeded": "Foxglove,Ros2Native,Ros2Bridge",
+            "failed": "None",
+            "bridgeRuntimeFailures": 0,
+        },
+        "degraded-target": {
+            "aggregate": "Degraded",
+            "succeeded": "Foxglove",
+            "failed": "Ros2Bridge",
+            "bridgeDiagnostics": 1,
+        },
+        "qos-contract": {
+            "topics": {
+                topic: {
+                    "aggregate": "Ready",
+                    "succeeded": "Ros2Native,Ros2Bridge",
+                    "failed": "None",
+                }
+                for topic in contract.topics
+            }
+        },
+        "stream-640hz": {
+            "bindingState": "Receiving",
+            "received": 1280,
+            "copyFailed": 0,
+            "staleCallbacks": 0,
+            "rejectedAfterStop": 0,
+        },
     }
     sections: dict[str, object] = {}
     evidence = {
@@ -286,16 +333,7 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
             "states": expected_states[case],
             "diagnosticCounts": expected_diagnostics[case],
             "healthyDelivery": True,
-            "statusEvidence": (
-                {
-                    "aggregate": "Degraded",
-                    "succeeded": "Foxglove",
-                    "failed": "Ros2Bridge",
-                    "bridgeDiagnostics": 1,
-                }
-                if case == "degraded-target"
-                else {}
-            ),
+            "statusEvidence": status_evidence[case],
         },
         "origin": {
             "remoteApplied": True,
@@ -304,14 +342,14 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
         },
         "stream": {
             "offered": 1280,
-            "received": 792,
-            "accepted": 792,
+            "received": 1280,
+            "accepted": 1280,
             "replaced": 224,
             "rateDropped": 0,
-            "transportDropped": 488,
-            "dropped": 488,
-            "drained": 568,
-            "disposed": 792,
+            "transportDropped": 0,
+            "dropped": 0,
+            "drained": 1056,
+            "disposed": 1280,
             "maximumQueueDepth": 32,
             "lastSequence": 1279,
             "retainedOrdered": True,
@@ -930,6 +968,8 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
         ):
             invalid = copy.deepcopy(summary)
             invalid["stream"][field] = value
+            if field == "received":
+                invalid["targets"]["statusEvidence"]["received"] = value
             with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
                 protocol.validate_summary(
                     invalid,
@@ -952,6 +992,7 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 "lastSequence": 0,
             }
         )
+        near_total_loss["targets"]["statusEvidence"]["received"] = 1
         with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
             protocol.validate_summary(
                 near_total_loss,
@@ -973,11 +1014,13 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
                 "lastSequence": 1279,
             }
         )
-        protocol.validate_summary(
-            sparse_but_bounded,
-            expected_case="stream-640hz",
-            expected_token=str(config["token"]),
-        )
+        sparse_but_bounded["targets"]["statusEvidence"]["received"] = 64
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
+            protocol.validate_summary(
+                sparse_but_bounded,
+                expected_case="stream-640hz",
+                expected_token=str(config["token"]),
+            )
 
     def test_not_applicable_reason_must_be_case_defined_and_has_no_synthetic_pass(self):
         """N/A evidence is typed, exact, and never carries PASS."""

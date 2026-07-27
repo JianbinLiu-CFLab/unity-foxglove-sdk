@@ -108,6 +108,69 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
     """Lock command, ownership, configuration, and evidence boundaries."""
 
     @staticmethod
+    def _write_observed_runtime_markers(config):
+        """Write current-token Unity evidence used by summary unit tests."""
+
+        case = str(config["case"])
+        token = str(config["token"])
+        profile_fields = {
+            "foxglove-profile": (
+                "source=Foxglove targets=Foxglove "
+                "publishEncoding=protobuf,json subscribeEncoding=protobuf,json"
+            ),
+            "multi-target": (
+                "source=Ros2Native "
+                "targets=Foxglove,Ros2Native,Ros2Bridge "
+                "publishEncoding=protobuf subscribeEncoding=protobuf"
+            ),
+            "degraded-target": (
+                "source=None targets=Foxglove,Ros2Bridge "
+                "publishEncoding=protobuf subscribeEncoding=not_applicable"
+            ),
+            "qos-contract": (
+                "source=None targets=Ros2Native,Ros2Bridge "
+                "publishEncoding=protobuf subscribeEncoding=not_applicable"
+            ),
+            "stream-640hz": (
+                "source=Ros2Native targets=Ros2Native "
+                "publishEncoding=protobuf subscribeEncoding=protobuf"
+            ),
+        }
+        lines = [
+            "PHASE184G_PROFILE_EVIDENCE "
+            f"case={case} token={token} {profile_fields[case]}"
+        ]
+        if case == "foxglove-profile":
+            lines.append(
+                "PHASE184G_FOXGLOVE_TARGET_STATUS "
+                f"case={case} token={token} status=Ready "
+                "succeeded=Foxglove failed=None topics=2"
+            )
+        elif case == "multi-target":
+            lines.append(
+                "PHASE184G_MULTI_TARGET_STATUS "
+                f"case={case} token={token} status=Ready "
+                "succeeded=Foxglove,Ros2Native,Ros2Bridge failed=None "
+                "bridgeRuntimeFailures=0"
+            )
+        elif case == "qos-contract":
+            lines.extend(
+                "PHASE184G_QOS_TARGET_STATUS "
+                f"case={case} token={token} topic={topic} status=Ready "
+                "succeeded=Ros2Native,Ros2Bridge failed=None"
+                for topic in config["topics"]
+            )
+        elif case == "stream-640hz":
+            lines.append(
+                "PHASE184G_STREAM_SUBSCRIPTION_STATUS "
+                f"case={case} token={token} state=Receiving received=792 "
+                "copyFailed=0 staleCallbacks=0 rejectedAfterStop=0"
+            )
+        log_path = pathlib.Path(str(config["unityLog"]))
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    @staticmethod
     def _write_reusable_runtime_selection(
         repository: pathlib.Path,
         *,
@@ -3036,6 +3099,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "graph-observer": 0,
             "bridge": 0,
         }
+        self._write_observed_runtime_markers(config)
         summary = module.build_pass_summary(
             config=config,
             terminal=module.TerminalMarker(
@@ -3078,6 +3142,86 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     "subst": True,
                 },
             )
+
+    def test_summary_evidence_comes_from_correlated_unity_runtime_markers(self):
+        """Profile and healthy fanout claims must be parsed from current Unity markers."""
+
+        module = load_module()
+        token = "p184g_A1b2C3d4E5f6"
+        case = "multi-target"
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="observed-", dir=TEST_ROOT) as raw:
+            log_path = pathlib.Path(raw) / "unity.log"
+            log_path.write_text(
+                "\n".join(
+                    (
+                        "PHASE184G_PROFILE_EVIDENCE "
+                        f"case={case} token=p184g_Stale00000000 "
+                        "source=Foxglove targets=Foxglove "
+                        "publishEncoding=json subscribeEncoding=json",
+                        "PHASE184G_PROFILE_EVIDENCE "
+                        f"case={case} token={token} "
+                        "source=Ros2Native "
+                        "targets=Foxglove,Ros2Native,Ros2Bridge "
+                        "publishEncoding=protobuf subscribeEncoding=protobuf",
+                        "PHASE184G_MULTI_TARGET_STATUS "
+                        f"case={case} token={token} status=Ready "
+                        "succeeded=Foxglove,Ros2Native,Ros2Bridge failed=None "
+                        "bridgeRuntimeFailures=0",
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            config = {
+                "case": case,
+                "token": token,
+                "unityLog": str(log_path),
+                "topics": ["/foxrun/phase184/multi/state"],
+            }
+
+            self.assertEqual(
+                {
+                    "source": "Ros2Native",
+                    "targets": ["Foxglove", "Ros2Native", "Ros2Bridge"],
+                    "publishEncoding": "protobuf",
+                    "subscribeEncoding": "protobuf",
+                },
+                module._observed_profile_evidence(config),
+            )
+            self.assertEqual(
+                {
+                    "states": {
+                        "foxglove": "Ready",
+                        "ros2Native": "Ready",
+                        "ros2Bridge": "Ready",
+                    },
+                    "diagnosticCounts": {
+                        "failedTargets": 0,
+                        "bridgeRuntimeFailures": 0,
+                    },
+                    "statusEvidence": {
+                        "aggregate": "Ready",
+                        "succeeded": "Foxglove,Ros2Native,Ros2Bridge",
+                        "failed": "None",
+                        "bridgeRuntimeFailures": 0,
+                    },
+                },
+                module._observed_target_evidence(
+                    config,
+                    module.TerminalMarker("PASS", "PHASE184G_CASE_PASS", {}),
+                ),
+            )
+
+            log_path.write_text(
+                "PHASE184G_PROFILE_EVIDENCE "
+                f"case={case} token=p184g_Stale00000000 "
+                "source=Foxglove targets=Foxglove "
+                "publishEncoding=json subscribeEncoding=json\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_TERMINAL"):
+                module._observed_profile_evidence(config)
 
     def test_degraded_summary_consumes_exact_unity_target_status_fields(self):
         """The parent must carry the runtime status marker instead of recreating it."""
@@ -3155,6 +3299,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "ros2BridgeState": "Unavailable",
             "bridgeDiagnostics": "1",
         }
+        self._write_observed_runtime_markers(config)
 
         summary = module.build_pass_summary(
             config=config,
@@ -3222,9 +3367,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "PASS",
             "PHASE184G_CASE_PASS",
             {
-                "received": "792",
-                "accepted": "792",
-                "drained": "760",
+                "received": "1280",
+                "accepted": "1280",
+                "drained": "1248",
                 "replaced": "32",
                 "rateDropped": "0",
                 "highWater": "32",
@@ -3243,9 +3388,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             },
         )
         self.assertEqual(1280, evidence["offered"])
-        self.assertEqual(792, evidence["received"])
-        self.assertEqual(488, evidence["transportDropped"])
-        self.assertEqual(488, evidence["dropped"])
+        self.assertEqual(1280, evidence["received"])
+        self.assertEqual(0, evidence["transportDropped"])
+        self.assertEqual(0, evidence["dropped"])
         self.assertEqual(1279, evidence["lastSequence"])
 
         with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_STREAM"):

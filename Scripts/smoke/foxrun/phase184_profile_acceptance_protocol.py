@@ -20,7 +20,7 @@ from typing import Any, Callable, Mapping
 
 
 RUN_CONFIG_SCHEMA_VERSION = 1
-SUMMARY_SCHEMA_VERSION = 3
+SUMMARY_SCHEMA_VERSION = 4
 MAX_DIAGNOSTIC_CHARACTERS = 512
 STREAM_CAPACITY = 32
 MIN_STREAM_LAST_SEQUENCE_PERMILLE = 750
@@ -386,11 +386,15 @@ _EXPECTED_TARGET_STATES: Mapping[str, Mapping[str, str]] = {
 }
 
 _EXPECTED_TARGET_DIAGNOSTICS: Mapping[str, Mapping[str, int]] = {
-    "foxglove-profile": {"warning": 0, "error": 0},
-    "multi-target": {"warning": 0, "error": 0},
-    "degraded-target": {"bridge": 1, "error": 0},
-    "qos-contract": {"warning": 0, "error": 0},
-    "stream-640hz": {"warning": 0, "error": 0},
+    "foxglove-profile": {"failedTargets": 0},
+    "multi-target": {"failedTargets": 0, "bridgeRuntimeFailures": 0},
+    "degraded-target": {"failedTargets": 1, "bridgeDiagnostics": 1},
+    "qos-contract": {"failedTargets": 0},
+    "stream-640hz": {
+        "copyFailed": 0,
+        "staleCallbacks": 0,
+        "rejectedAfterStop": 0,
+    },
 }
 
 _EXPECTED_FOXGLOVE_SAMPLE_STAGES: Mapping[str, tuple[str, ...]] = {
@@ -1421,7 +1425,31 @@ def validate_summary(
         if targets["diagnosticCounts"] != _EXPECTED_TARGET_DIAGNOSTICS[expected_case]:
             raise _fail("fanout", "Target diagnostic counts drifted from the case contract.")
 
-        if expected_case == "degraded-target":
+        if expected_case == "foxglove-profile":
+            expected_status = {
+                "aggregate": "Ready",
+                "succeeded": "Foxglove",
+                "failed": "None",
+                "topics": 2,
+            }
+            if targets["statusEvidence"] != expected_status:
+                raise _fail(
+                    "fanout",
+                    "Foxglove target evidence must come from both runtime dispatches.",
+                )
+        elif expected_case == "multi-target":
+            expected_status = {
+                "aggregate": "Ready",
+                "succeeded": "Foxglove,Ros2Native,Ros2Bridge",
+                "failed": "None",
+                "bridgeRuntimeFailures": 0,
+            }
+            if targets["statusEvidence"] != expected_status:
+                raise _fail(
+                    "fanout",
+                    "Multi-target evidence must come from the runtime dispatch.",
+                )
+        elif expected_case == "degraded-target":
             expected_status = {
                 "aggregate": "Degraded",
                 "succeeded": "Foxglove",
@@ -1433,13 +1461,51 @@ def validate_summary(
                     "fanout",
                     "Degraded target evidence must come from the runtime status transition.",
                 )
-        elif targets["statusEvidence"] != {}:
-            raise _fail("fanout", "This case cannot claim synthetic target status evidence.")
+        elif expected_case == "qos-contract":
+            expected_topics = {
+                topic: {
+                    "aggregate": "Ready",
+                    "succeeded": "Ros2Native,Ros2Bridge",
+                    "failed": "None",
+                }
+                for topic in CASE_CONTRACTS["qos-contract"].topics
+            }
+            if targets["statusEvidence"] != {"topics": expected_topics}:
+                raise _fail(
+                    "fanout",
+                    "QoS target evidence must cover each exact runtime dispatch.",
+                )
+        elif expected_case == "stream-640hz":
+            status = _require_mapping(
+                targets["statusEvidence"],
+                "targets.statusEvidence",
+                "fanout",
+            )
+            if (
+                set(status)
+                != {
+                    "bindingState",
+                    "received",
+                    "copyFailed",
+                    "staleCallbacks",
+                    "rejectedAfterStop",
+                }
+                or status["bindingState"] not in {"Ready", "Receiving"}
+                or status["received"] != summary["stream"]["received"]
+                or status["copyFailed"] != 0
+                or status["staleCallbacks"] != 0
+                or status["rejectedAfterStop"] != 0
+            ):
+                raise _fail(
+                    "fanout",
+                    "Stream target evidence must come from the live native subscription.",
+                )
 
         if expected_case == "stream-640hz":
             stream = summary["stream"]
             if (
                 stream["offered"] != 1280
+                or stream["received"] != stream["offered"]
                 or stream["received"] + stream["transportDropped"]
                 != stream["offered"]
                 or stream["accepted"] + stream["rateDropped"]
