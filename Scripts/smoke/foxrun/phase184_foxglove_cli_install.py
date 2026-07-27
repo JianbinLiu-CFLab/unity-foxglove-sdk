@@ -48,6 +48,13 @@ DEFAULT_RECEIPT_PATH = (
     / "tooling"
     / "foxglove-cli-install-receipt.json"
 )
+CLI_ISOLATED_USERPROFILE = str(
+    REPOSITORY_ROOT
+    / "build"
+    / "phase184"
+    / "tooling"
+    / "isolated-cli-user-profile"
+)
 
 NO_PREVIOUS_SHA256 = "0" * 64
 MAX_RELEASE_BYTES = 256 * 1024
@@ -302,6 +309,7 @@ def build_minimal_process_environment(
     if not isinstance(source, Mapping):
         raise _fail("Foxglove CLI process environment is invalid.")
     result: dict[str, str] = {}
+    seen_names: set[str] = set()
     for key, value in source.items():
         if (
             not isinstance(key, str)
@@ -317,7 +325,14 @@ def build_minimal_process_environment(
             or "\n" in value
         ):
             continue
+        canonical_name = key.upper()
+        if canonical_name in seen_names:
+            raise _fail(
+                "Foxglove CLI process environment has duplicate Windows names."
+            )
+        seen_names.add(canonical_name)
         result[key] = value
+    result["USERPROFILE"] = CLI_ISOLATED_USERPROFILE
     return dict(sorted(result.items(), key=lambda item: item[0].casefold()))
 
 

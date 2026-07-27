@@ -295,6 +295,7 @@ class FakeEnvironment:
             "SystemRoot": r"C:\Windows",
             "PATH": r"C:\Windows\System32",
             "TEMP": r"C:\Temp",
+            "USERPROFILE": r"C:\Users\RealProfileWithCredentials",
             "GITHUB_TOKEN": "secret",
             "FOXGLOVE_API_KEY": "secret",
             "PHASE184G_TOKEN": "p184g_secret",
@@ -850,6 +851,13 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             "PATH": r"C:\Windows\System32",
             "SystemRoot": r"C:\Windows",
             "TEMP": r"C:\Temp",
+            "USERPROFILE": str(
+                ROOT
+                / "build"
+                / "phase184"
+                / "tooling"
+                / "isolated-cli-user-profile"
+            ),
         }
         self.assertEqual(
             [expected, expected],
@@ -868,8 +876,24 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             "ROS_DISTRO",
             "RMW_IMPLEMENTATION",
             "UNRELATED",
+            r"C:\Users\RealProfileWithCredentials",
         ):
             self.assertNotIn(forbidden, serialized)
+
+    def test_minimal_environment_rejects_case_insensitive_windows_duplicates(self):
+        for first, second in (
+            ("PATH", "Path"),
+            ("SystemRoot", "SYSTEMROOT"),
+            ("TEMP", "temp"),
+        ):
+            with self.subTest(first=first, second=second):
+                with self.assertRaises(protocol.AcceptanceFailure):
+                    installer.build_minimal_process_environment(
+                        {
+                            first: r"C:\Phase184\first",
+                            second: r"C:\Phase184\second",
+                        }
+                    )
 
     def test_resolver_mutation_is_hash_rejected_before_resolved_execution(self):
         environment = FakeEnvironment(self.physical_root)
