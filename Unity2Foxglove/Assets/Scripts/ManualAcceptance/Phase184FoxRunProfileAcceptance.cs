@@ -717,8 +717,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public const string InheritedTopic = "/foxrun/phase184/profile/default";
         public const string JsonTopic = "/foxrun/phase184/profile/json";
         private const float ClientReadyTimeoutSeconds = 300f;
-        private const float BootstrapPulseIntervalSeconds = 0.25f;
-        private const int MaximumBootstrapPulses = 180;
+        private const float ProfileResponseTimeoutSeconds = 60f;
 
         [FoxRun(InheritedTopic, Mode = FoxRunFlow.PublishAndSubscribe)]
         [SerializeField] private Phase181State _inheritedFoxglove;
@@ -747,8 +746,8 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _gateReopened;
         private bool _clientReadyObserved;
         private float _clientReadyDeadline;
-        private float _nextBootstrapPulseAt;
-        private int _bootstrapPulses;
+        private float _profileResponseDeadline;
+        private int _bootstrapSequence;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.FoxgloveProfileCase;
@@ -771,9 +770,8 @@ namespace Unity2Foxglove.ManualAcceptance
             _disabledWindowPreservedValue = false;
             _sameValueAppliedAfterRecovery = false;
             _laterLocalMutation = false;
-            _bootstrapPulses = 0;
+            _bootstrapSequence = 0;
             PulseOutboundBootstrap();
-            _bootstrapPulses = 0;
             _clientReadyDeadline = Time.realtimeSinceStartup + ClientReadyTimeoutSeconds;
             Ready("topics=2 encodings=protobuf,json");
         }
@@ -788,8 +786,9 @@ namespace Unity2Foxglove.ManualAcceptance
                 if (IsState(_explicitJson, "profile-client-ready"))
                 {
                     _clientReadyObserved = true;
-                    _bootstrapPulses = 0;
                     PulseOutboundBootstrap();
+                    _profileResponseDeadline =
+                        Time.realtimeSinceStartup + ProfileResponseTimeoutSeconds;
                     Emit(
                         "PHASE184G_PROFILE_CLIENT_READY",
                         "stage=profile-client-ready");
@@ -802,17 +801,6 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
 
-            if (!_gateClosed
-                && Time.realtimeSinceStartup >= _nextBootstrapPulseAt)
-            {
-                if (_bootstrapPulses >= MaximumBootstrapPulses)
-                {
-                    Fail("Foxglove profile bootstrap was not observed.");
-                    return;
-                }
-                PulseOutboundBootstrap();
-            }
-
             if (!_gateClosed && IsState(_explicitJson, "profile-a"))
             {
                 _inboundApplyStages++;
@@ -821,6 +809,12 @@ namespace Unity2Foxglove.ManualAcceptance
                 _valueBeforeDisabledWindow = _explicitJson;
                 _gateReopenAt = Time.realtimeSinceStartup + NegativeSeconds;
                 Emit("PHASE184G_PROFILE_GATE_CLOSED", "stage=profile-a");
+                return;
+            }
+            if (!_gateClosed
+                && Time.realtimeSinceStartup >= _profileResponseDeadline)
+            {
+                Fail("Foxglove profile response was not observed.");
                 return;
             }
 
@@ -870,13 +864,11 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void PulseOutboundBootstrap()
         {
-            var pulse = _bootstrapPulses++;
+            var pulse = _bootstrapSequence++;
             _inheritedFoxglove =
                 State(RunToken, "profile-outbound", 18401 + pulse);
             _explicitJson =
                 State(RunToken, "json-outbound", 18402 + pulse);
-            _nextBootstrapPulseAt =
-                Time.realtimeSinceStartup + BootstrapPulseIntervalSeconds;
         }
     }
 
@@ -885,6 +877,7 @@ namespace Unity2Foxglove.ManualAcceptance
     {
         public const string Topic = "/foxrun/phase184/multi/state";
         private const float WarmupPulseIntervalSeconds = 0.25f;
+        private const float WarmupTimeoutSeconds = 300f;
 
         [FoxRun(
             Topic,
@@ -907,6 +900,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private float _remoteObservedAt;
         private float _nextWarmupPulseAt;
+        private float _warmupDeadline;
         private int _warmupPulses;
         private bool _nativeReadyForBridge;
         private bool _initialArmed;
@@ -928,6 +922,9 @@ namespace Unity2Foxglove.ManualAcceptance
             _manager = FindFirstObjectByType<FoxgloveManager>();
             _lastBridgeRuntimeError = string.Empty;
             _lastTargetEvidence = string.Empty;
+            _warmupPulses = 0;
+            _warmupDeadline =
+                Time.realtimeSinceStartup + WarmupTimeoutSeconds;
             PulseWarmupUntilTargetsReady();
             Ready("topic=" + Topic + " targets=foxglove,native,bridge");
         }
@@ -936,12 +933,6 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             if (!IsArmed || IsTerminal)
                 return;
-
-            if (!_initialArmed
-                && Time.realtimeSinceStartup >= _nextWarmupPulseAt)
-            {
-                PulseWarmupUntilTargetsReady();
-            }
 
             EmitBridgeRuntimeFailure();
             if (TryGetTargetStatus(Topic, out var status))
@@ -967,6 +958,16 @@ namespace Unity2Foxglove.ManualAcceptance
                     _multiTarget = State(RunToken, "multi-local-1", 18411);
                     Emit("PHASE184G_MULTI_LOCAL_ARMED", "stage=1");
                 }
+            }
+            if (!_initialArmed)
+            {
+                if (Time.realtimeSinceStartup >= _warmupDeadline)
+                {
+                    Fail("Multi-target readiness was not observed.");
+                    return;
+                }
+                if (Time.realtimeSinceStartup >= _nextWarmupPulseAt)
+                    PulseWarmupUntilTargetsReady();
             }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -1336,6 +1337,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public const string OriginTopic = "/foxrun/phase184/zenoh/origin";
         private const float InitialDrainDelaySeconds = 0.5f;
         private const float StreamEvidenceTimeoutSeconds = 5f;
+        private const long MinimumStreamSamples = 1280;
 
         [FoxRun(
             StreamTopic,
@@ -1457,7 +1459,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 Emit("PHASE184G_STREAM_LOCAL_ORIGIN_MUTATED", "stage=local");
             }
 
-            if (_received > _inputStream.Options.Capacity
+            if (_received >= MinimumStreamSamples
                 && _inputStream.Count == 0
                 && _replaced > 0
                 && _retainedOrdered

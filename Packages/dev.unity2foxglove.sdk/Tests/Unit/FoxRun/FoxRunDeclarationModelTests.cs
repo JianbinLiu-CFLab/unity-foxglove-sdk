@@ -2809,7 +2809,7 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "private const int MaximumBootstrapPulses = 180;",
+                "private const float ProfileResponseTimeoutSeconds = 60f;",
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -2904,9 +2904,8 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
-                @"_bootstrapPulses = 0;
+                @"_bootstrapSequence = 0;
             PulseOutboundBootstrap();
-            _bootstrapPulses = 0;
             _clientReadyDeadline",
                 acceptanceSource,
                 StringComparison.Ordinal);
@@ -2984,6 +2983,80 @@ namespace Demo
             Assert.Contains(
                 "SetInteger(serialized, \"_ros2BridgeSendTimeoutMs\", 30000);",
                 builderSource,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase184RuntimeAcceptanceRoutesUseBoundedNonRacingEvidenceWindows()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptance.cs");
+            var syntaxRoot = CSharpSyntaxTree.ParseText(source).GetRoot();
+
+            string RouteSource(string routeName)
+            {
+                return syntaxRoot.DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>()
+                    .Single(type => type.Identifier.ValueText == routeName)
+                    .ToFullString();
+            }
+
+            var foxgloveRoute = RouteSource("Phase184FoxgloveProfileRoute");
+            var foxgloveUpdate = CSharpSyntaxTree.ParseText(foxgloveRoute)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "Update")
+                .ToFullString();
+            Assert.Contains(
+                "ProfileResponseTimeoutSeconds",
+                foxgloveRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_profileResponseDeadline",
+                foxgloveUpdate,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Foxglove profile response was not observed.",
+                foxgloveUpdate,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "_nextBootstrapPulseAt",
+                foxgloveUpdate,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "MaximumBootstrapPulses",
+                foxgloveRoute,
+                StringComparison.Ordinal);
+
+            var multiTargetRoute = RouteSource("Phase184MultiTargetRoute");
+            Assert.Contains(
+                "WarmupTimeoutSeconds",
+                multiTargetRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_warmupDeadline",
+                multiTargetRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Multi-target readiness was not observed.",
+                multiTargetRoute,
+                StringComparison.Ordinal);
+
+            var streamRoute = RouteSource("Phase184StreamRoute");
+            Assert.Contains(
+                "private const long MinimumStreamSamples = 1280;",
+                streamRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_received >= MinimumStreamSamples",
+                streamRoute,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "_received > _inputStream.Options.Capacity",
+                streamRoute,
                 StringComparison.Ordinal);
         }
 
