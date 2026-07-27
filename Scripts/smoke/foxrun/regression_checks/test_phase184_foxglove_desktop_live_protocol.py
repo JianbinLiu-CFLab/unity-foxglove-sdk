@@ -1138,6 +1138,45 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                     token,
                 )
 
+    def test_transport_chronology_rejects_regression_and_nonconsecutive_reappearance(self):
+        token = "p184g_A1b2C3d4E5f6"
+        case = "foxglove-profile"
+
+        def marker(active: int, accepted: int) -> str:
+            return (
+                f"{protocol.TRANSPORT_CLIENTS_MARKER} "
+                f"case={case} token={token} "
+                f"active={active} accepted={accepted}"
+            )
+
+        invalid_sets = (
+            [
+                marker(0, 0),
+                marker(1, 1),
+                marker(0, 0),
+                marker(2, 2),
+            ],
+            [
+                marker(0, 0),
+                marker(1, 1),
+                marker(0, 0),
+                marker(1, 1),
+                marker(2, 2),
+            ],
+        )
+        for lines in invalid_sets:
+            with self.subTest(lines=lines):
+                self.assert_evidence_failure(
+                    lambda lines=lines: (
+                        protocol.validate_transport_client_transition_order(
+                            lines,
+                            case=case,
+                            token=token,
+                        )
+                    ),
+                    token,
+                )
+
     def test_protocol_has_no_ambient_environment_network_or_process_access(self):
         source = inspect.getsource(protocol)
         self.assertNotIn("os.environ", source)

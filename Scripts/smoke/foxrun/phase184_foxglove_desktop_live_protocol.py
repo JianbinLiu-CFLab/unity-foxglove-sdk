@@ -924,7 +924,9 @@ def validate_transport_client_transition_order(
         ) from exc
 
     required: list[TransportClientMarker] = []
-    seen_pairs: set[tuple[int, int]] = set()
+    previous_line: str | None = None
+    marker_line_count = 0
+    collapsed_count = 0
     for line in iterator:
         if not isinstance(line, str):
             raise _evidence_failure("Transport marker evidence line is invalid.")
@@ -934,15 +936,21 @@ def validate_transport_client_transition_order(
         if marker.overflow:
             raise _evidence_failure("Transport client marker overflow was observed.")
 
-        pair = (marker.active, marker.accepted)
-        if pair in seen_pairs:
+        marker_line_count += 1
+        if marker_line_count > MAX_TRANSPORT_CLIENT_MARKERS:
+            raise _evidence_failure(
+                "Transport client marker evidence exceeds its fixed bound."
+            )
+        if line == previous_line:
             continue
-        seen_pairs.add(pair)
-        if len(seen_pairs) > MAX_TRANSPORT_CLIENT_MARKERS:
+        previous_line = line
+        collapsed_count += 1
+        if collapsed_count > MAX_TRANSPORT_CLIENT_MARKERS:
             raise _evidence_failure(
                 "Transport client marker evidence exceeds its fixed bound."
             )
 
+        pair = (marker.active, marker.accepted)
         stage = len(required)
         if stage == 0:
             matches = pair == (0, 0)
@@ -951,7 +959,7 @@ def validate_transport_client_transition_order(
         elif stage == 2:
             matches = marker.active == 2 and marker.accepted >= 2
         else:
-            continue
+            matches = False
         if not matches:
             raise _evidence_failure(
                 "Transport client markers are missing the required strict order."

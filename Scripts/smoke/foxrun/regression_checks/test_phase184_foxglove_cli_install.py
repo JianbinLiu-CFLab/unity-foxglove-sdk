@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import hashlib
 import io
 import inspect
+import json
 import ntpath
 import os
 import pathlib
@@ -231,6 +233,10 @@ class MappedFilesystem:
     def read_bytes(self, path: str) -> bytes:
         return self.physical(path).read_bytes()
 
+    def file_identity(self, path: str) -> tuple[int, int]:
+        info = self.physical(path).stat()
+        return int(info.st_dev), int(info.st_ino)
+
     def atomic_replace(self, source: str, destination: str) -> None:
         physical_source = self.physical(source)
         physical_destination = self.physical(destination)
@@ -270,10 +276,30 @@ class FakeEnvironment:
         self.install_path = install_path
         self.resolved_path = install_path
         self.fail_resolver = False
+        self.resolved_execution_pending = False
+        self.command_failure: Exception | None = None
+        self.command_environments: list[dict[str, str] | None] = []
+        self.resolver_environments: list[dict[str, str] | None] = []
+        self.after_command_hook = None
+        self.after_resolve_hook = None
         self.raise_after_replace = False
         self.replacement_interruption: BaseException | None = None
         self.rollback_failure: BaseException | None = None
         self.after_replace_hook = None
+        self.process_environment = {
+            "SystemRoot": r"C:\Windows",
+            "PATH": r"C:\Windows\System32",
+            "TEMP": r"C:\Temp",
+            "GITHUB_TOKEN": "secret",
+            "FOXGLOVE_API_KEY": "secret",
+            "PHASE184G_TOKEN": "p184g_secret",
+            "ROS_DISTRO": "jazzy",
+            "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp",
+            "UNRELATED": "discarded",
+        }
+        self.active_leases = 0
+        self.lease_snapshot_count = 0
+        self.before_lease_snapshot_hook = None
         if existing is not None:
             self.fs.write_bytes(install_path, existing)
 
@@ -288,35 +314,121 @@ class FakeEnvironment:
         )
         self.fs.write_bytes(destination, self.download_bytes, exclusive=True)
 
-    def run_command(self, executable: str, arguments: tuple[str, ...]) -> str:
+    def run_command(
+        self,
+        executable: str,
+        arguments: tuple[str, ...],
+        environment: dict[str, str] | None = None,
+    ) -> str:
         normalized = ntpath.normpath(executable)
         self.events.append(("run", normalized, tuple(arguments)))
+        self.command_environments.append(
+            None if environment is None else dict(environment)
+        )
         self.assert_version_command(arguments)
+        if self.command_failure is not None:
+            raise self.command_failure
         payload = self.fs.read_bytes(executable)
         if payload == OLD_BYTES:
             return self.old_revision
         if ".download." in normalized:
             return self.download_version
-        if normalized == ntpath.normpath(self.resolved_path):
-            if len(self.events) > 1 and self.events[-2][0] == "resolve":
-                return self.resolved_version
-        return self.installed_version
+        result = self.installed_version
+        if (
+            normalized == ntpath.normpath(self.resolved_path)
+            and self.resolved_execution_pending
+        ):
+            self.resolved_execution_pending = False
+            result = self.resolved_version
+        if self.after_command_hook is not None:
+            hook = self.after_command_hook
+            self.after_command_hook = None
+            hook()
+        return result
 
     @staticmethod
     def assert_version_command(arguments: tuple[str, ...]) -> None:
         if tuple(arguments) != ("version",):
             raise AssertionError("Only the exact version command is permitted.")
 
-    def resolve_command(self) -> str:
+    def resolve_command(
+        self,
+        environment: dict[str, str] | None = None,
+    ) -> str:
         self.events.append(
             (
                 "resolve",
                 "Get-Command foxglove -CommandType Application",
             )
         )
+        self.resolver_environments.append(
+            None if environment is None else dict(environment)
+        )
         if self.fail_resolver:
             raise RuntimeError("synthetic resolver failure")
+        if self.after_resolve_hook is not None:
+            hook = self.after_resolve_hook
+            self.after_resolve_hook = None
+            hook()
+        self.resolved_execution_pending = True
         return self.resolved_path
+
+    class _ExecutableLease:
+        def __init__(self, environment, path: str):
+            self.environment = environment
+            self.path = path
+            self.active = False
+
+        def __enter__(self):
+            self.active = True
+            self.environment.active_leases += 1
+            self.environment.events.append(
+                ("lease-open", ntpath.normpath(self.path))
+            )
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            del exc_type, exc, traceback
+            if self.active:
+                self.active = False
+                self.environment.active_leases -= 1
+                self.environment.events.append(
+                    ("lease-close", ntpath.normpath(self.path))
+                )
+            return False
+
+        def snapshot(self):
+            self.environment.lease_snapshot_count += 1
+            if self.environment.before_lease_snapshot_hook is not None:
+                hook = self.environment.before_lease_snapshot_hook
+                self.environment.before_lease_snapshot_hook = None
+                hook()
+            volume, file_id = self.environment.fs.file_identity(self.path)
+            self.environment.events.append(
+                ("lease-snapshot", ntpath.normpath(self.path))
+            )
+            return installer.ExecutableSnapshot(
+                identity=installer.ExecutableFileIdentity(
+                    volume_serial=volume,
+                    file_id=file_id,
+                ),
+                sha256=protocol.validate_sha256(
+                    self.environment.fs.sha256(self.path)
+                ),
+            )
+
+        def path_identity(self):
+            volume, file_id = self.environment.fs.file_identity(self.path)
+            self.environment.events.append(
+                ("lease-path-identity", ntpath.normpath(self.path))
+            )
+            return installer.ExecutableFileIdentity(
+                volume_serial=volume,
+                file_id=file_id,
+            )
+
+    def executable_lease(self, path: str):
+        return self._ExecutableLease(self, path)
 
     def atomic_replace(self, source: str, destination: str) -> None:
         self.events.append(
@@ -344,12 +456,12 @@ class FakeEnvironment:
             raise failure
 
     def dependencies(self):
-        return installer.InstallerDependencies(
-            release_fetcher=self.fetch_release,
-            downloader=self.download,
-            command_runner=self.run_command,
-            command_resolver=self.resolve_command,
-            clock=lambda: dt.datetime(
+        arguments = {
+            "release_fetcher": self.fetch_release,
+            "downloader": self.download,
+            "command_runner": self.run_command,
+            "command_resolver": self.resolve_command,
+            "clock": lambda: dt.datetime(
                 2026,
                 7,
                 27,
@@ -358,8 +470,19 @@ class FakeEnvironment:
                 56,
                 tzinfo=dt.timezone.utc,
             ),
-            atomic_replacer=self.atomic_replace,
-            filesystem=self.fs,
+            "atomic_replacer": self.atomic_replace,
+            "filesystem": self.fs,
+        }
+        dependency_fields = {
+            field.name
+            for field in dataclasses.fields(installer.InstallerDependencies)
+        }
+        if "process_environment" in dependency_fields:
+            arguments["process_environment"] = self.process_environment
+        if "executable_lease_factory" in dependency_fields:
+            arguments["executable_lease_factory"] = self.executable_lease
+        return installer.InstallerDependencies(
+            **arguments,
         )
 
 
@@ -380,6 +503,72 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             protocol.MAX_DIAGNOSTIC_CHARACTERS,
         )
         return raised.exception
+
+    def verify_cli(self, *args, **kwargs):
+        verifier = getattr(
+            installer,
+            "verify_installed_cli_provenance",
+            None,
+        )
+        self.assertIsNotNone(
+            verifier,
+            "the public read-only CLI provenance verifier is required",
+        )
+        return verifier(*args, **kwargs)
+
+    def prepare_verifier_fixture(
+        self,
+        environment: FakeEnvironment,
+        *,
+        binary_bytes: bytes = NEW_BYTES,
+        receipt_argument: str = RECEIPT_PATH,
+        receipt_overrides: dict[str, object] | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        environment.fs.write_bytes(INSTALL_PATH, binary_bytes)
+        receipt_destination = installer._resolve_receipt_path(
+            receipt_argument
+        )
+        digest = sha256_bytes(binary_bytes)
+        receipt: dict[str, object] = {
+            "schemaVersion": protocol.CLI_RECEIPT_SCHEMA_VERSION,
+            "releaseTag": "v1.2.3",
+            "releaseVersion": "1.2.3",
+            "architecture": protocol.CLI_ARCHITECTURE,
+            "assetName": protocol.CLI_ASSET_NAME,
+            "assetUrl": OFFICIAL_ASSET_URL,
+            "downloadSha256": digest,
+            "downloadVersion": "1.2.3",
+            "installedPath": INSTALL_PATH,
+            "installedSha256": digest,
+            "installedVersion": "1.2.3",
+            "previousSha256": installer.NO_PREVIOUS_SHA256,
+            "backupPath": (
+                r"C:\Phase184Tests\backup\foxglove.previous.exe"
+            ),
+            "installedUtc": "2026-07-27T12:34:56Z",
+        }
+        if receipt_overrides is not None:
+            receipt.update(receipt_overrides)
+        environment.fs.write_receipt(receipt_destination, receipt)
+        environment.events.clear()
+        environment.fetch_urls.clear()
+        return receipt_destination, receipt
+
+    def assert_verifier_read_only(self, environment: FakeEnvironment) -> None:
+        mutation_events = {
+            "copy-exclusive",
+            "download",
+            "ensure-parent",
+            "publish-exclusive",
+            "remove",
+            "replace",
+            "temp",
+            "write-receipt",
+        }
+        self.assertFalse(
+            any(event[0] in mutation_events for event in environment.events)
+        )
+        self.assertEqual([], environment.fetch_urls)
 
     def test_cli_contract_locks_endpoint_required_path_and_default_receipt(self):
         self.assertEqual(
@@ -405,6 +594,372 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             self.assertRaises(SystemExit),
         ):
             installer.parse_args([])
+
+    def test_read_only_verifier_returns_immutable_exact_identity_and_document(self):
+        environment = FakeEnvironment(self.physical_root)
+        secret_backup = (
+            r"C:\Phase184Tests\DO_NOT_REPORT_SECRET\foxglove.previous.exe"
+        )
+        receipt_destination, receipt = self.prepare_verifier_fixture(
+            environment,
+            receipt_overrides={"backupPath": secret_backup},
+        )
+
+        identity = self.verify_cli(
+            INSTALL_PATH,
+            RECEIPT_PATH,
+            dependencies=environment.dependencies(),
+        )
+
+        identity_type = getattr(installer, "VerifiedCliIdentity", None)
+        self.assertIsNotNone(identity_type)
+        self.assertIsInstance(identity, identity_type)
+        self.assertEqual(INSTALL_PATH, identity.installed_path)
+        self.assertEqual("1.2.3", identity.installed_version)
+        self.assertEqual(
+            receipt["installedSha256"],
+            identity.installed_sha256,
+        )
+        self.assertEqual("v1.2.3", identity.release_tag)
+        self.assertEqual(OFFICIAL_ASSET_URL, identity.asset_url)
+        self.assertEqual(protocol.CLI_ARCHITECTURE, identity.architecture)
+        self.assertEqual(receipt_destination, identity.receipt_path)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            setattr(identity, "installed_version", "9.9.9")
+
+        document = identity.to_document()
+        self.assertEqual(
+            {
+                "architecture": protocol.CLI_ARCHITECTURE,
+                "assetUrl": OFFICIAL_ASSET_URL,
+                "installedPath": INSTALL_PATH,
+                "installedSha256": sha256_bytes(NEW_BYTES),
+                "installedVersion": "1.2.3",
+                "receiptPath": receipt_destination,
+                "releaseTag": "v1.2.3",
+            },
+            document,
+        )
+        serialized = json.dumps(
+            document,
+            ensure_ascii=True,
+            sort_keys=True,
+        ).encode("utf-8")
+        self.assertLessEqual(
+            len(serialized),
+            installer.MAX_VERIFIED_CLI_DOCUMENT_BYTES,
+        )
+        self.assertNotIn("DO_NOT_REPORT_SECRET", serialized.decode("utf-8"))
+        self.assertNotIn("previousSha256", document)
+        self.assertNotIn("backupPath", document)
+        self.assertNotIn("installedUtc", document)
+        self.assertEqual(
+            2,
+            sum(
+                1
+                for event in environment.events
+                if event
+                == ("run", ntpath.normpath(INSTALL_PATH), ("version",))
+            ),
+        )
+        self.assertEqual(
+            1,
+            sum(1 for event in environment.events if event[0] == "resolve"),
+        )
+        self.assert_verifier_read_only(environment)
+
+    def test_read_only_verifier_accepts_scoped_relative_and_default_receipts(self):
+        cases = (
+            ("relative", RELATIVE_RECEIPT_PATH),
+            ("default", str(installer.DEFAULT_RECEIPT_PATH)),
+        )
+        for name, receipt_argument in cases:
+            with self.subTest(name=name):
+                environment = FakeEnvironment(self.physical_root / name)
+                receipt_destination, _ = self.prepare_verifier_fixture(
+                    environment,
+                    receipt_argument=receipt_argument,
+                )
+
+                identity = self.verify_cli(
+                    INSTALL_PATH,
+                    receipt_argument,
+                    dependencies=environment.dependencies(),
+                )
+
+                self.assertEqual(receipt_destination, identity.receipt_path)
+                self.assert_verifier_read_only(environment)
+
+    def test_read_only_verifier_rejects_stale_dev_and_live_mismatches(self):
+        cases = (
+            "stale-path",
+            "stale-hash",
+            "stale-version",
+            "dev-version",
+            "resolver-path",
+            "resolved-version",
+            "resolved-hash",
+            "installed-command",
+            "resolver-command",
+        )
+        for case in cases:
+            with self.subTest(case=case):
+                environment = FakeEnvironment(self.physical_root / case)
+                binary_bytes = OLD_BYTES if case == "dev-version" else NEW_BYTES
+                receipt_overrides: dict[str, object] = {}
+                if case == "stale-path":
+                    receipt_overrides["installedPath"] = (
+                        r"C:\Phase184Tests\stale\foxglove.exe"
+                    )
+                elif case == "stale-hash":
+                    stale_hash = sha256_bytes(OLD_BYTES)
+                    receipt_overrides.update(
+                        {
+                            "downloadSha256": stale_hash,
+                            "installedSha256": stale_hash,
+                        }
+                    )
+                self.prepare_verifier_fixture(
+                    environment,
+                    binary_bytes=binary_bytes,
+                    receipt_overrides=receipt_overrides,
+                )
+                if case == "stale-version":
+                    environment.installed_version = "9.9.9"
+                elif case == "resolver-path":
+                    environment.resolved_path = (
+                        r"C:\Phase184Tests\other\foxglove.exe"
+                    )
+                    environment.fs.write_bytes(
+                        environment.resolved_path,
+                        NEW_BYTES,
+                    )
+                elif case == "resolved-version":
+                    environment.resolved_version = "9.9.9"
+                elif case == "resolved-hash":
+                    environment.after_resolve_hook = (
+                        lambda environment=environment:
+                        environment.fs.write_bytes(
+                            INSTALL_PATH,
+                            b"resolved target changed",
+                        )
+                    )
+                elif case == "installed-command":
+                    environment.command_failure = RuntimeError(
+                        "synthetic command failure with secret detail"
+                    )
+                elif case == "resolver-command":
+                    environment.fail_resolver = True
+
+                failure = self.assert_provenance_failure(
+                    lambda environment=environment: self.verify_cli(
+                        INSTALL_PATH,
+                        RECEIPT_PATH,
+                        dependencies=environment.dependencies(),
+                    )
+                )
+
+                self.assertNotIn("secret detail", failure.message)
+                self.assert_verifier_read_only(environment)
+
+    def test_verifier_rejects_swapped_or_stale_candidate_before_execution(self):
+        cases = ("swapped-bytes", "stale-path", "stale-hash")
+        for case in cases:
+            with self.subTest(case=case):
+                environment = FakeEnvironment(self.physical_root / case)
+                overrides: dict[str, object] = {}
+                if case == "stale-path":
+                    overrides["installedPath"] = (
+                        r"C:\Phase184Tests\stale\foxglove.exe"
+                    )
+                elif case == "stale-hash":
+                    overrides.update(
+                        {
+                            "downloadSha256": sha256_bytes(OLD_BYTES),
+                            "installedSha256": sha256_bytes(OLD_BYTES),
+                        }
+                    )
+                self.prepare_verifier_fixture(
+                    environment,
+                    receipt_overrides=overrides,
+                )
+                if case == "swapped-bytes":
+                    environment.fs.write_bytes(INSTALL_PATH, OLD_BYTES)
+                    environment.events.clear()
+
+                self.assert_provenance_failure(
+                    lambda environment=environment: self.verify_cli(
+                        INSTALL_PATH,
+                        RECEIPT_PATH,
+                        dependencies=environment.dependencies(),
+                    )
+                )
+
+                self.assertFalse(
+                    any(event[0] == "run" for event in environment.events)
+                )
+                self.assert_verifier_read_only(environment)
+
+    def test_candidate_version_children_receive_only_explicit_minimal_environment(self):
+        environment = FakeEnvironment(self.physical_root)
+        self.prepare_verifier_fixture(environment)
+
+        identity = self.verify_cli(
+            INSTALL_PATH,
+            RECEIPT_PATH,
+            dependencies=environment.dependencies(),
+        )
+
+        self.assertEqual("1.2.3", identity.installed_version)
+        expected = {
+            "PATH": r"C:\Windows\System32",
+            "SystemRoot": r"C:\Windows",
+            "TEMP": r"C:\Temp",
+        }
+        self.assertEqual(
+            [expected, expected],
+            environment.command_environments,
+        )
+        self.assertEqual([expected], environment.resolver_environments)
+        serialized = json.dumps(
+            environment.command_environments
+            + environment.resolver_environments,
+            sort_keys=True,
+        )
+        for forbidden in (
+            "GITHUB_TOKEN",
+            "FOXGLOVE_API_KEY",
+            "PHASE184G_TOKEN",
+            "ROS_DISTRO",
+            "RMW_IMPLEMENTATION",
+            "UNRELATED",
+        ):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_resolver_mutation_is_hash_rejected_before_resolved_execution(self):
+        environment = FakeEnvironment(self.physical_root)
+        self.prepare_verifier_fixture(environment)
+        environment.after_resolve_hook = lambda: environment.fs.write_bytes(
+            INSTALL_PATH,
+            b"resolver swapped executable",
+        )
+
+        self.assert_provenance_failure(
+            lambda: self.verify_cli(
+                INSTALL_PATH,
+                RECEIPT_PATH,
+                dependencies=environment.dependencies(),
+            )
+        )
+
+        runs = [
+            event
+            for event in environment.events
+            if event[0] == "run"
+        ]
+        self.assertEqual(1, len(runs))
+        self.assertEqual(0, environment.active_leases)
+        self.assertEqual(
+            1,
+            sum(1 for event in environment.events if event[0] == "lease-close"),
+        )
+
+    def test_verifier_holds_read_only_lease_across_pre_post_hash_and_execution(self):
+        environment = FakeEnvironment(self.physical_root)
+        self.prepare_verifier_fixture(environment)
+
+        self.verify_cli(
+            INSTALL_PATH,
+            RECEIPT_PATH,
+            dependencies=environment.dependencies(),
+        )
+
+        event_names = [event[0] for event in environment.events]
+        self.assertEqual(1, event_names.count("lease-open"))
+        self.assertEqual(1, event_names.count("lease-close"))
+        self.assertGreaterEqual(event_names.count("lease-snapshot"), 4)
+        self.assertLess(
+            event_names.index("lease-open"),
+            event_names.index("run"),
+        )
+        self.assertGreater(
+            event_names.index("lease-close"),
+            max(
+                index
+                for index, name in enumerate(event_names)
+                if name == "run"
+            ),
+        )
+        self.assertEqual(0, environment.active_leases)
+        self.assert_verifier_read_only(environment)
+
+    def test_version_execution_mutation_fails_and_releases_lease(self):
+        environment = FakeEnvironment(self.physical_root)
+        self.prepare_verifier_fixture(environment)
+        environment.after_command_hook = lambda: environment.fs.write_bytes(
+            INSTALL_PATH,
+            b"mutated while version child returned",
+        )
+
+        self.assert_provenance_failure(
+            lambda: self.verify_cli(
+                INSTALL_PATH,
+                RECEIPT_PATH,
+                dependencies=environment.dependencies(),
+            )
+        )
+
+        self.assertEqual(0, environment.active_leases)
+        self.assertEqual(
+            1,
+            sum(1 for event in environment.events if event[0] == "lease-close"),
+        )
+        self.assertFalse(
+            any(event[0] == "resolve" for event in environment.events)
+        )
+
+    def test_read_only_verifier_rejects_missing_and_malformed_receipts(self):
+        for case in ("missing", "malformed-json", "extra-key"):
+            with self.subTest(case=case):
+                environment = FakeEnvironment(
+                    self.physical_root / case,
+                    existing=NEW_BYTES,
+                )
+                if case == "malformed-json":
+                    environment.fs.write_bytes(RECEIPT_PATH, b"{not-json")
+                elif case == "extra-key":
+                    _, receipt = self.prepare_verifier_fixture(environment)
+                    receipt["unexpected"] = "rejected"
+                    environment.fs.write_receipt(RECEIPT_PATH, receipt)
+                environment.events.clear()
+
+                self.assert_provenance_failure(
+                    lambda environment=environment: self.verify_cli(
+                        INSTALL_PATH,
+                        RECEIPT_PATH,
+                        dependencies=environment.dependencies(),
+                    )
+                )
+
+                self.assertFalse(
+                    any(event[0] == "run" for event in environment.events)
+                )
+                self.assert_verifier_read_only(environment)
+
+    def test_read_only_verifier_production_rejects_non_windows_before_io(self):
+        with (
+            mock.patch.object(installer.os, "name", "posix"),
+            mock.patch(
+                "urllib.request.urlopen",
+                side_effect=AssertionError("must fail before network"),
+            ),
+        ):
+            self.assert_provenance_failure(
+                lambda: self.verify_cli(
+                    INSTALL_PATH,
+                    RECEIPT_PATH,
+                )
+            )
 
     def test_release_selection_requires_one_exact_official_asset_and_matching_tag(self):
         valid = {
