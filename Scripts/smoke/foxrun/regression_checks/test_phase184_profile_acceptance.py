@@ -2526,6 +2526,116 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         )
         websocket.close.assert_awaited_once()
 
+    def test_degraded_client_requests_delivery_only_after_subscribing(self):
+        module = load_module()
+        token = "p184g_A1b2C3d4E5f6"
+        topic = "/foxrun/phase184/degraded/state"
+        config = {
+            "case": "degraded-target",
+            "token": token,
+            "topics": [topic],
+            "observationWindows": {
+                "positiveSeconds": 3,
+                "negativeSeconds": 3,
+            },
+            "foxgloveHost": "127.0.0.1",
+            "foxglovePort": 18765,
+        }
+        events: list[str] = []
+        websocket = mock.Mock()
+        websocket.close = mock.AsyncMock()
+        channels = {topic: mock.Mock(encoding="protobuf")}
+
+        async def subscribe(_websocket, _channels):
+            events.append("subscribe")
+            return {184001: topic}
+
+        async def send_json(*args, **kwargs):
+            events.append(
+                f"send:{args[4]}:advertise={kwargs['advertise']}"
+            )
+
+        async def receive(*_args, **_kwargs):
+            events.append("receive")
+            return {}, [], 1.0
+
+        def wait_marker(_config, marker, _timeout):
+            events.append(f"marker:{marker}")
+
+        send = mock.AsyncMock(side_effect=send_json)
+        websockets = mock.Mock(
+            connect=mock.AsyncMock(return_value=websocket)
+        )
+        with mock.patch.dict(
+            sys.modules,
+            {"websockets": websockets},
+        ), mock.patch.object(
+            module,
+            "write_actor_ready",
+        ), mock.patch.object(
+            module,
+            "_wait_for_unity_context",
+        ), mock.patch.object(
+            module,
+            "_wait_for_foxglove_channels",
+            new=mock.AsyncMock(return_value=channels),
+        ), mock.patch.object(
+            module,
+            "_foxglove_subscribe",
+            side_effect=subscribe,
+        ), mock.patch.object(
+            module,
+            "_foxglove_advertise_and_send_json",
+            send,
+        ), mock.patch.object(
+            module,
+            "_receive_foxglove_stages",
+            side_effect=receive,
+        ), mock.patch.object(
+            module,
+            "wait_for_log_marker",
+            side_effect=wait_marker,
+        ), mock.patch.object(
+            module,
+            "wait_for_terminal_marker",
+        ):
+            result = module.asyncio.run(
+                module._run_foxglove_client_async(config)
+            )
+
+        self.assertTrue(result["deliveryObserved"])
+        self.assertLess(
+            events.index("subscribe"),
+            events.index(
+                "send:degraded-client-ready:advertise=True"
+            ),
+        )
+        self.assertLess(
+            events.index(
+                "send:degraded-client-ready:advertise=True"
+            ),
+            events.index(
+                "marker:PHASE184G_DEGRADED_CLIENT_READY"
+            ),
+        )
+        self.assertLess(
+            events.index(
+                "marker:PHASE184G_DEGRADED_CLIENT_READY"
+            ),
+            events.index("receive"),
+        )
+        send.assert_awaited_once_with(
+            websocket,
+            module.DEGRADED_CLIENT_READY_TOPIC,
+            "clientReady",
+            token,
+            "degraded-client-ready",
+            18419,
+            184902,
+            advertise=True,
+        )
+        websocket.close.assert_awaited_once()
+
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"

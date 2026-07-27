@@ -2821,6 +2821,84 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "private const float DegradedDeliveryPulseIntervalSeconds = 0.25f;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"public const string DegradedClientReadyTopic =
+            ""/foxrun/phase184/degraded/client_ready"";",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private const float DegradedClientReadyTimeoutSeconds = 180f;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private const uint DegradedClientReadyChannelId = 184902;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"_degradedDeliveryPulses = 0;
+            PulseDegradedDelivery();",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"if (Time.realtimeSinceStartup >= _nextDegradedDeliveryPulseAt)
+                    PulseDegradedDelivery();",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"State(
+                    RunToken,
+                    ""degraded-local"",
+                    18420 + pulse);",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            var degradedRouteStart = acceptanceSource.IndexOf(
+                "public sealed partial class Phase184DegradedTargetRoute",
+                StringComparison.Ordinal);
+            var degradedRouteEnd = acceptanceSource.IndexOf(
+                "public sealed partial class Phase184QosContractRoute",
+                degradedRouteStart,
+                StringComparison.Ordinal);
+            Assert.True(degradedRouteStart >= 0);
+            Assert.True(degradedRouteEnd > degradedRouteStart);
+            var degradedSource = acceptanceSource.Substring(
+                degradedRouteStart,
+                degradedRouteEnd - degradedRouteStart);
+            Assert.Contains(
+                "_manager.OnClientMessageWithEncoding += OnDegradedClientMessage;",
+                degradedSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.OnClientMessageWithEncoding -= OnDegradedClientMessage;",
+                degradedSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunInboundJson.TryReadObject<Phase181State>(",
+                degradedSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "channelId != DegradedClientReadyChannelId",
+                degradedSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "IsState(ready, \"degraded-client-ready\")",
+                degradedSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE184G_DEGRADED_CLIENT_READY",
+                degradedSource,
+                StringComparison.Ordinal);
+            var degradedReadyGuard = degradedSource.IndexOf(
+                "if (!_degradedClientReadyObserved)",
+                StringComparison.Ordinal);
+            var degradedTargetStatus = degradedSource.IndexOf(
+                "TryGetTargetStatus(Topic, out var status)",
+                StringComparison.Ordinal);
+            Assert.True(degradedReadyGuard >= 0);
+            Assert.True(degradedTargetStatus > degradedReadyGuard);
+            Assert.Contains(
                 "_clientReadyDeadline = Time.realtimeSinceStartup "
                 + "+ ClientReadyTimeoutSeconds;",
                 acceptanceSource,

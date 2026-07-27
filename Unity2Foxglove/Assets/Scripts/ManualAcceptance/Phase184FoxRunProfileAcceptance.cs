@@ -1065,6 +1065,14 @@ namespace Unity2Foxglove.ManualAcceptance
     public sealed partial class Phase184DegradedTargetRoute : Phase184AcceptanceRoute
     {
         public const string Topic = "/foxrun/phase184/degraded/state";
+        public const string DegradedClientReadyTopic =
+            "/foxrun/phase184/degraded/client_ready";
+
+        private const float DegradedClientReadyTimeoutSeconds = 180f;
+        private const float DegradedDeliveryPulseIntervalSeconds = 0.25f;
+        private const uint DegradedClientReadyChannelId = 184902;
+        private const int DegradedClientReadyCount = 18419;
+        private const int MaximumDegradedClientReadyPayloadBytes = 4096;
 
         [FoxRun(
             Topic,
@@ -1081,6 +1089,12 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private float _degradedObservedAt = -1f;
         [SerializeField] private int _bridgeDiagnosticCount;
 
+        private FoxgloveManager _manager;
+        private bool _degradedClientReadyObserved;
+        private float _degradedClientReadyDeadline;
+        private float _nextDegradedDeliveryPulseAt;
+        private int _degradedDeliveryPulses;
+
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.DegradedTargetCase;
 
@@ -1091,19 +1105,48 @@ namespace Unity2Foxglove.ManualAcceptance
                 enabled = false;
                 return;
             }
+            _manager = FindFirstObjectByType<FoxgloveManager>();
+            if (_manager == null)
+            {
+                Fail("Foxglove Manager is unavailable.");
+                return;
+            }
+            _manager.OnClientMessageWithEncoding -= OnDegradedClientMessage;
+            _manager.OnClientMessageWithEncoding += OnDegradedClientMessage;
             _targetStatus = "Waiting";
             _succeededTargets = string.Empty;
             _failedTargets = string.Empty;
             _degradedObservedAt = -1f;
             _bridgeDiagnosticCount = 0;
-            _degradedTarget = State(RunToken, "degraded-local", 18420);
+            _degradedClientReadyObserved = false;
+            _degradedClientReadyDeadline =
+                Time.realtimeSinceStartup
+                + DegradedClientReadyTimeoutSeconds;
+            _degradedDeliveryPulses = 0;
+            PulseDegradedDelivery();
             Ready("topic=" + Topic + " bridge=deliberately-absent");
+        }
+
+        private void OnDisable()
+        {
+            if (_manager != null)
+                _manager.OnClientMessageWithEncoding -= OnDegradedClientMessage;
+            _manager = null;
         }
 
         private void Update()
         {
             if (!IsArmed || IsTerminal)
                 return;
+            if (!_degradedClientReadyObserved)
+            {
+                if (Time.realtimeSinceStartup
+                    >= _degradedClientReadyDeadline)
+                {
+                    Fail("Foxglove degraded client readiness was not observed.");
+                }
+                return;
+            }
             if (!TryGetTargetStatus(Topic, out var status))
                 return;
 
@@ -1114,6 +1157,8 @@ namespace Unity2Foxglove.ManualAcceptance
                 && status.SucceededTargets == FoxRunEndpoint.Foxglove
                 && status.FailedTargets == FoxRunEndpoint.Ros2Bridge)
             {
+                if (Time.realtimeSinceStartup >= _nextDegradedDeliveryPulseAt)
+                    PulseDegradedDelivery();
                 if (_degradedObservedAt < 0f)
                 {
                     _degradedObservedAt = Time.realtimeSinceStartup;
@@ -1135,6 +1180,61 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
             _degradedObservedAt = -1f;
+        }
+
+        private void OnDegradedClientMessage(
+            uint clientId,
+            uint channelId,
+            string topic,
+            string encoding,
+            byte[] payload)
+        {
+            if (!IsArmed
+                || IsTerminal
+                || _degradedClientReadyObserved
+                || !string.Equals(
+                    topic,
+                    DegradedClientReadyTopic,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (channelId != DegradedClientReadyChannelId
+                || !string.Equals(encoding, "json", StringComparison.Ordinal)
+                || payload == null
+                || payload.Length == 0
+                || payload.Length > MaximumDegradedClientReadyPayloadBytes
+                || !FoxRunInboundJson.TryReadObject<Phase181State>(
+                    payload,
+                    "clientReady",
+                    out var ready,
+                    out _)
+                || !IsState(ready, "degraded-client-ready")
+                || ready.Count != DegradedClientReadyCount)
+            {
+                Fail("Foxglove degraded client readiness was invalid.");
+                return;
+            }
+
+            _degradedClientReadyObserved = true;
+            PulseDegradedDelivery();
+            Emit(
+                "PHASE184G_DEGRADED_CLIENT_READY",
+                "stage=degraded-client-ready");
+        }
+
+        private void PulseDegradedDelivery()
+        {
+            var pulse = _degradedDeliveryPulses++;
+            _degradedTarget =
+                State(
+                    RunToken,
+                    "degraded-local",
+                    18420 + pulse);
+            _nextDegradedDeliveryPulseAt =
+                Time.realtimeSinceStartup
+                + DegradedDeliveryPulseIntervalSeconds;
         }
     }
 

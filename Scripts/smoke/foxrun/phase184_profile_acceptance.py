@@ -65,6 +65,7 @@ U2R2_MAGIC = b"U2R2"
 U2R2_VERSION = 1
 FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 FOXGLOVE_MESSAGE_OPCODE = 1
+DEGRADED_CLIENT_READY_TOPIC = "/foxrun/phase184/degraded/client_ready"
 _SAFE_MARKER_FIELD = re.compile(r"\A[A-Za-z0-9._:/,+-]{1,512}\Z")
 _UNITY_VERSION = re.compile(r"\bVersion is '([^']+)'")
 _PROCESS_IMPORTED_UNIX_SECONDS = time.time()
@@ -1599,6 +1600,22 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
             }
 
         if case == "degraded-target":
+            await _foxglove_advertise_and_send_json(
+                websocket,
+                DEGRADED_CLIENT_READY_TOPIC,
+                "clientReady",
+                token,
+                "degraded-client-ready",
+                18419,
+                184902,
+                advertise=True,
+            )
+            await asyncio.to_thread(
+                wait_for_log_marker,
+                config,
+                "PHASE184G_DEGRADED_CLIENT_READY",
+                30.0,
+            )
             observed, forbidden, timestamp = await _receive_foxglove_stages(
                 websocket,
                 subscriptions,
