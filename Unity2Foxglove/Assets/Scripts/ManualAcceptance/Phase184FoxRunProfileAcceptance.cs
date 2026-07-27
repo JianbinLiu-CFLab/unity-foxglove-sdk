@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
@@ -68,6 +69,8 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private bool _contextValidated;
 
         [NonSerialized] private string _runToken = string.Empty;
+        private Phase184AcceptanceRoute _activeRoute;
+        private bool _profileEvidenceEmitted;
         private readonly Phase184TransportClientMarkerState
             _transportClientMarkerState =
                 new Phase184TransportClientMarkerState(
@@ -106,6 +109,8 @@ namespace Unity2Foxglove.ManualAcceptance
             ResetTransportClientEvidence(context.Token);
             _status = "Validated " + context.CaseId + "; activating its isolated route.";
             CaptureProfiles();
+            _activeRoute = route;
+            _profileEvidenceEmitted = false;
             route.Arm(context);
             route.gameObject.SetActive(true);
             Emit(
@@ -120,6 +125,7 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_contextValidated || _manager == null)
                 return;
 
+            CaptureRuntimeProfileEvidence();
             CaptureTransportClientEvidence();
             _effectivePublishProfile =
                 _manager.ActiveFoxRunPublishTargets + " / "
@@ -127,6 +133,111 @@ namespace Unity2Foxglove.ManualAcceptance
             _effectiveSubscribeProfile =
                 _manager.ActiveFoxRunSubscriptionSource + " / "
                 + _manager.ActiveFoxRunSubscriptionEncoding;
+        }
+
+        private void CaptureRuntimeProfileEvidence()
+        {
+            if (_profileEvidenceEmitted || _activeRoute == null)
+                return;
+
+            var source = (FoxRunEndpoint)0;
+            var targets = (FoxRunEndpoint)0;
+            var hasPublish = false;
+            var hasSubscribe = false;
+            var publishProtobuf = false;
+            var publishJson = false;
+            var subscribeProtobuf = false;
+            var subscribeJson = false;
+            var declarationCount = 0;
+            foreach (var field in _activeRoute.GetType().GetFields(
+                         BindingFlags.Instance
+                         | BindingFlags.Public
+                         | BindingFlags.NonPublic))
+            {
+                foreach (FoxRunAttribute declaration in field.GetCustomAttributes(
+                             typeof(FoxRunAttribute),
+                             false))
+                {
+                    declarationCount++;
+                    if (declaration.Mode == FoxRunFlow.Publish
+                        || declaration.Mode == FoxRunFlow.PublishAndSubscribe)
+                    {
+                        hasPublish = true;
+                        targets |= declaration.Targets != 0
+                            ? declaration.Targets
+                            : _manager.ActiveFoxRunPublishTargets;
+                        AddEncoding(
+                            declaration.Encoding != 0
+                                ? declaration.Encoding
+                                : _manager.ActiveFoxRunPublishEncoding,
+                            ref publishProtobuf,
+                            ref publishJson);
+                    }
+                    if (declaration.Mode == FoxRunFlow.Subscribe
+                        || declaration.Mode == FoxRunFlow.PublishAndSubscribe)
+                    {
+                        hasSubscribe = true;
+                        source |= declaration.Source != 0
+                            ? declaration.Source
+                            : _manager.ActiveFoxRunSubscriptionSource;
+                        AddEncoding(
+                            declaration.Encoding != 0
+                                ? declaration.Encoding
+                                : _manager.ActiveFoxRunSubscriptionEncoding,
+                            ref subscribeProtobuf,
+                            ref subscribeJson);
+                    }
+                }
+            }
+
+            if (declarationCount == 0)
+            {
+                FailContext("The selected Phase184 route has no FoxRun declaration.");
+                return;
+            }
+
+            Emit(
+                "PHASE184G_PROFILE_EVIDENCE",
+                "case=" + _selectedCase
+                + " token=" + Phase184AcceptanceText.SafeMarker(_runToken)
+                + " source="
+                + (hasSubscribe
+                    ? Phase184AcceptanceText.FormatEndpoints(source)
+                    : "None")
+                + " targets="
+                + (hasPublish
+                    ? Phase184AcceptanceText.FormatEndpoints(targets)
+                    : "None")
+                + " publishEncoding="
+                + FormatEncodings(hasPublish, publishProtobuf, publishJson)
+                + " subscribeEncoding="
+                + FormatEncodings(hasSubscribe, subscribeProtobuf, subscribeJson));
+            _profileEvidenceEmitted = true;
+        }
+
+        private static void AddEncoding(
+            FoxRunEncoding encoding,
+            ref bool protobuf,
+            ref bool json)
+        {
+            protobuf |= encoding == FoxRunEncoding.Protobuf;
+            json |= encoding == FoxRunEncoding.JSON;
+        }
+
+        private static string FormatEncodings(
+            bool applicable,
+            bool protobuf,
+            bool json)
+        {
+            if (!applicable)
+                return "not_applicable";
+            if (protobuf && json)
+                return "protobuf,json";
+            if (protobuf)
+                return "protobuf";
+            if (json)
+                return "json";
+            return "None";
         }
 
         private void DisableEveryRoute()
@@ -748,6 +859,7 @@ namespace Unity2Foxglove.ManualAcceptance
         private float _clientReadyDeadline;
         private float _profileResponseDeadline;
         private int _bootstrapSequence;
+        private string _lastTargetEvidence = string.Empty;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.FoxgloveProfileCase;
@@ -770,6 +882,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _disabledWindowPreservedValue = false;
             _sameValueAppliedAfterRecovery = false;
             _laterLocalMutation = false;
+            _lastTargetEvidence = string.Empty;
             _bootstrapSequence = 0;
             PulseOutboundBootstrap();
             _clientReadyDeadline = Time.realtimeSinceStartup + ClientReadyTimeoutSeconds;
@@ -781,6 +894,7 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!IsArmed || IsTerminal)
                 return;
 
+            EmitTargetStatus();
             if (!_clientReadyObserved)
             {
                 if (IsState(_explicitJson, "profile-client-ready"))
@@ -870,6 +984,35 @@ namespace Unity2Foxglove.ManualAcceptance
             _explicitJson =
                 State(RunToken, "json-outbound", 18402 + pulse);
         }
+
+        private void EmitTargetStatus()
+        {
+            if (!TryGetTargetStatus(InheritedTopic, out var inherited)
+                || !TryGetTargetStatus(JsonTopic, out var json))
+            {
+                return;
+            }
+
+            var sameStatus = inherited.Status == json.Status;
+            var sameSucceeded =
+                inherited.SucceededTargets == json.SucceededTargets;
+            var status = sameStatus ? inherited.Status.ToString() : "Mixed";
+            var succeeded = sameSucceeded
+                ? inherited.SucceededTargets
+                : inherited.SucceededTargets & json.SucceededTargets;
+            var failed = inherited.FailedTargets | json.FailedTargets;
+            var evidence =
+                "status=" + status
+                + " succeeded="
+                + Phase184AcceptanceText.FormatEndpoints(succeeded)
+                + " failed="
+                + Phase184AcceptanceText.FormatEndpoints(failed)
+                + " topics=2";
+            if (string.Equals(evidence, _lastTargetEvidence, StringComparison.Ordinal))
+                return;
+            _lastTargetEvidence = evidence;
+            Emit("PHASE184G_FOXGLOVE_TARGET_STATUS", evidence);
+        }
     }
 
     [DisallowMultipleComponent]
@@ -907,6 +1050,7 @@ namespace Unity2Foxglove.ManualAcceptance
         private FoxgloveManager _manager;
         private string _lastBridgeRuntimeError = string.Empty;
         private string _lastTargetEvidence = string.Empty;
+        private int _bridgeRuntimeFailures;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.MultiTargetCase;
@@ -922,6 +1066,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _manager = FindFirstObjectByType<FoxgloveManager>();
             _lastBridgeRuntimeError = string.Empty;
             _lastTargetEvidence = string.Empty;
+            _bridgeRuntimeFailures = 0;
             _warmupPulses = 0;
             _warmupDeadline =
                 Time.realtimeSinceStartup + WarmupTimeoutSeconds;
@@ -1035,6 +1180,7 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
             _lastBridgeRuntimeError = error;
+            _bridgeRuntimeFailures++;
             Emit(
                 "PHASE184G_BRIDGE_RUNTIME_FAILURE",
                 "connected=" + stats.Connected
@@ -1047,8 +1193,12 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             var evidence =
                 "status=" + status.Status
-                + " succeeded=" + status.SucceededTargets
-                + " failed=" + status.FailedTargets;
+                + " succeeded="
+                + Phase184AcceptanceText.FormatEndpoints(status.SucceededTargets)
+                + " failed="
+                + Phase184AcceptanceText.FormatEndpoints(status.FailedTargets)
+                + " bridgeRuntimeFailures="
+                + _bridgeRuntimeFailures.ToString(CultureInfo.InvariantCulture);
             if (string.Equals(
                     evidence,
                     _lastTargetEvidence,
@@ -1278,6 +1428,9 @@ namespace Unity2Foxglove.ManualAcceptance
         [Header("Read-only QoS Evidence")]
         [SerializeField] private int _readyContracts;
         [SerializeField] private bool _nativeReadyForBridge;
+        private string _lastSystemDefaultEvidence = string.Empty;
+        private string _lastKeepAllEvidence = string.Empty;
+        private string _lastKeepLastDepthEvidence = string.Empty;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.QosContractCase;
@@ -1292,6 +1445,9 @@ namespace Unity2Foxglove.ManualAcceptance
             _qosSystemDefault = State(RunToken, "qos-system-default", 18431);
             _qosKeepAll = State(RunToken, "qos-keep-all", 18432);
             _qosKeepLastDepth = State(RunToken, "qos-keep-last-depth", 18433);
+            _lastSystemDefaultEvidence = string.Empty;
+            _lastKeepAllEvidence = string.Empty;
+            _lastKeepLastDepthEvidence = string.Empty;
             Ready("topics=3 targets=native,bridge");
         }
 
@@ -1311,17 +1467,32 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
             _readyContracts = 0;
-            CountReady(SystemDefaultTopic);
-            CountReady(KeepAllTopic);
-            CountReady(KeepLastDepthTopic);
+            CountReady(SystemDefaultTopic, ref _lastSystemDefaultEvidence);
+            CountReady(KeepAllTopic, ref _lastKeepAllEvidence);
+            CountReady(KeepLastDepthTopic, ref _lastKeepLastDepthEvidence);
             if (_readyContracts == 3)
                 Pass("readyContracts=3 requestedPolicies=system-default,keep-all,keep-last-depth-7");
         }
 
-        private void CountReady(string topic)
+        private void CountReady(string topic, ref string lastEvidence)
         {
-            if (TryGetTargetStatus(topic, out var status)
-                && status.Status == FoxRunPublishTargetStatus.Ready
+            if (!TryGetTargetStatus(topic, out var status))
+                return;
+
+            var evidence =
+                "topic=" + Phase184AcceptanceText.SafeMarker(topic)
+                + " status=" + status.Status
+                + " succeeded="
+                + Phase184AcceptanceText.FormatEndpoints(status.SucceededTargets)
+                + " failed="
+                + Phase184AcceptanceText.FormatEndpoints(status.FailedTargets);
+            if (!string.Equals(evidence, lastEvidence, StringComparison.Ordinal))
+            {
+                lastEvidence = evidence;
+                Emit("PHASE184G_QOS_TARGET_STATUS", evidence);
+            }
+
+            if (status.Status == FoxRunPublishTargetStatus.Ready
                 && status.SucceededTargets
                    == (FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge))
             {
@@ -1378,6 +1549,11 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private float _firstSampleAt = -1f;
         private float _streamEvidenceDeadline = -1f;
+        private string _subscriptionState = "Unavailable";
+        private long _subscriptionReceived;
+        private long _subscriptionCopyFailed;
+        private long _subscriptionStaleCallbacks;
+        private long _subscriptionRejectedAfterStop;
 
         protected override string RouteCaseId =>
             Phase184FoxRunProfileAcceptance.StreamCase;
@@ -1391,6 +1567,11 @@ namespace Unity2Foxglove.ManualAcceptance
             }
             _firstSampleAt = -1f;
             _streamEvidenceDeadline = -1f;
+            _subscriptionState = "Unavailable";
+            _subscriptionReceived = 0;
+            _subscriptionCopyFailed = 0;
+            _subscriptionStaleCallbacks = 0;
+            _subscriptionRejectedAfterStop = 0;
             _zenohOrigin = State(RunToken, "origin-warmup", 18440);
             Ready("streamCapacity=32 maxInputHz=1000 maxBatch=16 overflow=DropOldest");
         }
@@ -1438,6 +1619,17 @@ namespace Unity2Foxglove.ManualAcceptance
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
             if (FoxRunRos2SubscriptionAcceptanceDiagnostics.TryGet(
                     this,
+                    StreamTopic,
+                    out var streamSnapshot))
+            {
+                _subscriptionState = streamSnapshot.State.ToString();
+                _subscriptionReceived = streamSnapshot.Received;
+                _subscriptionCopyFailed = streamSnapshot.CopyFailed;
+                _subscriptionStaleCallbacks = streamSnapshot.StaleCallbacks;
+                _subscriptionRejectedAfterStop = streamSnapshot.RejectedAfterStop;
+            }
+            if (FoxRunRos2SubscriptionAcceptanceDiagnostics.TryGet(
+                    this,
                     OriginTopic,
                     out var originSnapshot))
             {
@@ -1469,6 +1661,17 @@ namespace Unity2Foxglove.ManualAcceptance
                 && _sameOriginDrops > 0
                 && _laterLocalOrigin)
             {
+                Emit(
+                    "PHASE184G_STREAM_SUBSCRIPTION_STATUS",
+                    "state=" + _subscriptionState
+                    + " received="
+                    + _subscriptionReceived.ToString(CultureInfo.InvariantCulture)
+                    + " copyFailed="
+                    + _subscriptionCopyFailed.ToString(CultureInfo.InvariantCulture)
+                    + " staleCallbacks="
+                    + _subscriptionStaleCallbacks.ToString(CultureInfo.InvariantCulture)
+                    + " rejectedAfterStop="
+                    + _subscriptionRejectedAfterStop.ToString(CultureInfo.InvariantCulture));
                 Pass(
                     "received=" + _received.ToString(CultureInfo.InvariantCulture)
                     + " accepted=" + _accepted.ToString(CultureInfo.InvariantCulture)
@@ -1563,6 +1766,18 @@ namespace Unity2Foxglove.ManualAcceptance
                 }
             }
             return new string(characters);
+        }
+
+        internal static string FormatEndpoints(FoxRunEndpoint endpoints)
+        {
+            var names = new List<string>(3);
+            if ((endpoints & FoxRunEndpoint.Foxglove) != 0)
+                names.Add(nameof(FoxRunEndpoint.Foxglove));
+            if ((endpoints & FoxRunEndpoint.Ros2Native) != 0)
+                names.Add(nameof(FoxRunEndpoint.Ros2Native));
+            if ((endpoints & FoxRunEndpoint.Ros2Bridge) != 0)
+                names.Add(nameof(FoxRunEndpoint.Ros2Bridge));
+            return names.Count == 0 ? "None" : string.Join(",", names);
         }
 
         internal static string Bound(string value, int maximum)

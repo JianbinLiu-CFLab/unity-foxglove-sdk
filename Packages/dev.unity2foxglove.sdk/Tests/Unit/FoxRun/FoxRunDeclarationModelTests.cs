@@ -3061,6 +3061,74 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase184RuntimeAcceptanceEmitsObservedProfileAndTargetEvidence()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptance.cs");
+
+            Assert.Contains(
+                "field.GetCustomAttributes(",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "typeof(FoxRunAttribute)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.ActiveFoxRunPublishTargets",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.ActiveFoxRunSubscriptionSource",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.ActiveFoxRunPublishEncoding",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.ActiveFoxRunSubscriptionEncoding",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE184G_PROFILE_EVIDENCE",
+                source,
+                StringComparison.Ordinal);
+            foreach (var marker in new[]
+                     {
+                         "PHASE184G_FOXGLOVE_TARGET_STATUS",
+                         "PHASE184G_MULTI_TARGET_STATUS",
+                         "PHASE184G_QOS_TARGET_STATUS",
+                         "PHASE184G_STREAM_SUBSCRIPTION_STATUS",
+                     })
+            {
+                Assert.Contains(marker, source, StringComparison.Ordinal);
+            }
+            Assert.Contains(
+                "Phase184AcceptanceText.FormatEndpoints(",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "bridgeRuntimeFailures=",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "copyFailed=",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "staleCallbacks=",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "rejectedAfterStop=",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         [Trait("Phase", "184-H")]
         public void Phase184AcceptanceThrottlesStableTransportClientEvidence()
         {
