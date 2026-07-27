@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import uuid
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from ctypes import wintypes
@@ -64,9 +65,19 @@ MAX_COMMAND_OUTPUT_BYTES = 4096
 MAX_VERIFIED_CLI_DOCUMENT_BYTES = 16 * 1024
 COMMAND_TIMEOUT_SECONDS = 30
 NETWORK_TIMEOUT_SECONDS = 60
+GITHUB_API_VERSION = "2022-11-28"
 _BACKUP_HASH_CHARACTERS = 12
 _MAX_BACKUP_REVISION_CHARACTERS = 48
 _MAX_WINDOWS_PATH_CHARACTERS = 32767
+_MAX_DOWNLOAD_HOP_URL_CHARACTERS = 8192
+_GITHUB_ASSET_DIGEST = re.compile(r"^sha256:([0-9a-f]{64})$")
+_OFFICIAL_DOWNLOAD_HOSTS = frozenset(
+    {
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    }
+)
 _MINIMAL_PROCESS_ENVIRONMENT_NAMES = frozenset(
     {
         "COMSPEC",
@@ -95,6 +106,8 @@ class ReleaseAsset:
     release_version: str
     asset_name: str
     asset_url: str
+    asset_size: int
+    asset_sha256: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -775,20 +788,96 @@ def select_release_asset(release: object) -> ReleaseAsset:
     if len(matches) != 1:
         raise _fail("Foxglove CLI release must contain exactly one Windows asset.")
 
-    asset_url = matches[0].get("browser_download_url")
+    selected_asset = matches[0]
+    asset_url = selected_asset.get("browser_download_url")
     protocol.validate_official_asset_url(
         asset_url,
         expected_release_version=release_version,
     )
-    selected_name = str(matches[0]["name"])
+    selected_name = str(selected_asset["name"])
     if not isinstance(asset_url, str) or asset_url.rsplit("/", 1)[-1] != selected_name:
         raise _fail("Foxglove CLI release asset name and URL do not match.")
+    asset_size = selected_asset.get("size")
+    if (
+        isinstance(asset_size, bool)
+        or not isinstance(asset_size, int)
+        or asset_size < 1
+        or asset_size > MAX_DOWNLOAD_BYTES
+    ):
+        raise _fail("Foxglove CLI release asset size is invalid.")
+    asset_digest = selected_asset.get("digest")
+    digest_match = (
+        _GITHUB_ASSET_DIGEST.fullmatch(asset_digest)
+        if isinstance(asset_digest, str)
+        else None
+    )
+    if digest_match is None:
+        raise _fail("Foxglove CLI release asset digest is invalid.")
     return ReleaseAsset(
         release_tag=str(release_tag),
         release_version=release_version,
         asset_name=selected_name,
         asset_url=str(asset_url),
+        asset_size=asset_size,
+        asset_sha256=digest_match.group(1).upper(),
     )
+
+
+def validate_official_download_hop_url(url: object) -> str:
+    """Allow only the canonical asset route and exact HTTPS GitHub CDN hosts."""
+
+    if (
+        not isinstance(url, str)
+        or not url
+        or len(url) > _MAX_DOWNLOAD_HOP_URL_CHARACTERS
+        or url != url.strip()
+    ):
+        raise _fail("Foxglove CLI download URL is invalid.")
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise _fail("Foxglove CLI download URL is invalid.") from exc
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc not in _OFFICIAL_DOWNLOAD_HOSTS
+        or parsed.hostname not in _OFFICIAL_DOWNLOAD_HOSTS
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        or parsed.fragment
+        or not parsed.path.startswith("/")
+        or parsed.path == "/"
+    ):
+        raise _fail("Foxglove CLI download URL is not an official HTTPS route.")
+    if parsed.netloc == "github.com":
+        protocol.validate_official_asset_url(url)
+    return url
+
+
+class OfficialReleaseRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirect hops outside exact HTTPS GitHub release hosts."""
+
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        fp: Any,
+        code: int,
+        message: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        """Validate a redirect destination before urllib follows it."""
+
+        validate_official_download_hop_url(newurl)
+        return super().redirect_request(
+            request,
+            fp,
+            code,
+            message,
+            headers,
+            newurl,
+        )
 
 
 def _fetch_release_production(endpoint: str) -> object:
@@ -800,6 +889,7 @@ def _fetch_release_production(endpoint: str) -> object:
         endpoint,
         headers={
             "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
             "User-Agent": "Unity2Foxglove-Phase184H",
         },
         method="GET",
@@ -831,11 +921,13 @@ def _download_production(asset_url: str, destination: str) -> None:
     )
     destination_path = pathlib.Path(destination)
     total = 0
+    opener = urllib.request.build_opener(OfficialReleaseRedirectHandler())
     try:
-        with urllib.request.urlopen(
+        with opener.open(
             request,
             timeout=NETWORK_TIMEOUT_SECONDS,
         ) as response:
+            validate_official_download_hop_url(response.geturl())
             with destination_path.open("xb") as output_stream:
                 while True:
                     chunk = response.read(min(1024 * 1024, MAX_DOWNLOAD_BYTES - total + 1))
@@ -1636,16 +1728,29 @@ def install_cli(
                     "Foxglove CLI download path must be a sibling temporary."
                 )
             dependencies.downloader(release.asset_url, download_temp)
+            download_size = (
+                filesystem.size(download_temp)
+                if filesystem.exists(download_temp)
+                else 0
+            )
             if (
                 not filesystem.exists(download_temp)
-                or filesystem.size(download_temp) < 1
-                or filesystem.size(download_temp) > MAX_DOWNLOAD_BYTES
+                or download_size < 1
+                or download_size > MAX_DOWNLOAD_BYTES
             ):
                 raise _fail("Downloaded Foxglove CLI size is invalid.")
+            if download_size != release.asset_size:
+                raise _fail(
+                    "Downloaded Foxglove CLI size does not match release metadata."
+                )
 
             download_sha256 = protocol.validate_sha256(
                 filesystem.sha256(download_temp)
             )
+            if download_sha256 != release.asset_sha256:
+                raise _fail(
+                    "Downloaded Foxglove CLI digest does not match release metadata."
+                )
             download_version = _run_version(download_temp, dependencies)
             if download_version != release.release_version:
                 raise _fail(

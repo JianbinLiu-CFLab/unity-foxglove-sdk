@@ -21,6 +21,7 @@ import sys
 import tempfile
 import types
 import unittest
+import urllib.request
 from unittest import mock
 
 from Scripts.smoke.foxrun import phase184_foxglove_desktop_live_protocol as protocol
@@ -55,6 +56,21 @@ def sha256_bytes(payload: bytes) -> str:
     """Handle the SHA-256 bytes step."""
 
     return hashlib.sha256(payload).hexdigest().upper()
+
+
+def official_asset(
+    name: str,
+    url: str,
+    payload: bytes = NEW_BYTES,
+) -> dict[str, object]:
+    """Return one GitHub release asset with independent content metadata."""
+
+    return {
+        "name": name,
+        "browser_download_url": url,
+        "size": len(payload),
+        "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+    }
 
 
 def extended_windows_path(path: str) -> str:
@@ -309,10 +325,7 @@ class FakeEnvironment:
                     "name": "foxglove-linux-amd64",
                     "browser_download_url": "https://example.invalid/ignored",
                 },
-                {
-                    "name": protocol.CLI_ASSET_NAME,
-                    "browser_download_url": OFFICIAL_ASSET_URL,
-                },
+                official_asset(protocol.CLI_ASSET_NAME, OFFICIAL_ASSET_URL),
             ],
         }
         self.download_bytes = NEW_BYTES
@@ -1138,10 +1151,10 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     "name": "foxglove-linux-amd64",
                     "browser_download_url": "https://example.invalid/ignored",
                 },
-                {
-                    "name": CURRENT_OFFICIAL_ASSET_NAME,
-                    "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
-                },
+                official_asset(
+                    CURRENT_OFFICIAL_ASSET_NAME,
+                    CURRENT_OFFICIAL_ASSET_URL,
+                ),
                 {
                     "name": "foxglove-windows-arm64",
                     "browser_download_url": (
@@ -1156,6 +1169,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertEqual("1.2.3", selected.release_version)
         self.assertEqual(CURRENT_OFFICIAL_ASSET_NAME, selected.asset_name)
         self.assertEqual(CURRENT_OFFICIAL_ASSET_URL, selected.asset_url)
+        self.assertEqual(len(NEW_BYTES), selected.asset_size)
+        self.assertEqual(sha256_bytes(NEW_BYTES), selected.asset_sha256)
 
         invalid_releases = (
             {"tag_name": "latest", "assets": valid["assets"]},
@@ -1163,43 +1178,43 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
             {
                 "tag_name": "v1.2.3",
                 "assets": [
-                    {
-                        "name": protocol.CLI_ASSET_NAME,
-                        "browser_download_url": OFFICIAL_ASSET_URL,
-                    },
-                    {
-                        "name": CURRENT_OFFICIAL_ASSET_NAME,
-                        "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
-                    },
+                    official_asset(
+                        protocol.CLI_ASSET_NAME,
+                        OFFICIAL_ASSET_URL,
+                    ),
+                    official_asset(
+                        CURRENT_OFFICIAL_ASSET_NAME,
+                        CURRENT_OFFICIAL_ASSET_URL,
+                    ),
                 ],
             },
             {
                 "tag_name": "v1.2.3",
                 "assets": [
-                    {
-                        "name": protocol.CLI_ASSET_NAME,
-                        "browser_download_url": (
+                    official_asset(
+                        protocol.CLI_ASSET_NAME,
+                        (
                             "https://evil.invalid/foxglove-windows-amd64.exe"
                         ),
-                    }
+                    ),
                 ],
             },
             {
                 "tag_name": "v1.2.3",
                 "assets": [
-                    {
-                        "name": CURRENT_OFFICIAL_ASSET_NAME,
-                        "browser_download_url": OFFICIAL_ASSET_URL,
-                    }
+                    official_asset(
+                        CURRENT_OFFICIAL_ASSET_NAME,
+                        OFFICIAL_ASSET_URL,
+                    )
                 ],
             },
             {
                 "tag_name": "v1.2.4",
                 "assets": [
-                    {
-                        "name": protocol.CLI_ASSET_NAME,
-                        "browser_download_url": OFFICIAL_ASSET_URL,
-                    }
+                    official_asset(
+                        protocol.CLI_ASSET_NAME,
+                        OFFICIAL_ASSET_URL,
+                    )
                 ],
             },
         )
@@ -1208,6 +1223,129 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                 self.assert_provenance_failure(
                     lambda release=release: installer.select_release_asset(release)
                 )
+
+    def test_release_selection_requires_canonical_sha256_and_bounded_size(self):
+        """Release metadata must independently bind the selected asset bytes."""
+
+        base = official_asset(
+            CURRENT_OFFICIAL_ASSET_NAME,
+            CURRENT_OFFICIAL_ASSET_URL,
+        )
+        invalid_assets = (
+            {key: value for key, value in base.items() if key != "digest"},
+            {**base, "digest": None},
+            {**base, "digest": "sha1:" + ("a" * 40)},
+            {**base, "digest": "sha256:" + ("A" * 64)},
+            {**base, "digest": "sha256:" + ("g" * 64)},
+            {**base, "size": True},
+            {**base, "size": 0},
+            {**base, "size": installer.MAX_DOWNLOAD_BYTES + 1},
+        )
+
+        for asset in invalid_assets:
+            with self.subTest(asset=asset):
+                self.assert_provenance_failure(
+                    lambda asset=asset: installer.select_release_asset(
+                        {"tag_name": "v1.2.3", "assets": [asset]}
+                    )
+                )
+
+    def test_install_rejects_download_not_matching_release_metadata_before_execution(self):
+        """A redirected or replaced asset must never run before digest verification."""
+
+        for payload in (
+            b"short",
+            b"x" * len(NEW_BYTES),
+        ):
+            with self.subTest(payload=payload):
+                environment = FakeEnvironment(self.physical_root)
+                environment.download_bytes = payload
+
+                self.assert_provenance_failure(
+                    lambda: installer.install_cli(
+                        INSTALL_PATH,
+                        RECEIPT_PATH,
+                        environment.dependencies(),
+                    )
+                )
+
+                self.assertFalse(
+                    any(event[0] == "run" for event in environment.events),
+                    environment.events,
+                )
+                self.assertFalse(environment.fs.exists(INSTALL_PATH))
+
+    def test_release_download_redirects_require_https_exact_github_hosts(self):
+        """Every automatic redirect must remain on an exact HTTPS GitHub route."""
+
+        validator = getattr(
+            installer,
+            "validate_official_download_hop_url",
+            None,
+        )
+        handler_type = getattr(
+            installer,
+            "OfficialReleaseRedirectHandler",
+            None,
+        )
+        self.assertIsNotNone(validator)
+        self.assertIsNotNone(handler_type)
+        if validator is None or handler_type is None:
+            return
+
+        release_asset_cdn = (
+            "https://release-assets.githubusercontent.com/"
+            "github-production-release-asset/431693744/object?sig=opaque"
+        )
+        object_cdn = (
+            "https://objects.githubusercontent.com/"
+            "github-production-release-asset/431693744/object?sig=opaque"
+        )
+        for url in (
+            OFFICIAL_ASSET_URL,
+            release_asset_cdn,
+            object_cdn,
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(url, validator(url))
+
+        for url in (
+            "http://release-assets.githubusercontent.com/object?sig=opaque",
+            "ftp://release-assets.githubusercontent.com/object?sig=opaque",
+            "https://release-assets.githubusercontent.com.evil.invalid/object",
+            "https://user@release-assets.githubusercontent.com/object",
+            "https://release-assets.githubusercontent.com:443/object",
+            "https://evil.invalid/object",
+            release_asset_cdn + "#fragment",
+        ):
+            with self.subTest(url=url):
+                self.assert_provenance_failure(lambda url=url: validator(url))
+
+        handler = handler_type()
+        request = urllib.request.Request(OFFICIAL_ASSET_URL, method="GET")
+        redirected = handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            release_asset_cdn,
+        )
+        self.assertEqual(release_asset_cdn, redirected.full_url)
+        self.assert_provenance_failure(
+            lambda: handler.redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                "https://evil.invalid/object",
+            )
+        )
+        downloader_source = inspect.getsource(installer._download_production)
+        self.assertIn("OfficialReleaseRedirectHandler()", downloader_source)
+        self.assertIn("validate_official_download_hop_url", downloader_source)
+        self.assertNotIn("urllib.request.urlopen(", downloader_source)
 
     def test_successful_new_install_verifies_fresh_resolution_then_writes_receipt(self):
         """Verify successful new install verifies fresh resolution then writes receipt."""
@@ -1304,10 +1442,10 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         environment.release = {
             "tag_name": "v1.2.3",
             "assets": [
-                {
-                    "name": CURRENT_OFFICIAL_ASSET_NAME,
-                    "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
-                },
+                official_asset(
+                    CURRENT_OFFICIAL_ASSET_NAME,
+                    CURRENT_OFFICIAL_ASSET_URL,
+                ),
                 {
                     "name": "foxglove-windows-arm64",
                     "browser_download_url": (
