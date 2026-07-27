@@ -483,6 +483,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual("opaque-local-token", correlated["message"])
         self.assertTrue(correlated["has_nested"])
         self.assertEqual([181, 182, 183], correlated["values"])
+        self.assertEqual(697348082, nullable_empty["count"])
         self.assertEqual("", nullable_empty["message"])
         self.assertTrue(nullable_empty["has_message"])
         self.assertEqual([], nullable_empty["bytes"])
@@ -578,9 +579,12 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         peer = load_peer_module()
         token = "opaque-local-token"
         initial_local = peer.custom_payload_fields(token, null_empty=True)
+        foreign_local = peer.custom_payload_fields("foreign-token", null_empty=True)
         correlated_remote = peer.custom_payload_fields(token, null_empty=False)
 
         self.assertTrue(peer.is_unity_origin_probe("unity-origin", initial_local, token))
+        self.assertNotEqual(initial_local["count"], foreign_local["count"])
+        self.assertFalse(peer.is_unity_origin_probe("unity-origin", foreign_local, token))
         self.assertFalse(peer.is_unity_origin_probe("", initial_local, token))
         self.assertFalse(peer.is_unity_origin_probe("remote-" + token, initial_local, token))
         self.assertFalse(peer.is_unity_origin_probe("remote-final-" + token, initial_local, token))

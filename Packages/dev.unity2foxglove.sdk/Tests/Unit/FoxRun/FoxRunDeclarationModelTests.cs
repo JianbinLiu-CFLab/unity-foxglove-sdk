@@ -3470,6 +3470,31 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "181-F")]
+        public void Phase181OriginProbeBindsNullablePayloadToCurrentRunToken()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase181FoxRunCustomRos2InterfaceAcceptance.cs");
+
+            Assert.Contains(
+                "CreateState(\n"
+                + "                \"unity-bidirectional\",\n"
+                + "                RunTokenProbeCount(_runToken),\n"
+                + "                true)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "state.Count == RunTokenProbeCount(_runToken)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private static int RunTokenProbeCount(string token)",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         [Trait("Phase", "184-G")]
         public void Phase184BatchExitQuiescesFoxRunSourcesBeforePlayModeShutdown()
         {

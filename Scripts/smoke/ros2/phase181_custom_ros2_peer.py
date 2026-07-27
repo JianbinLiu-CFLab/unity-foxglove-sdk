@@ -1418,14 +1418,23 @@ def has_role_transport_evidence(evidence: Mapping[str, object], probe_role: str)
     return classify_evidence(completion_view, probe_role) == "PASS"
 
 
-def custom_payload_fields(token: str, *, null_empty: bool) -> dict[str, object]:
-    """Return the exact ordinary DTO cases that the generated envelope must preserve."""
+def run_token_probe_count(token: str) -> int:
+    """Bind the nullable/empty probe to one run without filling nullable fields."""
 
     if not token or len(token) > 96:
         raise PeerFailure("FAIL_PAYLOAD_SHAPE", "The correlation token is not safe for the bounded custom DTO probe.")
+    digest = hashlib.sha256(token.encode("utf-8")).digest()
+    value = int.from_bytes(digest[:4], byteorder="big", signed=False) & 0x7FFFFFFF
+    return value or 1
+
+
+def custom_payload_fields(token: str, *, null_empty: bool) -> dict[str, object]:
+    """Return the exact ordinary DTO cases that the generated envelope must preserve."""
+
+    probe_count = run_token_probe_count(token)
     if null_empty:
         return {
-            "count": 182,
+            "count": probe_count,
             "kind": 1,
             "message": "",
             "has_message": True,

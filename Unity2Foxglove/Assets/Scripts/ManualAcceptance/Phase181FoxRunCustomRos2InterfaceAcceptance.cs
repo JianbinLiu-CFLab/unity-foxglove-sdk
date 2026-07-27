@@ -187,7 +187,10 @@ namespace Unity2Foxglove.ManualAcceptance
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
             _nativePublish = CreateState("unity-publish", 181, false);
-            _nativeInputWebSocketOutput = CreateState("unity-bidirectional", 182, true);
+            _nativeInputWebSocketOutput = CreateState(
+                "unity-bidirectional",
+                RunTokenProbeCount(_runToken),
+                true);
             _status = _manager == null
                 ? "Assign a FoxgloveManager with custom native ROS2 enabled."
                 : "Waiting for custom native ROS2 registration.";
@@ -421,9 +424,9 @@ namespace Unity2Foxglove.ManualAcceptance
             return true;
         }
 
-        private static bool IsNullEmptyRemotePayload(Phase181State state)
+        private bool IsNullEmptyRemotePayload(Phase181State state)
             => state != null
-               && state.Count == 182
+               && state.Count == RunTokenProbeCount(_runToken)
                && state.Kind == Phase181StateKind.Active
                && string.Equals(state.Message, string.Empty, StringComparison.Ordinal)
                && state.Bytes != null
@@ -462,6 +465,19 @@ namespace Unity2Foxglove.ManualAcceptance
                 OptionalCount = emptyValues ? null : count,
                 OptionalText = emptyValues ? null : label,
             };
+
+        private static int RunTokenProbeCount(string token)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(token ?? string.Empty);
+            var digest = sha.ComputeHash(bytes);
+            var value =
+                ((digest[0] & 0x7f) << 24)
+                | (digest[1] << 16)
+                | (digest[2] << 8)
+                | digest[3];
+            return value == 0 ? 1 : value;
+        }
 
         private static bool IsReady(FoxRunRos2SubscriptionBindingState state)
             => state == FoxRunRos2SubscriptionBindingState.Ready
