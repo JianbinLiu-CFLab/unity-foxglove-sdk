@@ -367,6 +367,78 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_RUNTIME_SELECTION"):
             module.validate_arguments(missing_profile)
 
+    def test_desktop_client_wait_is_parent_only_and_foxglove_batch_only(self):
+        module = load_module()
+        editor = r"C:\Unity.exe"
+
+        accepted = module.parse_args(
+            [
+                "--case",
+                "foxglove-profile",
+                "--unity-editor",
+                editor,
+                "--wait-for-desktop-client",
+            ]
+        )
+        module.validate_arguments(accepted)
+        self.assertEqual("batch", accepted.execution_mode)
+        self.assertTrue(accepted.wait_for_desktop_client)
+
+        worker = module.parse_args(
+            [
+                "--worker",
+                "foxglove-client",
+                "--run-config",
+                str(ROOT / "build" / "phase184" / "acceptance" / "run-config.json"),
+                "--wait-for-desktop-client",
+            ]
+        )
+        with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_PREFLIGHT"):
+            module.validate_arguments(worker)
+
+        manual = module.parse_args(
+            [
+                "--case",
+                "foxglove-profile",
+                "--unity-editor",
+                editor,
+                "--manual-editor",
+                "--wait-for-desktop-client",
+            ]
+        )
+        with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_PREFLIGHT"):
+            module.validate_arguments(manual)
+
+        for case, contract in module.protocol.CASE_CONTRACTS.items():
+            if case == "foxglove-profile":
+                continue
+            with self.subTest(case=case):
+                other_case = module.parse_args(
+                    [
+                        "--case",
+                        case,
+                        "--profile",
+                        contract.profile,
+                        "--unity-editor",
+                        editor,
+                        "--wait-for-desktop-client",
+                    ]
+                )
+                with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_PREFLIGHT"):
+                    module.validate_arguments(other_case)
+
+        with self.assertRaises(SystemExit):
+            module.parse_args(
+                [
+                    "--case",
+                    "foxglove-profile",
+                    "--unity-editor",
+                    editor,
+                    "--desktop-client-barrier",
+                    r"D:\untrusted\barrier.json",
+                ]
+            )
+
     def test_command_arrays_are_direct_and_carry_only_owned_state(self):
         module = load_module()
         editor = pathlib.Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe")
@@ -429,7 +501,10 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         }
         runtime = mock.Mock(
             toolchain=mock.Mock(python_executable=pathlib.Path(r"C:\ros\python.exe")),
-            actor_environment={"ROS_DOMAIN_ID": "184"},
+            actor_environment={
+                "ROS_DOMAIN_ID": "184",
+                "PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json",
+            },
             peer_runtime_workspace=ROOT / "build" / "phase181" / "peer",
         )
 
@@ -461,6 +536,134 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 ("ready", "ros2-peer"),
             ],
             events,
+        )
+
+    def test_desktop_barrier_environment_is_injected_only_into_foxglove_worker(self):
+        module = load_module()
+        output = ROOT / "build" / "phase184" / "acceptance" / "barrier-workers"
+        barrier = output / "desktop-client-barrier.json"
+        config = {"outputRoot": str(output)}
+        runtime = mock.Mock(
+            toolchain=mock.Mock(python_executable=pathlib.Path(r"C:\ros\python.exe")),
+            actor_environment={"ROS_DOMAIN_ID": "184"},
+            peer_runtime_workspace=ROOT / "build" / "phase181" / "peer",
+        )
+
+        def capture_environments(desktop_barrier):
+            environments = {}
+
+            def launch(role, *_args, **kwargs):
+                environments[role] = dict(kwargs["environment"])
+                return FakeProcess()
+
+            with mock.patch.dict(
+                module.os.environ,
+                {"PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json"},
+                clear=True,
+            ), mock.patch.object(
+                module,
+                "_launch_logged_process",
+                side_effect=launch,
+            ), mock.patch.object(
+                module,
+                "_wait_for_actor_readiness",
+                return_value={},
+            ):
+                module._start_case_workers_serially(
+                    config=config,
+                    repository=ROOT,
+                    output=output,
+                    runtime=runtime,
+                    worker_roles={"foxglove-client", "ros2-peer", "graph-observer"},
+                    owner=mock.Mock(),
+                    streams=[],
+                    desktop_barrier=desktop_barrier,
+                )
+            return environments
+
+        gated = capture_environments(barrier)
+        self.assertEqual(
+            str(barrier),
+            gated["foxglove-client"]["PHASE184H_DESKTOP_CLIENT_BARRIER"],
+        )
+        self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", gated["ros2-peer"])
+        self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", gated["graph-observer"])
+
+        normal = capture_environments(None)
+        for role, environment in normal.items():
+            with self.subTest(role=role):
+                self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", environment)
+
+    def test_case_actor_threads_the_optional_barrier_only_to_worker_startup(self):
+        module = load_module()
+        output = ROOT / "build" / "phase184" / "acceptance" / "barrier-actors"
+        barrier = output / "desktop-client-barrier.json"
+        config = {"case": "foxglove-profile"}
+
+        with mock.patch.object(module, "_start_case_workers_serially") as workers:
+            roles, evidence = module._start_case_actors(
+                config=config,
+                repository=ROOT,
+                output=output,
+                runtime=None,
+                owner=mock.Mock(),
+                streams=[],
+                desktop_barrier=barrier,
+            )
+
+        self.assertEqual({"foxglove-client"}, roles)
+        self.assertEqual({}, evidence)
+        self.assertEqual(barrier, workers.call_args.kwargs["desktop_barrier"])
+
+    def test_desktop_barrier_is_excluded_from_owned_router_environment(self):
+        module = load_module()
+        output = ROOT / "build" / "phase184" / "acceptance" / "barrier-router"
+        barrier = output / "desktop-client-barrier.json"
+        runtime = mock.Mock(
+            zenoh_router=pathlib.Path(r"D:\owned\zenohd.exe"),
+            zenoh_router_environment={
+                "ROS_DOMAIN_ID": "184",
+                "PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json",
+            },
+            zenoh_router_endpoint=mock.Mock(),
+        )
+        launched_environment = {}
+
+        def launch(_role, *_args, **kwargs):
+            launched_environment.update(kwargs["environment"])
+            return FakeProcess()
+
+        with mock.patch.object(
+            module,
+            "_launch_logged_process",
+            side_effect=launch,
+        ), mock.patch.object(
+            module,
+            "wait_for_owned_zenoh_router",
+            return_value={"state": "ready"},
+        ), mock.patch.object(
+            module,
+            "write_actor_ready",
+        ), mock.patch.object(
+            module,
+            "_start_case_workers_serially",
+        ):
+            module._start_case_actors(
+                config={
+                    "case": "stream-640hz",
+                    "zenohTopologyId": "phase184g-router",
+                },
+                repository=ROOT,
+                output=output,
+                runtime=runtime,
+                owner=mock.Mock(),
+                streams=[],
+                desktop_barrier=barrier,
+            )
+
+        self.assertNotIn(
+            "PHASE184H_DESKTOP_CLIENT_BARRIER",
+            launched_environment,
         )
 
     def test_peer_graph_auditor_validates_raw_rclpy_snapshot(self):
@@ -544,6 +747,40 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             interface_digest="a" * 64,
         )
         module.protocol.validate_run_config(config, ROOT)
+        self.assertEqual(1, module.protocol.RUN_CONFIG_SCHEMA_VERSION)
+        self.assertEqual(
+            {
+                "schemaVersion",
+                "executionMode",
+                "runId",
+                "token",
+                "case",
+                "profile",
+                "projectPath",
+                "outputRoot",
+                "rosDistro",
+                "rmw",
+                "domainId",
+                "discoveryRange",
+                "zenohTopologyId",
+                "phase181Workspace",
+                "phase181Install",
+                "bridgeOverlayInstall",
+                "foxgloveHost",
+                "foxglovePort",
+                "bridgeHost",
+                "bridgePort",
+                "interfacePackage",
+                "interfaceType",
+                "interfaceDigest",
+                "topics",
+                "observationWindows",
+                "readyFiles",
+                "resultFiles",
+                "unityLog",
+            },
+            set(config),
+        )
         self.assertEqual("SUBNET", config["discoveryRange"])
         self.assertEqual(
             {"foxglove-client", "graph-observer", "bridge"},
@@ -635,6 +872,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "ROS_DOMAIN_ID": "1",
             "ROS_DISCOVERY_SERVER": "ambient",
             "ZENOH_SESSION_CONFIG_URI": "ambient",
+            "PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json",
         }
         bridge = pathlib.Path(r"D:\owned\bridge-overlay\install")
         peer = pathlib.Path(r"D:\owned\peer-workspace\install")
@@ -659,6 +897,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertEqual("SUBNET", environment["ROS_AUTOMATIC_DISCOVERY_RANGE"])
         self.assertNotIn("ROS_DISCOVERY_SERVER", environment)
         self.assertNotIn("ZENOH_SESSION_CONFIG_URI", environment)
+        self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", environment)
 
         zenoh_environment = module.build_ros_actor_environment(
             source,
@@ -1502,7 +1741,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         runtime = mock.Mock()
         runtime.bridge_install = ROOT / "build" / "bridge-overlay"
         runtime.bridge_runtime_workspace = ROOT
-        runtime.actor_environment = {}
+        runtime.actor_environment = {
+            "PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json"
+        }
         config = {
             "token": "p184g_A1b2C3d4E5f6",
             "bridgeHost": "127.0.0.1",
@@ -1517,9 +1758,11 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "sidecarVersion": "0.1.0",
         }
         events = []
+        launched_environment = {}
 
         def launch(*args, **kwargs):
-            del args, kwargs
+            del args
+            launched_environment.update(kwargs["environment"])
             events.append("launch")
             return process
 
@@ -1554,6 +1797,10 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(["launch", "health"], events)
         self.assertEqual(health, evidence["bridge-health"])
+        self.assertNotIn(
+            "PHASE184H_DESKTOP_CLIENT_BARRIER",
+            launched_environment,
+        )
         owner.stop.assert_not_called()
 
     def test_bridge_cases_health_check_actual_sidecar_before_workers_and_unity(self):
@@ -1599,6 +1846,108 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             )
         ]
         self.assertNotIn("deferred_bridge_start", manual)
+
+    def test_batch_parent_computes_only_the_fixed_barrier_and_excludes_unity(self):
+        module = load_module()
+        output = (
+            ROOT
+            / "build"
+            / "phase184"
+            / "acceptance"
+            / "phase184g-20260727-desktop01"
+        ).resolve()
+        fixed_barrier = output / "desktop-client-barrier.json"
+        config = {
+            "case": "foxglove-profile",
+            "profile": "core-foxglove",
+            "rosDistro": "jazzy",
+            "outputRoot": str(output),
+            "unityLog": str(output / "unity-editor.log"),
+        }
+        prepared = module.PreparedParentRun(
+            repository=ROOT,
+            editor=pathlib.Path(r"C:\Unity.exe"),
+            run_id="phase184g-20260727-desktop01",
+            token="p184g_A1b2C3d4E5f6",
+            output=output,
+            config=config,
+            config_path=output / "run-config.json",
+        )
+        args = module.argparse.Namespace(
+            case="foxglove-profile",
+            wait_for_desktop_client=True,
+        )
+        owner = mock.Mock()
+        owner.exit_codes.return_value = {}
+        owner.owner_stopped_roles.return_value = frozenset()
+        actor_start = mock.Mock(return_value=({"foxglove-client"}, {}))
+        unity_environment = {}
+        runtime = mock.Mock(
+            unity_environment={
+                "PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json"
+            },
+            subst_roots=(),
+        )
+
+        def stop_at_unity(role, *_args, **kwargs):
+            self.assertEqual("unity", role)
+            unity_environment.update(kwargs["environment"])
+            raise module.AcceptanceFailure("FAIL_PREFLIGHT", "test stop")
+
+        with mock.patch.object(
+            module,
+            "_prepare_parent_run",
+            return_value=prepared,
+        ), mock.patch.object(
+            module.desktop_live_protocol,
+            "resolve_desktop_client_barrier_path",
+            return_value=fixed_barrier,
+        ) as resolve_barrier, mock.patch.object(
+            module,
+            "WindowsKillOnCloseJob",
+            return_value=mock.Mock(),
+        ), mock.patch.object(
+            module,
+            "OwnedProcessSet",
+            return_value=owner,
+        ), mock.patch.object(
+            module,
+            "_ensure_acceptance_scene",
+        ), mock.patch.object(
+            module,
+            "_prepare_ros_runtime",
+            return_value=runtime,
+        ), mock.patch.object(
+            module,
+            "_start_case_actors",
+            actor_start,
+        ), mock.patch.object(
+            module,
+            "_launch_logged_process",
+            side_effect=stop_at_unity,
+        ), mock.patch.object(
+            module,
+            "_cleanup_evidence",
+            return_value={
+                "processes": True,
+                "files": True,
+                "junctions": True,
+                "subst": True,
+            },
+        ), mock.patch.object(
+            module,
+            "_write_failure_record",
+        ), mock.patch.dict(
+            module.os.environ,
+            {"PHASE184H_DESKTOP_CLIENT_BARRIER": r"D:\ambient\barrier.json"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(module.AcceptanceFailure, "test stop"):
+                module.run_batch_parent(args)
+
+        resolve_barrier.assert_called_once_with(output)
+        self.assertEqual(fixed_barrier, actor_start.call_args.kwargs["desktop_barrier"])
+        self.assertNotIn("PHASE184H_DESKTOP_CLIENT_BARRIER", unity_environment)
 
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
         source = (
@@ -1861,6 +2210,87 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                     "PHASE184G_CONTEXT_READY",
                     900.0,
                 )
+
+    def test_foxglove_connect_waits_for_optional_desktop_barrier_after_context(self):
+        module = load_module()
+        config = {
+            "case": "foxglove-profile",
+            "token": "p184g_A1b2C3d4E5f6",
+            "topics": ["/profile/default", "/profile/json"],
+            "observationWindows": {"positiveSeconds": 3},
+            "foxgloveHost": "127.0.0.1",
+            "foxglovePort": 18765,
+        }
+        barrier = pathlib.Path(
+            r"D:\owned\phase184g-20260727-desktop01\desktop-client-barrier.json"
+        )
+
+        class StopAfterConnect(RuntimeError):
+            pass
+
+        def run_client(environment, *, barrier_failure=None):
+            events = []
+
+            def context_ready(_config):
+                events.append("context")
+
+            def wait_for_barrier(actual_config, actual_path):
+                self.assertIs(config, actual_config)
+                self.assertEqual(str(barrier), actual_path)
+                events.append("barrier")
+                if barrier_failure is not None:
+                    raise barrier_failure
+
+            async def connect(*_args, **_kwargs):
+                events.append("connect")
+                raise StopAfterConnect()
+
+            websockets = mock.Mock(connect=mock.AsyncMock(side_effect=connect))
+            with mock.patch.dict(sys.modules, {"websockets": websockets}), mock.patch.dict(
+                module.os.environ,
+                environment,
+                clear=True,
+            ), mock.patch.object(
+                module,
+                "write_actor_ready",
+            ), mock.patch.object(
+                module,
+                "_wait_for_unity_context",
+                side_effect=context_ready,
+            ), mock.patch.object(
+                module.desktop_live_protocol,
+                "wait_for_desktop_barrier",
+                side_effect=wait_for_barrier,
+            ) as wait:
+                expected_type = (
+                    type(barrier_failure)
+                    if barrier_failure is not None
+                    else StopAfterConnect
+                )
+                with self.assertRaises(expected_type):
+                    module.asyncio.run(module._run_foxglove_client_async(config))
+            return events, wait, websockets.connect
+
+        events, wait, connect = run_client({})
+        self.assertEqual(["context", "connect"], events)
+        wait.assert_not_called()
+        connect.assert_awaited_once()
+
+        events, wait, connect = run_client(
+            {"PHASE184H_DESKTOP_CLIENT_BARRIER": str(barrier)}
+        )
+        self.assertEqual(["context", "barrier", "connect"], events)
+        wait.assert_called_once_with(config, str(barrier))
+        connect.assert_awaited_once()
+
+        invalid = ValueError("invalid desktop barrier")
+        events, wait, connect = run_client(
+            {"PHASE184H_DESKTOP_CLIENT_BARRIER": str(barrier)},
+            barrier_failure=invalid,
+        )
+        self.assertEqual(["context", "barrier"], events)
+        wait.assert_called_once_with(config, str(barrier))
+        connect.assert_not_awaited()
 
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()

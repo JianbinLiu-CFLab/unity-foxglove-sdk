@@ -45,9 +45,11 @@ for _import_directory in (SCRIPT_DIRECTORY, ROS2_SMOKE_DIRECTORY):
         sys.path.insert(0, str(_import_directory))
 
 import phase184_profile_acceptance_protocol as protocol
+import phase184_foxglove_desktop_live_protocol as desktop_live_protocol
 
 
 WORKER_ROLES = ("foxglove-client", "ros2-peer", "graph-observer")
+DESKTOP_CLIENT_BARRIER_ENV = "PHASE184H_DESKTOP_CLIENT_BARRIER"
 UNITY_EXECUTE_METHOD = "Unity2Foxglove.Phase184BatchModeProfileProbe.Run"
 INTERFACE_PACKAGE_ID = "dev.unity2foxglove.foxrun.ros2.interfaces"
 LOCK_RELATIVE_PATH = pathlib.Path("RuntimeSupport/foxrun-ros2-interface-lock.json")
@@ -155,6 +157,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--case", choices=tuple(protocol.CASE_CONTRACTS))
     parser.add_argument("--profile", choices=tuple(protocol.PROFILE_CONTRACTS))
     parser.add_argument("--manual-editor", action="store_true")
+    parser.add_argument("--wait-for-desktop-client", action="store_true")
     parser.add_argument("--unity-editor", type=pathlib.Path)
     parser.add_argument("--domain-id", type=int)
     parser.add_argument("--foxglove-port", type=int)
@@ -178,6 +181,7 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
             args.case,
             args.profile,
             args.manual_editor,
+            args.wait_for_desktop_client,
             args.unity_editor,
             args.domain_id,
             args.foxglove_port,
@@ -200,6 +204,13 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
         )
     if args.case is None:
         raise AcceptanceFailure("FAIL_PREFLIGHT", "Parent mode requires one --case.")
+    if args.wait_for_desktop_client and (
+        args.manual_editor or args.case != "foxglove-profile"
+    ):
+        raise AcceptanceFailure(
+            "FAIL_PREFLIGHT",
+            "Desktop client waiting is limited to the Batch foxglove-profile case.",
+        )
     if args.case != "foxglove-profile" and args.profile is None:
         raise AcceptanceFailure(
             "FAIL_RUNTIME_SELECTION",
@@ -278,10 +289,20 @@ def build_bridge_command(
     ]
 
 
+def _without_desktop_client_barrier(
+    source: Mapping[str, str],
+) -> dict[str, str]:
+    """Copy an environment without the parent-owned Desktop barrier seam."""
+
+    environment = dict(source)
+    environment.pop(DESKTOP_CLIENT_BARRIER_ENV, None)
+    return environment
+
+
 def _clean_environment(source: Mapping[str, str]) -> dict[str, str]:
     """Remove ambient ROS/topology selection while preserving required host basics."""
 
-    environment = dict(source)
+    environment = _without_desktop_client_barrier(source)
     for key in (
         "AMENT_PREFIX_PATH",
         "CMAKE_PREFIX_PATH",
@@ -1398,6 +1419,13 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
         {"state": "connect-loop-ready", "host": "loopback", "topicCount": len(topics)},
     )
     await asyncio.to_thread(_wait_for_unity_context, config)
+    desktop_barrier = os.environ.get(DESKTOP_CLIENT_BARRIER_ENV)
+    if desktop_barrier is not None:
+        await asyncio.to_thread(
+            desktop_live_protocol.wait_for_desktop_barrier,
+            config,
+            desktop_barrier,
+        )
     url = f"ws://{config['foxgloveHost']}:{config['foxglovePort']}"
     connection_deadline = time.monotonic() + 120.0
     websocket = None
@@ -4585,6 +4613,7 @@ def _start_case_workers_serially(
     worker_roles: Iterable[str],
     owner: OwnedProcessSet,
     streams: list[TextIO],
+    desktop_barrier: pathlib.Path | None = None,
 ) -> None:
     """Start one worker at a time so ROS participants cannot race initialization."""
 
@@ -4592,6 +4621,8 @@ def _start_case_workers_serially(
         if role == "foxglove-client":
             python_executable = pathlib.Path(sys.executable)
             environment = _clean_environment(os.environ)
+            if desktop_barrier is not None:
+                environment[DESKTOP_CLIENT_BARRIER_ENV] = str(desktop_barrier)
             cwd = repository
         else:
             if runtime is None:
@@ -4600,7 +4631,9 @@ def _start_case_workers_serially(
                     f"{role} requires a selected ROS runtime.",
                 )
             python_executable = pathlib.Path(runtime.toolchain.python_executable)
-            environment = runtime.actor_environment
+            environment = _without_desktop_client_barrier(
+                runtime.actor_environment
+            )
             cwd = runtime.peer_runtime_workspace
         _launch_logged_process(
             role,
@@ -4659,7 +4692,9 @@ def _start_bridge_actor(
             int(config["bridgePort"]),
         ),
         cwd=runtime.bridge_runtime_workspace or output,
-        environment=runtime.actor_environment,
+        environment=_without_desktop_client_barrier(
+            runtime.actor_environment
+        ),
         log_path=log_path,
         owner=owner,
         streams=streams,
@@ -4682,6 +4717,7 @@ def _start_case_actors(
     runtime: PreparedRosRuntime | None,
     owner: OwnedProcessSet,
     streams: list[TextIO],
+    desktop_barrier: pathlib.Path | None = None,
 ) -> tuple[set[str], dict[str, object]]:
     """Start every required non-Unity actor and return readiness evidence."""
 
@@ -4704,7 +4740,9 @@ def _start_case_actors(
             "zenoh-router",
             [str(runtime.zenoh_router)],
             cwd=repository,
-            environment=runtime.zenoh_router_environment,
+            environment=_without_desktop_client_barrier(
+                runtime.zenoh_router_environment
+            ),
             log_path=output / "zenoh-router.log",
             owner=owner,
             streams=streams,
@@ -4740,6 +4778,7 @@ def _start_case_actors(
         worker_roles=worker_roles,
         owner=owner,
         streams=streams,
+        desktop_barrier=desktop_barrier,
     )
     all_ready = worker_roles | parent_ready_roles
     expected_ready = set(contract.required_actors)
@@ -5913,6 +5952,11 @@ def run_batch_parent(args: argparse.Namespace) -> int:
     output = prepared.output
     config = prepared.config
     config_path = prepared.config_path
+    desktop_barrier = (
+        desktop_live_protocol.resolve_desktop_client_barrier_path(output)
+        if args.wait_for_desktop_client
+        else None
+    )
 
     stack = contextlib.ExitStack()
     owner: OwnedProcessSet | None = None
@@ -5949,9 +5993,10 @@ def run_batch_parent(args: argparse.Namespace) -> int:
             runtime=runtime,
             owner=owner,
             streams=streams,
+            desktop_barrier=desktop_barrier,
         )
         unity_environment = (
-            runtime.unity_environment
+            _without_desktop_client_barrier(runtime.unity_environment)
             if runtime is not None
             else _clean_environment(os.environ)
         )

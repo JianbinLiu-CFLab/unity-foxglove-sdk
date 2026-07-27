@@ -41,6 +41,8 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private const int MaximumStatusCharacters = 512;
         private const int MaximumConfigBytes = 1024 * 1024;
+        private const int MaximumTransportClientMarkerCount = 8;
+        private const float TransportClientSampleIntervalSeconds = 0.05f;
         private const string BatchConfigArgument = "-phase184RunConfig";
         private const string ManualPointerRelativePath =
             "build/phase184/acceptance/manual-active.json";
@@ -64,6 +66,13 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private string _effectiveSubscribeProfile = string.Empty;
         [SerializeField] private string _tokenDigestPrefix = string.Empty;
         [SerializeField] private bool _contextValidated;
+
+        [NonSerialized] private string _runToken = string.Empty;
+        private readonly Phase184TransportClientMarkerState
+            _transportClientMarkerState =
+                new Phase184TransportClientMarkerState(
+                    MaximumTransportClientMarkerCount);
+        private float _nextTransportClientSampleAt;
 
         private void Awake()
         {
@@ -94,6 +103,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _selectedCase = context.CaseId;
             _tokenDigestPrefix = context.TokenDigestPrefix;
             _contextValidated = true;
+            ResetTransportClientEvidence(context.Token);
             _status = "Validated " + context.CaseId + "; activating its isolated route.";
             CaptureProfiles();
             route.Arm(context);
@@ -110,6 +120,7 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_contextValidated || _manager == null)
                 return;
 
+            CaptureTransportClientEvidence();
             _effectivePublishProfile =
                 _manager.ActiveFoxRunPublishTargets + " / "
                 + _manager.ActiveFoxRunPublishEncoding;
@@ -178,6 +189,65 @@ namespace Unity2Foxglove.ManualAcceptance
                 + _manager.DefaultFoxRunSubscriptionEncoding;
             _effectivePublishProfile = _requestedPublishProfile;
             _effectiveSubscribeProfile = _requestedSubscribeProfile;
+        }
+
+        private void ResetTransportClientEvidence(string runToken)
+        {
+            _runToken = runToken;
+            _transportClientMarkerState.Reset();
+            _nextTransportClientSampleAt = 0f;
+        }
+
+        private void CaptureTransportClientEvidence()
+        {
+            if (_transportClientMarkerState.IsOverflowed)
+                return;
+
+            var now = Time.unscaledTime;
+            if (now < _nextTransportClientSampleAt)
+                return;
+            _nextTransportClientSampleAt =
+                now + TransportClientSampleIntervalSeconds;
+
+            var stats = _manager.GetTransportStatsSnapshot();
+            if (stats == null || !stats.Supported)
+            {
+                _transportClientMarkerState.ResetPending();
+                return;
+            }
+
+            var active = stats.ActiveClientCount;
+            var accepted = stats.TotalAcceptedClients;
+            var decision =
+                _transportClientMarkerState.Observe(active, accepted);
+            switch (decision.Kind)
+            {
+                case Phase184TransportClientMarkerKind.Normal:
+                    EmitTransportClientEvidence(
+                        "PHASE184H_TRANSPORT_CLIENTS",
+                        decision.ActiveClientCount,
+                        decision.TotalAcceptedClients);
+                    break;
+                case Phase184TransportClientMarkerKind.Overflow:
+                    EmitTransportClientEvidence(
+                        "PHASE184H_TRANSPORT_CLIENTS_OVERFLOW",
+                        decision.ActiveClientCount,
+                        decision.TotalAcceptedClients);
+                    break;
+            }
+        }
+
+        private void EmitTransportClientEvidence(
+            string marker,
+            int active,
+            long accepted)
+        {
+            Emit(
+                marker,
+                "case=" + _selectedCase
+                + " token=" + Phase184AcceptanceText.SafeMarker(_runToken)
+                + " active=" + active
+                + " accepted=" + accepted);
         }
 
         private void FailContext(string reason)
@@ -366,6 +436,131 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void Emit(string marker, string fields)
             => Debug.Log(marker + " " + fields, this);
+    }
+
+    internal enum Phase184TransportClientMarkerKind
+    {
+        None = 0,
+        Normal = 1,
+        Overflow = 2,
+    }
+
+    internal readonly struct Phase184TransportClientMarkerDecision
+    {
+        internal Phase184TransportClientMarkerDecision(
+            Phase184TransportClientMarkerKind kind,
+            int activeClientCount,
+            long totalAcceptedClients)
+        {
+            Kind = kind;
+            ActiveClientCount = activeClientCount;
+            TotalAcceptedClients = totalAcceptedClients;
+        }
+
+        internal Phase184TransportClientMarkerKind Kind { get; }
+        internal int ActiveClientCount { get; }
+        internal long TotalAcceptedClients { get; }
+    }
+
+    internal sealed class Phase184TransportClientMarkerState
+    {
+        private readonly int[] _committedActiveCounts;
+        private readonly long[] _committedAcceptedCounts;
+        private int _committedPairCount;
+        private int _pendingActive;
+        private long _pendingAccepted;
+        private bool _hasPending;
+        private bool _overflowed;
+
+        internal Phase184TransportClientMarkerState(int maximumMarkerCount)
+        {
+            if (maximumMarkerCount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maximumMarkerCount));
+            }
+
+            _committedActiveCounts = new int[maximumMarkerCount];
+            _committedAcceptedCounts = new long[maximumMarkerCount];
+        }
+
+        internal bool IsOverflowed => _overflowed;
+
+        internal Phase184TransportClientMarkerDecision Observe(
+            int active,
+            long accepted)
+        {
+            if (_overflowed)
+                return default;
+
+            if (active < 0 || accepted < 0 || accepted < active)
+            {
+                ResetPending();
+                return default;
+            }
+
+            if (IsCommitted(active, accepted))
+            {
+                ResetPending();
+                return default;
+            }
+
+            if (!_hasPending
+                || _pendingActive != active
+                || _pendingAccepted != accepted)
+            {
+                _pendingActive = active;
+                _pendingAccepted = accepted;
+                _hasPending = true;
+                return default;
+            }
+
+            ResetPending();
+            if (_committedPairCount >= _committedActiveCounts.Length)
+            {
+                _overflowed = true;
+                return new Phase184TransportClientMarkerDecision(
+                    Phase184TransportClientMarkerKind.Overflow,
+                    active,
+                    accepted);
+            }
+
+            _committedActiveCounts[_committedPairCount] = active;
+            _committedAcceptedCounts[_committedPairCount] = accepted;
+            _committedPairCount++;
+            return new Phase184TransportClientMarkerDecision(
+                Phase184TransportClientMarkerKind.Normal,
+                active,
+                accepted);
+        }
+
+        internal void ResetPending()
+        {
+            _pendingActive = 0;
+            _pendingAccepted = 0;
+            _hasPending = false;
+        }
+
+        internal void Reset()
+        {
+            _committedPairCount = 0;
+            _overflowed = false;
+            ResetPending();
+        }
+
+        private bool IsCommitted(int active, long accepted)
+        {
+            for (var index = 0; index < _committedPairCount; index++)
+            {
+                if (_committedActiveCounts[index] == active
+                    && _committedAcceptedCounts[index] == accepted)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     internal readonly struct Phase184AcceptanceRunContext

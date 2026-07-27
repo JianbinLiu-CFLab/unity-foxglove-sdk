@@ -7,15 +7,19 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import datetime as dt
 import hashlib
 import json
+import math
 import ntpath
 import os
 import pathlib
 import re
+import stat
+import time
 import uuid
-from typing import Any, Mapping
+from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import urlsplit
 
 
@@ -44,11 +48,34 @@ CLI_RECEIPT_KEYS = frozenset(
 MAX_DIAGNOSTIC_CHARACTERS = 512
 MAX_RECEIPT_BYTES = 32 * 1024
 
+DESKTOP_CLIENT_BARRIER_FILENAME = "desktop-client-barrier.json"
+DESKTOP_CLIENT_BARRIER_SCHEMA_VERSION = 1
+DESKTOP_CLIENT_BARRIER_STATE = "desktop-client-proved"
+DESKTOP_CLIENT_BARRIER_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "runId",
+        "tokenDigest",
+        "state",
+        "acceptedClients",
+    }
+)
+MAX_DESKTOP_CLIENT_BARRIER_BYTES = 4 * 1024
+DESKTOP_CLIENT_BARRIER_STARTUP_ALLOWANCE_SECONDS = 30.0
+DESKTOP_CLIENT_BARRIER_POLL_SECONDS = 0.25
+
+TRANSPORT_CLIENTS_MARKER = "PHASE184H_TRANSPORT_CLIENTS"
+TRANSPORT_CLIENTS_OVERFLOW_MARKER = "PHASE184H_TRANSPORT_CLIENTS_OVERFLOW"
+MAX_TRANSPORT_CLIENT_MARKER_BYTES = 512
+MAX_TRANSPORT_CLIENT_MARKERS = 8
+MAX_TRANSPORT_CLIENT_COUNT = (2**31) - 1
+
 FAIL_CLI_PROVENANCE = "FAIL_CLI_PROVENANCE"
 FAIL_DESKTOP_PREFLIGHT = "FAIL_DESKTOP_PREFLIGHT"
 FAIL_DESKTOP_START = "FAIL_DESKTOP_START"
 FAIL_DESKTOP_IDENTITY = "FAIL_DESKTOP_IDENTITY"
 FAIL_DESKTOP_CONNECTION = "FAIL_DESKTOP_CONNECTION"
+FAIL_CLIENT = "FAIL_CLIENT"
 FAIL_FOXRUN_CHILD = "FAIL_FOXRUN_CHILD"
 FAIL_EVIDENCE = "FAIL_EVIDENCE"
 FAIL_CLEANUP = "FAIL_CLEANUP"
@@ -60,6 +87,7 @@ TERMINAL_FAILURE_CODES = frozenset(
         FAIL_DESKTOP_START,
         FAIL_DESKTOP_IDENTITY,
         FAIL_DESKTOP_CONNECTION,
+        FAIL_CLIENT,
         FAIL_FOXRUN_CHILD,
         FAIL_EVIDENCE,
         FAIL_CLEANUP,
@@ -78,6 +106,18 @@ _MAX_VERSION_CHARACTERS = 64
 _MAX_URL_CHARACTERS = 2048
 _MAX_WINDOWS_PATH_CHARACTERS = 32767
 _HASH_CHUNK_BYTES = 1024 * 1024
+_MAX_OBSERVATION_SECONDS = 3600
+_SAFE_RUN_ID = re.compile(r"\Aphase184g-[A-Za-z0-9][A-Za-z0-9._-]{7,79}\Z")
+_SAFE_TOKEN = re.compile(r"\Ap184g_[A-Za-z0-9]{12,64}\Z")
+_SAFE_CASE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
+_TRANSPORT_CLIENT_MARKER = re.compile(
+    rf"\A(?P<marker>{re.escape(TRANSPORT_CLIENTS_MARKER)}|"
+    rf"{re.escape(TRANSPORT_CLIENTS_OVERFLOW_MARKER)}) "
+    r"case=(?P<case>[^\s=]+) "
+    r"token=(?P<token>[^\s=]+) "
+    r"active=(?P<active>0|[1-9][0-9]*) "
+    r"accepted=(?P<accepted>0|[1-9][0-9]*)\Z"
+)
 
 
 def _bounded_message(message: object) -> str:
@@ -509,3 +549,417 @@ def write_json_atomic(
     finally:
         with contextlib.suppress(OSError):
             temporary.unlink()
+
+
+def _client_failure(message: object) -> AcceptanceFailure:
+    return AcceptanceFailure(FAIL_CLIENT, message)
+
+
+def _evidence_failure(message: object) -> AcceptanceFailure:
+    return AcceptanceFailure(FAIL_EVIDENCE, message)
+
+
+def _is_reparse_point(info: os.stat_result) -> bool:
+    attributes = getattr(info, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attributes & reparse_flag)
+
+
+def _plain_resolved_output_root(value: object) -> pathlib.Path:
+    try:
+        raw = os.fspath(value)
+    except TypeError as exc:
+        raise _client_failure("Desktop barrier output root is invalid.") from exc
+    if (
+        not isinstance(raw, str)
+        or not raw
+        or len(raw) > _MAX_WINDOWS_PATH_CHARACTERS
+        or "\x00" in raw
+        or "\r" in raw
+        or "\n" in raw
+    ):
+        raise _client_failure("Desktop barrier output root is invalid.")
+
+    candidate = pathlib.Path(raw)
+    if not candidate.is_absolute() or ".." in candidate.parts:
+        raise _client_failure("Desktop barrier output root is invalid.")
+    try:
+        info = candidate.lstat()
+        resolved = candidate.resolve(strict=True)
+        absolute = candidate.absolute()
+    except OSError as exc:
+        raise _client_failure("Desktop barrier output root is unavailable.") from exc
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or _is_reparse_point(info)
+        or absolute != resolved
+    ):
+        raise _client_failure(
+            "Desktop barrier output root must be one plain owned directory."
+        )
+    return resolved
+
+
+def resolve_desktop_client_barrier_path(
+    output_root: os.PathLike[str] | str,
+) -> pathlib.Path:
+    """Return the one fixed barrier path below a plain owned output root."""
+
+    return _plain_resolved_output_root(output_root) / DESKTOP_CLIENT_BARRIER_FILENAME
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _DesktopBarrierContract:
+    output_root: pathlib.Path
+    run_id: str
+    token_digest: str
+    positive_seconds: int
+
+
+def _desktop_barrier_contract(config: object) -> _DesktopBarrierContract:
+    if not isinstance(config, Mapping):
+        raise _client_failure("Desktop barrier configuration is invalid.")
+
+    run_id = config.get("runId")
+    token = config.get("token")
+    windows = config.get("observationWindows")
+    if not isinstance(run_id, str) or _SAFE_RUN_ID.fullmatch(run_id) is None:
+        raise _client_failure("Desktop barrier run identity is invalid.")
+    if not isinstance(token, str) or _SAFE_TOKEN.fullmatch(token) is None:
+        raise _client_failure("Desktop barrier token identity is invalid.")
+    if not isinstance(windows, Mapping):
+        raise _client_failure("Desktop barrier observation window is invalid.")
+    positive_seconds = windows.get("positiveSeconds")
+    if (
+        isinstance(positive_seconds, bool)
+        or not isinstance(positive_seconds, int)
+        or positive_seconds < 1
+        or positive_seconds > _MAX_OBSERVATION_SECONDS
+    ):
+        raise _client_failure("Desktop barrier observation window is invalid.")
+
+    output_root = _plain_resolved_output_root(config.get("outputRoot"))
+    token_digest = hashlib.sha256(token.encode("utf-8")).hexdigest().upper()
+    return _DesktopBarrierContract(
+        output_root=output_root,
+        run_id=run_id,
+        token_digest=token_digest,
+        positive_seconds=positive_seconds,
+    )
+
+
+def _exact_desktop_barrier_path(
+    value: os.PathLike[str] | str,
+    output_root: pathlib.Path,
+) -> pathlib.Path:
+    try:
+        raw = os.fspath(value)
+    except TypeError as exc:
+        raise _client_failure("Desktop barrier path is invalid.") from exc
+    if (
+        not isinstance(raw, str)
+        or not raw
+        or len(raw) > _MAX_WINDOWS_PATH_CHARACTERS
+        or "\x00" in raw
+        or "\r" in raw
+        or "\n" in raw
+    ):
+        raise _client_failure("Desktop barrier path is invalid.")
+
+    candidate = pathlib.Path(raw)
+    expected = output_root / DESKTOP_CLIENT_BARRIER_FILENAME
+    if (
+        not candidate.is_absolute()
+        or ".." in candidate.parts
+        or candidate.name != DESKTOP_CLIENT_BARRIER_FILENAME
+        or candidate.parent != output_root
+        or candidate != expected
+    ):
+        raise _client_failure(
+            "Desktop barrier path must be the fixed owned output path."
+        )
+    try:
+        if candidate.resolve(strict=False) != expected:
+            raise _client_failure(
+                "Desktop barrier path must not use a filesystem alias."
+            )
+    except OSError as exc:
+        raise _client_failure("Desktop barrier path could not be resolved.") from exc
+    return expected
+
+
+def _same_file_snapshot(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+    )
+
+
+def _load_visible_desktop_barrier(
+    path: pathlib.Path,
+    contract: _DesktopBarrierContract,
+) -> dict[str, object] | None:
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise _client_failure("Desktop barrier could not be inspected.") from exc
+
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or stat.S_ISLNK(before.st_mode)
+        or _is_reparse_point(before)
+    ):
+        raise _client_failure("Desktop barrier must be one plain regular file.")
+
+    try:
+        with path.open("rb") as stream:
+            opened = os.fstat(stream.fileno())
+            raw = stream.read(MAX_DESKTOP_CLIENT_BARRIER_BYTES + 1)
+        after = path.lstat()
+    except OSError as exc:
+        raise _client_failure("Desktop barrier could not be read.") from exc
+    if (
+        not _same_file_snapshot(before, opened)
+        or not _same_file_snapshot(opened, after)
+        or stat.S_ISLNK(after.st_mode)
+        or _is_reparse_point(after)
+    ):
+        raise _client_failure("Desktop barrier changed while it was read.")
+    if not raw or len(raw) > MAX_DESKTOP_CLIENT_BARRIER_BYTES:
+        raise _client_failure("Desktop barrier size is invalid.")
+
+    try:
+        text = raw.decode("utf-8")
+        document = json.loads(text, object_pairs_hook=_unique_object)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise _client_failure("Desktop barrier JSON is malformed.") from exc
+    if not isinstance(document, dict):
+        raise _client_failure("Desktop barrier root must be an object.")
+    if frozenset(document) != DESKTOP_CLIENT_BARRIER_KEYS:
+        raise _client_failure("Desktop barrier keys do not match schemaVersion 1.")
+
+    schema_version = document["schemaVersion"]
+    accepted_clients = document["acceptedClients"]
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != DESKTOP_CLIENT_BARRIER_SCHEMA_VERSION
+    ):
+        raise _client_failure("Desktop barrier schemaVersion is unsupported.")
+    if (
+        not isinstance(document["runId"], str)
+        or document["runId"] != contract.run_id
+    ):
+        raise _client_failure("Desktop barrier run identity is stale or mismatched.")
+    token_digest = document["tokenDigest"]
+    if (
+        not isinstance(token_digest, str)
+        or _UPPER_SHA256.fullmatch(token_digest) is None
+        or token_digest != contract.token_digest
+    ):
+        raise _client_failure("Desktop barrier token identity is stale or mismatched.")
+    if (
+        not isinstance(document["state"], str)
+        or document["state"] != DESKTOP_CLIENT_BARRIER_STATE
+    ):
+        raise _client_failure("Desktop barrier state is invalid.")
+    if (
+        isinstance(accepted_clients, bool)
+        or not isinstance(accepted_clients, int)
+        or accepted_clients != 1
+    ):
+        raise _client_failure("Desktop barrier acceptedClients must equal one.")
+    return document
+
+
+def _monotonic_value(clock: Callable[[], float]) -> float:
+    try:
+        value = clock()
+    except Exception as exc:
+        raise _client_failure("Desktop barrier clock failed.") from exc
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        raise _client_failure("Desktop barrier clock is invalid.")
+    return float(value)
+
+
+def wait_for_desktop_barrier(
+    config: Mapping[str, Any],
+    path: os.PathLike[str] | str,
+    *,
+    clock: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+    deadline: float | None = None,
+) -> dict[str, object]:
+    """Wait for one exact token-bound Desktop barrier without doing I/O elsewhere."""
+
+    contract = _desktop_barrier_contract(config)
+    barrier = _exact_desktop_barrier_path(path, contract.output_root)
+    selected_clock = time.monotonic if clock is None else clock
+    selected_sleep = time.sleep if sleep is None else sleep
+    if not callable(selected_clock) or not callable(selected_sleep):
+        raise _client_failure("Desktop barrier wait dependencies are invalid.")
+
+    started = _monotonic_value(selected_clock)
+    bounded_deadline = (
+        started
+        + contract.positive_seconds
+        + DESKTOP_CLIENT_BARRIER_STARTUP_ALLOWANCE_SECONDS
+    )
+    if deadline is not None:
+        if (
+            isinstance(deadline, bool)
+            or not isinstance(deadline, (int, float))
+            or not math.isfinite(float(deadline))
+        ):
+            raise _client_failure("Desktop barrier deadline is invalid.")
+        bounded_deadline = min(bounded_deadline, float(deadline))
+
+    while True:
+        now = _monotonic_value(selected_clock)
+        if now >= bounded_deadline:
+            raise _client_failure(
+                "Desktop client barrier did not appear before the bounded deadline."
+            )
+
+        document = _load_visible_desktop_barrier(barrier, contract)
+        if document is not None:
+            return document
+
+        remaining = bounded_deadline - now
+        delay = min(DESKTOP_CLIENT_BARRIER_POLL_SECONDS, remaining)
+        try:
+            selected_sleep(delay)
+        except Exception as exc:
+            raise _client_failure("Desktop barrier polling failed.") from exc
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class TransportClientMarker:
+    """One validated transport-count marker with token identity discarded."""
+
+    overflow: bool
+    active: int
+    accepted: int
+
+    def to_document(self) -> dict[str, int]:
+        return {"active": self.active, "accepted": self.accepted}
+
+
+def _validate_transport_identity(case: object, token: object) -> tuple[str, str]:
+    if not isinstance(case, str) or _SAFE_CASE.fullmatch(case) is None:
+        raise _evidence_failure("Transport marker case identity is invalid.")
+    if not isinstance(token, str) or _SAFE_TOKEN.fullmatch(token) is None:
+        raise _evidence_failure("Transport marker token identity is invalid.")
+    return case, token
+
+
+def parse_transport_client_marker(
+    line: object,
+    *,
+    case: str,
+    token: str,
+) -> TransportClientMarker:
+    """Parse one exact bounded token-correlated transport-count marker."""
+
+    expected_case, expected_token = _validate_transport_identity(case, token)
+    if not isinstance(line, str) or "\r" in line or "\n" in line:
+        raise _evidence_failure("Transport client marker line is invalid.")
+    try:
+        encoded_size = len(line.encode("utf-8"))
+    except UnicodeError as exc:
+        raise _evidence_failure("Transport client marker line is invalid.") from exc
+    if not line or encoded_size > MAX_TRANSPORT_CLIENT_MARKER_BYTES:
+        raise _evidence_failure("Transport client marker line exceeds its fixed bound.")
+
+    match = _TRANSPORT_CLIENT_MARKER.fullmatch(line)
+    if match is None:
+        raise _evidence_failure("Transport client marker envelope is malformed.")
+    if (
+        match.group("case") != expected_case
+        or match.group("token") != expected_token
+    ):
+        raise _evidence_failure("Transport client marker identity is mismatched.")
+
+    active = int(match.group("active"))
+    accepted = int(match.group("accepted"))
+    if active > MAX_TRANSPORT_CLIENT_COUNT or accepted > MAX_TRANSPORT_CLIENT_COUNT:
+        raise _evidence_failure("Transport client marker count exceeds its fixed bound.")
+    return TransportClientMarker(
+        overflow=match.group("marker") == TRANSPORT_CLIENTS_OVERFLOW_MARKER,
+        active=active,
+        accepted=accepted,
+    )
+
+
+def validate_transport_client_transition_order(
+    lines: Iterable[str],
+    *,
+    case: str,
+    token: str,
+) -> tuple[TransportClientMarker, TransportClientMarker, TransportClientMarker]:
+    """Require the exact chronological 0/0 -> 1/1 -> 2/2+ live transition."""
+
+    _validate_transport_identity(case, token)
+    if isinstance(lines, (str, bytes)):
+        raise _evidence_failure("Transport marker evidence must be a line sequence.")
+    try:
+        iterator = iter(lines)
+    except TypeError as exc:
+        raise _evidence_failure(
+            "Transport marker evidence must be a line sequence."
+        ) from exc
+
+    required: list[TransportClientMarker] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for line in iterator:
+        if not isinstance(line, str):
+            raise _evidence_failure("Transport marker evidence line is invalid.")
+        if not line.startswith("PHASE184H_TRANSPORT_CLIENT"):
+            continue
+        marker = parse_transport_client_marker(line, case=case, token=token)
+        if marker.overflow:
+            raise _evidence_failure("Transport client marker overflow was observed.")
+
+        pair = (marker.active, marker.accepted)
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        if len(seen_pairs) > MAX_TRANSPORT_CLIENT_MARKERS:
+            raise _evidence_failure(
+                "Transport client marker evidence exceeds its fixed bound."
+            )
+
+        stage = len(required)
+        if stage == 0:
+            matches = pair == (0, 0)
+        elif stage == 1:
+            matches = pair == (1, 1)
+        elif stage == 2:
+            matches = marker.active == 2 and marker.accepted >= 2
+        else:
+            continue
+        if not matches:
+            raise _evidence_failure(
+                "Transport client markers are missing the required strict order."
+            )
+        required.append(marker)
+
+    if len(required) != 3:
+        raise _evidence_failure(
+            "Transport client markers are missing the required strict order."
+        )
+    return required[0], required[1], required[2]
