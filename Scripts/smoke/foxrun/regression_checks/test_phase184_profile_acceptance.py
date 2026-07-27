@@ -2292,6 +2292,240 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         wait.assert_called_once_with(config, str(barrier))
         connect.assert_not_awaited()
 
+    def test_foxglove_profile_requests_bootstrap_only_after_subscribing(self):
+        module = load_module()
+        topics = ("/profile/default", "/profile/json")
+        config = {
+            "case": "foxglove-profile",
+            "token": "p184g_A1b2C3d4E5f6",
+            "topics": list(topics),
+            "observationWindows": {
+                "positiveSeconds": 3,
+                "negativeSeconds": 3,
+            },
+            "foxgloveHost": "127.0.0.1",
+            "foxglovePort": 18765,
+        }
+        events: list[str] = []
+        websocket = mock.Mock()
+        websocket.close = mock.AsyncMock()
+        channels = {
+            topics[0]: mock.Mock(encoding="protobuf"),
+            topics[1]: mock.Mock(encoding="json"),
+        }
+
+        async def subscribe(_websocket, _channels):
+            events.append("subscribe")
+            return {184001: topics[0], 184002: topics[1]}
+
+        async def send_json(
+            _websocket,
+            _topic,
+            _field_name,
+            _token,
+            stage,
+            _count,
+            _channel_id,
+            *,
+            advertise,
+        ):
+            events.append(f"send:{stage}:advertise={advertise}")
+
+        receive_count = 0
+
+        async def receive(*_args, **_kwargs):
+            nonlocal receive_count
+            receive_count += 1
+            events.append(f"receive:{receive_count}")
+            return {}, [], float(receive_count)
+
+        def wait_marker(_config, marker, _timeout):
+            events.append(f"marker:{marker}")
+
+        websockets = mock.Mock(
+            connect=mock.AsyncMock(return_value=websocket)
+        )
+        with mock.patch.dict(
+            sys.modules,
+            {"websockets": websockets},
+        ), mock.patch.object(
+            module,
+            "write_actor_ready",
+        ), mock.patch.object(
+            module,
+            "_wait_for_unity_context",
+        ), mock.patch.object(
+            module,
+            "_wait_for_foxglove_channels",
+            new=mock.AsyncMock(return_value=channels),
+        ), mock.patch.object(
+            module,
+            "_foxglove_subscribe",
+            side_effect=subscribe,
+        ), mock.patch.object(
+            module,
+            "_foxglove_advertise_and_send_json",
+            side_effect=send_json,
+        ) as send, mock.patch.object(
+            module,
+            "_receive_foxglove_stages",
+            side_effect=receive,
+        ), mock.patch.object(
+            module,
+            "wait_for_log_marker",
+            side_effect=wait_marker,
+        ), mock.patch.object(
+            module,
+            "wait_for_terminal_marker",
+        ):
+            result = module.asyncio.run(
+                module._run_foxglove_client_async(config)
+            )
+
+        self.assertTrue(result["deliveryObserved"])
+        self.assertLess(
+            events.index("subscribe"),
+            events.index(
+                "send:profile-client-ready:advertise=True"
+            ),
+        )
+        self.assertLess(
+            events.index(
+                "send:profile-client-ready:advertise=True"
+            ),
+            events.index(
+                "marker:PHASE184G_PROFILE_CLIENT_READY"
+            ),
+        )
+        self.assertLess(
+            events.index(
+                "marker:PHASE184G_PROFILE_CLIENT_READY"
+            ),
+            events.index("receive:1"),
+        )
+        self.assertEqual(
+            [
+                call.args[4]
+                for call in send.await_args_list
+            ],
+            [
+                "profile-client-ready",
+                "profile-a",
+                "profile-b",
+                "profile-b",
+            ],
+        )
+        self.assertTrue(send.await_args_list[0].kwargs["advertise"])
+        self.assertEqual(
+            (
+                websocket,
+                topics[1],
+                "explicitJson",
+                config["token"],
+                "profile-client-ready",
+                18400,
+                184901,
+            ),
+            send.await_args_list[0].args,
+        )
+        self.assertTrue(
+            all(
+                call.args[1] == topics[1]
+                and call.args[2] == "explicitJson"
+                and call.args[3] == config["token"]
+                and call.args[6] == 184901
+                for call in send.await_args_list
+            )
+        )
+        self.assertTrue(
+            all(
+                not call.kwargs["advertise"]
+                for call in send.await_args_list[1:]
+            )
+        )
+        websocket.close.assert_awaited_once()
+
+    def test_foxglove_profile_rejects_client_ready_echo_before_profile_input(self):
+        module = load_module()
+        token = "p184g_A1b2C3d4E5f6"
+        topics = ("/profile/default", "/profile/json")
+        config = {
+            "case": "foxglove-profile",
+            "token": token,
+            "topics": list(topics),
+            "observationWindows": {
+                "positiveSeconds": 3,
+                "negativeSeconds": 3,
+            },
+            "foxgloveHost": "127.0.0.1",
+            "foxglovePort": 18765,
+        }
+        websocket = mock.Mock()
+        websocket.close = mock.AsyncMock()
+        channels = {
+            topics[0]: mock.Mock(encoding="protobuf"),
+            topics[1]: mock.Mock(encoding="json"),
+        }
+        send = mock.AsyncMock()
+        websockets = mock.Mock(
+            connect=mock.AsyncMock(return_value=websocket)
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {"websockets": websockets},
+        ), mock.patch.object(
+            module,
+            "write_actor_ready",
+        ), mock.patch.object(
+            module,
+            "_wait_for_unity_context",
+        ), mock.patch.object(
+            module,
+            "_wait_for_foxglove_channels",
+            new=mock.AsyncMock(return_value=channels),
+        ), mock.patch.object(
+            module,
+            "_foxglove_subscribe",
+            new=mock.AsyncMock(
+                return_value={
+                    184001: topics[0],
+                    184002: topics[1],
+                }
+            ),
+        ), mock.patch.object(
+            module,
+            "_foxglove_advertise_and_send_json",
+            send,
+        ), mock.patch.object(
+            module,
+            "_receive_foxglove_stages",
+            new=mock.AsyncMock(
+                return_value=(
+                    {},
+                    [token + "-profile-client-ready"],
+                    1.0,
+                )
+            ),
+        ), mock.patch.object(
+            module,
+            "wait_for_log_marker",
+        ):
+            with self.assertRaisesRegex(
+                module.AcceptanceFailure,
+                "FAIL_ORIGIN",
+            ):
+                module.asyncio.run(
+                    module._run_foxglove_client_async(config)
+                )
+
+        self.assertEqual(1, send.await_count)
+        self.assertEqual(
+            "profile-client-ready",
+            send.await_args.args[4],
+        )
+        websocket.close.assert_awaited_once()
+
     def test_bridge_health_frame_is_correlated_and_strict(self):
         module = load_module()
         request_id = "p184g_A1b2C3d4E5f6"

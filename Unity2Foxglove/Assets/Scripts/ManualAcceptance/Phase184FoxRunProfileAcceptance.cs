@@ -716,8 +716,9 @@ namespace Unity2Foxglove.ManualAcceptance
     {
         public const string InheritedTopic = "/foxrun/phase184/profile/default";
         public const string JsonTopic = "/foxrun/phase184/profile/json";
+        private const float ClientReadyTimeoutSeconds = 300f;
         private const float BootstrapPulseIntervalSeconds = 0.25f;
-        private const int MaximumBootstrapPulses = 120;
+        private const int MaximumBootstrapPulses = 180;
 
         [FoxRun(InheritedTopic, Mode = FoxRunFlow.PublishAndSubscribe)]
         [SerializeField] private Phase181State _inheritedFoxglove;
@@ -744,6 +745,8 @@ namespace Unity2Foxglove.ManualAcceptance
         private float _localMutationAt;
         private bool _gateClosed;
         private bool _gateReopened;
+        private bool _clientReadyObserved;
+        private float _clientReadyDeadline;
         private float _nextBootstrapPulseAt;
         private int _bootstrapPulses;
 
@@ -764,11 +767,14 @@ namespace Unity2Foxglove.ManualAcceptance
             _inboundApplyStages = 0;
             _gateClosed = false;
             _gateReopened = false;
+            _clientReadyObserved = false;
             _disabledWindowPreservedValue = false;
             _sameValueAppliedAfterRecovery = false;
             _laterLocalMutation = false;
             _bootstrapPulses = 0;
             PulseOutboundBootstrap();
+            _bootstrapPulses = 0;
+            _clientReadyDeadline = Time.realtimeSinceStartup + ClientReadyTimeoutSeconds;
             Ready("topics=2 encodings=protobuf,json");
         }
 
@@ -776,6 +782,25 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             if (!IsArmed || IsTerminal)
                 return;
+
+            if (!_clientReadyObserved)
+            {
+                if (IsState(_explicitJson, "profile-client-ready"))
+                {
+                    _clientReadyObserved = true;
+                    _bootstrapPulses = 0;
+                    PulseOutboundBootstrap();
+                    Emit(
+                        "PHASE184G_PROFILE_CLIENT_READY",
+                        "stage=profile-client-ready");
+                    return;
+                }
+                if (Time.realtimeSinceStartup >= _clientReadyDeadline)
+                {
+                    Fail("Foxglove profile client readiness was not observed.");
+                }
+                return;
+            }
 
             if (!_gateClosed
                 && Time.realtimeSinceStartup >= _nextBootstrapPulseAt)

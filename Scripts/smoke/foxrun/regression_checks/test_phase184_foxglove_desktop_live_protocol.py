@@ -149,6 +149,10 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             protocol.DESKTOP_CLIENT_BARRIER_STARTUP_ALLOWANCE_SECONDS,
             0,
         )
+        self.assertEqual(
+            120.0,
+            protocol.DESKTOP_CLIENT_BARRIER_STARTUP_ALLOWANCE_SECONDS,
+        )
 
     def test_acceptance_failure_keeps_stable_code_and_bounds_one_line_message(self):
         failure = protocol.AcceptanceFailure(

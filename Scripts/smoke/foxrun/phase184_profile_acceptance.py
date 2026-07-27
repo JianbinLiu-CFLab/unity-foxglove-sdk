@@ -1443,6 +1443,22 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
         if case == "foxglove-profile":
             if channels[topics[0]].encoding != "protobuf" or channels[topics[1]].encoding != "json":
                 raise AcceptanceFailure("FAIL_CLIENT", "Inherited/explicit Foxglove encodings drifted.")
+            await _foxglove_advertise_and_send_json(
+                websocket,
+                topics[1],
+                "explicitJson",
+                token,
+                "profile-client-ready",
+                18400,
+                184901,
+                advertise=True,
+            )
+            await asyncio.to_thread(
+                wait_for_log_marker,
+                config,
+                "PHASE184G_PROFILE_CLIENT_READY",
+                30.0,
+            )
             observed, forbidden, timestamp = await _receive_foxglove_stages(
                 websocket,
                 subscriptions,
@@ -1451,10 +1467,19 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
                     topics[0]: {token + "-profile-outbound"},
                     topics[1]: {token + "-json-outbound"},
                 },
-                {},
+                {
+                    topics[1]: {
+                        token + "-profile-client-ready",
+                    }
+                },
                 result_timeout,
             )
-            del observed, forbidden
+            del observed
+            if forbidden:
+                raise AcceptanceFailure(
+                    "FAIL_ORIGIN",
+                    "Foxglove client-readiness input was republished.",
+                )
             await _foxglove_advertise_and_send_json(
                 websocket,
                 topics[1],
@@ -1463,7 +1488,7 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
                 "profile-a",
                 18403,
                 184901,
-                advertise=True,
+                advertise=False,
             )
             await asyncio.to_thread(
                 wait_for_log_marker,
@@ -1510,6 +1535,7 @@ async def _run_foxglove_client_async(config: Mapping[str, object]) -> Mapping[st
                 {topics[1]: {token + "-profile-local-after-remote"}},
                 {
                     topics[1]: {
+                        token + "-profile-client-ready",
                         token + "-profile-a",
                         token + "-profile-b",
                     }

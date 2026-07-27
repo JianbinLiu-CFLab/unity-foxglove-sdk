@@ -2805,8 +2805,64 @@ namespace Demo
                 acceptanceSource,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "MaximumBootstrapPulses",
+                "private const float ClientReadyTimeoutSeconds = 300f;",
                 acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private const int MaximumBootstrapPulses = 180;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "\"profile-client-ready\"",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE184G_PROFILE_CLIENT_READY",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_clientReadyDeadline = Time.realtimeSinceStartup "
+                + "+ ClientReadyTimeoutSeconds;",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"_bootstrapPulses = 0;
+            PulseOutboundBootstrap();
+            _bootstrapPulses = 0;
+            _clientReadyDeadline",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"if (!_clientReadyObserved)
+            {
+                if (IsState(_explicitJson, ""profile-client-ready""))",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                @"if (Time.realtimeSinceStartup >= _clientReadyDeadline)
+                {
+                    Fail(""Foxglove profile client readiness was not observed."");",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            var clientReadyGuard = acceptanceSource.IndexOf(
+                "if (!_clientReadyObserved)",
+                StringComparison.Ordinal);
+            var postReadyBootstrap = acceptanceSource.IndexOf(
+                "if (!_gateClosed",
+                clientReadyGuard,
+                StringComparison.Ordinal);
+            Assert.True(clientReadyGuard >= 0);
+            Assert.True(postReadyBootstrap > clientReadyGuard);
+            var preReadySlice = acceptanceSource.Substring(
+                clientReadyGuard,
+                postReadyBootstrap - clientReadyGuard);
+            Assert.DoesNotContain(
+                "MaximumBootstrapPulses",
+                preReadySlice,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "return;",
+                preReadySlice,
                 StringComparison.Ordinal);
             Assert.Contains(
                 "PulseWarmupUntilTargetsReady();",
