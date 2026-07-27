@@ -3335,22 +3335,98 @@ namespace Demo
             var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
                 + "Phase184BatchModeProfileProbe.cs");
+            var scheduleExit =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void SchedulePlayModeExit()");
 
             Assert.Contains(
                 "PHASE184G_BATCH_SOURCES_QUIESCED",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "route.enabled = false;",
+                "route.isActiveAndEnabled",
                 source,
                 StringComparison.Ordinal);
-            Assert.True(
-                source.IndexOf(
-                    "QuiesceAcceptanceSources();",
-                    StringComparison.Ordinal)
-                < source.IndexOf(
-                    "EditorApplication.delayCall += EditorApplication.ExitPlaymode;",
-                    StringComparison.Ordinal));
+            var exitScheduleIndex = scheduleExit.IndexOf(
+                "EditorApplication.delayCall += ExitPlayModeNow;",
+                StringComparison.Ordinal);
+            var quiesceIndex = scheduleExit.IndexOf(
+                "QuiesceAcceptanceSources();",
+                StringComparison.Ordinal);
+            Assert.True(exitScheduleIndex >= 0);
+            Assert.True(quiesceIndex >= 0);
+            Assert.True(exitScheduleIndex < quiesceIndex);
+            Assert.Contains(
+                "catch (Exception exception)",
+                scheduleExit,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void Phase184BatchProbeRestoresDeadlinesAndKeepsExitIdempotentAcrossReload()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase184BatchModeProfileProbe.cs");
+            var attach =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void AttachHandlers()");
+            var open =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void OpenSceneAndEnterPlayMode()");
+            var retry =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void RetryCanceledPlayEntry()");
+            var requestEditorExit =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void RequestEditorExit(int exitCode, string outcome)");
+            var queueRetry =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static void QueuePlayEntryRetry(string reason)");
+            var workerResults =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static bool AllRequiredWorkerResultsReady()");
+
+            Assert.Contains("RestoreRunState();", attach, StringComparison.Ordinal);
+            Assert.Contains(
+                "PersistTime(\"started-at\", value);",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SessionState.SetBool(SessionKey(\"terminal-pass-observed\")",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SessionState.GetBool(SessionKey(\"exit-requested\"), false)",
+                open,
+                StringComparison.Ordinal);
+            Assert.Contains("StartupDeadlineExpired()", open, StringComparison.Ordinal);
+            Assert.Contains("StartupDeadlineExpired()", retry, StringComparison.Ordinal);
+            Assert.Contains("_editorExitQueued", requestEditorExit, StringComparison.Ordinal);
+            Assert.Contains(
+                "SessionKey(\"exit-code\")",
+                requestEditorExit,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "SessionState.SetBool(SessionKey(\"play-entry-retry-queued\"), true);",
+                queueRetry,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SchedulePlayEntryAttempt();",
+                queueRetry,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_requiredWorkerResultPaths.Length == 0",
+                workerResults,
+                StringComparison.Ordinal);
         }
 
         [Fact]

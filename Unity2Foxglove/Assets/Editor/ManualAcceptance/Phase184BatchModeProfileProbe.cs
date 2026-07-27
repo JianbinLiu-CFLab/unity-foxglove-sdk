@@ -7,7 +7,9 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -36,11 +38,14 @@ public static class Phase184BatchModeProfileProbe
         + Process.GetCurrentProcess().Id + ".";
 
     private static bool _handlersAttached;
+    private static bool _playModeExitQueued;
+    private static bool _editorExitQueued;
     private static string _caseId = string.Empty;
     private static string _token = string.Empty;
-    private static double _startedAt;
+    private static double _startedAt = -1d;
     private static bool _terminalPassObserved;
-    private static double _terminalPassAt;
+    private static bool _terminalStateValid = true;
+    private static double _terminalPassAt = -1d;
     private static string[] _requiredWorkerResultPaths = Array.Empty<string>();
 
     [InitializeOnLoadMethod]
@@ -56,6 +61,16 @@ public static class Phase184BatchModeProfileProbe
             return;
         }
 
+        if (SessionState.GetBool(SessionKey("exit-requested"), false))
+        {
+            ResumeRequestedExit();
+            return;
+        }
+        if (_startedAt < 0d)
+        {
+            RequestEditorExit(2, "missing-startup-deadline");
+            return;
+        }
         if (SessionState.GetBool(SessionKey("play-entry-retry-queued"), false))
             EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
         else if (SessionState.GetBool(SessionKey("play-entry-pending"), false))
@@ -78,15 +93,18 @@ public static class Phase184BatchModeProfileProbe
         SessionState.SetInt(SessionKey("play-entry-retries"), 0);
         SessionState.SetBool(SessionKey("play-entry-pending"), false);
         SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
-        _terminalPassObserved = false;
-        _requiredWorkerResultPaths = Array.Empty<string>();
-        _startedAt = EditorApplication.timeSinceStartup;
-        EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+        SessionState.EraseString(SessionKey("exit-outcome"));
+        _playModeExitQueued = false;
+        _editorExitQueued = false;
+        ResetTerminalState();
+        SetStartedAt(EditorApplication.timeSinceStartup);
+        SchedulePlayEntryAttempt();
     }
 
     private static void AttachHandlers()
     {
         RestoreRunIdentity();
+        RestoreRunState();
         if (_handlersAttached)
             return;
         _handlersAttached = true;
@@ -110,16 +128,26 @@ public static class Phase184BatchModeProfileProbe
 
     private static void OpenSceneAndEnterPlayMode()
     {
+        if (!IsRequestedBatchRun()
+            || SessionState.GetBool(SessionKey("exit-requested"), false))
+        {
+            return;
+        }
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
+        if (StartupDeadlineExpired())
+        {
+            RequestEditorExit(2, "startup-deadline");
+            return;
+        }
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
-            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+            SchedulePlayEntryAttempt();
             return;
         }
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             return;
 
         SessionState.SetBool(SessionKey("play-entry-pending"), false);
-        SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
         try
         {
             var config = LoadRunConfig();
@@ -160,6 +188,113 @@ public static class Phase184BatchModeProfileProbe
             _token = SessionState.GetString(SessionKey("token"), string.Empty);
     }
 
+    private static void RestoreRunState()
+    {
+        if (_startedAt < 0d
+            && TryRestoreTime("started-at", out var restoredStartedAt))
+        {
+            _startedAt = restoredStartedAt;
+        }
+
+        if (!_terminalPassObserved)
+        {
+            _terminalPassObserved = SessionState.GetBool(
+                SessionKey("terminal-pass-observed"),
+                false);
+        }
+        if (!_terminalPassObserved)
+            return;
+
+        _terminalStateValid =
+            TryRestoreTime("terminal-pass-at", out _terminalPassAt)
+            && TryRestoreWorkerResultPaths(out _requiredWorkerResultPaths);
+    }
+
+    private static void SetStartedAt(double value)
+    {
+        _startedAt = value;
+        PersistTime("started-at", value);
+    }
+
+    private static void PersistTime(string suffix, double value)
+    {
+        SessionState.SetString(
+            SessionKey(suffix),
+            value.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    private static bool TryRestoreTime(string suffix, out double value)
+    {
+        var serialized = SessionState.GetString(SessionKey(suffix), string.Empty);
+        return double.TryParse(
+                serialized,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out value)
+            && !double.IsNaN(value)
+            && !double.IsInfinity(value)
+            && value >= 0d;
+    }
+
+    private static bool TryRestoreWorkerResultPaths(out string[] paths)
+    {
+        paths = Array.Empty<string>();
+        try
+        {
+            var serialized = SessionState.GetString(
+                SessionKey("worker-result-paths"),
+                string.Empty);
+            if (string.IsNullOrWhiteSpace(serialized))
+                return false;
+            var values = JArray.Parse(serialized);
+            var restored = new List<string>();
+            foreach (var value in values)
+            {
+                var path = (string)value;
+                if (string.IsNullOrWhiteSpace(path))
+                    return false;
+                restored.Add(Path.GetFullPath(path));
+            }
+            if (restored.Count == 0)
+                return false;
+            paths = restored.ToArray();
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static void ResetTerminalState()
+    {
+        _terminalPassObserved = false;
+        _terminalStateValid = true;
+        _terminalPassAt = -1d;
+        _requiredWorkerResultPaths = Array.Empty<string>();
+        SessionState.SetBool(SessionKey("terminal-pass-observed"), false);
+        SessionState.EraseString(SessionKey("terminal-pass-at"));
+        SessionState.EraseString(SessionKey("worker-result-paths"));
+    }
+
+    private static bool StartupDeadlineExpired()
+        => _startedAt < 0d
+           || EditorApplication.timeSinceStartup - _startedAt
+           >= StartupAndEvidenceTimeoutSeconds;
+
+    private static void SchedulePlayEntryAttempt()
+    {
+        if (SessionState.GetBool(SessionKey("exit-requested"), false)
+            || SessionState.GetBool(
+                SessionKey("play-entry-retry-queued"),
+                false))
+        {
+            return;
+        }
+        SessionState.SetBool(SessionKey("play-entry-retry-queued"), true);
+        EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+    }
+
     private static JObject LoadRunConfig()
     {
         var path = ReadCommandLineValue(RunConfigArgument);
@@ -182,7 +317,7 @@ public static class Phase184BatchModeProfileProbe
         {
             SessionState.SetBool(SessionKey("play-entry-pending"), false);
             SessionState.SetBool(SessionKey("play-entry-retry-queued"), false);
-            _startedAt = EditorApplication.timeSinceStartup;
+            SetStartedAt(EditorApplication.timeSinceStartup);
             Debug.Log("PHASE184G_BATCH_PLAY_ENTERED case=" + _caseId);
             return;
         }
@@ -196,8 +331,10 @@ public static class Phase184BatchModeProfileProbe
         }
 
         var exitCode = SessionState.GetInt(SessionKey("exit-code"), 3);
-        DetachHandlers();
-        EditorApplication.delayCall += () => EditorApplication.Exit(exitCode);
+        var outcome = SessionState.GetString(
+            SessionKey("exit-outcome"),
+            "resumed-editor-exit");
+        RequestEditorExit(exitCode, outcome);
     }
 
     private static void RetryCanceledPlayEntry()
@@ -210,6 +347,11 @@ public static class Phase184BatchModeProfileProbe
             return;
         }
 
+        if (StartupDeadlineExpired())
+        {
+            RequestEditorExit(2, "startup-deadline");
+            return;
+        }
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
             EditorApplication.delayCall += RetryCanceledPlayEntry;
@@ -233,13 +375,12 @@ public static class Phase184BatchModeProfileProbe
             return;
         }
 
-        SessionState.SetBool(SessionKey("play-entry-retry-queued"), true);
         Debug.Log(
             "PHASE184G_BATCH_PLAY_RETRY case=" + _caseId
             + " reason=" + reason
             + " attempt=" + retries
             + " maximum=" + MaximumPlayEntryRetries);
-        EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
+        SchedulePlayEntryAttempt();
     }
 
     private static void OnEditorUpdate()
@@ -251,6 +392,11 @@ public static class Phase184BatchModeProfileProbe
         }
         if (_terminalPassObserved)
         {
+            if (!_terminalStateValid)
+            {
+                RequestExit(7, "restored-worker-state-invalid");
+                return;
+            }
             if (AllRequiredWorkerResultsReady())
             {
                 RequestExit(0, "case-proof-and-worker-results-complete");
@@ -265,8 +411,7 @@ public static class Phase184BatchModeProfileProbe
             }
             return;
         }
-        if (EditorApplication.timeSinceStartup - _startedAt
-            < StartupAndEvidenceTimeoutSeconds)
+        if (!StartupDeadlineExpired())
         {
             return;
         }
@@ -329,7 +474,13 @@ public static class Phase184BatchModeProfileProbe
             }
             _requiredWorkerResultPaths = paths.ToArray();
             _terminalPassAt = EditorApplication.timeSinceStartup;
+            SessionState.SetString(
+                SessionKey("worker-result-paths"),
+                new JArray(_requiredWorkerResultPaths).ToString(Formatting.None));
+            PersistTime("terminal-pass-at", _terminalPassAt);
+            SessionState.SetBool(SessionKey("terminal-pass-observed"), true);
             _terminalPassObserved = true;
+            _terminalStateValid = true;
             Debug.Log(
                 "PHASE184G_BATCH_DRAINING case=" + _caseId
                 + " workers=" + paths.Count);
@@ -345,6 +496,11 @@ public static class Phase184BatchModeProfileProbe
 
     private static bool AllRequiredWorkerResultsReady()
     {
+        if (_requiredWorkerResultPaths == null
+            || _requiredWorkerResultPaths.Length == 0)
+        {
+            return false;
+        }
         foreach (var path in _requiredWorkerResultPaths)
         {
             try
@@ -377,17 +533,46 @@ public static class Phase184BatchModeProfileProbe
             return;
         SessionState.SetBool(SessionKey("exit-requested"), true);
         SessionState.SetInt(SessionKey("exit-code"), exitCode);
+        SessionState.SetString(SessionKey("exit-outcome"), outcome);
         Debug.Log(
             "PHASE184G_BATCH_EXIT case=" + _caseId
             + " outcome=" + outcome
             + " exitCode=" + exitCode);
         if (EditorApplication.isPlaying)
-        {
-            QuiesceAcceptanceSources();
-            EditorApplication.delayCall += EditorApplication.ExitPlaymode;
-        }
+            SchedulePlayModeExit();
         else
             RequestEditorExit(exitCode, outcome);
+    }
+
+    private static void SchedulePlayModeExit()
+    {
+        if (_playModeExitQueued)
+            return;
+        _playModeExitQueued = true;
+        EditorApplication.delayCall += ExitPlayModeNow;
+        try
+        {
+            QuiesceAcceptanceSources();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "PHASE184G_BATCH_QUIESCE_FAIL case=" + _caseId
+                + " type=" + exception.GetType().Name);
+        }
+    }
+
+    private static void ExitPlayModeNow()
+    {
+        _playModeExitQueued = false;
+        if (!SessionState.GetBool(SessionKey("exit-requested"), false))
+            return;
+        if (EditorApplication.isPlaying)
+        {
+            EditorApplication.ExitPlaymode();
+            return;
+        }
+        ResumeRequestedExit();
     }
 
     private static void QuiesceAcceptanceSources()
@@ -398,7 +583,7 @@ public static class Phase184BatchModeProfileProbe
         var disabled = 0;
         foreach (var route in routes)
         {
-            if (route == null || !route.enabled)
+            if (route == null || !route.isActiveAndEnabled)
                 continue;
             route.enabled = false;
             disabled++;
@@ -410,14 +595,47 @@ public static class Phase184BatchModeProfileProbe
 
     private static void RequestEditorExit(int exitCode, string outcome)
     {
-        SessionState.SetBool(SessionKey("exit-requested"), true);
-        SessionState.SetInt(SessionKey("exit-code"), exitCode);
+        if (!SessionState.GetBool(SessionKey("exit-requested"), false))
+        {
+            SessionState.SetBool(SessionKey("exit-requested"), true);
+            SessionState.SetInt(SessionKey("exit-code"), exitCode);
+            SessionState.SetString(SessionKey("exit-outcome"), outcome);
+        }
+        var committedExitCode = SessionState.GetInt(
+            SessionKey("exit-code"),
+            exitCode);
+        var committedOutcome = SessionState.GetString(
+            SessionKey("exit-outcome"),
+            outcome);
+        if (_editorExitQueued)
+            return;
+        _editorExitQueued = true;
         Debug.Log(
             "PHASE184G_BATCH_EDITOR_EXIT case=" + _caseId
-            + " outcome=" + outcome
-            + " exitCode=" + exitCode);
+            + " outcome=" + committedOutcome
+            + " exitCode=" + committedExitCode);
         DetachHandlers();
-        EditorApplication.delayCall += () => EditorApplication.Exit(exitCode);
+        EditorApplication.delayCall += () =>
+        {
+            _editorExitQueued = false;
+            EditorApplication.Exit(committedExitCode);
+        };
+    }
+
+    private static void ResumeRequestedExit()
+    {
+        if (!SessionState.GetBool(SessionKey("exit-requested"), false))
+            return;
+        if (EditorApplication.isPlaying)
+        {
+            SchedulePlayModeExit();
+            return;
+        }
+        RequestEditorExit(
+            SessionState.GetInt(SessionKey("exit-code"), 3),
+            SessionState.GetString(
+                SessionKey("exit-outcome"),
+                "resumed-editor-exit"));
     }
 
     private static bool IsRequestedBatchRun()
