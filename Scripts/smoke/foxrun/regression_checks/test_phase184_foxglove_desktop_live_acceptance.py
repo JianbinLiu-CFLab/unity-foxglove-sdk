@@ -590,6 +590,7 @@ class CoordinatorHarness:
         ] = []
         self.desktop_lease_active = False
         self.desktop_lease_snapshot_count = 0
+        self.base_ready_at: float | None = None
         self._prepare_files()
 
     @property
@@ -615,6 +616,10 @@ class CoordinatorHarness:
     @property
     def barrier(self) -> pathlib.Path:
         return self.output / live_protocol.DESKTOP_CLIENT_BARRIER_FILENAME
+
+    @property
+    def base_ready(self) -> pathlib.Path:
+        return self.output / "ready" / "foxglove-client.json"
 
     def _write_file(self, relative: str, payload: bytes = b"x") -> pathlib.Path:
         path = self.repository / relative
@@ -667,6 +672,57 @@ class CoordinatorHarness:
             "",
             encoding="utf-8",
         )
+        if self.mode == "delayed-base-ready":
+            self.base_ready_at = (
+                self.clock.value
+                + coordinator.CONNECTION_TIMEOUT_SECONDS
+                + 30.0
+            )
+        elif self.mode != "missing-base-ready":
+            self.write_base_ready(config)
+
+    def write_base_ready(
+        self,
+        config: dict[str, object] | None = None,
+    ) -> None:
+        if self.base_ready.exists():
+            return
+        if config is None:
+            config = json.loads(
+                (self.output / "run-config.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        token_digest = base_protocol.token_sha256(
+            str(config["token"])
+        )
+        if self.mode == "stale-base-ready":
+            token_digest = "f" * 64
+        details: object = {
+            "state": "connect-loop-ready",
+            "host": "loopback",
+            "topicCount": len(config["topics"]),
+        }
+        if self.mode == "malformed-base-ready":
+            details = {"state": "scene-builder-running"}
+        payload = {
+            "schemaVersion": (
+                True
+                if self.mode == "boolean-base-ready-schema"
+                else 1
+            ),
+            "runId": config["runId"],
+            "case": config["case"],
+            "role": "foxglove-client",
+            "tokenSha256": token_digest,
+            "ready": True,
+            "details": details,
+        }
+        self.base_ready.write_text(
+            json.dumps(payload, sort_keys=True),
+            encoding="utf-8",
+        )
+        self.events.append("base:ready")
 
     def write_base_summary(self) -> None:
         path = self.output / "summary.json"
@@ -686,6 +742,12 @@ class CoordinatorHarness:
 
     def read_log_lines(self, path: pathlib.Path, max_bytes: int):
         self.events.append("log:read")
+        if (
+            self.mode
+            in {"delayed-base-ready", "missing-base-ready"}
+            and not self.base_ready.exists()
+        ):
+            return ()
         if self.mode == "missing-context":
             return ()
         case = "foxglove-profile"
@@ -962,7 +1024,7 @@ class CoordinatorHarness:
             ),
             "nonce": lambda: "a1b2c3d4e5",
             "is_file": lambda path: pathlib.Path(path).is_file(),
-            "path_exists": lambda path: pathlib.Path(path).exists(),
+            "path_exists": self.path_exists,
             "make_directory": lambda path: pathlib.Path(path).mkdir(
                 parents=True,
                 exist_ok=False,
@@ -1003,6 +1065,23 @@ class CoordinatorHarness:
         return coordinator.CoordinatorDependencies(
             **arguments,
         )
+
+    def path_exists(self, path):
+        candidate = pathlib.Path(path)
+        if (
+            self.mode == "base-ready-path-error"
+            and candidate == self.base_ready
+        ):
+            raise OSError("injected readiness path failure")
+        if (
+            self.mode == "delayed-base-ready"
+            and candidate == self.base_ready
+            and not candidate.exists()
+            and self.base_ready_at is not None
+            and self.clock.value >= self.base_ready_at
+        ):
+            self.write_base_ready()
+        return candidate.exists()
 
     def _reserve_port(self, requested):
         self.events.append("port:reserve")
@@ -1738,6 +1817,60 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
             harness.token,
             json.dumps(summary, sort_keys=True),
         )
+
+    def test_connection_window_starts_after_current_client_readiness(self):
+        with temporary_directory("desktop-live-delayed-ready-") as temporary:
+            harness = CoordinatorHarness(
+                pathlib.Path(temporary),
+                mode="delayed-base-ready",
+            )
+
+            summary = coordinator.run_acceptance(
+                harness.args(),
+                dependencies=harness.dependencies(),
+            )
+
+        self.assertEqual(summary["verdict"], "PASS")
+        self.assertIn("base:ready", harness.events)
+        self.assertLess(
+            harness.events.index("base:ready"),
+            harness.events.index("marker:context"),
+        )
+        self.assertGreater(
+            harness.clock.value,
+            100.0 + coordinator.CONNECTION_TIMEOUT_SECONDS,
+        )
+
+    def test_base_readiness_is_required_and_exactly_correlated(self):
+        for mode in (
+            "missing-base-ready",
+            "stale-base-ready",
+            "malformed-base-ready",
+            "boolean-base-ready-schema",
+            "base-ready-path-error",
+        ):
+            with self.subTest(mode=mode):
+                with temporary_directory(
+                    f"desktop-live-{mode}-"
+                ) as temporary:
+                    harness = CoordinatorHarness(
+                        pathlib.Path(temporary),
+                        mode=mode,
+                    )
+
+                    summary = coordinator.run_acceptance(
+                        harness.args(),
+                        dependencies=harness.dependencies(),
+                    )
+
+                self.assertEqual(
+                    summary["verdict"],
+                    live_protocol.FAIL_FOXRUN_CHILD,
+                )
+                self.assertNotIn(
+                    "desktop",
+                    [kind for kind, _record in harness.launches],
+                )
 
     def test_success_records_graceful_forced_cleanup_and_removes_barrier(self):
         with temporary_directory("desktop-live-cleanup-") as temporary:

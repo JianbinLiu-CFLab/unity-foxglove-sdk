@@ -60,10 +60,12 @@ MAX_SUMMARY_IDENTITIES = 128
 MAX_COMMAND_LINE_CHARACTERS = 32_767
 MAX_COMMAND_ARGUMENTS = 16
 MAX_RUN_CONFIG_BYTES = 1024 * 1024
+MAX_ACTOR_READY_BYTES = 64 * 1024
 MAX_BASE_SUMMARY_BYTES = 1024 * 1024
 MAX_UNITY_LOG_BYTES = 64 * 1024 * 1024
 MAX_COORDINATOR_LOG_BYTES = 16 * 1024 * 1024
 RUN_CONFIG_TIMEOUT_SECONDS = 90.0
+BASE_READINESS_TIMEOUT_SECONDS = 900.0
 CONNECTION_TIMEOUT_SECONDS = 120.0
 BASE_EXIT_TIMEOUT_SECONDS = 180.0
 DESKTOP_CLOSE_GRACE_SECONDS = 10.0
@@ -2261,6 +2263,95 @@ def _wait_for_run_config(
     )
 
 
+def _wait_for_foxglove_client_ready(
+    *,
+    dependencies: CoordinatorDependencies,
+    owner: Any,
+    base_identity: Any,
+    config: Mapping[str, Any],
+    coordinator_logs: Sequence[pathlib.Path],
+) -> None:
+    ready_files = config.get("readyFiles")
+    if not isinstance(ready_files, Mapping):
+        _raise(
+            protocol.FAIL_FOXRUN_CHILD,
+            "Owned FoxRun run-config has no actor readiness map.",
+        )
+    raw_ready_path = ready_files.get("foxglove-client")
+    if not isinstance(raw_ready_path, str):
+        _raise(
+            protocol.FAIL_FOXRUN_CHILD,
+            "Owned FoxRun run-config has no client readiness path.",
+        )
+    ready_path = pathlib.Path(raw_ready_path)
+    deadline = (
+        _clock_value(dependencies)
+        + BASE_READINESS_TIMEOUT_SECONDS
+    )
+    while _clock_value(dependencies) < deadline:
+        _require_coordinator_log_bounds(
+            dependencies,
+            coordinator_logs,
+        )
+        _poll_base_running(owner, base_identity)
+        if dependencies.path_exists(ready_path):
+            try:
+                document = dependencies.load_json_snapshot(
+                    ready_path,
+                    MAX_ACTOR_READY_BYTES,
+                )
+            except Exception:
+                _raise(
+                    protocol.FAIL_FOXRUN_CHILD,
+                    "Owned FoxRun client readiness is unreadable.",
+                )
+            expected_keys = {
+                "schemaVersion",
+                "runId",
+                "case",
+                "role",
+                "tokenSha256",
+                "ready",
+                "details",
+            }
+            if (
+                not isinstance(document, Mapping)
+                or set(document) != expected_keys
+                or type(document.get("schemaVersion")) is not int
+                or document.get("schemaVersion") != 1
+                or document.get("runId") != config.get("runId")
+                or document.get("case") != config.get("case")
+                or document.get("role") != "foxglove-client"
+                or document.get("tokenSha256")
+                != base_protocol.token_sha256(str(config.get("token")))
+                or document.get("ready") is not True
+            ):
+                _raise(
+                    protocol.FAIL_FOXRUN_CHILD,
+                    "Owned FoxRun client readiness is stale or malformed.",
+                )
+            details = document.get("details")
+            topic_count = len(config.get("topics", ()))
+            if (
+                not isinstance(details, Mapping)
+                or set(details) != {"state", "host", "topicCount"}
+                or details.get("state") != "connect-loop-ready"
+                or details.get("host") != "loopback"
+                or type(details.get("topicCount")) is not int
+                or details.get("topicCount") != topic_count
+            ):
+                _raise(
+                    protocol.FAIL_FOXRUN_CHILD,
+                    "Owned FoxRun client readiness has another state.",
+                )
+            return
+        _sleep_poll(dependencies)
+    _raise(
+        protocol.FAIL_FOXRUN_CHILD,
+        "Owned FoxRun client readiness did not appear before its deadline.",
+    )
+
+
 def _wait_for_context_and_initial(
     *,
     dependencies: CoordinatorDependencies,
@@ -2569,6 +2660,7 @@ def _mapped_failure(
         "job-create": protocol.FAIL_DESKTOP_PREFLIGHT,
         "base-start": protocol.FAIL_FOXRUN_CHILD,
         "base-config": protocol.FAIL_FOXRUN_CHILD,
+        "base-readiness": protocol.FAIL_FOXRUN_CHILD,
         "connection": protocol.FAIL_DESKTOP_CONNECTION,
         "desktop-start": protocol.FAIL_DESKTOP_START,
         "desktop-identity": protocol.FAIL_DESKTOP_IDENTITY,
@@ -2938,6 +3030,14 @@ def run_acceptance(
         summary["identity"]["tokenSha256"] = token_digest
         unity_log = pathlib.Path(str(config["unityLog"]))
 
+        stage = "base-readiness"
+        _wait_for_foxglove_client_ready(
+            dependencies=active,
+            owner=owner,
+            base_identity=base_identity,
+            config=config,
+            coordinator_logs=coordinator_logs,
+        )
         stage = "connection"
         (
             context_line,
