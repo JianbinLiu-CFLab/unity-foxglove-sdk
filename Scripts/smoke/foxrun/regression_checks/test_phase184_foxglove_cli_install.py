@@ -595,6 +595,36 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         ):
             installer.parse_args([])
 
+    def test_direct_script_entrypoint_bootstraps_repository_imports(self):
+        environment = dict(os.environ)
+        environment.pop("PYTHONHOME", None)
+        environment.pop("PYTHONPATH", None)
+        script = (
+            ROOT
+            / "Scripts"
+            / "smoke"
+            / "foxrun"
+            / "phase184_foxglove_cli_install.py"
+        )
+
+        completed = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        self.assertEqual(
+            0,
+            completed.returncode,
+            completed.stdout + completed.stderr,
+        )
+        self.assertIn("--install-path", completed.stdout)
+        self.assertNotIn("ModuleNotFoundError", completed.stderr)
+
     def test_read_only_verifier_returns_immutable_exact_identity_and_document(self):
         environment = FakeEnvironment(self.physical_root)
         secret_backup = (

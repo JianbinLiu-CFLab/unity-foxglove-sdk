@@ -28,6 +28,11 @@ from collections.abc import Callable, Mapping, Sequence
 from ctypes import wintypes
 from typing import Any
 
+SCRIPT_PATH = pathlib.Path(__file__).resolve()
+REPOSITORY_ROOT = SCRIPT_PATH.parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from Scripts.smoke.foxrun import (
     phase184_foxglove_desktop_live_protocol as protocol,
 )
@@ -36,7 +41,6 @@ from Scripts.smoke.foxrun import (
 RELEASE_ENDPOINT = (
     "https://api.github.com/repos/foxglove/foxglove-cli/releases/latest"
 )
-REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_RECEIPT_PATH = (
     REPOSITORY_ROOT
     / "build"
