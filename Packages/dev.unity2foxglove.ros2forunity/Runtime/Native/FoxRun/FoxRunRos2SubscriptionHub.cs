@@ -1610,6 +1610,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Application.quitting -= OnApplicationQuitting;
         }
 
+        internal static void StopForNativeRuntimeShutdown()
+        {
+            var instance = _instance;
+            if (instance != null)
+                instance.BeginShutdown();
+        }
+
         private void WarnHostOnce(string key, string message)
         {
             if (_hostWarnings.Add(key))

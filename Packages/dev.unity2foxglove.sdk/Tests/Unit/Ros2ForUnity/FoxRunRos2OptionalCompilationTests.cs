@@ -153,6 +153,45 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void PlayModeGuardStopsFoxRunEndpointsBeforeSharedRosShutdown()
+        {
+            var source = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/"
+                + "Ros2ForUnityRuntimePlayModeGuard.cs");
+            const string methodMarker =
+                "private static void RequestNativeRuntimeShutdownBeforeReload(string reason)";
+            var methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
+            var methodEnd = source.IndexOf(
+                "private static bool TryInvokeStatic(",
+                methodStart,
+                StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0 && methodEnd > methodStart);
+            var method = source.Substring(methodStart, methodEnd - methodStart);
+            var subscriptionStop = method.IndexOf(
+                "FoxRunRos2SubscriptionHubTypeName",
+                StringComparison.Ordinal);
+            var publisherStop = method.IndexOf(
+                "FoxRunRos2CustomPublisherHubTypeName",
+                StringComparison.Ordinal);
+            var executorStop = method.IndexOf(
+                "\"StopAllExecutorsForRosShutdown\"",
+                StringComparison.Ordinal);
+            var sharedShutdown = method.IndexOf(
+                "\"ShutdownShared\"",
+                StringComparison.Ordinal);
+
+            Assert.True(subscriptionStop >= 0);
+            Assert.True(publisherStop > subscriptionStop);
+            Assert.True(executorStop > publisherStop);
+            Assert.True(sharedShutdown > executorStop);
+            Assert.Contains(
+                "\"StopForNativeRuntimeShutdown\"",
+                method,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomPublisherHubStopsOnSynchronousPublishSessionEnd()
         {
             var hub = Text(
@@ -287,6 +326,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void NativeFoxRunShutdownHooksAreReflectionDiscoverable()
+        {
+            const string methodName = "StopForNativeRuntimeShutdown";
+            const System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.NonPublic;
+
+            Assert.NotNull(
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub)
+                    .GetMethod(methodName, flags));
+            Assert.NotNull(
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CustomPublisherHub)
+                    .GetMethod(methodName, flags));
+        }
+
         [Fact]
         public void NativeLaneCompiledNamedPhase179TypesAndDefine()
         {

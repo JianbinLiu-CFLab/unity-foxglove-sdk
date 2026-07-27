@@ -611,6 +611,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 Debug.LogWarning("[FoxRun ROS2] " + message);
         }
 
+        internal static void StopForNativeRuntimeShutdown()
+        {
+            var instance = _instance;
+            if (instance == null)
+                return;
+            instance._stopping = true;
+            instance.SetManager(null);
+            instance.StopBindings();
+        }
+
         private static int CompareBehaviours(MonoBehaviour left, MonoBehaviour right)
         {
             var leftName = left == null ? string.Empty : left.GetType().FullName ?? string.Empty;

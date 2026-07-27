@@ -46,6 +46,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             "_defaultFoxRunPublishTargets";
         private const string GeneratedFoxRunSchemaInfoTypeName =
             "Unity.FoxgloveSDK.Generated.FoxRunSchemaInfo";
+        private const string FoxRunRos2SubscriptionHubTypeName =
+            "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub";
+        private const string FoxRunRos2CustomPublisherHubTypeName =
+            "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CustomPublisherHub";
         private const double NativeReloadUnlockDelaySeconds = 2.0;
         private const double ZenohRouterProbeCacheSeconds = 2.0;
 
@@ -643,6 +647,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
+            // Remove FoxRun endpoints while their shared R2FU node is still
+            // alive. Waiting until the next MonoBehaviour Update would let
+            // ShutdownShared dispose the node first, turning an otherwise
+            // clean Play Mode exit into a false teardown failure.
+            TryInvokeStatic(
+                FoxRunRos2SubscriptionHubTypeName,
+                "StopForNativeRuntimeShutdown");
+            TryInvokeStatic(
+                FoxRunRos2CustomPublisherHubTypeName,
+                "StopForNativeRuntimeShutdown");
             var stoppedExecutors = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2UnityComponentSuffix, "StopAllExecutorsForRosShutdown");
             var shutdownShared = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2ForUnitySuffix, "ShutdownShared");
             if (!stoppedExecutors && !shutdownShared)
