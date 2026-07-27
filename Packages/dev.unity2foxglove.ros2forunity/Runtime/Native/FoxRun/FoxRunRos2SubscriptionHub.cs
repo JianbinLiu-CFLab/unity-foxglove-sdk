@@ -30,14 +30,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     internal sealed class FoxRunRos2HostCleanupQueue
     {
         private readonly int _hostThreadId;
+        private readonly SynchronizationContext _hostContext;
+        private readonly Action<Exception> _reportFailure;
         private readonly ConcurrentQueue<Action> _pending =
             new ConcurrentQueue<Action>();
+        private int _hostDrainPosted;
 
         internal FoxRunRos2HostCleanupQueue(int hostThreadId)
+            : this(hostThreadId, SynchronizationContext.Current, null)
+        {
+        }
+
+        internal FoxRunRos2HostCleanupQueue(
+            int hostThreadId,
+            SynchronizationContext hostContext,
+            Action<Exception> reportFailure)
         {
             if (hostThreadId <= 0)
                 throw new ArgumentOutOfRangeException(nameof(hostThreadId));
             _hostThreadId = hostThreadId;
+            _hostContext = hostContext;
+            _reportFailure = reportFailure;
         }
 
         internal void Dispatch(Action cleanup)
@@ -50,6 +63,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
             _pending.Enqueue(cleanup);
+            ScheduleHostDrain();
         }
 
         internal int Drain(Action<Exception> reportFailure)
@@ -117,6 +131,52 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return cleanupComplete();
                 }
                 Thread.Sleep(1);
+            }
+        }
+
+        private void ScheduleHostDrain()
+        {
+            if (_hostContext == null
+                || Interlocked.CompareExchange(ref _hostDrainPosted, 1, 0) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _hostContext.Post(_ => DrainFromHostContext(), null);
+            }
+            catch (Exception exception)
+            {
+                Interlocked.Exchange(ref _hostDrainPosted, 0);
+                ReportFailure(exception);
+            }
+        }
+
+        private void DrainFromHostContext()
+        {
+            Interlocked.Exchange(ref _hostDrainPosted, 0);
+            try
+            {
+                Drain(_reportFailure);
+            }
+            catch (Exception exception)
+            {
+                ReportFailure(exception);
+            }
+            if (!_pending.IsEmpty)
+                ScheduleHostDrain();
+        }
+
+        private void ReportFailure(Exception exception)
+        {
+            try
+            {
+                _reportFailure?.Invoke(exception);
+            }
+            catch (Exception)
+            {
+                // A diagnostic callback cannot strand remaining cleanup.
             }
         }
     }
@@ -772,7 +832,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void Awake()
         {
             _hostThreadId = Thread.CurrentThread.ManagedThreadId;
-            _hostCleanupQueue = new FoxRunRos2HostCleanupQueue(_hostThreadId);
+            _hostCleanupQueue = new FoxRunRos2HostCleanupQueue(
+                _hostThreadId,
+                SynchronizationContext.Current,
+                exception => WarnHostOnce(
+                    "deferred-cleanup|" + exception.GetType().Name,
+                    "Deferred native ROS2 stream cleanup failed: "
+                    + FoxRunRos2PublicDiagnostic.Describe(
+                        FoxRunRos2RegistrationError.TeardownFailure)));
             if (_instance != null && _instance != this)
             {
                 _duplicate = true;
@@ -1450,9 +1517,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             ExceptionDispatchInfo fatal = null;
             var cleanupComplete = false;
+            var owner = _nodeOwner;
+            _nodeOwner = null;
             try
             {
-                StopHostedBindingsAndDrainDeferredCleanup(
+                StopHostedBindingsAndDrainDeferredCleanupThenReleaseHost(
                     _bindings,
                     _hostCleanupQueue,
                     TimeSpan.FromMilliseconds(DeferredCleanupDrainTimeoutMilliseconds),
@@ -1461,6 +1530,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         "Native ROS2 subscription teardown failed: "
                         + FoxRunRos2PublicDiagnostic.Describe(
                             FoxRunRos2RegistrationError.TeardownFailure)),
+                    () => owner?.ReleaseHostOwnership(),
                     out cleanupComplete);
             }
             catch (Exception exception)
@@ -1472,8 +1542,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 WarnHostOnce(
                     "stop-binding|deferred-cleanup-timeout",
                     "Native ROS2 subscription teardown remains pending after the bounded host cleanup window.");
-                fatal?.Throw();
-                return;
             }
             _bindings.Clear();
             _stale.Clear();
@@ -1483,28 +1551,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _existingBindings.Clear();
             _diagnostics.Clear();
             _runtimeDiagnosticContext = FoxRunRos2RuntimeDiagnosticContext.Unknown;
-            var owner = _nodeOwner;
-            _nodeOwner = null;
-            if (owner != null)
-            {
-                try
-                {
-                    owner.ReleaseHostOwnership();
-                }
-                catch (Exception exception) when (
-                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
-                {
-                    WarnHostOnce(
-                        "release-node|" + exception.GetType().Name,
-                        "Native ROS2 FoxRun node removal failed: "
-                        + FoxRunRos2PublicDiagnostic.Describe(
-                            FoxRunRos2RegistrationError.TeardownFailure));
-                }
-                catch (Exception exception)
-                {
-                    fatal ??= ExceptionDispatchInfo.Capture(exception);
-                }
-            }
             _ros2Unity = null;
             fatal?.Throw();
         }
@@ -1581,6 +1627,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 fatal ??= ExceptionDispatchInfo.Capture(exception);
                 cleanupComplete = HostedCleanupIsComplete(bindings);
+            }
+
+            fatal?.Throw();
+        }
+
+        internal static void StopHostedBindingsAndDrainDeferredCleanupThenReleaseHost(
+            IReadOnlyList<IFoxRunRos2SubscriptionHostedCleanup> bindings,
+            FoxRunRos2HostCleanupQueue cleanupQueue,
+            TimeSpan timeout,
+            Action<Exception> reportFailure,
+            Action releaseHostOwnership,
+            out bool cleanupComplete)
+        {
+            if (releaseHostOwnership == null)
+                throw new ArgumentNullException(nameof(releaseHostOwnership));
+
+            cleanupComplete = false;
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                StopHostedBindingsAndDrainDeferredCleanup(
+                    bindings,
+                    cleanupQueue,
+                    timeout,
+                    reportFailure,
+                    out cleanupComplete);
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
+
+            try
+            {
+                releaseHostOwnership();
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                try
+                {
+                    reportFailure?.Invoke(exception);
+                }
+                catch (Exception reportException)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                }
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
             }
 
             fatal?.Throw();

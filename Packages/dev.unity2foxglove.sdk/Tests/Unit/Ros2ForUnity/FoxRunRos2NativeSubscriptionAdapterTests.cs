@@ -603,6 +603,53 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void SubscriptionHubReleasesHostOwnershipWhenDeferredCleanupTimesOut()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: false);
+            var hostReleaseCount = 0;
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanupThenReleaseHost(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.Zero,
+                _ => { },
+                () => hostReleaseCount++,
+                out var cleanupComplete);
+
+            Assert.False(cleanupComplete);
+            Assert.Equal(1, hostReleaseCount);
+            Assert.Equal(new[] { "stop" }, cleanupOrder);
+        }
+
+        [Fact]
+        public void HostCleanupQueuePostsAHostDrainIndependentOfHubUpdate()
+        {
+            var hostContext = new CapturingSynchronizationContext();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId,
+                hostContext,
+                _ => { });
+            var cleanupCount = 0;
+            var dispatchThread = new Thread(
+                () => queue.Dispatch(() => cleanupCount++))
+            {
+                IsBackground = true
+            };
+
+            dispatchThread.Start();
+            Assert.True(dispatchThread.Join(TimeSpan.FromSeconds(5)));
+            Assert.Equal(0, cleanupCount);
+            Assert.True(hostContext.RunOne());
+            Assert.Equal(1, cleanupCount);
+        }
+
+        [Fact]
         public void StopDoesNotWaitForBlockedRegisterAndDeferredReleaseIsUnique()
         {
             using var registerEntered = new ManualResetEventSlim();
@@ -1890,6 +1937,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     IsBackground = true
                 };
                 callback.Start();
+            }
+        }
+
+        private sealed class CapturingSynchronizationContext :
+            SynchronizationContext
+        {
+            private readonly Queue<Action> _callbacks = new Queue<Action>();
+
+            public override void Post(SendOrPostCallback callback, object state)
+            {
+                lock (_callbacks)
+                    _callbacks.Enqueue(() => callback(state));
+            }
+
+            public bool RunOne()
+            {
+                Action callback;
+                lock (_callbacks)
+                {
+                    if (_callbacks.Count == 0)
+                        return false;
+                    callback = _callbacks.Dequeue();
+                }
+                callback();
+                return true;
             }
         }
 
