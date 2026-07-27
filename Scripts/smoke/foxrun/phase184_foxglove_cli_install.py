@@ -83,6 +83,7 @@ def _fail(message: object) -> protocol.AcceptanceFailure:
 class ReleaseAsset:
     release_tag: str
     release_version: str
+    asset_name: str
     asset_url: str
 
 
@@ -684,9 +685,11 @@ def select_release_asset(release: object) -> ReleaseAsset:
 
     matches: list[Mapping[str, object]] = []
     for asset in assets:
+        asset_name = asset.get("name") if isinstance(asset, Mapping) else None
         if (
             isinstance(asset, Mapping)
-            and asset.get("name") == protocol.CLI_ASSET_NAME
+            and isinstance(asset_name, str)
+            and asset_name in protocol.CLI_ASSET_NAMES
         ):
             matches.append(asset)
     if len(matches) != 1:
@@ -697,9 +700,13 @@ def select_release_asset(release: object) -> ReleaseAsset:
         asset_url,
         expected_release_version=release_version,
     )
+    selected_name = str(matches[0]["name"])
+    if not isinstance(asset_url, str) or asset_url.rsplit("/", 1)[-1] != selected_name:
+        raise _fail("Foxglove CLI release asset name and URL do not match.")
     return ReleaseAsset(
         release_tag=str(release_tag),
         release_version=release_version,
+        asset_name=selected_name,
         asset_url=str(asset_url),
     )
 
@@ -1571,7 +1578,7 @@ def install_cli(
                 "releaseTag": release.release_tag,
                 "releaseVersion": release.release_version,
                 "architecture": protocol.CLI_ARCHITECTURE,
-                "assetName": protocol.CLI_ASSET_NAME,
+                "assetName": release.asset_name,
                 "assetUrl": release.asset_url,
                 "downloadSha256": download_sha256,
                 "downloadVersion": download_version,

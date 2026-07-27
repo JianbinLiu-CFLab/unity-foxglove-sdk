@@ -36,6 +36,11 @@ OFFICIAL_ASSET_URL = (
     "https://github.com/foxglove/foxglove-cli/releases/download/"
     "v1.2.3/foxglove-windows-amd64.exe"
 )
+CURRENT_OFFICIAL_ASSET_NAME = "foxglove-windows-amd64"
+CURRENT_OFFICIAL_ASSET_URL = (
+    "https://github.com/foxglove/foxglove-cli/releases/download/"
+    f"v1.2.3/{CURRENT_OFFICIAL_ASSET_NAME}"
+)
 INSTALL_PATH = r"C:\Phase184Tests\go\bin\foxglove.exe"
 UNC_INSTALL_PATH = r"\\phase184-server\share\go\bin\foxglove.exe"
 RECEIPT_PATH = r"C:\Phase184Tests\receipts\foxglove-cli.json"
@@ -1000,15 +1005,23 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                     "browser_download_url": "https://example.invalid/ignored",
                 },
                 {
-                    "name": protocol.CLI_ASSET_NAME,
-                    "browser_download_url": OFFICIAL_ASSET_URL,
+                    "name": CURRENT_OFFICIAL_ASSET_NAME,
+                    "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
+                },
+                {
+                    "name": "foxglove-windows-arm64",
+                    "browser_download_url": (
+                        "https://github.com/foxglove/foxglove-cli/releases/"
+                        "download/v1.2.3/foxglove-windows-arm64"
+                    ),
                 },
             ],
         }
         selected = installer.select_release_asset(valid)
         self.assertEqual("v1.2.3", selected.release_tag)
         self.assertEqual("1.2.3", selected.release_version)
-        self.assertEqual(OFFICIAL_ASSET_URL, selected.asset_url)
+        self.assertEqual(CURRENT_OFFICIAL_ASSET_NAME, selected.asset_name)
+        self.assertEqual(CURRENT_OFFICIAL_ASSET_URL, selected.asset_url)
 
         invalid_releases = (
             {"tag_name": "latest", "assets": valid["assets"]},
@@ -1021,8 +1034,8 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                         "browser_download_url": OFFICIAL_ASSET_URL,
                     },
                     {
-                        "name": protocol.CLI_ASSET_NAME,
-                        "browser_download_url": OFFICIAL_ASSET_URL,
+                        "name": CURRENT_OFFICIAL_ASSET_NAME,
+                        "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
                     },
                 ],
             },
@@ -1034,6 +1047,15 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
                         "browser_download_url": (
                             "https://evil.invalid/foxglove-windows-amd64.exe"
                         ),
+                    }
+                ],
+            },
+            {
+                "tag_name": "v1.2.3",
+                "assets": [
+                    {
+                        "name": CURRENT_OFFICIAL_ASSET_NAME,
+                        "browser_download_url": OFFICIAL_ASSET_URL,
                     }
                 ],
             },
@@ -1138,6 +1160,34 @@ class Phase184FoxgloveCliInstallTests(unittest.TestCase):
         self.assertLess(write_index, post_write_run_index)
         self.assertLess(post_write_run_index, resolve_indexes[1])
         self.assertLess(resolve_indexes[1], load_index)
+
+    def test_install_receipt_records_the_exact_selected_official_asset_alias(self):
+        environment = FakeEnvironment(self.physical_root)
+        environment.release = {
+            "tag_name": "v1.2.3",
+            "assets": [
+                {
+                    "name": CURRENT_OFFICIAL_ASSET_NAME,
+                    "browser_download_url": CURRENT_OFFICIAL_ASSET_URL,
+                },
+                {
+                    "name": "foxglove-windows-arm64",
+                    "browser_download_url": (
+                        "https://github.com/foxglove/foxglove-cli/releases/"
+                        "download/v1.2.3/foxglove-windows-arm64"
+                    ),
+                },
+            ],
+        }
+
+        installer.main(
+            ["--install-path", INSTALL_PATH, "--receipt", RECEIPT_PATH],
+            dependencies=environment.dependencies(),
+        )
+
+        receipt = environment.fs.load_receipt(RECEIPT_PATH)
+        self.assertEqual(CURRENT_OFFICIAL_ASSET_NAME, receipt["assetName"])
+        self.assertEqual(CURRENT_OFFICIAL_ASSET_URL, receipt["assetUrl"])
 
     def test_replacement_preserves_revision_and_hash_qualified_backup(self):
         environment = FakeEnvironment(self.physical_root, existing=OLD_BYTES)

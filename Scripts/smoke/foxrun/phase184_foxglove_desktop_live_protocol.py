@@ -26,6 +26,12 @@ from urllib.parse import urlsplit
 CLI_RECEIPT_SCHEMA_VERSION = 1
 CLI_ARCHITECTURE = "windows-amd64"
 CLI_ASSET_NAME = "foxglove-windows-amd64.exe"
+CLI_ASSET_NAMES = frozenset(
+    {
+        "foxglove-windows-amd64",
+        CLI_ASSET_NAME,
+    }
+)
 CLI_RECEIPT_KEYS = frozenset(
     {
         "schemaVersion",
@@ -215,9 +221,15 @@ def validate_official_asset_url(
         len(segments) != 7
         or segments[:5]
         != ["", "foxglove", "foxglove-cli", "releases", "download"]
-        or segments[6] != CLI_ASSET_NAME
+        or segments[6] not in CLI_ASSET_NAMES
     ):
         raise _fail("Foxglove CLI asset URL is not the exact Windows asset.")
+    canonical_url = (
+        "https://github.com/foxglove/foxglove-cli/releases/download/"
+        f"{segments[5]}/{segments[6]}"
+    )
+    if asset_url != canonical_url:
+        raise _fail("Foxglove CLI asset URL is not canonical.")
 
     asset_release_version = normalize_semantic_version(segments[5])
     if expected_release_version is not None:
@@ -349,7 +361,8 @@ def _validate_receipt(receipt: object) -> tuple[dict[str, object], str, str, str
         raise _fail("CLI receipt schemaVersion is unsupported.")
     if receipt["architecture"] != CLI_ARCHITECTURE:
         raise _fail("CLI receipt architecture is not windows-amd64.")
-    if receipt["assetName"] != CLI_ASSET_NAME:
+    asset_name = receipt["assetName"]
+    if not isinstance(asset_name, str) or asset_name not in CLI_ASSET_NAMES:
         raise _fail("CLI receipt assetName is not the exact Windows asset.")
 
     release_tag = _require_receipt_string(
@@ -391,6 +404,8 @@ def _validate_receipt(receipt: object) -> tuple[dict[str, object], str, str, str
         asset_url,
         expected_release_version=release_version,
     )
+    if urlsplit(asset_url).path.rsplit("/", 1)[-1] != asset_name:
+        raise _fail("CLI receipt assetName does not match its official asset URL.")
 
     download_sha256 = validate_sha256(receipt["downloadSha256"])
     installed_sha256 = validate_sha256(receipt["installedSha256"])

@@ -94,6 +94,15 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
         self.assertEqual(
             frozenset(
                 {
+                    "foxglove-windows-amd64",
+                    "foxglove-windows-amd64.exe",
+                }
+            ),
+            protocol.CLI_ASSET_NAMES,
+        )
+        self.assertEqual(
+            frozenset(
+                {
                     "schemaVersion",
                     "releaseTag",
                     "releaseVersion",
@@ -216,18 +225,22 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
 
     def test_official_asset_url_requires_exact_origin_repo_route_tag_and_asset(self):
         for tag in ("v1.2.3", "1.2.3"):
-            with self.subTest(tag=tag):
-                url = (
-                    "https://github.com/foxglove/foxglove-cli/releases/download/"
-                    f"{tag}/foxglove-windows-amd64.exe"
-                )
-                self.assertEqual(
-                    "1.2.3",
-                    protocol.validate_official_asset_url(
-                        url,
-                        expected_release_version="v1.2.3",
-                    ),
-                )
+            for asset_name in (
+                "foxglove-windows-amd64",
+                "foxglove-windows-amd64.exe",
+            ):
+                with self.subTest(tag=tag, asset_name=asset_name):
+                    url = (
+                        "https://github.com/foxglove/foxglove-cli/"
+                        f"releases/download/{tag}/{asset_name}"
+                    )
+                    self.assertEqual(
+                        "1.2.3",
+                        protocol.validate_official_asset_url(
+                            url,
+                            expected_release_version="v1.2.3",
+                        ),
+                    )
 
         invalid = (
             "http://github.com/foxglove/foxglove-cli/releases/download/v1.2.3/"
@@ -252,6 +265,16 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
             "foxglove-windows-amd64.exe",
             "https://github.com/foxglove/foxglove-cli/releases/download/v1.2.4/"
             "foxglove-windows-amd64.exe",
+            "\x00https://github.com/foxglove/foxglove-cli/releases/download/"
+            "v1.2.3/foxglove-windows-amd64.exe",
+            "HTTPS://github.com/foxglove/foxglove-cli/releases/download/"
+            "v1.2.3/foxglove-windows-amd64.exe",
+            "https://git\thub.com/foxglove/foxglove-cli/releases/download/"
+            "v1.2.3/foxglove-windows-amd64.exe",
+            "https://github.com/foxglove/foxglove-cli/releases/download/"
+            "v1.2.3/foxglove-windows-amd64.exe?",
+            "https://github.com/foxglove/foxglove-cli/releases/download/"
+            "v1.2.3/foxglove-windows-amd64.exe#",
         )
         for value in invalid:
             with self.subTest(value=value):
@@ -261,6 +284,38 @@ class Phase184FoxgloveDesktopLiveProtocolTests(unittest.TestCase):
                         expected_release_version="1.2.3",
                     )
                 )
+
+    def test_receipt_accepts_each_exact_asset_alias_only_when_url_matches(self):
+        for asset_name in (
+            "foxglove-windows-amd64",
+            "foxglove-windows-amd64.exe",
+        ):
+            with self.subTest(asset_name=asset_name):
+                receipt = valid_receipt()
+                receipt["assetName"] = asset_name
+                receipt["assetUrl"] = (
+                    "https://github.com/foxglove/foxglove-cli/releases/"
+                    f"download/v1.2.3/{asset_name}"
+                )
+                self.assertEqual(
+                    receipt,
+                    protocol.validate_cli_receipt(
+                        receipt,
+                        receipt["installedPath"],
+                        receipt["installedVersion"],
+                        receipt["installedSha256"],
+                    ),
+                )
+
+        mismatched = valid_receipt()
+        mismatched["assetName"] = "foxglove-windows-amd64"
+        with self.assertRaises(protocol.AcceptanceFailure):
+            protocol.validate_cli_receipt(
+                mismatched,
+                mismatched["installedPath"],
+                mismatched["installedVersion"],
+                mismatched["installedSha256"],
+            )
 
     def test_valid_receipt_matches_live_cli_with_windows_path_normalization(self):
         receipt = valid_receipt()
