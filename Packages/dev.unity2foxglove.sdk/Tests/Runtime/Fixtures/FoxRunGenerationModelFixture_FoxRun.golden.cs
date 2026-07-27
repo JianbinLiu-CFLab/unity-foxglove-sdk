@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private bool __foxRunCaptureActive_2;
         private global::System.Collections.Generic.List<float> __foxRunCapture_2_0;
         private bool __foxRunCaptureActive_3;
-        private global::int? __foxRunCapture_3_0;
+        private int? __foxRunCapture_3_0;
         private bool __foxRunCaptureActive_4;
         private int __foxRunCapture_4_0;
         private bool __foxRunCaptureActive_5;
