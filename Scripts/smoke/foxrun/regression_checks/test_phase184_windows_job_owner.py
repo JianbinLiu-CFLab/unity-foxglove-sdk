@@ -80,6 +80,7 @@ class FakeWindowsApi:
         self.membership_by_pid: dict[int, bool] = {}
         self.wait_results: dict[int, bool] = {202: True}
         self.poll_results: dict[int, int | None] = {202: None}
+        self.poll_failures_by_handle: dict[int, BaseException] = {}
         self.waited_handles: list[int] = []
         self.last_create: dict[str, object] | None = None
         self.fail_operation: str | None = None
@@ -209,6 +210,9 @@ class FakeWindowsApi:
         return self.wait_results.get(process_handle, False)
 
     def poll_process(self, process_handle: int) -> int | None:
+        failure = self.poll_failures_by_handle.get(process_handle)
+        if failure is not None:
+            raise failure
         return self.poll_results.get(process_handle)
 
     def terminate_process(self, process_handle: int) -> None:
@@ -729,6 +733,126 @@ class WindowsJobOwnerPureTests(unittest.TestCase):
         self.assertEqual([], api.close_requests)
         self.assertEqual([], api.window_posted_pids)
         owner.close()
+
+    def test_member_snapshot_skips_only_a_pid_proven_gone_before_open(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        vanished = job_owner.ProcessIdentity(
+            7001,
+            987_654_322,
+            OTHER_PATH,
+        )
+        api.member_pids = (launched.pid, vanished.pid)
+        api.identities_by_pid[vanished.pid] = vanished
+        api.open_failures_by_pid[vanished.pid] = (
+            _InjectedProcessOpenFailure(87)
+        )
+        api.pid_exists_by_pid[vanished.pid] = False
+
+        self.assertEqual((launched,), owner.members())
+        self.assertEqual([vanished.pid], api.pid_existence_queries)
+        owner.close()
+
+    def test_member_snapshot_open_failure_still_fails_if_pid_exists(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        inaccessible = job_owner.ProcessIdentity(
+            7002,
+            987_654_323,
+            OTHER_PATH,
+        )
+        api.member_pids = (launched.pid, inaccessible.pid)
+        api.identities_by_pid[inaccessible.pid] = inaccessible
+        api.open_failures_by_pid[inaccessible.pid] = (
+            _InjectedProcessOpenFailure(5)
+        )
+        api.pid_exists_by_pid[inaccessible.pid] = True
+
+        self.assert_ownership_failure(
+            owner.members,
+            job_owner.FAIL_PROCESS_OWNERSHIP,
+        )
+        self.assertEqual([inaccessible.pid], api.pid_existence_queries)
+        owner.close()
+
+    def test_member_snapshot_skips_identity_capture_only_after_handle_exit(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        vanished_pid = 7003
+        vanished_handle = 100_000 + vanished_pid
+        api.member_pids = (launched.pid, vanished_pid)
+        api.membership_by_pid[vanished_pid] = True
+        api.poll_results[vanished_handle] = 0
+
+        self.assertEqual((launched,), owner.members())
+        self.assertIn(vanished_handle, api.closed_handles)
+        owner.close()
+
+    def test_member_snapshot_skips_membership_race_only_after_handle_exit(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        vanished = job_owner.ProcessIdentity(
+            7004,
+            987_654_324,
+            OTHER_PATH,
+        )
+        vanished_handle = 100_000 + vanished.pid
+        api.member_pids = (launched.pid, vanished.pid)
+        api.identities_by_pid[vanished.pid] = vanished
+        api.membership_by_pid[vanished.pid] = False
+        api.poll_results[vanished_handle] = 0
+
+        self.assertEqual((launched,), owner.members())
+        self.assertIn(vanished_handle, api.closed_handles)
+        owner.close()
+
+    def test_member_snapshot_missing_live_identity_remains_fail_closed(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        inaccessible_pid = 7005
+        api.member_pids = (launched.pid, inaccessible_pid)
+        api.membership_by_pid[inaccessible_pid] = True
+
+        self.assert_ownership_failure(
+            owner.members,
+            job_owner.FAIL_PROCESS_IDENTITY,
+        )
+        owner.close()
+
+    def test_member_snapshot_successful_identity_is_skipped_after_final_exit_poll(self):
+        owner, api = self.make_owner()
+        launched = self.launch(owner)
+        query_handle = 100_000 + launched.pid
+        api.poll_results[query_handle] = 0
+
+        self.assertEqual((), owner.members())
+        self.assert_ownership_failure(
+            lambda: owner.require_owned_identity(launched),
+            job_owner.FAIL_DESKTOP_HANDOFF,
+        )
+        self.assertIn(query_handle, api.closed_handles)
+        owner.close()
+
+    def test_member_snapshot_final_poll_error_or_invalid_result_fails_closed(self):
+        for mode in ("error", "invalid"):
+            with self.subTest(mode=mode):
+                owner, api = self.make_owner()
+                launched = self.launch(owner)
+                query_handle = 100_000 + launched.pid
+                if mode == "error":
+                    api.poll_failures_by_handle[query_handle] = OSError(
+                        5,
+                        "injected final poll failure",
+                    )
+                else:
+                    api.poll_results[query_handle] = "running"
+
+                self.assert_ownership_failure(
+                    owner.members,
+                    job_owner.FAIL_PROCESS_OWNERSHIP,
+                )
+                self.assertIn(query_handle, api.closed_handles)
+                owner.close()
 
     def test_ordinary_and_extended_drive_or_unc_path_aliases_match_selected_executable(self):
         aliases = (

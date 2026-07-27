@@ -614,38 +614,94 @@ class WindowsJobOwner:
         for pid in pids:
             process_handle = 0
             try:
-                process_handle = int(api.open_process_for_query(pid))
+                try:
+                    process_handle = int(api.open_process_for_query(pid))
+                except Exception:
+                    process_handle = 0
                 if process_handle <= 0:
-                    raise OSError("Job member process could not be opened.")
-                if not bool(api.is_process_in_job(process_handle, job_handle)):
-                    raise OSError("Opened process is not in the exact Job.")
-            except Exception:
+                    try:
+                        exists = api.process_id_exists(pid)
+                    except Exception:
+                        exists = None
+                    if exists is False:
+                        continue
+                    raise _fail(
+                        FAIL_PROCESS_OWNERSHIP,
+                        "A Job snapshot PID was not revalidated against the exact Job.",
+                    )
+
+                try:
+                    is_member = bool(
+                        api.is_process_in_job(
+                            process_handle,
+                            job_handle,
+                        )
+                    )
+                except Exception:
+                    is_member = False
+                if not is_member:
+                    try:
+                        exit_code = api.poll_process(process_handle)
+                    except Exception:
+                        exit_code = None
+                    if type(exit_code) is int:
+                        continue
+                    raise _fail(
+                        FAIL_PROCESS_OWNERSHIP,
+                        "A Job snapshot PID was not revalidated against the exact Job.",
+                    )
+
+                try:
+                    identity = api.capture_process_identity(
+                        process_handle,
+                        pid,
+                    )
+                except Exception:
+                    identity = None
+                if (
+                    not isinstance(identity, ProcessIdentity)
+                    or identity.pid != pid
+                ):
+                    try:
+                        exit_code = api.poll_process(process_handle)
+                    except Exception:
+                        exit_code = None
+                    if type(exit_code) is int:
+                        continue
+                    raise _fail(
+                        FAIL_PROCESS_IDENTITY,
+                        "A Job member identity could not be captured.",
+                    )
+
+                expected = expected_by_pid.get(pid)
+                if (
+                    expected is not None
+                    and not _identities_match(identity, expected)
+                ):
+                    raise _fail(
+                        FAIL_PROCESS_IDENTITY,
+                        "A Job member PID no longer has its owned process identity.",
+                    )
+
+                try:
+                    exit_code = api.poll_process(process_handle)
+                except Exception:
+                    raise _fail(
+                        FAIL_PROCESS_OWNERSHIP,
+                        "A Job member live state could not be observed.",
+                    ) from None
+                if exit_code is not None:
+                    if type(exit_code) is int:
+                        continue
+                    raise _fail(
+                        FAIL_PROCESS_OWNERSHIP,
+                        "A Job member live state was invalid.",
+                    )
+                identities.append(identity)
+            finally:
                 if process_handle:
                     with contextlib.suppress(Exception):
                         api.close_handle(process_handle)
-                raise _fail(
-                    FAIL_PROCESS_OWNERSHIP,
-                    "A Job snapshot PID was not revalidated against the exact Job.",
-                ) from None
-            try:
-                identity = api.capture_process_identity(process_handle, pid)
-            except Exception:
-                identity = None
-            finally:
-                with contextlib.suppress(Exception):
-                    api.close_handle(process_handle)
-            if not isinstance(identity, ProcessIdentity) or identity.pid != pid:
-                raise _fail(
-                    FAIL_PROCESS_IDENTITY,
-                    "A Job member identity could not be captured.",
-                )
-            expected = expected_by_pid.get(pid)
-            if expected is not None and not _identities_match(identity, expected):
-                raise _fail(
-                    FAIL_PROCESS_IDENTITY,
-                    "A Job member PID no longer has its owned process identity.",
-                )
-            identities.append(identity)
         return tuple(
             sorted(
                 identities,
