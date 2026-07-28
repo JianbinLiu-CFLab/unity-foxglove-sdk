@@ -521,6 +521,21 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void UnavailableTargetReadinessIsStatusWithoutExceptionWarning()
+        {
+            var fixture = new TargetAwareHubFixture(
+                FoxRunEndpoint.Ros2Native);
+            fixture.Source.Sink(FoxRunEndpoint.Ros2Native).Ready = false;
+
+            Assert.False(fixture.Trigger());
+
+            Assert.True(fixture.TryGetStatus(out var status));
+            Assert.Equal(FoxRunPublishTargetStatus.Unavailable, status.Status);
+            Assert.Equal(FoxRunEndpoint.Ros2Native, status.FailedTargets);
+            Assert.Equal(0, fixture.WarningCount);
+        }
+
+        [Fact]
         public void FoxgloveAndNativeTargetsPublishOrdinaryObserverOnlyOnce()
         {
             var fixture = new TargetAwareHubFixture(

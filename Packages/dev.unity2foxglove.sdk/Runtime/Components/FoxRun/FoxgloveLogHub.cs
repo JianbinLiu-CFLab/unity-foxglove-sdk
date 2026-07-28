@@ -810,23 +810,20 @@ namespace Unity.FoxgloveSDK.Components
                         },
                         isReady: target =>
                         {
-                            var ready = targetSource.FoxgloveLog_IsTargetReady(
+                            // Readiness is an observable target state, not an
+                            // exception. Startup, shutdown, and deliberate
+                            // degraded routes must remain fail-closed without
+                            // turning every unavailable poll into a warning.
+                            // Actual readiness exceptions are still reported
+                            // by FoxRunPublishFanout through onTargetFault.
+                            return targetSource.FoxgloveLog_IsTargetReady(
                                 topicIndex,
                                 target,
                                 contract,
                                 _mgr,
                                 _topicBus,
                                 _sinkRouter,
-                                out var reason);
-                            if (!ready && !string.IsNullOrWhiteSpace(reason))
-                            {
-                                LogSourceFailure(
-                                    source,
-                                    topicIndex,
-                                    operation + " " + target + " readiness",
-                                    new InvalidOperationException(reason));
-                            }
-                            return ready;
+                                out _);
                         },
                         publish: (target, _, timestamp) =>
                         {
