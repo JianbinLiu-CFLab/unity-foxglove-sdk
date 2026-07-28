@@ -313,7 +313,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
 
   test("follow mode retries the same replay time after a stalled request", () => {
     vi.useFakeTimers();
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     try {
       const seekPlayback = vi.fn();
       const fetchMock = vi.fn((_endpoint: string, _init?: RequestInit) => new Promise<Response>(() => {}));
@@ -372,7 +372,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
 
   test("follow parks at the end and does not run away", async () => {
     vi.useFakeTimers();
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     try {
       const seekPlayback = vi.fn();
       const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
@@ -399,7 +399,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
 
   test("scrubbing before the end resumes follow after the loop parked", async () => {
     vi.useFakeTimers();
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     try {
       const seekPlayback = vi.fn();
       const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
