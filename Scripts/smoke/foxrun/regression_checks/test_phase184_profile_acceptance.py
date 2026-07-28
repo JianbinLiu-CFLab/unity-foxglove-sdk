@@ -1781,6 +1781,32 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertIn("PHASE184G_CONTEXT_READY", copied)
             self.assertIn("PHASE184G_MANUAL_PLAY_EXITED", copied)
 
+    def test_manual_editor_log_mirror_ignores_oversized_stale_history(self):
+        """Historical log size must not poison fresh token-correlated appends."""
+
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        token = "p184g_A1b2C3d4E5f6"
+        with tempfile.TemporaryDirectory(prefix="mirror-large-", dir=TEST_ROOT) as raw:
+            root = pathlib.Path(raw)
+            editor_log = root / "Editor.log"
+            owned_log = root / "unity-editor.log"
+            editor_log.write_text("stale history exceeds cap\n", encoding="utf-8")
+            mirror = module.EditorLogMirror(editor_log, owned_log, token)
+            mirror._MAX_SOURCE_BYTES = 8
+            mirror.capture()
+
+            with editor_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"PHASE184G_CONTEXT_READY case=multi-target token={token}\n"
+                )
+
+            mirror.poll()
+
+            copied = owned_log.read_text(encoding="utf-8")
+            self.assertIn("PHASE184G_CONTEXT_READY", copied)
+            self.assertNotIn("stale history", copied)
+
     def test_manual_session_does_not_latch_pass_over_a_later_failure(self):
         """The latest correlated terminal marker remains authoritative until exit."""
 

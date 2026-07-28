@@ -5909,10 +5909,11 @@ class EditorLogMirror:
         # Unity can reuse Editor.log storage below an apparent EOF. A unique
         # current-run token makes a bounded full-file marker rescue unambiguous.
         if stat.st_size > self._MAX_SOURCE_BYTES:
-            raise AcceptanceFailure(
-                "FAIL_TERMINAL",
-                "The interactive Unity Editor log exceeded the acceptance bound.",
-            )
+            # Historical log volume is not a current-run failure. Fresh bytes
+            # above the captured offset were already mirrored, while a
+            # truncation or replacement resets the offset. Skip only the
+            # optional full-file rescue when that scan would be unbounded.
+            return
         now = time.monotonic()
         if now < self._next_rescue_scan:
             return
