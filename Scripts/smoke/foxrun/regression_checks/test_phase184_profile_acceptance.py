@@ -293,6 +293,23 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         with mock.patch.object(module.secrets, "randbelow", return_value=95):
             self.assertEqual(159, module.choose_domain_id(None))
 
+    def test_manual_domain_defaults_to_hub_domain_zero_and_rejects_nonzero_override(self):
+        """A user-owned Hub Editor cannot inherit the helper's isolated domain."""
+
+        module = load_module()
+
+        self.assertEqual(0, module.choose_parent_domain_id(None, "manual"))
+        self.assertEqual(0, module.choose_parent_domain_id(0, "manual"))
+        with self.assertRaisesRegex(
+            module.AcceptanceFailure,
+            r"FAIL_PREFLIGHT.*manual.*domain 0",
+        ):
+            module.choose_parent_domain_id(68, "manual")
+
+        with mock.patch.object(module.secrets, "randbelow", return_value=7) as random:
+            self.assertEqual(71, module.choose_parent_domain_id(None, "batch"))
+            random.assert_called_once_with(96)
+
     def test_current_unity_runtime_is_reused_only_for_an_exact_default_selection(self):
         """Verify current unity runtime is reused only for an exact default selection."""
 
@@ -1842,6 +1859,53 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                             owner=mock.Mock(),
                             worker_roles=(),
                         )
+
+    def test_manual_session_fails_immediately_from_finished_worker_result(self):
+        """A persisted worker failure must not consume the manual review timeout."""
+
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        token = "p184g_A1b2C3d4E5f6"
+        with tempfile.TemporaryDirectory(prefix="manual-worker-", dir=TEST_ROOT) as raw:
+            root = pathlib.Path(raw)
+            result = root / "foxglove-client.json"
+            config = {
+                "runId": "phase184g-20260728-worker-fail01",
+                "case": "multi-target",
+                "token": token,
+                "unityLog": str(root / "unity-editor.log"),
+                "resultFiles": {"foxglove-client": str(result)},
+            }
+            module.write_actor_result(
+                config,
+                "foxglove-client",
+                verdict="FAIL_CLIENT",
+                evidence={"diagnostic": "incomplete delivery"},
+            )
+            process = FakeProcess()
+            process.returncode = 1
+            owner = mock.Mock()
+            owner.process.return_value = process
+            context = f"PHASE184G_CONTEXT_READY case=multi-target token={token}"
+
+            with mock.patch.object(module, "read_log_lines", return_value=[context]):
+                with mock.patch.object(module, "_manual_exit_seen", return_value=False):
+                    with mock.patch.object(
+                        module,
+                        "MANUAL_REVIEW_TIMEOUT_SECONDS",
+                        0.0,
+                    ):
+                        with mock.patch.object(module.time, "monotonic", return_value=0.0):
+                            with self.assertRaisesRegex(
+                                module.AcceptanceFailure,
+                                r"FAIL_CLIENT.*incomplete delivery",
+                            ):
+                                module._wait_for_manual_session(
+                                    config,
+                                    mirror=mock.Mock(),
+                                    owner=owner,
+                                    worker_roles=("foxglove-client",),
+                                )
 
     def test_manual_editor_log_rescue_scan_is_rate_bounded(self):
         """Verify manual editor log rescue scan is rate bounded."""

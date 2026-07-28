@@ -1324,6 +1324,8 @@ def read_actor_document(
     config: Mapping[str, object],
     role: str,
     collection: str,
+    *,
+    require_pass: bool = True,
 ) -> dict[str, object]:
     """Read one exact actor document and reject stale or synthetic evidence."""
 
@@ -1352,11 +1354,49 @@ def read_actor_document(
     elif collection == "resultFiles":
         if set(value) != {*expected_identity, "verdict", "evidence"}:
             raise AcceptanceFailure("FAIL_TERMINAL", f"{role} result is malformed.")
-        if value["verdict"] != "PASS" or not isinstance(value["evidence"], Mapping):
+        verdict = value["verdict"]
+        if (
+            not isinstance(verdict, str)
+            or (
+                verdict != "PASS"
+                and re.fullmatch(r"(?:FAIL|BLOCKED)_[A-Z0-9_]+", verdict) is None
+            )
+            or not isinstance(value["evidence"], Mapping)
+        ):
+            raise AcceptanceFailure("FAIL_TERMINAL", f"{role} result is malformed.")
+        if require_pass and verdict != "PASS":
             raise AcceptanceFailure("FAIL_TERMINAL", f"{role} did not report PASS evidence.")
     else:
         raise ValueError("Unknown actor document collection.")
     return value
+
+
+def require_finished_actor_pass(
+    config: Mapping[str, object],
+    role: str,
+) -> None:
+    """Surface one finished worker's persisted verdict without waiting for Unity."""
+
+    result = read_actor_document(
+        config,
+        role,
+        "resultFiles",
+        require_pass=False,
+    )
+    verdict = str(result["verdict"])
+    if verdict == "PASS":
+        return
+    evidence = result["evidence"]
+    diagnostic = evidence.get("diagnostic") if isinstance(evidence, Mapping) else None
+    detail = (
+        diagnostic.strip()
+        if isinstance(diagnostic, str) and diagnostic.strip()
+        else "the worker reported a non-PASS result"
+    )
+    raise AcceptanceFailure(
+        verdict,
+        f"{role} finished before manual completion: {detail}",
+    )
 
 
 def read_log_lines(path: pathlib.Path) -> list[str]:
@@ -3643,6 +3683,25 @@ def choose_domain_id(requested: int | None) -> int:
             )
         return int(requested)
     return 64 + secrets.randbelow(96)
+
+
+def choose_parent_domain_id(requested: int | None, execution_mode: str) -> int:
+    """Select an isolated Batch domain or the user-owned Hub Editor domain."""
+
+    if execution_mode == "manual":
+        if requested not in (None, 0):
+            raise AcceptanceFailure(
+                "FAIL_PREFLIGHT",
+                "Phase184 manual Editor acceptance requires ROS domain 0 because "
+                "the helper cannot change a user-owned Unity Hub process environment.",
+            )
+        return 0
+    if execution_mode != "batch":
+        raise AcceptanceFailure(
+            "FAIL_PREFLIGHT",
+            "Parent execution mode must be batch or manual.",
+        )
+    return choose_domain_id(requested)
 
 
 def _require_file(path: pathlib.Path, code: str, description: str) -> pathlib.Path:
@@ -6149,11 +6208,13 @@ def _wait_for_manual_session(
             if process is None or process.poll() is None:
                 continue
             result_path = _actor_path(config, "resultFiles", role)
-            if not result_path.is_file():
-                raise AcceptanceFailure(
-                    "FAIL_PROCESS_EXIT",
-                    f"{role} exited before current manual evidence.",
-                )
+            if result_path.is_file():
+                require_finished_actor_pass(config, role)
+                continue
+            raise AcceptanceFailure(
+                "FAIL_PROCESS_EXIT",
+                f"{role} exited before current manual evidence.",
+            )
 
         now = time.monotonic()
         if not context_ready and now >= entry_deadline:
@@ -6198,7 +6259,7 @@ def _prepare_parent_run(
     output = _prepare_run_directory(repository, run_id)
     try:
         identity = load_static_interface_identity(repository)
-        domain_id = choose_domain_id(args.domain_id)
+        domain_id = choose_parent_domain_id(args.domain_id, execution_mode)
         foxglove_port = (
             int(args.foxglove_port)
             if args.foxglove_port is not None
