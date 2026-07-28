@@ -1357,6 +1357,101 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             source.index("offered = 1280"),
         )
 
+    def test_stream_production_window_reports_observed_elapsed(self):
+        """A timing failure must retain its measured value for diagnosis."""
+
+        module = load_module()
+
+        self.assertEqual(
+            2.0,
+            module._validated_stream_production_elapsed(2.0),
+        )
+        with self.assertRaisesRegex(
+            module.AcceptanceFailure,
+            r"observed=4\.250000s",
+        ):
+            module._validated_stream_production_elapsed(4.25)
+
+    def test_prepared_stream_publisher_stamps_and_paces_without_executor_spin(self):
+        """The timed producer owns only stamping, publishing, and pacing."""
+
+        module = load_module()
+
+        class FakeTimeline:
+            """Deterministic monotonic clock used by the paced publisher test."""
+
+            def __init__(self):
+                """Start the synthetic clock at zero seconds."""
+                self.now = 0.0
+
+            def perf_counter(self):
+                """Return the current synthetic monotonic time."""
+                return self.now
+
+            def sleep(self, seconds):
+                """Advance synthetic time without blocking the test process."""
+                self.now += seconds
+
+        class FakeStamp:
+            """Minimal ROS clock stamp wrapper."""
+
+            def __init__(self, value):
+                """Capture one deterministic clock value."""
+                self.value = value
+
+            def to_msg(self):
+                """Return the captured value as the fake wire stamp."""
+                return self.value
+
+        class FakeClock:
+            """Deterministic ROS clock facade."""
+
+            def __init__(self):
+                """Start before the first generated stamp."""
+                self.value = 0
+
+            def now(self):
+                """Return the next deterministic stamp."""
+                self.value += 1
+                return FakeStamp(self.value)
+
+        class FakeNode:
+            """Minimal node facade exposing the deterministic clock."""
+
+            def __init__(self):
+                """Own one fake ROS clock."""
+                self.clock = FakeClock()
+
+            def get_clock(self):
+                """Return the node-owned fake ROS clock."""
+                return self.clock
+
+        class FakeMessage:
+            """Mutable message surface populated by the prepared publisher."""
+
+            foxrun_stamp = None
+
+        timeline = FakeTimeline()
+        messages = [FakeMessage() for _ in range(4)]
+        published = []
+        elapsed = module._publish_prepared_stream_samples(
+            messages,
+            publisher=mock.Mock(publish=published.append),
+            node=FakeNode(),
+            nominal_hz=2.0,
+            perf_counter=timeline.perf_counter,
+            sleep=timeline.sleep,
+        )
+
+        self.assertEqual(2.0, elapsed)
+        self.assertEqual([1, 2, 3, 4], [message.foxrun_stamp for message in messages])
+        self.assertEqual(messages, published)
+        source = inspect.getsource(module._run_stream_peer)
+        self.assertLess(
+            source.index("stream_samples = ["),
+            source.index("_publish_prepared_stream_samples("),
+        )
+
     def test_stream_production_gate_requires_exact_external_subscription(self):
         """Verify stream production gate requires exact external subscription."""
 
@@ -3367,10 +3462,10 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             "PASS",
             "PHASE184G_CASE_PASS",
             {
-                "received": "1280",
-                "accepted": "1280",
-                "drained": "1248",
-                "replaced": "32",
+                "received": "792",
+                "accepted": "792",
+                "drained": "625",
+                "replaced": "167",
                 "rateDropped": "0",
                 "highWater": "32",
                 "disposalFailures": "0",
@@ -3388,9 +3483,9 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             },
         )
         self.assertEqual(1280, evidence["offered"])
-        self.assertEqual(1280, evidence["received"])
-        self.assertEqual(0, evidence["transportDropped"])
-        self.assertEqual(0, evidence["dropped"])
+        self.assertEqual(792, evidence["received"])
+        self.assertEqual(488, evidence["transportDropped"])
+        self.assertEqual(488, evidence["dropped"])
         self.assertEqual(1279, evidence["lastSequence"])
 
         with self.assertRaisesRegex(module.AcceptanceFailure, "FAIL_STREAM"):

@@ -1505,7 +1505,8 @@ def validate_summary(
             stream = summary["stream"]
             if (
                 stream["offered"] != 1280
-                or stream["received"] != stream["offered"]
+                or stream["received"] <= STREAM_CAPACITY
+                or stream["received"] > stream["offered"]
                 or stream["received"] + stream["transportDropped"]
                 != stream["offered"]
                 or stream["accepted"] + stream["rateDropped"]

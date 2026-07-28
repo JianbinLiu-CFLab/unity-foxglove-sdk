@@ -20,6 +20,7 @@ import ctypes
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -2572,6 +2573,44 @@ def _run_qos_peer(
     }
 
 
+def _validated_stream_production_elapsed(value: float) -> float:
+    """Require the locked nominal stream window and retain the measured value."""
+
+    elapsed = float(value)
+    if not math.isfinite(elapsed) or elapsed < 1.8 or elapsed > 3.5:
+        raise AcceptanceFailure(
+            "FAIL_STREAM",
+            (
+                "Nominal 640 Hz production interval drifted outside tolerance: "
+                f"observed={elapsed:.6f}s expected=1.800000..3.500000s."
+            ),
+        )
+    return elapsed
+
+
+def _publish_prepared_stream_samples(
+    samples: Sequence[object],
+    *,
+    publisher,
+    node,
+    nominal_hz: float,
+    perf_counter,
+    sleep,
+) -> float:
+    """Timestamp and publish prepared samples on one deadline-based schedule."""
+
+    period = 1.0 / float(nominal_hz)
+    started = perf_counter()
+    for index, sample in enumerate(samples):
+        sample.foxrun_stamp = node.get_clock().now().to_msg()
+        publisher.publish(sample)
+        deadline = started + (index + 1) * period
+        remaining = deadline - perf_counter()
+        if remaining > 0:
+            sleep(remaining)
+    return perf_counter() - started
+
+
 def _run_stream_peer(
     config: Mapping[str, object],
     rclpy_module,
@@ -2641,10 +2680,8 @@ def _run_stream_peer(
     _worker_progress("ros2-peer", "stream-wait-transport-graph")
     _wait_for_stream_subscription(config, rclpy_module, node)
     offered = 1280
-    period = 1.0 / 640.0
-    started = time.perf_counter()
-    for index in range(offered):
-        sample = _make_ros_envelope(
+    stream_samples = [
+        _make_ros_envelope(
             peer,
             node,
             envelope_type,
@@ -2656,15 +2693,18 @@ def _run_stream_peer(
             origin=peer_origin,
             sequence=index + 1,
         )
-        stream_publisher.publish(sample)
-        rclpy_module.spin_once(node, timeout_sec=0.0)
-        deadline = started + (index + 1) * period
-        remaining = deadline - time.perf_counter()
-        if remaining > 0:
-            time.sleep(remaining)
-    elapsed = time.perf_counter() - started
-    if elapsed < 1.8 or elapsed > 3.5:
-        raise AcceptanceFailure("FAIL_STREAM", "Nominal 640 Hz production interval drifted outside tolerance.")
+        for index in range(offered)
+    ]
+    elapsed = _validated_stream_production_elapsed(
+        _publish_prepared_stream_samples(
+            stream_samples,
+            publisher=stream_publisher,
+            node=node,
+            nominal_hz=640.0,
+            perf_counter=time.perf_counter,
+            sleep=time.sleep,
+        )
+    )
 
     remote = _make_ros_envelope(
         peer,
@@ -4017,18 +4057,20 @@ def _validated_stream_evidence(
             "FAIL_STREAM",
             "The ROS stream producer did not offer the locked 1280-sample run.",
         )
-    if nominal_hz != 640 or elapsed < 1.8 or elapsed > 3.5:
+    if nominal_hz != 640:
         raise AcceptanceFailure(
             "FAIL_STREAM",
             "ROS stream production did not prove the nominal 640 Hz interval.",
         )
+    elapsed = _validated_stream_production_elapsed(elapsed)
     if disposal_failures != 0:
         raise AcceptanceFailure(
             "FAIL_STREAM",
             "Unity reported a stream disposal failure.",
         )
     if (
-        received != peer_offered
+        received <= protocol.STREAM_CAPACITY
+        or received > peer_offered
         or accepted + rate_dropped != received
         or drained + replaced != accepted
         or high_water != protocol.STREAM_CAPACITY

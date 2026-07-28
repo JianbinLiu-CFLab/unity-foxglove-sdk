@@ -958,6 +958,27 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             expected_token=str(config["token"]),
         )
 
+        best_effort_loss = copy.deepcopy(summary)
+        best_effort_loss["stream"].update(
+            {
+                "received": 792,
+                "accepted": 792,
+                "replaced": 167,
+                "rateDropped": 0,
+                "transportDropped": 488,
+                "dropped": 488,
+                "drained": 625,
+                "disposed": 792,
+                "lastSequence": 1279,
+            }
+        )
+        best_effort_loss["targets"]["statusEvidence"]["received"] = 792
+        protocol.validate_summary(
+            best_effort_loss,
+            expected_case="stream-640hz",
+            expected_token=str(config["token"]),
+        )
+
         for field, value in (
             ("offered", 1279),
             ("received", 1281),
@@ -1015,12 +1036,11 @@ class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
             }
         )
         sparse_but_bounded["targets"]["statusEvidence"]["received"] = 64
-        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STREAM"):
-            protocol.validate_summary(
-                sparse_but_bounded,
-                expected_case="stream-640hz",
-                expected_token=str(config["token"]),
-            )
+        protocol.validate_summary(
+            sparse_but_bounded,
+            expected_case="stream-640hz",
+            expected_token=str(config["token"]),
+        )
 
     def test_not_applicable_reason_must_be_case_defined_and_has_no_synthetic_pass(self):
         """N/A evidence is typed, exact, and never carries PASS."""

@@ -3047,15 +3047,23 @@ namespace Demo
 
             var streamRoute = RouteSource("Phase184StreamRoute");
             Assert.Contains(
-                "private const long MinimumStreamSamples = 1280;",
+                "private const float StreamTransportSettleSeconds = 0.5f;",
                 streamRoute,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_received >= MinimumStreamSamples",
+                "_received > _inputStream.Options.Capacity",
+                streamRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Mathf.Max(_producerCompletionObservedAt, _lastStreamActivityAt)",
+                streamRoute,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                ">= StreamTransportSettleSeconds",
                 streamRoute,
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
-                "_received > _inputStream.Options.Capacity",
+                "MinimumStreamSamples",
                 streamRoute,
                 StringComparison.Ordinal);
         }

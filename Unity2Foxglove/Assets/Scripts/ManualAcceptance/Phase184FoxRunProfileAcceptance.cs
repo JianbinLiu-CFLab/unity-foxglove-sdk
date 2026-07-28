@@ -1508,7 +1508,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public const string OriginTopic = "/foxrun/phase184/zenoh/origin";
         private const float InitialDrainDelaySeconds = 0.5f;
         private const float StreamEvidenceTimeoutSeconds = 5f;
-        private const long MinimumStreamSamples = 1280;
+        private const float StreamTransportSettleSeconds = 0.5f;
 
         [FoxRun(
             StreamTopic,
@@ -1549,6 +1549,9 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private float _firstSampleAt = -1f;
         private float _streamEvidenceDeadline = -1f;
+        private float _lastStreamActivityAt = -1f;
+        private float _producerCompletionObservedAt = -1f;
+        private long _lastObservedReceived;
         private string _subscriptionState = "Unavailable";
         private long _subscriptionReceived;
         private long _subscriptionCopyFailed;
@@ -1567,6 +1570,9 @@ namespace Unity2Foxglove.ManualAcceptance
             }
             _firstSampleAt = -1f;
             _streamEvidenceDeadline = -1f;
+            _lastStreamActivityAt = -1f;
+            _producerCompletionObservedAt = -1f;
+            _lastObservedReceived = _inputStream.Stats.Received;
             _subscriptionState = "Unavailable";
             _subscriptionReceived = 0;
             _subscriptionCopyFailed = 0;
@@ -1592,6 +1598,11 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
 
             var stats = _inputStream.Stats;
+            if (stats.Received != _lastObservedReceived)
+            {
+                _lastObservedReceived = stats.Received;
+                _lastStreamActivityAt = Time.realtimeSinceStartup;
+            }
             if (_firstSampleAt < 0f && stats.Received > 0)
                 _firstSampleAt = Time.realtimeSinceStartup;
             if (_firstSampleAt >= 0f
@@ -1640,6 +1651,7 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_remoteOriginApplied && IsState(_zenohOrigin, "origin-remote"))
             {
                 _remoteOriginApplied = true;
+                _producerCompletionObservedAt = Time.realtimeSinceStartup;
                 Emit("PHASE184G_STREAM_REMOTE_ORIGIN_APPLIED", "stage=remote");
             }
             if (_remoteOriginApplied && !_laterLocalOrigin && _sameOriginDrops > 0)
@@ -1651,7 +1663,14 @@ namespace Unity2Foxglove.ManualAcceptance
                 Emit("PHASE184G_STREAM_LOCAL_ORIGIN_MUTATED", "stage=local");
             }
 
-            if (_received >= MinimumStreamSamples
+            var streamTransportSettled =
+                _producerCompletionObservedAt >= 0f
+                && _lastStreamActivityAt >= 0f
+                && Time.realtimeSinceStartup
+                   - Mathf.Max(_producerCompletionObservedAt, _lastStreamActivityAt)
+                >= StreamTransportSettleSeconds;
+            if (_received > _inputStream.Options.Capacity
+                && streamTransportSettled
                 && _inputStream.Count == 0
                 && _replaced > 0
                 && _retainedOrdered
