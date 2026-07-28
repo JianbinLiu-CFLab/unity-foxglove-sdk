@@ -1,14 +1,21 @@
 # Shared-Emitter Dual-Host AOT Code Generation for Bidirectional Unity Telemetry
 
-Updated: 2026-07-20
+Updated: 2026-07-28
 
 ## Abstract
 
 FoxRun turns annotated Unity fields and properties into static telemetry bindings. A binding can publish from Unity, subscribe into Unity, or do both. The same resolved generation model feeds two hosts: a Roslyn source generator for normal Editor compilation and a build-time writer that emits physical `_FoxRun.g.cs` files for IL2CPP Player builds.
 
-The architecture is deliberately bidirectional but asymmetric at the transport boundary. One subscribed member has exactly one resolved input source for a session, while a published member may fan out to Foxglove WebSocket, MCAP recording, ROS2 Native, and other configured sinks. Generated input code stages owned values off the Unity main thread and applies them on the main thread. Generated output code reads the member directly and dispatches through the configured sinks. Neither path discovers or accesses FoxRun members through CLR reflection at runtime.
+The architecture is deliberately bidirectional but asymmetric at the transport boundary. One subscribed member has exactly one resolved input source for a session, while a published member may fan out to Foxglove WebSocket, MCAP recording, and supported ROS2 routes. Generated input code stages owned values off the Unity main thread and applies them on the main thread. Generated output code reads the member directly and dispatches through the configured sinks. Neither path discovers or accesses FoxRun members through CLR reflection at runtime.
 
 This note describes the public declaration model, its lowering into generated code, the runtime safety boundary, and the evidence used to keep Roslyn and IL2CPP behavior equivalent.
+
+It also records a deliberately narrower portability claim. The current system
+is a Unity-first C# implementation with useful extraction seams; it is not yet
+a platform-neutral core or a multi-language SDK. The longer-term candidate is
+a language-neutral semantic contract with independently tested host and
+backend adapters. That direction must be proven by a non-Unity consumer or a
+second backend rather than inferred from interface names.
 
 ## 1. FoxRun's User Mental Model
 
@@ -84,12 +91,19 @@ refresh cadence.
 
 Unity has two materially different authoring and deployment environments:
 
-- Editor development benefits from Roslyn generation during compilation.
-- IL2CPP Players require ahead-of-time-visible source and preservation evidence; runtime IL emission is unavailable and reflection-only metadata may be stripped.
+- Editor development benefits from Roslyn generation during compilation [3].
+- IL2CPP Players require ahead-of-time-visible source and preservation
+  evidence; runtime IL emission is unavailable and reflection-only metadata
+  may be stripped [1][2].
 
 A telemetry system that scans assemblies, reads attributes, and calls `FieldInfo.GetValue()` or `SetValue()` on every message is fragile under stripping and expensive on hot paths. Silent failure is especially dangerous: a missing binding can look like unchanged robot data rather than a broken build.
 
-FoxRun therefore resolves attributes before runtime and emits direct member access. A Player build is not considered proven merely because it compiles. Validation also checks that generated bindings are present, that real payload values cross the boundary, and that inbound values reach the intended member on the Unity main thread.
+FoxRun therefore follows the source-generation side of the documented
+reflection/source-generation trade-off [4][5]: it resolves attributes before
+runtime and emits direct member access. A Player build is not considered
+proven merely because it compiles. Validation also checks that generated
+bindings are present, that real payload values cross the boundary, and that
+inbound values reach the intended member on the Unity main thread.
 
 ## 3. Architecture
 
@@ -105,16 +119,33 @@ flowchart TB
   Inputs["WebSocket or ROS2 input dispatch"]
   Stage["Owned latest-value staging"]
   Main["Unity main-thread apply"]
-  Sinks["Foxglove · MCAP · ROS2 · configured sinks"]
+  Fanout["Configured output fanout"]
+  FoxWs["Foxglove WebSocket<br/>live protocol"]
+  Mcap["MCAP writer/file<br/>durable format"]
+  Ros2["ROS2 Native/Bridge<br/>middleware route"]
+  Foxglove["Foxglove app"]
+  McapReaders["Foxglove or independent<br/>MCAP readers"]
+  RosGraph["ROS graph"]
+  Rviz["RViz and other ROS2 nodes"]
 
   Source --> Resolve --> Emitter
   Emitter --> Roslyn --> Generated
   Emitter --> Physical --> Generated
-  Generated --> Output --> Sinks
+  Generated --> Output --> Fanout
+  Fanout --> FoxWs --> Foxglove
+  Fanout --> Mcap --> McapReaders
+  Fanout --> Ros2 --> RosGraph --> Rviz
+  Foxglove -->|"admitted client input"| Inputs
+  RosGraph -->|"selected ROS2 subscription"| Inputs
   Inputs --> Stage --> Main --> Generated
 ```
 
-The shared emitter is the semantic authority. The two hosts own discovery and injection timing, not two independent implementations of FoxRun behavior.
+The shared emitter is the semantic authority. The two hosts own discovery and
+injection timing, not two independent implementations of FoxRun behavior.
+The right side deliberately separates viewer, live protocol, middleware, and
+durable format. Foxglove WebSocket and MCAP reuse canonical message semantics,
+but neither is a required dependency of the other. RViz is an indirect ROS2
+consumer, not a Manager sink.
 
 ### 3.1 Declaration and Model Resolution
 
@@ -177,6 +208,20 @@ A build-time descriptor comparison and emitter-output tests are therefore more u
 Generated output reads the member directly, evaluates its local policy state, builds the selected wire representation, and sends one logical topic envelope through the topic bus and sink router. The Manager may enable more than one destination. Adding ROS2 Native does not replace Foxglove output, and recording does not require a second user declaration.
 
 Replay suppression is applied before external fanout. Replayed state must not masquerade as new live telemetry or feed a native ROS2 loop.
+
+The destinations occupy different architectural layers:
+
+| Current route | Role | Direct consumers |
+| --- | --- | --- |
+| Foxglove WebSocket | Live application protocol and sink | Foxglove and compatible clients. |
+| MCAP writer | Durable, indexed container sink | Foxglove or any independent MCAP reader. |
+| ROS2 Native / Bridge | Robotics middleware route | The ROS graph; RViz and other nodes consume from that graph. |
+
+Foxglove and MCAP are closely related in the upstream ecosystem, and the
+current SDK intentionally gives them the same schema, timestamp, coordinate,
+and identity boundary. That semantic reuse is not a hard product coupling:
+live Foxglove operation does not require recording, and MCAP files remain
+usable without the Foxglove application.
 
 ### 4.2 Input: Exactly One Source
 
@@ -261,11 +306,152 @@ Generated-code tests must cover both directions. A source file that compiles but
 
 The core SDK remains ROS-free. Native node, subscription, publisher, RMW, and ros2cs ownership stay in the optional facade and distro runtime packages. Shared emitter descriptors can describe the contract without introducing a reverse package dependency.
 
-## 9. Contribution and Limits
+## 9. Portability and Interoperability Boundary
+
+The present architecture is **shared-emitter and dual-host inside Unity**. It
+does not yet prove a shared runtime across engines or languages. The following
+repository evidence makes staged extraction plausible while also showing why
+the claim must remain conditional.
+
+### 9.1 Current Extraction Seams and Remaining Coupling
+
+| Surface | Current evidence | Why it is not yet a portable package |
+| --- | --- | --- |
+| Runtime abstractions | `IFoxgloveLogger`, `IFoxgloveProfiler`, and `IFoxgloveClock` separate logging, profiling, and time from concrete Unity services. | Interfaces alone do not isolate their transitive dependencies or lifecycle. |
+| Transport framing | The current `Runtime/Transport/` C# source surface avoids direct `UnityEngine` references. | It is still compiled inside `Unity.FoxgloveSDK.asmdef` and consumes SDK schema/utilities. |
+| Low-level MCAP IO | `McapWriter` and `McapReader` are primarily stream/format code and do not require a viewer. | The wider MCAP tree includes Unity lifecycle registration and replay/component integration. |
+| Replay primitives | `ExternalReplayCursorController`, `ReplayPoseOwnershipArbiter`, and replay message/batch contexts use bounded scalar/state models. | Unity scene discovery, decoding, adapters, and mutation remain separate Unity-specific layers. |
+| Canonical descriptors and emitter modules | Roslyn and physical-file hosts already share one resolved model and modular C# emitter. | The emitted syntax, lifecycle, accessible-member model, and several type paths are C#/Unity specific. |
+
+All core SDK runtime code currently ships under one Unity assembly definition.
+`CoordinateConverter` directly uses `UnityEngine.Vector3` and
+`UnityEngine.Quaternion`; some core/MCAP registry files use Unity runtime
+initialization hooks; generated bindings target Unity component lifecycle and
+direct C# members. There is no current `IEngineHost`, standalone core package,
+C++ emitter, Godot adapter, or Unreal plugin.
+
+The correct next proof is therefore a dependency-closed managed library plus a
+small non-Unity executable that exercises real framing, MCAP, and replay
+primitives. A broad engine abstraction designed before that fixture would
+mostly encode guesses about engines that the repository does not yet support.
+
+### 9.2 Two Axes, Four Backend Planes
+
+A portable middle layer has two independent extension axes:
+
+```mermaid
+flowchart LR
+  subgraph Hosts["Host and language axis"]
+    Unity["Unity / C#<br/>current"]
+    Managed["Non-Unity .NET<br/>candidate"]
+    Native["Native C++ host<br/>candidate"]
+  end
+
+  Contract["Language-neutral contract<br/>schemas · time · coordinates · ownership<br/>canonical emitter input · conformance vectors"]
+
+  subgraph Backends["Backend-role axis"]
+    Live["Live protocols<br/>Foxglove WS · ROS2 routes"]
+    Durable["Durable formats<br/>MCAP · candidate RRD"]
+    Viewers["Viewer integrations<br/>Foxglove · ROS2/RViz · candidate Rerun"]
+    Query["Control/query<br/>cursor · candidate bounded Agent/MCP"]
+  end
+
+  Unity --> Contract
+  Managed -. future .-> Contract
+  Native -. future .-> Contract
+  Contract --> Live
+  Contract --> Durable
+  Live --> Viewers
+  Durable --> Viewers
+  Contract --> Query
+```
+
+The language-neutral layer is a specification and evidence boundary, not
+necessarily one binary. It should define versioned schemas, time and coordinate
+semantics, ownership/disposal rules, canonical emitter input, and shared test
+vectors. C# can remain the first reference implementation. A later C++
+implementation would reuse those contracts and conformance fixtures, not the
+C# object model.
+
+For Unreal, a credible future integration would normally be a native C++
+plugin with selected functions exposed to Blueprint [20]. Embedding a managed
+C# runtime should not be the default architecture. Whether a native library,
+C ABI, generated C++, or out-of-process sidecar is the right boundary can only
+be decided with a concrete consumer and latency/lifecycle fixture.
+
+The backend axis needs the same discipline. A Rerun path would map canonical
+semantics to Rerun archetypes, streaming, and RRD rather than adding
+viewer-specific branches throughout the Foxglove emitter. A direct Foxglove
+viewer, an MCAP file, a ROS2 route consumed by RViz, and a future query API are
+different adapter roles even when one declaration feeds all of them.
+
+### 9.3 Bounded Query Consumers
+
+The existing replay design provides useful ingredients for query-oriented
+workflows:
+
+- MCAP indexes and reader APIs support bounded time/channel access;
+- latest-at and range replay distinguish state reconstruction from sequential
+  message delivery;
+- the replay cursor is a latest-only, authenticated control mailbox;
+- ownership arbitration defines which registered source may mutate a Unity
+  target.
+
+Those ingredients do **not** make the cursor endpoint a world-state query
+service. It carries time intent and returns acknowledgement state; Unity then
+reads its local MCAP and applies only registered/decoded scene behaviors. It
+does not return a complete scene snapshot, rewind physics or external systems,
+or create an independent replay session per agent.
+
+A future Agent/MCP or programmatic query surface must therefore declare:
+
+1. whether it returns raw messages, latest-at registered state, a forward
+   range, or a separately defined scene snapshot;
+2. exact time/channel/schema, byte, result-count, and execution budgets;
+3. provenance and replay-identity evidence for every result;
+4. isolation between read-only analysis and state-changing control;
+5. authentication, local/remote deployment scope, cancellation, and cleanup.
+
+This would make agentic analysis a separately specified consumer model without
+redefining ordinary playback or promoting an unbounded remote-control surface.
+
+## 10. Adjacent Systems and the Open Integration Gap
+
+The surrounding field is active rather than empty. This scoped source review
+found strong projects at nearly every individual layer:
+
+| System | What it already covers | Boundary relative to this direction |
+| --- | --- | --- |
+| Foxglove SDK and MCAP [7][8][9] | C++, Python, and Rust SDKs; live Foxglove streaming; independent MCAP recording; common schemas and multiple sinks. | Foxglove-centered producer APIs, not a cross-engine direct-member/AOT binding model or a viewer-neutral multi-backend contract. |
+| Rerun [6] | C++, Python, and Rust logging; live gRPC streaming; RRD files; viewer, catalog, and query workflows. | A strong integrated visualization/data stack whose archetypes and storage remain Rerun-specific. |
+| ROS2, rosbag2, and RViz [10][11] | Multi-language robotics middleware, record/playback, and an established 3D visualization consumer. | ROS graph and message semantics rather than a common engine declaration/emitter layer spanning non-ROS backends. |
+| Zenoh [12] | Multi-language publish/subscribe plus queryables and storage, joining data in motion and at rest. | A general key/value communication and query substrate, not 3D scene semantics, engine binding generation, or a replay viewer contract. |
+| Unity ROS-TCP-Connector, O3DE ROS2 Gems, and Isaac Sim ROS2 Bridge [13][14][15] | Concrete bidirectional ROS integrations for individual engines/simulators. | They demonstrate demand but remain host/ecosystem-specific integrations rather than one shared cross-engine, cross-viewer layer. |
+| NASA Open MCT [16] | Extensible real-time and historical telemetry visualization across multiple sources. | A web mission-operations visualization framework, not an AOT engine binding or multimodal scene-state replay standard. |
+| OpenTelemetry [17] | A language-neutral specification, language SDKs, collector, exporters, and backend-neutral conventions. | A useful organizational precedent, but its standard signals are traces, metrics, logs, and related observability data rather than high-rate 3D/robotics world state. |
+| OpenUSD and Apache Arrow [18][19] | Time-sampled scene interchange and language-neutral analytical memory/data interchange, respectively. | Valuable possible substrates, but neither supplies the complete live transport, ownership, engine binding, replay-control, and visualization-adapter contract. |
+
+This review did **not** identify a dominant open project that combines all of
+the following in one evidence-backed contract:
+
+- direct, AOT-safe engine member binding and generated bidirectional access;
+- bounded ownership, staging, disposal, and echo rules;
+- separate adapters for live protocols, middleware, durable formats, viewers,
+  and query consumers;
+- indexed replay plus explicit latest-at/range scene-state application;
+- language-neutral contracts with cross-implementation conformance fixtures.
+
+That is a defensible **integration and conformance gap**, not proof of a global
+research vacuum or a novelty claim. The current repository occupies one
+substantial Unity-to-Foxglove/MCAP/ROS2 vertical slice. It only begins to occupy
+the broader gap when a portable core, independent consumer, second backend,
+and cross-language conformance evidence exist.
+
+## 11. Contribution and Limits
 
 The individual ingredients—source generation, AOT pre-generation, direct member access, bounded queues, and generated serialization—are established techniques. The project contribution is their composition into one Unity declaration model that produces equivalent Editor and IL2CPP bindings for:
 
-- outbound Foxglove/MCAP/ROS2 telemetry;
+- outbound live Foxglove/ROS2 telemetry and independent MCAP recording;
 - inbound WebSocket or ROS2 state application;
 - JSON and Protobuf contracts;
 - custom typed ROS2 DTOs;
@@ -273,21 +459,43 @@ The individual ingredients—source generation, AOT pre-generation, direct membe
 
 The system does not claim deterministic simulation execution, unlimited input history, arbitrary runtime schema reflection, or simultaneous subscription from multiple providers. Full duplex is an explicit debugging convenience, not a substitute for defining production data ownership.
 
-## 10. Future Evidence
+It also does not claim current multi-language, cross-engine, or
+visualization-backend parity. The proposed broader data plane is a roadmap
+direction whose abstractions must earn their shape through independent
+implementations.
+
+## 12. Future Evidence
 
 Useful next measurements include:
 
 1. generated direct-access versus reflection-based get/set throughput and allocations;
 2. IL2CPP Player input acceptance across more Unity assemblies and value shapes;
 3. high-rate ROS2 callback pressure with bounded replacement/disposal accounting;
-4. cross-target reuse measurements for Foxglove/MCAP and Rerun/RRD emitters;
-5. archived generation descriptors, physical source, manifest hashes, and version-specific release evidence.
+4. a dependency-closed managed-core build and non-Unity console acceptance fixture;
+5. versioned language-neutral contract vectors exercised by two independent implementations;
+6. a second backend mapping, such as a separately maintained Rerun/RRD path, without viewer-specific branches leaking into the canonical model;
+7. bounded raw-message/latest-at/range query fixtures with provenance, cancellation, and authorization evidence;
+8. archived generation descriptors, physical source, manifest hashes, and version-specific release evidence.
 
-## 11. Conclusion
+## 13. Conclusion
 
 FoxRun reduces telemetry authoring to a topic plus optional flow, policy, and rate. Under that compact surface is a shared semantic model, one modular emitter, two generation hosts, and direction-specific runtime safety rules.
 
-The central design property is not simply that code is generated. It is that the Editor and Player paths generate the same direct-access binding, output may fan out while input remains single-owner, callback work stays bounded, and all Unity mutation occurs on the main thread. That combination gives FoxRun a small user mental model without hiding transport ownership or AOT constraints.
+The central design property is not simply that code is generated. It is that
+the Editor and Player paths generate the same direct-access binding, output may
+fan out while input remains single-owner, callback work stays bounded, and
+generated inbound FoxRun member mutation occurs on the Unity main thread. That
+combination gives FoxRun a small user mental model without hiding transport
+ownership or AOT constraints.
+
+The strategic opportunity is broader but still conditional: preserve this
+small declaration model while separating host language from backend role.
+Today that means a validated Unity/C# path to Foxglove WebSocket and independent
+MCAP recording/replay, plus ROS2 routes within the documented Windows-local
+Editor matrix. Tomorrow it may support additional managed/native hosts,
+viewers, formats, and bounded query consumers—but only after language-neutral
+contracts and independent conformance evidence replace architectural
+inference.
 
 ## References
 
@@ -299,12 +507,46 @@ The central design property is not simply that code is generated. It is that the
 
 [4] Microsoft. "Reflection versus source generation in System.Text.Json." https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation
 
-[5] MessagePack-CSharp Contributors. "MessagePack for C#." https://github.com/MessagePack-CSharp/MessagePack-CSharp
+[5] Microsoft .NET Blog. "Introducing C# Source Generators." https://devblogs.microsoft.com/dotnet/introducing-c-source-generators/
 
-[6] Microsoft .NET Blog. "Introducing C# Source Generators." https://devblogs.microsoft.com/dotnet/introducing-c-source-generators/
+[6] Rerun Contributors. "How does Rerun work?" https://rerun.io/docs/concepts/how-does-rerun-work
 
-[7] Rerun Contributors. "Logging functions." https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/
+[7] Foxglove Technologies. "Foxglove SDK." https://docs.foxglove.dev/docs/sdk
+
+[8] Foxglove Technologies. "SDK Concepts." https://docs.foxglove.dev/docs/sdk/concepts
+
+[9] MCAP Contributors. "MCAP." https://mcap.dev/
+
+[10] ROS 2 Contributors. "rosbag2." https://github.com/ros2/rosbag2
+
+[11] ROS 2 Contributors. "rviz2." https://docs.ros.org/en/ros2_packages/rolling/api/rviz2/index.html
+
+[12] Eclipse Zenoh Contributors. "Abstractions." https://zenoh.io/docs/manual/abstractions/
+
+[13] Unity Technologies. "ROS-TCP-Connector." https://github.com/Unity-Technologies/ROS-TCP-Connector
+
+[14] Open 3D Engine Contributors. "ROS 2 Concepts and Structure." https://www.docs.o3de.org/docs/user-guide/interactivity/robotics/concepts-and-components-overview/
+
+[15] NVIDIA. "Isaac Sim ROS 2 Bridge." https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.ros2.bridge/docs/index.html
+
+[16] NASA. "About Open MCT." https://nasa.github.io/openmct/about-open-mct/
+
+[17] OpenTelemetry Contributors. "Components." https://opentelemetry.io/docs/concepts/components/
+
+[18] Pixar Animation Studios. "Universal Scene Description." https://openusd.org/release/api/
+
+[19] Apache Arrow Contributors. "Introduction." https://arrow.apache.org/docs/format/Intro.html
+
+[20] Epic Games. "Coding in Unreal Engine: Blueprint vs. C++." https://dev.epicgames.com/documentation/en-us/unreal-engine/coding-in-unreal-engine-blueprint-vs-cplusplus
 
 ## Evidence Scope
 
-This document describes the Phase183 declaration model as the completed public contract and grounds its implementation discussion in the repository's current shared emitter, input/output routing, optional ROS2 facade, schema evidence, and Player-generation architecture. Performance statements remain design expectations unless a benchmark is cited; validation rows describe evidence classes rather than claiming every platform matrix cell has passed.
+This document describes the merged Phase183 declaration model and Phase184
+profile/acceptance baseline, grounding implementation claims in the
+repository's current shared emitter, input/output routing, optional ROS2
+facade, schema evidence, and Player-generation architecture reviewed on
+2026-07-28. The adjacent-system comparison is a scoped review of cited primary
+sources, not an exhaustive market survey or proof of novelty. Performance
+statements remain design expectations unless a benchmark is cited; validation
+rows describe evidence classes rather than claiming every platform matrix cell
+has passed.
