@@ -456,6 +456,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunResolvedQos.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2QosProfileResolver.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunQosProfileSettings.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunPublishTargetPolicy.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunPublishSessionPolicy.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs",
             };
@@ -687,6 +688,8 @@ namespace Unity.FoxgloveSDK.Components
     {
         private readonly HarnessConnectionState _connectionState = new HarnessConnectionState();
         private FoxRunQosProfileSettings _ros2BridgeQos = new FoxRunQosProfileSettings();
+        private bool _foxgloveOutputEnabled;
+        private bool _ros2NativeEnabled;
         private bool _ros2BridgeEnabled = true;
         private object _ros2BridgeRuntime;
 

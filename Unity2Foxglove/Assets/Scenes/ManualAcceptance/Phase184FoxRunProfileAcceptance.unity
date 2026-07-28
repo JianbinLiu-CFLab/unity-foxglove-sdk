@@ -487,7 +487,6 @@ MonoBehaviour:
   _frameStallStageTimingDiagnosticsEnabled: 0
   _foxRunPolicySerializationVersion: 3
   _coordinateTransportPolicySerializationVersion: 1
-  _defaultFoxRunPublishTargets: 1
   _defaultFoxRunPublishEncoding: 1
   _legacyDefaultFoxRunNativePublishRos2Qos: 1
   _defaultFoxRunNativePublishQos:

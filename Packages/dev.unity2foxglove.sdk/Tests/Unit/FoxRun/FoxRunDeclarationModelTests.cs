@@ -2984,6 +2984,18 @@ namespace Demo
                 "SetInteger(serialized, \"_ros2BridgeSendTimeoutMs\", 30000);",
                 builderSource,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "_defaultFoxRunPublishTargets",
+                builderSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "DefaultFoxRunPublishTargets =",
+                builderSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "DefaultFoxRunPublishTargets =",
+                acceptanceSource,
+                StringComparison.Ordinal);
         }
 
         [Fact]

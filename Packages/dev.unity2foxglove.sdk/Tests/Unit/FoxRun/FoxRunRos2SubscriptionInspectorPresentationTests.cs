@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Xunit;
@@ -180,6 +181,76 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     1536.5d / 1000d,
                     FoxRunRos2NativeCopyBudgetUnit.KB));
+        }
+
+        [Fact]
+        public void SubscriptionPayloadConversionPreservesStoredBytesAcrossDecimalKBAndMB()
+        {
+            var presentation = typeof(FoxRunRos2SubscriptionInspectorPresentation);
+            var labels = presentation.GetProperty(
+                "SubscriptionMaxPayloadLabels",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var toDisplay = presentation.GetMethod(
+                "ToSubscriptionPayloadDisplayValue",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var toBytes = presentation.GetMethod(
+                "ToClampedSubscriptionPayloadBytes",
+                BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(labels);
+            Assert.NotNull(toDisplay);
+            Assert.NotNull(toBytes);
+            Assert.Equal(new[] { "KB", "MB" }, (string[])labels.GetValue(null));
+            Assert.Equal(
+                65.536d,
+                (double)toDisplay.Invoke(
+                    null,
+                    new object[] { 65_536, FoxRunRos2NativeCopyBudgetUnit.KB }));
+            Assert.Equal(
+                0.065536d,
+                (double)toDisplay.Invoke(
+                    null,
+                    new object[] { 65_536, FoxRunRos2NativeCopyBudgetUnit.MB }));
+            Assert.Equal(
+                65_536,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { 65.536d, FoxRunRos2NativeCopyBudgetUnit.KB }));
+            Assert.Equal(
+                65_536,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { 0.065536d, FoxRunRos2NativeCopyBudgetUnit.MB }));
+        }
+
+        [Fact]
+        public void SubscriptionPayloadConversionClampsMalformedValuesToSerializedBounds()
+        {
+            var toBytes = typeof(FoxRunRos2SubscriptionInspectorPresentation).GetMethod(
+                "ToClampedSubscriptionPayloadBytes",
+                BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(toBytes);
+            Assert.Equal(
+                256,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { double.NaN, FoxRunRos2NativeCopyBudgetUnit.KB }));
+            Assert.Equal(
+                256,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { -1d, FoxRunRos2NativeCopyBudgetUnit.MB }));
+            Assert.Equal(
+                int.MaxValue,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { double.PositiveInfinity, FoxRunRos2NativeCopyBudgetUnit.KB }));
+            Assert.Equal(
+                int.MaxValue,
+                (int)toBytes.Invoke(
+                    null,
+                    new object[] { double.MaxValue, FoxRunRos2NativeCopyBudgetUnit.MB }));
         }
 
         private static void AssertChoice(

@@ -75,6 +75,11 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static string[] NativeCopyBudgetLabels => NativeCopyBudgetUnitLabels;
 
+        /// <summary>
+        /// Human-facing decimal unit labels for the exact stored subscription payload limit.
+        /// </summary>
+        internal static string[] SubscriptionMaxPayloadLabels => NativeCopyBudgetUnitLabels;
+
         internal static string Summary(FoxRunResolvedQos qos)
         {
             var depth = qos.History == FoxRunQosHistory.KeepLast
@@ -171,6 +176,35 @@ namespace Unity.FoxgloveSDK.Editor
                 displayValue * bytesPerUnit,
                 MidpointRounding.AwayFromZero);
             return FoxRunRos2NativeCopyBudgetPolicy.ClampUserEditedBytes((int)roundedBytes);
+        }
+
+        internal static double ToSubscriptionPayloadDisplayValue(
+            int serializedBytes,
+            FoxRunRos2NativeCopyBudgetUnit unit)
+        {
+            return Math.Max(256, serializedBytes) / (double)GetBytesPerUnit(unit);
+        }
+
+        internal static int ToClampedSubscriptionPayloadBytes(
+            double displayValue,
+            FoxRunRos2NativeCopyBudgetUnit unit)
+        {
+            var bytesPerUnit = GetBytesPerUnit(unit);
+            if (double.IsNaN(displayValue) || displayValue <= 0d)
+                return 256;
+
+            var maximumDisplayValue = int.MaxValue / (double)bytesPerUnit;
+            if (double.IsPositiveInfinity(displayValue) || displayValue >= maximumDisplayValue)
+                return int.MaxValue;
+
+            var roundedBytes = Math.Round(
+                displayValue * bytesPerUnit,
+                MidpointRounding.AwayFromZero);
+            if (roundedBytes < 256d)
+                return 256;
+            return roundedBytes >= int.MaxValue
+                ? int.MaxValue
+                : (int)roundedBytes;
         }
 
         private static int GetBytesPerUnit(FoxRunRos2NativeCopyBudgetUnit unit)

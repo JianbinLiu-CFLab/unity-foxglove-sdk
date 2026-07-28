@@ -279,7 +279,6 @@ namespace Unity2Foxglove.ManualAcceptance
             _manager.EnableFoxRunInbound = true;
             _manager.DefaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
             _manager.DefaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf;
-            _manager.DefaultFoxRunPublishTargets = FoxRunEndpoint.Foxglove;
             _manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove;
 
             if (caseId == MultiTargetCase

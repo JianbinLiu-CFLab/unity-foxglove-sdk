@@ -23,9 +23,11 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.Space();
             FoxgloveManagerInspectorLayout.Subheader("FoxRun Publish Profile");
-            var targets = FoxRunEndpointEditorLabels.DrawTargets(
-                FindCachedProperty("_defaultFoxRunPublishTargets"),
-                "Targets");
+            var targets = FoxRunPublishTargetPolicy.FromPublishDestinations(
+                GetBool("_foxgloveOutputEnabled"),
+                GetBool("_ros2NativeEnabled"),
+                GetBool("_ros2BridgeEnabled"));
+
             var includesFoxglove = FoxRunEndpointEditorModel.Includes(
                 targets,
                 FoxRunEndpoint.Foxglove);

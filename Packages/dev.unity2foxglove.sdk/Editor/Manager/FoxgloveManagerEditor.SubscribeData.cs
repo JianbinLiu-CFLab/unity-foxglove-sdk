@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const string NativeCopyBudgetUnitSessionStateName =
             "DataTransportNativeCopyBudgetUnit";
+        private const string SubscriptionMaxPayloadUnitSessionStateName =
+            "DataTransportSubscriptionMaxPayloadUnit";
 
         private void DrawSubscribeDataSection()
         {
@@ -57,9 +59,7 @@ namespace Unity.FoxgloveSDK.Editor
                     DrawProperty(
                         "_allowRemoteFoxRunInboundWithSharedToken",
                         "Allow Remote FoxRun Subscriptions With Shared Token");
-                    DrawProperty(
-                        "_foxRunInboundMaxPayloadBytes",
-                        "Subscription Max Payload Bytes");
+                    DrawSubscriptionMaxPayload();
                 }
 
                 if (showRos2Native)
@@ -114,6 +114,77 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             DrawFoxRunRos2Qos(qosProperty, "ROS 2 Native QoS Profile");
+        }
+
+        private void DrawSubscriptionMaxPayload()
+        {
+            var payloadProperty = FindCachedProperty("_foxRunInboundMaxPayloadBytes");
+            if (payloadProperty == null)
+            {
+                DrawMissingProperty("_foxRunInboundMaxPayloadBytes");
+                return;
+            }
+
+            var displayUnit = GetSubscriptionMaxPayloadDisplayUnit();
+            var selectedUnitIndex = EditorGUILayout.Popup(
+                "Subscription Max Payload Unit",
+                (int)displayUnit,
+                FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels);
+            if (selectedUnitIndex != (int)displayUnit)
+            {
+                displayUnit = (FoxRunRos2NativeCopyBudgetUnit)selectedUnitIndex;
+                SessionState.SetInt(
+                    InspectorFoldoutKey(SubscriptionMaxPayloadUnitSessionStateName),
+                    selectedUnitIndex);
+            }
+
+            var normalizedBytes = System.Math.Max(256, payloadProperty.intValue);
+            if (payloadProperty.intValue != normalizedBytes)
+                payloadProperty.intValue = normalizedBytes;
+
+            var displayValue =
+                FoxRunRos2SubscriptionInspectorPresentation.ToSubscriptionPayloadDisplayValue(
+                    normalizedBytes,
+                    displayUnit);
+            EditorGUI.BeginChangeCheck();
+            var editedDisplayValue = EditorGUILayout.DoubleField(
+                "Subscription Max Payload ("
+                + FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels[
+                    (int)displayUnit]
+                + ")",
+                displayValue);
+            if (EditorGUI.EndChangeCheck())
+            {
+                payloadProperty.intValue =
+                    FoxRunRos2SubscriptionInspectorPresentation.ToClampedSubscriptionPayloadBytes(
+                        editedDisplayValue,
+                        displayUnit);
+                normalizedBytes = payloadProperty.intValue;
+                displayValue =
+                    FoxRunRos2SubscriptionInspectorPresentation.ToSubscriptionPayloadDisplayValue(
+                        normalizedBytes,
+                        displayUnit);
+            }
+
+            EditorGUILayout.LabelField(
+                "Stored Max Payload",
+                displayValue.ToString("0.######", CultureInfo.InvariantCulture)
+                + " "
+                + FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels[
+                    (int)displayUnit]
+                + " = "
+                + normalizedBytes.ToString("N0", CultureInfo.InvariantCulture)
+                + " bytes");
+        }
+
+        private static FoxRunRos2NativeCopyBudgetUnit GetSubscriptionMaxPayloadDisplayUnit()
+        {
+            var storedUnit = SessionState.GetInt(
+                InspectorFoldoutKey(SubscriptionMaxPayloadUnitSessionStateName),
+                (int)FoxRunRos2NativeCopyBudgetUnit.KB);
+            return storedUnit == (int)FoxRunRos2NativeCopyBudgetUnit.MB
+                ? FoxRunRos2NativeCopyBudgetUnit.MB
+                : FoxRunRos2NativeCopyBudgetUnit.KB;
         }
 
         private static void DrawFoxRunRos2Qos(
@@ -293,7 +364,7 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunRos2NativeCopyBudgetUnit.MB;
         }
 
-        private static bool HasExplicitSource(FoxRunEndpoint provider)
-            => HasGeneratedExplicitSource(provider);
+        private bool HasExplicitSource(FoxRunEndpoint provider)
+            => HasLoadedSceneExplicitSource(provider);
     }
 }

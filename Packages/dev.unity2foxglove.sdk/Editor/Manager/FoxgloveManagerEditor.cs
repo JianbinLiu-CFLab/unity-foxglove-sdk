@@ -63,7 +63,6 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _ros2NativeEnabledProperty;
         private SerializedProperty _ros2BridgeEnabledProperty;
         private SerializedProperty _enableFoxRunInboundProperty;
-        private SerializedProperty _defaultFoxRunPublishTargetsProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
         private SerializedProperty _defaultFoxRunNativePublishQosProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
@@ -139,6 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
             _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
             _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
             _ros2BridgeStatsFrame = -1;
+            ResetLoadedSceneContractsForInspectorDraw();
             ClearTransportClientLabelCache();
         }
 
@@ -156,7 +156,6 @@ namespace Unity.FoxgloveSDK.Editor
             _ros2NativeEnabledProperty = serializedObject.FindProperty("_ros2NativeEnabled");
             _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
-            _defaultFoxRunPublishTargetsProperty = serializedObject.FindProperty("_defaultFoxRunPublishTargets");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
             _defaultFoxRunNativePublishQosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishQos");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
@@ -190,6 +189,7 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+            ResetLoadedSceneContractsForInspectorDraw();
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
             RefreshTransportStatsForRepaint();
 
@@ -397,7 +397,6 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_ros2NativeEnabled": return _ros2NativeEnabledProperty;
                 case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
-                case "_defaultFoxRunPublishTargets": return _defaultFoxRunPublishTargetsProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
                 case "_defaultFoxRunNativePublishQos": return _defaultFoxRunNativePublishQosProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;

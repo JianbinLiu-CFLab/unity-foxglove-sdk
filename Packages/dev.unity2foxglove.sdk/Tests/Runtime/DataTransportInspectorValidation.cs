@@ -77,6 +77,10 @@ namespace Unity.FoxgloveSDK.Tests
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
             var publishData = FindMethod(editorSources, "DrawPublishDataSection");
             var subscribeData = FindMethod(editorSources, "DrawSubscribeDataSection");
+            var subscriptionMaxPayload = FindMethod(editorSources, "DrawSubscriptionMaxPayload");
+            var subscriptionMaxPayloadUnit = FindMethod(
+                editorSources,
+                "GetSubscriptionMaxPayloadDisplayUnit");
             var nativeQos = FindMethod(editorSources, "DrawFoxRunRos2Qos");
             var nativeBudget = FindMethod(editorSources, "DrawRos2NativeCopyBudget");
             var nativeBudgetUnit = FindMethod(editorSources, "GetNativeCopyBudgetDisplayUnit");
@@ -86,7 +90,14 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport, publishData);
             VerifyPublishPresentation(publishData);
-            VerifySubscribePresentation(dataTransport, subscribeData, nativeQos, nativeBudget, nativeBudgetUnit);
+            VerifySubscribePresentation(
+                dataTransport,
+                subscribeData,
+                subscriptionMaxPayload,
+                subscriptionMaxPayloadUnit,
+                nativeQos,
+                nativeBudget,
+                nativeBudgetUnit);
             VerifyNativeRuntimePresentation(nativeRuntime);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
@@ -303,8 +314,16 @@ namespace Unity.FoxgloveSDK.Tests
                       "Allow Component Publisher Override")
                   && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
                                                  && HasStringHeading(invocation, "FoxRun Publish Profile")) == 1
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawTargets")
-                                                 && HasStringArgument(invocation, 1, "Targets")) == 1
+                  && allInvocations.All(invocation => !IsInvocationNamed(invocation, "DrawTargets"))
+                  && !ContainsStringLiteral(
+                      publishData,
+                      "Override Publish Destinations for FoxRun")
+                  && !ContainsStringLiteral(
+                      publishData,
+                      "FoxRun Override Destinations")
+                  && publishData.ToFullString().Contains(
+                      "FoxRunPublishTargetPolicy.FromPublishDestinations(",
+                      StringComparison.Ordinal)
                   && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunEncoding")
                                                  && HasStringArgument(invocation, 1, "Foxglove Encoding")) == 1
                   && HasExactlyOneLabeledInvocation(
@@ -316,7 +335,7 @@ namespace Unity.FoxgloveSDK.Tests
                       publishData,
                       "Component publishers and generated FoxRun contracts use independent default encodings.")
                   && !ContainsStringLiteral(publishData, "FoxRun Contract Encoding"),
-                "180E-2: Publish keeps component encoding separate from the FoxRun Targets, Foxglove Encoding, and rate profile");
+                "180E-2: Publish exposes one authoritative destination group inherited by FoxRun and keeps component encoding separate from the Foxglove encoding and rate profile");
             Check(nativeOutputBranches.Length == 1
                   && nativeProfileInvocations.Count(invocation =>
                       IsInvocationNamed(invocation, "DrawFoxRunRos2Qos")
@@ -346,6 +365,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySubscribePresentation(
             MethodDeclarationSyntax dataTransport,
             MethodDeclarationSyntax subscribeData,
+            MethodDeclarationSyntax subscriptionMaxPayload,
+            MethodDeclarationSyntax subscriptionMaxPayloadUnit,
             MethodDeclarationSyntax nativeQos,
             MethodDeclarationSyntax nativeBudget,
             MethodDeclarationSyntax nativeBudgetUnit)
@@ -434,11 +455,36 @@ namespace Unity.FoxgloveSDK.Tests
                       webSocketBranchInvocations,
                       "_allowRemoteFoxRunInboundWithSharedToken",
                       "Allow Remote FoxRun Subscriptions With Shared Token")
-                  && HasExactlyOneLabeledProperty(
+                  && webSocketBranchInvocations.Count(invocation =>
+                      IsInvocationNamed(invocation, "DrawSubscriptionMaxPayload")) == 1
+                  && !HasExactlyOneLabeledProperty(
                       webSocketBranchInvocations,
                       "_foxRunInboundMaxPayloadBytes",
                       "Subscription Max Payload Bytes"),
                 "180F-3: WebSocket input remains visible for a selected or explicit generated WebSocket contract");
+            Check(subscriptionMaxPayload != null
+                  && subscriptionMaxPayloadUnit != null
+                  && AllInvocations(subscriptionMaxPayloadUnit).Count(invocation =>
+                      IsInvocationNamed(invocation, "GetInt")) == 1
+                  && AllInvocations(subscriptionMaxPayload).Count(invocation =>
+                      IsInvocationNamed(invocation, "SetInt")) == 1
+                  && ContainsStringLiteral(
+                      subscriptionMaxPayload,
+                      "Subscription Max Payload Unit"),
+                "180F-3A: Subscription Max Payload keeps its display unit in SessionState instead of Manager serialization");
+            Check(subscriptionMaxPayload != null
+                  && AllInvocations(subscriptionMaxPayload).Any(invocation =>
+                      IsInvocationNamed(invocation, "ToSubscriptionPayloadDisplayValue"))
+                  && AllInvocations(subscriptionMaxPayload).Count(invocation =>
+                      IsInvocationNamed(invocation, "ToClampedSubscriptionPayloadBytes")) == 1
+                  && ContainsStringLiteralFragment(
+                      subscriptionMaxPayload,
+                      "Subscription Max Payload (")
+                  && ContainsStringLiteral(
+                      subscriptionMaxPayload,
+                      "Stored Max Payload")
+                  && ContainsStringLiteralFragment(subscriptionMaxPayload, "bytes"),
+                "180F-3B: Subscription Max Payload converts decimal KB or MB and renders its exact stored-byte equivalent");
             Check(nativeBranches.Length == 2
                   && HasProviderVisibilityRule(
                       subscribeData,
@@ -543,9 +589,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool HasCustomNativeSubscriptionDemandAssignment(MethodDeclarationSyntax method)
         {
-            return method?.ToFullString().Contains(
-                       "var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();",
-                       StringComparison.Ordinal) == true;
+            var body = method?.ToFullString() ?? string.Empty;
+            return body.Contains(
+                       "HasR2fuNativeSubscriptionDemand(loadedScene)",
+                       StringComparison.Ordinal)
+                   && body.Contains(
+                       "FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(",
+                       StringComparison.Ordinal)
+                   && body.Contains("customContracts", StringComparison.Ordinal);
         }
 
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)

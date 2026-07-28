@@ -43,13 +43,6 @@ namespace Unity.FoxgloveSDK.Editor
             "ROS 2 Native (R2FU)"
         };
 
-        private static readonly string[] TargetLabels =
-        {
-            "Foxglove",
-            "ROS 2 Native (R2FU)",
-            "ROS 2 Bridge"
-        };
-
         internal static FoxRunEndpoint DrawSource(SerializedProperty sourceProperty, string label)
         {
             if (sourceProperty == null)
@@ -64,18 +57,6 @@ namespace Unity.FoxgloveSDK.Editor
             return source;
         }
 
-        internal static FoxRunEndpoint DrawTargets(SerializedProperty targetsProperty, string label)
-        {
-            if (targetsProperty == null)
-                return FoxRunEndpoint.Foxglove;
-
-            var targets = FoxRunEndpointEditorModel.NormalizeTargets(
-                (FoxRunEndpoint)targetsProperty.intValue);
-            var selected = EditorGUILayout.MaskField(label, (int)targets, TargetLabels);
-            targets = FoxRunEndpointEditorModel.NormalizeTargets((FoxRunEndpoint)selected);
-            targetsProperty.intValue = (int)targets;
-            return targets;
-        }
     }
 #endif
 }

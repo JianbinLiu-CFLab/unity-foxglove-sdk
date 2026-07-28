@@ -12,7 +12,6 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
-        [SerializeField] private FoxRunEndpoint _defaultFoxRunPublishTargets = FoxRunEndpoint.Foxglove;
         [SerializeField] private FoxRunEncoding _defaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
         [FormerlySerializedAs("_defaultFoxRunNativePublishRos2Qos")]
         [SerializeField, HideInInspector] private int _legacyDefaultFoxRunNativePublishRos2Qos = 1;
@@ -30,12 +29,27 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
 
-        /// <summary>Serialized default targets used by inherited Publish contracts.</summary>
+        /// <summary>
+        /// Effective default targets used by inherited Publish contracts.
+        /// These are the Manager Publish Destinations; assigning this
+        /// compatibility property updates the same three destination switches.
+        /// </summary>
         public FoxRunEndpoint DefaultFoxRunPublishTargets
         {
-            get => FoxRunEndpointResolver.ValidateProfileTargets(_defaultFoxRunPublishTargets);
-            set => _defaultFoxRunPublishTargets =
-                FoxRunEndpointResolver.ValidateProfileTargets(value);
+            get => FoxRunPublishTargetPolicy.FromPublishDestinations(
+                _foxgloveOutputEnabled,
+                _ros2NativeEnabled,
+                _ros2BridgeEnabled);
+            set
+            {
+                var targets = FoxRunEndpointResolver.ValidateProfileTargets(value);
+                _foxgloveOutputEnabled =
+                    (targets & FoxRunEndpoint.Foxglove) != 0;
+                _ros2NativeEnabled =
+                    (targets & FoxRunEndpoint.Ros2Native) != 0;
+                _ros2BridgeEnabled =
+                    (targets & FoxRunEndpoint.Ros2Bridge) != 0;
+            }
         }
 
         /// <summary>Serialized default used by inherited Publish contracts.</summary>

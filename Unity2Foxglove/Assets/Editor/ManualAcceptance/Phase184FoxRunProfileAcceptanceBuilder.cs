@@ -271,10 +271,6 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         SetFloat(serialized, "_defaultPublishRateHz", 60f);
         SetEnum(
             serialized,
-            "_defaultFoxRunPublishTargets",
-            (int)FoxRunEndpoint.Foxglove);
-        SetEnum(
-            serialized,
             "_defaultFoxRunPublishEncoding",
             (int)FoxRunEncoding.Protobuf);
         SetEnum(
@@ -288,7 +284,6 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         serialized.ApplyModifiedPropertiesWithoutUndo();
 
         manager.EnableFoxRunInbound = true;
-        manager.DefaultFoxRunPublishTargets = FoxRunEndpoint.Foxglove;
         manager.DefaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
         manager.DefaultFoxRunSubscriptionSource =
             native ? FoxRunEndpoint.Ros2Native : FoxRunEndpoint.Foxglove;

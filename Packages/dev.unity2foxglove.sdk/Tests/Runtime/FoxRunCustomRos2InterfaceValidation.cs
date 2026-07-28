@@ -732,21 +732,24 @@ namespace Unity.FoxgloveSDK.Tests
                 ? managerR2fuRuntimeInspector.Substring(runtimeSectionStart, runtimeSectionEnd - runtimeSectionStart)
                 : string.Empty;
             Check(runtimeSectionBody.Contains(
-                      "HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand()",
+                      "HasR2fuNativeSubscriptionDemand(loadedScene)",
+                      StringComparison.Ordinal)
+                  && runtimeSectionBody.Contains(
+                      "FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
                       "GetDefaultPublishTargets() & FoxRunEndpoint.Ros2Native",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
-                      "HasExplicitNativePublishContract",
+                      "loadedScene.HasExplicitNativePublishContract",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
-                      "if (HasCustomNativeContractDemand())",
+                      "FoxRunCustomNativeContractDemandPolicy.HasDemand(",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
-                      "DrawOptionalR2fuCustomTypesupportInspector();",
+                      "DrawOptionalR2fuCustomTypesupportInspector(customContracts);",
                       StringComparison.Ordinal),
-                "181E-4: shared Runtime direction text includes profile and explicit native demand and conditionally renders the custom preflight");
+                "181E-4: shared Runtime direction text uses loaded-scene profile and explicit native demand and conditionally renders the scene-filtered custom preflight");
         }
 
         private static void VerifyEditModeCustomContractSnapshot(
