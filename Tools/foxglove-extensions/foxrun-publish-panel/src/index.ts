@@ -189,6 +189,7 @@ export function initPanel(context: PanelExtensionContext): () => void {
   let skippedTicks = 0;
   let repeatTimer: ReturnType<typeof setInterval> | undefined;
   let mounted = true;
+  let receivedReadyTopicSnapshot = false;
   const directClient = new DirectFoxRunProtocolClient();
   const jsonAdvertisement = new JsonTopicAdvertisementTracker();
   const panel = buildPanel();
@@ -406,6 +407,9 @@ export function initPanel(context: PanelExtensionContext): () => void {
     setStatus("Loading Unity subscription contracts...");
     try {
       const response = normalizeCatalog(await context.callService(CATALOG_SERVICE, {}));
+      if (!mounted) {
+        return;
+      }
       if (response == undefined) {
         throw new Error("Unity returned an invalid subscription catalog.");
       }
@@ -418,9 +422,13 @@ export function initPanel(context: PanelExtensionContext): () => void {
         }
       }
     } catch (error) {
-      setStatus(`Could not load Unity subscription contracts: ${String(error)}`, "error");
+      if (mounted) {
+        setStatus(`Could not load Unity subscription contracts: ${String(error)}`, "error");
+      }
     } finally {
-      panel.refresh.disabled = false;
+      if (mounted) {
+        panel.refresh.disabled = false;
+      }
     }
   }
 
@@ -510,7 +518,30 @@ export function initPanel(context: PanelExtensionContext): () => void {
   panel.endpoint.value = state.endpoint;
   panel.repeat.checked = state.repeat;
   panel.rate.value = String(requestedRateHzForSelectedTopic());
-  void refreshCatalog();
+  context.watch("topics");
+  context.onRender = (renderState, done) => {
+    try {
+      if (renderState.topics == undefined) {
+        return;
+      }
+      if (renderState.topics.length === 0) {
+        receivedReadyTopicSnapshot = false;
+        catalog = undefined;
+        selectedDetail = undefined;
+        stopRepeat();
+        releaseJsonAdvertisement();
+        renderCatalog();
+        setStatus("Waiting for Unity to advertise topics. Start Play Mode, or use Refresh after Unity is ready.", "warn");
+        return;
+      }
+      if (!receivedReadyTopicSnapshot) {
+        receivedReadyTopicSnapshot = true;
+        void refreshCatalog();
+      }
+    } finally {
+      done();
+    }
+  };
 
   return () => {
     mounted = false;
@@ -551,7 +582,7 @@ function buildPanel(): PanelElements {
     <div class="foxrun-field"><label for="token">Shared token for direct Protobuf (memory only)</label><input id="token" type="password" autocomplete="off" /></div>
     <div class="foxrun-controls"><label class="foxrun-repeat"><input id="repeat" type="checkbox" />Repeat</label><div class="foxrun-field"><label for="rate">Rate Hz</label><input id="rate" type="number" min="1" step="1" /></div></div>
     <button id="send" type="button" disabled>Send once</button>
-    <div id="status" class="foxrun-status">Loading Unity subscription contracts...</div>
+    <div id="status" class="foxrun-status">Waiting for Unity topic and service advertisements...</div>
   `;
 
   const topic = required<HTMLSelectElement>(root, "#topic");

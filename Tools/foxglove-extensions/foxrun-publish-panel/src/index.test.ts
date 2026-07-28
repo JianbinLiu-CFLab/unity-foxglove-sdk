@@ -1,10 +1,13 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+// @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import type { PanelExtensionContext } from "@foxglove/extension";
+import { describe, expect, it, vi } from "vitest";
 import {
   JsonTopicAdvertisementTracker,
   clampRequestedRateHz,
+  initPanel,
   normalizeRequestedRateHz,
   normalizeCatalog,
   parseFieldValue,
@@ -146,5 +149,44 @@ describe("FoxRun Publish catalog state", () => {
     expect(tracker.begin("/zeta")).toEqual({ advertise: "/zeta", unadvertise: "/alpha" });
     expect(tracker.release()).toBe("/zeta");
     expect(tracker.release()).toBeUndefined();
+  });
+
+  it("waits for the first topic snapshot before calling the Unity catalog service", async () => {
+    const callService = vi.fn().mockResolvedValue({
+      ...summary,
+      contracts: [],
+    });
+    const context = {
+      panelElement: document.createElement("div"),
+      initialState: undefined,
+      saveState: vi.fn(),
+      watch: vi.fn(),
+      callService,
+    } as unknown as PanelExtensionContext & { onRender?: PanelExtensionContext["onRender"] };
+
+    const cleanup = initPanel(context);
+
+    expect(context.watch).toHaveBeenCalledWith("topics");
+    expect(callService).not.toHaveBeenCalled();
+
+    const emptyDone = vi.fn();
+    context.onRender?.({ topics: [] }, emptyDone);
+    expect(emptyDone).toHaveBeenCalledOnce();
+    expect(callService).not.toHaveBeenCalled();
+
+    const readyDone = vi.fn();
+    context.onRender?.({
+      topics: [{
+        name: "/unity/status",
+        datatype: "foxglove.Log",
+        schemaName: "foxglove.Log",
+      }],
+    }, readyDone);
+    expect(readyDone).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(callService).toHaveBeenCalledTimes(1);
+    });
+
+    cleanup();
   });
 });

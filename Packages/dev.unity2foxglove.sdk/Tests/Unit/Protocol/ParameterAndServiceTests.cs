@@ -180,6 +180,36 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ServiceSnapshotPrecedesTopicSnapshotForPanelReadiness()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 1,
+                Topic = "/unity/status",
+                Encoding = "json",
+                SchemaName = "foxglove.Log"
+            });
+            session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/foxrun/subscription-contracts",
+                Type = "/foxrun/subscription-contracts",
+                Request = new ServiceSchemaDescriptor { SchemaName = "FoxRunCatalogRequest" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "FoxRunCatalogResponse" }
+            });
+
+            fake.SimulateConnect(1);
+            var operations = fake.SentTexts(1)
+                .Select(text => JObject.Parse(text)["op"]?.ToString())
+                .ToList();
+
+            Assert.True(
+                operations.IndexOf("advertiseServices") < operations.IndexOf("advertise"),
+                "Service snapshot must precede topics so a panel topics render is a service-readiness barrier.");
+        }
+
+        [Fact]
         public void ServiceAdvertiseAfterConnect()
         {
             var fake = new Phase6FakeTransport();

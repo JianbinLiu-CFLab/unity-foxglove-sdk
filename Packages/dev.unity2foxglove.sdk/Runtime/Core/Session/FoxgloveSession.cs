@@ -1030,6 +1030,16 @@ namespace Unity.FoxgloveSDK.Core
         {
             _transport.SendText(clientId, SerializeServerInfo(CreateServerInfo()));
 
+            var svcs = services ?? _services.GetAll();
+            if (svcs.Count > 0)
+                _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices
+                {
+                    Services = svcs as List<ServiceDescriptor> ?? new List<ServiceDescriptor>(svcs)
+                }));
+
+            // Services intentionally precede topics. Foxglove panels can watch
+            // the topic snapshot and use its first render as an in-order
+            // readiness barrier before calling a service advertised here.
             // Callers that pass `channels` already filtered them; only the
             // fallback snapshot of all channels needs live filtering here.
             var chs = channels ?? FilterLiveChannels(_channels.GetAll());
@@ -1037,13 +1047,6 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise
                 {
                     Channels = chs as List<AdvertiseChannel> ?? new List<AdvertiseChannel>(chs)
-                }));
-
-            var svcs = services ?? _services.GetAll();
-            if (svcs.Count > 0)
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices
-                {
-                    Services = svcs as List<ServiceDescriptor> ?? new List<ServiceDescriptor>(svcs)
                 }));
         }
 
