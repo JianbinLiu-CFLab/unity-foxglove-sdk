@@ -318,6 +318,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void FullDemoContainsOneFoxRun115FProbeAndNoFakePhase147Probe()
+        {
+            var liveScene = TestSources.Text("Unity2Foxglove/Assets/Scenes/SampleScene.unity");
+            var packageScene = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/Scenes/FullDemoVisualization.unity");
+
+            foreach (var scene in new[] { liveScene, packageScene })
+            {
+                Assert.DoesNotContain("m_Name: Phase147ManualProbe", scene, StringComparison.Ordinal);
+                Assert.Single(
+                    Regex.Matches(
+                        scene,
+                        "m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe",
+                        RegexOptions.CultureInvariant).Cast<Match>());
+            }
+        }
+
+        [Fact]
+        public void FullDemoEnablesFoxRunSubscriptionsByDefault()
+        {
+            var liveScene = TestSources.Text("Unity2Foxglove/Assets/Scenes/SampleScene.unity");
+            var packageScene = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/Scenes/FullDemoVisualization.unity");
+
+            foreach (var scene in new[] { liveScene, packageScene })
+                Assert.Contains("_enableFoxRunInbound: 1", scene, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DotNetTestSourcesHaveAnExplicitDisabledUnityAssemblyBoundary()
+        {
+            var asmdef = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unity.FoxgloveSDK.DotNetTests.asmdef");
+
+            Assert.Contains(
+                "\"defineConstraints\": [\n    \"UNITY2FOXGLOVE_DOTNET_TESTS\"\n  ]",
+                asmdef,
+                StringComparison.Ordinal);
+            Assert.Contains("\"autoReferenced\": false", asmdef, StringComparison.Ordinal);
+            Assert.Contains("\"noEngineReferences\": true", asmdef, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ManualSmokeStateAndCountersRemainLongRunningSafe()
         {
             var overlaySmoke = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/FoxgloveDebugOverlaySmoke.cs");

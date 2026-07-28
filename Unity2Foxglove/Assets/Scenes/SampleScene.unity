@@ -344,6 +344,7 @@ MonoBehaviour:
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
   _frameStallDiagnosticsEnabled: 0
   _frameStallDiagnosticsThresholdMs: 200
+  _enableFoxRunInbound: 1
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
@@ -624,68 +625,6 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 534487832}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &750568994
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 750568996}
-  - component: {fileID: 750568995}
-  m_Layer: 0
-  m_Name: Phase147ManualProbe
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &750568995
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 750568994}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 16e2bce8534e4cd4aff23ad3f6f3f429, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
-  _mutateValues: 1
-  _publishNullOptional: 0
-  _lastStatus: Reset probe values.
-  scalarValue: 0
-  textValue: hello 115F
-  vectorValue: {x: 0, y: 0, z: 0}
-  sampleArray:
-  - 0
-  - 1
-  - 2
-  sampleList:
-  - 0
-  - 1
-  - 2
-  nestedPayload:
-    count: 0
-    label: reset
-    offset: {x: 0, y: 0, z: 0}
---- !u!4 &750568996
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 750568994}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -1257,4 +1196,3 @@ SceneRoots:
   - {fileID: 2020679429}
   - {fileID: 908391463}
   - {fileID: 1134407404}
-  - {fileID: 750568996}
