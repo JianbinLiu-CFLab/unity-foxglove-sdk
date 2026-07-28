@@ -648,6 +648,7 @@ class CoordinatorHarness:
         self.desktop_lease_active = False
         self.desktop_lease_snapshot_count = 0
         self.base_ready_at: float | None = None
+        self.context_ready_at: float | None = None
         self._prepare_files()
 
     @property
@@ -753,6 +754,12 @@ class CoordinatorHarness:
             )
         elif self.mode != "missing-base-ready":
             self.write_base_ready(config)
+        if self.mode == "delayed-context":
+            self.context_ready_at = (
+                self.clock.value
+                + coordinator.CONNECTION_TIMEOUT_SECONDS
+                + 30.0
+            )
 
     def write_base_ready(
         self,
@@ -828,6 +835,12 @@ class CoordinatorHarness:
         ):
             return ()
         if self.mode == "missing-context":
+            return ()
+        if (
+            self.mode == "delayed-context"
+            and self.context_ready_at is not None
+            and self.clock.value < self.context_ready_at
+        ):
             return ()
         case = "foxglove-profile"
         token = self.token
@@ -1993,6 +2006,27 @@ class Phase184FoxgloveDesktopLiveAcceptanceTests(unittest.TestCase):
             harness.events.index("base:ready"),
             harness.events.index("marker:context"),
         )
+        self.assertGreater(
+            harness.clock.value,
+            100.0 + coordinator.CONNECTION_TIMEOUT_SECONDS,
+        )
+
+    def test_context_readiness_uses_cold_start_budget_before_connection_window(self):
+        """Verify a bounded cold Unity start does not consume connection time."""
+
+        with temporary_directory("desktop-live-delayed-context-") as temporary:
+            harness = CoordinatorHarness(
+                pathlib.Path(temporary),
+                mode="delayed-context",
+            )
+
+            summary = coordinator.run_acceptance(
+                harness.args(),
+                dependencies=harness.dependencies(),
+            )
+
+        self.assertEqual(summary["verdict"], "PASS")
+        self.assertIn("marker:context", harness.events)
         self.assertGreater(
             harness.clock.value,
             100.0 + coordinator.CONNECTION_TIMEOUT_SECONDS,

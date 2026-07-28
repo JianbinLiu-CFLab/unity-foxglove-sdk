@@ -2464,12 +2464,19 @@ def _wait_for_context_and_initial(
 ) -> tuple[str, float, str, float]:
     """Wait for context and initial."""
 
-    deadline = _clock_value(dependencies) + CONNECTION_TIMEOUT_SECONDS
+    context_deadline = (
+        _clock_value(dependencies) + BASE_READINESS_TIMEOUT_SECONDS
+    )
+    initial_deadline: float | None = None
     context_line: str | None = None
     context_time: float | None = None
     initial_line: str | None = None
     initial_time: float | None = None
-    while _clock_value(dependencies) < deadline:
+    while _clock_value(dependencies) < (
+        initial_deadline
+        if initial_deadline is not None
+        else context_deadline
+    ):
         _require_coordinator_log_bounds(
             dependencies,
             coordinator_logs,
@@ -2503,6 +2510,9 @@ def _wait_for_context_and_initial(
         if evidence.context is not None and context_line is None:
             context_line = evidence.context
             context_time = _clock_value(dependencies)
+            initial_deadline = (
+                context_time + CONNECTION_TIMEOUT_SECONDS
+            )
         if sequence and initial_line is None:
             initial_line = sequence[0][1]
             initial_time = _clock_value(dependencies)
@@ -2549,9 +2559,14 @@ def _wait_for_context_and_initial(
                 initial_time,
             )
         _sleep_poll(dependencies)
+    if context_line is None:
+        _raise(
+            protocol.FAIL_DESKTOP_CONNECTION,
+            "Context marker did not arrive before its cold-start deadline.",
+        )
     _raise(
         protocol.FAIL_DESKTOP_CONNECTION,
-        "Context and stable initial 0/0 markers did not arrive.",
+        "Stable initial 0/0 marker did not arrive after context readiness.",
     )
 
 
