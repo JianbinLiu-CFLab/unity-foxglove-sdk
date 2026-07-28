@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 
@@ -23,13 +24,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunRos2CustomPublisherContract _contract;
         private readonly FoxTopicBus _bus;
         private readonly IFoxRunRos2NativePublisherBackend _backend;
+        private readonly FoxRunResolvedQos _qos;
         private readonly Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> _map;
         private readonly Action<TEnvelope> _dispose;
         private readonly string _origin;
         private readonly FoxRunRos2CustomSequenceSource _sequence;
         private readonly Func<FoxRunRos2CustomTypesupportReadiness> _readiness;
         private readonly Action _onStopped;
-        private readonly Action<FoxTopicEnvelope<TDto>> _busCallback;
+        private readonly Func<FoxTopicEnvelope<TDto>, bool> _busCallback;
         private IFoxRunRos2NativePublisherToken _token;
         private bool _subscribed;
         private int _stopped;
@@ -38,6 +40,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2CustomPublisherContract contract,
             FoxTopicBus bus,
             IFoxRunRos2NativePublisherBackend backend,
+            FoxRunResolvedQos qos,
             Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> map,
             Action<TEnvelope> dispose,
             string origin,
@@ -48,6 +51,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
+            _qos = qos;
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _origin = origin ?? string.Empty;
@@ -61,6 +65,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal int PublishedCount { get; private set; }
         internal int MapperFailureCount { get; private set; }
         internal int PublishFailureCount { get; private set; }
+        internal int DisposeFailureCount { get; private set; }
         internal int BudgetRejectedCount { get; private set; }
         internal int SequenceExhaustedCount { get; private set; }
 
@@ -83,11 +88,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "The selected custom ROS2 typesupport add-on is not ready.");
             }
 
-            var registration = _backend.Register<TEnvelope>(_contract);
-            if (!registration.Succeeded || registration.Token == null || !registration.Token.IsUsable)
+            var registration = _backend.Register<TEnvelope>(_contract, _qos);
+            // Own every returned token before touching any of its members.
+            // Native wrapper getters are external code and may throw fatally;
+            // Stop must still be able to remove the already-created endpoint.
+            _token = registration.Token;
+            if (!registration.Succeeded || _token == null)
             {
-                if (registration.Token != null)
-                    TryRemovePublisher(registration.Token);
                 Stop();
                 return FoxRunRos2RegistrationResult.Failure(
                     registration.Succeeded
@@ -96,14 +103,42 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     registration.FailureKind);
             }
 
-            _token = registration.Token;
+            bool tokenUsable;
             try
             {
-                _bus.Subscribe(_contract.Topic, _busCallback);
+                tokenUsable = _token.IsUsable;
+            }
+            catch (Exception exception)
+            {
+                var primary = ExceptionDispatchInfo.Capture(exception);
+                try
+                {
+                    Stop();
+                }
+                catch (Exception)
+                {
+                    // Stop completes all mandatory teardown stages before
+                    // throwing. Preserve the token getter as the primary fault.
+                }
+                primary.Throw();
+                throw;
+            }
+            if (!tokenUsable)
+            {
+                Stop();
+                return FoxRunRos2RegistrationResult.Failure(
+                    FoxRunRos2RegistrationError.InvalidPublisherToken,
+                    registration.FailureKind);
+            }
+
+            try
+            {
+                _bus.SubscribeResult(_contract.Topic, _origin, _busCallback);
                 _subscribed = true;
                 return FoxRunRos2RegistrationResult.Success();
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 Stop();
                 return FoxRunRos2RegistrationResult.Failure(
@@ -117,98 +152,162 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (Interlocked.Exchange(ref _stopped, 1) != 0)
                 return;
 
-            try
-            {
-                if (_subscribed)
-                {
-                    try
-                    {
-                        _bus.Unsubscribe(_contract.Topic, _busCallback);
-                    }
-                    finally
-                    {
-                        _subscribed = false;
-                    }
-                }
-
-                var token = Interlocked.Exchange(ref _token, null);
-                if (token != null)
-                    TryRemovePublisher(token);
-            }
-            finally
+            ExceptionDispatchInfo fatal = null;
+            if (_subscribed)
             {
                 try
                 {
-                    _backend.ReleaseNodeOwnership();
+                    _bus.UnsubscribeResult(
+                        _contract.Topic,
+                        _origin,
+                        _busCallback);
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    // Best-effort after bus shutdown.
+                }
+                catch (Exception exception)
+                {
+                    fatal = ExceptionDispatchInfo.Capture(exception);
                 }
                 finally
                 {
-                    try
-                    {
-                        _onStopped?.Invoke();
-                    }
-                    catch (Exception)
-                    {
-                        // Origin cleanup is bookkeeping only. A user-supplied
-                        // stop observer must never prevent endpoint teardown.
-                    }
+                    _subscribed = false;
                 }
             }
+
+            var token = Interlocked.Exchange(ref _token, null);
+            if (token != null)
+            {
+                try
+                {
+                    TryRemovePublisher(token);
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            try
+            {
+                _backend.ReleaseNodeOwnership();
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                // The node can already be gone during native shutdown.
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+
+            try
+            {
+                _onStopped?.Invoke();
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                // Origin bookkeeping failure cannot block completed teardown.
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+
+            fatal?.Throw();
         }
 
-        private void OnBusEnvelope(FoxTopicEnvelope<TDto> envelope)
+        private bool OnBusEnvelope(FoxTopicEnvelope<TDto> envelope)
         {
-            if (IsStopped || !_sequence.TryPeek(out var candidateSequence))
+            if (IsStopped)
+                return false;
+
+            var ownsSequence = envelope.Sequence == 0;
+            var candidateSequence = envelope.Sequence;
+            if (ownsSequence && !_sequence.TryPeek(out candidateSequence))
             {
-                if (!IsStopped)
-                {
-                    SequenceExhaustedCount++;
-                    Stop();
-                }
-                return;
+                SequenceExhaustedCount++;
+                Stop();
+                return false;
             }
 
             TEnvelope mapped = default;
+            var mappingCompleted = false;
+            ExceptionDispatchInfo fatal = null;
             try
             {
                 mapped = _map(
                     envelope.Payload,
-                    _origin,
+                    string.IsNullOrWhiteSpace(envelope.Origin) ? _origin : envelope.Origin,
                     candidateSequence,
                     envelope.TimestampNs,
                     FoxRunRos2CustomOutboundMappingPolicy.CreateContext());
                 if (ReferenceEquals(mapped, null))
-                    return;
+                    return false;
+                mappingCompleted = true;
 
-                if (!_sequence.TryAllocate(out var allocatedSequence) || allocatedSequence != candidateSequence)
+                if (ownsSequence
+                    && (!_sequence.TryAllocate(out var allocatedSequence)
+                        || allocatedSequence != candidateSequence))
                 {
                     SequenceExhaustedCount++;
                     Stop();
-                    return;
+                    return false;
                 }
 
                 var token = Volatile.Read(ref _token);
                 if (token == null || !_backend.TryPublish(token, mapped))
                 {
                     PublishFailureCount++;
-                    return;
+                    return false;
                 }
 
                 PublishedCount++;
+                return true;
             }
             catch (FoxRunRos2CustomOutboundBudgetExceededException)
             {
                 BudgetRejectedCount++;
+                return false;
             }
-            catch (Exception)
+            catch (Exception exception) when (FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
-                MapperFailureCount++;
+                if (mappingCompleted)
+                    PublishFailureCount++;
+                else
+                    MapperFailureCount++;
+                return false;
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
             }
             finally
             {
                 if (!ReferenceEquals(mapped, null))
-                    _dispose(mapped);
+                {
+                    try
+                    {
+                        _dispose(mapped);
+                    }
+                    catch (Exception exception) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    {
+                        DisposeFailureCount++;
+                    }
+                    catch (Exception exception)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
             }
+
+            fatal?.Throw();
+            return false;
         }
 
         private void TryRemovePublisher(IFoxRunRos2NativePublisherToken token)
@@ -217,7 +316,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _backend.RemovePublisher(token);
             }
-            catch (Exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 // The native runtime can already be shut down when a Unity
                 // lifecycle callback reaches this endpoint teardown. The

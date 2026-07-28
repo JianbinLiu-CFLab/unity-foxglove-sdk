@@ -7,7 +7,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(foxglove_msgs REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 add_executable(unity2foxglove_ros2_bridge
@@ -17,11 +16,13 @@ add_executable(unity2foxglove_ros2_bridge
 target_compile_features(unity2foxglove_ros2_bridge PUBLIC cxx_std_17)
 ament_target_dependencies(unity2foxglove_ros2_bridge
   rclcpp
-  foxglove_msgs
 )
 target_link_libraries(unity2foxglove_ros2_bridge
   nlohmann_json::nlohmann_json
 )
+if(WIN32)
+  target_link_libraries(unity2foxglove_ros2_bridge ws2_32)
+endif()
 
 install(TARGETS unity2foxglove_ros2_bridge
   DESTINATION lib/${PROJECT_NAME}
@@ -44,11 +45,13 @@ if(BUILD_TESTING)
   target_compile_features(test_bridge_smoke PUBLIC cxx_std_17)
   ament_target_dependencies(test_bridge_smoke
     rclcpp
-    foxglove_msgs
   )
   target_link_libraries(test_bridge_smoke
     nlohmann_json::nlohmann_json
   )
+  if(WIN32)
+    target_link_libraries(test_bridge_smoke ws2_32)
+  endif()
 endif()
 
 ament_package()

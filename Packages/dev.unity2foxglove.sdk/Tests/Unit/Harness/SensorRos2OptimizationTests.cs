@@ -310,10 +310,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("std::vector<uint8_t> & scratch", sidecar, StringComparison.Ordinal);
             Assert.Contains("scratch.insert(scratch.end(), frame.payload.begin(), frame.payload.end());", sidecar, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t> payload_for_publish", sidecar, StringComparison.Ordinal);
-            Assert.Contains("topic_signature_.emplace(frame.topic, signature)", sidecar, StringComparison.Ordinal);
-            Assert.DoesNotContain("topic_signature_[frame.topic] = signature", sidecar, StringComparison.Ordinal);
-            Assert.Contains("publishers_.find(key)", sidecar, StringComparison.Ordinal);
-            Assert.DoesNotContain("auto publisher = publishers_[key]", sidecar, StringComparison.Ordinal);
+            Assert.Contains("publisher_contracts_.register_or_validate(frame)", sidecar, StringComparison.Ordinal);
+            Assert.Contains("publisher_contracts_.rollback_create(frame.topic)", sidecar, StringComparison.Ordinal);
+            Assert.DoesNotContain("topic_signature_", sidecar, StringComparison.Ordinal);
+            Assert.Contains("publishers_.find(frame.topic)", sidecar, StringComparison.Ordinal);
+            Assert.DoesNotContain("auto publisher = publishers_[frame.topic]", sidecar, StringComparison.Ordinal);
             Assert.False(SourceMethodContains(sidecar, "BridgeFrame parse_publish_frame", "const auto op = raw.header.at(\"op\").get<std::string>()"));
             Assert.True(SourceMethodContains(sidecar, "void process_client", "const auto op = raw.header.at(\"op\").get<std::string>()"));
         }

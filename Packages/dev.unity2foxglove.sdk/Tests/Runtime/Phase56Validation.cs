@@ -64,12 +64,18 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("new Dictionary<string, object>"),
                 "56B-1: emitter falls back to a string-keyed payload when JSON field names are not C# anonymous-property identifiers");
-            Check(source.Contains("[\"1\"] = this._1"),
-                "56B-2: leading-underscore numeric member keeps JSON field name while preserving member access");
-            Check(source.Contains("[\"class\"] = this.@class"),
-                "56B-3: keyword member access is escaped while preserving JSON field name");
-            Check(source.Contains("[\"velocity\"] = new Dictionary<string, object> { [\"x\"] = this._velocity.x"),
-                "56B-4: Unity value builders still use explicit this-qualified member access inside dictionary payloads");
+            Check(
+                source.Contains("__foxRunCapture_0_0 = this._1;")
+                && source.Contains("[\"1\"] = __foxRunCapture_0_0"),
+                "56B-2: leading-underscore numeric member keeps its JSON field name and explicit capture access");
+            Check(
+                source.Contains("__foxRunCapture_0_1 = this.@class;")
+                && source.Contains("[\"class\"] = __foxRunCapture_0_1"),
+                "56B-3: keyword member access is escaped during capture while preserving its JSON field name");
+            Check(
+                source.Contains("__foxRunCapture_0_2 = this._velocity;")
+                && source.Contains("[\"velocity\"] = new Dictionary<string, object> { [\"x\"] = __foxRunCapture_0_2.x"),
+                "56B-4: Unity value builders reuse one explicitly this-qualified captured sample");
             Check(!source.Contains("new { 1 =") && !source.Contains("class = this.class"),
                 "56B-5: emitter no longer writes invalid anonymous-object properties");
         }
@@ -78,12 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var doc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md");
 
-            Check(!doc.Contains("RateHz = 0"),
-                "56C-1: Chinese FoxRun docs no longer claim RateHz = 0 publishes every frame");
-            Check(doc.Contains("省略 `RateHz`") && doc.Contains("Default Subscribe Rate Hz"),
-                "56C-1a: Chinese FoxRun docs explain omitted RateHz inherits direction-specific defaults");
-            Check(doc.Contains("Policy") && doc.Contains("Trigger") && doc.Contains("ChangeEpsilon")
-                && doc.Contains("ForceIntervalSeconds") && doc.Contains("FOXRUN005"),
+            Check(!doc.Contains("RateHz =") && doc.Contains("省略 `Hz`")
+                && doc.Contains("Default Subscribe Rate Hz"),
+                "56C-1: Chinese FoxRun docs use the short Hz declaration and explain directional defaults");
+            Check(doc.Contains("Policy") && doc.Contains("Trigger") && doc.Contains("Tolerance")
+                && doc.Contains("OnlyIf") && doc.Contains("FOXRUN005"),
                 "56C-2: Chinese FoxRun docs cover current publish policy and FOXRUN005 behavior");
         }
 

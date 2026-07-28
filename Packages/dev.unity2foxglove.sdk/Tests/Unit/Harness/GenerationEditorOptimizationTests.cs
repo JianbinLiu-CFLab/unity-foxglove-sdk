@@ -70,7 +70,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                             "unity2foxglove.Float32",
                             3,
                             0.001f,
-                            1f,
                             "reflection",
                             7,
                             "UNITY_EDITOR"),
@@ -90,7 +89,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                             "unity2foxglove.Float32",
                             3,
                             0f,
-                            0f,
                             "roslyn",
                             8,
                             "")
@@ -100,7 +98,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, model);
 
-            Assert.Contains("\"descriptorVersion\":2", json, StringComparison.Ordinal);
+            Assert.Contains("\"descriptorVersion\":4", json, StringComparison.Ordinal);
             Assert.Contains("\"elementTypeName\":\"float\"", json, StringComparison.Ordinal);
             Assert.Contains("\"topic\":\"/vehicle/samples\"", json, StringComparison.Ordinal);
             Assert.True(comparison.IsSemanticEqual);
@@ -167,7 +165,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                             0f,
                             "unity2foxglove.String",
                             1,
-                            0f,
                             0f,
                             "reflection",
                             1,

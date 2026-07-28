@@ -366,6 +366,25 @@ namespace Unity.FoxgloveSDK.Core
             _session.RegisterChannel(channel);
         }
 
+        /// <summary>Register a channel visible only to the attached MCAP recorder.</summary>
+        internal void RegisterRecordingOnlyChannel(AdvertiseChannel channel)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(RegisterRecordingOnlyChannel), channel?.Id);
+                return;
+            }
+
+            _session.RegisterRecordingOnlyChannel(channel);
+        }
+
+        /// <summary>Whether an MCAP recorder currently accepts this hidden channel.</summary>
+        internal bool HasRecordingDemand(uint channelId)
+            => !ReplayEnabled
+               && _session != null
+               && _session.HasRecordingDemand(channelId);
+
         /// <summary>Unregister a channel by its numeric ID.</summary>
         public void UnregisterChannel(uint channelId)
         {
@@ -423,6 +442,15 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _session.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        /// <summary>Publish validated CDR only to a previously hidden MCAP channel.</summary>
+        internal bool PublishRecordingOnlyRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_session == null || ReplayEnabled || !_session.HasRecordingDemand(channelId))
+                return false;
+            _session.PublishRos2Cdr(channelId, payload, logTimeNs);
+            return true;
         }
 
         /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>

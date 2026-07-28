@@ -135,16 +135,18 @@ namespace Unity.FoxgloveSDK.Tests
             var topicMetaSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var hubSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
-            Check(attrSource.Contains("public float RateHz { get; set; } = -1f"),
-                "71E-1: FoxRunAttribute keeps an explicit unspecified RateHz sentinel");
-            Check(generatorSource.Contains("float rateHz = -1f") && generatorSource.Contains("named.Key == \"RateHz\""),
-                "71E-2: source generator preserves omitted and explicit FoxRun RateHz");
-            Check(generationModelSource.Contains("DeclaredRateHz = rateHz")
-                    && generationModelSource.Contains("RateHz = NormalizeRateHz(rateHz)"),
+            Check(attrSource.Contains("public float Hz { get; set; } = -1f"),
+                "71E-1: FoxRunAttribute keeps an explicit unspecified Hz sentinel");
+            Check(generatorSource.Contains("float hz = -1f")
+                    && generatorSource.Contains("case \"Hz\":")
+                    && generatorSource.Contains("FoxRunNamedArgumentPresence.Hz"),
+                "71E-2: source generator preserves omitted and explicit FoxRun Hz");
+            Check(generationModelSource.Contains("DeclaredHz = hz")
+                    && generationModelSource.Contains("Hz = NormalizeHz(hz)"),
                 "71E-2a: generation model preserves declaration intent and resolves publish cadence separately");
-            Check(topicMetaSource.Contains("fields.Max(m => m.RateHz)"),
-                "71E-3: shared emitter emits resolved FoxRun topic RateHz metadata");
-            Check(hubSource.Contains("var rateHz = info.RateHz")
+            Check(topicMetaSource.Contains("fields.Max(m => m.Hz)"),
+                "71E-3: shared emitter emits resolved FoxRun topic Hz metadata");
+            Check(hubSource.Contains("info.Hz")
                     && hubSource.Contains("nonPositivePublishesEveryFrame: false"),
                 "71E-4: FoxgloveLogHub schedules from resolved metadata without invalid-rate per-frame fallback");
         }

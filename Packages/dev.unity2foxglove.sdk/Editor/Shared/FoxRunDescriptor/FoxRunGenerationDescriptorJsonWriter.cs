@@ -93,9 +93,19 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "encoding", member.Encoding);
             sb.Append(',');
-            WriteStringField(sb, "subscriptionProvider", member.SubscriptionProvider);
+            WriteStringField(sb, "source", member.Source);
             sb.Append(',');
-            WriteStringField(sb, "ros2Qos", member.Ros2Qos);
+            WriteStringField(sb, "targets", member.Targets);
+            sb.Append(',');
+            WriteStringField(sb, "qosProfile", member.QosProfile);
+            sb.Append(',');
+            WriteStringField(sb, "qosReliability", member.QosReliability);
+            sb.Append(',');
+            WriteStringField(sb, "qosDurability", member.QosDurability);
+            sb.Append(',');
+            WriteStringField(sb, "qosHistory", member.QosHistory);
+            sb.Append(',');
+            WriteIntField(sb, "qosDepth", member.QosDepth);
             sb.Append(',');
             WriteName(sb, "generatesWebSocketCodec");
             sb.Append(member.GeneratesWebSocketCodec ? "true" : "false");
@@ -125,25 +135,33 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.Append(member.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
             }
             sb.Append(',');
-            WriteName(sb, "rateHz");
-            WriteFloat(sb, member.RateHz);
+            WriteName(sb, "hz");
+            WriteFloat(sb, member.Hz);
             sb.Append(',');
             WriteStringField(sb, "policy", member.PolicyName);
             sb.Append(',');
             WriteStringField(sb, "mode", member.FlowName);
             sb.Append(',');
-            WriteName(sb, "changeEpsilon");
-            WriteFloat(sb, member.ChangeEpsilon);
+            WriteName(sb, "tolerance");
+            WriteFloat(sb, member.Tolerance);
             sb.Append(',');
-            WriteName(sb, "forceIntervalSeconds");
-            WriteFloat(sb, member.ForceIntervalSeconds);
+            WriteStringField(sb, "onlyIf", member.OnlyIf);
             sb.Append(',');
-            WriteStringField(sb, "when", member.When);
+            WriteStringField(
+                sb,
+                "onlyIfMemberKind",
+                FoxRunGenerationMember.ConditionMemberKindToName(member.ConditionMemberKind));
             sb.Append(',');
-            WriteStringField(sb, "unless", member.Unless);
+            WriteStringField(
+                sb,
+                "explicitArguments",
+                FoxRunGenerationMember.ExplicitArgumentsToText(member.NamedArgumentPresence));
             sb.Append(',');
             WriteName(sb, "isAggregateMember");
             sb.Append(member.IsAggregateMember ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "isStream");
+            sb.Append(member.IsStream ? "true" : "false");
             sb.Append(',');
             WriteStringField(sb, "jsonFieldName", member.JsonFieldName);
             sb.Append(',');
@@ -300,6 +318,12 @@ namespace Unity.FoxgloveSDK.Editor
             WriteString(sb, value);
         }
 
+        private static void WriteIntField(StringBuilder sb, string name, int value)
+        {
+            WriteName(sb, name);
+            sb.Append(value.ToString(CultureInfo.InvariantCulture));
+        }
+
         private static void WriteName(StringBuilder sb, string name)
         {
             WriteString(sb, name);
@@ -311,7 +335,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (float.IsNaN(value) || float.IsInfinity(value))
             {
                 throw new InvalidOperationException(
-                    "FoxRun descriptor model contains NaN or Infinity. RateHz and epsilon values must be finite. " +
+                    "FoxRun descriptor model contains NaN or Infinity. Hz and tolerance values must be finite. " +
                     "Check the published FoxRun members for misconfigured values.");
             }
 

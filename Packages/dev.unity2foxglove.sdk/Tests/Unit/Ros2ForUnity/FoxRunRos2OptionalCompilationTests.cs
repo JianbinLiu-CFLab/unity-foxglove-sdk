@@ -127,6 +127,100 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void PlayModeGuardDoesNotLockAfterAnEarlierEntryHandlerCancelsPlay()
+        {
+            var source = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/"
+                + "Ros2ForUnityRuntimePlayModeGuard.cs");
+            const string methodMarker = "private static void OnExitingEditMode()";
+            var methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
+            var methodEnd = source.IndexOf(
+                "private static bool TryGetMissingZenohRouterDiagnostic(",
+                methodStart,
+                StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0 && methodEnd > methodStart);
+            var method = source.Substring(methodStart, methodEnd - methodStart);
+            var canceledGuard = method.IndexOf(
+                "if (!EditorApplication.isPlayingOrWillChangePlaymode)",
+                StringComparison.Ordinal);
+            var nativeDemandScan = method.IndexOf(
+                "InvalidateNativeDemandCache();",
+                StringComparison.Ordinal);
+
+            Assert.True(canceledGuard >= 0 && canceledGuard < nativeDemandScan);
+            Assert.Contains("ScheduleReloadAssembliesUnlock();", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PlayModeGuardStopsFoxRunEndpointsBeforeSharedRosShutdown()
+        {
+            var source = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/"
+                + "Ros2ForUnityRuntimePlayModeGuard.cs");
+            const string methodMarker =
+                "private static void RequestNativeRuntimeShutdownBeforeReload(string reason)";
+            var methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
+            var methodEnd = source.IndexOf(
+                "private static bool TryInvokeStatic(",
+                methodStart,
+                StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0 && methodEnd > methodStart);
+            var method = source.Substring(methodStart, methodEnd - methodStart);
+            var subscriptionStop = method.IndexOf(
+                "FoxRunRos2SubscriptionHubTypeName",
+                StringComparison.Ordinal);
+            var publisherStop = method.IndexOf(
+                "FoxRunRos2CustomPublisherHubTypeName",
+                StringComparison.Ordinal);
+            var executorStop = method.IndexOf(
+                "\"StopAllExecutorsForRosShutdown\"",
+                StringComparison.Ordinal);
+            var sharedShutdown = method.IndexOf(
+                "\"ShutdownShared\"",
+                StringComparison.Ordinal);
+
+            Assert.True(subscriptionStop >= 0);
+            Assert.True(publisherStop > subscriptionStop);
+            Assert.True(executorStop > publisherStop);
+            Assert.True(sharedShutdown > executorStop);
+            Assert.Contains(
+                "\"StopForNativeRuntimeShutdown\"",
+                method,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CustomPublisherHubStopsOnSynchronousPublishSessionEnd()
+        {
+            var hub = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "FoxRunRos2CustomPublisherHub.cs");
+
+            Assert.Contains(
+                "_manager.FoxRunPublishSessionChanged += OnPublishSessionChanged;",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.FoxRunPublishSessionChanged -= OnPublishSessionChanged;",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "=> ApplyPublishSessionPolicy(policy);",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ShouldStopFoxRunPublishing(",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_publishSessionTracker.AllowsPublishing,",
+                hub,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FoxRunAddOnDiscoveryDelegatesNativePathRegistrationToR2fu()
         {
             var bootstrap = Text(
@@ -233,6 +327,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         [Fact]
+        public void NativeFoxRunShutdownHooksAreReflectionDiscoverable()
+        {
+            const string methodName = "StopForNativeRuntimeShutdown";
+            const System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.NonPublic;
+
+            Assert.NotNull(
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub)
+                    .GetMethod(methodName, flags));
+            Assert.NotNull(
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CustomPublisherHub)
+                    .GetMethod(methodName, flags));
+        }
+
+        [Fact]
         public void NativeLaneCompiledNamedPhase179TypesAndDefine()
         {
             Assert.Equal(
@@ -259,15 +369,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     .Assembly.GetName().Name);
             var completeConstructor = typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract)
                 .GetConstructors()
-                .Single(constructor => constructor.GetParameters().Length == 9);
+                .Single(constructor => constructor.GetParameters().Length == 22);
             Assert.Equal(
                 new[]
                 {
                     typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunFlow),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset),
-                    typeof(bool)
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunEndpoint),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosProfile),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosReliability),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosDurability),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosHistory),
+                    typeof(bool),
+                    typeof(int),
+                    typeof(bool),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunPolicy),
+                    typeof(float),
+                    typeof(bool),
+                    typeof(float)
                 },
                 completeConstructor.GetParameters().Select(parameter => parameter.ParameterType));
         }
@@ -359,8 +482,8 @@ namespace Demo
     {
         [Unity.FoxgloveSDK.Components.FoxRun(""/native/string"",
             Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-            SubscriptionProvider = Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-            Ros2Qos = Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+            Source = Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+            QoS = Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData,
             SchemaName = ""std_msgs/msg/String"")]
         private std_msgs.msg.String _incoming;
     }
@@ -456,9 +579,14 @@ namespace Demo
                     "FoxRunFlow.cs",
                     "FoxRunPolicy.cs",
                     Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
-                    "FoxRunWireEncoding.cs",
-                    "FoxRunSubscriptionProvider.cs",
-                    "FoxRunRos2QosPreset.cs"
+                    "FoxRunEncoding.cs",
+                    "FoxRunEndpoint.cs",
+                    "FoxRunQosProfile.cs",
+                    "FoxRunQosReliability.cs",
+                    "FoxRunQosDurability.cs",
+                    "FoxRunQosHistory.cs",
+                    Path.Combine("..", "FoxRun", "FoxRunResolvedQos.cs"),
+                    Path.Combine("..", "FoxRun", "FoxRunRos2QosProfileResolver.cs")
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(attributeRoot, file))));
             var compilation = CSharpCompilation.Create(

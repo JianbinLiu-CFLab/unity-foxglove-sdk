@@ -1,0 +1,16 @@
+{
+  "name": "Unity.FoxgloveSDK.DotNetTests",
+  "rootNamespace": "Unity.FoxgloveSDK.Tests",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY2FOXGLOVE_DOTNET_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": true
+}

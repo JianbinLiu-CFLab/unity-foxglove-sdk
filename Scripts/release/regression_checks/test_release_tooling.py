@@ -27,6 +27,7 @@ BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
 MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
+LOCAL_ENTRYPOINT_VALIDATOR_PATH = ROOT / "Scripts" / "package" / "validate_local_entrypoints.py"
 
 
 def load_module(name: str, path: Path):
@@ -337,6 +338,39 @@ class VersionBumpTests(unittest.TestCase):
 
 class RunCiTests(unittest.TestCase):
     """Regression coverage for local CI runner reliability."""
+
+    PHASE184_ACCEPTANCE_TOOLING_SUITES = (
+        (
+            "PHASE184_PROFILE_ACCEPTANCE_PROTOCOL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance_protocol",
+            "Phase184 acceptance protocol tooling regressions",
+        ),
+        (
+            "PHASE184_PROFILE_ACCEPTANCE_ORCHESTRATOR_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance",
+            "Phase184 acceptance orchestrator tooling regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_DESKTOP_LIVE_PROTOCOL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_protocol",
+            "Phase184 Foxglove Desktop live protocol regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_CLI_INSTALL_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install",
+            "Phase184 Foxglove CLI installer regressions",
+        ),
+        (
+            "PHASE184_WINDOWS_JOB_OWNER_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_windows_job_owner",
+            "Phase184 Windows Job owner regressions",
+        ),
+        (
+            "PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION",
+            "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance",
+            "Phase184 Foxglove Desktop live coordinator regressions",
+        ),
+    )
 
     def setUp(self) -> None:
         """Load a fresh run_ci module for each test."""
@@ -681,6 +715,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
+                "phase184-acceptance-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",
@@ -692,8 +727,139 @@ class RunCiTests(unittest.TestCase):
                 [sys.executable, str(RUN_CI_PATH.resolve()), "--only", job.name],
                 job.command,
         )
-        self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
-        self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
+        self.assertEqual(
+            {"mcap-conformance", "phase184-acceptance-tooling"},
+            {job.name for job in jobs if job.disable_timeout},
+        )
+
+    def test_phase184_acceptance_regression_module_constants_are_exact(self) -> None:
+        """The tooling lane must name only the six maintained pure unittest modules."""
+        expected = {
+            name: module
+            for name, module, _label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
+        }
+
+        self.assertEqual(
+            expected,
+            {name: getattr(self.run_ci, name, None) for name in expected},
+        )
+
+    def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
+        """The selector must execute exactly six pure unittest suites in locked order."""
+        with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase184-acceptance-tooling"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        observed = [(call.args[0], call.args[1]) for call in run.call_args_list]
+        self.assertEqual(
+            [
+                ([sys.executable, "-m", "unittest", module], label)
+                for _name, module, label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
+            ],
+            observed,
+        )
+        self.assertTrue(
+            all(
+                call.kwargs.get("disable_timeout", False) is False
+                for call in run.call_args_list
+            )
+        )
+
+        phase184_modules = [
+            module
+            for _name, module, _label in self.PHASE184_ACCEPTANCE_TOOLING_SUITES
+        ]
+        self.assertTrue(
+            all(
+                command[:3] == [sys.executable, "-m", "unittest"]
+                and len(command) == 4
+                for command, _label in observed
+            )
+        )
+        self.assertTrue(
+            all(
+                module.startswith("Scripts.smoke.foxrun.regression_checks.test_")
+                for module in phase184_modules
+            )
+        )
+        self.assertTrue(
+            {
+                "Scripts.smoke.foxrun.phase184_profile_acceptance",
+                "Scripts.smoke.foxrun.phase184_foxglove_cli_install",
+                "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance",
+            }.isdisjoint(phase184_modules)
+        )
+
+        with mock.patch.object(self.run_ci, "run", return_value=True) as phase181_run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase181-ros2-regression"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        phase181_commands = {
+            tuple(call.args[0])
+            for call in phase181_run.call_args_list
+        }
+        self.assertTrue(
+            all(
+                (sys.executable, "-m", "unittest", module)
+                not in phase181_commands
+                for module in phase184_modules
+            )
+        )
+
+    def test_phase184_acceptance_tooling_lane_propagates_failure(self) -> None:
+        """A failing Phase184 tooling suite must fail its dedicated selector."""
+
+        with mock.patch.object(
+            self.run_ci,
+            "run",
+            side_effect=(False, True, True, True, True, True),
+        ):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase184-acceptance-tooling"],
+            ):
+                self.assertEqual(1, self.run_ci.main())
+
+    def test_only_help_lists_phase184_acceptance_tooling_selector(self) -> None:
+        """CLI help must name the dedicated Phase184 tooling lane honestly."""
+
+        with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with self.assertRaises(SystemExit) as context:
+                    self.run_ci.main()
+
+        self.assertEqual(0, context.exception.code)
+        self.assertIn("phase184-acceptance-tooling", stdout.getvalue())
+
+    def test_phase184_acceptance_tooling_command_is_exact(self) -> None:
+        """The dedicated lane must remain a tooling test, not claim runtime execution."""
+
+        jobs = self.run_ci.build_default_ci_jobs(
+            types.SimpleNamespace(skip_analyzer=False)
+        )
+        job = next(
+            candidate
+            for candidate in jobs
+            if candidate.name == "phase184-acceptance-tooling"
+        )
+        self.assertEqual(
+            (
+                sys.executable,
+                str(RUN_CI_PATH.resolve()),
+                "--only",
+                "phase184-acceptance-tooling",
+            ),
+            tuple(job.command),
+        )
 
     def test_only_help_lists_dotnet_lane_selectors(self) -> None:
         """CLI help should expose each direct dotnet lane selector."""
@@ -722,6 +888,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel": None,
                 "phase179-ros2-regression": None,
                 "phase181-ros2-regression": None,
+                "phase184-acceptance-tooling": None,
                 "mcap-conformance": None,
                 "packages": None,
                 "boundary": None,
@@ -1218,6 +1385,7 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
+                "phase184-acceptance-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",
@@ -1225,6 +1393,51 @@ class RunCiTests(unittest.TestCase):
             observed["names"],
         )
         self.assertEqual(2, observed["max_workers"])
+
+
+class LocalEntrypointValidatorTests(unittest.TestCase):
+    """Regression coverage for machine-local path detection boundaries."""
+
+    def setUp(self) -> None:
+        """Load a fresh local-entrypoint validator for each test."""
+        self.validator = load_module(
+            "validate_local_entrypoints_under_test",
+            LOCAL_ENTRYPOINT_VALIDATOR_PATH,
+        )
+
+    def test_release_asset_rule_allows_host_allowlists_but_rejects_concrete_urls(self) -> None:
+        """A trusted host constant is not itself a temporary signed asset URL."""
+        pattern = next(
+            pattern
+            for label, pattern in self.validator.FORBIDDEN_PATTERNS
+            if label == "temporary GitHub signed release asset URL"
+        )
+
+        self.assertIsNone(pattern.search('"release-assets.githubusercontent.com",'))
+        self.assertIsNotNone(
+            pattern.search(
+                "https://release-assets.githubusercontent.com/"
+                "github-production-release-asset/431693744/object?sig=opaque"
+            )
+        )
+
+    def test_git_grep_excludes_regression_fixtures(self) -> None:
+        """Intentional invalid-path fixtures must not be treated as production defaults."""
+        completed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+        with mock.patch.object(self.validator.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(
+                [],
+                self.validator.git_grep_failures(
+                    "temporary GitHub signed release asset URL",
+                    self.validator.FORBIDDEN_PATTERNS[-1][1],
+                ),
+            )
+
+        command = run.call_args.args[0]
+        self.assertIn(
+            ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
+            command,
+        )
 
 
 class McapConformanceToolTests(unittest.TestCase):
@@ -1366,6 +1579,60 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
             self.assertEqual(["keep-supported.dll"], jazzy["criticalRuntimeFiles"])
             self.assertEqual("new-jazzy", updated["currentRecommendedRuntime"]["artifactSha256"])
             self.assertEqual(["keep-current.dll"], updated["currentRecommendedRuntime"]["criticalRuntimeFiles"])
+
+    def test_runtime_adoption_sync_rejects_missing_core_artifact_metadata_before_write(self) -> None:
+        """A partial runtime manifest must not leave stale adoption fields behind."""
+        from Scripts.ros2forunity.windows.runtime_adoption_manifest import (
+            sync_runtime_adoption_manifest,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_name = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+            compliance = root / "Packages/dev.unity2foxglove.ros2forunity/Compliance"
+            package = root / "Packages" / package_name
+            (package / "RuntimeSupport").mkdir(parents=True)
+            compliance.mkdir(parents=True)
+            adoption_path = compliance / "ros2-for-unity-adoption-manifest.json"
+            original = {
+                "currentRecommendedRuntime": {
+                    "packageName": package_name,
+                    "artifactSha256": "verified-old",
+                    "artifactSize": 123,
+                    "inventoryFileCount": 456,
+                },
+                "supportedRuntimePackages": [
+                    {
+                        "packageName": package_name,
+                        "artifactSha256": "verified-old",
+                        "artifactSize": 123,
+                        "inventoryFileCount": 456,
+                    }
+                ],
+            }
+            adoption_path.write_text(json.dumps(original), encoding="utf-8")
+            (package / "RuntimeSupport/runtime-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "artifactSize": 999,
+                        "inventoryFileCount": 1000,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "artifactSha256"):
+                sync_runtime_adoption_manifest(
+                    root,
+                    package,
+                    package_name,
+                    update_current_recommended=True,
+                )
+
+            self.assertEqual(
+                original,
+                json.loads(adoption_path.read_text(encoding="utf-8")),
+            )
 
     def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
         """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""

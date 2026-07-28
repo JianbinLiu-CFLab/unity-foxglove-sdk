@@ -46,7 +46,7 @@ public partial class TestLog : MonoBehaviour
     [FoxRun("/debug/position")]
     private Vector3 _pos;
 
-    [FoxRun("/debug/health", RateHz = 5)]
+    [FoxRun("/debug/health", Hz = 5)]
     private float _health = 100f;
 
     private void Update()
@@ -119,7 +119,7 @@ Packages/dev.unity2foxglove.sdk/Runtime/Components/Attributes/FoxRunAttribute.cs
 
 - 标注需要发布的字段或属性。
 - 声明 topic。
-- 可选声明 `RateHz` 和 `SchemaName`。
+- 可选声明 `Hz` 和 `SchemaName`。
 - 允许 schemaless JSON topic。
 
 ### 3.1.2 `FoxgloveLogHub`

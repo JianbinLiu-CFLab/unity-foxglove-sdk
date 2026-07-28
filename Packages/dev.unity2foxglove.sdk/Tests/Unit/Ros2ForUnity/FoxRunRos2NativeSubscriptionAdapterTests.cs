@@ -8,6 +8,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Reflection;
 using System.Threading;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -91,7 +93,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("Demo.Receiver", pending.DeclaringType);
             Assert.Equal("_incoming", pending.MemberName);
             Assert.Equal("std_msgs/msg/String", pending.CanonicalRosType);
-            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable, pending.QosPreset);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                pending.Qos);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                pending.Qos.Profile);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunQosReliability.Reliable,
+                pending.Qos.Reliability);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunQosDurability.Volatile,
+                pending.Qos.Durability);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunQosHistory.KeepLast,
+                pending.Qos.History);
+            Assert.Equal(10, pending.Qos.Depth);
             Assert.True(pending.LastReceiveStopwatchTimestamp > 0);
             Assert.Equal(0, pending.LastApplyStopwatchTimestamp);
 
@@ -498,6 +515,166 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FatalLateTokenRollbackStillReleasesDeferredNodeOwnership()
+        {
+            var events = new List<string>();
+            var backend = new FakeBackend(events)
+            {
+                RemoveException = new OutOfMemoryException("rollback-primary")
+            };
+            FoxRunRos2SubscriptionBinding<FakeMessage> binding = null;
+            backend.DuringRegister = () => binding.Stop();
+            binding = CreateBinding(backend, 2, () => 2, _ => { }, _ => false);
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() => binding.TryRegister());
+
+            Assert.Equal("rollback-primary", thrown.Message);
+            Assert.Equal(
+                new[] { "remove-subscription", "release-node" },
+                events);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void SubscriptionHubTeardownContinuesAfterFatalHostedBinding()
+        {
+            var stopOrder = new List<string>();
+            var bindings = new IFoxRunRos2SubscriptionHostedCleanup[]
+            {
+                new FakeHostedCleanup(
+                    "first",
+                    stopOrder,
+                    new OutOfMemoryException("first-primary")),
+                new FakeHostedCleanup("second", stopOrder, null)
+            };
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2SubscriptionHub.StopHostedBindings(
+                    bindings,
+                    _ => { }));
+
+            Assert.Equal("first-primary", thrown.Message);
+            Assert.Equal(new[] { "first", "second" }, stopOrder);
+        }
+
+        [Fact]
+        public void SubscriptionHubDrainsDeferredCleanupBeforeReleasingHostedBindings()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: true);
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanup(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.FromSeconds(1),
+                _ => { },
+                out var cleanupComplete);
+
+            Assert.True(cleanupComplete);
+            Assert.Equal(new[] { "stop", "cleanup" }, cleanupOrder);
+        }
+
+        [Fact]
+        public void SubscriptionHubDeferredCleanupTimeoutRemainsExplicit()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: false);
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanup(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.Zero,
+                _ => { },
+                out var cleanupComplete);
+
+            Assert.False(cleanupComplete);
+            Assert.Equal(new[] { "stop" }, cleanupOrder);
+        }
+
+        [Fact]
+        public void SubscriptionHubReleasesHostOwnershipWhenDeferredCleanupTimesOut()
+        {
+            var cleanupOrder = new List<string>();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId);
+            var binding = new FakeDeferredHostedCleanup(
+                queue,
+                cleanupOrder,
+                dispatchCleanup: false);
+            var hostReleaseCount = 0;
+
+            FoxRunRos2SubscriptionHub.StopHostedBindingsAndDrainDeferredCleanupThenReleaseHost(
+                new IFoxRunRos2SubscriptionHostedCleanup[] { binding },
+                queue,
+                TimeSpan.Zero,
+                _ => { },
+                () => hostReleaseCount++,
+                out var cleanupComplete);
+
+            Assert.False(cleanupComplete);
+            Assert.Equal(1, hostReleaseCount);
+            Assert.Equal(new[] { "stop" }, cleanupOrder);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void SubscriptionHubRehydratesHostCleanupQueueBeforeLifecyclePause()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var queueField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_hostCleanupQueue",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var pause = typeof(FoxRunRos2SubscriptionHub).GetMethod(
+                "PauseForLifecycleWindow",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(queueField);
+            Assert.NotNull(pause);
+            Assert.Null(queueField.GetValue(hub));
+
+            var failure = Record.Exception(() => pause.Invoke(hub, null));
+
+            Assert.Null(failure);
+            var queue = Assert.IsType<FoxRunRos2HostCleanupQueue>(
+                queueField.GetValue(hub));
+            var cleanupCount = 0;
+            queue.Dispatch(() => cleanupCount++);
+            Assert.Equal(1, cleanupCount);
+        }
+
+        [Fact]
+        public void HostCleanupQueuePostsAHostDrainIndependentOfHubUpdate()
+        {
+            var hostContext = new CapturingSynchronizationContext();
+            var queue = new FoxRunRos2HostCleanupQueue(
+                Thread.CurrentThread.ManagedThreadId,
+                hostContext,
+                _ => { });
+            var cleanupCount = 0;
+            var dispatchThread = new Thread(
+                () => queue.Dispatch(() => cleanupCount++))
+            {
+                IsBackground = true
+            };
+
+            dispatchThread.Start();
+            Assert.True(dispatchThread.Join(TimeSpan.FromSeconds(5)));
+            Assert.Equal(0, cleanupCount);
+            Assert.True(hostContext.RunOne());
+            Assert.Equal(1, cleanupCount);
+        }
+
+        [Fact]
         public void StopDoesNotWaitForBlockedRegisterAndDeferredReleaseIsUnique()
         {
             using var registerEntered = new ManualResetEventSlim();
@@ -831,6 +1008,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var lateException = Record.Exception(() => backend.InvokeLate(borrowed));
             Assert.Null(lateException);
             Assert.Equal(1, binding.RejectedAfterStopCount);
+        }
+
+        [Fact]
+        public void FatalCallbackCopyFailurePassesThroughTheExecutorBoundary()
+        {
+            var backend = new FakeBackend();
+            var binding = CreateBinding(
+                backend,
+                3,
+                () => 3,
+                _ => { },
+                _ => false,
+                _ => throw new OutOfMemoryException("fatal"));
+            Assert.True(binding.TryRegister().Succeeded);
+            using var borrowed = Message("boom");
+
+            Assert.Throws<OutOfMemoryException>(() => backend.Invoke(borrowed));
+            Assert.Equal(1, binding.CopyFailedCount);
+
+            binding.Stop();
+        }
+
+        [Fact]
+        public void SelfOriginEnvelopeIsDroppedBeforeApplyWhileRemoteOriginStillApplies()
+        {
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            var binding = CreateBinding(
+                backend,
+                3,
+                () => 3,
+                value => applied = value,
+                _ => false,
+                dropBeforeApply: value => value.Data == "self");
+            Assert.True(binding.TryRegister().Succeeded);
+
+            backend.Invoke(Message("self"));
+            Assert.False(binding.TryApplyLatest(3));
+            Assert.Null(applied);
+            Assert.Equal(1, binding.SameOriginDropCount);
+
+            backend.Invoke(Message("remote"));
+            Assert.True(binding.TryApplyLatest(3));
+            Assert.Equal("remote", applied.Data);
+
+            binding.Stop();
         }
 
         [Fact]
@@ -1328,11 +1551,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void NativeTransportAdmissionDropsBeforeGeneratedDeepCopy()
+        public void NativeTransportAdmissionPreservesTheNewestEligibleSampleBeforeDeepCopy()
         {
             var backend = new FakeBackend();
             FakeMessage applied = null;
             var copies = 0;
+            var interval = (Stopwatch.Frequency + 1L) / 2L;
+            var timestamps = new Queue<long>(new[]
+            {
+                100L,
+                100L + Math.Max(1L, interval / 2L),
+                100L + interval,
+            });
             var binding = CreateBinding(
                 backend,
                 182,
@@ -1345,21 +1575,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     return Message(value.Data);
                 },
                 transportAdmissionRateLimitHz: 2,
-                admissionTimestamp: () => 123456789L);
+                admissionTimestamp: () => timestamps.Dequeue());
             binding.WaitForRuntime();
             Assert.True(binding.TryRegister().Succeeded);
 
             using var first = Message("first");
-            using var second = Message("second");
             using var rejected = Message("rejected-before-copy");
+            using var newest = Message("newest");
             backend.Invoke(first);
-            backend.Invoke(second);
             backend.Invoke(rejected);
+            backend.Invoke(newest);
 
             Assert.Equal(2, copies);
             Assert.Equal(1, binding.TransportAdmissionDropCount);
             Assert.True(binding.TryApplyLatest(182, 0d));
-            Assert.Equal("second", applied.Data);
+            Assert.Equal("newest", applied.Data);
             binding.Stop();
         }
 
@@ -1390,7 +1620,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ChangeOrIntervalDefersFreshDuplicateUntilItsInterval()
+        public void NativeOnlyIfDropsPendingAndInvalidatesSemanticHistoryUntilRecovery()
+        {
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            var condition = true;
+            var binding = CreateBinding(
+                backend,
+                186,
+                () => 186,
+                value => applied = value,
+                value =>
+                {
+                    if (!ReferenceEquals(applied, value))
+                        return false;
+                    applied = null;
+                    return true;
+                },
+                contract: PolicyContract(Unity.FoxgloveSDK.Components.FoxRunPolicy.Change),
+                valuesEqual: (left, right) => left.Data == right.Data,
+                canApply: () => condition);
+            binding.WaitForRuntime();
+            Assert.True(binding.TryRegister().Succeeded);
+
+            backend.Invoke(Message("same"));
+            Assert.True(binding.TryApplyLatest(186, 0d));
+            Assert.Equal(1, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+
+            condition = false;
+            backend.Invoke(Message("same"));
+            Assert.False(binding.TryApplyLatest(186, 1d));
+            Assert.Equal(1, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+
+            condition = true;
+            backend.Invoke(Message("same"));
+            Assert.True(binding.TryApplyLatest(186, 2d));
+            Assert.Equal(2, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void ChangeWithHeartbeatDefersFreshDuplicateUntilItsInterval()
         {
             var backend = new FakeBackend();
             FakeMessage applied = null;
@@ -1401,8 +1674,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 value => applied = value,
                 value => ReferenceEquals(applied, value),
                 contract: PolicyContract(
-                    Unity.FoxgloveSDK.Components.FoxRunPolicy.ChangeOrInterval,
-                    forceIntervalSeconds: 2f),
+                    Unity.FoxgloveSDK.Components.FoxRunPolicy.Change,
+                    heartbeatIntervalSeconds: 2f),
                 valuesEqual: (left, right) => left.Data == right.Data);
             binding.WaitForRuntime();
             Assert.True(binding.TryRegister().Succeeded);
@@ -1458,8 +1731,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             FoxRunRos2GeneratedContract contract = null,
             Func<FakeMessage, FakeMessage, bool> valuesEqual = null,
             Func<bool> consumeTrigger = null,
+            Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
-            Func<long> admissionTimestamp = null)
+            Func<long> admissionTimestamp = null,
+            Func<FakeMessage, bool> dropBeforeApply = null)
         {
             return new FoxRunRos2SubscriptionBinding<FakeMessage>(
                 contract ?? Contract(),
@@ -1471,17 +1746,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 apply,
                 clearIfOwned,
                 backend,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 new ManagedQosFactory(),
                 valuesEqual: valuesEqual,
                 consumeTrigger: consumeTrigger,
+                canApply: canApply,
+                dropBeforeApply: dropBeforeApply,
                 transportAdmissionRateLimitHz: transportAdmissionRateLimitHz,
                 admissionTimestamp: admissionTimestamp);
         }
 
         private static FoxRunRos2GeneratedContract PolicyContract(
             Unity.FoxgloveSDK.Components.FoxRunPolicy policy,
-            float forceIntervalSeconds = 0f)
+            float heartbeatIntervalSeconds = 0f)
             => new FoxRunRos2GeneratedContract(
                 "policy-contract-" + policy,
                 "/native/policy",
@@ -1489,13 +1766,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "_incoming",
                 "std_msgs/msg/String",
                 Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
-                true,
-                policy,
-                0f,
-                false,
-                forceIntervalSeconds);
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true,
+                policy: policy,
+                hz: 0f,
+                hasExplicitHz: false,
+                heartbeatIntervalSeconds: heartbeatIntervalSeconds);
 
         private static FoxRunRos2GeneratedContract Contract()
             => new FoxRunRos2GeneratedContract(
@@ -1504,8 +1790,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "Demo.Receiver",
                 "_incoming",
                 "std_msgs/msg/String",
-                "Ros2Native",
-                "Reliable");
+                Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true);
 
         private static FakeMessage Message(string value)
             => new FakeMessage { Data = value };
@@ -1598,6 +1895,99 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
 
             public bool IsUsable { get; }
+        }
+
+        private sealed class FakeHostedCleanup :
+            IFoxRunRos2SubscriptionHostedCleanup
+        {
+            private readonly string _name;
+            private readonly List<string> _stopOrder;
+            private readonly Exception _failure;
+
+            public FakeHostedCleanup(
+                string name,
+                List<string> stopOrder,
+                Exception failure)
+            {
+                _name = name;
+                _stopOrder = stopOrder;
+                _failure = failure;
+            }
+
+            public void Stop()
+            {
+                _stopOrder.Add(_name);
+                if (_failure != null)
+                    throw _failure;
+            }
+
+            public bool CleanupComplete => true;
+        }
+
+        private sealed class FakeDeferredHostedCleanup :
+            IFoxRunRos2SubscriptionHostedCleanup
+        {
+            private readonly FoxRunRos2HostCleanupQueue _queue;
+            private readonly List<string> _cleanupOrder;
+            private readonly bool _dispatchCleanup;
+            private int _cleanupComplete;
+            private int _stopped;
+
+            public FakeDeferredHostedCleanup(
+                FoxRunRos2HostCleanupQueue queue,
+                List<string> cleanupOrder,
+                bool dispatchCleanup)
+            {
+                _queue = queue;
+                _cleanupOrder = cleanupOrder;
+                _dispatchCleanup = dispatchCleanup;
+            }
+
+            public bool CleanupComplete
+                => Volatile.Read(ref _cleanupComplete) != 0;
+
+            public void Stop()
+            {
+                if (Interlocked.Exchange(ref _stopped, 1) != 0)
+                    return;
+                _cleanupOrder.Add("stop");
+                if (!_dispatchCleanup)
+                    return;
+                var callback = new Thread(() => _queue.Dispatch(() =>
+                {
+                    _cleanupOrder.Add("cleanup");
+                    Volatile.Write(ref _cleanupComplete, 1);
+                }))
+                {
+                    IsBackground = true
+                };
+                callback.Start();
+            }
+        }
+
+        private sealed class CapturingSynchronizationContext :
+            SynchronizationContext
+        {
+            private readonly Queue<Action> _callbacks = new Queue<Action>();
+
+            public override void Post(SendOrPostCallback callback, object state)
+            {
+                lock (_callbacks)
+                    _callbacks.Enqueue(() => callback(state));
+            }
+
+            public bool RunOne()
+            {
+                Action callback;
+                lock (_callbacks)
+                {
+                    if (_callbacks.Count == 0)
+                        return false;
+                    callback = _callbacks.Dequeue();
+                }
+                callback();
+                return true;
+            }
         }
 
         private sealed class ManagedQosFactory : IFoxRunRos2NativeQosProfileFactory
@@ -1711,9 +2101,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var nativePolicy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
                 12,
                 true,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Protobuf,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
                 4096,
                 120,
                 20);
@@ -1723,7 +2113,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 nativePolicy,
                 out var qos,
                 out var diagnostic));
-            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData, qos);
+            AssertResolvedQos(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
+                qos);
             Assert.Equal(string.Empty, diagnostic);
 
             Assert.True(FoxRunRos2ContractActivation.TryResolve(
@@ -1756,9 +2148,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var disabled = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
                 12,
                 false,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Protobuf,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 4096,
                 120,
                 20);
@@ -1768,14 +2160,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 out _,
                 out diagnostic));
             Assert.Contains("disabled", diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
 
-            var legacy = new FoxRunRos2GeneratedContract(
-                "legacy", "/native/string", "Demo.HostReceiver", "_incoming",
-                "std_msgs/msg/String", "ros2-native", "sensor-data");
-            Assert.False(legacy.HasCompleteMetadata);
-            Assert.False(FoxRunRos2ContractActivation.TryResolve(
-                legacy, nativePolicy, out _, out diagnostic));
-            Assert.Contains("complete", diagnostic, StringComparison.OrdinalIgnoreCase);
+        [Fact]
+        public void LegacyStringContractSurfaceIsAbsent()
+        {
+            var contractType = typeof(FoxRunRos2GeneratedContract);
+
+            Assert.Null(contractType.GetProperty("DeclaredSource"));
+            Assert.Null(contractType.GetProperty("Ros2Qos"));
+            foreach (var constructor in contractType.GetConstructors())
+            {
+                Assert.DoesNotContain(
+                    constructor.GetParameters(),
+                    parameter => string.Equals(
+                        parameter.Name,
+                        "ros2Qos",
+                        StringComparison.Ordinal));
+            }
         }
 
         [Fact]
@@ -1784,16 +2186,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var nativePolicy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
                 13,
                 true,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Protobuf,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 4096,
                 120,
                 20);
 
             var custom = CustomContract(
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Json);
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.JSON);
             Assert.True(custom.HasCompleteCustomMetadata);
             Assert.True(FoxRunRos2ContractActivation.TryResolve(
                 custom,
@@ -1801,13 +2203,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 out var qos,
                 out var error,
                 out var diagnostic));
-            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable, qos);
+            AssertResolvedQos(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                qos);
             Assert.Equal(FoxRunRos2RegistrationError.None, error);
             Assert.Equal(string.Empty, diagnostic);
 
             var withoutNativeProvider = CustomContract(
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Json);
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.JSON);
             Assert.False(FoxRunRos2ContractActivation.TryResolve(
                 withoutNativeProvider,
                 nativePolicy,
@@ -1818,14 +2222,117 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ExplicitNativeContractDoesNotDependOnOutputOrManagerDefaultProvider()
+        [Trait("Phase", "184-G")]
+        public void NativeHubIgnoresFoxgloveOnlyContractsButStillRejectsInvalidSources()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var policy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
+                14,
+                true,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                4096,
+                120,
+                20);
+            var policyField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_policy",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(policyField);
+            policyField.SetValue(hub, policy);
+
+            var source = new NativeOnlySource();
+            var sourceCandidateType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "SourceCandidate",
+                BindingFlags.NonPublic);
+            Assert.NotNull(sourceCandidateType);
+            var sourceCandidate = Activator.CreateInstance(
+                sourceCandidateType,
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                args: new object[] { source, source, null },
+                culture: null);
+            var registrarType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "CollectingRegistrar",
+                BindingFlags.NonPublic);
+            Assert.NotNull(registrarType);
+            var registrar = Assert.IsAssignableFrom<IFoxRunRos2SubscriptionRegistrar>(
+                Activator.CreateInstance(
+                    registrarType,
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    args: new[] { (object)hub, sourceCandidate },
+                    culture: null));
+
+            var foxglove = Contract("foxglove", "default", supportsNative: false);
+            registrar.Register<FakeHostMessage>(
+                foxglove,
+                (message, _) => message,
+                message => message.Dispose(),
+                _ => { },
+                _ => false,
+                valuesEqual: null,
+                consumeTrigger: null,
+                canApply: null);
+            var foxgloveStream = Contract("foxglove-stream", "default", supportsNative: false);
+            registrar.RegisterStream<FakeHostMessage, FakeHostMessage>(
+                foxgloveStream,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => message,
+                transferOwned: _ => { },
+                clearOwned: () => { });
+            var invalid = Contract("invalid", "default");
+            registrar.Register<FakeHostMessage>(
+                invalid,
+                (message, _) => message,
+                message => message.Dispose(),
+                _ => { },
+                _ => false,
+                valuesEqual: null,
+                consumeTrigger: null,
+                canApply: null);
+
+            var seenField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_seenEndpoints",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(seenField);
+            var seen = Assert.IsType<HashSet<string>>(seenField.GetValue(hub));
+            Assert.Contains(source.GetInstanceID() + "|" + foxglove.Id, seen);
+            Assert.Contains(source.GetInstanceID() + "|" + foxgloveStream.Id, seen);
+            Assert.Contains(source.GetInstanceID() + "|" + invalid.Id, seen);
+
+            var diagnosticsField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_diagnostics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(diagnosticsField);
+            var diagnostics = Assert.IsType<FoxRunRos2SubscriptionDiagnostics>(
+                diagnosticsField.GetValue(hub));
+            Assert.False(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + foxglove.Id,
+                out _));
+            Assert.False(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + foxgloveStream.Id,
+                out _));
+            Assert.True(diagnostics.TryGet(
+                source.GetInstanceID() + "|" + invalid.Id,
+                out var invalidSnapshot));
+            Assert.Equal(
+                FoxRunRos2SubscriptionBindingState.Unsupported,
+                invalidSnapshot.State);
+            Assert.Equal(
+                FoxRunRos2RegistrationError.RegistrationRejected,
+                invalidSnapshot.Error);
+        }
+
+        [Fact]
+        public void ExplicitNativeContractDoesNotDependOnOutputOrManagerDefaultSource()
         {
             var policy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
                 15,
                 true,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Json,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default,
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove,
+                Unity.FoxgloveSDK.Components.FoxRunEncoding.JSON,
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
                 8192,
                 120,
                 60);
@@ -1835,7 +2342,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 policy,
                 out var qos,
                 out _));
-            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable, qos);
+            AssertResolvedQos(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                qos);
         }
 
         [Fact]
@@ -1926,6 +2435,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             second.ReleaseNodeOwnership();
             second.ReleaseNodeOwnership();
             Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void MigratedDefaultFixtureKeepsThePortableDefaultProfile()
+        {
+            var contract = Contract("ros2-native", "default");
+
+            Assert.True(contract.HasExplicitQosProfile);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                contract.QosProfile);
         }
 
         [Fact]
@@ -2080,21 +2600,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var zeta = new FoxRunRos2GeneratedContract(
                 "zeta", "/zeta", "Demo.Zeta", "_incoming", "std_msgs/msg/String",
                 Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
-                true);
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true);
             var alpha = new FoxRunRos2GeneratedContract(
                 "alpha", "/alpha", "Demo.Alpha", "_incoming", "geometry_msgs/msg/Twist",
                 Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
-                true);
+                Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true);
 
             diagnostics.Update(
                 "source:2|zeta",
                 new FoxRunRos2SubscriptionBindingSnapshot(
                     zeta,
-                    Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
+                    Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                     9,
                     FoxRunRos2SubscriptionBindingState.Failed,
                     FoxRunRos2RegistrationError.BackendFailure,
@@ -2105,7 +2643,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "source:1|alpha",
                 new FoxRunRos2SubscriptionBindingSnapshot(
                     alpha,
-                    Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+                    Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
                     8,
                     FoxRunRos2SubscriptionBindingState.Receiving,
                     FoxRunRos2RegistrationError.None,
@@ -2124,12 +2662,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("rmw_fastrtps_cpp", snapshots[0].RmwImplementation);
             Assert.Equal("fastdds", snapshots[0].CommunicationMode);
             Assert.Equal("ROS2 Native / FastDDS (DDS)", snapshots[0].TransportLabel);
+            AssertResolvedQos(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
+                snapshots[0].Qos);
             Assert.Equal(201, snapshots[0].LastReceiveStopwatchTimestamp);
             Assert.Equal(202, snapshots[0].LastApplyStopwatchTimestamp);
 
             Assert.Equal("zeta", snapshots[1].ContractId);
             Assert.Equal("zenoh", snapshots[1].CommunicationMode);
             Assert.Equal("ROS2 Native / Zenoh", snapshots[1].TransportLabel);
+            AssertResolvedQos(
+                Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
+                snapshots[1].Qos);
             Assert.Equal("BackendFailure", snapshots[1].LastErrorCode);
             Assert.Equal("The native ROS2 backend failed while operating the subscription.", snapshots[1].LastErrorMessage);
             Assert.Equal(7, snapshots[1].Received);
@@ -2195,6 +2739,79 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        [Trait("Phase", "184-F")]
+        public void NullStreamRegistrationStillMarksTheEndpointSeenForStableDiagnostics()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var source = new NativeOnlySource();
+            var sourceCandidateType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "SourceCandidate",
+                BindingFlags.NonPublic);
+            Assert.NotNull(sourceCandidateType);
+            var sourceCandidate = Activator.CreateInstance(
+                sourceCandidateType,
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                args: new object[] { source, source, null },
+                culture: null);
+            var registrarType = typeof(FoxRunRos2SubscriptionHub).GetNestedType(
+                "CollectingRegistrar",
+                BindingFlags.NonPublic);
+            Assert.NotNull(registrarType);
+            var registrar = Assert.IsAssignableFrom<IFoxRunRos2SubscriptionRegistrar>(
+                Activator.CreateInstance(
+                    registrarType,
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    args: new[] { (object)hub, sourceCandidate },
+                    culture: null));
+
+            var contract = Contract("ros2-native", "default");
+            registrar.RegisterStream<FakeHostMessage, FakeHostMessage>(
+                contract,
+                tryAdmitInput: null,
+                materializeOwned: (message, _) => message,
+                transferOwned: _ => { },
+                clearOwned: () => { });
+
+            var seenField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_seenEndpoints",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(seenField);
+            var seen = Assert.IsType<HashSet<string>>(seenField.GetValue(hub));
+            var identity = source.GetInstanceID() + "|" + contract.Id;
+            Assert.Contains(identity, seen);
+
+            var diagnosticsField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_diagnostics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(diagnosticsField);
+            var diagnostics = Assert.IsType<FoxRunRos2SubscriptionDiagnostics>(
+                diagnosticsField.GetValue(hub));
+            Assert.True(diagnostics.TryGet(identity, out var beforeReconcile));
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, beforeReconcile.State);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, beforeReconcile.Error);
+
+            diagnostics.RemoveExcept(seen);
+
+            Assert.True(diagnostics.TryGet(identity, out var afterReconcile));
+            Assert.Equal(beforeReconcile, afterReconcile);
+        }
+
+        [Fact]
+        public void FatalRegistrationFailurePassesThroughTheIsolationBoundary()
+        {
+            var failures = 0;
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2RegistrationIsolation.TryRun(
+                    () => throw new OutOfMemoryException("fatal registration"),
+                    _ => failures++));
+
+            Assert.Equal(0, failures);
+        }
+
+        [Fact]
         public void OneApplyFailureIsTerminalAndDoesNotPreventTheNextContract()
         {
             var first = new FakeHostBinding(
@@ -2218,13 +2835,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("The native ROS2 subscription could not apply the copied message.", snapshot.Diagnostic);
         }
 
+        [Fact]
+        public void FatalApplyFailurePassesThroughWithoutBeingRecordedAsAContractFailure()
+        {
+            var binding = new FakeHostBinding(
+                "fatal-apply",
+                () => throw new OutOfMemoryException("fatal apply"));
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2ApplyIsolation.TryRun(binding, 1, out _));
+
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Ready, binding.State);
+        }
+
         private static FoxRunRos2GeneratedContract Contract(
             string provider,
             string qos,
             Unity.FoxgloveSDK.Components.FoxRunFlow mode =
                 Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
             bool supportsNative = true)
-            => new FoxRunRos2GeneratedContract(
+        {
+            var hasExplicitQosProfile = TryParseQosProfile(qos, out var qosProfile);
+            return new FoxRunRos2GeneratedContract(
                 "host-contract-" + provider + "-" + qos,
                 "/native/string",
                 "Demo.HostReceiver",
@@ -2232,12 +2864,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "std_msgs/msg/String",
                 mode,
                 ParseProvider(provider),
-                ParseQos(qos),
-                supportsNative);
+                qosProfile,
+                hasExplicitQosProfile,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: supportsNative);
+        }
 
         private static FoxRunRos2GeneratedContract CustomContract(
-            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
-            Unity.FoxgloveSDK.Components.FoxRunWireEncoding encoding)
+            Unity.FoxgloveSDK.Components.FoxRunEndpoint provider,
+            Unity.FoxgloveSDK.Components.FoxRunEncoding encoding)
             => new FoxRunRos2GeneratedContract(
                 "custom-contract",
                 "/native/custom",
@@ -2246,31 +2888,68 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "unity2foxglove_foxrun_interfaces_v1/msg/CustomEnvelope",
                 Unity.FoxgloveSDK.Components.FoxRunFlow.PublishAndSubscribe,
                 provider,
-                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
-                true,
-                encoding,
-                FoxRunRos2GeneratedContractKind.CustomInterface,
-                "dev.unity2foxglove.foxrun.ros2.interfaces",
-                "unity2foxglove_foxrun_interfaces_v1",
-                1,
-                "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
-                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                "unity2foxglove_foxrun_interfaces_v1/msg/Custom");
+                Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true,
+                declaredSubscriptionEncoding: encoding,
+                contractKind: FoxRunRos2GeneratedContractKind.CustomInterface,
+                staticInterfacePackageId: "dev.unity2foxglove.foxrun.ros2.interfaces",
+                rosPackageName: "unity2foxglove_foxrun_interfaces_v1",
+                interfaceRevision: 1,
+                interfaceDigest: "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                baseRuntimePackageId: "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                canonicalPayloadType: "unity2foxglove_foxrun_interfaces_v1/msg/Custom");
 
-        private static Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider ParseProvider(string provider)
+        private static Unity.FoxgloveSDK.Components.FoxRunEndpoint ParseProvider(string provider)
             => provider == "ros2-native"
-                ? Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native
-                : Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Inherit;
+                ? Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native
+                : provider == "foxglove" || provider == "foxglove-stream"
+                    ? Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove
+                    : provider == "invalid"
+                        ? (Unity.FoxgloveSDK.Components.FoxRunEndpoint)99
+                        : (Unity.FoxgloveSDK.Components.FoxRunEndpoint)0;
 
-        private static Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset ParseQos(string qos)
+        private static bool TryParseQosProfile(
+            string qos,
+            out Unity.FoxgloveSDK.Components.FoxRunQosProfile profile)
         {
             switch (qos)
             {
-                case "reliable": return Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable;
-                case "sensor-data": return Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData;
-                case "default": return Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default;
-                default: return Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Inherit;
+                case "reliable":
+                    profile = Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default;
+                    return true;
+                case "sensor-data":
+                    profile = Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData;
+                    return true;
+                case "default":
+                    profile = Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default;
+                    return true;
+                case "inherit":
+                    profile = default;
+                    return false;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(qos), qos, "Unknown test QoS.");
             }
+        }
+
+        private static void AssertResolvedQos(
+            Unity.FoxgloveSDK.Components.FoxRunResolvedQos expected,
+            Unity.FoxgloveSDK.Components.FoxRunResolvedQos actual)
+        {
+            Assert.Equal(expected, actual);
+            Assert.Equal(expected.Profile, actual.Profile);
+            Assert.Equal(expected.Reliability, actual.Reliability);
+            Assert.Equal(expected.Durability, actual.Durability);
+            Assert.Equal(expected.History, actual.History);
+            Assert.Equal(expected.Depth, actual.Depth);
         }
 
         private static FoxRunRos2SubscriptionBindingSnapshot Snapshot(
@@ -2310,9 +2989,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Contract = new FoxRunRos2GeneratedContract(
                     id, "/" + id, "Demo.Host", "_message", "std_msgs/msg/String",
                     Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-                    Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
-                    Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
-                    true);
+                    Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
+                    Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default,
+                    hasExplicitQosProfile: true,
+                    qosReliability: default,
+                    hasExplicitQosReliability: false,
+                    qosDurability: default,
+                    hasExplicitQosDurability: false,
+                    qosHistory: default,
+                    hasExplicitQosHistory: false,
+                    qosDepth: 0,
+                    hasExplicitQosDepth: false,
+                    supportsRos2Native: true);
                 _apply = apply;
                 State = FoxRunRos2SubscriptionBindingState.Ready;
             }
@@ -2408,7 +3096,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 return RemoveReturns;
             }
 
-            public object CreatePublisher<T>(string topic)
+            public object CreatePublisher<T>(string topic, ROS2.QualityOfServiceProfile qos)
                 where T : ROS2.Message, new()
                 => new object();
 

@@ -35,29 +35,29 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribe : MonoBehaviour
     [FoxRun(
         StringTopic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+        Source = FoxRunEndpoint.Ros2Native,
+        QoS = FoxRunQosProfile.Default)]
     private std_msgs.msg.String _inputString;
 
     [FoxRun(
         TwistTopic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+        Source = FoxRunEndpoint.Ros2Native,
+        QoS = FoxRunQosProfile.Default)]
     private geometry_msgs.msg.Twist _inputTwist;
 
     [FoxRun(
         JoyTopic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.SensorData)]
+        Source = FoxRunEndpoint.Ros2Native,
+        QoS = FoxRunQosProfile.SensorData)]
     private sensor_msgs.msg.Joy _inputJoy;
 
     [FoxRun(
         ImuTopic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.SensorData)]
+        Source = FoxRunEndpoint.Ros2Native,
+        QoS = FoxRunQosProfile.SensorData)]
     private sensor_msgs.msg.Imu _inputImu;
 #else
     [Header("Native Runtime Availability")]

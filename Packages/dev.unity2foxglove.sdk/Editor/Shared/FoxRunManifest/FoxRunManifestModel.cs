@@ -20,19 +20,24 @@ namespace Unity.FoxgloveSDK.Editor
         public bool IsArray { get; }
         public string ElementTypeName { get; }
         public string Topic { get; }
-        public float RateHz { get; }
+        public float Hz { get; }
         public string SchemaName { get; }
         public int Policy { get; }
         public int Flow { get; }
         public int Encoding { get; }
         public int ProtobufFieldNumber { get; }
         public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
-        public float ChangeEpsilon { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Tolerance { get; }
         public bool IsAggregateMember { get; }
+        public bool IsStream { get; }
         public string JsonFieldName { get; }
-        public string SubscriptionProvider { get; }
-        public string Ros2Qos { get; }
+        public string Source { get; }
+        public string Targets { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool GeneratesWebSocketCodec { get; }
         public bool GeneratesRos2NativeRegistration { get; }
         public FoxRunRos2MessageShape Ros2MessageShape { get; }
@@ -49,24 +54,29 @@ namespace Unity.FoxgloveSDK.Editor
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int flow = 1,
             int encoding = 2,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string source = FoxRunGenerationDescriptorConstants.InheritSource,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -77,19 +87,24 @@ namespace Unity.FoxgloveSDK.Editor
             IsArray = isArray;
             ElementTypeName = elementTypeName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            RateHz = rateHz;
+            Hz = hz;
             SchemaName = schemaName ?? string.Empty;
             Policy = policy;
             Flow = flow;
             Encoding = encoding;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
+            IsStream = isStream;
             JsonFieldName = jsonFieldName ?? string.Empty;
-            SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
-            Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+            Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
+            Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
+            QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;
+            QosReliability = qosReliability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosDurability = qosDurability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosHistory = qosHistory ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
@@ -139,24 +154,29 @@ namespace Unity.FoxgloveSDK.Editor
                 member.IsArray,
                 member.ElementTypeName,
                 member.Topic,
-                member.RateHz,
+                member.Hz,
                 member.SchemaName,
                 member.Policy,
-                member.ChangeEpsilon,
-                member.ForceIntervalSeconds,
+                member.Tolerance,
                 member.IsAggregateMember,
                 member.JsonFieldName,
                 member.Mode,
                 EncodingValue(member.Encoding),
                 member.ProtobufFieldNumber,
                 member.ProtobufTypeShape,
-                member.SubscriptionProvider,
-                member.Ros2Qos,
+                member.Source,
+                member.QosProfile,
                 member.GeneratesWebSocketCodec,
                 member.GeneratesRos2NativeRegistration,
                 member.Ros2MessageShape,
                 member.Ros2CustomDtoShape,
-                member.Ros2ContractKind);
+                member.Ros2ContractKind,
+                member.Targets,
+                member.QosReliability,
+                member.QosDurability,
+                member.QosHistory,
+                member.QosDepth,
+                member.IsStream);
         }
 
         private static int EncodingValue(string encoding)
@@ -271,10 +291,16 @@ namespace Unity.FoxgloveSDK.Editor
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public string DeclaredProvider { get; }
-        public string Ros2Qos { get; }
+        public string DeclaredSource { get; }
+        public string DeclaredTargets { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public bool IsStream { get; }
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }
@@ -288,8 +314,8 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string topic,
             string flow,
-            string declaredProvider,
-            string ros2Qos,
+            string declaredSource,
+            string qosProfile,
             bool supportsWebSocket,
             bool supportsRos2Native,
             string nativeType,
@@ -298,16 +324,28 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
-            string customEnvelopeIdentity = "")
+            string customEnvelopeIdentity = "",
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0,
+            bool isStream = false)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider ?? string.Empty;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            DeclaredSource = declaredSource ?? string.Empty;
+            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
+            IsStream = isStream;
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
@@ -329,8 +367,13 @@ namespace Unity.FoxgloveSDK.Editor
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public string DeclaredProvider { get; }
-        public string Ros2Qos { get; }
+        public string DeclaredSource { get; }
+        public string DeclaredTargets { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }
         public string CustomPayloadIdentity { get; }
@@ -341,19 +384,29 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string topic,
             string flow,
-            string declaredProvider,
-            string ros2Qos,
+            string declaredSource,
+            string qosProfile,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
-            string customEnvelopeIdentity)
+            string customEnvelopeIdentity,
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider ?? string.Empty;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            DeclaredSource = declaredSource ?? string.Empty;
+            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
@@ -466,20 +519,17 @@ namespace Unity.FoxgloveSDK.Editor
     public sealed class FoxRunManifestPolicy
     {
         public string Mode { get; }
-        public float RateHz { get; }
-        public float ChangeEpsilon { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Hz { get; }
+        public float Tolerance { get; }
 
         public FoxRunManifestPolicy(
             string mode,
-            float rateHz,
-            float changeEpsilon,
-            float forceIntervalSeconds)
+            float hz,
+            float tolerance)
         {
             Mode = mode ?? string.Empty;
-            RateHz = rateHz;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            Tolerance = tolerance;
         }
     }
 }

@@ -32,32 +32,33 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPolicyResolverAndFrozenSessionState()
         {
-            var resolver = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingResolver.cs");
+            var resolver = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunEncodingResolver.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
-            Check(resolver.Contains("ValidateManagerDefault", StringComparison.Ordinal)
-                  && resolver.Contains("PublishAndSubscribe requires an explicit", StringComparison.Ordinal),
+            Check(resolver.Contains("ValidateProfileDefault", StringComparison.Ordinal)
+                  && resolver.Contains("Full-duplex omitted Encoding must be resolved per direction.", StringComparison.Ordinal),
                 "175C-1: resolver accepts only concrete directional defaults and rejects ambiguous bidirectional inheritance");
-            Check(inbound.Contains("_defaultFoxRunWireEncoding = FoxRunWireEncoding.Protobuf", StringComparison.Ordinal)
+            Check(inbound.Contains("_defaultFoxRunEncoding = FoxRunEncoding.Protobuf", StringComparison.Ordinal)
                   && inbound.Contains("_defaultFoxRunSubscriptionEncoding", StringComparison.Ordinal)
                   && publishing.Contains("_defaultFoxRunPublishEncoding", StringComparison.Ordinal)
                   && migration.Contains("ISerializationCallbackReceiver", StringComparison.Ordinal)
-                  && migration.Contains("FoxRunWireEncodingPolicyMigration.Migrate", StringComparison.Ordinal),
+                  && migration.Contains("FoxRunEncodingPolicyMigration.Migrate", StringComparison.Ordinal),
                 "175C-2: Manager retains the legacy policy source and migrates it into directional defaults in player-safe deserialization");
-            var beginIndex = server.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
-            var captureIndex = server.IndexOf("CaptureFoxRunPublishEncodingForServer();", StringComparison.Ordinal);
-            var schemaRegistrationIndex = server.IndexOf("FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas", StringComparison.Ordinal);
-            Check(beginIndex >= 0
-                  && captureIndex > beginIndex
-                  && schemaRegistrationIndex > captureIndex
-                  && inbound.Contains("ActiveFoxRunSubscriptionSessionPolicy.WebSocketSubscriptionEncoding", StringComparison.Ordinal)
-                  && publishing.Contains("_activeFoxRunPublishEncoding = DefaultFoxRunPublishEncoding;", StringComparison.Ordinal)
-                  && publishing.Contains("_hasActiveFoxRunPublishEncoding", StringComparison.Ordinal)
-                  && server.Contains("ClearFoxRunPublishEncodingForServer();", StringComparison.Ordinal),
-                "175C-3: Manager freezes subscription policy independently and keeps publish encoding server-scoped");
+            var onEnable = Slice(manager, "private void OnEnable()", "private void Update()");
+            var publishBeginIndex = onEnable.IndexOf("BeginFoxRunPublishSessionIfNeeded();", StringComparison.Ordinal);
+            var subscriptionBeginIndex = onEnable.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
+            var serverStartIndex = onEnable.IndexOf("StartServer();", StringComparison.Ordinal);
+            Check(publishBeginIndex >= 0
+                  && subscriptionBeginIndex > publishBeginIndex
+                  && serverStartIndex > subscriptionBeginIndex
+                  && inbound.Contains("ActiveFoxRunSubscriptionSessionPolicy.FoxgloveEncoding", StringComparison.Ordinal)
+                  && publishing.Contains("FoxRunPublishSessionState", StringComparison.Ordinal)
+                  && publishing.Contains("_foxRunPublishSessionState.BeginIfNeeded(", StringComparison.Ordinal)
+                  && manager.Contains("EndFoxRunPublishSession();", StringComparison.Ordinal),
+                "175C-3: Manager freezes directional policies before transports and releases publish policy with the Manager lifetime");
         }
 
         private static void VerifyIndependentSubscriptionSessionLifecycleAndMigration()
@@ -68,15 +69,16 @@ namespace Unity.FoxgloveSDK.Tests
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
-            var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingPolicyMigration.cs");
+            var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunEncodingPolicyMigration.cs");
+            var qosSettings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunQosProfileSettings.cs");
             var copyBudgetPolicy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2NativeCopyBudgetPolicy.cs");
 
             Check(policy.Contains("public sealed class FoxRunSubscriptionSessionPolicy", StringComparison.Ordinal)
                   && policy.Contains("public ulong SessionGeneration { get; }", StringComparison.Ordinal)
                   && policy.Contains("public bool SubscriptionsEnabled { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public FoxRunSubscriptionProvider DefaultProvider { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public FoxRunWireEncoding WebSocketSubscriptionEncoding { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public FoxRunRos2QosPreset DefaultRos2Qos { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public FoxRunEndpoint DefaultSource { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public FoxRunEncoding FoxgloveEncoding { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public FoxRunResolvedQos DefaultRos2Qos { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int NativeCopyBudgetBytes { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int TransportAdmissionRateLimitHz { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int DefaultSubscribeRateHz { get; }", StringComparison.Ordinal)
@@ -104,10 +106,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "private void SyncFoxRunSubscriptionSession()");
             var onEnableBeginIndex = onEnable.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
             var onEnableStartIndex = onEnable.IndexOf("StartServer();", StringComparison.Ordinal);
+            var onEnablePublishIndex = onEnable.IndexOf("BeginFoxRunPublishSessionIfNeeded();", StringComparison.Ordinal);
             var onDisableEndIndex = onDisable.IndexOf("EndFoxRunSubscriptionSession();", StringComparison.Ordinal);
             var onDisableStopIndex = onDisable.IndexOf("StopServer(", StringComparison.Ordinal);
+            var onDisablePublishIndex = onDisable.IndexOf("EndFoxRunPublishSession();", StringComparison.Ordinal);
             var onDestroyEndIndex = onDestroy.IndexOf("EndFoxRunSubscriptionSession();", StringComparison.Ordinal);
             var onDestroyStopIndex = onDestroy.IndexOf("StopServer(", StringComparison.Ordinal);
+            var onDestroyPublishIndex = onDestroy.IndexOf("EndFoxRunPublishSession();", StringComparison.Ordinal);
             var beginStateIndex = beginSession.IndexOf("_foxRunSubscriptionSessionState.BeginIfNeeded(", StringComparison.Ordinal);
             var beginNotifyIndex = beginSession.IndexOf("NotifyFoxRunSubscriptionSessionChanged(policy);", StringComparison.Ordinal);
             var endStateIndex = endSession.IndexOf("_foxRunSubscriptionSessionState.End();", StringComparison.Ordinal);
@@ -131,45 +136,52 @@ namespace Unity.FoxgloveSDK.Tests
                   && endStateIndex < endNotifyIndex
                   && onEnableBeginIndex >= 0
                   && onEnableStartIndex >= 0
+                  && onEnablePublishIndex >= 0
+                  && onEnablePublishIndex < onEnableBeginIndex
                   && onEnableBeginIndex < onEnableStartIndex
                   && update.Contains("SyncFoxRunSubscriptionSession();", StringComparison.Ordinal)
                   && onDisableEndIndex >= 0
                   && onDisableStopIndex >= 0
                   && onDisableEndIndex < onDisableStopIndex
+                  && onDisablePublishIndex > onDisableStopIndex
                   && onDestroyEndIndex >= 0
                   && onDestroyStopIndex >= 0
-                  && onDestroyEndIndex < onDestroyStopIndex,
+                  && onDestroyEndIndex < onDestroyStopIndex
+                  && onDestroyPublishIndex > onDestroyStopIndex,
                 "175C-3B: subscription lifecycle isolates transition observers and preserves teardown ordering");
 
             var startServer = Slice(server, "public void StartServer()", "private void CleanupStartupAfterFailure()");
             var stopServer = Slice(server, "private void StopServer(bool restoreLivePublishers)", "private void DetachRuntimeForwarders");
             var startServerBeginIndex = startServer.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
             var outputDisabledIndex = startServer.IndexOf("if (!_foxgloveOutputEnabled)", StringComparison.Ordinal);
-            var publishCaptureIndex = startServer.IndexOf("CaptureFoxRunPublishEncodingForServer();", StringComparison.Ordinal);
             var schemaRegistrationIndex = startServer.IndexOf("FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas", StringComparison.Ordinal);
             Check(startServerBeginIndex >= 0
                   && outputDisabledIndex >= 0
                   && startServerBeginIndex < outputDisabledIndex
-                  && publishCaptureIndex >= 0
                   && schemaRegistrationIndex >= 0
-                  && publishCaptureIndex < schemaRegistrationIndex
-                  && stopServer.Contains("ClearFoxRunPublishEncodingForServer();", StringComparison.Ordinal)
+                  && !startServer.Contains("BeginFoxRunPublishSessionIfNeeded", StringComparison.Ordinal)
+                  && !stopServer.Contains("EndFoxRunPublishSession", StringComparison.Ordinal)
                   && !stopServer.Contains("EndFoxRunSubscriptionSession", StringComparison.Ordinal),
-                "175C-3C: output-off and server-stop paths preserve an enabled subscription session");
+                "175C-3C: individual server restarts preserve both Manager-lifetime directional session snapshots");
 
             var onValidate = Slice(manager, "private void OnValidate()", "private void OnEnable()");
-            var compatibilitySetter = Slice(
-                inbound,
-                "public FoxRunWireEncoding DefaultFoxRunWireEncoding",
-                "/// <summary>Compatibility alias for the former single active FoxRun default.</summary>");
-            Check(inbound.Contains("_defaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket", StringComparison.Ordinal)
-                  && inbound.Contains("_defaultFoxRunRos2Qos = FoxRunRos2QosPreset.Default", StringComparison.Ordinal)
-                  && inbound.Contains("_foxRunRos2NativeCopyBudgetBytes = FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
-                  && inbound.Contains("_defaultFoxRunSubscriptionEncoding = FoxRunWireEncoding.Protobuf", StringComparison.Ordinal)
-                  && migration.Contains("ref _defaultFoxRunSubscriptionProvider", StringComparison.Ordinal)
-                  && migration.Contains("ref _defaultFoxRunRos2Qos", StringComparison.Ordinal)
+            Check(inbound.Contains("_defaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove", StringComparison.Ordinal)
+                  && inbound.Contains("[FormerlySerializedAs(\"_defaultFoxRunRos2Qos\")]", StringComparison.Ordinal)
+                  && inbound.Contains("_legacyDefaultFoxRunRos2Qos = 1", StringComparison.Ordinal)
+                  && inbound.Contains("_defaultFoxRunNativeSubscribeQos = new()", StringComparison.Ordinal)
+                  && inbound.Contains("_foxRunRos2NativeCopyBudgetBytes = FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && inbound.Contains("_defaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf", StringComparison.Ordinal)
+                  && migration.Contains("ref _defaultFoxRunSubscriptionSource", StringComparison.Ordinal)
                   && migration.Contains("ref _foxRunRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && migration.Contains("FoxRunQosPolicySerializationMigration.MigrateNativeProfiles(", StringComparison.Ordinal)
+                  && migration.Contains("ref _defaultFoxRunNativePublishQos", StringComparison.Ordinal)
+                  && migration.Contains("ref _defaultFoxRunNativeSubscribeQos", StringComparison.Ordinal)
+                  && migration.Contains("_legacyDefaultFoxRunRos2Qos", StringComparison.Ordinal)
                   && helper.Contains("CurrentSerializationVersion = 2", StringComparison.Ordinal)
+                  && helper.Contains("QosProfileSerializationVersion = 3", StringComparison.Ordinal)
+                  && helper.Contains("internal static void MarkCurrent(", StringComparison.Ordinal)
+                  && helper.Contains("publish.MigrateLegacyPreset(legacyPublishPreset)", StringComparison.Ordinal)
+                  && helper.Contains("subscribe.MigrateLegacyPreset(legacySubscribePreset)", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int MinBytes = 1024", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int MaxBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int DefaultBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
@@ -177,13 +189,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes", StringComparison.Ordinal)
                   && helper.Contains("DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes", StringComparison.Ordinal)
                   && helper.Contains("=> FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes)", StringComparison.Ordinal)
-                  && helper.Contains("FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos)", StringComparison.Ordinal)
-                  && compatibilitySetter.Contains("_foxRunPolicySerializationVersion = FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion", StringComparison.Ordinal)
-                  && !inbound.Contains("FormerlySerializedAs", StringComparison.Ordinal)
-                  && !onValidate.Contains("FoxRunWireEncodingPolicyMigration.Migrate", StringComparison.Ordinal)
+                  && qosSettings.Contains("FoxRunRos2QosProfileResolver.Resolve(", StringComparison.Ordinal)
+                  && qosSettings.Contains("internal void MigrateLegacyPreset(int legacyPreset)", StringComparison.Ordinal)
+                  && !inbound.Contains("public FoxRunEncoding DefaultFoxRunEncoding", StringComparison.Ordinal)
+                  && !inbound.Contains("public FoxRunEncoding ActiveFoxRunDefaultWireEncoding", StringComparison.Ordinal)
+                  && !inbound.Contains("public FoxRunEncoding ResolveFoxRunEncoding(FoxRunEncoding declaredEncoding)", StringComparison.Ordinal)
+                  && inbound.Contains("[FormerlySerializedAs(\"_defaultFoxRunEndpoint\")]", StringComparison.Ordinal)
+                  && inbound.Contains("[FormerlySerializedAs(\"_foxRunDefaultApplyRateHz\")]", StringComparison.Ordinal)
+                  && !onValidate.Contains("FoxRunEncodingPolicyMigration.Migrate", StringComparison.Ordinal)
                   && !migration.Contains("BeginFoxRunSubscriptionSession", StringComparison.Ordinal)
                   && !session.Contains("SerializeField", StringComparison.Ordinal),
-                "175C-3D: additive deserialization migrates provider, QoS, and copy budget without changing the legacy field boundary");
+                "175C-3D: additive deserialization migrates source, QoS, copy budget, and intentional one-way field renames without public compatibility aliases");
         }
 
         private static void VerifyGeneratedInheritedDualCodecDispatch()
@@ -192,13 +208,13 @@ namespace Unity.FoxgloveSDK.Tests
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
 
-            Check(input.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal)
+            Check(input.Contains("(FoxRunEncoding)0", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),
                 "175C-4: generated inbound dispatch preserves Inherit and supports both concrete encodings");
-            Check(publish.Contains("mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish)", StringComparison.Ordinal),
+            Check(publish.Contains("mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish)", StringComparison.Ordinal),
                 "175C-5: generated publish dispatch resolves inherited encoding through the publish policy");
-            Check(router.Contains("DeclaredWireEncoding", StringComparison.Ordinal)
-                  && router.Contains("DefaultSubscriptionWireEncoding", StringComparison.Ordinal),
+            Check(router.Contains("DeclaredEncoding", StringComparison.Ordinal)
+                  && router.Contains("DefaultSubscriptionEncoding", StringComparison.Ordinal),
                 "175C-6: input router separates declared and effective subscription contracts");
         }
 
@@ -221,20 +237,26 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal),
                 "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
-                  && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
+                  && labels.Contains("property.enumValueIndex == (int)FoxRunEncoding.JSON ? 1 : 0", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
-                  && labels.Contains("? (int)FoxRunWireEncoding.Protobuf", StringComparison.Ordinal)
-                  && labels.Contains(": (int)FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && labels.Contains("? (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
+                  && labels.Contains(": (int)FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && !labels.Contains("MsgPack", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
-            Check(inspector.Contains("Default Input Transport", StringComparison.Ordinal)
+            Check(inspector.Contains("FoxRun Subscribe Profile", StringComparison.Ordinal)
+                  && inspector.Contains("\"Source\"", StringComparison.Ordinal)
+                  && inspector.Contains("Foxglove Encoding", StringComparison.Ordinal)
                   && inspector.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)
                   && inspector.Contains("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && inspector.IndexOf("Default Subscribe Rate Hz", StringComparison.Ordinal)
                      < inspector.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
-                  && inspector.Contains("Subscription-policy changes apply after subscriptions are re-enabled.", StringComparison.Ordinal)
-                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate", StringComparison.Ordinal),
+                  && inspector.Contains(
+                      "FoxRun Subscribe Profile changes apply after subscriptions are disabled and re-enabled.",
+                      StringComparison.Ordinal)
+                  && inspector.Contains(
+                      "captured source, Foxglove encoding, QoS, copy budget, default subscribe rate, and maximum subscribe rate",
+                      StringComparison.Ordinal),
                 "175C-9: Inspector exposes subscription controls and the session re-enable boundary");
         }
 
@@ -250,13 +272,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("class Phase175ProtobufManualAcceptance", StringComparison.Ordinal)
                   && source.Contains("/phase175/protobuf/target-value", StringComparison.Ordinal)
                   && source.Contains("/phase175/protobuf/shared-state", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
-                  && source.Contains("#pragma warning disable FOXRUN400", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
                   && source.Contains("remote-authoritative shared observation", StringComparison.Ordinal)
-                  && source.Contains("#pragma warning restore FOXRUN400", StringComparison.Ordinal)
-                  && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),
-                "175C-10: manual acceptance pins Protobuf contracts and documents bidirectional authority");
+                  && !source.Contains("FOXRUN400", StringComparison.Ordinal)
+                  && !source.Contains("(FoxRunEncoding)0", StringComparison.Ordinal),
+                "175C-10: manual acceptance pins Protobuf contracts, documents bidirectional authority, and needs no warning suppression");
         }
 
         private static void VerifyExplicitJsonManualAcceptance()
@@ -270,10 +291,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("class Phase175JsonManualAcceptance", StringComparison.Ordinal)
                   && source.Contains("/phase175/json/legacy-state", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && source.Contains("requestedLegacyJsonState", StringComparison.Ordinal)
                   && source.Contains("Applied JSON legacy state", StringComparison.Ordinal)
-                  && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),
+                  && !source.Contains("(FoxRunEncoding)0", StringComparison.Ordinal),
                 "175C-11: manual acceptance pins an explicit JSON legacy contract");
         }
 

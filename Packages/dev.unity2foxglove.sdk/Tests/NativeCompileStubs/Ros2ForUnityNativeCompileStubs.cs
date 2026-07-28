@@ -35,6 +35,12 @@ namespace ROS2
             where T : Message, new()
             => throw new NotSupportedException("Compile-only stub.");
 
+        public Publisher<T> CreatePublisher<T>(
+            string topicName,
+            QualityOfServiceProfile qos)
+            where T : Message, new()
+            => throw new NotSupportedException("Compile-only stub.");
+
         public bool RemovePublisher(IPublisherBase publisher) => false;
         public void Dispose() { }
     }

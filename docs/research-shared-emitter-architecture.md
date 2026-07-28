@@ -25,11 +25,11 @@ public partial class RobotTelemetry : MonoBehaviour
     private PoseState _pose;
 
     // Apply subscribed changes on the Unity main thread, at most 30 times/s.
-    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, RateHz = 30)]
+    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, Hz = 30)]
     private RobotState _state;
 
     // Debug-oriented full duplex binding. Both directions use the same policy/rate.
-    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, RateHz = 10)]
+    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, Hz = 10)]
     private DebugState _debugState;
 
     // Explicit API-driven update only; a periodic rate is invalid here.
@@ -57,24 +57,28 @@ is a 10 Hz fixed-rate publisher. Users add options only when the data flow or sc
 
 ### 1.2 Policy
 
-The four policies describe when a direction is eligible to update. They are not transport QoS settings.
+The three policies describe when a direction is eligible to update. They are not transport QoS settings.
 
 | `Policy` | Publish behavior | Subscribe behavior |
 | --- | --- | --- |
 | `FixedRate` | Emits the current value on each eligible cadence. | Applies only when a newer staged value exists; it never re-applies stale data just because a timer fired. |
-| `Change` | Emits the first value and later value changes. | Applies the first accepted value and later changes, subject to the main-thread apply cap. |
-| `ChangeOrInterval` | Emits changes immediately when eligible and also supplies an interval heartbeat. | May apply a newly received duplicate after the interval; it never invents a heartbeat from an old staged value. |
-| `Trigger` | Emits only through the generated explicit trigger API. | Applies only through the generated explicit apply API. A positive `RateHz` is contradictory and fails validation. |
+| `Change` without `Hz` | Emits the first value and later value changes. | Applies changed accepted values at the next main-thread opportunity, bounded by the safety ceiling. |
+| `Change` with `Hz` | Emits changes and supplies a heartbeat at `Hz`. | May apply a newly received equal duplicate at `Hz`; it never invents a heartbeat from old staged state. |
+| `Trigger` | Emits only through the generated explicit publish API. | Applies only through the generated explicit apply API. A positive `Hz` is contradictory and fails validation. |
 
-### 1.3 What `RateHz` Means
+### 1.3 What `Hz` Means
 
-`RateHz` is a local scheduling ceiling:
+`Hz` is a declaration-level scheduling override:
 
 - on publish, it is the maximum output cadence;
 - on subscribe, it is the maximum Unity main-thread apply cadence;
 - on full duplex, the two directions are scheduled independently under the same ceiling.
 
-It does not throttle network receive callbacks, alter discovery, select a provider, or change ROS2 QoS. If a subscription omits `RateHz`, it inherits the Manager's frozen input-apply cap. A full-duplex binding without an explicit rate uses the normal 10 Hz output default and the Manager input-apply cap.
+It does not throttle network receive callbacks, alter discovery, select a
+provider, or change ROS2 QoS. Fixed-rate declarations without `Hz` inherit the
+appropriate frozen Manager default. `Change` without `Hz` applies changed input
+at the next main-thread opportunity; `Change + Hz` adds a heartbeat/duplicate
+refresh cadence.
 
 ## 2. Why Static Generation Is Required
 
@@ -189,7 +193,11 @@ Input callbacks never mutate Unity fields. They perform bounded work:
 3. replace the single pending value in a latest-wins slot;
 4. return without calling a Unity API.
 
-The generated main-thread path later drains the newest pending value, evaluates `Policy` and `RateHz`, writes the member directly, and disposes replaced or applied owned graphs exactly once. This prevents borrowed ros2cs message graphs from escaping a callback and prevents unbounded history from accumulating behind a slow scene.
+The generated main-thread path later drains the newest pending value, evaluates
+`Policy`, `Hz`, and `OnlyIf`, writes the member directly, and disposes replaced
+or applied owned graphs exactly once. This prevents borrowed ros2cs message
+graphs from escaping a callback and prevents unbounded history from
+accumulating behind a slow scene.
 
 ### 4.4 Full Duplex Without Echo
 

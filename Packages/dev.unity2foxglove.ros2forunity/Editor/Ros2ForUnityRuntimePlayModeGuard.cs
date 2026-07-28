@@ -40,10 +40,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             "_ros2NativeEnabled";
         private const string FoxRunInboundEnabledSerializedProperty =
             "_enableFoxRunInbound";
-        private const string FoxRunSubscriptionProviderSerializedProperty =
-            "_defaultFoxRunSubscriptionProvider";
-        private const string GeneratedFoxRunSchemaInfoTypeName =
-            "Unity.FoxgloveSDK.Generated.FoxRunSchemaInfo";
+        private const string FoxRunEndpointSerializedProperty =
+            "_defaultFoxRunSubscriptionSource";
+        private const string FoxRunRos2SubscriptionHubTypeName =
+            "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub";
+        private const string FoxRunRos2CustomPublisherHubTypeName =
+            "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CustomPublisherHub";
         private const double NativeReloadUnlockDelaySeconds = 2.0;
         private const double ZenohRouterProbeCacheSeconds = 2.0;
 
@@ -82,6 +84,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnExitingEditMode()
         {
+            // Another earlier Play Mode callback may cancel entry (for example,
+            // while refreshing generated FoxRun schema constants). Do not take
+            // the native reload lock after Unity has already abandoned entry.
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                ScheduleReloadAssembliesUnlock();
+                return;
+            }
+
             // Inspector property edits do not necessarily trigger hierarchyChanged.
             // Re-scan at the stable pre-Play boundary before any R2FU Ok() path.
             InvalidateNativeDemandCache();
@@ -297,7 +308,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return _cachedNativeDemand;
 
             var hasDemand = false;
-            var hasExplicitNativeContract = HasGeneratedExplicitNativeSubscriptionContract();
+            var loadedScene = FoxRunLoadedSceneContractProbe.CaptureLoadedScenes();
+            var hasExplicitNativeContract =
+                loadedScene.HasExplicitNativeSubscriptionContract;
+            var hasExplicitNativePublishContract =
+                loadedScene.HasExplicitNativePublishContract;
             foreach (var behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
             {
                 if (behaviour == null)
@@ -314,7 +329,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 var serialized = new SerializedObject(behaviour);
                 var ros2NativeEnabled = serialized.FindProperty(Ros2NativeEnabledSerializedProperty);
                 var subscriptionsEnabled = serialized.FindProperty(FoxRunInboundEnabledSerializedProperty);
-                var defaultProvider = serialized.FindProperty(FoxRunSubscriptionProviderSerializedProperty);
+                var defaultProvider = serialized.FindProperty(FoxRunEndpointSerializedProperty);
                 if (ros2NativeEnabled != null
                     && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean
                     && subscriptionsEnabled != null
@@ -322,14 +337,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     && defaultProvider != null
                     && defaultProvider.propertyType == SerializedPropertyType.Enum)
                 {
-                    var provider = defaultProvider.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
-                        ? FoxRunSubscriptionProvider.Ros2Native
-                        : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+                    var provider = defaultProvider.intValue == (int)FoxRunEndpoint.Ros2Native
+                        ? FoxRunEndpoint.Ros2Native
+                        : FoxRunEndpoint.Foxglove;
+                    var effectivePublishTargets = ros2NativeEnabled.boolValue
+                        ? FoxRunEndpoint.Ros2Native
+                        : FoxRunEndpoint.Foxglove;
                     if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
-                            ros2NativeEnabled.boolValue,
-                            subscriptionsEnabled.boolValue,
-                            provider,
-                            hasExplicitNativeContract))
+                            nativeOutputEnabled: ros2NativeEnabled.boolValue,
+                            defaultPublishTargets: effectivePublishTargets,
+                            hasExplicitNativePublishContract:
+                                hasExplicitNativePublishContract,
+                            subscriptionsEnabled: subscriptionsEnabled.boolValue,
+                            defaultSubscriptionSource: provider,
+                            hasExplicitNativeContract: hasExplicitNativeContract))
                     {
                         hasDemand = true;
                         break;
@@ -341,15 +362,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 {
                     var output = ReadBoolProperty(type, behaviour, "Ros2NativeEnabled");
                     var subscriptions = ReadBoolProperty(type, behaviour, "EnableFoxRunInbound");
-                    var provider = ReadSubscriptionProviderProperty(
+                    var provider = ReadSourceProperty(
                         type,
                         behaviour,
-                        "DefaultFoxRunSubscriptionProvider");
+                        "DefaultFoxRunSubscriptionSource");
+                    var publishTargets = ReadEndpointProperty(
+                        type,
+                        behaviour,
+                        "DefaultFoxRunPublishTargets",
+                        FoxRunEndpoint.Foxglove);
                     if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
-                            output,
-                            subscriptions,
-                            provider,
-                            hasExplicitNativeContract))
+                            nativeOutputEnabled: output,
+                            defaultPublishTargets: publishTargets,
+                            hasExplicitNativePublishContract:
+                                hasExplicitNativePublishContract,
+                            subscriptionsEnabled: subscriptions,
+                            defaultSubscriptionSource: provider,
+                            hasExplicitNativeContract: hasExplicitNativeContract))
                     {
                         hasDemand = true;
                         break;
@@ -366,30 +395,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             return hasDemand;
         }
 
-        private static bool HasGeneratedExplicitNativeSubscriptionContract()
-        {
-            var generatedType = FindLoadedType(GeneratedFoxRunSchemaInfoTypeName);
-            var bindingsField = generatedType?.GetField(
-                "SubscriptionBindings",
-                BindingFlags.Public | BindingFlags.Static);
-            if (!(bindingsField?.GetValue(null) is System.Collections.IEnumerable bindings))
-                return false;
-
-            foreach (var item in bindings)
-            {
-                var provider = item?.GetType().GetProperty(
-                    "DeclaredProvider",
-                    BindingFlags.Instance | BindingFlags.Public)?.GetValue(item, null);
-                if (provider is FoxRunSubscriptionProvider typed
-                    && typed == FoxRunSubscriptionProvider.Ros2Native)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static bool ReadBoolProperty(Type type, object instance, string propertyName)
         {
             var property = type.GetProperty(
@@ -400,19 +405,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                    && (bool)property.GetValue(instance, null);
         }
 
-        private static FoxRunSubscriptionProvider ReadSubscriptionProviderProperty(
+        private static FoxRunEndpoint ReadSourceProperty(
             Type type,
             object instance,
             string propertyName)
+            => ReadEndpointProperty(
+                type,
+                instance,
+                propertyName,
+                FoxRunEndpoint.Foxglove) == FoxRunEndpoint.Ros2Native
+                ? FoxRunEndpoint.Ros2Native
+                : FoxRunEndpoint.Foxglove;
+
+        private static FoxRunEndpoint ReadEndpointProperty(
+            Type type,
+            object instance,
+            string propertyName,
+            FoxRunEndpoint fallback)
         {
             var property = type.GetProperty(
                 propertyName,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             return property != null
-                   && property.PropertyType == typeof(FoxRunSubscriptionProvider)
-                   && property.GetValue(instance, null) is FoxRunSubscriptionProvider provider
-                ? provider
-                : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+                   && property.PropertyType == typeof(FoxRunEndpoint)
+                   && property.GetValue(instance, null) is FoxRunEndpoint endpoint
+                ? endpoint
+                : fallback;
         }
 
         private static void InvalidateNativeDemandCache()
@@ -564,6 +582,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
+            // Remove FoxRun endpoints while their shared R2FU node is still
+            // alive. Waiting until the next MonoBehaviour Update would let
+            // ShutdownShared dispose the node first, turning an otherwise
+            // clean Play Mode exit into a false teardown failure.
+            TryInvokeStatic(
+                FoxRunRos2SubscriptionHubTypeName,
+                "StopForNativeRuntimeShutdown");
+            TryInvokeStatic(
+                FoxRunRos2CustomPublisherHubTypeName,
+                "StopForNativeRuntimeShutdown");
             var stoppedExecutors = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2UnityComponentSuffix, "StopAllExecutorsForRosShutdown");
             var shutdownShared = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2ForUnitySuffix, "ShutdownShared");
             if (!stoppedExecutors && !shutdownShared)

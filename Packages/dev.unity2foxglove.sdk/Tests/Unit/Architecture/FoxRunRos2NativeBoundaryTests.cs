@@ -35,9 +35,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("FoxRunRos2CopyContext", registrar, StringComparison.Ordinal);
             Assert.Contains("public sealed class FoxRunRos2GeneratedContract", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunFlow mode", contract, StringComparison.Ordinal);
-            Assert.Contains("FoxRunSubscriptionProvider subscriptionProvider", contract, StringComparison.Ordinal);
-            Assert.Contains("FoxRunRos2QosPreset qosPreset", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunEndpoint source", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosProfile qosProfile", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosProfile", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosReliability qosReliability", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosReliability", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosDurability qosDurability", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosDurability", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosHistory qosHistory", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosHistory", contract, StringComparison.Ordinal);
+            Assert.Contains("int qosDepth", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosDepth", contract, StringComparison.Ordinal);
+            Assert.Contains(
+                "ResolveQos(FoxRunResolvedQos inherited)",
+                contract,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxRunRos2QosPreset", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("string ros2Qos", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("public string Ros2Qos", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("public string DeclaredSource", contract, StringComparison.Ordinal);
             Assert.Contains("HasCompleteMetadata", contract, StringComparison.Ordinal);
+            Assert.Contains("public float Hz { get; }", contract, StringComparison.Ordinal);
+            Assert.Contains("public bool HasExplicitHz { get; }", contract, StringComparison.Ordinal);
+            Assert.Contains("public float HeartbeatIntervalSeconds { get; }", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("RateHz", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("ForceIntervalSeconds", contract, StringComparison.Ordinal);
             Assert.DoesNotContain("reflection", registrar, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("dynamic", registrar, StringComparison.Ordinal);
         }
@@ -77,7 +99,46 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("MakeGenericMethod", emitter, StringComparison.Ordinal);
             Assert.DoesNotContain("Activator", emitter, StringComparison.Ordinal);
             Assert.DoesNotContain("dynamic", emitter, StringComparison.Ordinal);
-            Assert.Contains("registrar.Register<", emitter, StringComparison.Ordinal);
+            Assert.Contains("registrar.", emitter, StringComparison.Ordinal);
+            Assert.Contains("\"Register<\"", emitter, StringComparison.Ordinal);
+            Assert.Contains("\"RegisterStream<\"", emitter, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
+        public void NativeAssemblyCanReachSharedFatalExceptionPolicy()
+        {
+            var root = FindRepoRoot();
+            var adapterRuntime = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime");
+            var nativeAsmdef = File.ReadAllText(Path.Combine(
+                adapterRuntime,
+                "Native",
+                "Unity2Foxglove.Ros2ForUnity.Native.asmdef"));
+            var assemblyInfoPath = Path.Combine(adapterRuntime, "AssemblyInfo.cs");
+            var policy = File.ReadAllText(Path.Combine(
+                adapterRuntime,
+                "FoxRunRos2NativeExceptionPolicy.cs"));
+
+            Assert.Contains(
+                "\"Unity2Foxglove.Ros2ForUnity\"",
+                nativeAsmdef,
+                StringComparison.Ordinal);
+            Assert.True(
+                File.Exists(assemblyInfoPath),
+                "The adapter runtime assembly must explicitly expose internals to its Native assembly.");
+            var assemblyInfo = File.ReadAllText(assemblyInfoPath);
+            Assert.Contains(
+                "InternalsVisibleTo(\"Unity2Foxglove.Ros2ForUnity.Native\")",
+                assemblyInfo,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "internal static class FoxRunRos2NativeExceptionPolicy",
+                policy,
+                StringComparison.Ordinal);
         }
 
         [Fact]

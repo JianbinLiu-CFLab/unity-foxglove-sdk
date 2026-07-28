@@ -37,14 +37,45 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                var rate = fields.Max(m => m.RateHz);
+                var explicitRates = fields.Where(m => m.HasExplicitHz).ToArray();
+                var hasExplicitHz = explicitRates.Length > 0;
+                var hz = hasExplicitHz
+                    ? explicitRates.Max(m => m.Hz)
+                    : fields.Max(m => m.Hz);
                 var mode = topicModes[topics[i]];
-                var eps = fields.Max(m => m.ChangeEpsilon);
-                var forceInt = fields.Max(m => m.ForceIntervalSeconds);
+                var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                var endpoint = fields[0];
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, {6}f);",
-                    pad, i, topic, rate, PolicyLiteral(mode), eps, forceInt));
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, declaredEncoding: {11}, hasExplicitEncoding: {12}, qosProfile: {13}, hasExplicitQosProfile: {14}, qosReliability: {15}, hasExplicitReliability: {16}, qosDurability: {17}, hasExplicitDurability: {18}, qosHistory: {19}, hasExplicitHistory: {20}, qosDepth: {21}, hasExplicitDepth: {22}, hasExplicitHz: {23});",
+                    pad,
+                    i,
+                    topic,
+                    hz,
+                    PolicyLiteral(mode),
+                    tolerance,
+                    endpoint.Mode,
+                    InputDispatchEmitter.SourceLiteral(endpoint.Source),
+                    InputDispatchEmitter.BoolLiteral(
+                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Source)
+                        == FoxRunNamedArgumentPresence.Source),
+                    InputDispatchEmitter.TargetsLiteral(endpoint.Targets),
+                    InputDispatchEmitter.BoolLiteral(
+                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
+                        == FoxRunNamedArgumentPresence.Targets),
+                    EncodingLiteral(endpoint.Encoding),
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Encoding)),
+                    QosProfileLiteral(endpoint.QosProfile),
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.QoS)),
+                    QosReliabilityLiteral(endpoint.QosReliability),
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Reliability)),
+                    QosDurabilityLiteral(endpoint.QosDurability),
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Durability)),
+                    QosHistoryLiteral(endpoint.QosHistory),
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.History)),
+                    endpoint.QosDepth,
+                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Depth)),
+                    InputDispatchEmitter.BoolLiteral(hasExplicitHz)));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -59,8 +90,7 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static void EmitGetContract(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
-            var origin = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
-            sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\";");
+            sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;");
             sb.AppendLine();
             sb.AppendLine($"{pad}    FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)");
             sb.AppendLine($"{pad}    {{");
@@ -85,8 +115,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Returns the <c>FoxRunPolicy</c> enum literal for the given
-        /// numeric policy value (1=FixedRate, 2=Change, 3=ChangeOrInterval,
-        /// 4=Trigger).
+        /// numeric policy value (1=FixedRate, 2=Change, 4=Trigger).
         /// </summary>
         internal static string PolicyLiteral(int policy)
         {
@@ -94,7 +123,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 case 1: return "FoxRunPolicy.FixedRate";
                 case 2: return "FoxRunPolicy.Change";
-                case 3: return "FoxRunPolicy.ChangeOrInterval";
                 case 4: return "FoxRunPolicy.Trigger";
                 default: return FormattableString.Invariant($"(FoxRunPolicy){policy}");
             }
@@ -129,6 +157,64 @@ namespace Unity.FoxgloveSDK.Editor
         internal static bool UsesProtobuf(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
             => string.Equals(EffectiveEncoding(fields), FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
                || IsInherited(fields);
+
+        private static bool HasExplicit(
+            FoxgloveSourceEmitter.TopicMember member,
+            FoxRunNamedArgumentPresence presence)
+            => (member.NamedArgumentPresence & presence) == presence;
+
+        private static string EncodingLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
+                return "FoxRunEncoding.Protobuf";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal))
+                return "FoxRunEncoding.JSON";
+            return "(FoxRunEncoding)0";
+        }
+
+        private static string QosProfileLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.Default";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.SensorData";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.SystemDefault";
+            return "(FoxRunQosProfile)0";
+        }
+
+        private static string QosReliabilityLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal))
+                return "FoxRunQosReliability.Reliable";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal))
+                return "FoxRunQosReliability.BestEffort";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "FoxRunQosReliability.SystemDefault";
+            return "(FoxRunQosReliability)0";
+        }
+
+        private static string QosDurabilityLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal))
+                return "FoxRunQosDurability.Volatile";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal))
+                return "FoxRunQosDurability.TransientLocal";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "FoxRunQosDurability.SystemDefault";
+            return "(FoxRunQosDurability)0";
+        }
+
+        private static string QosHistoryLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal))
+                return "FoxRunQosHistory.KeepLast";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal))
+                return "FoxRunQosHistory.KeepAll";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "FoxRunQosHistory.SystemDefault";
+            return "(FoxRunQosHistory)0";
+        }
 
         private static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {

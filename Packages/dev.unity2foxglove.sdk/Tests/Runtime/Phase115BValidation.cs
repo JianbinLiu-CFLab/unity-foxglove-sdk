@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115BValidation
     {
-        private const string ExpectedFoxRunFixtureHash = "be003f81e86bace13075a9a99e6099c994963d05a5afa62f5fc4aab679205b10";
+        private const string ExpectedFoxRunFixtureHash = "cff942e33353cec4b011b7792845b396c137b0813b3bf64a9f2dd5fb5e4b8695";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private const string RuntimeIdentityModePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SchemaIdentityMode.cs";
         private const string SidecarWriterPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs";
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
                           && !warn.LastEnableBlockedBySchemaMismatch
                           && warnLogger.LastWarning.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("Recorded: 000000000000", StringComparison.Ordinal)
-                          && warnLogger.LastWarning.Contains("Current:  be003f81e86b", StringComparison.Ordinal)
+                          && warnLogger.LastWarning.Contains("Current:  cff942e33353", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("will continue", StringComparison.OrdinalIgnoreCase)
                           && !warnLogger.LastWarning.Contains("Replay blocked.", StringComparison.Ordinal),
                         "115B-B3: Warn mode reports mismatch but continues replay load");
@@ -404,8 +404,7 @@ namespace Unity.FoxgloveSDK.Tests
                     10f,
                     "",
                     1,
-                    0.001f,
-                    0f)
+                    0.001f)
             });
 
             return new FoxRunSchemaManifestInfo(
@@ -428,9 +427,8 @@ namespace Unity.FoxgloveSDK.Tests
                                 contract.BindingHash,
                                 contract.PolicyHash,
                                 contract.Policy.Mode,
-                                contract.Policy.RateHz,
-                                contract.Policy.ChangeEpsilon,
-                                contract.Policy.ForceIntervalSeconds,
+                                contract.Policy.Hz,
+                                contract.Policy.Tolerance,
                                 contract.Fields.Select(field =>
                                     new FoxRunSchemaFieldInfo(
                                         field.JsonName,

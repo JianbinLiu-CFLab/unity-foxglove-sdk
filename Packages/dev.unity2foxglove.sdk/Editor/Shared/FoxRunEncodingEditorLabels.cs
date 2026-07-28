@@ -13,25 +13,25 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private static readonly string[] ManagerDefaultLabels = { "Protobuf", "JSON" };
 
-        public static void DrawFoxRunWireEncoding(SerializedProperty property, string label)
+        public static void DrawFoxRunEncoding(SerializedProperty property, string label)
         {
             if (property == null)
                 return;
 
-            var selected = property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0;
+            var selected = property.enumValueIndex == (int)FoxRunEncoding.JSON ? 1 : 0;
             selected = EditorGUILayout.Popup(label, selected, ManagerDefaultLabels);
             property.enumValueIndex = selected == 0
-                ? (int)FoxRunWireEncoding.Protobuf
-                : (int)FoxRunWireEncoding.Json;
+                ? (int)FoxRunEncoding.Protobuf
+                : (int)FoxRunEncoding.JSON;
         }
 
-        public static string ToDisplayLabel(FoxRunWireEncoding encoding)
+        public static string ToDisplayLabel(FoxRunEncoding encoding)
         {
             switch (encoding)
             {
-                case FoxRunWireEncoding.Inherit: return "Inherit";
-                case FoxRunWireEncoding.Protobuf: return "Protobuf";
-                case FoxRunWireEncoding.Json: return "JSON";
+                case (FoxRunEncoding)0: return "Inherit";
+                case FoxRunEncoding.Protobuf: return "Protobuf";
+                case FoxRunEncoding.JSON: return "JSON";
                 default: return "Unknown";
             }
         }

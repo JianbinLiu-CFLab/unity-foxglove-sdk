@@ -39,17 +39,18 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 [FoxRun("/robot/pose")]
 private PoseState _pose;
 
-[FoxRun("/robot/state", Mode = Subscribe, Policy = Change, RateHz = 30)]
+[FoxRun("/robot/state", Mode = Subscribe, Policy = Change, Hz = 30)]
 private RobotState _state;
 
-[FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, RateHz = 10)]
+[FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, Hz = 10)]
 private DebugState _debugState;
 ```
 
 The current declaration model includes:
 
 - `Publish`, `Subscribe`, and debug-oriented `PublishAndSubscribe` flows;
-- `FixedRate`, `Change`, `ChangeOrInterval`, and `Trigger` policies;
+- `FixedRate`, `Change`, and `Trigger` policies, with `Change + Hz` providing
+  an explicit heartbeat;
 - one resolved subscription source per member and multiple simultaneous output sinks;
 - independent direction scheduling under one explicit full-duplex policy/rate;
 - JSON and typed Protobuf WebSocket input/output;

@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -74,44 +75,66 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyQosHelpers()
         {
-            Check((int)Ros2BridgeQosPreset.ReliableDefault == 0, "96B-1: ReliableDefault enum value is stable");
-            Check((int)Ros2BridgeQosPreset.SensorData == 1, "96B-2: SensorData enum value is stable");
-            Check((int)Ros2BridgeQosPreset.TransientLocal == 2, "96B-3: TransientLocal enum value is stable");
-            Check((int)Ros2BridgeQosPreset.Custom == 3, "96B-4: Custom enum value is stable");
+            Check((int)FoxRunQosProfile.Default == 1, "96B-1: Default profile enum value is stable");
+            Check((int)FoxRunQosProfile.SensorData == 2, "96B-2: Sensor Data profile enum value is stable");
+            Check((int)FoxRunQosProfile.SystemDefault == 3, "96B-3: System Default profile enum value is stable");
+            Check((int)FoxRunQosHistory.KeepAll == 3, "96B-4: Keep All history enum value is stable");
 
-            var reliable = Ros2BridgeQosProfile.Resolve(
-                Ros2BridgeQosPreset.ReliableDefault,
-                Ros2BridgeReliability.BestEffort,
-                Ros2BridgeDurability.TransientLocal,
-                99);
-            Check(reliable.ReliabilityWireValue == "reliable" && reliable.DurabilityWireValue == "volatile" && reliable.Depth == 10,
-                "96B-5: Reliable Default maps to reliable volatile depth10");
+            var reliable = FoxRunRos2QosProfileResolver.FromProfile(FoxRunQosProfile.Default);
+            Check(reliable.Reliability == FoxRunQosReliability.Reliable
+                  && reliable.Durability == FoxRunQosDurability.Volatile
+                  && reliable.History == FoxRunQosHistory.KeepLast
+                  && reliable.Depth == 10,
+                "96B-5: Default maps to reliable volatile Keep Last depth 10");
 
-            var sensor = Ros2BridgeQosProfile.Resolve(
-                Ros2BridgeQosPreset.SensorData,
-                Ros2BridgeReliability.Reliable,
-                Ros2BridgeDurability.TransientLocal,
-                99);
-            Check(sensor.ReliabilityWireValue == "best_effort" && sensor.DurabilityWireValue == "volatile" && sensor.Depth == 5,
-                "96B-6: Sensor Data maps to best-effort volatile depth5");
+            var sensor = FoxRunRos2QosProfileResolver.FromProfile(FoxRunQosProfile.SensorData);
+            Check(sensor.Reliability == FoxRunQosReliability.BestEffort
+                  && sensor.Durability == FoxRunQosDurability.Volatile
+                  && sensor.History == FoxRunQosHistory.KeepLast
+                  && sensor.Depth == 5,
+                "96B-6: Sensor Data maps to best-effort volatile Keep Last depth 5");
 
-            var transientLocal = Ros2BridgeQosProfile.Resolve(
-                Ros2BridgeQosPreset.TransientLocal,
-                Ros2BridgeReliability.BestEffort,
-                Ros2BridgeDurability.Volatile,
-                99);
-            Check(transientLocal.ReliabilityWireValue == "reliable" && transientLocal.DurabilityWireValue == "transient_local" && transientLocal.Depth == 1,
-                "96B-7: Transient Local maps to reliable transient-local depth1");
+            var systemDefault = FoxRunRos2QosProfileResolver.FromProfile(FoxRunQosProfile.SystemDefault);
+            Check(systemDefault.Reliability == FoxRunQosReliability.SystemDefault
+                  && systemDefault.Durability == FoxRunQosDurability.SystemDefault
+                  && systemDefault.History == FoxRunQosHistory.SystemDefault
+                  && systemDefault.Depth == 0,
+                "96B-7: System Default preserves every transport-default policy");
 
-            var custom = Ros2BridgeQosProfile.Resolve(
-                Ros2BridgeQosPreset.Custom,
-                Ros2BridgeReliability.BestEffort,
-                Ros2BridgeDurability.TransientLocal,
-                0);
-            Check(custom.ReliabilityWireValue == "best_effort" && custom.DurabilityWireValue == "transient_local" && custom.Depth == 1,
-                "96B-8: Custom normalizes depth to at least 1");
-            Check(custom.DisplaySummary == "Best Effort / Transient Local / Depth 1",
-                "96B-9: QoS display summary uses product labels");
+            var custom = FoxRunRos2QosProfileResolver.Resolve(
+                FoxRunQosProfile.Default,
+                hasProfile: true,
+                FoxRunQosReliability.BestEffort,
+                hasReliability: true,
+                FoxRunQosDurability.TransientLocal,
+                hasDurability: true,
+                FoxRunQosHistory.KeepLast,
+                hasHistory: true,
+                depth: 1,
+                hasDepth: true,
+                FoxRunResolvedQos.Default);
+            Check(custom.Success
+                  && custom.Qos.Reliability == FoxRunQosReliability.BestEffort
+                  && custom.Qos.Durability == FoxRunQosDurability.TransientLocal
+                  && custom.Qos.History == FoxRunQosHistory.KeepLast
+                  && custom.Qos.Depth == 1,
+                "96B-8: explicit portable policy overrides remain exact");
+
+            var invalid = FoxRunRos2QosProfileResolver.Resolve(
+                FoxRunQosProfile.Default,
+                hasProfile: false,
+                default,
+                hasReliability: false,
+                default,
+                hasDurability: false,
+                FoxRunQosHistory.KeepAll,
+                hasHistory: true,
+                depth: 1,
+                hasDepth: true,
+                FoxRunResolvedQos.Default);
+            Check(!invalid.Success
+                  && invalid.DiagnosticCode == FoxRunQosDiagnosticCode.DepthRequiresKeepLast,
+                "96B-9: Keep All with depth fails closed");
         }
 
         private static void VerifyFrameHeaderCompatibility()
@@ -126,14 +149,10 @@ namespace Unity.FoxgloveSDK.Tests
             var legacyHeader = ReadHeader(Ros2BridgeFrameWriter.Write(legacy));
             Check(legacyHeader["profileName"] == null && legacyHeader["qos"] == null,
                 "96C-1: legacy frame constructor omits QoS metadata");
-            Check(!legacy.Qos.HasValue && legacy.ProfileName == null,
+            Check(!legacy.Qos.HasValue,
                 "96C-2: legacy frame keeps QoS optional");
 
-            var qos = Ros2BridgeQosProfile.Resolve(
-                Ros2BridgeQosPreset.SensorData,
-                Ros2BridgeReliability.Reliable,
-                Ros2BridgeDurability.Volatile,
-                10);
+            var qos = FoxRunResolvedQos.SensorData;
             var profiled = new Ros2BridgeFrame(
                 "/lidar/front",
                 "foxglove_msgs/msg/PointCloud",
@@ -144,10 +163,14 @@ namespace Unity.FoxgloveSDK.Tests
                 qos);
             var profiledHeader = ReadHeader(Ros2BridgeFrameWriter.Write(profiled));
             Check(profiledHeader["topic"]?.ToString() == "/lidar/front", "96C-3: profiled frame uses effective bridge topic");
-            Check(profiledHeader["profileName"]?.ToString() == "Sensor Data", "96C-4: header contains profileName");
+            Check(profiledHeader["profileName"]?.ToString() == "sensor_data"
+                  && profiledHeader["qos"]?["profile"]?.ToString() == "sensor_data",
+                "96C-4: header contains the portable profile");
             Check(profiledHeader["qos"]?["reliability"]?.ToString() == "best_effort", "96C-5: header contains QoS reliability");
             Check(profiledHeader["qos"]?["durability"]?.ToString() == "volatile", "96C-6: header contains QoS durability");
-            Check(profiledHeader["qos"]?["depth"]?.Value<int>() == 5, "96C-7: header contains QoS depth");
+            Check(profiledHeader["qos"]?["history"]?.ToString() == "keep_last"
+                  && profiledHeader["qos"]?["depth"]?.Value<int>() == 5,
+                "96C-7: header contains QoS history and depth");
         }
 
         private static void VerifyRuntimeSourceIntegration()
@@ -157,11 +180,11 @@ namespace Unity.FoxgloveSDK.Tests
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var wrapper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
-            Check(manager.Contains("_ros2BridgeNamespace") && manager.Contains("_ros2BridgeQosPreset"),
+            Check(manager.Contains("_ros2BridgeNamespace") && manager.Contains("_ros2BridgeQos"),
                 "96D-1: Manager owns bridge namespace and QoS settings");
             Check(manager.Contains("ResolveRos2BridgeQos") && manager.Contains("TryResolveRos2BridgeTopic"),
                 "96D-2: Manager exposes topic and QoS resolvers");
-            Check(publishing.Contains("effectiveTopic") && publishing.Contains("Ros2BridgeQosProfile"),
+            Check(publishing.Contains("effectiveTopic") && publishing.Contains("FoxRunResolvedQos"),
                 "96D-3: Manager bridge publish path resolves effective topic and QoS");
             Check(publishing.Contains("Ros2BridgeFrame.CreateValidated(") && publishing.Contains("effectiveTopic") && publishing.Contains("qos"),
                 "96D-4: Manager enqueues QoS-profiled bridge frames");
@@ -180,18 +203,20 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sidecar.Contains("profileName") && sidecar.Contains("qos"),
                 "96E-1: sidecar parses optional QoS header fields");
-            Check(sidecar.Contains("qos.reliability must be reliable or best_effort"),
+            Check(sidecar.Contains("qos.reliability must be system_default, reliable, or best_effort"),
                 "96E-2: sidecar rejects invalid reliability strings");
-            Check(sidecar.Contains("qos.durability must be volatile or transient_local"),
+            Check(sidecar.Contains("qos.durability must be system_default, volatile, or transient_local"),
                 "96E-3: sidecar rejects invalid durability strings");
-            Check(sidecar.Contains("qos.depth must be >= 1"),
-                "96E-4: sidecar rejects invalid depth");
-            Check(sidecar.Contains("create_generic_publisher(frame.topic, frame.schema_name, qos)"),
-                "96E-5: sidecar applies requested QoS when creating publisher");
+            Check(sidecar.Contains("qos.history must be system_default, keep_last, or keep_all")
+                  && sidecar.Contains("qos.depth must be 0 unless qos.history is keep_last"),
+                "96E-4: sidecar rejects invalid history/depth combinations");
+            Check(sidecar.Contains("auto qos = make_qos(frame);")
+                  && sidecar.Contains("publisher_factory_(frame.topic, frame.schema_name, qos)"),
+                "96E-5: sidecar applies requested QoS through its publisher factory");
             Check(sidecar.Contains("reused with different schemaName or QoS: was [")
                   && sidecar.Contains("] got ["),
                 "96E-6: sidecar rejects same-topic schema/QoS conflicts");
-            Check(sidecar.Contains("reliability=%s durability=%s depth=%d"),
+            Check(sidecar.Contains("profile=%s reliability=%s durability=%s history=%s depth=%d"),
                 "96E-7: sidecar logs publisher QoS details");
         }
 
@@ -218,7 +243,9 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(IsPublishDataTransportSubsection)
                 .ToArray();
             var bridgeEnabledBranches = DirectIfStatements(publishDataSection)
-                .Where(statement => HasGetBoolCondition(statement, "_ros2BridgeEnabled"))
+                .Where(statement =>
+                    statement.Condition.ToString().IndexOf("_ros2BridgeEnabled", StringComparison.Ordinal) >= 0
+                    && statement.Condition.ToString().IndexOf("includesRos2Bridge", StringComparison.Ordinal) >= 0)
                 .ToArray();
             var branchSubsections = bridgeEnabledBranches
                 .SelectMany(DirectThenInvocations)
@@ -248,8 +275,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && allBridgeOutputSubsections.Length == 1
                   && ReferenceEquals(branchBridgeSubsections[0], allBridgeOutputSubsections[0]),
                 "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish Data");
-            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"Publish QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
-                "96F-2: Manager Inspector exposes topic namespace and QoS preset");
+            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"ROS 2 QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
+                "96F-2: Manager Inspector exposes topic namespace and portable QoS profile");
             Check(ros2BridgeEditor.Contains("\"Host\"") && ros2BridgeEditor.Contains("\"Default Output\"") && ros2BridgeEditor.Contains("\"Allow Publisher Override\""),
                 "96F-3: Manager bridge labels are compact product labels");
             Check(cameraEditor.Contains("Bridge Topic Override") && pointCloudEditor.Contains("Bridge Topic Override"),

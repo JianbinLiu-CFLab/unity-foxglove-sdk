@@ -5,6 +5,7 @@
 // Purpose: Pins unified R2FU runtime demand without changing output policy.
 
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
@@ -18,8 +19,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         {
             Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: true,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: false,
-                defaultSubscriptionProvider: FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                defaultSubscriptionSource: FoxRunEndpoint.Foxglove,
                 hasExplicitNativeContract: false));
         }
 
@@ -30,8 +33,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.False(FoxRunNativeDemandPolicy.HasExplicitNativeContract(zeroContracts));
             Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: true,
-                defaultSubscriptionProvider: FoxRunSubscriptionProvider.Ros2Native,
+                defaultSubscriptionSource: FoxRunEndpoint.Ros2Native,
                 hasExplicitNativeContract: FoxRunNativeDemandPolicy.HasExplicitNativeContract(zeroContracts)));
         }
 
@@ -40,8 +45,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         {
             Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: true,
-                defaultSubscriptionProvider: FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                defaultSubscriptionSource: FoxRunEndpoint.Foxglove,
                 hasExplicitNativeContract: true));
         }
 
@@ -50,27 +57,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         {
             Assert.False(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: false,
-                defaultSubscriptionProvider: FoxRunSubscriptionProvider.Ros2Native,
+                defaultSubscriptionSource: FoxRunEndpoint.Ros2Native,
                 hasExplicitNativeContract: true));
             Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: true,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: false,
-                defaultSubscriptionProvider: FoxRunSubscriptionProvider.Ros2Native,
+                defaultSubscriptionSource: FoxRunEndpoint.Ros2Native,
                 hasExplicitNativeContract: true));
         }
 
         [Theory]
-        [InlineData(FoxRunSubscriptionProvider.FoxgloveWebSocket)]
-        [InlineData(FoxRunSubscriptionProvider.Inherit)]
-        [InlineData((FoxRunSubscriptionProvider)99)]
+        [InlineData(FoxRunEndpoint.Foxglove)]
+        [InlineData((FoxRunEndpoint)0)]
+        [InlineData((FoxRunEndpoint)99)]
         public void NonNativeManagerDefaultDoesNotInventInboundDemand(
-            FoxRunSubscriptionProvider defaultSubscriptionProvider)
+            FoxRunEndpoint defaultSubscriptionSource)
         {
             Assert.False(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: true,
-                defaultSubscriptionProvider: defaultSubscriptionProvider,
+                defaultSubscriptionSource: defaultSubscriptionSource,
+                hasExplicitNativeContract: false));
+        }
+
+        [Fact]
+        public void NativePublishProfileOrExplicitContractRequiresTheRuntime()
+        {
+            Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Ros2Native,
+                hasExplicitNativePublishContract: false,
+                subscriptionsEnabled: false,
+                defaultSubscriptionSource: FoxRunEndpoint.Foxglove,
+                hasExplicitNativeContract: false));
+            Assert.True(FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: true,
+                subscriptionsEnabled: false,
+                defaultSubscriptionSource: FoxRunEndpoint.Foxglove,
                 hasExplicitNativeContract: false));
         }
 
@@ -82,8 +114,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "Incoming",
                 "/incoming",
                 "Subscribe",
-                FoxRunSubscriptionProvider.Inherit,
-                FoxRunRos2QosPreset.Inherit,
+                (FoxRunEndpoint)0,
+                (FoxRunQosProfile)0,
                 supportsWebSocket: true,
                 supportsRos2Native: true,
                 nativeType: "std_msgs.msg.String",
@@ -94,18 +126,90 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "NativeIncoming",
                 "/native",
                 "Subscribe",
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunRos2QosPreset.Default,
+                FoxRunEndpoint.Ros2Native,
+                FoxRunQosProfile.Default,
                 supportsWebSocket: false,
                 supportsRos2Native: true,
                 nativeType: "std_msgs.msg.String",
                 canonicalRosType: "std_msgs/msg/String",
-                copyShapeIdentity: "fixture");
+                copyShapeIdentity: "fixture",
+                qosReliability: FoxRunQosReliability.Reliable,
+                qosDurability: FoxRunQosDurability.Volatile,
+                qosHistory: FoxRunQosHistory.KeepLast,
+                qosDepth: 10);
 
             Assert.False(FoxRunNativeDemandPolicy.HasExplicitNativeContract(
                 new[] { inheritedButCapable }));
             Assert.True(FoxRunNativeDemandPolicy.HasExplicitNativeContract(
                 new[] { inheritedButCapable, explicitNative }));
+        }
+
+        [Fact]
+        public void LoadedSceneProbeUsesOnlyInstantiatedFoxRunSources()
+        {
+            var foxgloveOnly = new FoxRunLoadedSceneContractDescriptor(
+                "Demo.FoxgloveOnly",
+                hasExplicitNativePublishContract: false,
+                hasExplicitNativeSubscriptionContract: false,
+                hasExplicitFoxgloveSubscriptionContract: true);
+
+            var snapshot = FoxRunLoadedSceneContractProbe.InspectContracts(
+                new[] { foxgloveOnly });
+
+            Assert.False(snapshot.HasExplicitNativePublishContract);
+            Assert.False(snapshot.HasExplicitNativeSubscriptionContract);
+            Assert.True(snapshot.HasExplicitFoxgloveSubscriptionContract);
+            Assert.True(snapshot.ContainsDeclaringType("Demo.FoxgloveOnly"));
+            Assert.False(snapshot.ContainsDeclaringType("Generated.NativeSourceElsewhereInProject"));
+        }
+
+        [Fact]
+        public void LoadedSceneProbeDetectsExplicitNativePublishAndSubscribeContracts()
+        {
+            var native = new FoxRunLoadedSceneContractDescriptor(
+                "Demo.Native",
+                hasExplicitNativePublishContract: true,
+                hasExplicitNativeSubscriptionContract: true,
+                hasExplicitFoxgloveSubscriptionContract: false);
+
+            var snapshot = FoxRunLoadedSceneContractProbe.InspectContracts(
+                new[] { native });
+
+            Assert.True(snapshot.HasExplicitNativePublishContract);
+            Assert.True(snapshot.HasExplicitNativeSubscriptionContract);
+            Assert.False(snapshot.HasExplicitFoxgloveSubscriptionContract);
+        }
+
+        [Fact]
+        public void InspectorAndPlayModeGuardUseLoadedSceneEvidence()
+        {
+            var inspector = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
+            var subscribeInspector = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
+            var guard = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+
+            Assert.Contains(
+                "FoxRunLoadedSceneContractProbe.CaptureLoadedScenes()",
+                inspector,
+                System.StringComparison.Ordinal);
+            Assert.Contains(
+                "HasLoadedSceneExplicitSource",
+                subscribeInspector,
+                System.StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "GetGeneratedSubscriptionBindings",
+                inspector,
+                System.StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunLoadedSceneContractProbe.CaptureLoadedScenes()",
+                guard,
+                System.StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "HasGeneratedExplicitNative",
+                guard,
+                System.StringComparison.Ordinal);
         }
     }
 }

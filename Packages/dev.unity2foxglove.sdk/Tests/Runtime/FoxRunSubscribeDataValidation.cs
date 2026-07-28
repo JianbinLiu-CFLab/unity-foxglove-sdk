@@ -33,10 +33,10 @@ namespace Unity.FoxgloveSDK.Tests
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
-            var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingPolicyMigration.cs");
-            var resolver = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingResolver.cs");
+            var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunEncodingPolicyMigration.cs");
+            var resolver = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunEncodingResolver.cs");
 
-            Check(inbound.Contains("_defaultFoxRunWireEncoding", StringComparison.Ordinal)
+            Check(inbound.Contains("_defaultFoxRunEncoding", StringComparison.Ordinal)
                   && inbound.Contains("_defaultFoxRunSubscriptionEncoding", StringComparison.Ordinal)
                   && publishing.Contains("_defaultFoxRunPublishEncoding", StringComparison.Ordinal)
                   && migration.Contains("ISerializationCallbackReceiver", StringComparison.Ordinal)
@@ -47,8 +47,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "176A-1: legacy one-default serialization migrates into directional publish and subscription defaults in player-safe deserialization");
             Check(resolver.Contains("FoxRunFlow.Publish", StringComparison.Ordinal)
                   && resolver.Contains("FoxRunFlow.Subscribe", StringComparison.Ordinal)
-                  && resolver.Contains("PublishAndSubscribe requires an explicit", StringComparison.Ordinal),
-                "176A-2: inherited contracts resolve by direction and bidirectional contracts require one explicit encoding");
+                  && resolver.Contains(
+                      "Full-duplex omitted Encoding must be resolved per direction.",
+                      StringComparison.Ordinal),
+                "176A-2: inherited contracts resolve independently for each direction");
         }
 
         private static void VerifySubscriptionCatalogAndLifecycle()
@@ -79,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var subscribe = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
-            var subscriptionProtocolLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs");
+            var endpointLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEndpointEditorLabels.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var services = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.FoxServices.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
@@ -93,11 +95,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal)
                   && !main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
-                  && subscribe.Contains("Default Input Transport", StringComparison.Ordinal)
-                  && subscriptionProtocolLabels.Contains("ProtocolLabels", StringComparison.Ordinal)
-                  && subscriptionProtocolLabels.Contains("FoxRunEncodingEditorLabels.ToDisplayLabel(FoxRunWireEncoding.Protobuf)", StringComparison.Ordinal)
-                  && subscriptionProtocolLabels.Contains("FoxRunEncodingEditorLabels.ToDisplayLabel(FoxRunWireEncoding.Json)", StringComparison.Ordinal)
-                  && subscriptionProtocolLabels.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
+                  && subscribe.Contains("FoxRun Subscribe Profile", StringComparison.Ordinal)
+                  && subscribe.Contains("\"Source\"", StringComparison.Ordinal)
+                  && endpointLabels.Contains("SourceLabels", StringComparison.Ordinal)
+                  && endpointLabels.Contains("TargetLabels", StringComparison.Ordinal)
+                  && endpointLabels.Contains("ROS 2 Native (R2FU)", StringComparison.Ordinal)
+                  && endpointLabels.Contains("ROS 2 Bridge", StringComparison.Ordinal)
                   && subscribe.Contains("Native Copied-Message Budget", StringComparison.Ordinal)
                   && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled", StringComparison.Ordinal)
                   && subscribe.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)
@@ -109,9 +112,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && !inbound.Contains("[Header(\"FoxRun Subscription Control\")]", StringComparison.Ordinal)
                   && publish.Contains("Component Publisher Encoding", StringComparison.Ordinal)
                   && publish.Contains("Allow Component Publisher Override", StringComparison.Ordinal)
-                  && publish.Contains("FoxRun Contract Encoding", StringComparison.Ordinal)
+                  && publish.Contains("FoxRun Publish Profile", StringComparison.Ordinal)
+                  && publish.Contains("\"Targets\"", StringComparison.Ordinal)
+                  && publish.Contains("Foxglove Encoding", StringComparison.Ordinal)
                   && !publish.Contains("Default FoxRun Publish Encoding", StringComparison.Ordinal),
-                "176C-1: Inspector mirrors Publish Data with directional WebSocket and ROS2 Native subscription workflow");
+                "176C-1: Inspector exposes independent FoxRun publish Targets and subscribe Source profiles");
             Check(services.Contains("FoxRun Runtime Topics", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryHeader", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryRow", StringComparison.Ordinal)

@@ -20,7 +20,7 @@ You will follow the same path most users need: install the package, connect Foxg
 ## 4. Runtime Control
 
 - [06_Parameters_and_Services](06_Parameters_and_Services.md): edit `/cube/color`, edit `/cube/scale`, and call `/cube/reset_pose`.
-- [07_FoxRun_Zero_Code_Publishing](07_FoxRun_Zero_Code_Publishing.md): publish debug topics with `[FoxRun]` attributes.
+- [07_FoxRun_Zero_Code_Publishing](07_FoxRun_Zero_Code_Publishing.md): generate publish, subscribe, endpoint, QoS, trigger, full-duplex, and bounded-stream contracts with `[FoxRun]`.
 - [12_Inspector_Reference](12_Inspector_Reference.md): understand the main Unity component fields.
 
 ## 5. Recording, Replay, and Builds

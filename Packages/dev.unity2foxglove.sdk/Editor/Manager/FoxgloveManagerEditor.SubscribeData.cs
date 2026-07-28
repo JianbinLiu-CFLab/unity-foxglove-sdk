@@ -15,11 +15,13 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const string NativeCopyBudgetUnitSessionStateName =
             "DataTransportNativeCopyBudgetUnit";
+        private const string SubscriptionMaxPayloadUnitSessionStateName =
+            "DataTransportSubscriptionMaxPayloadUnit";
 
         private void DrawSubscribeDataSection()
         {
             var manager = target as FoxgloveManager;
-            var providerProperty = FindCachedProperty("_defaultFoxRunSubscriptionProvider");
+            var sourceProperty = FindCachedProperty("_defaultFoxRunSubscriptionSource");
             var encodingProperty = FindCachedProperty("_defaultFoxRunSubscriptionEncoding");
 
             FoxgloveManagerInspectorLayout.Subheader("FoxRun Subscription Control");
@@ -28,42 +30,47 @@ namespace Unity.FoxgloveSDK.Editor
                 "Unity subscribes to data published by a ROS2 or Foxglove client. This is independent from Unity publish output.",
                 MessageType.Info);
 
-            FoxRunSubscriptionProvider selectedProvider;
-            bool showWebSocket;
+            FoxRunEndpoint selectedSource;
+            bool showFoxglove;
             bool showRos2Native;
             using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
             {
-                FoxgloveManagerInspectorLayout.Subheader("Input Transport");
-                FoxRunSubscriptionProtocolEditorLabels.Draw(
-                    providerProperty,
-                    encodingProperty,
-                    "Default Input Transport");
-                selectedProvider = providerProperty != null
-                    && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
-                    ? FoxRunSubscriptionProvider.Ros2Native
-                    : FoxRunSubscriptionProvider.FoxgloveWebSocket;
-                showWebSocket = selectedProvider == FoxRunSubscriptionProvider.FoxgloveWebSocket
-                                || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket);
-                showRos2Native = selectedProvider == FoxRunSubscriptionProvider.Ros2Native
-                                 || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native);
+                FoxgloveManagerInspectorLayout.Subheader("FoxRun Subscribe Profile");
+                selectedSource = FoxRunEndpointEditorLabels.DrawSource(
+                    sourceProperty,
+                    "Source");
+                showFoxglove = selectedSource == FoxRunEndpoint.Foxglove
+                               || HasExplicitSource(FoxRunEndpoint.Foxglove);
+                showRos2Native = selectedSource == FoxRunEndpoint.Ros2Native
+                                 || HasExplicitSource(FoxRunEndpoint.Ros2Native);
                 if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
                 {
                     EditorGUILayout.HelpBox(
-                        "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate.",
+                        "FoxRun Subscribe Profile changes apply after subscriptions are disabled and re-enabled. The active session keeps its captured source, Foxglove encoding, QoS, copy budget, default subscribe rate, and maximum subscribe rate.",
                         MessageType.Info);
                 }
 
-                FoxgloveManagerInspectorLayout.Subheader("Subscription Delivery");
-                DrawProperty("_foxRunDefaultSubscribeRateHz", "Default Subscribe Rate Hz");
-                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Maximum Subscribe Rate Hz (per Topic)");
-
-                if (showWebSocket)
+                if (showFoxglove)
                 {
-                    FoxgloveManagerInspectorLayout.Subheader("Foxglove WebSocket Input");
-                    DrawProperty("_allowRemoteFoxRunInboundWithSharedToken", "Allow Remote FoxRun Subscriptions With Shared Token");
-                    DrawProperty("_foxRunInboundMaxPayloadBytes", "Subscription Max Payload Bytes");
+                    FoxgloveManagerInspectorLayout.Subheader("Foxglove");
+                    FoxRunEncodingEditorLabels.DrawFoxRunEncoding(
+                        encodingProperty,
+                        "Foxglove Encoding");
+                    DrawProperty(
+                        "_allowRemoteFoxRunInboundWithSharedToken",
+                        "Allow Remote FoxRun Subscriptions With Shared Token");
+                    DrawSubscriptionMaxPayload();
                 }
 
+                if (showRos2Native)
+                {
+                    FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native");
+                    DrawRos2NativeSubscriptionQos();
+                    DrawRos2NativeCopyBudget();
+                }
+
+                DrawProperty("_foxRunDefaultSubscribeRateHz", "Default Subscribe Rate Hz");
+                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Maximum Subscribe Rate Hz (per Topic)");
             }
 
             FoxgloveManagerInspectorLayout.Subheader("Coordinate System");
@@ -74,13 +81,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (showRos2Native)
             {
-                using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
-                {
-                    FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native Input");
-                    DrawRos2NativeSubscriptionQos();
-                    DrawRos2NativeCopyBudget();
-                }
-
                 DrawOptionalR2fuNativeSubscriptionDiagnostics();
             }
             if (HasR2fuNativeSubscriptionDemand())
@@ -90,9 +90,9 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Info);
             }
             if (GetBool("_enableFoxRunInbound")
-                && (providerProperty == null
-                    || providerProperty.enumValueIndex != (int)FoxRunSubscriptionProvider.Ros2Native
-                    || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket))
+                && (sourceProperty == null
+                    || selectedSource != FoxRunEndpoint.Ros2Native
+                    || HasExplicitSource(FoxRunEndpoint.Foxglove))
                 && !FoxgloveManager.IsLoopbackHost(GetString("_host", "127.0.0.1"))
                 && (!GetBool("_allowRemoteFoxRunInboundWithSharedToken")
                     || string.IsNullOrWhiteSpace(GetString("_sharedToken", ""))))
@@ -106,35 +106,198 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawRos2NativeSubscriptionQos()
         {
-            var qosProperty = FindCachedProperty("_defaultFoxRunRos2Qos");
+            var qosProperty = FindCachedProperty("_defaultFoxRunNativeSubscribeQos");
             if (qosProperty == null)
             {
-                DrawMissingProperty("_defaultFoxRunRos2Qos");
+                DrawMissingProperty("_defaultFoxRunNativeSubscribeQos");
                 return;
             }
 
-            var normalizedPreset = FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(
-                (FoxRunRos2QosPreset)qosProperty.enumValueIndex);
-            if (qosProperty.enumValueIndex != (int)normalizedPreset)
-                qosProperty.enumValueIndex = (int)normalizedPreset;
+            DrawFoxRunRos2Qos(qosProperty, "ROS 2 Native QoS Profile");
+        }
+
+        private void DrawSubscriptionMaxPayload()
+        {
+            var payloadProperty = FindCachedProperty("_foxRunInboundMaxPayloadBytes");
+            if (payloadProperty == null)
+            {
+                DrawMissingProperty("_foxRunInboundMaxPayloadBytes");
+                return;
+            }
+
+            var displayUnit = GetSubscriptionMaxPayloadDisplayUnit();
+            var selectedUnitIndex = EditorGUILayout.Popup(
+                "Subscription Max Payload Unit",
+                (int)displayUnit,
+                FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels);
+            if (selectedUnitIndex != (int)displayUnit)
+            {
+                displayUnit = (FoxRunRos2NativeCopyBudgetUnit)selectedUnitIndex;
+                SessionState.SetInt(
+                    InspectorFoldoutKey(SubscriptionMaxPayloadUnitSessionStateName),
+                    selectedUnitIndex);
+            }
+
+            var normalizedBytes = System.Math.Max(256, payloadProperty.intValue);
+            if (payloadProperty.intValue != normalizedBytes)
+                payloadProperty.intValue = normalizedBytes;
+
+            var displayValue =
+                FoxRunRos2SubscriptionInspectorPresentation.ToSubscriptionPayloadDisplayValue(
+                    normalizedBytes,
+                    displayUnit);
+            EditorGUI.BeginChangeCheck();
+            var editedDisplayValue = EditorGUILayout.DoubleField(
+                "Subscription Max Payload ("
+                + FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels[
+                    (int)displayUnit]
+                + ")",
+                displayValue);
+            if (EditorGUI.EndChangeCheck())
+            {
+                payloadProperty.intValue =
+                    FoxRunRos2SubscriptionInspectorPresentation.ToClampedSubscriptionPayloadBytes(
+                        editedDisplayValue,
+                        displayUnit);
+                normalizedBytes = payloadProperty.intValue;
+                displayValue =
+                    FoxRunRos2SubscriptionInspectorPresentation.ToSubscriptionPayloadDisplayValue(
+                        normalizedBytes,
+                        displayUnit);
+            }
+
+            EditorGUILayout.LabelField(
+                "Stored Max Payload",
+                displayValue.ToString("0.######", CultureInfo.InvariantCulture)
+                + " "
+                + FoxRunRos2SubscriptionInspectorPresentation.SubscriptionMaxPayloadLabels[
+                    (int)displayUnit]
+                + " = "
+                + normalizedBytes.ToString("N0", CultureInfo.InvariantCulture)
+                + " bytes");
+        }
+
+        private static FoxRunRos2NativeCopyBudgetUnit GetSubscriptionMaxPayloadDisplayUnit()
+        {
+            var storedUnit = SessionState.GetInt(
+                InspectorFoldoutKey(SubscriptionMaxPayloadUnitSessionStateName),
+                (int)FoxRunRos2NativeCopyBudgetUnit.KB);
+            return storedUnit == (int)FoxRunRos2NativeCopyBudgetUnit.MB
+                ? FoxRunRos2NativeCopyBudgetUnit.MB
+                : FoxRunRos2NativeCopyBudgetUnit.KB;
+        }
+
+        private static void DrawFoxRunRos2Qos(
+            SerializedProperty qosProperty,
+            string label)
+        {
+            if (qosProperty == null)
+                return;
+
+            var profileProperty = qosProperty.FindPropertyRelative("_profile");
+            var overrideReliability = qosProperty.FindPropertyRelative("_overrideReliability");
+            var reliabilityProperty = qosProperty.FindPropertyRelative("_reliability");
+            var overrideDurability = qosProperty.FindPropertyRelative("_overrideDurability");
+            var durabilityProperty = qosProperty.FindPropertyRelative("_durability");
+            var overrideHistory = qosProperty.FindPropertyRelative("_overrideHistory");
+            var historyProperty = qosProperty.FindPropertyRelative("_history");
+            var overrideDepth = qosProperty.FindPropertyRelative("_overrideDepth");
+            var depthProperty = qosProperty.FindPropertyRelative("_depth");
+            if (profileProperty == null
+                || overrideReliability == null
+                || reliabilityProperty == null
+                || overrideDurability == null
+                || durabilityProperty == null
+                || overrideHistory == null
+                || historyProperty == null
+                || overrideDepth == null
+                || depthProperty == null)
+            {
+                DrawMissingProperty(qosProperty.propertyPath);
+                return;
+            }
 
             var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
+            var normalizedProfile = (FoxRunQosProfile)profileProperty.intValue;
+            if (normalizedProfile != FoxRunQosProfile.Default
+                && normalizedProfile != FoxRunQosProfile.SensorData
+                && normalizedProfile != FoxRunQosProfile.SystemDefault)
+            {
+                normalizedProfile = FoxRunQosProfile.Default;
+                profileProperty.intValue = (int)normalizedProfile;
+            }
+
             var selectedIndex = 0;
             for (var i = 0; i < choices.Count; i++)
             {
-                if (choices[i].Preset == normalizedPreset)
+                if (choices[i].Profile == normalizedProfile)
                     selectedIndex = i;
             }
 
             var changedIndex = EditorGUILayout.Popup(
-                "ROS 2 Native Subscription QoS",
+                label,
                 selectedIndex,
                 FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
             var selectedChoice = choices[changedIndex];
-            if (selectedChoice.Preset != normalizedPreset)
-                qosProperty.enumValueIndex = (int)selectedChoice.Preset;
+            if (selectedChoice.Profile != normalizedProfile)
+                profileProperty.intValue = (int)selectedChoice.Profile;
 
-            EditorGUILayout.HelpBox(selectedChoice.Summary, MessageType.Info);
+            qosProperty.isExpanded = EditorGUILayout.Foldout(
+                qosProperty.isExpanded,
+                "Advanced Overrides",
+                toggleOnLabelClick: true);
+            if (qosProperty.isExpanded)
+            {
+                DrawQosOverride(
+                    overrideReliability,
+                    reliabilityProperty,
+                    "Reliability");
+                DrawQosOverride(
+                    overrideDurability,
+                    durabilityProperty,
+                    "Durability");
+                DrawQosOverride(
+                    overrideHistory,
+                    historyProperty,
+                    "History");
+                DrawQosOverride(
+                    overrideDepth,
+                    depthProperty,
+                    "Depth");
+            }
+
+            var resolution = FoxRunRos2QosProfileResolver.Resolve(
+                selectedChoice.Profile,
+                hasProfile: true,
+                (FoxRunQosReliability)reliabilityProperty.intValue,
+                overrideReliability.boolValue,
+                (FoxRunQosDurability)durabilityProperty.intValue,
+                overrideDurability.boolValue,
+                (FoxRunQosHistory)historyProperty.intValue,
+                overrideHistory.boolValue,
+                depthProperty.intValue,
+                overrideDepth.boolValue,
+                FoxRunResolvedQos.Default);
+            EditorGUILayout.HelpBox(
+                resolution.Success
+                    ? FoxRunRos2SubscriptionInspectorPresentation.Summary(resolution.Qos)
+                    : resolution.DiagnosticMessage,
+                resolution.Success ? MessageType.Info : MessageType.Error);
+        }
+
+        private static void DrawQosOverride(
+            SerializedProperty enabledProperty,
+            SerializedProperty valueProperty,
+            string label)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                enabledProperty.boolValue = EditorGUILayout.Toggle(
+                    enabledProperty.boolValue,
+                    GUILayout.Width(18f));
+                using (new EditorGUI.DisabledScope(!enabledProperty.boolValue))
+                    EditorGUILayout.PropertyField(valueProperty, new GUIContent(label));
+            }
         }
 
         private void DrawRos2NativeCopyBudget()
@@ -201,7 +364,7 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunRos2NativeCopyBudgetUnit.MB;
         }
 
-        private static bool HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)
-            => HasGeneratedExplicitSubscriptionProvider(provider);
+        private bool HasExplicitSource(FoxRunEndpoint provider)
+            => HasLoadedSceneExplicitSource(provider);
     }
 }

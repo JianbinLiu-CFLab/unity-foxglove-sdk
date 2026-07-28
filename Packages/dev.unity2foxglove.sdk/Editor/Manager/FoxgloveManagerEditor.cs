@@ -64,9 +64,10 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _ros2BridgeEnabledProperty;
         private SerializedProperty _enableFoxRunInboundProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
+        private SerializedProperty _defaultFoxRunNativePublishQosProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
-        private SerializedProperty _defaultFoxRunSubscriptionProviderProperty;
-        private SerializedProperty _defaultFoxRunRos2QosProperty;
+        private SerializedProperty _defaultFoxRunSubscriptionSourceProperty;
+        private SerializedProperty _defaultFoxRunNativeSubscribeQosProperty;
         private SerializedProperty _foxRunRos2NativeCopyBudgetBytesProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
         private SerializedProperty _certificatePfxPathProperty;
@@ -106,7 +107,8 @@ namespace Unity.FoxgloveSDK.Editor
         private string _cachedRemoteSourceId;
         private string _cachedRemoteBaseUrl;
         private string _cachedRemoteDirectFileUrl;
-        private Ros2BridgeQosProfile _ros2BridgeQosThisRepaint = Ros2BridgeQosProfile.ReliableDefault;
+        private Components.FoxRunResolvedQos _ros2BridgeQosThisRepaint =
+            Components.FoxRunResolvedQos.Default;
         private Ros2BridgeStatsSnapshot _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
         private int _ros2BridgeStatsFrame = -1;
 
@@ -136,6 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
             _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
             _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
             _ros2BridgeStatsFrame = -1;
+            ResetLoadedSceneContractsForInspectorDraw();
             ClearTransportClientLabelCache();
         }
 
@@ -154,9 +157,10 @@ namespace Unity.FoxgloveSDK.Editor
             _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
+            _defaultFoxRunNativePublishQosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishQos");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
-            _defaultFoxRunSubscriptionProviderProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionProvider");
-            _defaultFoxRunRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunRos2Qos");
+            _defaultFoxRunSubscriptionSourceProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionSource");
+            _defaultFoxRunNativeSubscribeQosProperty = serializedObject.FindProperty("_defaultFoxRunNativeSubscribeQos");
             _foxRunRos2NativeCopyBudgetBytesProperty = serializedObject.FindProperty("_foxRunRos2NativeCopyBudgetBytes");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
             _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
@@ -185,6 +189,7 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+            ResetLoadedSceneContractsForInspectorDraw();
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
             RefreshTransportStatsForRepaint();
 
@@ -393,9 +398,10 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
+                case "_defaultFoxRunNativePublishQos": return _defaultFoxRunNativePublishQosProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;
-                case "_defaultFoxRunSubscriptionProvider": return _defaultFoxRunSubscriptionProviderProperty;
-                case "_defaultFoxRunRos2Qos": return _defaultFoxRunRos2QosProperty;
+                case "_defaultFoxRunSubscriptionSource": return _defaultFoxRunSubscriptionSourceProperty;
+                case "_defaultFoxRunNativeSubscribeQos": return _defaultFoxRunNativeSubscribeQosProperty;
                 case "_foxRunRos2NativeCopyBudgetBytes": return _foxRunRos2NativeCopyBudgetBytesProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
                 case "_certificatePfxPath": return _certificatePfxPathProperty;

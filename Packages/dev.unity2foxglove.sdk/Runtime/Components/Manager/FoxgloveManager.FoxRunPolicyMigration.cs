@@ -15,6 +15,11 @@ namespace Unity.FoxgloveSDK.Components
 
         void ISerializationCallbackReceiver.OnBeforeSerialize()
         {
+            _coordinateTransportPolicySerializationVersion =
+                CoordinateTransportPolicy.CurrentSerializationVersion;
+            FoxRunQosPolicySerializationMigration.MarkCurrent(
+                ref _foxRunPolicySerializationVersion,
+                ref _ros2BridgeQosSerializationVersion);
         }
 
         void ISerializationCallbackReceiver.OnAfterDeserialize()
@@ -26,14 +31,26 @@ namespace Unity.FoxgloveSDK.Components
                 ref _inputCoordinateMode);
 
 #pragma warning disable CS0618
-            FoxRunWireEncodingPolicyMigration.Migrate(
+            FoxRunEncodingPolicyMigration.Migrate(
                 ref _foxRunPolicySerializationVersion,
-                _defaultFoxRunWireEncoding,
+                _defaultFoxRunEncoding,
                 ref _defaultFoxRunPublishEncoding,
                 ref _defaultFoxRunSubscriptionEncoding,
-                ref _defaultFoxRunSubscriptionProvider,
-                ref _defaultFoxRunRos2Qos,
+                ref _defaultFoxRunSubscriptionSource,
                 ref _foxRunRos2NativeCopyBudgetBytes);
+            FoxRunQosPolicySerializationMigration.MigrateNativeProfiles(
+                ref _foxRunPolicySerializationVersion,
+                ref _defaultFoxRunNativePublishQos,
+                ref _defaultFoxRunNativeSubscribeQos,
+                _legacyDefaultFoxRunNativePublishRos2Qos,
+                _legacyDefaultFoxRunRos2Qos);
+            FoxRunQosPolicySerializationMigration.MigrateBridgeProfile(
+                ref _ros2BridgeQosSerializationVersion,
+                ref _ros2BridgeQos,
+                _legacyRos2BridgeQosPreset,
+                _legacyRos2BridgeCustomReliability,
+                _legacyRos2BridgeCustomDurability,
+                _legacyRos2BridgeCustomDepth);
 #pragma warning restore CS0618
         }
     }

@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         private const int AlignmentOrigin = 4;
         private byte[] _buffer;
         private int _position;
+        private readonly int _maximumBytes;
 
         /// <summary>Create a writer initialized with a little-endian CDR encapsulation header.</summary>
         public Ros2CdrWriter()
@@ -31,8 +32,24 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         /// <summary>Create a writer with an approximate output capacity hint.</summary>
         public Ros2CdrWriter(int capacityBytes)
+            : this(capacityBytes, int.MaxValue)
         {
-            _buffer = new byte[Math.Max(AlignmentOrigin, capacityBytes)];
+        }
+
+        /// <summary>
+        /// Create a writer whose backing buffer and final clone can never
+        /// exceed <paramref name="maximumBytes"/>.
+        /// </summary>
+        public Ros2CdrWriter(int capacityBytes, int maximumBytes)
+        {
+            if (maximumBytes < AlignmentOrigin)
+                throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+            var initialCapacity = Math.Max(AlignmentOrigin, capacityBytes);
+            if (initialCapacity > maximumBytes)
+                throw new ArgumentOutOfRangeException(nameof(capacityBytes));
+
+            _maximumBytes = maximumBytes;
+            _buffer = new byte[initialCapacity];
             _buffer[0] = 0x00;
             _buffer[1] = 0x01;
             _buffer[2] = 0x00;
@@ -206,6 +223,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             FoxgloveProfiler.Global.BeginSample("Ros2CdrWriter.ToArray");
             try
             {
+                if (_position > _maximumBytes)
+                    throw new Ros2CdrWriterBudgetExceededException(_maximumBytes);
                 var result = new byte[_position];
                 Buffer.BlockCopy(_buffer, 0, result, 0, _position);
                 return result;
@@ -231,13 +250,24 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         private void EnsureCapacity(int additionalBytes)
         {
             var required = checked(_position + additionalBytes);
+            if (required > _maximumBytes)
+                throw new Ros2CdrWriterBudgetExceededException(_maximumBytes);
             if (required <= _buffer.Length)
                 return;
 
             var doubled = _buffer.Length <= int.MaxValue / 2 ? _buffer.Length * 2 : int.MaxValue;
-            var newLength = Math.Max(doubled, required);
+            var newLength = Math.Min(_maximumBytes, Math.Max(doubled, required));
 
             Array.Resize(ref _buffer, newLength);
+        }
+    }
+
+    /// <summary>Typed signal for a bounded CDR writer rejecting a payload.</summary>
+    public sealed class Ros2CdrWriterBudgetExceededException : InvalidOperationException
+    {
+        internal Ros2CdrWriterBudgetExceededException(int maximumBytes)
+            : base($"ROS 2 CDR payload exceeds the {maximumBytes}-byte budget.")
+        {
         }
     }
 }

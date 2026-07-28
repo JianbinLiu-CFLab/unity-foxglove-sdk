@@ -4,6 +4,7 @@
 // Module: Editor/Manager
 
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
@@ -18,12 +19,62 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Publish Destinations");
             DrawProperty("_foxgloveOutputEnabled", "Foxglove WebSocket");
             DrawProperty("_ros2NativeEnabled", "ROS 2 Native (R2FU)");
-            if (GetBool("_ros2NativeEnabled"))
-                EditorGUILayout.HelpBox(
-                    "This Manager has no global ROS2 Native publish QoS override; configure QoS on individual R2FU publishers.",
-                    MessageType.Info);
             DrawProperty("_ros2BridgeEnabled", "ROS 2 Bridge");
-            if (GetBool("_ros2BridgeEnabled"))
+
+            EditorGUILayout.Space();
+            FoxgloveManagerInspectorLayout.Subheader("FoxRun Publish Profile");
+            var targets = FoxRunPublishTargetPolicy.FromPublishDestinations(
+                GetBool("_foxgloveOutputEnabled"),
+                GetBool("_ros2NativeEnabled"),
+                GetBool("_ros2BridgeEnabled"));
+
+            var includesFoxglove = FoxRunEndpointEditorModel.Includes(
+                targets,
+                FoxRunEndpoint.Foxglove);
+            var includesRos2Native = FoxRunEndpointEditorModel.Includes(
+                targets,
+                FoxRunEndpoint.Ros2Native);
+            var includesRos2Bridge = FoxRunEndpointEditorModel.Includes(
+                targets,
+                FoxRunEndpoint.Ros2Bridge);
+
+            if (includesFoxglove)
+            {
+                FoxRunEncodingEditorLabels.DrawFoxRunEncoding(
+                    FindCachedProperty("_defaultFoxRunPublishEncoding"),
+                    "Foxglove Encoding");
+            }
+
+            if (includesRos2Native)
+            {
+                DrawFoxRunRos2Qos(
+                    FindCachedProperty("_defaultFoxRunNativePublishQos"),
+                    "ROS 2 Native QoS Profile");
+                EditorGUILayout.HelpBox(
+                    "FoxRun resolves the ROS 2 message type automatically from the generated contract.",
+                    MessageType.Info);
+            }
+
+            if (includesRos2Bridge)
+            {
+                EditorGUILayout.HelpBox(
+                    "FoxRun resolves the ROS 2 message type automatically and uses the shared ROS 2 Bridge connection and QoS settings below.",
+                    MessageType.Info);
+            }
+
+            DrawFloatProperty(
+                "_defaultPublishRateHz",
+                "Default Publish Rate Hz",
+                "Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.");
+            var manager = target as FoxgloveManager;
+            if (manager != null && manager.ActiveFoxRunPublishSessionPolicy.SessionActive)
+            {
+                EditorGUILayout.HelpBox(
+                    "FoxRun Publish Profile changes apply after this Manager is disabled and re-enabled. Restarting one transport does not recapture the active profile.",
+                    MessageType.Info);
+            }
+
+            if (GetBool("_ros2BridgeEnabled") || includesRos2Bridge)
             {
                 DrawDataTransportSubsection(
                     "ROS 2 Bridge Output",
@@ -32,19 +83,9 @@ namespace Unity.FoxgloveSDK.Editor
                     DrawRos2BridgeSection);
             }
 
-            EditorGUILayout.Space();
-            FoxgloveManagerInspectorLayout.Subheader("Publish Rate");
-            DrawFloatProperty(
-                "_defaultPublishRateHz",
-                "Default Publish Rate Hz",
-                "Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.");
-
             FoxgloveManagerInspectorLayout.Subheader("Publisher Encoding");
             DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Component Publisher Encoding");
             DrawProperty("_allowPublisherOverride", "Allow Component Publisher Override");
-            FoxRunEncodingEditorLabels.DrawFoxRunWireEncoding(
-                FindCachedProperty("_defaultFoxRunPublishEncoding"),
-                "FoxRun Contract Encoding");
             EditorGUILayout.HelpBox(
                 "Component publishers and generated FoxRun contracts use independent default encodings.",
                 MessageType.Info);

@@ -34,10 +34,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "FixedRate",
                 float.NaN,
                 0f,
-                0f,
                 Array.Empty<FoxRunSchemaFieldInfo>());
 
-            Assert.Equal(0f, contract.RateHz);
+            Assert.Equal(0f, contract.Hz);
         }
 
         [Fact]

@@ -120,8 +120,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "73B-2: session demand defensively rejects missing channels");
             Check(sessionSource.Contains("_subscriptions.HasSubscribersForChannel(channelId)"),
                 "73B-3: session demand considers live subscribers");
-            Check(sessionSource.Contains("Volatile.Read(ref _recorder) != null"),
-                "73B-4: session demand considers MCAP recorder presence");
+            var sessionDemand = ExtractMethodBody(sessionSource, "HasChannelDemand");
+            Check(sessionDemand.Contains("Volatile.Read(ref _recorder)")
+                  && sessionDemand.Contains("recorder != null")
+                  && sessionDemand.Contains("recorder.HasServerChannel(channelId)"),
+                "73B-4: session demand considers admitted MCAP recorder channels");
             Check(runtimeSource.Contains("public bool HasChannelDemand"),
                 "73B-5: FoxgloveRuntime exposes HasChannelDemand passthrough");
             Check(managerSource.Contains("public bool TryPrepareSchemaPublish"),

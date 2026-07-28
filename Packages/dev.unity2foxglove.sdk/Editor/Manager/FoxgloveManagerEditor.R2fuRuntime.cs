@@ -4,7 +4,6 @@
 // Module: Editor/Manager
 // Purpose: Optional R2FU runtime selection for both native publish and subscribe demand.
 
-using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -24,19 +23,14 @@ namespace Unity.FoxgloveSDK.Editor
             "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
         private const string R2fuCustomTypesupportInspectorTypeName =
             "Unity2Foxglove.Ros2ForUnity.Editor.FoxRunRos2CustomTypesupportInspector, Unity2Foxglove.Ros2ForUnity.Editor";
-        private const string GeneratedFoxRunSchemaInfoTypeName =
-            "Unity.FoxgloveSDK.Generated.FoxRunSchemaInfo";
-
         private static bool _r2fuRuntimeSelectorResolved;
         private static MethodInfo _r2fuRuntimeSelectorDrawMethod;
         private static bool _r2fuNativeSubscriptionDiagnosticsResolved;
         private static MethodInfo _r2fuNativeSubscriptionDiagnosticsDrawMethod;
         private static bool _r2fuCustomTypesupportInspectorResolved;
         private static MethodInfo _r2fuCustomTypesupportInspectorDrawMethod;
-        private static bool _generatedFoxRunSubscriptionBindingsResolved;
-        private static FieldInfo _generatedFoxRunSubscriptionBindingsField;
-        private static IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> _generatedFoxRunSubscriptionBindings;
         private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> _currentFoxRunCustomNativeContracts;
+        private FoxRunLoadedSceneContractSnapshot _loadedSceneContractsThisInspectorDraw;
 
         private static void ResetOptionalR2fuRuntimeSelectorCache()
         {
@@ -46,32 +40,61 @@ namespace Unity.FoxgloveSDK.Editor
             _r2fuNativeSubscriptionDiagnosticsDrawMethod = null;
             _r2fuCustomTypesupportInspectorResolved = false;
             _r2fuCustomTypesupportInspectorDrawMethod = null;
-            _generatedFoxRunSubscriptionBindingsResolved = false;
-            _generatedFoxRunSubscriptionBindingsField = null;
-            _generatedFoxRunSubscriptionBindings = null;
             _currentFoxRunCustomNativeContracts = null;
         }
 
         private bool HasR2fuNativeRuntimeDemand()
-            => GetBool("_ros2NativeEnabled")
-               || HasR2fuNativeSubscriptionDemand()
-               || HasCustomNativeSubscriptionDemand();
+        {
+            var loadedScene = GetLoadedSceneContractsForInspectorDraw();
+            var customContracts = GetLoadedSceneCustomNativeContractsForInspector(loadedScene);
+            return FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                       nativeOutputEnabled: GetBool("_ros2NativeEnabled"),
+                       defaultPublishTargets: GetDefaultPublishTargets(),
+                       hasExplicitNativePublishContract:
+                           loadedScene.HasExplicitNativePublishContract,
+                       subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
+                       defaultSubscriptionSource: GetDefaultSubscriptionSource(),
+                       hasExplicitNativeContract:
+                           loadedScene.HasExplicitNativeSubscriptionContract)
+                   || FoxRunCustomNativeContractDemandPolicy.HasDemand(
+                       customContracts,
+                       GetDefaultPublishTargets(),
+                       GetBool("_enableFoxRunInbound"),
+                       GetDefaultSubscriptionSource());
+        }
 
         private bool HasR2fuNativeSubscriptionDemand()
         {
-            var provider = GetDefaultSubscriptionProvider();
+            var loadedScene = GetLoadedSceneContractsForInspectorDraw();
+            return HasR2fuNativeSubscriptionDemand(loadedScene);
+        }
+
+        private bool HasR2fuNativeSubscriptionDemand(
+            FoxRunLoadedSceneContractSnapshot loadedScene)
+        {
+            var provider = GetDefaultSubscriptionSource();
             return FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: provider,
-                hasExplicitNativeContract: HasGeneratedExplicitSubscriptionProvider(
-                    FoxRunSubscriptionProvider.Ros2Native));
+                defaultSubscriptionSource: provider,
+                hasExplicitNativeContract:
+                    loadedScene.HasExplicitNativeSubscriptionContract);
         }
 
         private void DrawR2fuRuntimeSection()
         {
-            var outputDemand = GetBool("_ros2NativeEnabled");
-            var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();
+            var loadedScene = GetLoadedSceneContractsForInspectorDraw();
+            var customContracts = GetLoadedSceneCustomNativeContractsForInspector(loadedScene);
+            var outputDemand = GetBool("_ros2NativeEnabled")
+                               || (GetDefaultPublishTargets() & FoxRunEndpoint.Ros2Native) != 0
+                               || loadedScene.HasExplicitNativePublishContract;
+            var subscriptionDemand = HasR2fuNativeSubscriptionDemand(loadedScene)
+                                     || FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(
+                                         customContracts,
+                                         subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
+                                         defaultSubscriptionSource: GetDefaultSubscriptionSource());
             if (outputDemand && subscriptionDemand)
             {
                 EditorGUILayout.HelpBox(
@@ -92,8 +115,14 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             DrawOptionalR2fuRuntimeSelector();
-            if (HasCustomNativeContractDemand())
-                DrawOptionalR2fuCustomTypesupportInspector();
+            if (FoxRunCustomNativeContractDemandPolicy.HasDemand(
+                    customContracts,
+                    defaultPublishTargets: GetDefaultPublishTargets(),
+                    subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
+                    defaultSubscriptionSource: GetDefaultSubscriptionSource()))
+            {
+                DrawOptionalR2fuCustomTypesupportInspector(customContracts);
+            }
         }
 
         private void DrawOptionalR2fuRuntimeSelector()
@@ -134,7 +163,8 @@ namespace Unity.FoxgloveSDK.Editor
             return _r2fuRuntimeSelectorDrawMethod;
         }
 
-        private void DrawOptionalR2fuCustomTypesupportInspector()
+        private void DrawOptionalR2fuCustomTypesupportInspector(
+            IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> customContracts)
         {
             var drawMethod = ResolveR2fuCustomTypesupportInspectorDrawMethod();
             if (drawMethod == null)
@@ -147,7 +177,13 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
-                drawMethod.Invoke(null, new object[] { GetCurrentCustomNativeContractsForInspector() });
+                drawMethod.Invoke(
+                    null,
+                    new object[]
+                    {
+                        customContracts
+                        ?? System.Array.Empty<FoxRunSchemaCustomNativeContractInfo>()
+                    });
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
@@ -218,95 +254,56 @@ namespace Unity.FoxgloveSDK.Editor
             return _r2fuNativeSubscriptionDiagnosticsDrawMethod;
         }
 
-        private static bool HasGeneratedExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)
+        private bool HasLoadedSceneExplicitSource(FoxRunEndpoint provider)
         {
-            return HasExplicitProvider(GetGeneratedSubscriptionBindings(), provider);
+            var loadedScene = GetLoadedSceneContractsForInspectorDraw();
+            return provider == FoxRunEndpoint.Ros2Native
+                ? loadedScene.HasExplicitNativeSubscriptionContract
+                : loadedScene.HasExplicitFoxgloveSubscriptionContract;
         }
 
-        private FoxRunSubscriptionProvider GetDefaultSubscriptionProvider()
+        private FoxRunLoadedSceneContractSnapshot GetLoadedSceneContractsForInspectorDraw()
+            => _loadedSceneContractsThisInspectorDraw
+               ??= FoxRunLoadedSceneContractProbe.CaptureLoadedScenes();
+
+        private void ResetLoadedSceneContractsForInspectorDraw()
+            => _loadedSceneContractsThisInspectorDraw = null;
+
+        private FoxRunEndpoint GetDefaultSubscriptionSource()
         {
-            var providerProperty = FindCachedProperty("_defaultFoxRunSubscriptionProvider");
-            return providerProperty != null
-                   && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
-                ? FoxRunSubscriptionProvider.Ros2Native
-                : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+            var sourceProperty = FindCachedProperty("_defaultFoxRunSubscriptionSource");
+            return sourceProperty == null
+                ? FoxRunEndpoint.Foxglove
+                : FoxRunEndpointEditorModel.NormalizeSource(
+                    (FoxRunEndpoint)sourceProperty.intValue);
         }
 
-        private bool HasCustomNativeContractDemand()
-            => FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                GetCurrentCustomNativeContractsForInspector(),
-                nativeOutputEnabled: GetBool("_ros2NativeEnabled"),
-                subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
+        private FoxRunEndpoint GetDefaultPublishTargets()
+            => FoxRunPublishTargetPolicy.FromPublishDestinations(
+                foxgloveEnabled: GetBool("_foxgloveOutputEnabled"),
+                ros2NativeEnabled: GetBool("_ros2NativeEnabled"),
+                ros2BridgeEnabled: GetBool("_ros2BridgeEnabled"));
 
-        private bool HasCustomNativeSubscriptionDemand()
-            => FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                GetCurrentCustomNativeContractsForInspector(),
-                nativeOutputEnabled: false,
-                subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
-
-        private static bool HasExplicitProvider(
-            System.Collections.Generic.IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings,
-            FoxRunSubscriptionProvider provider)
+        private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo>
+            GetLoadedSceneCustomNativeContractsForInspector(
+                FoxRunLoadedSceneContractSnapshot loadedScene)
         {
-            if (provider == FoxRunSubscriptionProvider.Ros2Native)
-                return FoxRunNativeDemandPolicy.HasExplicitNativeContract(bindings);
+            var allContracts = GetCurrentCustomNativeContractsForInspector();
+            if (loadedScene == null || allContracts == null || allContracts.Count == 0)
+                return System.Array.Empty<FoxRunSchemaCustomNativeContractInfo>();
 
-            if (bindings == null)
-                return false;
-
-            for (var i = 0; i < bindings.Count; i++)
+            var filtered = new List<FoxRunSchemaCustomNativeContractInfo>();
+            for (var i = 0; i < allContracts.Count; i++)
             {
-                if (bindings[i] != null && bindings[i].DeclaredProvider == provider)
-                    return true;
+                var contract = allContracts[i];
+                if (contract != null
+                    && loadedScene.ContainsDeclaringType(contract.DeclaringType))
+                {
+                    filtered.Add(contract);
+                }
             }
 
-            return false;
-        }
-
-        private static FieldInfo ResolveGeneratedFoxRunSubscriptionBindingsField()
-        {
-            if (_generatedFoxRunSubscriptionBindingsResolved)
-                return _generatedFoxRunSubscriptionBindingsField;
-
-            _generatedFoxRunSubscriptionBindingsResolved = true;
-            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var generatedType = assembly.GetType(GeneratedFoxRunSchemaInfoTypeName, throwOnError: false);
-                if (generatedType == null)
-                    continue;
-
-                _generatedFoxRunSubscriptionBindingsField = generatedType.GetField(
-                    "SubscriptionBindings",
-                    BindingFlags.Public | BindingFlags.Static);
-                break;
-            }
-
-            return _generatedFoxRunSubscriptionBindingsField;
-        }
-
-        private static IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> GetGeneratedSubscriptionBindings()
-        {
-            if (_generatedFoxRunSubscriptionBindings != null)
-                return _generatedFoxRunSubscriptionBindings;
-
-            var current = FoxRunSchemaInfoRegistry.Current;
-            if (current?.SubscriptionBindings != null)
-            {
-                _generatedFoxRunSubscriptionBindings = current.SubscriptionBindings;
-                return _generatedFoxRunSubscriptionBindings;
-            }
-
-            if (ResolveGeneratedFoxRunSubscriptionBindingsField()?.GetValue(null)
-                is IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings)
-            {
-                _generatedFoxRunSubscriptionBindings = bindings;
-                return _generatedFoxRunSubscriptionBindings;
-            }
-
-            _generatedFoxRunSubscriptionBindings = System.Array.Empty<FoxRunSchemaSubscriptionBindingInfo>();
-            return _generatedFoxRunSubscriptionBindings;
+            return filtered;
         }
 
         private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> GetCurrentCustomNativeContractsForInspector()

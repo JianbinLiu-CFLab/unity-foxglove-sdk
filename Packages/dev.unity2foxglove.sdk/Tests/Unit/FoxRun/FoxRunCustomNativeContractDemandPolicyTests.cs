@@ -12,39 +12,39 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class FoxRunCustomNativeContractDemandPolicyTests
     {
         [Fact]
-        public void PublishCreatesDemandOnlyWhenNativeOutputIsEnabled()
+        public void PublishCreatesDemandWhenItsResolvedTargetsIncludeNative()
         {
-            var contract = Contract("Publish", FoxRunSubscriptionProvider.Inherit);
+            var contract = Contract("Publish", (FoxRunEndpoint)0);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { contract }, false, false, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { contract }, FoxRunEndpoint.Foxglove, false, FoxRunEndpoint.Foxglove));
             Assert.True(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { contract }, true, false, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { contract }, FoxRunEndpoint.Ros2Native, false, FoxRunEndpoint.Foxglove));
         }
 
         [Fact]
         public void SubscribeRequiresEnabledNativeProvider()
         {
-            var inherited = Contract("Subscribe", FoxRunSubscriptionProvider.Inherit);
-            var explicitNative = Contract("Subscribe", FoxRunSubscriptionProvider.Ros2Native);
+            var inherited = Contract("Subscribe", (FoxRunEndpoint)0);
+            var explicitNative = Contract("Subscribe", FoxRunEndpoint.Ros2Native);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { inherited }, false, true, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { inherited }, FoxRunEndpoint.Foxglove, true, FoxRunEndpoint.Foxglove));
             Assert.True(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { inherited }, false, true, FoxRunSubscriptionProvider.Ros2Native));
+                new[] { inherited }, FoxRunEndpoint.Foxglove, true, FoxRunEndpoint.Ros2Native));
             Assert.True(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { explicitNative }, false, true, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { explicitNative }, FoxRunEndpoint.Foxglove, true, FoxRunEndpoint.Foxglove));
         }
 
         [Fact]
         public void PublishAndSubscribeHonorsEitherIndependentDirection()
         {
-            var contract = Contract("PublishAndSubscribe", FoxRunSubscriptionProvider.FoxgloveWebSocket);
+            var contract = Contract("PublishAndSubscribe", FoxRunEndpoint.Foxglove);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { contract }, false, true, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { contract }, FoxRunEndpoint.Foxglove, true, FoxRunEndpoint.Foxglove));
             Assert.True(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { contract }, true, false, FoxRunSubscriptionProvider.FoxgloveWebSocket));
+                new[] { contract }, FoxRunEndpoint.Ros2Native, false, FoxRunEndpoint.Foxglove));
         }
 
         [Fact]
@@ -52,11 +52,38 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         {
             var invalid = new FoxRunSchemaCustomNativeContractInfo(
                 "Demo.Source", "Value", "/value", "Publish",
-                FoxRunSubscriptionProvider.Inherit, FoxRunRos2QosPreset.Default,
+                (FoxRunEndpoint)0, FoxRunQosProfile.Default,
                 supportsRos2Native: true, "dto", "payload", string.Empty);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                new[] { invalid }, true, true, FoxRunSubscriptionProvider.Ros2Native));
+                new[] { invalid }, FoxRunEndpoint.Ros2Native, true, FoxRunEndpoint.Ros2Native));
+        }
+
+        [Fact]
+        public void ExplicitTargetsReplaceThePublishProfile()
+        {
+            var explicitFoxglove = Contract(
+                "Publish",
+                (FoxRunEndpoint)0,
+                FoxRunEndpoint.Foxglove);
+            var explicitNative = Contract(
+                "Publish",
+                (FoxRunEndpoint)0,
+                FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native);
+
+            Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
+                new[] { explicitFoxglove },
+                FoxRunEndpoint.Ros2Native,
+                false,
+                FoxRunEndpoint.Foxglove));
+            Assert.True(FoxRunCustomNativeContractDemandPolicy.HasDemand(
+                new[] { explicitNative },
+                FoxRunEndpoint.Foxglove,
+                false,
+                FoxRunEndpoint.Foxglove));
+            Assert.True(
+                FoxRunCustomNativeContractDemandPolicy.HasExplicitNativePublishContract(
+                    new[] { explicitNative }));
         }
 
         [Fact]
@@ -68,14 +95,18 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 diagnostics: System.Array.Empty<string>());
             var member = new FoxRunManifestMember(
                 "Demo", "Publisher", "Payload", "field", "Demo.Payload", false, false, string.Empty,
-                "/custom", 10f, "", 0, 0f, 0f,
+                "/custom", 10f, "", 0, 0f,
                 flow: (int)FoxRunFlow.Publish,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                source: FoxRunGenerationDescriptorConstants.InheritSource,
+                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
                 generatesWebSocketCodec: false,
                 generatesRos2NativeRegistration: true,
                 ros2CustomDtoShape: customShape,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+                ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
+                qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.TransientLocalQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 7);
 
             var manifest = FoxRunManifestBuilder.Build(new[] { member }, manifestVersion: 2);
             var contract = Assert.Single(manifest.CustomNativeContracts);
@@ -83,6 +114,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Equal("Publish", contract.Flow);
             Assert.Equal("payloadEnvelope", contract.CustomEnvelopeIdentity);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.DefaultQosProfile, contract.QosProfile);
+            Assert.Equal(
+                FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                contract.QosReliability);
+            Assert.Equal(
+                FoxRunGenerationDescriptorConstants.TransientLocalQosDurability,
+                contract.QosDurability);
+            Assert.Equal(
+                FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                contract.QosHistory);
+            Assert.Equal(7, contract.QosDepth);
             Assert.Contains("CustomNativeContractCount = 1", generated, System.StringComparison.Ordinal);
             Assert.Contains("new FoxRunSchemaCustomNativeContractInfo", generated, System.StringComparison.Ordinal);
             Assert.True(FoxRunSchemaInfoWriter.VerifyGeneratedInfo(manifest, generated).IsValid);
@@ -90,10 +132,15 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
         private static FoxRunSchemaCustomNativeContractInfo Contract(
             string flow,
-            FoxRunSubscriptionProvider provider)
+            FoxRunEndpoint provider,
+            FoxRunEndpoint targets = 0)
             => new FoxRunSchemaCustomNativeContractInfo(
                 "Demo.Source", "Value", "/value", flow, provider,
-                FoxRunRos2QosPreset.Reliable, supportsRos2Native: true,
-                "dto", "payload", "PayloadEnvelope");
+                FoxRunQosProfile.Default, supportsRos2Native: true,
+                "dto", "payload", "PayloadEnvelope", targets,
+                FoxRunQosReliability.Reliable,
+                FoxRunQosDurability.Volatile,
+                FoxRunQosHistory.KeepLast,
+                10);
     }
 }

@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTypeIdentityContract();
             VerifyReaderAndRoundTripCoverage();
             VerifyDescriptorReaderRoundTripBehavior();
-            VerifyLegacyV1ReaderMigration();
+            VerifyLegacyV1ReaderRejection();
             VerifySupportedListDiagnostics();
             VerifyFixtureCoversHardEmissionTypes();
             VerifyReaderMediatedCrossHostEquivalence();
@@ -105,7 +105,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Roslyn",
                         7,
                         "FOXRUN_FIXTURE_EXTRA")
@@ -122,19 +121,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "115F-B5: descriptor reader round-trip preserves deterministic JSON bytes");
         }
 
-        private static void VerifyLegacyV1ReaderMigration()
+        private static void VerifyLegacyV1ReaderRejection()
         {
             const string json = "{\"descriptorVersion\":1,\"generatorVersion\":\"1.0.0\",\"types\":[{\"namespace\":\"Demo\",\"className\":\"Legacy\",\"members\":[{\"memberName\":\"_value\",\"memberKind\":\"field\",\"rawTypeName\":\"System.Single\",\"emissionTypeName\":\"float\",\"canonicalType\":\"float32\",\"topic\":\"/legacy\",\"encoding\":\"json\"}]}]}";
-            var parsed = FoxRunGenerationDescriptorJsonReader.Read(json);
-            var member = parsed.Types.Single().Members.Single();
-
-            Check(
-                member.SubscriptionProvider == FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider
-                && member.Ros2Qos == FoxRunGenerationDescriptorConstants.InheritRos2Qos
-                && member.GeneratesWebSocketCodec
-                && !member.GeneratesRos2NativeRegistration
-                && member.Ros2MessageShape == null,
-                "115F-B6: legacy v1 descriptors migrate missing subscription metadata to inherited WebSocket-only capability");
+            try
+            {
+                FoxRunGenerationDescriptorJsonReader.Read(json);
+                Check(false, "115F-B6: incompatible legacy descriptors fail closed instead of inventing current directional defaults");
+            }
+            catch (InvalidOperationException exception)
+            {
+                Check(
+                    exception.Message.Contains(
+                        "Unsupported FoxRun generation descriptor version: 1",
+                        StringComparison.Ordinal),
+                    "115F-B6: incompatible legacy descriptors fail closed instead of inventing current directional defaults");
+            }
         }
 
         private static void VerifySupportedListDiagnostics()
@@ -158,7 +160,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Reflection",
                         1,
                         string.Empty),
@@ -177,7 +178,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Reflection",
                         2,
                         string.Empty),
@@ -195,7 +195,6 @@ namespace Unity.FoxgloveSDK.Tests
                         10f,
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
-                        0f,
                         0f,
                         "Reflection",
                         3,
@@ -427,9 +426,9 @@ namespace Unity.FoxgloveSDK.Tests
                 var members = new List<FoxRunReflectionGenerationMember>();
                 var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
                 foreach (var field in type.GetFields(flags))
-                    AddReflectionMembers(type, field.Name, "field", field.FieldType, field.MetadataToken, field.GetCustomAttributes(false), members);
+                    AddReflectionMembers(type, field, "field", field.FieldType, field.MetadataToken, members);
                 foreach (var property in type.GetProperties(flags))
-                    AddReflectionMembers(type, property.Name, "property", property.PropertyType, property.MetadataToken, property.GetCustomAttributes(false), members);
+                    AddReflectionMembers(type, property, "property", property.PropertyType, property.MetadataToken, members);
                 return FoxRunReflectionGenerationModelLowerer.Lower(members);
             }
             finally
@@ -441,41 +440,62 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void AddReflectionMembers(
             Type declaringType,
-            string memberName,
+            MemberInfo member,
             string memberKind,
             Type memberType,
             int rawMemberOrder,
-            object[] attributes,
             List<FoxRunReflectionGenerationMember> members)
         {
-            foreach (var attr in attributes.Where(a => a.GetType().FullName == typeof(FoxRunAttribute).FullName))
+            foreach (var attribute in CustomAttributeData.GetCustomAttributes(member)
+                         .Where(data => data.AttributeType.FullName == typeof(FoxRunAttribute).FullName))
             {
-                var attrType = attr.GetType();
-                var topic = (string)attrType.GetProperty("Topic").GetValue(attr, null);
-                var rateHz = (float)attrType.GetProperty("RateHz").GetValue(attr, null);
-                var schemaName = (string)attrType.GetProperty("SchemaName").GetValue(attr, null) ?? string.Empty;
-                var policy = Convert.ToInt32(attrType.GetProperty("Policy").GetValue(attr, null));
-                var changeEpsilon = (float)attrType.GetProperty("ChangeEpsilon").GetValue(attr, null);
-                var forceIntervalSeconds = (float)attrType.GetProperty("ForceIntervalSeconds").GetValue(attr, null);
+                var topic = (string)attribute.ConstructorArguments[0].Value;
+                var hz = -1f;
+                var schemaName = string.Empty;
+                var policy = (int)FoxRunPolicy.FixedRate;
+                var tolerance = 0f;
+                var presence = FoxRunNamedArgumentPresence.None;
+                foreach (var argument in attribute.NamedArguments)
+                {
+                    switch (argument.MemberName)
+                    {
+                        case "Hz":
+                            hz = Convert.ToSingle(argument.TypedValue.Value);
+                            presence |= FoxRunNamedArgumentPresence.Hz;
+                            break;
+                        case "SchemaName":
+                            schemaName = (string)argument.TypedValue.Value ?? string.Empty;
+                            presence |= FoxRunNamedArgumentPresence.SchemaName;
+                            break;
+                        case "Policy":
+                            policy = Convert.ToInt32(argument.TypedValue.Value);
+                            presence |= FoxRunNamedArgumentPresence.Policy;
+                            break;
+                        case "Tolerance":
+                            tolerance = Convert.ToSingle(argument.TypedValue.Value);
+                            presence |= FoxRunNamedArgumentPresence.Tolerance;
+                            break;
+                    }
+                }
                 var isArray = TryGetArrayElementType(memberType, out var elementType);
                 members.Add(new FoxRunReflectionGenerationMember(
                     declaringType.Namespace ?? string.Empty,
                     declaringType.Name,
-                    memberName,
+                    member.Name,
                     memberKind,
                     memberType.FullName ?? memberType.Name,
                     FoxRunEmissionTypeNameFormatter.FromReflectionType(memberType),
-                    memberType.IsValueType,
-                    isArray,
-                    elementType == null ? string.Empty : elementType.FullName ?? elementType.Name,
-                    topic,
-                    schemaName,
-                    rateHz,
-                    policy,
-                    changeEpsilon,
-                    forceIntervalSeconds,
-                    rawMemberOrder,
-                    "FOXRUN_FIXTURE_EXTRA"));
+                    isValueType: memberType.IsValueType,
+                    isArray: isArray,
+                    elementTypeName: elementType == null ? string.Empty : elementType.FullName ?? elementType.Name,
+                    topic: topic,
+                    schemaName: schemaName,
+                    hz: hz,
+                    policy: policy,
+                    tolerance: tolerance,
+                    rawMemberOrder: rawMemberOrder,
+                    conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
+                    namedArgumentPresence: presence));
             }
         }
 

@@ -2,14 +2,23 @@
 
 This source-only sample demonstrates Phase181 custom FoxRun DTO transport for
 the selected ROS2 For Unity runtime and its matching static typesupport add-on.
+This is the optional ROS2 Native path. Normal Foxglove WebSocket and
+localhost-sidecar Bridge projects use `dev.unity2foxglove.sdk` alone; Bridge is
+publish-only and is not exercised by this sample.
 
 It contains three independent contracts:
 
-- **Native Publish** publishes a custom DTO through native ROS2.
-- **Native Subscribe** receives the same custom DTO through native ROS2 and
-  lets the generated binding apply a managed DTO on Unity's main thread.
-- **Native PublishAndSubscribe** receives through native ROS2 while retaining
-  an explicit JSON WebSocket output contract.
+- **Native Publish** explicitly selects
+  `Targets = FoxRunEndpoint.Ros2Native` with official
+  `QoS = FoxRunQosProfile.Default`.
+- **Native Subscribe** explicitly selects
+  `Source = FoxRunEndpoint.Ros2Native` and applies a managed DTO on Unity's
+  main thread.
+- **Native PublishAndSubscribe** explicitly selects native ROS2 as its source
+  and Foxglove JSON as its output target.
+
+The full-duplex declaration is a diagnostic integration example. Prefer
+separate one-way declarations when production ownership must be unambiguous.
 
 ## Static interface lock and identity
 

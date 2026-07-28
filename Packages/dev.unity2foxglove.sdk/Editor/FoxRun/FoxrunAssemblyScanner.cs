@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Editor
             var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly;
             var ns = type.Namespace ?? "";
             var cn = type.Name;
-            var aggregateMessage = type.GetCustomAttribute<FoxRunMessageAttribute>();
+            var aggregateMessage = ReadFoxRunMessageAttributeSnapshot(type);
             var aggregateSchema = aggregateMessage == null
                 ? string.Empty
                 : string.IsNullOrWhiteSpace(aggregateMessage.SchemaName)
@@ -155,52 +155,106 @@ namespace Unity.FoxgloveSDK.Editor
 
             foreach (var fi in type.GetFields(flags))
             {
-                var attrs = fi.GetCustomAttributes<FoxRunAttribute>();
+                var attrs = ReadFoxRunAttributeSnapshots(fi);
                 foreach (var a in attrs)
                 {
-                    if (a.Mode != FoxRunFlow.Publish && fi.IsInitOnly)
+                    if (a.Mode != (int)FoxRunFlow.Publish
+                        && fi.IsInitOnly
+                        && !(fi.FieldType.IsGenericType
+                             && fi.FieldType.GetGenericTypeDefinition() == typeof(FoxRunStream<>)))
                         throw CreateInboundTargetNotWritableException(type, fi.Name, "field", "readonly fields");
                     result.Add(new MemberData(
-                        fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.Policy, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
+                        fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.Hz, a.SchemaName,
+                        a.Policy, a.Tolerance, fi.MetadataToken, "",
+                        a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
+                        qosReliability: a.QosReliability, qosDurability: a.QosDurability,
+                        qosHistory: a.QosHistory, qosDepth: a.QosDepth,
+                        namedArgumentPresence: a.NamedArgumentPresence,
+                        conditionMemberKind: ResolveConditionMemberKind(
+                            type,
+                            a.OnlyIf,
+                            a.NamedArgumentPresence)));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
                 if (aggregateMessage != null && aggregateField != null)
                 {
+                    var aggregatePresence = aggregateMessage.NamedArgumentPresence
+                        | ReadFoxRunFieldPresence(fi);
                     result.Add(new MemberData(
-                        fi.Name, fi.FieldType, "field", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
-                        (int)aggregateMessage.Policy, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, fi.MetadataToken, "",
-                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
+                        fi.Name, fi.FieldType, "field", ns, cn, aggregateMessage.Topic, aggregateMessage.Hz, aggregateSchema,
+                        aggregateMessage.Policy, aggregateMessage.Tolerance, fi.MetadataToken, "",
+                        aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
+                        encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
+                        targets: aggregateMessage.Targets,
+                        qosProfile: aggregateMessage.QosProfile,
+                        qosReliability: aggregateMessage.QosReliability,
+                        qosDurability: aggregateMessage.QosDurability,
+                        qosHistory: aggregateMessage.QosHistory,
+                        qosDepth: aggregateMessage.QosDepth,
+                        namedArgumentPresence: aggregatePresence,
+                        conditionMemberKind: ResolveConditionMemberKind(
+                            type,
+                            aggregateMessage.OnlyIf,
+                            aggregateMessage.NamedArgumentPresence)));
                 }
             }
             foreach (var pi in type.GetProperties(flags))
             {
-                var attrs = pi.GetCustomAttributes<FoxRunAttribute>();
+                var attrs = ReadFoxRunAttributeSnapshots(pi);
                 foreach (var a in attrs)
                 {
-                    if (a.Mode != FoxRunFlow.Publish && !pi.CanWrite)
+                    if (a.Mode != (int)FoxRunFlow.Publish && !pi.CanWrite)
                         throw CreateInboundTargetNotWritableException(type, pi.Name, "property", "properties without setters");
                     result.Add(new MemberData(
-                        pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.Policy, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
+                        pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.Hz, a.SchemaName,
+                        a.Policy, a.Tolerance, pi.MetadataToken, "",
+                        a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
+                        qosReliability: a.QosReliability, qosDurability: a.QosDurability,
+                        qosHistory: a.QosHistory, qosDepth: a.QosDepth,
+                        namedArgumentPresence: a.NamedArgumentPresence,
+                        conditionMemberKind: ResolveConditionMemberKind(
+                            type,
+                            a.OnlyIf,
+                            a.NamedArgumentPresence)));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();
                 if (aggregateMessage != null && aggregateField != null)
                 {
+                    var aggregatePresence = aggregateMessage.NamedArgumentPresence
+                        | ReadFoxRunFieldPresence(pi);
                     result.Add(new MemberData(
-                        pi.Name, pi.PropertyType, "property", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
-                        (int)aggregateMessage.Policy, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, pi.MetadataToken, "",
-                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
+                        pi.Name, pi.PropertyType, "property", ns, cn, aggregateMessage.Topic, aggregateMessage.Hz, aggregateSchema,
+                        aggregateMessage.Policy, aggregateMessage.Tolerance, pi.MetadataToken, "",
+                        aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
+                        encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
+                        targets: aggregateMessage.Targets,
+                        qosProfile: aggregateMessage.QosProfile,
+                        qosReliability: aggregateMessage.QosReliability,
+                        qosDurability: aggregateMessage.QosDurability,
+                        qosHistory: aggregateMessage.QosHistory,
+                        qosDepth: aggregateMessage.QosDepth,
+                        namedArgumentPresence: aggregatePresence,
+                        conditionMemberKind: ResolveConditionMemberKind(
+                            type,
+                            aggregateMessage.OnlyIf,
+                            aggregateMessage.NamedArgumentPresence)));
                 }
             }
             return result;
         }
+
+        private static FoxRunConditionMemberKind ResolveConditionMemberKind(
+            Type declaringType,
+            string conditionName,
+            FoxRunNamedArgumentPresence presence)
+            => FoxRunReflectionConditionMemberResolver.Resolve(
+                declaringType,
+                conditionName,
+                presence);
 
         private static InvalidOperationException CreateInboundTargetNotWritableException(
             Type type,

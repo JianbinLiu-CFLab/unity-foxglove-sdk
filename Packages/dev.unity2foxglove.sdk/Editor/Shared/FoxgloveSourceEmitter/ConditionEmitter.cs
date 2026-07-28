@@ -11,7 +11,7 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Emits per-topic conditional publish gates for FoxRun members with
-    /// <c>When</c> or <c>Unless</c> attribute settings.
+    /// <c>OnlyIf</c> attribute settings.
     /// </summary>
     internal static class ConditionEmitter
     {
@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var hasConditions = topicMap.Values
                 .SelectMany(fields => fields)
-                .Any(field => !string.IsNullOrWhiteSpace(field.When) || !string.IsNullOrWhiteSpace(field.Unless));
+                .Any(field => !string.IsNullOrWhiteSpace(field.OnlyIf));
             if (!hasConditions)
                 return;
 
@@ -45,21 +45,24 @@ namespace Unity.FoxgloveSDK.Editor
             var parts = new List<string>();
             foreach (var member in members)
             {
-                if (!string.IsNullOrWhiteSpace(member.When))
-                    parts.Add(ConditionAccess(member.When));
-                if (!string.IsNullOrWhiteSpace(member.Unless))
-                    parts.Add("!" + ConditionAccess(member.Unless));
+                if (!string.IsNullOrWhiteSpace(member.OnlyIf))
+                    parts.Add(ConditionAccess(
+                        member.OnlyIf,
+                        member.ConditionMemberKind));
             }
 
             return parts.Count == 0 ? "true" : string.Join(" && ", parts);
         }
 
-        private static string ConditionAccess(string conditionName)
+        internal static string ConditionAccess(
+            string conditionName,
+            FoxRunConditionMemberKind memberKind)
         {
             var name = (conditionName ?? string.Empty).Trim();
-            if (name.EndsWith("()", System.StringComparison.Ordinal))
-                return IdentifierUtils.EscapeIdentifier(name.Substring(0, name.Length - 2)) + "()";
-            return IdentifierUtils.EscapeIdentifier(name);
+            var access = IdentifierUtils.EscapeIdentifier(name);
+            return memberKind == FoxRunConditionMemberKind.Method
+                ? access + "()"
+                : access;
         }
     }
 }

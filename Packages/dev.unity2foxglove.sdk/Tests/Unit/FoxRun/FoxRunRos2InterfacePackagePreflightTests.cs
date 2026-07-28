@@ -164,22 +164,31 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 isArray: false,
                 elementTypeName: string.Empty,
                 topic,
-                rateHz: 10f,
+                hz: 10f,
                 schemaName: string.Empty,
                 policy: 0,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 hostKind: "fixture",
                 rawMemberOrder,
                 conditionalSymbols: string.Empty,
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,
                 ros2CustomDtoShape: shape,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+                ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
+                namedArgumentPresence:
+                    FoxRunNamedArgumentPresence.QoS
+                    | FoxRunNamedArgumentPresence.Reliability
+                    | FoxRunNamedArgumentPresence.Durability
+                    | FoxRunNamedArgumentPresence.History
+                    | FoxRunNamedArgumentPresence.Depth,
+                qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 10);
 
         private static void WithTempPackage(Action<string, string> action)
         {

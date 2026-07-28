@@ -21,18 +21,20 @@ namespace Unity.FoxgloveSDK.Components
         public string Topic { get; }
 
         /// <summary>
-        /// Optional update rate in Hz. A positive value limits publication and
-        /// main-thread input application; the omitted sentinel resolves to
-        /// 10 Hz for output and the frozen Manager default subscription rate for input.
+        /// Optional update rate in Hz. A positive value limits fixed-rate
+        /// publication and input application. For <see cref="FoxRunPolicy.Change"/>,
+        /// it also enables periodic publish heartbeats and fresh-input duplicate
+        /// refreshes. The omitted sentinel resolves through the frozen directional
+        /// Manager profile where the selected policy requires a cadence.
         /// </summary>
-        public float RateHz { get; set; } = -1f;
+        public float Hz { get; set; } = -1f;
 
         /// <summary>Optional Foxglove schema name. If empty, publishes schemaless JSON.</summary>
         public string SchemaName { get; set; }
 
         /// <summary>
-        /// Scheduling policy: FixedRate (default), Change, ChangeOrInterval,
-        /// or Trigger. Trigger topics publish only when generated trigger
+        /// Scheduling policy: FixedRate (default), Change, or Trigger. Trigger
+        /// topics cross the Unity boundary only when generated directional
         /// methods are called explicitly by user code.
         /// </summary>
         public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
@@ -44,23 +46,44 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunFlow Mode { get; set; } = FoxRunFlow.Publish;
 
         /// <summary>
-        /// Declared wire encoding for this topic. The default is resolved by
-        /// FoxgloveManager when the topic is registered for a session.
+        /// Subscribe source. Omission inherits the frozen Subscribe Profile.
+        /// Exactly one endpoint is legal; ROS 2 Bridge subscribe is reserved.
         /// </summary>
-        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
+        public FoxRunEndpoint Source { get; set; }
 
         /// <summary>
-        /// Subscription provider for inbound data. The default is resolved by
-        /// FoxgloveManager when subscriptions are registered for a session.
+        /// Publish targets. Omission inherits the frozen Publish Profile.
+        /// An explicit non-empty flags set replaces, rather than extends, the
+        /// profile target set.
         /// </summary>
-        public FoxRunSubscriptionProvider SubscriptionProvider { get; set; } =
-            FoxRunSubscriptionProvider.Inherit;
+        public FoxRunEndpoint Targets { get; set; }
 
         /// <summary>
-        /// ROS2 QoS preset for an optional native subscription. The default is
-        /// resolved by FoxgloveManager when subscriptions are registered.
+        /// Foxglove encoding for every Foxglove direction selected by this
+        /// declaration. Omission inherits each directional profile.
         /// </summary>
-        public FoxRunRos2QosPreset Ros2Qos { get; set; } = FoxRunRos2QosPreset.Inherit;
+        public FoxRunEncoding Encoding { get; set; }
+
+        /// <summary>
+        /// Optional portable ROS 2 QoS base profile. Omission inherits each
+        /// selected ROS 2 direction's frozen profile.
+        /// </summary>
+        public FoxRunQosProfile QoS { get; set; }
+
+        /// <summary>Optional ROS 2 reliability override.</summary>
+        public FoxRunQosReliability Reliability { get; set; }
+
+        /// <summary>Optional ROS 2 durability override.</summary>
+        public FoxRunQosDurability Durability { get; set; }
+
+        /// <summary>Optional ROS 2 history override.</summary>
+        public FoxRunQosHistory History { get; set; }
+
+        /// <summary>
+        /// Optional positive Keep Last depth. It is invalid when the resolved
+        /// history is Keep All or System Default.
+        /// </summary>
+        public int Depth { get; set; }
 
         /// <summary>
         /// Optional pinned Protobuf field number for this member. Zero uses the
@@ -68,17 +91,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public int ProtobufFieldNumber { get; set; }
 
-        /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>
-        public float ChangeEpsilon { get; set; } = 0f;
+        /// <summary>Tolerance for supported numeric change detection. Negative values are treated as zero.</summary>
+        public float Tolerance { get; set; } = 0f;
 
-        /// <summary>Heartbeat interval in seconds for ChangeOrInterval. Non-positive disables.</summary>
-        public float ForceIntervalSeconds { get; set; } = 0f;
-
-        /// <summary>Optional bool field, property, or zero-argument method that must be true to publish.</summary>
-        public string When { get; set; } = string.Empty;
-
-        /// <summary>Optional bool field, property, or zero-argument method that must be false to publish.</summary>
-        public string Unless { get; set; } = string.Empty;
+        /// <summary>
+        /// Optional bool field, property, or zero-argument method that must be
+        /// true before the declaration may cross its Unity boundary.
+        /// </summary>
+        public string OnlyIf { get; set; } = string.Empty;
 
         /// <summary>Create a FoxRun attribute for the given Foxglove topic.</summary>
         public FoxRunAttribute(string topic)

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
@@ -14,6 +15,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     /// <summary>Manager-owned background sender with bounded queueing and reconnect lifecycle for ROS2 Bridge frames.</summary>
     public sealed class Ros2BridgeRuntime : IRos2BridgeSink
     {
+        internal const int MaxRuntimeDiagnosticChars = 512;
+        private const string PreparationCapacityReason =
+            "ROS2 Bridge publisher preparation capacity is exhausted.";
         private readonly string _host;
         private readonly int _port;
         private readonly int _queueCapacity;
@@ -21,7 +25,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private readonly int _sendTimeoutMs;
         private readonly Func<IRos2BridgeSink> _sinkFactory;
         private readonly object _gate = new object();
-        private readonly Queue<Ros2BridgeFrame> _queue;
+        private readonly object _lifecycleGate = new object();
+        private readonly Queue<QueuedPublish> _queue;
+        private readonly Queue<PublisherPreparationKey> _preparationQueue =
+            new Queue<PublisherPreparationKey>();
+        private readonly Dictionary<PublisherPreparationKey, PublisherPreparationEntry> _preparations =
+            new Dictionary<PublisherPreparationKey, PublisherPreparationEntry>();
         private readonly AutoResetEvent _signal = new AutoResetEvent(false);
 
         private Thread _worker;
@@ -38,6 +47,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private long _lastConnectedUnixMs;
         private long _lastDisconnectedUnixMs;
         private IRos2BridgeSink _sink;
+        private long _connectionGeneration;
+        private long _nextConnectAttemptUnixMs;
+        private bool _disposed;
 
         public Ros2BridgeRuntime(
             string host,
@@ -63,7 +75,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             _reconnectIntervalMs = reconnectIntervalMs;
             _sendTimeoutMs = sendTimeoutMs;
             _sinkFactory = sinkFactory ?? (() => new Ros2BridgeTcpClient());
-            _queue = new Queue<Ros2BridgeFrame>(queueCapacity);
+            _queue = new Queue<QueuedPublish>(queueCapacity);
         }
 
         public bool IsConnected
@@ -73,6 +85,71 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 lock (_gate)
                     return _connected;
             }
+        }
+
+        /// <summary>
+        /// Queue or query the exact sidecar publisher contract. A transport
+        /// connection alone never means that typesupport and QoS are ready.
+        /// </summary>
+        internal Ros2BridgePublisherReadiness PreparePublisher(
+            string topic,
+            string schemaName,
+            Components.FoxRunResolvedQos qos,
+            out string reason)
+        {
+            try
+            {
+                Ros2BridgePublisherPreparationCodec.ValidateContract(
+                    topic,
+                    schemaName,
+                    qos);
+            }
+            catch (ArgumentException exception)
+            {
+                reason = BoundRuntimeDiagnostic(exception.Message);
+                return Ros2BridgePublisherReadiness.Rejected;
+            }
+            var key = new PublisherPreparationKey(topic, schemaName, qos);
+            Ros2BridgePublisherReadiness readiness;
+            lock (_gate)
+            {
+                if (!_enabled || !_autoConnect)
+                {
+                    reason = "ROS2 Bridge runtime is not enabled for automatic connection.";
+                    return Ros2BridgePublisherReadiness.Rejected;
+                }
+
+                if (!_preparations.TryGetValue(key, out var entry))
+                {
+                    if (_preparations.Count >= _queueCapacity)
+                    {
+                        reason = PreparationCapacityReason;
+                        return Ros2BridgePublisherReadiness.Rejected;
+                    }
+                    if (!Ros2BridgePublisherPreparationCodec.TryValidateCompleteRequest(
+                            topic,
+                            schemaName,
+                            qos,
+                            out reason))
+                    {
+                        return Ros2BridgePublisherReadiness.Rejected;
+                    }
+                    entry = new PublisherPreparationEntry();
+                    _preparations.Add(key, entry);
+                    QueuePreparationLocked(key, entry);
+                }
+
+                readiness = entry.Readiness;
+                reason = readiness == Ros2BridgePublisherReadiness.Ready
+                    ? string.Empty
+                    : string.IsNullOrWhiteSpace(entry.Reason)
+                        ? "ROS2 Bridge publisher preparation is pending."
+                        : entry.Reason;
+            }
+
+            if (readiness == Ros2BridgePublisherReadiness.Pending)
+                _signal.Set();
+            return readiness;
         }
 
         public void Start(bool enabled, bool autoConnect)
@@ -100,18 +177,32 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         }
 
         public bool TryEnqueue(Ros2BridgeFrame frame, out string reason)
+            => TryEnqueueCore(frame, default, requiresPreparation: false, out reason);
+
+        internal bool TryEnqueuePrepared(Ros2BridgeFrame frame, out string reason)
         {
-            reason = string.Empty;
-            if (frame == null)
+            if (!TryValidateFrame(frame, out reason))
+                return false;
+            if (!frame.Qos.HasValue)
             {
-                reason = "ROS2 Bridge frame is null.";
+                reason = "Prepared ROS2 Bridge frame requires an exact QoS contract.";
                 return false;
             }
-            if (frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes)
-            {
-                reason = "ROS2 Bridge payload exceeds the maximum size.";
+            var key = new PublisherPreparationKey(
+                frame.Topic,
+                frame.SchemaName,
+                frame.Qos.Value);
+            return TryEnqueueCore(frame, key, requiresPreparation: true, out reason);
+        }
+
+        private bool TryEnqueueCore(
+            Ros2BridgeFrame frame,
+            PublisherPreparationKey preparationKey,
+            bool requiresPreparation,
+            out string reason)
+        {
+            if (!TryValidateFrame(frame, out reason))
                 return false;
-            }
 
             lock (_gate)
             {
@@ -126,16 +217,55 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     return false;
                 }
 
+                if (requiresPreparation)
+                {
+                    if (!_preparations.TryGetValue(preparationKey, out var entry))
+                    {
+                        reason = "ROS2 Bridge publisher preparation was not registered.";
+                        return false;
+                    }
+                    if (entry.Readiness != Ros2BridgePublisherReadiness.Ready
+                        || entry.ReadyConnectionGeneration != _connectionGeneration)
+                    {
+                        reason = entry.Readiness == Ros2BridgePublisherReadiness.Rejected
+                            ? entry.Reason
+                            : "ROS2 Bridge publisher preparation is pending.";
+                        return false;
+                    }
+                }
+
                 if (_queue.Count >= _queueCapacity)
                 {
                     _queue.Dequeue();
                     _droppedFrames++;
                 }
 
-                _queue.Enqueue(frame);
+                _queue.Enqueue(new QueuedPublish(
+                    frame,
+                    preparationKey,
+                    requiresPreparation,
+                    _connectionGeneration));
             }
 
             _signal.Set();
+            return true;
+        }
+
+        private static bool TryValidateFrame(
+            Ros2BridgeFrame frame,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (frame == null)
+            {
+                reason = "ROS2 Bridge frame is null.";
+                return false;
+            }
+            if (frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes)
+            {
+                reason = "ROS2 Bridge payload exceeds the maximum size.";
+                return false;
+            }
             return true;
         }
 
@@ -159,6 +289,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Stop()
         {
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    return;
+                StopCore();
+            }
+        }
+
+        private void StopCore()
+        {
             Thread worker;
             IRos2BridgeSink sinkToClose;
             lock (_gate)
@@ -171,6 +311,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     _droppedFrames += _queue.Count;
                     _queue.Clear();
                 }
+                _preparationQueue.Clear();
+                _preparations.Clear();
                 worker = _worker;
                 sinkToClose = _sink;
                 _sink = null;
@@ -179,7 +321,15 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 _lastDisconnectedUnixMs = NowUnixMs();
             }
 
-            CloseSink(sinkToClose);
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                CloseSink(sinkToClose);
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
             _signal.Set();
             var joinTimeoutMs = Math.Max(1000, _sendTimeoutMs + 250);
             if (worker != null && worker.IsAlive && !worker.Join(joinTimeoutMs))
@@ -197,6 +347,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 if (_worker == worker && (worker == null || !worker.IsAlive))
                     _worker = null;
             }
+            fatal?.Throw();
         }
 
         /// <summary>
@@ -241,8 +392,20 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Dispose()
         {
-            Stop();
-            _signal.Dispose();
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    return;
+                try
+                {
+                    StopCore();
+                }
+                finally
+                {
+                    _disposed = true;
+                    _signal.Dispose();
+                }
+            }
         }
 
         private void WorkerLoop(long generation)
@@ -260,8 +423,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                         continue;
                     }
 
-                    var frame = DequeueFrame();
-                    if (frame == null)
+                    if (ProcessNextPreparation(generation))
+                        continue;
+
+                    if (!TryDequeueFrame(out var queued))
                     {
                         _signal.WaitOne(50);
                         continue;
@@ -283,7 +448,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
                     try
                     {
-                        sink.Send(frame, _sendTimeoutMs);
+                        sink.Send(queued.Frame, _sendTimeoutMs);
                         lock (_gate)
                         {
                             if (generation != _workerGeneration)
@@ -292,7 +457,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                             _lastError = string.Empty;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (IsRecoverableRuntimeException(ex))
                     {
                         MarkFailure(ex.Message, disconnect: true);
                     }
@@ -301,7 +466,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (IsRecoverableRuntimeException(ex))
                 {
                     if (ShouldStop(generation))
                         return;
@@ -316,6 +481,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 if (_stopRequested || !_enabled || generation != _workerGeneration)
                     return false;
+                if (_nextConnectAttemptUnixMs > NowUnixMs())
+                    return false;
                 if (_connected && _sink != null && _sink.IsConnected)
                     return true;
                 _connecting = true;
@@ -327,6 +494,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 sink = _sinkFactory();
                 sink.Connect(_host, _port, _sendTimeoutMs);
                 IRos2BridgeSink previousSink = null;
+                var canInstall = false;
                 lock (_gate)
                 {
                     if (_stopRequested || !_enabled || generation != _workerGeneration)
@@ -338,38 +506,271 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     else
                     {
                         previousSink = _sink;
+                        _sink = null;
+                        _connected = false;
+                        canInstall = true;
+                    }
+                }
+
+                if (!canInstall)
+                {
+                    var rejectedSink = sink;
+                    sink = null;
+                    CloseSink(rejectedSink);
+                    return false;
+                }
+
+                // Retire the old connection before publishing the replacement
+                // into shared state. A fatal close therefore cannot leave a
+                // new sink reported as connected while the worker exits.
+                var retiredSink = previousSink;
+                previousSink = null;
+                CloseSink(retiredSink);
+
+                lock (_gate)
+                {
+                    if (_stopRequested || !_enabled || generation != _workerGeneration)
+                    {
+                        _connected = false;
+                        _connecting = false;
+                        _lastDisconnectedUnixMs = NowUnixMs();
+                    }
+                    else
+                    {
                         _sink = sink;
                         sink = null;
                         _connected = true;
                         _connecting = false;
                         _lastConnectedUnixMs = NowUnixMs();
                         _lastError = string.Empty;
+                        _connectionGeneration++;
+                        _nextConnectAttemptUnixMs = 0;
+                        QueueAllPreparationsLocked();
                     }
                 }
 
-                CloseSink(previousSink);
                 if (sink == null)
                     return true;
 
-                CloseSink(sink);
+                var supersededSink = sink;
+                sink = null;
+                CloseSink(supersededSink);
                 return false;
             }
             catch (Exception ex)
             {
-                CloseSink(sink);
-                MarkFailure(ex.Message, disconnect: true, countFrameFailure: false);
+                ExceptionDispatchInfo fatal = IsRecoverableRuntimeException(ex)
+                    ? null
+                    : ExceptionDispatchInfo.Capture(ex);
+                try
+                {
+                    var failedCandidate = sink;
+                    sink = null;
+                    CloseSink(failedCandidate);
+                }
+                catch (Exception cleanupException)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(cleanupException);
+                }
+
+                IRos2BridgeSink installedSink;
+                lock (_gate)
+                {
+                    _connected = false;
+                    _connecting = false;
+                    _lastDisconnectedUnixMs = NowUnixMs();
+                    _nextConnectAttemptUnixMs =
+                        NowUnixMs() + _reconnectIntervalMs;
+                    _lastError = BoundRuntimeDiagnostic(ex.Message);
+                    InvalidatePreparationsLocked();
+                    installedSink = _sink;
+                    _sink = null;
+                }
+                try
+                {
+                    CloseSink(installedSink);
+                }
+                catch (Exception cleanupException)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(cleanupException);
+                }
+
+                fatal?.Throw();
                 return false;
             }
         }
 
-        private Ros2BridgeFrame DequeueFrame()
+        private bool TryDequeueFrame(out QueuedPublish queued)
         {
             lock (_gate)
             {
-                if (_queue.Count == 0)
-                    return null;
-                return _queue.Dequeue();
+                var candidates = _queue.Count;
+                while (candidates-- > 0)
+                {
+                    var candidate = _queue.Dequeue();
+                    if (!candidate.RequiresPreparation)
+                    {
+                        queued = candidate;
+                        return true;
+                    }
+
+                    if (!_preparations.TryGetValue(
+                            candidate.PreparationKey,
+                            out var entry))
+                    {
+                        DropRejectedPreparedFrameLocked(
+                            "ROS2 Bridge publisher preparation no longer exists.");
+                        continue;
+                    }
+                    if (entry.Readiness == Ros2BridgePublisherReadiness.Rejected)
+                    {
+                        DropRejectedPreparedFrameLocked(entry.Reason);
+                        continue;
+                    }
+                    if (entry.Readiness == Ros2BridgePublisherReadiness.Ready
+                        && entry.ReadyConnectionGeneration == _connectionGeneration
+                        && _connectionGeneration >= candidate.EnqueueConnectionGeneration)
+                    {
+                        queued = candidate;
+                        return true;
+                    }
+
+                    _queue.Enqueue(candidate);
+                }
+
+                queued = default;
+                return false;
             }
+        }
+
+        private void DropRejectedPreparedFrameLocked(string reason)
+        {
+            _droppedFrames++;
+            _failedFrames++;
+            _lastError = BoundRuntimeDiagnostic(
+                string.IsNullOrWhiteSpace(reason)
+                    ? "ROS2 Bridge publisher preparation was rejected."
+                    : reason);
+        }
+
+        private bool ProcessNextPreparation(long workerGeneration)
+        {
+            PublisherPreparationKey key;
+            PublisherPreparationEntry entry;
+            IRos2BridgeSink sink;
+            long connectionGeneration;
+            string requestId;
+            lock (_gate)
+            {
+                if (_stopRequested
+                    || !_enabled
+                    || workerGeneration != _workerGeneration
+                    || !_connected
+                    || _sink == null
+                    || _preparationQueue.Count == 0)
+                {
+                    return false;
+                }
+
+                key = _preparationQueue.Dequeue();
+                if (!_preparations.TryGetValue(key, out entry))
+                    return true;
+                entry.Queued = false;
+                if (entry.Readiness != Ros2BridgePublisherReadiness.Pending)
+                    return true;
+                sink = _sink;
+                connectionGeneration = _connectionGeneration;
+                requestId = "u2r2-prepare-" + Guid.NewGuid().ToString("N");
+                entry.RequestId = requestId;
+                entry.Reason = "ROS2 Bridge publisher preparation is pending.";
+            }
+
+            if (!(sink is IRos2BridgePublisherPreparationTransport transport))
+            {
+                lock (_gate)
+                {
+                    if (_preparations.TryGetValue(key, out var current)
+                        && ReferenceEquals(current, entry)
+                        && connectionGeneration == _connectionGeneration)
+                    {
+                        current.Readiness = Ros2BridgePublisherReadiness.Rejected;
+                        current.Reason =
+                            "Connected ROS2 Bridge transport does not support per-publisher preparation.";
+                    }
+                }
+                return true;
+            }
+
+            try
+            {
+                var request = Ros2BridgePublisherPreparationCodec.WriteRequest(
+                    requestId,
+                    key.Topic,
+                    key.SchemaName,
+                    key.Qos);
+                var responseFrame = transport.ExchangePublisherPreparation(
+                    request,
+                    _sendTimeoutMs);
+                var response = Ros2BridgePublisherPreparationCodec.ParseResponse(
+                    responseFrame,
+                    requestId);
+                lock (_gate)
+                {
+                    if (!_preparations.TryGetValue(key, out var current)
+                        || !ReferenceEquals(current, entry)
+                        || connectionGeneration != _connectionGeneration
+                        || !ReferenceEquals(sink, _sink)
+                        || !string.Equals(current.RequestId, requestId, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+
+                    if (string.Equals(response.Status, "ok", StringComparison.Ordinal))
+                    {
+                        current.Readiness = Ros2BridgePublisherReadiness.Ready;
+                        current.ReadyConnectionGeneration = connectionGeneration;
+                        current.Reason = string.Empty;
+                    }
+                    else
+                    {
+                        current.Readiness = Ros2BridgePublisherReadiness.Rejected;
+                        current.ReadyConnectionGeneration = 0;
+                        current.Reason = string.IsNullOrWhiteSpace(response.Message)
+                            ? "ROS2 Bridge publisher was rejected: " + response.ErrorCode
+                            : response.Message;
+                    }
+                }
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException
+                || exception is FormatException
+                || exception is OverflowException)
+            {
+                lock (_gate)
+                {
+                    if (_preparations.TryGetValue(key, out var current)
+                        && ReferenceEquals(current, entry)
+                        && connectionGeneration == _connectionGeneration
+                        && ReferenceEquals(sink, _sink))
+                    {
+                        current.Readiness = Ros2BridgePublisherReadiness.Rejected;
+                        current.ReadyConnectionGeneration = 0;
+                        current.Reason = BoundRuntimeDiagnostic(
+                            "ROS2 Bridge publisher preparation protocol was rejected: "
+                            + exception.Message);
+                    }
+                }
+            }
+            catch (Exception exception) when (
+                IsRecoverableRuntimeException(exception))
+            {
+                MarkFailure(
+                    "ROS2 Bridge publisher preparation failed: " + exception.Message,
+                    disconnect: true,
+                    countFrameFailure: false);
+            }
+
+            return true;
         }
 
         private bool ShouldStop(long generation)
@@ -385,7 +786,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 if (countFrameFailure)
                     _failedFrames++;
-                _lastError = string.IsNullOrWhiteSpace(message) ? "ROS2 Bridge send failed." : message;
+                _lastError = BoundRuntimeDiagnostic(
+                    string.IsNullOrWhiteSpace(message)
+                        ? "ROS2 Bridge send failed."
+                        : message);
                 _connecting = false;
                 if (disconnect)
                 {
@@ -393,34 +797,52 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     _lastDisconnectedUnixMs = NowUnixMs();
                     sink = _sink;
                     _sink = null;
+                    _nextConnectAttemptUnixMs = NowUnixMs() + _reconnectIntervalMs;
+                    InvalidatePreparationsLocked();
                 }
             }
 
             CloseSink(sink);
         }
 
-        private static void CloseSink(IRos2BridgeSink sink)
+        internal static void CloseSink(IRos2BridgeSink sink)
         {
             if (sink == null)
                 return;
 
+            ExceptionDispatchInfo fatal = null;
             try
             {
                 sink.Disconnect();
             }
-            catch
+            catch (Exception exception) when (
+                IsRecoverableRuntimeException(exception))
             {
                 // Shutdown is best-effort; state has already been updated.
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
             }
             try
             {
                 sink.Dispose();
             }
-            catch
+            catch (Exception exception) when (
+                IsRecoverableRuntimeException(exception))
             {
                 // Shutdown is best-effort; state has already been updated.
             }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+
+            fatal?.Throw();
         }
+
+        private static bool IsRecoverableRuntimeException(Exception exception)
+            => Components.FoxRunExceptionPolicy.IsRecoverable(exception);
 
         private static long NowUnixMs()
             => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -431,6 +853,119 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
                 return "127.0.0.1";
             return IPAddress.TryParse(host, out var address) ? address.ToString() : host.Trim();
+        }
+
+        private void QueueAllPreparationsLocked()
+        {
+            _preparationQueue.Clear();
+            foreach (var pair in _preparations)
+            {
+                pair.Value.Readiness = Ros2BridgePublisherReadiness.Pending;
+                pair.Value.Reason = "ROS2 Bridge publisher preparation is pending.";
+                pair.Value.RequestId = string.Empty;
+                pair.Value.ReadyConnectionGeneration = 0;
+                pair.Value.Queued = false;
+                QueuePreparationLocked(pair.Key, pair.Value);
+            }
+        }
+
+        private void InvalidatePreparationsLocked()
+        {
+            _preparationQueue.Clear();
+            foreach (var entry in _preparations.Values)
+            {
+                entry.Readiness = Ros2BridgePublisherReadiness.Pending;
+                entry.Reason = "ROS2 Bridge connection changed; publisher preparation is pending.";
+                entry.RequestId = string.Empty;
+                entry.ReadyConnectionGeneration = 0;
+                entry.Queued = false;
+            }
+        }
+
+        private void QueuePreparationLocked(
+            PublisherPreparationKey key,
+            PublisherPreparationEntry entry)
+        {
+            if (entry.Queued)
+                return;
+            entry.Queued = true;
+            _preparationQueue.Enqueue(key);
+        }
+
+        private sealed class PublisherPreparationEntry
+        {
+            internal Ros2BridgePublisherReadiness Readiness =
+                Ros2BridgePublisherReadiness.Pending;
+            internal string RequestId = string.Empty;
+            internal string Reason = "ROS2 Bridge publisher preparation is pending.";
+            internal long ReadyConnectionGeneration;
+            internal bool Queued;
+        }
+
+        private readonly struct QueuedPublish
+        {
+            internal QueuedPublish(
+                Ros2BridgeFrame frame,
+                PublisherPreparationKey preparationKey,
+                bool requiresPreparation,
+                long enqueueConnectionGeneration)
+            {
+                Frame = frame;
+                PreparationKey = preparationKey;
+                RequiresPreparation = requiresPreparation;
+                EnqueueConnectionGeneration = enqueueConnectionGeneration;
+            }
+
+            internal Ros2BridgeFrame Frame { get; }
+            internal PublisherPreparationKey PreparationKey { get; }
+            internal bool RequiresPreparation { get; }
+            internal long EnqueueConnectionGeneration { get; }
+        }
+
+        private readonly struct PublisherPreparationKey :
+            IEquatable<PublisherPreparationKey>
+        {
+            internal PublisherPreparationKey(
+                string topic,
+                string schemaName,
+                Components.FoxRunResolvedQos qos)
+            {
+                Topic = topic;
+                SchemaName = schemaName;
+                Qos = qos;
+            }
+
+            internal string Topic { get; }
+            internal string SchemaName { get; }
+            internal Components.FoxRunResolvedQos Qos { get; }
+
+            public bool Equals(PublisherPreparationKey other)
+                => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
+                   && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
+                   && Qos.Equals(other.Qos);
+
+            public override bool Equals(object obj)
+                => obj is PublisherPreparationKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = StringComparer.Ordinal.GetHashCode(Topic);
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(SchemaName);
+                    return (hash * 397) ^ Qos.GetHashCode();
+                }
+            }
+        }
+
+        private static string BoundRuntimeDiagnostic(string value)
+        {
+            value = string.IsNullOrWhiteSpace(value)
+                ? "ROS2 Bridge runtime failure."
+                : value;
+            return value.Length <= MaxRuntimeDiagnosticChars
+                ? value
+                : value.Substring(0, MaxRuntimeDiagnosticChars);
         }
     }
 }

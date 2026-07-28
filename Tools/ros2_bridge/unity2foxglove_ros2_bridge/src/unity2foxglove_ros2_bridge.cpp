@@ -4,17 +4,29 @@
 // Module: Tools/ros2_bridge
 // Purpose: Experimental localhost TCP to ROS 2 GenericPublisher sidecar.
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -37,8 +49,184 @@ constexpr uint32_t kMaxPayloadBytes = 64U * 1024U * 1024U;
 constexpr uint8_t kCdrLittleEndianHeader[4] = {0x00, 0x01, 0x00, 0x00};
 constexpr auto kReadStallTimeout = std::chrono::seconds(5);
 constexpr int kHealthProtocolVersion = 1;
+constexpr int kPublisherPreparationProtocolVersion = 1;
 constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
 constexpr const char * kSidecarVersion = "0.1.0";
+
+#ifdef _WIN32
+using SocketHandle = SOCKET;
+using SocketLength = int;
+constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+#else
+using SocketHandle = int;
+using SocketLength = socklen_t;
+constexpr SocketHandle kInvalidSocket = -1;
+#endif
+
+int last_socket_error()
+{
+#ifdef _WIN32
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
+
+bool socket_error_is_interrupted(int error)
+{
+#ifdef _WIN32
+  return error == WSAEINTR;
+#else
+  return error == EINTR;
+#endif
+}
+
+bool socket_error_is_retryable_timeout(int error)
+{
+#ifdef _WIN32
+  return error == WSAEWOULDBLOCK || error == WSAETIMEDOUT;
+#else
+  return error == EAGAIN || error == EWOULDBLOCK;
+#endif
+}
+
+std::string socket_error_text(int error)
+{
+#ifdef _WIN32
+  return "WinSock error " + std::to_string(error);
+#else
+  return std::strerror(error);
+#endif
+}
+
+void close_socket(SocketHandle socket)
+{
+  if (socket == kInvalidSocket) {
+    return;
+  }
+#ifdef _WIN32
+  ::closesocket(socket);
+#else
+  ::close(socket);
+#endif
+}
+
+int socket_select_width(SocketHandle socket)
+{
+#ifdef _WIN32
+  (void)socket;
+  return 0;
+#else
+  return socket + 1;
+#endif
+}
+
+int set_socket_option(
+  SocketHandle socket,
+  int level,
+  int option,
+  const void * value,
+  SocketLength length)
+{
+#ifdef _WIN32
+  return ::setsockopt(
+    socket,
+    level,
+    option,
+    reinterpret_cast<const char *>(value),
+    length);
+#else
+  return ::setsockopt(socket, level, option, value, length);
+#endif
+}
+
+std::ptrdiff_t receive_socket(SocketHandle socket, uint8_t * data, size_t size)
+{
+  const auto bounded = static_cast<int>(
+    std::min(size, static_cast<size_t>(std::numeric_limits<int>::max())));
+#ifdef _WIN32
+  return static_cast<std::ptrdiff_t>(
+    ::recv(socket, reinterpret_cast<char *>(data), bounded, 0));
+#else
+  return static_cast<std::ptrdiff_t>(::recv(socket, data, static_cast<size_t>(bounded), 0));
+#endif
+}
+
+std::ptrdiff_t send_socket(SocketHandle socket, const uint8_t * data, size_t size)
+{
+  const auto bounded = static_cast<int>(
+    std::min(size, static_cast<size_t>(std::numeric_limits<int>::max())));
+#ifdef _WIN32
+  return static_cast<std::ptrdiff_t>(
+    ::send(socket, reinterpret_cast<const char *>(data), bounded, 0));
+#else
+  return static_cast<std::ptrdiff_t>(::send(socket, data, static_cast<size_t>(bounded), 0));
+#endif
+}
+
+void configure_client_timeouts(SocketHandle socket)
+{
+#ifdef _WIN32
+  const DWORD timeout_ms = 250;
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_RCVTIMEO,
+    &timeout_ms,
+    static_cast<SocketLength>(sizeof(timeout_ms)));
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_SNDTIMEO,
+    &timeout_ms,
+    static_cast<SocketLength>(sizeof(timeout_ms)));
+#else
+  timeval timeout {};
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 250000;
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_RCVTIMEO,
+    &timeout,
+    static_cast<SocketLength>(sizeof(timeout)));
+  set_socket_option(
+    socket,
+    SOL_SOCKET,
+    SO_SNDTIMEO,
+    &timeout,
+    static_cast<SocketLength>(sizeof(timeout)));
+#endif
+}
+
+#ifdef _WIN32
+class WinsockRuntime
+{
+public:
+  WinsockRuntime()
+  {
+    WSADATA data {};
+    const auto result = WSAStartup(MAKEWORD(2, 2), &data);
+    if (result != 0) {
+      throw std::runtime_error("WSAStartup failed: " + socket_error_text(result));
+    }
+    initialized_ = true;
+  }
+
+  ~WinsockRuntime()
+  {
+    if (initialized_) {
+      WSACleanup();
+    }
+  }
+
+  WinsockRuntime(const WinsockRuntime &) = delete;
+  WinsockRuntime & operator=(const WinsockRuntime &) = delete;
+
+private:
+  bool initialized_ = false;
+};
+#endif
 
 enum class PayloadFormat
 {
@@ -59,8 +247,10 @@ struct BridgeFrame
   std::string schema_name;
   std::string encoding;
   std::string profile_name = "Reliable Default";
+  std::string profile = "default";
   std::string reliability = "reliable";
   std::string durability = "volatile";
+  std::string history = "keep_last";
   int depth = 10;
   uint64_t log_time_ns = 0;
   uint64_t sequence = 0;
@@ -82,7 +272,7 @@ struct PayloadView
 class ScopedFd
 {
 public:
-  explicit ScopedFd(int fd = -1) : fd_(fd) {}
+  explicit ScopedFd(SocketHandle fd = kInvalidSocket) : fd_(fd) {}
   ~ScopedFd()
   {
     reset();
@@ -91,26 +281,33 @@ public:
   ScopedFd(const ScopedFd &) = delete;
   ScopedFd & operator=(const ScopedFd &) = delete;
 
-  int get() const
+  SocketHandle get() const
   {
     return fd_;
   }
 
   bool valid() const
   {
-    return fd_ >= 0;
+    return fd_ != kInvalidSocket;
   }
 
-  void reset(int fd = -1)
+  SocketHandle release()
   {
-    if (fd_ >= 0) {
-      ::close(fd_);
+    const auto released = fd_;
+    fd_ = kInvalidSocket;
+    return released;
+  }
+
+  void reset(SocketHandle fd = kInvalidSocket)
+  {
+    if (valid()) {
+      close_socket(fd_);
     }
     fd_ = fd;
   }
 
 private:
-  int fd_;
+  SocketHandle fd_;
 };
 
 class ClientClosedException : public std::runtime_error
@@ -127,7 +324,7 @@ class ClientReadTimeoutException : public std::runtime_error
 public:
   explicit ClientReadTimeoutException(size_t expected_bytes)
   : std::runtime_error(
-      "bridge client stalled while sending " + std::to_string(expected_bytes) + " bytes")
+      "bridge client stalled while receiving " + std::to_string(expected_bytes) + " bytes")
   {
   }
 };
@@ -160,10 +357,84 @@ void write_u32_le(std::vector<uint8_t> & bytes, uint32_t value)
   bytes.push_back(static_cast<uint8_t>((value >> 24) & 0xff));
 }
 
-bool has_prefix(const std::string & value, const std::string & prefix)
+bool is_lower_ascii_letter(char value)
 {
-  return value.size() >= prefix.size() &&
-    std::equal(prefix.begin(), prefix.end(), value.begin());
+  return value >= 'a' && value <= 'z';
+}
+
+bool is_upper_ascii_letter(char value)
+{
+  return value >= 'A' && value <= 'Z';
+}
+
+bool is_ascii_digit(char value)
+{
+  return value >= '0' && value <= '9';
+}
+
+bool is_valid_ros2_package_name(const std::string & value)
+{
+  if (
+    value.size() < 2 || value.size() > 255 ||
+    !is_lower_ascii_letter(value.front()) || value.back() == '_')
+  {
+    return false;
+  }
+
+  auto previous_was_separator = false;
+  for (auto character : value) {
+    if (
+      !is_lower_ascii_letter(character) &&
+      !is_ascii_digit(character) &&
+      character != '_')
+    {
+      return false;
+    }
+    if (character == '_' && previous_was_separator) {
+      return false;
+    }
+    previous_was_separator = character == '_';
+  }
+  return true;
+}
+
+bool is_valid_ros2_message_name(const std::string & value)
+{
+  if (value.empty() || value.size() > 255 || !is_upper_ascii_letter(value.front())) {
+    return false;
+  }
+
+  return std::all_of(
+    value.begin() + 1,
+    value.end(),
+    [](char character) {
+      return
+        is_lower_ascii_letter(character) ||
+        is_upper_ascii_letter(character) ||
+        is_ascii_digit(character);
+    });
+}
+
+bool is_valid_ros2_message_type(const std::string & value)
+{
+  const auto package_separator = value.find('/');
+  if (package_separator == std::string::npos) {
+    return false;
+  }
+
+  constexpr const char * kMessageNamespace = "/msg/";
+  constexpr size_t kMessageNamespaceLength = 5;
+  if (
+    value.compare(package_separator, kMessageNamespaceLength, kMessageNamespace) != 0)
+  {
+    return false;
+  }
+
+  const auto package_name = value.substr(0, package_separator);
+  const auto message_name = value.substr(package_separator + kMessageNamespaceLength);
+  return
+    is_valid_ros2_package_name(package_name) &&
+    is_valid_ros2_message_name(message_name);
 }
 
 bool contains_newline(const std::string & value)
@@ -191,6 +462,9 @@ bool is_valid_ros2_topic_name(const std::string & value)
     if (ch != '_' && std::isalnum(ch) == 0) {
       return false;
     }
+    if (!token_has_characters && std::isdigit(ch) != 0) {
+      return false;
+    }
     token_has_characters = true;
   }
 
@@ -208,26 +482,199 @@ std::string qos_signature(const BridgeFrame & frame)
 
   std::string signature;
   append_field(signature, frame.schema_name);
+  append_field(signature, frame.profile);
   append_field(signature, frame.reliability);
   append_field(signature, frame.durability);
+  append_field(signature, frame.history);
   append_field(signature, std::to_string(frame.depth));
   return signature;
 }
 
-rclcpp::QoS make_qos(const BridgeFrame & frame)
+enum class PublisherContractDisposition
 {
-  auto qos = rclcpp::QoS(rclcpp::KeepLast(static_cast<size_t>(frame.depth)));
-  if (frame.reliability == "best_effort") {
-    qos.best_effort();
-  } else {
-    qos.reliable();
+  CreatePublisher,
+  ReusePublisher
+};
+
+class PublisherContractConflictException : public std::runtime_error
+{
+public:
+  explicit PublisherContractConflictException(const std::string & message)
+  : std::runtime_error(message)
+  {
+  }
+};
+
+class PublisherContractRegistry
+{
+public:
+  PublisherContractDisposition register_or_validate(const BridgeFrame & frame)
+  {
+    const auto signature = qos_signature(frame);
+    const auto registered = topic_signatures_.find(frame.topic);
+    if (registered != topic_signatures_.end()) {
+      if (registered->second != signature) {
+        throw PublisherContractConflictException(
+                "reject frame: topic '" + frame.topic +
+                "' reused with different schemaName or QoS: was [" +
+                registered->second + "] got [" + signature + "]");
+      }
+      return PublisherContractDisposition::ReusePublisher;
+    }
+
+    topic_signatures_.emplace(frame.topic, signature);
+    return PublisherContractDisposition::CreatePublisher;
   }
 
-  if (frame.durability == "transient_local") {
-    qos.transient_local();
-  } else {
-    qos.durability_volatile();
+  void rollback_create(const std::string & topic)
+  {
+    const auto registered = topic_signatures_.find(topic);
+    if (registered != topic_signatures_.end()) {
+      topic_signatures_.erase(registered);
+    }
   }
+
+private:
+  std::unordered_map<std::string, std::string> topic_signatures_;
+};
+
+int parse_qos_depth(const nlohmann::json & value)
+{
+  if (value.is_number_unsigned()) {
+    const auto depth = value.get<uint64_t>();
+    if (depth > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+      throw std::runtime_error("qos.depth is outside the supported integer range");
+    }
+    return static_cast<int>(depth);
+  }
+
+  if (value.is_number_integer()) {
+    const auto depth = value.get<int64_t>();
+    if (
+      depth < static_cast<int64_t>(std::numeric_limits<int>::min()) ||
+      depth > static_cast<int64_t>(std::numeric_limits<int>::max()))
+    {
+      throw std::runtime_error("qos.depth is outside the supported integer range");
+    }
+    return static_cast<int>(depth);
+  }
+
+  throw std::runtime_error("qos.depth must be an integer");
+}
+
+void validate_qos_contract(const BridgeFrame & frame)
+{
+  if (
+    frame.profile != "default" &&
+    frame.profile != "sensor_data" &&
+    frame.profile != "system_default")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.profile must be default, sensor_data, or system_default");
+  }
+  if (
+    frame.reliability != "system_default" &&
+    frame.reliability != "reliable" &&
+    frame.reliability != "best_effort")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.reliability must be system_default, reliable, or best_effort");
+  }
+  if (
+    frame.durability != "system_default" &&
+    frame.durability != "volatile" &&
+    frame.durability != "transient_local")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.durability must be system_default, volatile, or transient_local");
+  }
+  if (
+    frame.history != "system_default" &&
+    frame.history != "keep_last" &&
+    frame.history != "keep_all")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.history must be system_default, keep_last, or keep_all");
+  }
+  if (frame.history == "keep_last") {
+    if (frame.depth < 1) {
+      throw std::runtime_error("reject frame: qos.depth must be >= 1 for keep_last");
+    }
+  } else if (frame.depth != 0) {
+    throw std::runtime_error(
+            "reject frame: qos.depth must be 0 unless qos.history is keep_last");
+  }
+}
+
+rmw_qos_profile_t qos_profile_for(const BridgeFrame & frame)
+{
+  if (frame.profile == "default") {
+    return rmw_qos_profile_default;
+  }
+  if (frame.profile == "sensor_data") {
+    return rmw_qos_profile_sensor_data;
+  }
+  if (frame.profile == "system_default") {
+    return rmw_qos_profile_system_default;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.profile");
+}
+
+rmw_qos_reliability_policy_t qos_reliability_for(const BridgeFrame & frame)
+{
+  if (frame.reliability == "system_default") {
+    return RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
+  }
+  if (frame.reliability == "reliable") {
+    return RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  }
+  if (frame.reliability == "best_effort") {
+    return RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.reliability");
+}
+
+rmw_qos_durability_policy_t qos_durability_for(const BridgeFrame & frame)
+{
+  if (frame.durability == "system_default") {
+    return RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT;
+  }
+  if (frame.durability == "volatile") {
+    return RMW_QOS_POLICY_DURABILITY_VOLATILE;
+  }
+  if (frame.durability == "transient_local") {
+    return RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.durability");
+}
+
+rmw_qos_history_policy_t qos_history_for(const BridgeFrame & frame)
+{
+  if (frame.history == "system_default") {
+    return RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT;
+  }
+  if (frame.history == "keep_last") {
+    return RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+  }
+  if (frame.history == "keep_all") {
+    return RMW_QOS_POLICY_HISTORY_KEEP_ALL;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.history");
+}
+
+rclcpp::QoS make_qos(const BridgeFrame & frame)
+{
+  validate_qos_contract(frame);
+
+  const auto base_profile = qos_profile_for(frame);
+  auto qos = rclcpp::QoS(
+    rclcpp::QoSInitialization::from_rmw(base_profile),
+    base_profile);
+  auto & rmw_profile = qos.get_rmw_qos_profile();
+  rmw_profile.reliability = qos_reliability_for(frame);
+  rmw_profile.durability = qos_durability_for(frame);
+  rmw_profile.history = qos_history_for(frame);
+  rmw_profile.depth = static_cast<size_t>(frame.depth);
   return qos;
 }
 
@@ -292,42 +739,71 @@ Options parse_args(const std::vector<std::string> & args)
   return options;
 }
 
-int create_listen_socket(const std::string & host, int port, const rclcpp::Logger & logger)
+SocketHandle create_listen_socket(
+  const std::string & host,
+  int port,
+  const rclcpp::Logger & logger)
 {
   const auto resolved = resolve_loopback_ipv4(host);
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    throw std::runtime_error("socket() failed");
+  const SocketHandle fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd == kInvalidSocket) {
+    throw std::runtime_error(
+            "socket() failed: " + socket_error_text(last_socket_error()));
   }
 
   int opt = 1;
-  if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) != 0) {
+#ifdef _WIN32
+  if (set_socket_option(
+      fd,
+      SOL_SOCKET,
+      SO_EXCLUSIVEADDRUSE,
+      &opt,
+      static_cast<SocketLength>(sizeof(opt))) != 0)
+  {
+    const auto error = last_socket_error();
+    RCLCPP_WARN(
+      logger,
+      "[unity2foxglove_ros2_bridge] SO_EXCLUSIVEADDRUSE failed: %s",
+      socket_error_text(error).c_str());
+  }
+#else
+  if (set_socket_option(
+      fd,
+      SOL_SOCKET,
+      SO_REUSEADDR,
+      &opt,
+      static_cast<SocketLength>(sizeof(opt))) != 0)
+  {
+    const auto error = last_socket_error();
     RCLCPP_WARN(
       logger,
       "[unity2foxglove_ros2_bridge] SO_REUSEADDR failed, rapid restart may fail: %s",
-      std::strerror(errno));
+      socket_error_text(error).c_str());
   }
+#endif
 
   sockaddr_in address {};
   address.sin_family = AF_INET;
   address.sin_port = htons(static_cast<uint16_t>(port));
   if (inet_pton(AF_INET, resolved.c_str(), &address.sin_addr) != 1) {
-    ::close(fd);
+    close_socket(fd);
     throw std::runtime_error("failed to parse loopback bind address");
   }
 
   if (::bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
-    ::close(fd);
-    throw std::runtime_error("bind() failed");
+    const auto error = last_socket_error();
+    close_socket(fd);
+    throw std::runtime_error("bind() failed: " + socket_error_text(error));
   }
   if (::listen(fd, 4) != 0) {
-    ::close(fd);
-    throw std::runtime_error("listen() failed");
+    const auto error = last_socket_error();
+    close_socket(fd);
+    throw std::runtime_error("listen() failed: " + socket_error_text(error));
   }
   return fd;
 }
 
-int accept_with_timeout(int listen_fd)
+SocketHandle accept_with_timeout(SocketHandle listen_fd)
 {
   fd_set read_fds;
   FD_ZERO(&read_fds);
@@ -335,47 +811,61 @@ int accept_with_timeout(int listen_fd)
   timeval timeout {};
   timeout.tv_sec = 0;
   timeout.tv_usec = 250000;
-  const int ready = ::select(listen_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+  const int ready = ::select(
+    socket_select_width(listen_fd),
+    &read_fds,
+    nullptr,
+    nullptr,
+    &timeout);
   if (ready < 0) {
-    if (errno == EINTR) {
-      return -1;
+    const auto error = last_socket_error();
+    if (socket_error_is_interrupted(error)) {
+      return kInvalidSocket;
     }
-    throw std::runtime_error("select() failed");
+    throw std::runtime_error("select() failed: " + socket_error_text(error));
   }
   if (ready == 0) {
-    return -1;
+    return kInvalidSocket;
   }
 
   sockaddr_in client_address {};
-  socklen_t length = sizeof(client_address);
-  const int client_fd = ::accept(listen_fd, reinterpret_cast<sockaddr *>(&client_address), &length);
-  if (client_fd < 0) {
-    if (errno == EINTR) {
-      return -1;
+  SocketLength length = static_cast<SocketLength>(sizeof(client_address));
+  const SocketHandle client_fd = ::accept(
+    listen_fd,
+    reinterpret_cast<sockaddr *>(&client_address),
+    &length);
+  if (client_fd == kInvalidSocket) {
+    const auto error = last_socket_error();
+    if (socket_error_is_interrupted(error)) {
+      return kInvalidSocket;
     }
-    throw std::runtime_error("accept() failed");
+    throw std::runtime_error("accept() failed: " + socket_error_text(error));
   }
 
-  timeval receive_timeout {};
-  receive_timeout.tv_sec = 0;
-  receive_timeout.tv_usec = 250000;
-  ::setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof(receive_timeout));
-  timeval send_timeout = receive_timeout;
-  ::setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout));
+  configure_client_timeouts(client_fd);
   return client_fd;
 }
 
+using RosContextOk = std::function<bool()>;
+
 bool read_exact(
-  int fd,
+  SocketHandle fd,
   std::vector<uint8_t> & buffer,
   size_t count,
-  const rclcpp::Node::SharedPtr & node)
+  const rclcpp::Node::SharedPtr & node,
+  const RosContextOk & context_ok)
 {
+  if (!context_ok) {
+    throw std::invalid_argument("ROS context predicate is required");
+  }
   buffer.assign(count, 0);
   size_t offset = 0;
   auto stalled_since = std::chrono::steady_clock::time_point {};
   while (offset < count) {
-    const ssize_t received = ::recv(fd, buffer.data() + offset, count - offset, 0);
+    if (!context_ok()) {
+      throw ClientClosedException();
+    }
+    const auto received = receive_socket(fd, buffer.data() + offset, count - offset);
     if (received == 0) {
       if (offset == 0) {
         return false;
@@ -383,10 +873,19 @@ bool read_exact(
       throw ClientClosedException();
     }
     if (received < 0) {
-      if (errno == EINTR) {
+      const auto error = last_socket_error();
+      if (socket_error_is_interrupted(error)) {
         continue;
       }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (socket_error_is_retryable_timeout(error)) {
+        // A receive timeout before the first byte is an ordinary idle session.
+        // Only a partially received frame is subject to the bounded stall clock.
+        if (offset == 0) {
+          if (node) {
+            rclcpp::spin_some(node);
+          }
+          continue;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (stalled_since == std::chrono::steady_clock::time_point {}) {
           stalled_since = now;
@@ -394,10 +893,12 @@ bool read_exact(
         if (now - stalled_since >= kReadStallTimeout) {
           throw ClientReadTimeoutException(count);
         }
-        rclcpp::spin_some(node);
+        if (node) {
+          rclcpp::spin_some(node);
+        }
         continue;
       }
-      throw std::runtime_error("socket read failed");
+      throw std::runtime_error("socket read failed: " + socket_error_text(error));
     }
     offset += static_cast<size_t>(received);
     stalled_since = std::chrono::steady_clock::time_point {};
@@ -405,45 +906,74 @@ bool read_exact(
   return true;
 }
 
-void write_all(int fd, const std::vector<uint8_t> & bytes)
+bool read_exact(
+  SocketHandle fd,
+  std::vector<uint8_t> & buffer,
+  size_t count,
+  const rclcpp::Node::SharedPtr & node)
+{
+  return read_exact(
+    fd,
+    buffer,
+    count,
+    node,
+    [&node]()
+    {
+      if (!node) {
+        return rclcpp::ok();
+      }
+      return rclcpp::ok(node->get_node_base_interface()->get_context());
+    });
+}
+
+void write_all(SocketHandle fd, const std::vector<uint8_t> & bytes)
 {
   size_t offset = 0;
   while (offset < bytes.size()) {
-    const ssize_t sent = ::send(fd, bytes.data() + offset, bytes.size() - offset, 0);
+    const auto sent = send_socket(fd, bytes.data() + offset, bytes.size() - offset);
     if (sent <= 0) {
-      if (errno == EINTR) {
+      const auto error = last_socket_error();
+      if (socket_error_is_interrupted(error)) {
         continue;
       }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (socket_error_is_retryable_timeout(error)) {
         fd_set write_fds;
         FD_ZERO(&write_fds);
         FD_SET(fd, &write_fds);
         timeval timeout {};
         timeout.tv_sec = 0;
         timeout.tv_usec = 250000;
-        const int ready = ::select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
+        const int ready = ::select(
+          socket_select_width(fd),
+          nullptr,
+          &write_fds,
+          nullptr,
+          &timeout);
         if (ready > 0) {
           continue;
         }
-        if (ready < 0 && errno == EINTR) {
+        if (ready < 0 && socket_error_is_interrupted(last_socket_error())) {
           continue;
         }
         throw std::runtime_error("socket write timed out");
       }
-      throw std::runtime_error("socket write failed");
+      throw std::runtime_error("socket write failed: " + socket_error_text(error));
     }
     offset += static_cast<size_t>(sent);
   }
 }
 
-void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<uint8_t> & payload)
+void write_u2r2_frame(
+  SocketHandle fd,
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload)
 {
   const auto header_text = header.dump();
   if (header_text.empty() || header_text.size() > kMaxHeaderBytes) {
-    throw std::runtime_error("health response JSON header length is invalid");
+    throw std::runtime_error("U2R2 response JSON header length is invalid");
   }
   if (payload.size() > kMaxPayloadBytes) {
-    throw std::runtime_error("health response payload length is invalid");
+    throw std::runtime_error("U2R2 response payload length is invalid");
   }
 
   std::vector<uint8_t> frame;
@@ -461,7 +991,7 @@ void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<u
   write_all(fd, frame);
 }
 
-RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
+RawFrame read_raw_frame(SocketHandle fd, const rclcpp::Node::SharedPtr & node)
 {
   std::vector<uint8_t> fixed_header;
   if (!read_exact(fd, fixed_header, 16, node)) {
@@ -525,11 +1055,19 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
     if (raw.header.contains("profileName") && !raw.header["profileName"].is_null()) {
       frame.profile_name = raw.header.at("profileName").get<std::string>();
     }
+    // Maintained pre-184 Ros2BridgePublisher callers do not carry a QoS
+    // object. Preserve their established portable Default contract while
+    // requiring every field whenever an explicit QoS object is present.
     if (raw.header.contains("qos") && !raw.header["qos"].is_null()) {
       const auto & qos = raw.header.at("qos");
+      if (!qos.is_object()) {
+        throw std::runtime_error("qos must be an object");
+      }
+      frame.profile = qos.at("profile").get<std::string>();
       frame.reliability = qos.at("reliability").get<std::string>();
       frame.durability = qos.at("durability").get<std::string>();
-      frame.depth = qos.at("depth").get<int>();
+      frame.history = qos.at("history").get<std::string>();
+      frame.depth = parse_qos_depth(qos.at("depth"));
     }
   } catch (const std::exception & ex) {
     throw std::runtime_error(std::string("reject frame: missing or invalid JSON field: ") + ex.what());
@@ -545,25 +1083,85 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
   if (!is_valid_ros2_topic_name(frame.topic)) {
     throw std::runtime_error("reject frame: topic contains invalid ROS 2 characters");
   }
-  if (!has_prefix(frame.schema_name, "foxglove_msgs/msg/")) {
-    throw std::runtime_error("reject frame: schemaName must start with foxglove_msgs/msg/");
+  if (!is_valid_ros2_message_type(frame.schema_name)) {
+    throw std::runtime_error(
+            "reject frame: schemaName must use canonical ROS 2 package/msg/Type grammar");
   }
   if (frame.encoding != "cdr") {
     throw std::runtime_error("reject frame: encoding must be cdr");
   }
-  if (frame.reliability != "reliable" && frame.reliability != "best_effort") {
-    throw std::runtime_error("reject frame: qos.reliability must be reliable or best_effort");
-  }
-  if (frame.durability != "volatile" && frame.durability != "transient_local") {
-    throw std::runtime_error("reject frame: qos.durability must be volatile or transient_local");
-  }
-  if (frame.depth < 1) {
-    throw std::runtime_error("reject frame: qos.depth must be >= 1");
-  }
+  validate_qos_contract(frame);
   return frame;
 }
 
-void write_health_pong_ok(int fd, const std::string & request_id)
+struct PublisherPreparationRequest
+{
+  std::string request_id;
+  int protocol_version = 0;
+  BridgeFrame frame;
+};
+
+PublisherPreparationRequest parse_prepare_publisher_frame(const RawFrame & raw)
+{
+  if (!raw.payload.empty()) {
+    throw std::runtime_error("reject frame: prepare_publisher payload must be empty");
+  }
+  if (
+    !raw.header.contains("qos") ||
+    raw.header["qos"].is_null())
+  {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher requires an explicit complete qos object");
+  }
+
+  PublisherPreparationRequest request;
+  nlohmann::json protocol_version;
+  try {
+    const auto op = raw.header.at("op").get<std::string>();
+    if (op != "prepare_publisher") {
+      throw std::runtime_error("op must be prepare_publisher");
+    }
+    request.request_id = raw.header.at("requestId").get<std::string>();
+    protocol_version = raw.header.at("protocolVersion");
+  } catch (const std::exception & ex) {
+    throw std::runtime_error(
+            std::string("reject frame: missing or invalid prepare_publisher field: ") + ex.what());
+  }
+  if (request.request_id.empty() || contains_newline(request.request_id)) {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher requestId must be non-empty and contain no newline");
+  }
+  if (
+    !protocol_version.is_number_integer() &&
+    !protocol_version.is_number_unsigned())
+  {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher protocolVersion must be a JSON integer");
+  }
+  const auto supported_protocol =
+    protocol_version.is_number_unsigned()
+    ? protocol_version.get<uint64_t>() ==
+    static_cast<uint64_t>(kPublisherPreparationProtocolVersion)
+    : protocol_version.get<int64_t>() ==
+    static_cast<int64_t>(kPublisherPreparationProtocolVersion);
+  if (!supported_protocol) {
+    throw std::runtime_error("reject frame: unsupported prepare_publisher protocol version");
+  }
+  request.protocol_version = kPublisherPreparationProtocolVersion;
+
+  // Reuse the maintained publish contract parser so topic/type/encoding and
+  // every QoS axis have exactly one validation path. The synthetic payload
+  // and counters exist only to satisfy the legacy publish envelope fields.
+  auto publish_contract = raw;
+  publish_contract.header["logTimeNs"] = 0;
+  publish_contract.header["sequence"] = 0;
+  publish_contract.payload = {0};
+  request.frame = parse_publish_frame(publish_contract);
+  request.frame.payload.clear();
+  return request;
+}
+
+void write_health_pong_ok(SocketHandle fd, const std::string & request_id)
 {
   nlohmann::json response = {
     {"op", "health_pong"},
@@ -577,7 +1175,7 @@ void write_health_pong_ok(int fd, const std::string & request_id)
 }
 
 void write_health_pong_error(
-  int fd,
+  SocketHandle fd,
   const std::string & request_id,
   const std::string & error_code,
   const std::string & message)
@@ -593,16 +1191,39 @@ void write_health_pong_error(
   write_u2r2_frame(fd, response, {});
 }
 
-void handle_health_ping(int fd, const RawFrame & raw)
+void handle_health_ping(SocketHandle fd, const RawFrame & raw)
 {
-  const auto request_id = raw.header.value("requestId", std::string());
+  const auto request_id_it = raw.header.find("requestId");
+  if (request_id_it == raw.header.end() || !request_id_it->is_string()) {
+    write_health_pong_error(
+      fd,
+      std::string(),
+      "malformed_request",
+      "health_ping requires a string requestId");
+    return;
+  }
+  const auto request_id = request_id_it->get<std::string>();
   if (request_id.empty()) {
-    write_health_pong_error(fd, request_id, "malformed_request", "health_ping requires requestId");
+    write_health_pong_error(
+      fd,
+      request_id,
+      "malformed_request",
+      "health_ping requires a non-empty requestId");
     return;
   }
 
-  const auto protocol_version = raw.header.value("protocolVersion", -1);
-  if (protocol_version != kHealthProtocolVersion) {
+  const auto protocol_it = raw.header.find("protocolVersion");
+  if (protocol_it == raw.header.end() ||
+    (!protocol_it->is_number_integer() && !protocol_it->is_number_unsigned()))
+  {
+    write_health_pong_error(
+      fd,
+      request_id,
+      "malformed_request",
+      "health_ping requires an integer protocolVersion");
+    return;
+  }
+  if (*protocol_it != kHealthProtocolVersion) {
     write_health_pong_error(fd, request_id, "unsupported_protocol", "Unsupported health protocol version");
     return;
   }
@@ -631,44 +1252,102 @@ PayloadView payload_for_publish(
   return PayloadView{scratch.data(), scratch.size()};
 }
 
+using SerializedPublishCallback =
+  std::function<void(const rclcpp::SerializedMessage &)>;
+using GenericPublisherFactory =
+  std::function<SerializedPublishCallback(
+      const std::string &,
+      const std::string &,
+      const rclcpp::QoS &)>;
+
 class BridgeNode
 {
 public:
   explicit BridgeNode(rclcpp::Node::SharedPtr node, PayloadFormat payload_format)
   : node_(std::move(node)), payload_format_(payload_format)
   {
+    if (!node_) {
+      throw std::invalid_argument("bridge node is required");
+    }
+
+    const auto publisher_node = node_;
+    publisher_factory_ =
+      [publisher_node](
+      const std::string & topic,
+      const std::string & message_type,
+      const rclcpp::QoS & qos)
+      {
+        // create_generic_publisher performs the rosidl_typesupport_cpp lookup
+        // for the exact canonical message type before returning a publisher.
+        auto publisher =
+          publisher_node->create_generic_publisher(topic, message_type, qos);
+        return [publisher = std::move(publisher)](
+          const rclcpp::SerializedMessage & message)
+          {
+            publisher->publish(message);
+          };
+      };
+  }
+
+  BridgeNode(PayloadFormat payload_format, GenericPublisherFactory publisher_factory)
+  : payload_format_(payload_format), publisher_factory_(std::move(publisher_factory))
+  {
+    if (!publisher_factory_) {
+      throw std::invalid_argument("generic publisher factory is required");
+    }
+  }
+
+  PublisherContractDisposition prepare(const BridgeFrame & frame)
+  {
+    const auto disposition = publisher_contracts_.register_or_validate(frame);
+    auto publisher_it = publishers_.find(frame.topic);
+    if (disposition == PublisherContractDisposition::CreatePublisher) {
+      try {
+        auto qos = make_qos(frame);
+        auto publisher = publisher_factory_(frame.topic, frame.schema_name, qos);
+        if (!publisher) {
+          throw std::runtime_error(
+                  "generic publisher factory returned no publisher for type '" +
+                  frame.schema_name + "'");
+        }
+        const auto inserted = publishers_.emplace(frame.topic, std::move(publisher));
+        if (!inserted.second) {
+          throw std::runtime_error(
+                  "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
+        }
+        publisher_it = inserted.first;
+      } catch (...) {
+        publisher_contracts_.rollback_create(frame.topic);
+        throw;
+      }
+      if (node_) {
+        RCLCPP_INFO(
+          node_->get_logger(),
+          "[unity2foxglove_ros2_bridge] publisher %s %s "
+          "profile=%s reliability=%s durability=%s history=%s depth=%d",
+          frame.topic.c_str(),
+          frame.schema_name.c_str(),
+          frame.profile.c_str(),
+          frame.reliability.c_str(),
+          frame.durability.c_str(),
+          frame.history.c_str(),
+          frame.depth);
+      }
+    } else if (publisher_it == publishers_.end()) {
+      throw std::runtime_error(
+              "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
+    }
+
+    return disposition;
   }
 
   void publish(const BridgeFrame & frame)
   {
-    const auto signature = qos_signature(frame);
-    auto topic_signature = topic_signature_.emplace(frame.topic, signature);
-    if (!topic_signature.second && topic_signature.first->second != signature) {
-      throw std::runtime_error(
-              "reject frame: topic '" + frame.topic +
-              "' reused with different schemaName or QoS: was [" +
-              topic_signature.first->second + "] got [" + signature + "]");
-    }
-
-    auto topic_key = topic_keys_.find(frame.topic);
-    if (topic_key == topic_keys_.end()) {
-      topic_key = topic_keys_.emplace(frame.topic, frame.topic + "\n" + signature).first;
-    }
-    const auto & key = topic_key->second;
-
-    auto publisher_it = publishers_.find(key);
+    prepare(frame);
+    const auto publisher_it = publishers_.find(frame.topic);
     if (publisher_it == publishers_.end()) {
-      auto qos = make_qos(frame);
-      auto publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
-      publisher_it = publishers_.emplace(key, publisher).first;
-      RCLCPP_INFO(
-        node_->get_logger(),
-        "[unity2foxglove_ros2_bridge] publisher %s %s reliability=%s durability=%s depth=%d",
-        frame.topic.c_str(),
-        frame.schema_name.c_str(),
-        frame.reliability.c_str(),
-        frame.durability.c_str(),
-        frame.depth);
+      throw std::runtime_error(
+              "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
     }
 
     const auto payload = payload_for_publish(frame, payload_format_, payload_scratch_);
@@ -679,10 +1358,10 @@ public:
     }
     std::memcpy(ros_message.buffer, payload.data, payload.size);
     ros_message.buffer_length = payload.size;
-    publisher_it->second->publish(serialized);
+    publisher_it->second(serialized);
 
-    const auto count = ++counts_[key];
-    if (count == 1 || count % 20 == 0) {
+    const auto count = ++counts_[frame.topic];
+    if (node_ && (count == 1 || count % 20 == 0)) {
       RCLCPP_INFO(
         node_->get_logger(),
         "[unity2foxglove_ros2_bridge] published %s count=%zu",
@@ -694,16 +1373,228 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
-  std::unordered_map<std::string, std::string> topic_signature_;
-  std::unordered_map<std::string, std::string> topic_keys_;
-  std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
+  GenericPublisherFactory publisher_factory_;
+  PublisherContractRegistry publisher_contracts_;
+  std::unordered_map<std::string, SerializedPublishCallback> publishers_;
   std::unordered_map<std::string, size_t> counts_;
   std::vector<uint8_t> payload_scratch_;
 };
 
-void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::SharedPtr & node)
+using NodeFactory = std::function<rclcpp::Node::SharedPtr()>;
+
+class DeferredBridgeSession
+{
+public:
+  DeferredBridgeSession(PayloadFormat payload_format, NodeFactory node_factory)
+  : DeferredBridgeSession(payload_format, rclcpp::Node::SharedPtr {}, std::move(node_factory))
+  {
+  }
+
+  DeferredBridgeSession(
+    PayloadFormat payload_format,
+    rclcpp::Node::SharedPtr process_node,
+    NodeFactory node_factory)
+  : payload_format_(payload_format),
+    node_factory_(std::move(node_factory)),
+    node_(std::move(process_node))
+  {
+    if (!node_factory_) {
+      throw std::invalid_argument("deferred bridge node factory is required");
+    }
+  }
+
+  BridgeNode & require_bridge()
+  {
+    if (!bridge_) {
+      if (!node_) {
+        node_ = node_factory_();
+      }
+      if (!node_) {
+        throw std::runtime_error("deferred bridge node factory returned no node");
+      }
+      bridge_ = std::make_unique<BridgeNode>(node_, payload_format_);
+    }
+    return *bridge_;
+  }
+
+  const rclcpp::Node::SharedPtr & node() const
+  {
+    return node_;
+  }
+
+  rclcpp::Logger logger() const
+  {
+    return node_ ? node_->get_logger() : rclcpp::get_logger(kSidecarName);
+  }
+
+  void spin_some() const
+  {
+    if (node_) {
+      rclcpp::spin_some(node_);
+    }
+  }
+
+private:
+  PayloadFormat payload_format_;
+  NodeFactory node_factory_;
+  rclcpp::Node::SharedPtr node_;
+  std::unique_ptr<BridgeNode> bridge_;
+};
+
+nlohmann::json publisher_ready_ok(const std::string & request_id)
+{
+  return {
+    {"op", "publisher_ready"},
+    {"requestId", request_id},
+    {"protocolVersion", kPublisherPreparationProtocolVersion},
+    {"status", "ok"}
+  };
+}
+
+nlohmann::json publisher_ready_error(
+  const std::string & request_id,
+  const std::string & error_code,
+  const std::string & message)
+{
+  return {
+    {"op", "publisher_ready"},
+    {"requestId", request_id},
+    {"protocolVersion", kPublisherPreparationProtocolVersion},
+    {"status", "error"},
+    {"errorCode", error_code},
+    {"message", message}
+  };
+}
+
+nlohmann::json handle_prepare_publisher_frame(const RawFrame & raw, BridgeNode & bridge)
+{
+  std::string request_id;
+  if (
+    raw.header.is_object() &&
+    raw.header.contains("requestId") &&
+    raw.header["requestId"].is_string())
+  {
+    request_id = raw.header["requestId"].get<std::string>();
+  }
+
+  PublisherPreparationRequest request;
+  try {
+    request = parse_prepare_publisher_frame(raw);
+  } catch (const std::exception & ex) {
+    return publisher_ready_error(request_id, "invalid_contract", ex.what());
+  }
+
+  try {
+    bridge.prepare(request.frame);
+    return publisher_ready_ok(request.request_id);
+  } catch (const PublisherContractConflictException & ex) {
+    return publisher_ready_error(
+      request.request_id,
+      "publisher_contract_conflict",
+      ex.what());
+  } catch (const std::exception & ex) {
+    return publisher_ready_error(
+      request.request_id,
+      "publisher_unavailable",
+      ex.what());
+  }
+}
+
+std::string publisher_request_id(const RawFrame & raw)
+{
+  if (
+    raw.header.is_object() &&
+    raw.header.contains("requestId") &&
+    raw.header["requestId"].is_string())
+  {
+    return raw.header["requestId"].get<std::string>();
+  }
+  return {};
+}
+
+void dispatch_deferred_frame(
+  SocketHandle client_fd,
+  const RawFrame & raw,
+  DeferredBridgeSession & session)
+{
+  if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
+    throw std::runtime_error("reject frame: missing or invalid op");
+  }
+
+  const auto op = raw.header.at("op").get<std::string>();
+  if (op == "health_ping") {
+    handle_health_ping(client_fd, raw);
+    return;
+  }
+
+  if (op == "prepare_publisher") {
+    nlohmann::json response;
+    try {
+      response = handle_prepare_publisher_frame(raw, session.require_bridge());
+    } catch (const std::exception & ex) {
+      response = publisher_ready_error(
+        publisher_request_id(raw),
+        "publisher_unavailable",
+        ex.what());
+    }
+    write_u2r2_frame(client_fd, response, {});
+    return;
+  }
+
+  if (op == "publish") {
+    const auto frame = parse_publish_frame(raw);
+    try {
+      session.require_bridge().publish(frame);
+    } catch (const std::exception & ex) {
+      RCLCPP_WARN(
+        session.logger(),
+        "[unity2foxglove_ros2_bridge] dropped publish frame for topic '%s': %s",
+        frame.topic.c_str(),
+        ex.what());
+    }
+    return;
+  }
+
+  throw std::runtime_error("reject frame: unsupported op '" + op + "'");
+}
+
+void process_deferred_client(
+  SocketHandle client_fd,
+  DeferredBridgeSession & session)
 {
   while (rclcpp::ok()) {
+    try {
+      const auto raw = read_raw_frame(client_fd, session.node());
+      dispatch_deferred_frame(client_fd, raw, session);
+      session.spin_some();
+    } catch (const ClientClosedException &) {
+      break;
+    } catch (const ClientReadTimeoutException & ex) {
+      RCLCPP_WARN(session.logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (const std::exception & ex) {
+      RCLCPP_WARN(session.logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (...) {
+      RCLCPP_WARN(
+        session.logger(),
+        "[unity2foxglove_ros2_bridge] client session failed with an unknown exception");
+      break;
+    }
+  }
+}
+
+void process_client(
+  SocketHandle client_fd,
+  BridgeNode & bridge,
+  const rclcpp::Node::SharedPtr & node)
+{
+  if (!node) {
+    throw std::invalid_argument("bridge session node is required");
+  }
+
+  const auto context = node->get_node_base_interface()->get_context();
+  while (rclcpp::ok(context)) {
     try {
       const auto raw = read_raw_frame(client_fd, node);
       if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
@@ -712,9 +1603,21 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
       const auto op = raw.header.at("op").get<std::string>();
       if (op == "health_ping") {
         handle_health_ping(client_fd, raw);
+      } else if (op == "prepare_publisher") {
+        const auto response = handle_prepare_publisher_frame(raw, bridge);
+        write_u2r2_frame(client_fd, response, {});
       } else if (op == "publish") {
         const auto frame = parse_publish_frame(raw);
-        bridge.publish(frame);
+        try {
+          bridge.publish(frame);
+        } catch (const std::exception & ex) {
+          RCLCPP_WARN(
+            node->get_logger(),
+            "[unity2foxglove_ros2_bridge] dropped publish frame for topic '%s': %s",
+            frame.topic.c_str(),
+            ex.what());
+          continue;
+        }
       } else {
         throw std::runtime_error("reject frame: unsupported op '" + op + "'");
       }
@@ -724,44 +1627,94 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
     } catch (const ClientReadTimeoutException & ex) {
       RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
       break;
-    } catch (const std::runtime_error & ex) {
+    } catch (const std::exception & ex) {
       RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (...) {
+      RCLCPP_WARN(
+        node->get_logger(),
+        "[unity2foxglove_ros2_bridge] client session failed with an unknown exception");
       break;
     }
   }
+}
+
+void process_client(
+  SocketHandle client_fd,
+  const rclcpp::Node::SharedPtr & node,
+  PayloadFormat payload_format)
+{
+  BridgeNode bridge(node, payload_format);
+  process_client(client_fd, bridge, node);
 }
 }  // namespace
 
 #ifndef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
 int main(int argc, char ** argv)
 {
+#ifdef _WIN32
+  std::unique_ptr<WinsockRuntime> winsock;
+  try {
+    winsock = std::make_unique<WinsockRuntime>();
+  } catch (const std::exception & ex) {
+    std::fprintf(
+      stderr,
+      "[unity2foxglove_ros2_bridge] %s\n",
+      ex.what());
+    return 1;
+  }
+#endif
+
   auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
-  auto node = std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");
+  auto logger = rclcpp::get_logger(kSidecarName);
+  rclcpp::Node::SharedPtr node;
 
   try {
     const auto options = parse_args(non_ros_args);
-    ScopedFd listen_fd(create_listen_socket(options.host, options.port, node->get_logger()));
+    ScopedFd listen_fd(create_listen_socket(options.host, options.port, logger));
 
     RCLCPP_INFO(
-      node->get_logger(),
+      logger,
       "[unity2foxglove_ros2_bridge] listening on %s:%d",
       options.host.c_str(),
       options.port);
 
-    BridgeNode bridge(node, options.payload_format);
     while (rclcpp::ok()) {
       ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
       if (!client_fd.valid()) {
-        rclcpp::spin_some(node);
+        if (node) {
+          rclcpp::spin_some(node);
+        }
         continue;
       }
 
-      RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
-      process_client(client_fd.get(), bridge, node);
-      RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
+      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client connected");
+      try {
+        DeferredBridgeSession session(
+          options.payload_format,
+          node,
+          [&node]()
+          {
+            if (!node) {
+              node = std::make_shared<rclcpp::Node>(kSidecarName);
+            }
+            return node;
+          });
+        process_deferred_client(client_fd.get(), session);
+      } catch (const std::exception & ex) {
+        RCLCPP_WARN(
+          logger,
+          "[unity2foxglove_ros2_bridge] client session escaped: %s",
+          ex.what());
+      } catch (...) {
+        RCLCPP_WARN(
+          logger,
+          "[unity2foxglove_ros2_bridge] client session escaped with an unknown exception");
+      }
+      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client disconnected");
     }
   } catch (const std::exception & ex) {
-    RCLCPP_ERROR(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+    RCLCPP_ERROR(logger, "[unity2foxglove_ros2_bridge] %s", ex.what());
     rclcpp::shutdown();
     return 1;
   }

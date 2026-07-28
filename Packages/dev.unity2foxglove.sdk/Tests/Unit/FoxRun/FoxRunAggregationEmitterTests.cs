@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -43,7 +44,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "Demo.VehicleTelemetry",
                         0,
                         0f,
-                        0f,
                         "UnitTest",
                         0,
                         "",
@@ -62,7 +62,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         10f,
                         "Demo.VehicleTelemetry",
                         0,
-                        0f,
                         0f,
                         "UnitTest",
                         1,
@@ -93,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "VehicleTelemetry", "_speed", "field", "System.Single",
                         true, false, "", "/phase155/vehicle", 10f, "Demo.VehicleTelemetry",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: true, jsonFieldName: "speed")
                 });
 
@@ -120,14 +119,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "VehicleTelemetry", "_speed", "field", "System.Single",
                         true, false, "", "/phase173/bus", 10f, "Demo.VehicleTelemetry",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: true, jsonFieldName: "speed")
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("var __payload = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
-            Assert.Contains("bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __payload,", source, StringComparison.Ordinal);
+            Assert.Contains("var __payload_0 = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __payload_0,", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -141,7 +140,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "ScalarTelemetry", "_status", "field", "System.String",
                         true, false, "", "/phase155/status", 10f, "foxglove.Log",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: false, jsonFieldName: "message")
                 });
 
@@ -165,8 +164,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "ArrayTelemetry", "_samples", "field", "System.Single[]",
                         true, false, "", "/phase155/array", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
-                        isAggregateMember: false, jsonFieldName: "samples")
+                        0, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false,
+                        jsonFieldName: "samples",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding)
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
@@ -188,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "StringTelemetry", "_text", "field", "System.String",
                         true, false, "", "/phase173/string", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: false, jsonFieldName: "text")
                 });
 
@@ -208,19 +209,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "UnityTelemetry", "_vector", "field", "UnityEngine.Vector4",
                         true, false, "", "/phase173/unity", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
-                        isAggregateMember: false, jsonFieldName: "vector"),
+                        0, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false,
+                        jsonFieldName: "vector",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding),
                     new FoxRunGenerationMember(
                         "Demo", "UnityTelemetry", "_color", "field", "UnityEngine.Color32",
                         true, false, "", "/phase173/unity", 10f, "",
-                        0, 0f, 0f, "UnitTest", 1, "",
-                        isAggregateMember: false, jsonFieldName: "color")
+                        0, 0f, "UnitTest", 1, "",
+                        isAggregateMember: false,
+                        jsonFieldName: "color",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding)
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("this._vector.w", source, StringComparison.Ordinal);
-            Assert.Contains("((float)this._color.r / 255f)", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_1.w", source, StringComparison.Ordinal);
+            Assert.Contains("((float)__foxRunCapture_0_0.r / 255f)", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -234,7 +239,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "ArrayTelemetry", "_samples", "field", "System.Single[]",
                         true, true, "System.Single", "/phase155/array", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: false, jsonFieldName: "samples")
                 });
 
@@ -255,15 +260,15 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunGenerationMember(
                         "Demo", "NullableTelemetry", "_optionalCount", "field", "System.Nullable<System.Int32>",
                         false, false, "", "/phase163/nullable", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         isAggregateMember: false, jsonFieldName: "optionalCount")
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("this._optionalCount == null", source, StringComparison.Ordinal);
-            Assert.Contains("this._optionalCount.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0 == null", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, __foxRunCapture_0_0 == null ? null : __foxRunCapture_0_0", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -305,7 +310,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                                     "FixedRate",
                                     10f,
                                     0f,
-                                    0f,
                                     new[]
                                     {
                                         new FoxRunSchemaFieldInfo("payload", "_payload", "field", "object", false, false, aggregate: true)
@@ -320,7 +324,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                                     "policy",
                                     "FixedRate",
                                     10f,
-                                    0f,
                                     0f,
                                     new[]
                                     {
@@ -382,6 +385,60 @@ namespace Demo
             Assert.DoesNotContain("mgr.PublishJson(\"/phase154/vehicle\"", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("new Dictionary<string, object>", generated, StringComparison.Ordinal);
         }
+
+        [Fact]
+        public void AggregateSchedulingUsesTheSameShortVocabulary()
+        {
+            var output = CreateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase184/aggregate"", Policy = Change, Hz = 10f,
+        Tolerance = 0.01f, OnlyIf = nameof(Enabled))]
+    public partial class VehicleTelemetry
+    {
+        private bool Enabled => true;
+
+        [FoxRunField(""speed"")]
+        private float _speed;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void GeneratedAggregatePublisherObserverSideChannelCompilesWithoutCaptureSequenceState()
+        {
+            var output = RunGeneratorAndUpdateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase184/aggregate-observer"")]
+    public partial class AggregatePublisher
+    {
+        [FoxRunField(""value"")]
+        private float _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+#endif
 
         [Fact]
         public void RoslynGeneratorRejectsFoxRunFieldOutsideMessage()
@@ -513,7 +570,6 @@ namespace Demo
                                     "FixedRate",
                                     10f,
                                     0f,
-                                    0f,
                                     new[]
                                     {
                                         new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float", false, false, aggregate: true),
@@ -575,7 +631,6 @@ namespace Demo
                                     "FixedRate",
                                     10f,
                                     0f,
-                                    0f,
                                     new[]
                                     {
                                         new FoxRunSchemaFieldInfo("message", "_message", "field", "string", false, false)
@@ -596,11 +651,14 @@ namespace Demo
         }
 
         private static readonly MetadataReference[] BasicReferences =
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Unity.FoxgloveSDK.Components.FoxRunMessageAttribute).Assembly.Location)
-        };
+            ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
+            .Split(Path.PathSeparator)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Append(typeof(UnityEngine.Vector3).Assembly.Location)
+            .Append(typeof(FoxRunMessageAttribute).Assembly.Location)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => MetadataReference.CreateFromFile(path))
+            .ToArray();
 
         private static GeneratorDriverRunResult RunGenerator(string source)
         {
@@ -613,6 +671,24 @@ namespace Demo
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
             driver = driver.RunGenerators(compilation);
             return driver.GetRunResult();
+        }
+
+        private static CSharpCompilation CreateCompilation(string source)
+            => CSharpCompilation.Create(
+                "Phase184AggregateGeneratorProbe",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                BasicReferences,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        private static Compilation RunGeneratorAndUpdateCompilation(string source)
+        {
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var outputCompilation,
+                out _);
+            return outputCompilation;
         }
 
         private static void AssertGeneratorDiagnostic(string source, string diagnosticId)

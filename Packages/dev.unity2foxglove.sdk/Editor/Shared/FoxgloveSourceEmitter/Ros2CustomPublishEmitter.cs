@@ -22,7 +22,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string ns,
             string className,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> mapperMembers)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -46,7 +47,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    {");
             sb.AppendLine(pad + "        if (registrar == null) throw new global::System.ArgumentNullException(nameof(registrar));");
             for (var index = 0; index < members.Count; index++)
-                EmitRegistration(sb, pad, declaringType, members[index], index);
+            {
+                var member = members[index];
+                EmitRegistration(
+                    sb,
+                    pad,
+                    declaringType,
+                    member,
+                    Ros2CustomDtoMapperEmitter.MapperIndexOf(mapperMembers, member));
+            }
             sb.AppendLine(pad + "    }");
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
@@ -69,9 +78,9 @@ namespace Unity.FoxgloveSDK.Editor
                 declaringType,
                 member.MemberName,
                 member.Topic,
-                member.SubscriptionProvider,
+                member.Source,
                 canonicalEnvelope,
-                member.Ros2Qos);
+                member);
             sb.AppendLine(pad + "        registrar.Register<" + dto + ", " + envelope + ">(");
             sb.AppendLine(pad + "            new " + Ros2CustomDtoMapperEmitter.NativeNamespace + "FoxRunRos2CustomPublisherContract(");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(id) + "\",");
@@ -85,7 +94,22 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                " + Ros2CustomDtoMapperEmitter.TypesupportMetadataType + ".InterfaceRevision,");
             sb.AppendLine(pad + "                " + Ros2CustomDtoMapperEmitter.TypesupportMetadataType + ".InterfaceDigest,");
             sb.AppendLine(pad + "                " + Ros2CustomDtoMapperEmitter.TypesupportMetadataType + ".BaseRuntimePackageId,");
-            sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + "),");
+            sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
+            Ros2InputDispatchEmitter.AppendQosArguments(
+                sb,
+                pad + "                ",
+                member,
+                trailingComma: true);
+            sb.AppendLine(pad + "                declaredSource: " + SourceLiteral(member.Source) + ",");
+            sb.AppendLine(
+                pad + "                hasExplicitSource: "
+                    + BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Source))
+                    + ",");
+            sb.AppendLine(pad + "                declaredTargets: " + TargetsLiteral(member.Targets) + ",");
+            sb.AppendLine(
+                pad + "                hasExplicitTargets: "
+                    + BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Targets)));
+            sb.AppendLine(pad + "            ),");
             sb.AppendLine(pad + "            static (source, origin, sequence, nowNs, budget) => __FoxRunRos2CustomMapDtoToEnvelope_" + index + "(source, origin, sequence, nowNs, budget),");
             sb.AppendLine(pad + "            static owned => __FoxRunRos2CustomDisposeEnvelope_" + index + "(owned));");
         }
@@ -102,5 +126,72 @@ namespace Unity.FoxgloveSDK.Editor
         private static string ModeLiteral(int mode)
             => "(global::Unity.FoxgloveSDK.Components.FoxRunFlow)"
                + mode.ToString(CultureInfo.InvariantCulture);
+
+        private static string SourceLiteral(string source)
+        {
+            if (string.Equals(
+                    source,
+                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                    StringComparison.Ordinal))
+            {
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove";
+            }
+            if (string.Equals(
+                    source,
+                    FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    StringComparison.Ordinal))
+            {
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native";
+            }
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0";
+        }
+
+        private static string TargetsLiteral(string targets)
+        {
+            if (string.Equals(
+                    targets,
+                    FoxRunGenerationDescriptorConstants.InheritTargets,
+                    StringComparison.Ordinal))
+            {
+                return "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0";
+            }
+
+            var literals = new List<string>();
+            foreach (var target in (targets ?? string.Empty).Split(','))
+            {
+                if (string.Equals(
+                        target,
+                        FoxRunGenerationDescriptorConstants.FoxgloveTarget,
+                        StringComparison.Ordinal))
+                {
+                    literals.Add("global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove");
+                }
+                else if (string.Equals(
+                             target,
+                             FoxRunGenerationDescriptorConstants.Ros2NativeTarget,
+                             StringComparison.Ordinal))
+                {
+                    literals.Add("global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native");
+                }
+                else if (string.Equals(
+                             target,
+                             FoxRunGenerationDescriptorConstants.Ros2BridgeTarget,
+                             StringComparison.Ordinal))
+                {
+                    literals.Add("global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Bridge");
+                }
+            }
+
+            return literals.Count == 0
+                ? "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0"
+                : string.Join(" | ", literals);
+        }
+
+        private static bool HasExplicit(
+            FoxgloveSourceEmitter.TopicMember member,
+            FoxRunNamedArgumentPresence argument)
+            => (member.NamedArgumentPresence & argument) == argument;
+
+        private static string BoolLiteral(bool value) => value ? "true" : "false";
     }
 }

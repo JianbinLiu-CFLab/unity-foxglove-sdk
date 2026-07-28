@@ -78,7 +78,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _router.Flush(
                     Time.realtimeSinceStartupAsDouble,
-                    _inheritedSubscribeRateHz);
+                    _inheritedSubscribeRateHz,
+                    WarnOnce);
             }
         }
 
@@ -100,12 +101,14 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding -= OnClientMessage;
+                _manager.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
             }
             _manager = manager;
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding += OnClientMessage;
+                _manager.FoxRunPublishSessionChanged += OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
             }
             ApplyManagerPolicy();
@@ -121,7 +124,18 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
+            _router.DefaultPublishTargets = _manager.ActiveFoxRunPublishTargets;
             ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);
+        }
+
+        private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
+        {
+            _router.DefaultPublishTargets = policy != null && policy.SessionActive
+                ? policy.DefaultTargets
+                : _manager != null
+                    ? _manager.ActiveFoxRunPublishTargets
+                    : FoxRunEndpoint.Foxglove;
+            RebuildRouterRegistrationsForActiveSession();
         }
 
         private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
@@ -139,25 +153,27 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _subscriptionsEnabled = policy.SubscriptionsEnabled;
-            _router.DefaultSubscriptionProvider = policy.DefaultProvider;
-            _router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;
+            _router.DefaultSubscriptionSource = policy.DefaultSource;
+            _router.DefaultSubscriptionEncoding = policy.FoxgloveEncoding;
             _router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;
             _inheritedSubscribeRateHz = policy.DefaultSubscribeRateHz;
         }
 
         private void RebuildRouterRegistrationsForActiveSession()
         {
-            if (!_subscriptionsEnabled)
-                return;
-
             RemoveStaleSources();
             _scanSources.Clear();
             _scanSources.AddRange(_sources);
             _scanSources.Sort(CompareInputSourceOrder);
             foreach (var source in _scanSources)
                 _router.Unregister(source);
+            if (!_subscriptionsEnabled)
+            {
+                _scanSources.Clear();
+                return;
+            }
             foreach (var source in _scanSources)
-                _router.Register(source);
+                _router.Register(source, WarnOnce);
             _scanSources.Clear();
         }
 
@@ -174,8 +190,8 @@ namespace Unity.FoxgloveSDK.Components
             _scanSources.Sort(CompareInputSourceOrder);
             foreach (var source in _scanSources)
             {
-                if (_sources.Add(source))
-                    _router.Register(source);
+                if (_sources.Add(source) && _subscriptionsEnabled)
+                    _router.Register(source, WarnOnce);
             }
         }
 

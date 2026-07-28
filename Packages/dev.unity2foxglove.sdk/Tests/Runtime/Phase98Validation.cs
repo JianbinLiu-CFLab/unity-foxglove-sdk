@@ -13,6 +13,7 @@ using System.Text.RegularExpressions;
 using Google.Protobuf;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -424,7 +425,7 @@ namespace Unity.FoxgloveSDK.Tests
                     SampleTimeNs + (ulong)index,
                     (ulong)(index + 1),
                     payload,
-                    Ros2BridgeQosProfile.ReliableDefault);
+                    FoxRunResolvedQos.Default);
             }).ToList();
         }
 
@@ -444,7 +445,7 @@ namespace Unity.FoxgloveSDK.Tests
                     SampleTimeNs + (ulong)i,
                     (ulong)(i + 1),
                     entry.Serialize(sample),
-                    Ros2BridgeQosProfile.ReliableDefault);
+                    FoxRunResolvedQos.Default);
             }
         }
 
@@ -474,7 +475,7 @@ namespace Unity.FoxgloveSDK.Tests
                 SampleTimeNs + 100,
                 100,
                 cdrPayload,
-                Ros2BridgeQosProfile.ReliableDefault);
+                FoxRunResolvedQos.Default);
             client.Send(bridgeFrame, timeoutMs: 1000);
             return new Phase98TopicEvidence(OptionalDracoTopic.Topic, OptionalDracoTopic.SchemaName, "sent: " + versionOrError, cdrPayload.Length);
         }

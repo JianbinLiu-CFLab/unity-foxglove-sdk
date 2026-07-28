@@ -18,7 +18,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var root = JObject.Parse(json ?? throw new ArgumentNullException(nameof(json)));
             var descriptorVersion = IntValue(root, "descriptorVersion");
-            var isLegacyV1 = descriptorVersion <= 1;
+            if (descriptorVersion != FoxRunGenerationDescriptorConstants.DescriptorVersion)
+            {
+                throw new InvalidOperationException(
+                    "Unsupported FoxRun generation descriptor version: "
+                    + descriptorVersion);
+            }
             var types = new List<FoxRunGenerationType>();
             foreach (var typeToken in root["types"] as JArray ?? new JArray())
             {
@@ -43,35 +48,32 @@ namespace Unity.FoxgloveSDK.Tests
                         isArray: BoolValue(member, "isArray"),
                         elementTypeName: StringValue(member, "elementTypeName"),
                         topic: StringValue(member, "topic"),
-                        rateHz: FloatValue(member, "rateHz"),
+                        hz: FloatValue(member, "hz"),
                         schemaName: StringValue(member, "schemaName"),
                         policy: PolicyValue(member),
-                        changeEpsilon: FloatValue(member, "changeEpsilon"),
-                        forceIntervalSeconds: FloatValue(member, "forceIntervalSeconds"),
+                        tolerance: FloatValue(member, "tolerance"),
                         hostKind: StringValue(member, "hostKind"),
                         rawMemberOrder: IntValue(member, "rawMemberOrder"),
                         conditionalSymbols: StringValue(member, "conditionalSymbols"),
-                        when: StringValue(member, "when"),
-                        unless: StringValue(member, "unless"),
+                        onlyIf: StringValue(member, "onlyIf"),
                         isAggregateMember: BoolValue(member, "isAggregateMember"),
                         jsonFieldName: StringValue(member, "jsonFieldName"),
                         mode: ModeValue(member),
                         encoding: StringValue(member, "encoding"),
                         protobufFieldNumber: IntValue(member, "protobufFieldNumber"),
-                        subscriptionProvider: StringValueOrDefault(
-                            member,
-                            "subscriptionProvider",
-                            isLegacyV1 ? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider : string.Empty),
-                        ros2Qos: StringValueOrDefault(
-                            member,
-                            "ros2Qos",
-                            isLegacyV1 ? FoxRunGenerationDescriptorConstants.InheritRos2Qos : string.Empty),
-                        generatesWebSocketCodec: BoolValueOrDefault(
-                            member,
-                            "generatesWebSocketCodec",
-                            isLegacyV1),
+                        source: StringValue(member, "source"),
+                        qosProfile: StringValue(member, "qosProfile"),
+                        targets: StringValue(member, "targets"),
+                        qosReliability: StringValue(member, "qosReliability"),
+                        qosDurability: StringValue(member, "qosDurability"),
+                        qosHistory: StringValue(member, "qosHistory"),
+                        qosDepth: IntValue(member, "qosDepth"),
+                        generatesWebSocketCodec: BoolValue(member, "generatesWebSocketCodec"),
                         generatesRos2NativeRegistration: BoolValue(member, "generatesRos2NativeRegistration"),
-                        ros2MessageShape: Ros2MessageShapeValue(member)));
+                        ros2MessageShape: Ros2MessageShapeValue(member),
+                        namedArgumentPresence: ExplicitArgumentsValue(member),
+                        conditionMemberKind: ConditionMemberKindValue(member),
+                        isStream: BoolValue(member, "isStream")));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }
@@ -85,17 +87,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static string StringValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<string>() ?? string.Empty : string.Empty;
 
-        private static string StringValueOrDefault(JObject obj, string name, string defaultValue)
-            => obj.TryGetValue(name, out var token) ? token.Value<string>() ?? string.Empty : defaultValue ?? string.Empty;
-
         private static int IntValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<int>() : 0;
 
         private static bool BoolValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) && token.Value<bool>();
-
-        private static bool BoolValueOrDefault(JObject obj, string name, bool defaultValue)
-            => obj.TryGetValue(name, out var token) ? token.Value<bool>() : defaultValue;
 
         private static float FloatValue(JObject obj, string name)
         {
@@ -162,7 +158,6 @@ namespace Unity.FoxgloveSDK.Tests
                 case "":
                 case "FixedRate": return (int)FoxRunPolicy.FixedRate;
                 case "Change": return (int)FoxRunPolicy.Change;
-                case "ChangeOrInterval": return (int)FoxRunPolicy.ChangeOrInterval;
                 case "Trigger": return (int)FoxRunPolicy.Trigger;
                 default: throw new InvalidOperationException("Unknown FoxRun policy: " + mode);
             }
@@ -179,6 +174,34 @@ namespace Unity.FoxgloveSDK.Tests
                 case "PublishAndSubscribe": return (int)FoxRunFlow.PublishAndSubscribe;
                 default: throw new InvalidOperationException("Unknown FoxRun mode: " + mode);
             }
+        }
+
+        private static FoxRunNamedArgumentPresence? ExplicitArgumentsValue(JObject member)
+        {
+            if (!member.TryGetValue("explicitArguments", out var token))
+                return null;
+
+            var result = FoxRunNamedArgumentPresence.None;
+            foreach (var name in (token.Value<string>() ?? string.Empty)
+                         .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!Enum.TryParse(name, ignoreCase: false, out FoxRunNamedArgumentPresence value)
+                    || value == FoxRunNamedArgumentPresence.None)
+                    throw new InvalidOperationException("Unknown FoxRun explicit argument: " + name);
+                result |= value;
+            }
+
+            return result;
+        }
+
+        private static FoxRunConditionMemberKind ConditionMemberKindValue(JObject member)
+        {
+            var name = StringValue(member, "onlyIfMemberKind");
+            if (string.IsNullOrEmpty(name))
+                return FoxRunConditionMemberKind.None;
+            if (Enum.TryParse(name, ignoreCase: false, out FoxRunConditionMemberKind value))
+                return value;
+            throw new InvalidOperationException("Unknown FoxRun OnlyIf member kind: " + name);
         }
     }
 }

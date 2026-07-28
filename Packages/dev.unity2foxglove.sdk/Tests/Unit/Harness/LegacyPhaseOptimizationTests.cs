@@ -37,16 +37,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 new FoxRunGenerationType("Demo", "Policy", new[]
                 {
-                    Member("_nanRate", "/demo/nan", rateHz: float.NaN),
-                    Member("_infEpsilon", "/demo/inf_eps", changeEpsilon: float.PositiveInfinity),
-                    Member("_infInterval", "/demo/inf_interval", forceIntervalSeconds: float.NegativeInfinity)
+                    Member("_nanHz", "/demo/nan", hz: float.NaN),
+                    Member("_infTolerance", "/demo/inf_tolerance", tolerance: float.PositiveInfinity)
                 })
             });
 
             var policyDiagnostics = FoxRunGenerationModelValidator.Validate(policy);
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_nanRate");
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infEpsilon");
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infInterval");
+            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_nanHz");
+            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infTolerance");
         }
 
         [Fact]
@@ -91,10 +89,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string name,
             string topic,
             string schemaName = "",
-            float rateHz = 10f,
+            float hz = 10f,
             int policy = 0,
-            float changeEpsilon = 0f,
-            float forceIntervalSeconds = 0f)
+            float tolerance = 0f)
         {
             return new FoxRunGenerationMember(
                 "Demo",
@@ -107,11 +104,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 false,
                 string.Empty,
                 topic,
-                rateHz,
+                hz,
                 schemaName,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds,
+                tolerance,
                 "Test",
                 0,
                 string.Empty);
@@ -319,6 +315,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("public Vector3 position;", testLog, StringComparison.Ordinal);
             Assert.DoesNotContain("m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup\r\n  _manager: {fileID: 0}\r\n  _cube: {fileID: 0}", scene, StringComparison.Ordinal);
             Assert.DoesNotContain("m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup\n  _manager: {fileID: 0}\n  _cube: {fileID: 0}", scene, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FullDemoContainsOneFoxRun115FProbeAndNoFakePhase147Probe()
+        {
+            var liveScene = TestSources.Text("Unity2Foxglove/Assets/Scenes/SampleScene.unity");
+            var packageScene = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/Scenes/FullDemoVisualization.unity");
+
+            foreach (var scene in new[] { liveScene, packageScene })
+            {
+                Assert.DoesNotContain("m_Name: Phase147ManualProbe", scene, StringComparison.Ordinal);
+                Assert.Single(
+                    Regex.Matches(
+                        scene,
+                        "m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe",
+                        RegexOptions.CultureInvariant).Cast<Match>());
+            }
+        }
+
+        [Fact]
+        public void FullDemoEnablesFoxRunSubscriptionsByDefault()
+        {
+            var liveScene = TestSources.Text("Unity2Foxglove/Assets/Scenes/SampleScene.unity");
+            var packageScene = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/Scenes/FullDemoVisualization.unity");
+
+            foreach (var scene in new[] { liveScene, packageScene })
+                Assert.Contains("_enableFoxRunInbound: 1", scene, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DotNetTestSourcesHaveAnExplicitDisabledUnityAssemblyBoundary()
+        {
+            var asmdef = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unity.FoxgloveSDK.DotNetTests.asmdef");
+
+            Assert.Contains(
+                "\"defineConstraints\": [\n    \"UNITY2FOXGLOVE_DOTNET_TESTS\"\n  ]",
+                asmdef,
+                StringComparison.Ordinal);
+            Assert.Contains("\"autoReferenced\": false", asmdef, StringComparison.Ordinal);
+            Assert.Contains("\"noEngineReferences\": true", asmdef, StringComparison.Ordinal);
         }
 
         [Fact]

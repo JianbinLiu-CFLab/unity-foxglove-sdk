@@ -155,10 +155,57 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd client_fd", StringComparison.Ordinal),
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
-            Check(source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  && source.IndexOf("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  < source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
-                "134-16H-2: sidecar publisher maps survive client reconnects");
+            var processClient = source.IndexOf("void process_client(", StringComparison.Ordinal);
+            var sessionBridge = processClient >= 0
+                ? source.IndexOf(
+                    "BridgeNode bridge(node, payload_format);",
+                    processClient,
+                    StringComparison.Ordinal)
+                : -1;
+            var sessionLoop = sessionBridge >= 0
+                ? source.IndexOf("while (rclcpp::ok())", sessionBridge, StringComparison.Ordinal)
+                : -1;
+            var directSessionOwnsBridge = processClient >= 0
+                                          && sessionBridge > processClient
+                                          && sessionLoop > sessionBridge
+                                          && source.Contains(
+                                              "process_client(client_fd.get(), node, options.payload_format);",
+                                              StringComparison.Ordinal);
+            var deferredSession = source.IndexOf("class DeferredBridgeSession", StringComparison.Ordinal);
+            var deferredBridgeCreate = deferredSession >= 0
+                ? source.IndexOf(
+                    "bridge_ = std::make_unique<BridgeNode>(node_, payload_format_);",
+                    deferredSession,
+                    StringComparison.Ordinal)
+                : -1;
+            var deferredBridgeMember = deferredSession >= 0
+                ? source.IndexOf(
+                    "std::unique_ptr<BridgeNode> bridge_;",
+                    deferredSession,
+                    StringComparison.Ordinal)
+                : -1;
+            var mainEntry = source.IndexOf("int main(int argc, char ** argv)", StringComparison.Ordinal);
+            var mainLoop = mainEntry >= 0
+                ? source.IndexOf("while (rclcpp::ok())", mainEntry, StringComparison.Ordinal)
+                : -1;
+            var mainSession = mainLoop >= 0
+                ? source.IndexOf("DeferredBridgeSession session(", mainLoop, StringComparison.Ordinal)
+                : -1;
+            var deferredProcess = mainSession >= 0
+                ? source.IndexOf(
+                    "process_deferred_client(client_fd.get(), session);",
+                    mainSession,
+                    StringComparison.Ordinal)
+                : -1;
+            var deferredSessionOwnsBridge = deferredSession >= 0
+                                            && deferredBridgeCreate > deferredSession
+                                            && deferredBridgeMember > deferredBridgeCreate
+                                            && mainLoop > mainEntry
+                                            && mainSession > mainLoop
+                                            && deferredProcess > mainSession;
+            Check((directSessionOwnsBridge || deferredSessionOwnsBridge)
+                  && !source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal),
+                "134-16H-2: each sidecar client session owns fresh publisher maps so restarted sessions may apply replacement QoS");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
                   && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
                   && source.Contains("topic must not contain newline", StringComparison.Ordinal)
@@ -169,10 +216,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16H-4: sidecar argument errors are explicit and avoid stale phase wording");
             Check(source.Contains("bool read_exact(", StringComparison.Ordinal)
                   && source.Contains("const rclcpp::Node::SharedPtr & node", StringComparison.Ordinal)
-                  && source.Contains(
-                      "read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)",
-                      StringComparison.Ordinal)
-                  && source.Contains("read_raw_frame(client_fd, node)", StringComparison.Ordinal)
+                  && source.Contains("if (node)", StringComparison.Ordinal)
+                  && source.Contains("rclcpp::spin_some(node);", StringComparison.Ordinal)
+                  && (source.Contains(
+                          "read_raw_frame(SocketHandle fd, const rclcpp::Node::SharedPtr & node)",
+                          StringComparison.Ordinal)
+                      || source.Contains(
+                          "read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)",
+                          StringComparison.Ordinal))
+                  && (source.Contains("read_raw_frame(client_fd, session.node())", StringComparison.Ordinal)
+                      || source.Contains("read_raw_frame(client_fd, node)", StringComparison.Ordinal))
                   && !source.Contains("socket read timed out", StringComparison.Ordinal),
                 "134-16H-5: sidecar spins ROS executor while waiting for idle client data");
             Check(cmake.Contains("if(BUILD_TESTING)", StringComparison.Ordinal)

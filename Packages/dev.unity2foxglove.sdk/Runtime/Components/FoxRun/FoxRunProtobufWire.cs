@@ -225,8 +225,36 @@ namespace Unity.FoxgloveSDK.Components
         public static bool TryDecodeInt32(FoxRunProtobufField field, out int value, out string error)
             => TryDecodeVarint(field, out value, raw => unchecked((int)raw), out error);
 
+        public static bool TryDecodeInt8(FoxRunProtobufField field, out sbyte value, out string error)
+        {
+            value = default;
+            return TryDecodeInt32(field, out var raw, out error)
+                   && TryAssignInt8(raw, out value, out error);
+        }
+
+        public static bool TryDecodeInt16(FoxRunProtobufField field, out short value, out string error)
+        {
+            value = default;
+            return TryDecodeInt32(field, out var raw, out error)
+                   && TryAssignInt16(raw, out value, out error);
+        }
+
         public static bool TryDecodeUInt32(FoxRunProtobufField field, out uint value, out string error)
             => TryDecodeVarint(field, out value, raw => unchecked((uint)raw), out error);
+
+        public static bool TryDecodeUInt8(FoxRunProtobufField field, out byte value, out string error)
+        {
+            value = default;
+            return TryDecodeUInt32(field, out var raw, out error)
+                   && TryAssignUInt8(raw, out value, out error);
+        }
+
+        public static bool TryDecodeUInt16(FoxRunProtobufField field, out ushort value, out string error)
+        {
+            value = default;
+            return TryDecodeUInt32(field, out var raw, out error)
+                   && TryAssignUInt16(raw, out value, out error);
+        }
 
         public static bool TryDecodeInt64(FoxRunProtobufField field, out long value, out string error)
             => TryDecodeVarint(field, out value, raw => unchecked((long)raw), out error);
@@ -399,8 +427,88 @@ namespace Unity.FoxgloveSDK.Components
         public static bool TryReadRepeatedInt32(FoxRunProtobufField field, IList<int> values, out string error)
             => TryReadRepeatedVarint(field, values, raw => unchecked((int)raw), "int32", out error);
 
+        public static bool TryReadRepeatedInt8(FoxRunProtobufField field, IList<sbyte> values, out string error)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var rawValues = new List<int>();
+            if (!TryReadRepeatedInt32(field, rawValues, out error))
+                return false;
+            for (var index = 0; index < rawValues.Count; index++)
+            {
+                if (rawValues[index] < sbyte.MinValue || rawValues[index] > sbyte.MaxValue)
+                {
+                    error = "Protobuf int8 value is out of range.";
+                    return false;
+                }
+            }
+            for (var index = 0; index < rawValues.Count; index++)
+                values.Add((sbyte)rawValues[index]);
+            error = string.Empty;
+            return true;
+        }
+
+        public static bool TryReadRepeatedInt16(FoxRunProtobufField field, IList<short> values, out string error)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var rawValues = new List<int>();
+            if (!TryReadRepeatedInt32(field, rawValues, out error))
+                return false;
+            for (var index = 0; index < rawValues.Count; index++)
+            {
+                if (rawValues[index] < short.MinValue || rawValues[index] > short.MaxValue)
+                {
+                    error = "Protobuf int16 value is out of range.";
+                    return false;
+                }
+            }
+            for (var index = 0; index < rawValues.Count; index++)
+                values.Add((short)rawValues[index]);
+            error = string.Empty;
+            return true;
+        }
+
         public static bool TryReadRepeatedUInt32(FoxRunProtobufField field, IList<uint> values, out string error)
             => TryReadRepeatedVarint(field, values, raw => unchecked((uint)raw), "uint32", out error);
+
+        public static bool TryReadRepeatedUInt8(FoxRunProtobufField field, IList<byte> values, out string error)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var rawValues = new List<uint>();
+            if (!TryReadRepeatedUInt32(field, rawValues, out error))
+                return false;
+            for (var index = 0; index < rawValues.Count; index++)
+            {
+                if (rawValues[index] > byte.MaxValue)
+                {
+                    error = "Protobuf uint8 value is out of range.";
+                    return false;
+                }
+            }
+            for (var index = 0; index < rawValues.Count; index++)
+                values.Add((byte)rawValues[index]);
+            error = string.Empty;
+            return true;
+        }
+
+        public static bool TryReadRepeatedUInt16(FoxRunProtobufField field, IList<ushort> values, out string error)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var rawValues = new List<uint>();
+            if (!TryReadRepeatedUInt32(field, rawValues, out error))
+                return false;
+            for (var index = 0; index < rawValues.Count; index++)
+            {
+                if (rawValues[index] > ushort.MaxValue)
+                {
+                    error = "Protobuf uint16 value is out of range.";
+                    return false;
+                }
+            }
+            for (var index = 0; index < rawValues.Count; index++)
+                values.Add((ushort)rawValues[index]);
+            error = string.Empty;
+            return true;
+        }
 
         public static bool TryReadRepeatedInt64(FoxRunProtobufField field, IList<long> values, out string error)
             => TryReadRepeatedVarint(field, values, raw => unchecked((long)raw), "int64", out error);
@@ -444,8 +552,32 @@ namespace Unity.FoxgloveSDK.Components
             => TryReadVarint(payload, fieldNumber, out var raw, out value, rawValue => rawValue != 0, out error);
         public static bool TryRead(byte[] payload, int fieldNumber, out int value, out string error)
             => TryReadVarint(payload, fieldNumber, out var raw, out value, rawValue => unchecked((int)rawValue), out error);
+        public static bool TryRead(byte[] payload, int fieldNumber, out sbyte value, out string error)
+        {
+            value = default;
+            return TryRead(payload, fieldNumber, out int raw, out error)
+                   && TryAssignInt8(raw, out value, out error);
+        }
+        public static bool TryRead(byte[] payload, int fieldNumber, out short value, out string error)
+        {
+            value = default;
+            return TryRead(payload, fieldNumber, out int raw, out error)
+                   && TryAssignInt16(raw, out value, out error);
+        }
         public static bool TryRead(byte[] payload, int fieldNumber, out uint value, out string error)
             => TryReadVarint(payload, fieldNumber, out var raw, out value, rawValue => unchecked((uint)rawValue), out error);
+        public static bool TryRead(byte[] payload, int fieldNumber, out byte value, out string error)
+        {
+            value = default;
+            return TryRead(payload, fieldNumber, out uint raw, out error)
+                   && TryAssignUInt8(raw, out value, out error);
+        }
+        public static bool TryRead(byte[] payload, int fieldNumber, out ushort value, out string error)
+        {
+            value = default;
+            return TryRead(payload, fieldNumber, out uint raw, out error)
+                   && TryAssignUInt16(raw, out value, out error);
+        }
         public static bool TryRead(byte[] payload, int fieldNumber, out long value, out string error)
             => TryReadVarint(payload, fieldNumber, out var raw, out value, rawValue => unchecked((long)rawValue), out error);
         public static bool TryRead(byte[] payload, int fieldNumber, out ulong value, out string error)
@@ -637,6 +769,58 @@ namespace Unity.FoxgloveSDK.Components
         private static bool Assign<T>(out T target, T value, out string error)
         {
             target = value; error = string.Empty; return true;
+        }
+
+        private static bool TryAssignInt8(int raw, out sbyte value, out string error)
+        {
+            value = default;
+            if (raw < sbyte.MinValue || raw > sbyte.MaxValue)
+            {
+                error = "Protobuf int8 value is out of range.";
+                return false;
+            }
+            value = (sbyte)raw;
+            error = string.Empty;
+            return true;
+        }
+
+        private static bool TryAssignInt16(int raw, out short value, out string error)
+        {
+            value = default;
+            if (raw < short.MinValue || raw > short.MaxValue)
+            {
+                error = "Protobuf int16 value is out of range.";
+                return false;
+            }
+            value = (short)raw;
+            error = string.Empty;
+            return true;
+        }
+
+        private static bool TryAssignUInt8(uint raw, out byte value, out string error)
+        {
+            value = default;
+            if (raw > byte.MaxValue)
+            {
+                error = "Protobuf uint8 value is out of range.";
+                return false;
+            }
+            value = (byte)raw;
+            error = string.Empty;
+            return true;
+        }
+
+        private static bool TryAssignUInt16(uint raw, out ushort value, out string error)
+        {
+            value = default;
+            if (raw > ushort.MaxValue)
+            {
+                error = "Protobuf uint16 value is out of range.";
+                return false;
+            }
+            value = (ushort)raw;
+            error = string.Empty;
+            return true;
         }
 
         [StructLayout(LayoutKind.Explicit)]

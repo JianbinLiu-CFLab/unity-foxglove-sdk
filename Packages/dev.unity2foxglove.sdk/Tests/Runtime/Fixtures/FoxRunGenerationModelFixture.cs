@@ -48,14 +48,14 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             public int Value;
         }
 
-        [FoxRun("/debug/value", RateHz = 5f)]
+        [FoxRun("/debug/value", Hz = 5f)]
         public float _value;
 
-        [FoxRun("/debug/value", Policy = FoxRunPolicy.Change, ChangeEpsilon = 0.01f)]
+        [FoxRun("/debug/value", Policy = FoxRunPolicy.Change, Tolerance = 0.01f)]
         public float _valueMirror { get; set; }
 
 #if FOXRUN_FIXTURE_EXTRA
-        [FoxRun("/debug/extra", RateHz = 0f)]
+        [FoxRun("/debug/extra", Hz = 0f)]
         public string _extra;
 
         [FoxRun("/debug/trigger", Policy = FoxRunPolicy.Trigger)]
@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         // fail-fast diagnostics added for IL2CPP-safe generation.
         public Nested _nested;
 
-        [FoxRun("/debug/vector", Policy = FoxRunPolicy.Change, ChangeEpsilon = 0.001f)]
+        [FoxRun("/debug/vector", Policy = FoxRunPolicy.Change, Tolerance = 0.001f)]
         public UnityEngine.Vector3 _position;
 #endif
     }

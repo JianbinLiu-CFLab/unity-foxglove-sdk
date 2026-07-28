@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
                     hasPreviousValue: true,
                     valueChanged: true,
                     lastPublishSec: 9d,
-                    forceIntervalSec: 1d),
+                    heartbeatIntervalSec: 1d),
                 "134-7G-2: unknown FoxRun publish modes fail closed");
 
             var frame = new PointCloudFrame();

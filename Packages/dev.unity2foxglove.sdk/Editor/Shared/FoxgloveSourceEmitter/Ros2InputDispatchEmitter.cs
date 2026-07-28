@@ -19,7 +19,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string ns,
             string className,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            IReadOnlyList<string> publishTopics)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -38,6 +39,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "{");
             for (var i = 0; i < members.Count; i++)
             {
+                if (members[i].IsStream)
+                    continue;
                 var typeName = GlobalTypeName(members[i].Ros2MessageShape.FullyQualifiedTypeName);
                 sb.AppendLine(pad + "    private " + typeName + " __foxRunRos2AppliedOwned_" + i + ";");
                 if (members[i].Policy == 4)
@@ -56,7 +59,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    }");
 
             for (var i = 0; i < members.Count; i++)
-                EmitBindingMethods(sb, pad, members[i], i);
+                EmitBindingMethods(sb, pad, members[i], i, publishTopics);
 
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
@@ -77,10 +80,24 @@ namespace Unity.FoxgloveSDK.Editor
                 declaringType,
                 member.MemberName,
                 member.Topic,
-                member.SubscriptionProvider,
+                member.Source,
                 shape.CanonicalRosType,
-                member.Ros2Qos);
-            sb.AppendLine(pad + "        registrar.Register<" + typeName + ">(");
+                member);
+            if (member.IsStream)
+            {
+                var access = TypeExprEmitter.MemberAccess(member.MemberName);
+                sb.AppendLine(pad + "        var __foxRunRos2Stream_" + index + " = " + access + ";");
+                sb.AppendLine(
+                    pad + "        var __foxRunRos2TryAdmit_" + index
+                    + " = __foxRunRos2Stream_" + index
+                    + " == null ? null : new global::System.Func<bool>(__foxRunRos2Stream_"
+                    + index + ".TryAdmitInput);");
+            }
+            sb.AppendLine(
+                pad + "        registrar."
+                + (member.IsStream
+                    ? "RegisterStream<" + typeName + ", " + typeName + ">("
+                    : "Register<" + typeName + ">("));
             sb.AppendLine(pad + "            new " + NativeNamespace + "FoxRunRos2GeneratedContract(");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(id) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.Topic) + "\",");
@@ -88,21 +105,41 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.MemberName) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(shape.CanonicalRosType) + "\",");
             sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
-            sb.AppendLine(pad + "                " + SubscriptionProviderLiteral(member.SubscriptionProvider) + ",");
-            sb.AppendLine(pad + "                " + QosLiteral(member.Ros2Qos) + ",");
+            sb.AppendLine(pad + "                " + SourceLiteral(member.Source) + ",");
+            AppendQosArguments(sb, pad + "                ", member);
             sb.AppendLine(pad + "                " + (member.GeneratesRos2NativeRegistration ? "true" : "false") + ",");
             sb.AppendLine(pad + "                " + PolicyLiteral(member.Policy) + ",");
-            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(member.RateHz) + ",");
-            sb.AppendLine(pad + "                " + (member.HasExplicitRateHz ? "true" : "false") + ",");
-            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(member.ForceIntervalSeconds < 0f ? 0f : member.ForceIntervalSeconds) + "),");
-            sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
+            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(member.Hz) + ",");
+            sb.AppendLine(pad + "                " + (member.HasExplicitHz ? "true" : "false") + ",");
+            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(
+                member.Policy == 2 && member.HasExplicitHz && member.Hz > 0f
+                    ? 1f / member.Hz
+                    : 0f) + "),");
+            sb.AppendLine(pad + "            "
+                + (member.IsStream
+                    ? "__foxRunRos2TryAdmit_" + index + ","
+                    : "static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),"));
+            if (member.IsStream)
+                sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
+            if (member.IsStream)
+            {
+                sb.AppendLine(pad + "            owned =>");
+                sb.AppendLine(pad + "            {");
+                sb.AppendLine(pad + "                __foxRunRos2Stream_" + index + ".TryEnqueueOwned(");
+                sb.AppendLine(pad + "                    owned,");
+                sb.AppendLine(pad + "                    static value => __FoxRunRos2Dispose_" + index + "(value));");
+                sb.AppendLine(pad + "            },");
+                sb.AppendLine(pad + "            () => __foxRunRos2Stream_" + index + ".Clear());");
+                return;
+            }
             sb.AppendLine(pad + "            static owned => __FoxRunRos2Dispose_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2Apply_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2ClearIfOwned_" + index + "(owned),");
             sb.AppendLine(pad + "            static (left, right) => __FoxRunRos2Equals_" + index + "(left, right),");
             sb.AppendLine(pad + "            " + (member.Policy == 4
                 ? "() => global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_" + TriggerFieldSuffix(member) + ", 0) != 0"
-                : "static () => false") + ");");
+                : "static () => false") + ",");
+            sb.AppendLine(pad + "            " + ConditionDelegate(member) + ");");
         }
 
         private static string ModeLiteral(int mode)
@@ -120,46 +157,116 @@ namespace Unity.FoxgloveSDK.Editor
                        (member.MemberName ?? string.Empty) + "|" + (member.Topic ?? string.Empty))
                    .Substring(0, 8);
 
-        private static string SubscriptionProviderLiteral(string provider)
+        private static string SourceLiteral(string provider)
         {
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                     StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native";
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native";
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                     StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket";
-            return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Inherit";
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0";
         }
 
-        private static string QosLiteral(string qos)
+        internal static void AppendQosArguments(
+            StringBuilder sb,
+            string pad,
+            FoxgloveSourceEmitter.TopicMember member,
+            bool trailingComma = true)
         {
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.TransientLocal";
-            return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Inherit";
+            sb.AppendLine(pad + QosProfileLiteral(member.QosProfile) + ",");
+            sb.AppendLine(pad + Has(member, FoxRunNamedArgumentPresence.QoS) + ",");
+            sb.AppendLine(pad + QosReliabilityLiteral(member.QosReliability) + ",");
+            sb.AppendLine(pad + Has(member, FoxRunNamedArgumentPresence.Reliability) + ",");
+            sb.AppendLine(pad + QosDurabilityLiteral(member.QosDurability) + ",");
+            sb.AppendLine(pad + Has(member, FoxRunNamedArgumentPresence.Durability) + ",");
+            sb.AppendLine(pad + QosHistoryLiteral(member.QosHistory) + ",");
+            sb.AppendLine(pad + Has(member, FoxRunNamedArgumentPresence.History) + ",");
+            sb.AppendLine(pad + member.QosDepth.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine(
+                pad
+                + Has(member, FoxRunNamedArgumentPresence.Depth)
+                + (trailingComma ? "," : string.Empty));
         }
 
         internal static string BuildContractId(
             string declaringType,
             string memberName,
             string topic,
-            string subscriptionProvider,
+            string source,
             string canonicalRosType,
-            string ros2Qos)
+            FoxgloveSourceEmitter.TopicMember member)
         {
-            var id = new StringBuilder("foxrun-ros2-subscription:v1|");
+            var id = new StringBuilder("foxrun-ros2-subscription:v2|");
             AppendContractIdSegment(id, declaringType);
             AppendContractIdSegment(id, memberName);
             AppendContractIdSegment(id, topic);
-            AppendContractIdSegment(id, subscriptionProvider);
+            AppendContractIdSegment(id, source);
             AppendContractIdSegment(id, canonicalRosType);
-            AppendContractIdSegment(id, ros2Qos);
+            AppendContractIdSegment(id, member.QosProfile);
+            AppendContractIdSegment(id, member.QosReliability);
+            AppendContractIdSegment(id, member.QosDurability);
+            AppendContractIdSegment(id, member.QosHistory);
+            AppendContractIdSegment(id, member.QosDepth.ToString(CultureInfo.InvariantCulture));
+            AppendContractIdSegment(
+                id,
+                ((long)(member.NamedArgumentPresence
+                        & (FoxRunNamedArgumentPresence.QoS
+                           | FoxRunNamedArgumentPresence.Reliability
+                           | FoxRunNamedArgumentPresence.Durability
+                           | FoxRunNamedArgumentPresence.History
+                           | FoxRunNamedArgumentPresence.Depth)))
+                .ToString(CultureInfo.InvariantCulture));
             return id.ToString();
+        }
+
+        private static string Has(
+            FoxgloveSourceEmitter.TopicMember member,
+            FoxRunNamedArgumentPresence presence)
+            => (member.NamedArgumentPresence & presence) != 0 ? "true" : "false";
+
+        private static string QosProfileLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosProfile.Default";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosProfile.SystemDefault";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunQosProfile)0";
+        }
+
+        private static string QosReliabilityLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosReliability.Reliable";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosReliability.BestEffort";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosReliability.SystemDefault";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunQosReliability)0";
+        }
+
+        private static string QosDurabilityLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosDurability.Volatile";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosDurability.TransientLocal";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosDurability.SystemDefault";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunQosDurability)0";
+        }
+
+        private static string QosHistoryLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosHistory.KeepLast";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosHistory.KeepAll";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunQosHistory.SystemDefault";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunQosHistory)0";
         }
 
         private static void AppendContractIdSegment(StringBuilder id, string value)
@@ -174,7 +281,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
-            int index)
+            int index,
+            IReadOnlyList<string> publishTopics)
         {
             var shape = member.Ros2MessageShape;
             var typeName = GlobalTypeName(shape.FullyQualifiedTypeName);
@@ -192,6 +300,9 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine();
                 EmitDisposeMethod(sb, pad, helper.DisposeName, helper.Shape, helpers);
             }
+
+            if (member.IsStream)
+                return;
 
             sb.AppendLine();
             EmitEqualsMethod(sb, pad, "__FoxRunRos2Equals_" + index, shape, helpers);
@@ -224,12 +335,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                if (global::System.Object.ReferenceEquals(" + access + ", owned))");
             sb.AppendLine(pad + "                {");
             sb.AppendLine(pad + "                    __foxRunRos2AppliedOwned_" + index + " = owned;");
+            EmitRemoteOriginMark(sb, pad + "                    ", member, publishTopics);
             sb.AppendLine(pad + "                    return;");
             sb.AppendLine(pad + "                }");
             sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        __foxRunRos2AppliedOwned_" + index + " = owned;");
+            EmitRemoteOriginMark(sb, pad + "        ", member, publishTopics);
             sb.AppendLine(pad + "    }");
             sb.AppendLine();
             sb.AppendLine(pad + "    private bool __FoxRunRos2ClearIfOwned_" + index + "(" + typeName + " owned)");
@@ -245,21 +358,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        return cleared;");
             sb.AppendLine(pad + "    }");
 
-            if (member.Policy == 4
-                && string.Equals(
-                    member.SubscriptionProvider,
-                    FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                    StringComparison.Ordinal))
-            {
-                var methodName = "FoxRun_Apply_"
-                                 + IdentifierUtils.SanitizeIdentifier(member.MemberName.TrimStart('_'));
-                sb.AppendLine();
-                sb.AppendLine(pad + "    public bool " + methodName + "()");
-                sb.AppendLine(pad + "    {");
-                sb.AppendLine(pad + "        global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_" + TriggerFieldSuffix(member) + ", 1);");
-                sb.AppendLine(pad + "        return true;");
-                sb.AppendLine(pad + "    }");
-            }
+        }
+
+        private static string ConditionDelegate(FoxgloveSourceEmitter.TopicMember member)
+        {
+            return string.IsNullOrWhiteSpace(member.OnlyIf)
+                ? "null"
+                : "() => " + ConditionEmitter.ConditionAccess(
+                    member.OnlyIf,
+                    member.ConditionMemberKind);
         }
 
         private static void EmitEqualsMethod(
@@ -278,6 +385,25 @@ namespace Unity.FoxgloveSDK.Editor
                 EmitEqualsMember(sb, pad + "        ", shape.Members[memberIndex], memberIndex, helpers);
             sb.AppendLine(pad + "        return true;");
             sb.AppendLine(pad + "    }");
+        }
+
+        private static void EmitRemoteOriginMark(
+            StringBuilder sb,
+            string pad,
+            FoxgloveSourceEmitter.TopicMember member,
+            IReadOnlyList<string> publishTopics)
+        {
+            if (member.Mode != 3 || publishTopics == null)
+                return;
+
+            for (var index = 0; index < publishTopics.Count; index++)
+            {
+                if (!string.Equals(publishTopics[index], member.Topic, StringComparison.Ordinal))
+                    continue;
+
+                sb.AppendLine(pad + "__FoxRunMarkRemoteApplied_" + index + "();");
+                return;
+            }
         }
 
         private static void EmitEqualsMember(

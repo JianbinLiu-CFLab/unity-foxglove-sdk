@@ -2,32 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/FoxRunTriggerTelemetry
-// Purpose: Demonstrates [FoxRun("topic", options...)] trigger-driven telemetry,
-// including fixed-rate, manual trigger, and grouped topic publishing.
+// Purpose: Demonstrates the current direction-specific FoxRun publish trigger
+// API alongside the minimum declaration and grouped topic publishing.
 
 using System.Collections;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
-// Minimal example for FoxRun trigger-driven telemetry.
+// The minimum publish form is:
+//   [FoxRun("/demo/heartbeat")]
 //
-// Think of the attribute as:
-//   [FoxRun("your/topic", options...)]
-//
-// The first argument is always the Foxglove topic path. Use a stable topic
+// The first argument is always the FoxRun topic path. Use a stable topic
 // name that matches your domain, for example:
 //   /demo/heartbeat
 //   /events/counter
 //   /robot/gripper/state
 //
 // The options are named C# attribute properties:
-// - RateHz: maximum scheduled publish rate. Default is 10 Hz.
+// - Hz: declaration-level cadence override. Default publish cadence is 10 Hz.
 // - SchemaName: optional Foxglove schema name for this topic.
-// - Policy: when to publish. Current modes are FixedRate, Change,
-//   ChangeOrInterval, and Trigger.
-// - ChangeEpsilon: numeric tolerance used by change-driven modes.
-// - ForceIntervalSeconds: heartbeat interval used by ChangeOrInterval.
+// - Policy: when to publish. Current modes are FixedRate, Change, and Trigger.
+// - Tolerance: numeric tolerance used by Change.
+// - Change + Hz: changes publish immediately and Hz supplies the heartbeat.
 //
 // Trigger is deliberately part of Policy rather than a separate
 // TriggerMode because it answers the same question as the other modes:
@@ -41,22 +38,24 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 //   [FoxRun("/events/counter", Policy = FoxRunPolicy.Trigger)]
 //
 // For Trigger fields, generated code adds a method named after the member:
-//   triggerCounter -> FoxRun_Trigger_triggerCounter()
-// The method returns true when the publish dispatch succeeds.
+//   triggerCounter -> FoxRun_Publish_triggerCounter()
+// It also adds FoxRun_PublishAll(). Subscribe Trigger declarations instead
+// receive FoxRun_Apply_<member>() and FoxRun_ApplyAll(). Each method returns
+// true only when its direction-specific dispatch succeeds.
 //
 // A class with [FoxRun] members must be partial so the source generator can
 // add the hidden IFoxgloveLogSource implementation and trigger methods.
 public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
 {
     // Automatically publishes to /demo/heartbeat at 2 Hz.
-    [FoxRun("/demo/heartbeat", RateHz = 2f)]
+    [FoxRun("/demo/heartbeat", Hz = 2f)]
     public long fixedCounter;
 
     // Equivalent conceptual form:
     //   [FoxRun("topic", Policy = Trigger)]
     //
     // This topic publishes only when TriggerCounterEvent calls the generated
-    // FoxRun_Trigger_triggerCounter() method.
+    // FoxRun_Publish_triggerCounter() method.
     [FoxRun("/events/counter", Policy = Trigger)]
     public int triggerCounter;
 
@@ -103,7 +102,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
     public void TriggerCounterEvent()
     {
         triggerCounter++;
-        var ok = FoxRun_Trigger_triggerCounter();
+        var ok = FoxRun_Publish_triggerCounter();
         lastTriggerResult = $"single={ok}, count={triggerCounter}";
         LogTriggerResult($"[FoxRunTriggerSmoke] TriggerCounterEvent returned {ok}");
     }
@@ -112,7 +111,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
     public void TriggerGroupedState()
     {
         eventName = "group-" + triggerCounter;
-        var ok = FoxRun_Trigger_eventName();
+        var ok = FoxRun_Publish_eventName();
         lastTriggerResult = $"grouped={ok}, event={eventName}";
         LogTriggerResult($"[FoxRunTriggerSmoke] TriggerGroupedState returned {ok}");
     }
@@ -122,7 +121,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
     {
         triggerCounter++;
         eventName = "all-" + triggerCounter;
-        var ok = FoxRun_TriggerAll();
+        var ok = FoxRun_PublishAll();
         lastTriggerResult = $"all={ok}, count={triggerCounter}";
         LogTriggerResult($"[FoxRunTriggerSmoke] TriggerAll returned {ok}");
     }

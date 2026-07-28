@@ -72,7 +72,9 @@ namespace Unity.FoxgloveSDK.Components
 
         public static bool IsValidRosPackageName(string packageName)
         {
-            if (string.IsNullOrEmpty(packageName) || packageName.Length > 255)
+            if (string.IsNullOrEmpty(packageName)
+                || packageName.Length < 2
+                || packageName.Length > 255)
                 return false;
             if (!IsLowerAsciiLetter(packageName[0]) || packageName[packageName.Length - 1] == '_')
                 return false;
@@ -80,8 +82,64 @@ namespace Unity.FoxgloveSDK.Components
             for (var index = 1; index < packageName.Length; index++)
             {
                 var character = packageName[index];
+                if (character == '_' && packageName[index - 1] == '_')
+                    return false;
                 if (!IsLowerAsciiLetter(character)
                     && character != '_'
+                    && (character < '0' || character > '9'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Validate an exact ROS 2 message identity in
+        /// <c>package/msg/Message</c> form without loading ROS assemblies.
+        /// </summary>
+        internal static bool IsValidCanonicalRosMessageType(string canonicalType)
+        {
+            if (string.IsNullOrEmpty(canonicalType))
+                return false;
+
+            var firstSlash = canonicalType.IndexOf('/');
+            var secondSlash = firstSlash < 0
+                ? -1
+                : canonicalType.IndexOf('/', firstSlash + 1);
+            if (firstSlash <= 0
+                || secondSlash != firstSlash + 4
+                || canonicalType.LastIndexOf('/') != secondSlash
+                || canonicalType.Length <= firstSlash + 5
+                || !string.Equals(
+                    canonicalType.Substring(firstSlash + 1, 3),
+                    "msg",
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var packageName = canonicalType.Substring(0, firstSlash);
+            var messageName = canonicalType.Substring(firstSlash + 5);
+            return IsValidRosPackageName(packageName)
+                   && IsValidRosMessageName(messageName);
+        }
+
+        internal static bool IsValidRosMessageName(string messageName)
+        {
+            if (string.IsNullOrEmpty(messageName)
+                || messageName.Length > 255
+                || !IsUpperAsciiLetter(messageName[0]))
+            {
+                return false;
+            }
+
+            for (var index = 1; index < messageName.Length; index++)
+            {
+                var character = messageName[index];
+                if (!IsUpperAsciiLetter(character)
+                    && !IsLowerAsciiLetter(character)
                     && (character < '0' || character > '9'))
                 {
                     return false;
@@ -101,5 +159,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private static bool IsLowerAsciiLetter(char character)
             => character >= 'a' && character <= 'z';
+
+        private static bool IsUpperAsciiLetter(char character)
+            => character >= 'A' && character <= 'Z';
     }
 }

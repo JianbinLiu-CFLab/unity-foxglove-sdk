@@ -212,8 +212,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "168-15: Inspector encoding labels expose MsgPack with custom-client expectations");
             Check(editorLabels.Contains("AssertLabelCount<GlobalEncoding>", StringComparison.Ordinal)
                   && editorLabels.Contains("AssertLabelCount<PublisherEncodingOverride>", StringComparison.Ordinal)
-                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeOutputOverride>", StringComparison.Ordinal)
-                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeQosPreset>", StringComparison.Ordinal),
+                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeOutputOverride>", StringComparison.Ordinal),
                 "168-15b: Inspector encoding label arrays assert enum cardinality");
 
             Check(publisherEncoding.Contains("Fallback order intentionally keeps MsgPack before JSON", StringComparison.Ordinal),

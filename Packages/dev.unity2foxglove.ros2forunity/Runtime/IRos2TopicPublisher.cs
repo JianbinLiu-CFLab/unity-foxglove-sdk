@@ -52,4 +52,18 @@ namespace Unity2Foxglove.Ros2ForUnity
             out IRos2TopicPublisher publisher,
             out string reason);
     }
+
+    /// <summary>
+    /// Optional factory capability for creating a publisher with the exact
+    /// frozen FoxRun native QoS contract.
+    /// </summary>
+    public interface IRos2QosAwareTopicPublisherFactory
+    {
+        bool TryCreate(
+            FoxTopicContract contract,
+            FoxRunResolvedQos qos,
+            IUnity2FoxgloveRos2Node node,
+            out IRos2TopicPublisher publisher,
+            out string reason);
+    }
 }

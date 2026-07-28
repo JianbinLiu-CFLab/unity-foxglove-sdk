@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
-        private const string ExpectedCheckedInGeneratorSha256 = "F27A854A711203F29812767AA84108DF5BDEE592681C21A0EB7DA93B049D8904";
+        private const string ExpectedCheckedInGeneratorSha256 = "78D36D85DBE6E8AD89ED531EDA3E0A336F8DDD0BA0ED26A31BCA785D40EA6F02";
         private static int _passCount;
 
         public static void Validate()
@@ -49,10 +49,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAttributeSurface()
         {
             var attr = new FoxRunAttribute("/phase141a");
-            Check(HasProperty(typeof(FoxRunAttribute), "When"), "141A-1: FoxRunAttribute exposes When");
-            Check(HasProperty(typeof(FoxRunAttribute), "Unless"), "141A-2: FoxRunAttribute exposes Unless");
-            Check(ReadStringProperty(attr, "When") == string.Empty, "141A-3: When defaults to empty string");
-            Check(ReadStringProperty(attr, "Unless") == string.Empty, "141A-4: Unless defaults to empty string");
+            Check(HasProperty(typeof(FoxRunAttribute), "OnlyIf"), "141A-1: FoxRunAttribute exposes OnlyIf");
+            Check(ReadStringProperty(attr, "OnlyIf") == string.Empty, "141A-2: OnlyIf defaults to empty string");
         }
 
         private static void VerifyRuntimeGateContract()
@@ -76,15 +74,15 @@ namespace Unity.FoxgloveSDK.Tests
                 new List<FoxgloveSourceEmitter.TopicMember>
                 {
                     new("_position", "UnityEngine.Vector3", "/phase141a/position", 10f, "",
-                        policy: 1, changeEpsilon: 0f, forceIntervalSeconds: 0f,
-                        when: "TelemetryEnabled", unless: "IsPaused")
+                        policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
+                        onlyIf: "TelemetryEnabled")
                 });
 
             Check(conditional.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal),
                 "141A-9: conditional source implements condition interface");
             Check(conditional.Contains("FoxgloveLog_CanPublish", StringComparison.Ordinal),
                 "141A-10: conditional source emits CanPublish method");
-            Check(conditional.Contains("return TelemetryEnabled && !IsPaused;", StringComparison.Ordinal),
+            Check(conditional.Contains("return TelemetryEnabled;", StringComparison.Ordinal),
                 "141A-11: condition expression uses direct member access");
 
             var unconditional = FoxgloveSourceEmitter.EmitClass("Phase141A", "UnconditionalSource",
@@ -102,14 +100,14 @@ namespace Unity.FoxgloveSDK.Tests
                 new FoxgloveLogSourceGenerator(),
                 "Phase141AConditionSourceGenerator"));
             Check(GeneratedConditionCodeIsRuntimeGated(sourceGenerated),
-                "141A-13: source generator emits runtime When/Unless condition checks");
+                "141A-13: source generator emits runtime OnlyIf condition checks");
 
             var dllPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll");
             var checkedInGenerated = GeneratedFoxRunSource(RunGenerator(
                 LoadGeneratorFromDll(dllPath),
                 "Phase141AConditionCheckedInDll"));
             Check(GeneratedConditionCodeIsRuntimeGated(checkedInGenerated),
-                "141A-14: checked-in analyzer DLL emits runtime When/Unless condition checks");
+                "141A-14: checked-in analyzer DLL emits runtime OnlyIf condition checks");
         }
 
         private static void VerifyRuntimeToggleStopsSubscribedDataFrames()
@@ -118,11 +116,11 @@ namespace Unity.FoxgloveSDK.Tests
                 new List<FoxgloveSourceEmitter.TopicMember>
                 {
                     new("conditionalPosition", "UnityEngine.Vector3", "/debug/conditional_position", 15f, "",
-                        policy: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
-                        when: "telemetryEnabled"),
-                    new("conditionalHealth", "System.Int32", "/debug/unless_health", 15f, "",
-                        policy: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
-                        unless: "isPaused")
+                        policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
+                        onlyIf: "telemetryEnabled"),
+                    new("conditionalHealth", "System.Int32", "/debug/conditional_health", 15f, "",
+                        policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
+                        onlyIf: "healthPublishingEnabled")
                 });
             var compiled = CompileRuntimeConditionFixture(source);
             var sourceType = compiled.GetType("Phase141A.RuntimeConditionSource")
@@ -132,13 +130,13 @@ namespace Unity.FoxgloveSDK.Tests
             var instance = Activator.CreateInstance(sourceType);
             var telemetryEnabled = sourceType.GetField("telemetryEnabled")
                                    ?? throw new InvalidOperationException("Missing telemetryEnabled field.");
-            var isPaused = sourceType.GetField("isPaused")
-                           ?? throw new InvalidOperationException("Missing isPaused field.");
+            var healthPublishingEnabled = sourceType.GetField("healthPublishingEnabled")
+                                          ?? throw new InvalidOperationException("Missing healthPublishingEnabled field.");
 
             using var transport = new Phase141ADataTransport();
             using var session = new FoxgloveSession("phase141a", transport, schemaRegistry: new DefaultSchemaRegistry());
             session.RegisterChannel(new AdvertiseChannel { Id = 1410, Topic = "/debug/conditional_position", Encoding = "json", SchemaName = "", Schema = "" });
-            session.RegisterChannel(new AdvertiseChannel { Id = 1411, Topic = "/debug/unless_health", Encoding = "json", SchemaName = "", Schema = "" });
+            session.RegisterChannel(new AdvertiseChannel { Id = 1411, Topic = "/debug/conditional_health", Encoding = "json", SchemaName = "", Schema = "" });
             transport.SimulateText(1, JsonConvert.SerializeObject(new SubscribeMessage
             {
                 Subscriptions = new List<Subscription>
@@ -156,14 +154,14 @@ namespace Unity.FoxgloveSDK.Tests
             for (var cycle = 0; cycle < 5; cycle++)
             {
                 telemetryEnabled.SetValue(instance, true);
-                isPaused.SetValue(instance, false);
+                healthPublishingEnabled.SetValue(instance, true);
                 PublishIfAllowed(session, conditionInterface, instance, 0, 1410, (ulong)(cycle * 4 + 1), ref expectedFrames);
                 PublishIfAllowed(session, conditionInterface, instance, 1, 1411, (ulong)(cycle * 4 + 2), ref expectedFrames);
                 Check(transport.SentBinaries.Count == expectedFrames,
                     "141A-16: enabled cycle " + cycle + " publishes subscribed data frames");
 
                 telemetryEnabled.SetValue(instance, false);
-                isPaused.SetValue(instance, true);
+                healthPublishingEnabled.SetValue(instance, false);
                 PublishIfAllowed(session, conditionInterface, instance, 0, 1410, (ulong)(cycle * 4 + 3), ref expectedFrames);
                 PublishIfAllowed(session, conditionInterface, instance, 1, 1411, (ulong)(cycle * 4 + 4), ref expectedFrames);
                 Check(transport.SentBinaries.Count == expectedFrames,
@@ -178,14 +176,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "System.Int32", "System.Int32", "int32",
                 true, false, string.Empty,
                 "/phase141a/model", 10f, "",
-                0, 0f, 0f, "Reflection", 0, "",
-                when: "Enabled", unless: "Paused");
+                (int)FoxRunPolicy.FixedRate, 0f, "Reflection", 0, "",
+                onlyIf: "Enabled");
 
-            Check(member.When == "Enabled", "141A-18: generation member carries When");
-            Check(member.Unless == "Paused", "141A-19: generation member carries Unless");
+            Check(member.OnlyIf == "Enabled", "141A-18: generation member carries OnlyIf");
             var topicMember = member.ToTopicMember();
-            Check(topicMember.When == "Enabled" && topicMember.Unless == "Paused",
-                "141A-20: generation member forwards conditions to emitter");
+            Check(topicMember.OnlyIf == "Enabled",
+                "141A-20: generation member forwards OnlyIf to emitter");
         }
 
         private static void VerifyDiagnosticsInventory()
@@ -214,15 +211,15 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     public partial class Phase141AInvalidConditionFixture
     {
-        [FoxRun(""/debug/invalid_when"", RateHz = 15, When = ""not valid"")]
-        public int invalidWhen;
+        [FoxRun(""/debug/invalid_only_if"", Hz = 15, OnlyIf = ""not valid"")]
+        public int invalidOnlyIf;
     }
 }
 ");
 
             Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN015")
                   && !diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN016"),
-                "141A-24: invalid When identifiers report FOXRUN015 instead of bool-type FOXRUN016");
+                "141A-24: invalid OnlyIf identifiers report FOXRUN015 instead of bool-type FOXRUN016");
         }
 
         private static void VerifyDocsMentionConditions()
@@ -230,12 +227,10 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             var en = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md");
             var zh = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md");
 
-            Check(en.Contains("| `When` | `\"\"` | Bool field", StringComparison.Ordinal)
-                  && en.Contains("| `Unless` | `\"\"` | Bool field", StringComparison.Ordinal),
-                "141A-25: English docs mention When and Unless");
-            Check(zh.Contains("| `When` | `string` | `\"\"` |", StringComparison.Ordinal)
-                  && zh.Contains("| `Unless` | `string` | `\"\"` |", StringComparison.Ordinal),
-                "141A-26: Chinese docs mention When and Unless");
+            Check(en.Contains("`OnlyIf`", StringComparison.Ordinal),
+                "141A-25: English docs mention OnlyIf");
+            Check(zh.Contains("`OnlyIf`", StringComparison.Ordinal),
+                "141A-26: Chinese docs mention OnlyIf");
         }
 
         private static void PublishIfAllowed(FoxgloveSession session, Type conditionInterface, object source, int topicIndex, uint channelId, ulong nowNs, ref int expectedFrames)
@@ -263,7 +258,7 @@ namespace Phase141A
     public partial class RuntimeConditionSource
     {
         public bool telemetryEnabled = true;
-        public bool isPaused = false;
+        public bool healthPublishingEnabled = true;
         public UnityEngine.Vector3 conditionalPosition;
         public int conditionalHealth;
     }
@@ -314,36 +309,32 @@ namespace Unity.FoxgloveSDK.Components
 {
     public enum FoxRunPolicy
     {
-        FixedRate = 0,
-        Change = 1,
-        ChangeOrInterval = 2,
-        Trigger = 3
+        FixedRate = 1,
+        Change = 2,
+        Trigger = 4
     }
 
     public readonly struct FoxgloveLogTopicInfo
     {
         public readonly string Topic;
-        public readonly float RateHz;
+        public readonly float Hz;
         public readonly FoxRunPolicy Policy;
-        public readonly float ChangeEpsilon;
-        public readonly float ForceIntervalSeconds;
+        public readonly float Tolerance;
 
-        public FoxgloveLogTopicInfo(string topic, float rateHz)
+        public FoxgloveLogTopicInfo(string topic, float hz)
         {
             Topic = topic;
-            RateHz = rateHz;
+            Hz = hz;
             Policy = FoxRunPolicy.FixedRate;
-            ChangeEpsilon = 0f;
-            ForceIntervalSeconds = 0f;
+            Tolerance = 0f;
         }
 
-        public FoxgloveLogTopicInfo(string topic, float rateHz, FoxRunPolicy policy, float changeEpsilon, float forceIntervalSeconds)
+        public FoxgloveLogTopicInfo(string topic, float hz, FoxRunPolicy policy, float tolerance)
         {
             Topic = topic;
-            RateHz = rateHz;
+            Hz = hz;
             Policy = policy;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Tolerance = tolerance;
         }
     }
 
@@ -434,9 +425,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             return source.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal)
                    && source.Contains("FoxgloveLog_CanPublish", StringComparison.Ordinal)
-                   && SwitchCaseContains(source, 0, "telemetryEnabled")
-                   && SwitchCaseContains(source, 1, "isPaused")
-                   && SwitchCaseContains(source, 1, "!");
+                   && SwitchCaseContains(source, 0, "healthPublishingEnabled")
+                   && SwitchCaseContains(source, 1, "telemetryEnabled");
         }
 
         private static bool SwitchCaseContains(string source, int caseIndex, string expected)
@@ -556,12 +546,12 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
     public partial class Phase141AConditionFixture
     {
         public bool telemetryEnabled = true;
-        public bool isPaused = false;
+        public bool healthPublishingEnabled = true;
 
-        [FoxRun(""/debug/conditional_position"", RateHz = 15, When = nameof(telemetryEnabled))]
+        [FoxRun(""/debug/conditional_position"", Hz = 15, OnlyIf = nameof(telemetryEnabled))]
         public UnityEngine.Vector3 conditionalPosition;
 
-        [FoxRun(""/debug/unless_health"", RateHz = 15, Unless = nameof(isPaused))]
+        [FoxRun(""/debug/conditional_health"", Hz = 15, OnlyIf = nameof(healthPublishingEnabled))]
         public int conditionalHealth;
     }
 }

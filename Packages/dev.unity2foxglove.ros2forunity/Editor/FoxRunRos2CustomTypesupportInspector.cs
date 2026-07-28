@@ -93,7 +93,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         : rosPackageName + "/msg/" + contract.CustomEnvelopeIdentity,
                     Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(
                         contract.Flow,
-                        contract.Ros2Qos)))
+                        contract.QosProfile,
+                        contract.QosReliability,
+                        contract.QosDurability,
+                        contract.QosHistory,
+                        contract.QosDepth)))
                 .GroupBy(
                     contract => contract.CanonicalEnvelopeType + "\u001f" + contract.DirectionalPolicy,
                     StringComparer.Ordinal)

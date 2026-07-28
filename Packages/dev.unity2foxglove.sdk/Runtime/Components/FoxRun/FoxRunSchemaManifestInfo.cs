@@ -87,8 +87,8 @@ namespace Unity.FoxgloveSDK.Components
             string memberName,
             string topic,
             string flow,
-            FoxRunSubscriptionProvider declaredProvider,
-            FoxRunRos2QosPreset ros2Qos,
+            FoxRunEndpoint declaredSource,
+            FoxRunQosProfile qosProfile,
             bool supportsWebSocket,
             bool supportsRos2Native,
             string nativeType,
@@ -97,16 +97,28 @@ namespace Unity.FoxgloveSDK.Components
             string ros2ContractKind = "Unsupported",
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
-            string customEnvelopeIdentity = "")
+            string customEnvelopeIdentity = "",
+            FoxRunEndpoint declaredTargets = 0,
+            FoxRunQosReliability qosReliability = 0,
+            FoxRunQosDurability qosDurability = 0,
+            FoxRunQosHistory qosHistory = 0,
+            int qosDepth = 0,
+            bool isStream = false)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider;
-            Ros2Qos = ros2Qos;
+            DeclaredSource = declaredSource;
+            DeclaredTargets = declaredTargets;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
+            IsStream = isStream;
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
@@ -120,10 +132,16 @@ namespace Unity.FoxgloveSDK.Components
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public FoxRunSubscriptionProvider DeclaredProvider { get; }
-        public FoxRunRos2QosPreset Ros2Qos { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
+        public FoxRunQosProfile QosProfile { get; }
+        public FoxRunQosReliability QosReliability { get; }
+        public FoxRunQosDurability QosDurability { get; }
+        public FoxRunQosHistory QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public bool IsStream { get; }
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }
@@ -150,19 +168,29 @@ namespace Unity.FoxgloveSDK.Components
             string memberName,
             string topic,
             string flow,
-            FoxRunSubscriptionProvider declaredProvider,
-            FoxRunRos2QosPreset ros2Qos,
+            FoxRunEndpoint declaredSource,
+            FoxRunQosProfile qosProfile,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
-            string customEnvelopeIdentity)
+            string customEnvelopeIdentity,
+            FoxRunEndpoint declaredTargets = 0,
+            FoxRunQosReliability qosReliability = 0,
+            FoxRunQosDurability qosDurability = 0,
+            FoxRunQosHistory qosHistory = 0,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider;
-            Ros2Qos = ros2Qos;
+            DeclaredSource = declaredSource;
+            DeclaredTargets = declaredTargets;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
@@ -173,8 +201,13 @@ namespace Unity.FoxgloveSDK.Components
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public FoxRunSubscriptionProvider DeclaredProvider { get; }
-        public FoxRunRos2QosPreset Ros2Qos { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
+        public FoxRunQosProfile QosProfile { get; }
+        public FoxRunQosReliability QosReliability { get; }
+        public FoxRunQosDurability QosDurability { get; }
+        public FoxRunQosHistory QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }
         public string CustomPayloadIdentity { get; }

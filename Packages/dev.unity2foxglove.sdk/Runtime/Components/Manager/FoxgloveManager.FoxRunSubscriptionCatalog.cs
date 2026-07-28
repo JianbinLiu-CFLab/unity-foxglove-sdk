@@ -59,9 +59,9 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunSchemaInfoRegistry.Current,
                 subscriptionPolicy.SubscriptionsEnabled && IsFoxRunInboundAuthorized,
                 ActiveFoxRunPublishEncoding,
-                subscriptionPolicy.WebSocketSubscriptionEncoding,
-                subscriptionPolicy.DefaultProvider,
-                subscriptionPolicy.DefaultSubscribeRateHz,
+                subscriptionPolicy.FoxgloveEncoding,
+                subscriptionPolicy.DefaultSource,
+                subscriptionPolicy.TransportAdmissionRateLimitHz,
                 requestedTopic,
                 includeDescriptor);
         }

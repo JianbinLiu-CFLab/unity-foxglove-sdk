@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Editor
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
                 PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
                 EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
-                EditorGUILayout.TextField("Effective Bridge QoS", publisher.EffectiveRos2BridgeQos.DisplaySummary);
+                EditorGUILayout.TextField("Effective Bridge QoS", FoxRunRos2SubscriptionInspectorPresentation.Summary(publisher.EffectiveRos2BridgeQos));
             }
 
             if (publisher.ConfiguredManager != null

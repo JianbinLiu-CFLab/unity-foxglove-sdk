@@ -12,6 +12,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
+        private bool _foxRunRos2BridgeRuntimeDemand;
+
         /// <summary>
         /// Returns the latest ROS2 Bridge runtime stats for Inspector and diagnostics.
         /// </summary>
@@ -64,7 +66,7 @@ namespace Unity.FoxgloveSDK.Components
             string topicOverride,
             string schemaName,
             out string effectiveTopic,
-            out Ros2BridgeQosProfile qos,
+            out FoxRunResolvedQos qos,
             out string reason)
         {
             effectiveTopic = string.Empty;
@@ -83,7 +85,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            qos = ResolveRos2BridgeQos();
+            qos = ActiveFoxRunBridgePublishQos;
 
             if (_ros2BridgeRuntime == null)
             {
@@ -111,6 +113,240 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Phase184 FoxRun readiness gate for an exact canonical ROS 2 type.
+        /// Unlike the maintained packaged-message helper, custom generated
+        /// interfaces are not required to exist in the bundled serializer
+        /// catalog; the connected sidecar owns typesupport lookup.
+        /// </summary>
+        public bool TryPrepareFoxRunRos2BridgePublish(
+            string topic,
+            string schemaName,
+            FoxRunResolvedQos qos,
+            out string effectiveTopic,
+            out string reason)
+        {
+            effectiveTopic = string.Empty;
+            reason = string.Empty;
+            if (SuppressLivePublishersForReplay)
+            {
+                reason = "Replay is suppressing live publishers.";
+                return false;
+            }
+            if (!TryResolveRos2BridgeTopic(topic, string.Empty, out effectiveTopic, out reason))
+                return false;
+            if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
+            {
+                reason = "ROS2 Bridge schema must be an exact canonical package/msg/Message type.";
+                return false;
+            }
+
+            if (!Ros2BridgeFrame.IsValidResolvedQos(qos))
+            {
+                reason = "ROS2 Bridge QoS must be a fully resolved portable contract.";
+                return false;
+            }
+            if (!EnsureFoxRunRos2BridgeRuntimeDemand(out reason))
+                return false;
+            try
+            {
+                var readiness = _ros2BridgeRuntime.PreparePublisher(
+                    effectiveTopic,
+                    schemaName,
+                    qos,
+                    out reason);
+                return readiness == Ros2BridgePublisherReadiness.Ready;
+            }
+            catch (System.ArgumentException exception)
+            {
+                reason = exception.Message;
+                return false;
+            }
+        }
+
+        private bool EnsureFoxRunRos2BridgeRuntimeDemand(out string reason)
+        {
+            // FoxRun's frozen/explicit Bridge target is independent from the
+            // legacy component-output master switch.
+            if (!ActiveFoxRunPublishSessionPolicy.SessionActive)
+            {
+                reason = "FoxRun publish session is not active.";
+                return false;
+            }
+            if (!isActiveAndEnabled)
+            {
+                reason = "FoxgloveManager is not active and enabled.";
+                return false;
+            }
+            if (_ros2BridgeRuntime == null)
+                CreateRos2BridgeRuntime();
+            if (_ros2BridgeRuntime == null)
+            {
+                reason = string.IsNullOrEmpty(_connectionState.Ros2BridgeSetupError)
+                    ? "ROS2 Bridge runtime is unavailable."
+                    : _connectionState.Ros2BridgeSetupError;
+                return false;
+            }
+
+            _ros2BridgeRuntime.Start(
+                enabled: true,
+                autoConnect: _ros2BridgeAutoConnect);
+            _foxRunRos2BridgeRuntimeDemand = true;
+            reason = string.Empty;
+            return true;
+        }
+
+        private void ReleaseFoxRunRos2BridgeRuntimeDemand()
+        {
+            _foxRunRos2BridgeRuntimeDemand = false;
+            if (!_ros2BridgeEnabled)
+                _ros2BridgeRuntime?.Stop();
+        }
+
+        /// <summary>Publish one already generated XCDR1 payload to the selected Bridge target.</summary>
+        public bool TryPublishFoxRunRos2BridgeCdr(
+            string topic,
+            string schemaName,
+            byte[] payload,
+            ulong logTimeNs,
+            FoxRunResolvedQos qos,
+            out string reason)
+        {
+            if (!TryPrepareFoxRunRos2BridgePublish(
+                    topic,
+                    schemaName,
+                    qos,
+                    out var effectiveTopic,
+                    out reason))
+            {
+                return false;
+            }
+
+            try
+            {
+                Ros2CdrPayloadValidator.Validate(payload);
+                var frame = Ros2BridgeFrame.CreateValidated(
+                    effectiveTopic,
+                    schemaName,
+                    CdrEncoding,
+                    logTimeNs,
+                    _connectionState.NextRos2BridgeSequence(),
+                    payload,
+                    qos);
+                return _ros2BridgeRuntime.TryEnqueuePrepared(frame, out reason);
+            }
+            catch (System.ArgumentException exception)
+            {
+                reason = exception.Message;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Prepare a hidden MCAP CDR channel for a ROS-only FoxRun declaration.
+        /// Recording demand is independent from live Foxglove target selection.
+        /// </summary>
+        public bool TryPrepareFoxRunRos2Recording(
+            string topic,
+            string schemaName,
+            string schemaContent,
+            out uint channelId,
+            out string reason)
+        {
+            channelId = 0;
+            reason = string.Empty;
+            if (SuppressLivePublishersForReplay)
+            {
+                reason = "Replay is suppressing live publishers.";
+                return false;
+            }
+            if (_runtime == null || !_runtime.IsRunning || !_runtime.RecordingEnabled)
+            {
+                // No active recorder is the normal case. Returning an empty
+                // reason keeps the target-aware hub silent while preserving
+                // diagnostics for actual configuration and publish failures.
+                return false;
+            }
+            if (!IsValidPublishTopic(topic))
+            {
+                reason = "FoxRun recording topic is invalid.";
+                return false;
+            }
+            if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
+            {
+                reason = "FoxRun recording schema must be an exact canonical package/msg/Message type.";
+                return false;
+            }
+            if (string.IsNullOrEmpty(schemaContent))
+            {
+                if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out var packaged))
+                {
+                    reason = "FoxRun recording schema content is unavailable.";
+                    return false;
+                }
+                schemaContent = packaged.Content;
+            }
+
+            var key = (topic, schemaName);
+            if (!_foxRunRecordingChannelCache.TryGetValue(key, out channelId))
+            {
+                channelId = (uint)_connectionState.NextChannelId++;
+                _foxRunRecordingChannelCache[key] = channelId;
+            }
+
+            // Reassert the immutable descriptor on every preparation. The
+            // session makes this idempotent for the current recorder, while a
+            // replacement recorder or a newly-allowing MCAP filter receives
+            // the cached channel before demand is reported.
+            _runtime.RegisterRecordingOnlyChannel(new Protocol.AdvertiseChannel
+            {
+                Id = channelId,
+                Topic = topic,
+                Encoding = CdrEncoding,
+                SchemaName = schemaName,
+                SchemaEncoding = Ros2MsgSchemaEncoding,
+                Schema = schemaContent
+            });
+
+            if (_runtime.HasRecordingDemand(channelId))
+                return true;
+            reason = "MCAP recorder or recording filter rejected the FoxRun channel.";
+            return false;
+        }
+
+        public bool TryPublishFoxRunRos2Recording(
+            string topic,
+            string schemaName,
+            string schemaContent,
+            byte[] payload,
+            ulong logTimeNs,
+            out string reason)
+        {
+            if (!TryPrepareFoxRunRos2Recording(
+                    topic,
+                    schemaName,
+                    schemaContent,
+                    out var channelId,
+                    out reason))
+            {
+                return false;
+            }
+
+            try
+            {
+                Ros2CdrPayloadValidator.Validate(payload);
+                if (_runtime.PublishRecordingOnlyRos2Cdr(channelId, payload, logTimeNs))
+                    return true;
+                reason = "MCAP recorder stopped accepting the FoxRun channel.";
+                return false;
+            }
+            catch (System.ArgumentException exception)
+            {
+                reason = exception.Message;
+                return false;
+            }
         }
 
         /// <summary>

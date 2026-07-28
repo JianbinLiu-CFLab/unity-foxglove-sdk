@@ -356,37 +356,61 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         internal static string DirectionalContractPolicyLabel(
             string flow,
-            FoxRunRos2QosPreset qos)
+            FoxRunQosProfile profile,
+            FoxRunQosReliability reliability,
+            FoxRunQosDurability durability,
+            FoxRunQosHistory history,
+            int depth)
         {
-            var inbound = "Inbound / " + QosLabel(qos);
+            var qos = QosLabel(profile, reliability, durability, history, depth);
             switch (flow)
             {
                 case "Publish":
-                    return "Outbound / publisher-default QoS";
+                    return "Outbound / " + qos;
                 case "Subscribe":
-                    return inbound;
+                    return "Inbound / " + qos;
                 case "PublishAndSubscribe":
-                    return inbound + "; outbound / publisher-default QoS";
+                    return "Inbound and outbound / " + qos;
                 default:
-                    return "Direction unavailable / " + QosLabel(qos);
+                    return "Direction unavailable / " + qos;
             }
         }
 
-        private static string QosLabel(FoxRunRos2QosPreset qos)
+        private static string QosLabel(
+            FoxRunQosProfile profile,
+            FoxRunQosReliability reliability,
+            FoxRunQosDurability durability,
+            FoxRunQosHistory history,
+            int depth)
         {
-            switch (qos)
-            {
-                case FoxRunRos2QosPreset.Reliable:
-                    return "Reliable";
-                case FoxRunRos2QosPreset.SensorData:
-                    return "Sensor Data";
-                case FoxRunRos2QosPreset.TransientLocal:
-                    return "Transient Local";
-                case FoxRunRos2QosPreset.Inherit:
-                    return "Manager Default";
-                default:
-                    return "Default";
-            }
+            var parts = new List<string>();
+            if (profile != 0)
+                parts.Add(profile == FoxRunQosProfile.SensorData
+                    ? "Sensor Data"
+                    : profile == FoxRunQosProfile.SystemDefault
+                        ? "System Default"
+                        : "Default");
+            if (reliability != 0)
+                parts.Add(reliability == FoxRunQosReliability.BestEffort
+                    ? "Best Effort"
+                    : reliability == FoxRunQosReliability.SystemDefault
+                        ? "System Default Reliability"
+                        : "Reliable");
+            if (durability != 0)
+                parts.Add(durability == FoxRunQosDurability.TransientLocal
+                    ? "Transient Local"
+                    : durability == FoxRunQosDurability.SystemDefault
+                        ? "System Default Durability"
+                        : "Volatile");
+            if (history != 0)
+                parts.Add(history == FoxRunQosHistory.KeepAll
+                    ? "Keep All"
+                    : history == FoxRunQosHistory.SystemDefault
+                        ? "System Default History"
+                        : "Keep Last");
+            if (depth > 0)
+                parts.Add("Depth " + depth);
+            return parts.Count == 0 ? "Manager QoS Profile" : string.Join(" / ", parts);
         }
     }
 }

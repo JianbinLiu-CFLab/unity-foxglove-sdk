@@ -217,9 +217,8 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, contract.BindingHash, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.PolicyHash, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Policy.Mode, ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.RateHz) + ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
+                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.Hz) + ",");
+                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.Tolerance) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
                 AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
                 AppendProtobufDescriptorSet(sb, inner, contract);
@@ -244,8 +243,8 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Flow, ",");
-                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(binding.DeclaredProvider) + ",");
-                sb.AppendLine(inner + "    " + Ros2QosLiteral(binding.Ros2Qos) + ",");
+                sb.AppendLine(inner + "    " + SourceLiteral(binding.DeclaredSource) + ",");
+                sb.AppendLine(inner + "    " + QosProfileLiteral(binding.QosProfile) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.NativeType, ",");
@@ -254,7 +253,13 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.Ros2ContractKind.ToString(), ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, string.Empty);
+                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, ",");
+                sb.AppendLine(inner + "    " + TargetsLiteral(binding.DeclaredTargets) + ",");
+                sb.AppendLine(inner + "    " + QosReliabilityLiteral(binding.QosReliability) + ",");
+                sb.AppendLine(inner + "    " + QosDurabilityLiteral(binding.QosDurability) + ",");
+                sb.AppendLine(inner + "    " + QosHistoryLiteral(binding.QosHistory) + ",");
+                sb.AppendLine(inner + "    " + binding.QosDepth.ToString(CultureInfo.InvariantCulture) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(binding.IsStream));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
@@ -276,37 +281,110 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
-                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(contract.DeclaredProvider) + ",");
-                sb.AppendLine(inner + "    " + Ros2QosLiteral(contract.Ros2Qos) + ",");
+                sb.AppendLine(inner + "    " + SourceLiteral(contract.DeclaredSource) + ",");
+                sb.AppendLine(inner + "    " + QosProfileLiteral(contract.QosProfile) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.CustomDtoIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, string.Empty);
+                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, ",");
+                sb.AppendLine(inner + "    " + TargetsLiteral(contract.DeclaredTargets) + ",");
+                sb.AppendLine(inner + "    " + QosReliabilityLiteral(contract.QosReliability) + ",");
+                sb.AppendLine(inner + "    " + QosDurabilityLiteral(contract.QosDurability) + ",");
+                sb.AppendLine(inner + "    " + QosHistoryLiteral(contract.QosHistory) + ",");
+                sb.AppendLine(inner + "    " + contract.QosDepth.ToString(CultureInfo.InvariantCulture));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
         }
 
-        private static string SubscriptionProviderLiteral(string value)
+        private static string SourceLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
-                return "FoxRunSubscriptionProvider.FoxgloveWebSocket";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
-                return "FoxRunSubscriptionProvider.Ros2Native";
-            return "FoxRunSubscriptionProvider.Inherit";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
+                return "FoxRunEndpoint.Foxglove";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
+                return "FoxRunEndpoint.Ros2Native";
+            return "(FoxRunEndpoint)0";
         }
 
-        private static string Ros2QosLiteral(string value)
+        private static string TargetsLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
-                return "FoxRunRos2QosPreset.Reliable";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
-                return "FoxRunRos2QosPreset.SensorData";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
-                return "FoxRunRos2QosPreset.TransientLocal";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
-                return "FoxRunRos2QosPreset.Default";
-            return "FoxRunRos2QosPreset.Inherit";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
+                return "(FoxRunEndpoint)0";
+
+            var parts = (value ?? string.Empty).Split(',');
+            var literals = new List<string>();
+            foreach (var part in parts)
+            {
+                if (string.Equals(part, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Foxglove");
+                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Ros2Native");
+                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Ros2Bridge");
+            }
+
+            return literals.Count == 0
+                ? "(FoxRunEndpoint)0"
+                : string.Join(" | ", literals);
+        }
+
+        private static string QosProfileLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.Default";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.SensorData";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
+                return "FoxRunQosProfile.SystemDefault";
+            return "(FoxRunQosProfile)0";
+        }
+
+        private static string QosReliabilityLiteral(string value)
+            => QosPolicyLiteral(
+                value,
+                "FoxRunQosReliability.SystemDefault",
+                FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                "FoxRunQosReliability.Reliable",
+                FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
+                "FoxRunQosReliability.BestEffort",
+                "(FoxRunQosReliability)0");
+
+        private static string QosDurabilityLiteral(string value)
+            => QosPolicyLiteral(
+                value,
+                "FoxRunQosDurability.SystemDefault",
+                FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                "FoxRunQosDurability.Volatile",
+                FoxRunGenerationDescriptorConstants.TransientLocalQosDurability,
+                "FoxRunQosDurability.TransientLocal",
+                "(FoxRunQosDurability)0");
+
+        private static string QosHistoryLiteral(string value)
+            => QosPolicyLiteral(
+                value,
+                "FoxRunQosHistory.SystemDefault",
+                FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                "FoxRunQosHistory.KeepLast",
+                FoxRunGenerationDescriptorConstants.KeepAllQosHistory,
+                "FoxRunQosHistory.KeepAll",
+                "(FoxRunQosHistory)0");
+
+        private static string QosPolicyLiteral(
+            string value,
+            string systemDefaultLiteral,
+            string firstValue,
+            string firstLiteral,
+            string secondValue,
+            string secondLiteral,
+            string inheritLiteral)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
+                return systemDefaultLiteral;
+            if (string.Equals(value, firstValue, StringComparison.Ordinal))
+                return firstLiteral;
+            if (string.Equals(value, secondValue, StringComparison.Ordinal))
+                return secondLiteral;
+            return inheritLiteral;
         }
 
         private static void WriteFieldsArray(

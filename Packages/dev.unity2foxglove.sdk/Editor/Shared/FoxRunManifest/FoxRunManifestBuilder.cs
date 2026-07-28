@@ -28,8 +28,15 @@ namespace Unity.FoxgloveSDK.Editor
             var sectionHashInput = FoxRunManifestJsonWriter.WriteFoxRunSectionHashInput(types);
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
-            var subscriptionBindings = manifestVersion >= 2
-                ? BuildSubscriptionBindings(source)
+            var discoveredSubscriptionBindings = BuildSubscriptionBindings(source);
+            if (manifestVersion < 3 && discoveredSubscriptionBindings.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "FoxRun manifest version 3 is required when any subscription binding exists; "
+                    + "legacy manifest versions 1 and 2 are publish-only.");
+            }
+            var subscriptionBindings = manifestVersion >= 3
+                ? discoveredSubscriptionBindings
                 : Array.Empty<FoxRunManifestSubscriptionBinding>();
             var subscriptionHash = manifestVersion >= 2
                 ? FoxRunManifestHasher.Sha256Hex(
@@ -67,8 +74,8 @@ namespace Unity.FoxgloveSDK.Editor
                                  // Subscribe native contracts remain absent
                                  // so this never creates a fallback input path.
                                  && (!string.Equals(
-                                         member.SubscriptionProvider,
-                                         FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                         member.Source,
+                                         FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                                          StringComparison.Ordinal)
                                      || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
                 .GroupBy(DeclaringType)
@@ -89,8 +96,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.SubscriptionProvider,
-                    member.Ros2Qos,
+                    member.Source,
+                    member.QosProfile,
                     member.GeneratesWebSocketCodec,
                     member.GeneratesRos2NativeRegistration,
                     ResolveNativeType(member),
@@ -99,7 +106,13 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Ros2ContractKind,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member)))
+                    ResolveCustomEnvelopeIdentity(member),
+                    member.Targets,
+                    member.QosReliability,
+                    member.QosDurability,
+                    member.QosHistory,
+                    member.QosDepth,
+                    member.IsStream))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
@@ -118,12 +131,17 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.SubscriptionProvider,
-                    member.Ros2Qos,
+                    member.Source,
+                    member.QosProfile,
                     true,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member)))
+                    ResolveCustomEnvelopeIdentity(member),
+                    member.Targets,
+                    member.QosReliability,
+                    member.QosDurability,
+                    member.QosHistory,
+                    member.QosDepth))
                 .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
                 .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)
@@ -324,9 +342,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             return new FoxRunManifestPolicy(
                 PolicyName(TopicPolicy(members)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeRateHz(member.RateHz)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ChangeEpsilon)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ForceIntervalSeconds)));
+                members.Count == 0 ? 0f : members.Max(member => NormalizeHz(member.Hz)),
+                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.Tolerance)));
         }
 
         private static string BuildFlow(IReadOnlyList<FoxRunManifestMember> members)
@@ -338,10 +355,10 @@ namespace Unity.FoxgloveSDK.Editor
             return FoxRunGenerationMember.FlowToName(modes.Count == 0 ? 1 : modes[0]);
         }
 
-        private static float NormalizeRateHz(float rateHz)
+        private static float NormalizeHz(float hz)
         {
-            return !float.IsNaN(rateHz) && !float.IsInfinity(rateHz) && rateHz > 0f
-                ? rateHz
+            return !float.IsNaN(hz) && !float.IsInfinity(hz) && hz > 0f
+                ? hz
                 : 10f;
         }
 
@@ -354,16 +371,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static int TopicPolicy(IReadOnlyList<FoxRunManifestMember> members)
         {
-            var invalid = members.FirstOrDefault(member => member.Policy < 1 || member.Policy > 4);
+            var invalid = members.FirstOrDefault(member =>
+                member.Policy != 1 && member.Policy != 2 && member.Policy != 4);
             if (invalid != null)
                 throw new InvalidOperationException(
-                    "FoxRun manifest Policy is outside the supported range 1..4 for " +
+                    "FoxRun manifest Policy must be FixedRate, Change, or Trigger for " +
                     DeclaringType(invalid) + "." + invalid.MemberName + ".");
 
             if (members.Any(member => member.Policy == 4))
                 return 4;
-            if (members.Any(member => member.Policy == 3))
-                return 3;
             if (members.Any(member => member.Policy == 2))
                 return 2;
             return members.Count == 0 ? 1 : members.Max(member => member.Policy);
@@ -375,7 +391,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 case 1: return "FixedRate";
                 case 2: return "Change";
-                case 3: return "ChangeOrInterval";
                 case 4: return "Trigger";
                 default: return "Unknown";
             }

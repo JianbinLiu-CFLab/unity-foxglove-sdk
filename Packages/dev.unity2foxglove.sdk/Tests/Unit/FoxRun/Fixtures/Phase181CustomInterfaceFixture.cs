@@ -13,9 +13,10 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         [FoxRun(
             "/phase181/custom_state",
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            Encoding = FoxRunEncoding.JSON,
+            Source = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.Default,
+            Reliability = FoxRunQosReliability.Reliable)]
         public Phase181State State { get; set; }
     }
 
@@ -48,5 +49,15 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
     {
         public int Count { get; set; }
         public double Velocity { get; set; }
+    }
+
+    public sealed class Phase184NestedSequenceItem
+    {
+        public string Label { get; set; }
+    }
+
+    public sealed class Phase184NestedSequenceState
+    {
+        public List<Phase184NestedSequenceItem> Children { get; set; }
     }
 }

@@ -425,15 +425,15 @@ def read_successful_worker_result(path: pathlib.Path, lock: StaticInterfaceLock)
         raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker did not produce a valid result summary.") from exc
     if not isinstance(parsed, Mapping):
         raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker result was not an object.")
+    verdict = parsed.get("verdict")
+    if isinstance(verdict, str) and verdict.startswith("FAIL_"):
+        raise PeerFailure(verdict, "The helper-owned typed worker did not complete every required proof.")
     try:
         protocol.require_interface_digest(lock.interface_digest, parsed.get("interfaceDigest", ""))
     except protocol.ProtocolFailure as exc:
         raise PeerFailure(exc.code, "The typed worker result did not match the locked interface digest.") from exc
-    verdict = parsed.get("verdict")
     if verdict == "PASS":
         return parsed
-    if isinstance(verdict, str) and verdict.startswith("FAIL_"):
-        raise PeerFailure(verdict, "The helper-owned typed worker did not complete every required proof.")
     raise PeerFailure("FAIL_PEER_RESULT", "The helper-owned typed worker emitted an invalid verdict.")
 
 
@@ -1371,6 +1371,29 @@ def can_complete_live_evidence(evidence: Mapping[str, object], probe_role: str =
     return classify_evidence(completion_view, probe_role) == "PASS"
 
 
+def should_publish_initial_bidirectional_probe(
+    *,
+    requires_bidirectional: bool,
+    inbound_applied: bool,
+    graph_evidence: bool,
+    origin_probe_ready: bool,
+    initial_remote_applied: bool,
+    now: float,
+    next_publish_time: float | None,
+) -> bool:
+    """Retry the first volatile P&S sample only after both directions are observable."""
+
+    if (
+        not requires_bidirectional
+        or not inbound_applied
+        or not graph_evidence
+        or not origin_probe_ready
+        or initial_remote_applied
+    ):
+        return False
+    return next_publish_time is None or now >= next_publish_time
+
+
 def should_publish_final_bidirectional_probe(
     *,
     requires_bidirectional: bool,
@@ -1395,14 +1418,23 @@ def has_role_transport_evidence(evidence: Mapping[str, object], probe_role: str)
     return classify_evidence(completion_view, probe_role) == "PASS"
 
 
-def custom_payload_fields(token: str, *, null_empty: bool) -> dict[str, object]:
-    """Return the exact ordinary DTO cases that the generated envelope must preserve."""
+def run_token_probe_count(token: str) -> int:
+    """Bind the nullable/empty probe to one run without filling nullable fields."""
 
     if not token or len(token) > 96:
         raise PeerFailure("FAIL_PAYLOAD_SHAPE", "The correlation token is not safe for the bounded custom DTO probe.")
+    digest = hashlib.sha256(token.encode("utf-8")).digest()
+    value = int.from_bytes(digest[:4], byteorder="big", signed=False) & 0x7FFFFFFF
+    return value or 1
+
+
+def custom_payload_fields(token: str, *, null_empty: bool) -> dict[str, object]:
+    """Return the exact ordinary DTO cases that the generated envelope must preserve."""
+
+    probe_count = run_token_probe_count(token)
     if null_empty:
         return {
-            "count": 182,
+            "count": probe_count,
             "kind": 1,
             "message": "",
             "has_message": True,
@@ -1439,6 +1471,20 @@ def is_peer_remote_origin(origin: str, token: str) -> bool:
     """Recognize only origins emitted by this peer, including its null/empty probe."""
 
     return origin in {"remote-" + token, "remote-final-" + token}
+
+
+def is_unity_origin_probe(
+    origin: str,
+    payload: Mapping[str, object],
+    token: str,
+) -> bool:
+    """Recognize the bounded local envelope retained before remote apply suppression."""
+
+    return (
+        bool(origin)
+        and not is_peer_remote_origin(origin, token)
+        and dict(payload) == custom_payload_fields(token, null_empty=True)
+    )
 
 
 def write_worker_result(path: pathlib.Path, result: Mapping[str, object]) -> None:
@@ -1521,6 +1567,21 @@ def _matching_marker(
             continue
         return marker
     return None
+
+
+def count_bidirectional_apply_markers(
+    markers: Sequence[protocol.UnityMarker],
+    token: str,
+) -> int:
+    """Count only the selected run's exact bidirectional apply markers."""
+
+    return sum(
+        1
+        for marker in markers
+        if marker.name == "PHASE181_CUSTOM_ROS2_APPLIED"
+        and marker.fields.get("token") == token
+        and marker.fields.get("topic") == DEFAULT_TOPICS["bidirectional"]
+    )
 
 
 def _append_unique_markers(
@@ -1877,13 +1938,13 @@ def run_typed_worker(args: argparse.Namespace) -> int:
     remote_origin = ""
     sequence = 1
     first_inbound_sent = False
-    first_bidirectional_sent = False
     replay_sent = False
+    next_initial_bidirectional_publish_time: float | None = None
+    initial_bidirectional_send_count = 0
     next_final_bidirectional_publish_time: float | None = None
     final_bidirectional_send_count = 0
     next_publish_time = 0.0
     observed_outbound_messages: set[int] = set()
-    observed_bidirectional_messages: set[int] = set()
     previous_outbound_sequence: int | None = None
     previous_unity_bidirectional_sequence: int | None = None
     worker_state = protocol.EvidenceStateMachine()
@@ -1899,6 +1960,7 @@ def run_typed_worker(args: argparse.Namespace) -> int:
         "sameOriginDropped": False,
         "remoteOriginApplied": False,
         "nullableEmptyObserved": False,
+        "initialBidirectionalSends": 0,
         "finalBidirectionalSends": 0,
         "unityTerminalPass": False,
         "cleanStop": False,
@@ -1992,22 +2054,11 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                 evidence["inboundApplied"] = True
                 worker_state.transition(protocol.ProtocolState.STRING_CORRELATED)
 
-            if evidence["inboundApplied"] and requires_bidirectional and not first_bidirectional_sent:
-                bidirectional_publisher.publish(
-                    _make_envelope(
-                        node,
-                        envelope_type,
-                        payload_type,
-                        nested_type,
-                        custom_payload_fields(run_token, null_empty=False),
-                        remote_origin,
-                        sequence,
-                    )
-                )
-                sequence += 1
-                first_bidirectional_sent = True
-                worker_state.transition(protocol.ProtocolState.PROBES_RUNNING)
-            elif evidence["inboundApplied"] and not requires_bidirectional and worker_state.state == protocol.ProtocolState.STRING_CORRELATED:
+            if (
+                evidence["inboundApplied"]
+                and not requires_bidirectional
+                and worker_state.state == protocol.ProtocolState.STRING_CORRELATED
+            ):
                 worker_state.transition(protocol.ProtocolState.PROBES_RUNNING)
 
             matching_outbound = [
@@ -2027,25 +2078,64 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                 )
             evidence["outboundObserved"] = bool(observed_outbound_messages)
 
-            unity_echo = next(
+            unity_origin_probe = next(
                 (
                     message
                     for message in received_bidirectional
-                    if getattr(message, "foxrun_origin_id", "")
-                    and not is_peer_remote_origin(getattr(message, "foxrun_origin_id", ""), run_token)
-                    and _payload_evidence(message).get("message") == run_token
+                    if is_unity_origin_probe(
+                        getattr(message, "foxrun_origin_id", ""),
+                        _payload_evidence(message),
+                        run_token,
+                    )
                 ),
                 None,
             )
-            if first_bidirectional_sent and unity_echo is not None and not replay_sent:
-                if _payload_evidence(unity_echo) != custom_payload_fields(run_token, null_empty=False):
-                    raise PeerFailure("FAIL_PAYLOAD_SHAPE", "Unity's custom P&S echo did not preserve the correlated remote DTO.")
+            evidence["originProbeObserved"] = unity_origin_probe is not None
+            bidirectional_apply_count = count_bidirectional_apply_markers(markers, run_token)
+            initial_remote_applied = bidirectional_apply_count >= 1
+            if requires_bidirectional and bidirectional_apply_count >= 2:
+                evidence["remoteOriginApplied"] = True
+                # The acceptance component emits its second marker only after
+                # validating every nullable/empty field on the applied DTO.
+                evidence["nullableEmptyObserved"] = True
+
+            if should_publish_initial_bidirectional_probe(
+                requires_bidirectional=requires_bidirectional,
+                inbound_applied=evidence["inboundApplied"] is True,
+                graph_evidence=evidence["graphEvidence"] is True,
+                origin_probe_ready=unity_origin_probe is not None,
+                initial_remote_applied=initial_remote_applied,
+                now=now,
+                next_publish_time=next_initial_bidirectional_publish_time,
+            ):
+                bidirectional_publisher.publish(
+                    _make_envelope(
+                        node,
+                        envelope_type,
+                        payload_type,
+                        nested_type,
+                        custom_payload_fields(run_token, null_empty=False),
+                        remote_origin,
+                        sequence,
+                    )
+                )
+                sequence += 1
+                initial_bidirectional_send_count += 1
+                evidence["initialBidirectionalSends"] = initial_bidirectional_send_count
+                next_initial_bidirectional_publish_time = now + 0.75
+                if worker_state.state == protocol.ProtocolState.STRING_CORRELATED:
+                    worker_state.transition(protocol.ProtocolState.PROBES_RUNNING)
+
+            if (
+                initial_remote_applied
+                and unity_origin_probe is not None
+                and not replay_sent
+            ):
                 previous_unity_bidirectional_sequence = protocol.require_envelope_metadata(
-                    _envelope_metadata(unity_echo),
+                    _envelope_metadata(unity_origin_probe),
                     previous_unity_bidirectional_sequence,
                 )
-                observed_bidirectional_messages.add(id(unity_echo))
-                bidirectional_publisher.publish(unity_echo)
+                bidirectional_publisher.publish(unity_origin_probe)
                 replay_sent = True
 
             same_origin_dropped = _matching_marker(
@@ -2077,36 +2167,6 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                 final_bidirectional_send_count += 1
                 evidence["finalBidirectionalSends"] = final_bidirectional_send_count
                 next_final_bidirectional_publish_time = now + 0.75
-
-            nullable_echo = next(
-                (
-                    message
-                    for message in received_bidirectional
-                    if id(message) not in observed_bidirectional_messages
-                    and getattr(message, "foxrun_origin_id", "")
-                    and not is_peer_remote_origin(getattr(message, "foxrun_origin_id", ""), run_token)
-                    and _payload_evidence(message).get("message") == ""
-                ),
-                None,
-            )
-            if nullable_echo is not None:
-                protocol.require_nullable_empty_payload(_payload_evidence(nullable_echo))
-                previous_unity_bidirectional_sequence = protocol.require_envelope_metadata(
-                    _envelope_metadata(nullable_echo),
-                    previous_unity_bidirectional_sequence,
-                )
-                observed_bidirectional_messages.add(id(nullable_echo))
-                evidence["nullableEmptyObserved"] = True
-
-            bidirectional_applies = [
-                marker
-                for marker in markers
-                if marker.name == "PHASE181_CUSTOM_ROS2_APPLIED"
-                and marker.fields.get("token") == run_token
-                and marker.fields.get("topic") == DEFAULT_TOPICS["bidirectional"]
-            ]
-            if requires_bidirectional and len(bidirectional_applies) >= 2:
-                evidence["remoteOriginApplied"] = True
 
             if has_role_transport_evidence(evidence, probe_role) and worker_state.state == protocol.ProtocolState.PROBES_RUNNING:
                 worker_state.transition(protocol.ProtocolState.UNITY_APPLIED)

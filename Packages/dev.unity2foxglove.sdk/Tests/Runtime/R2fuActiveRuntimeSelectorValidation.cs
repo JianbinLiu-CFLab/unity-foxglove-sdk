@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "146A-D0: the core optional R2FU Inspector seam remains valid C# source for Unity compilation");
 
             Check(source.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
-                  && source.Contains("HasGeneratedExplicitSubscriptionProvider", StringComparison.Ordinal)
+                  && source.Contains("HasGeneratedExplicitSource", StringComparison.Ordinal)
                   && topLevel != null
                   && allNativeRuntimeSubsections.Length == 1
                   && allNativeRuntimeCallbacks.Length == 1
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && directRuntimeDraws.Length == 0
                   && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && guard.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
-                  && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal),
+                  && guard.Contains("_defaultFoxRunSubscriptionSource", StringComparison.Ordinal),
                 "146A-D1: unified native demand reaches one optional runtime selector only through the conditional Data Transport native-runtime subsection");
             const string selectorReflectionSeam =
                 "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";

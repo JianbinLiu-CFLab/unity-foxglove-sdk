@@ -11,96 +11,154 @@ namespace Unity.FoxgloveSDK.Components
         public FoxgloveInputTopicInfo(string topic, string encoding, FoxRunFlow mode)
             : this(
                 topic,
-                FoxRunWireEncodingResolver.FromProtocolEncoding(encoding),
+                FoxRunEncodingResolver.FromProtocolEncoding(encoding),
                 mode,
-                FoxRunSubscriptionProvider.Inherit,
+                (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                hasExplicitEncoding: true,
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
-                rateHz: -1f,
-                hasExplicitRateHz: false,
-                forceIntervalSeconds: 0f)
+                hz: -1f,
+                hasExplicitHz: false)
         {
         }
 
-        public FoxgloveInputTopicInfo(string topic, FoxRunWireEncoding declaredWireEncoding, FoxRunFlow mode)
+        public FoxgloveInputTopicInfo(string topic, FoxRunEncoding declaredEncoding, FoxRunFlow mode)
             : this(
                 topic,
-                declaredWireEncoding,
+                declaredEncoding,
                 mode,
-                FoxRunSubscriptionProvider.Inherit,
+                (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                hasExplicitEncoding: declaredEncoding != 0,
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
-                rateHz: -1f,
-                hasExplicitRateHz: false,
-                forceIntervalSeconds: 0f)
+                hz: -1f,
+                hasExplicitHz: false)
         {
         }
 
         public FoxgloveInputTopicInfo(
             string topic,
-            FoxRunWireEncoding declaredWireEncoding,
+            FoxRunEncoding declaredEncoding,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider declaredSubscriptionProvider,
+            FoxRunEndpoint declaredSource,
             bool supportsWebSocket,
             bool supportsRos2Native)
             : this(
                 topic,
-                declaredWireEncoding,
+                declaredEncoding,
                 mode,
-                declaredSubscriptionProvider,
+                declaredSource,
+                hasExplicitSource: declaredSource != 0,
+                hasExplicitEncoding: declaredEncoding != 0,
                 supportsWebSocket,
                 supportsRos2Native,
                 FoxRunPolicy.FixedRate,
                 -1f,
-                false,
-                0f)
+                false)
         {
         }
 
         public FoxgloveInputTopicInfo(
             string topic,
-            FoxRunWireEncoding declaredWireEncoding,
+            FoxRunEncoding declaredEncoding,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider declaredSubscriptionProvider,
+            FoxRunEndpoint declaredSource,
             bool supportsWebSocket,
             bool supportsRos2Native,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
-            float rateHz = -1f,
-            bool hasExplicitRateHz = false,
-            float forceIntervalSeconds = 0f)
+            float hz = -1f,
+            bool hasExplicitHz = false,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false,
+            bool hasExplicitQos = false,
+            bool isStream = false)
+            : this(
+                topic,
+                declaredEncoding,
+                mode,
+                declaredSource,
+                hasExplicitSource: declaredSource != 0,
+                hasExplicitEncoding: declaredEncoding != 0,
+                supportsWebSocket,
+                supportsRos2Native,
+                policy,
+                hz,
+                hasExplicitHz,
+                declaredTargets,
+                hasExplicitTargets,
+                hasExplicitQos,
+                isStream)
+        {
+        }
+
+        public FoxgloveInputTopicInfo(
+            string topic,
+            FoxRunEncoding declaredEncoding,
+            FoxRunFlow mode,
+            FoxRunEndpoint declaredSource,
+            bool hasExplicitSource,
+            bool hasExplicitEncoding,
+            bool supportsWebSocket,
+            bool supportsRos2Native,
+            FoxRunPolicy policy = FoxRunPolicy.FixedRate,
+            float hz = -1f,
+            bool hasExplicitHz = false,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false,
+            bool hasExplicitQos = false,
+            bool isStream = false)
         {
             Topic = topic ?? string.Empty;
-            DeclaredWireEncoding = declaredWireEncoding;
-            Encoding = declaredWireEncoding == FoxRunWireEncoding.Inherit
+            DeclaredEncoding = declaredEncoding;
+            Encoding = declaredEncoding == (FoxRunEncoding)0
                 ? "inherit"
-                : FoxRunWireEncodingResolver.ToProtocolEncoding(declaredWireEncoding);
+                : FoxRunEncodingResolver.ToProtocolEncoding(declaredEncoding);
             Mode = mode;
-            DeclaredSubscriptionProvider = declaredSubscriptionProvider;
+            DeclaredSource = declaredSource;
+            HasExplicitSource = hasExplicitSource;
+            HasExplicitEncoding = hasExplicitEncoding;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
             Policy = policy;
-            RateHz = rateHz;
-            HasExplicitRateHz = hasExplicitRateHz;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            HasExplicitHz = hasExplicitHz;
+            DeclaredTargets = declaredTargets;
+            HasExplicitTargets = hasExplicitTargets;
+            HasExplicitQos = hasExplicitQos;
+            IsStream = isStream;
+            HeartbeatIntervalSeconds = policy == FoxRunPolicy.Change
+                                       && hasExplicitHz
+                                       && hz > 0f
+                ? 1f / hz
+                : 0f;
         }
 
         public string Topic { get; }
-        public FoxRunWireEncoding DeclaredWireEncoding { get; }
+        public FoxRunEncoding DeclaredEncoding { get; }
         public string Encoding { get; }
         public FoxRunFlow Mode { get; }
-        public FoxRunSubscriptionProvider DeclaredSubscriptionProvider { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public bool HasExplicitSource { get; }
+        public bool HasExplicitEncoding { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
+        public bool HasExplicitTargets { get; }
+        public bool HasExplicitQos { get; }
+        /// <summary>True when this registration feeds a bounded <c>FoxRunStream&lt;T&gt;</c>.</summary>
+        public bool IsStream { get; }
         /// <summary>Per-contract policy applied after transport admission.</summary>
         public FoxRunPolicy Policy { get; }
-        /// <summary>Declared effective output rate; input uses it only when <see cref="HasExplicitRateHz"/> is true.</summary>
-        public float RateHz { get; }
-        /// <summary>True only when the author supplied a positive per-contract rate.</summary>
-        public bool HasExplicitRateHz { get; }
-        /// <summary>Fresh-duplicate interval used only by <see cref="FoxRunPolicy.ChangeOrInterval"/>.</summary>
-        public float ForceIntervalSeconds { get; }
+        /// <summary>Declared cadence; input uses it only when <see cref="HasExplicitHz"/> is true and positive.</summary>
+        public float Hz { get; }
+        /// <summary>True when the author explicitly supplied Hz.</summary>
+        public bool HasExplicitHz { get; }
+        /// <summary>Derived fresh-duplicate heartbeat interval for Change policy.</summary>
+        public float HeartbeatIntervalSeconds { get; }
     }
 
     public interface IFoxgloveInputSource
@@ -109,5 +167,15 @@ namespace Unity.FoxgloveSDK.Components
         FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index);
         bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error);
         int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz);
+    }
+
+    /// <summary>
+    /// Optional generated contract for input sources that retain owned queued
+    /// samples and must release them when their router registration ends.
+    /// </summary>
+    public interface IFoxgloveOwnedInputSource
+    {
+        bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error);
+        void FoxgloveInput_ClearOwned(int topicIndex);
     }
 }

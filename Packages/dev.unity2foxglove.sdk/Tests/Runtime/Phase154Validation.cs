@@ -162,7 +162,6 @@ namespace Unity.FoxgloveSDK.Tests
                                 "FixedRate",
                                 10f,
                                 0f,
-                                0f,
                                 new[]
                                 {
                                     new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float32", false, false, aggregate),

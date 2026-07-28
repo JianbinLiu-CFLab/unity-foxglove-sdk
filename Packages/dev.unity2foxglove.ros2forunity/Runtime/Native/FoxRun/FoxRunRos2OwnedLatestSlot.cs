@@ -124,6 +124,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     Interlocked.Increment(ref _copyFailed);
                     copyFailure = exception;
+                    if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                        throw;
                     return false;
                 }
 

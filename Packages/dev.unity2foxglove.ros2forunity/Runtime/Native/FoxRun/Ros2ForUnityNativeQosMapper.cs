@@ -34,11 +34,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         IFoxRunRos2NativeQosProfile Create(ROS2.QosPresetProfile preset);
     }
 
-    /// <summary>Maps resolved FoxRun presets to one common R2FU QoS profile.</summary>
+    /// <summary>Maps resolved portable ROS 2 policies to one common R2FU QoS profile.</summary>
     internal static class Ros2ForUnityNativeQosMapper
     {
-        private const string InvalidPresetDiagnostic =
-            "FoxRun native subscription QoS must be a resolved portable preset.";
+        private const string InvalidQosDiagnostic =
+            "FoxRun native QoS must be a fully resolved portable ROS 2 policy.";
         private const string UnsupportedSurfaceDiagnostic =
             "The selected ROS2 runtime does not expose the required QoS policy surface.";
 
@@ -46,12 +46,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new Ros2ForUnityQosProfileFactory();
 
         internal static FoxRunRos2RegistrationResult TryCreate(
-            FoxRunRos2QosPreset preset,
+            FoxRunResolvedQos qos,
             out IFoxRunRos2NativeQosProfile profile)
-            => TryCreate(preset, DefaultFactory, out profile);
+            => TryCreate(qos, DefaultFactory, out profile);
 
         internal static FoxRunRos2RegistrationResult TryCreate(
-            FoxRunRos2QosPreset preset,
+            FoxRunResolvedQos qos,
             IFoxRunRos2NativeQosProfileFactory factory,
             out IFoxRunRos2NativeQosProfile profile)
         {
@@ -59,21 +59,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 throw new ArgumentNullException(nameof(factory));
 
             profile = null;
-            if (!IsResolved(preset))
+            if (!IsResolved(qos))
             {
                 return FoxRunRos2RegistrationResult.Failure(
                     FoxRunRos2RegistrationError.UnsupportedQos,
-                    InvalidPresetDiagnostic);
+                    InvalidQosDiagnostic);
             }
 
             IFoxRunRos2NativeQosProfile created = null;
             try
             {
-                created = factory.Create(ROS2.QosPresetProfile.DEFAULT);
+                created = factory.Create(MapPreset(qos.Profile));
                 if (created == null)
                     throw new InvalidOperationException("Native QoS factory returned no profile.");
 
-                Configure(created, preset);
+                Configure(created, qos);
                 profile = created;
                 return FoxRunRos2RegistrationResult.Success();
             }
@@ -101,47 +101,91 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static void Configure(
             IFoxRunRos2NativeQosProfile profile,
-            FoxRunRos2QosPreset preset)
+            FoxRunResolvedQos qos)
         {
-            const ROS2.HistoryPolicy history =
-                ROS2.HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST;
-            const ROS2.DurabilityPolicy volatileDurability =
-                ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE;
-            const ROS2.ReliabilityPolicy reliable =
-                ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_RELIABLE;
+            profile.SetPolicies(
+                MapHistory(qos.History),
+                qos.Depth,
+                MapReliability(qos.Reliability),
+                MapDurability(qos.Durability));
+        }
 
-            switch (preset)
+        private static bool IsResolved(FoxRunResolvedQos qos)
+            => (qos.Profile == FoxRunQosProfile.Default
+                || qos.Profile == FoxRunQosProfile.SensorData
+                || qos.Profile == FoxRunQosProfile.SystemDefault)
+               && (qos.Reliability == FoxRunQosReliability.SystemDefault
+                   || qos.Reliability == FoxRunQosReliability.Reliable
+                   || qos.Reliability == FoxRunQosReliability.BestEffort)
+               && (qos.Durability == FoxRunQosDurability.SystemDefault
+                   || qos.Durability == FoxRunQosDurability.Volatile
+                   || qos.Durability == FoxRunQosDurability.TransientLocal)
+               && (qos.History == FoxRunQosHistory.SystemDefault
+                   || qos.History == FoxRunQosHistory.KeepLast
+                   || qos.History == FoxRunQosHistory.KeepAll)
+               && (qos.History == FoxRunQosHistory.KeepLast
+                   ? qos.Depth > 0
+                   : qos.Depth == 0);
+
+        private static ROS2.HistoryPolicy MapHistory(FoxRunQosHistory history)
+        {
+            switch (history)
             {
-                case FoxRunRos2QosPreset.Default:
-                    profile.SetHistory(history, 10);
-                    return;
-                case FoxRunRos2QosPreset.Reliable:
-                    profile.SetPolicies(history, 10, reliable, volatileDurability);
-                    return;
-                case FoxRunRos2QosPreset.SensorData:
-                    profile.SetPolicies(
-                        history,
-                        5,
-                        ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT,
-                        volatileDurability);
-                    return;
-                case FoxRunRos2QosPreset.TransientLocal:
-                    profile.SetPolicies(
-                        history,
-                        1,
-                        reliable,
-                        ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-                    return;
+                case FoxRunQosHistory.SystemDefault:
+                    return ROS2.HistoryPolicy.QOS_POLICY_HISTORY_SYSTEM_DEFAULT;
+                case FoxRunQosHistory.KeepLast:
+                    return ROS2.HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST;
+                case FoxRunQosHistory.KeepAll:
+                    return ROS2.HistoryPolicy.QOS_POLICY_HISTORY_KEEP_ALL;
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(preset));
+                    throw new ArgumentOutOfRangeException(nameof(history));
             }
         }
 
-        private static bool IsResolved(FoxRunRos2QosPreset preset)
-            => preset == FoxRunRos2QosPreset.Default
-               || preset == FoxRunRos2QosPreset.Reliable
-               || preset == FoxRunRos2QosPreset.SensorData
-               || preset == FoxRunRos2QosPreset.TransientLocal;
+        private static ROS2.QosPresetProfile MapPreset(FoxRunQosProfile profile)
+        {
+            switch (profile)
+            {
+                case FoxRunQosProfile.Default:
+                    return ROS2.QosPresetProfile.DEFAULT;
+                case FoxRunQosProfile.SensorData:
+                    return ROS2.QosPresetProfile.SENSOR_DATA;
+                case FoxRunQosProfile.SystemDefault:
+                    return ROS2.QosPresetProfile.SYSTEM_DEFAULT;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(profile));
+            }
+        }
+
+        private static ROS2.ReliabilityPolicy MapReliability(FoxRunQosReliability reliability)
+        {
+            switch (reliability)
+            {
+                case FoxRunQosReliability.SystemDefault:
+                    return ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
+                case FoxRunQosReliability.Reliable:
+                    return ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_RELIABLE;
+                case FoxRunQosReliability.BestEffort:
+                    return ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(reliability));
+            }
+        }
+
+        private static ROS2.DurabilityPolicy MapDurability(FoxRunQosDurability durability)
+        {
+            switch (durability)
+            {
+                case FoxRunQosDurability.SystemDefault:
+                    return ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_SYSTEM_DEFAULT;
+                case FoxRunQosDurability.Volatile:
+                    return ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE;
+                case FoxRunQosDurability.TransientLocal:
+                    return ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(durability));
+            }
+        }
 
         private static bool IsMissingPolicySurface(Exception exception)
         {

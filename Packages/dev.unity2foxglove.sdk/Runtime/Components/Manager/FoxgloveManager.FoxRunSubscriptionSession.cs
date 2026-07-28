@@ -34,9 +34,9 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var policy = _foxRunSubscriptionSessionState.BeginIfNeeded(
-                DefaultFoxRunSubscriptionProvider,
+                DefaultFoxRunSubscriptionSource,
                 DefaultFoxRunSubscriptionEncoding,
-                DefaultFoxRunRos2Qos,
+                DefaultFoxRunNativeSubscribeQos,
                 FoxRunRos2NativeCopyBudgetBytes,
                 ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic,
                 ConfiguredFoxRunDefaultSubscribeRateHz);

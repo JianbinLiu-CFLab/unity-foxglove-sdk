@@ -1,10 +1,14 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+// @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import type { PanelExtensionContext } from "@foxglove/extension";
+import { describe, expect, it, vi } from "vitest";
 import {
   JsonTopicAdvertisementTracker,
   clampRequestedRateHz,
+  initPanel,
+  normalizeRequestedRateHz,
   normalizeCatalog,
   parseFieldValue,
   readContractDetail,
@@ -19,10 +23,11 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/zeta",
-      flowMode: "Subscribe",
+      flow: "Subscribe",
       encoding: "protobuf",
       schemaName: "unity2foxglove.foxrun.Demo_Input",
-      rateHz: 10,
+      hz: 10,
+      isStream: true,
       writableFieldCount: 1,
       protobufDescriptorAvailable: true,
       protobufDescriptorDigest: "abc",
@@ -30,10 +35,11 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/alpha",
-      flowMode: "Subscribe",
+      flow: "Subscribe",
       encoding: "json",
       schemaName: "Demo.Input",
-      rateHz: 10,
+      hz: 10,
+      isStream: false,
       writableFieldCount: 1,
       protobufDescriptorAvailable: false,
       protobufDescriptorDigest: "",
@@ -44,6 +50,19 @@ const summary = {
 describe("FoxRun Publish catalog state", () => {
   it("sorts summary contracts without requiring detail fields", () => {
     expect(normalizeCatalog(summary)?.contracts.map((contract) => contract.topic)).toEqual(["/alpha", "/zeta"]);
+  });
+
+  it("rejects the retired flowMode and rateHz catalog aliases", () => {
+    const stale = {
+      ...summary,
+      contracts: summary.contracts.map(({ flow, hz, ...contract }) => ({
+        ...contract,
+        flowMode: flow,
+        rateHz: hz,
+      })),
+    };
+
+    expect(normalizeCatalog(stale)?.contracts).toEqual([]);
   });
 
   it("reads field and descriptor detail only for the selected topic", () => {
@@ -67,6 +86,21 @@ describe("FoxRun Publish catalog state", () => {
     expect(clampRequestedRateHz(20.4, 12)).toBe(12);
     expect(clampRequestedRateHz(-5, 12)).toBe(1);
     expect(clampRequestedRateHz(Number.NaN, 12)).toBe(1);
+  });
+
+  it("bypasses only the ordinary topic limit for catalog-declared bounded streams", () => {
+    expect(normalizeRequestedRateHz(640, 60, true)).toBe(640);
+    expect(normalizeRequestedRateHz(640, 60, false)).toBe(60);
+    expect(normalizeRequestedRateHz(Number.NaN, 60, true)).toBe(1);
+  });
+
+  it("rejects catalog entries that omit the stream semantic", () => {
+    const missing = {
+      ...summary,
+      contracts: summary.contracts.map(({ isStream: _isStream, ...contract }) => contract),
+    };
+
+    expect(normalizeCatalog(missing)?.contracts).toEqual([]);
   });
 
   it("keeps requested repeat rates separately for each catalog topic", () => {
@@ -115,5 +149,44 @@ describe("FoxRun Publish catalog state", () => {
     expect(tracker.begin("/zeta")).toEqual({ advertise: "/zeta", unadvertise: "/alpha" });
     expect(tracker.release()).toBe("/zeta");
     expect(tracker.release()).toBeUndefined();
+  });
+
+  it("waits for the first topic snapshot before calling the Unity catalog service", async () => {
+    const callService = vi.fn().mockResolvedValue({
+      ...summary,
+      contracts: [],
+    });
+    const context = {
+      panelElement: document.createElement("div"),
+      initialState: undefined,
+      saveState: vi.fn(),
+      watch: vi.fn(),
+      callService,
+    } as unknown as PanelExtensionContext & { onRender?: PanelExtensionContext["onRender"] };
+
+    const cleanup = initPanel(context);
+
+    expect(context.watch).toHaveBeenCalledWith("topics");
+    expect(callService).not.toHaveBeenCalled();
+
+    const emptyDone = vi.fn();
+    context.onRender?.({ topics: [] }, emptyDone);
+    expect(emptyDone).toHaveBeenCalledOnce();
+    expect(callService).not.toHaveBeenCalled();
+
+    const readyDone = vi.fn();
+    context.onRender?.({
+      topics: [{
+        name: "/unity/status",
+        datatype: "foxglove.Log",
+        schemaName: "foxglove.Log",
+      }],
+    }, readyDone);
+    expect(readyDone).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(callService).toHaveBeenCalledTimes(1);
+    });
+
+    cleanup();
   });
 });

@@ -360,13 +360,13 @@ public static class Phase179AcceptancePlayerBuilder
         SetBoolean(serialized, "_enableFoxRunInbound", true);
         SetEnumByName(
             serialized,
-            "_defaultFoxRunSubscriptionProvider",
-            nameof(FoxRunSubscriptionProvider.Ros2Native));
+            "_defaultFoxRunSubscriptionSource",
+            nameof(FoxRunEndpoint.Ros2Native));
         serialized.ApplyModifiedPropertiesWithoutUndo();
         // The public setter also advances the serialized policy version. Without
         // it, a later OnAfterDeserialize migration would deliberately reset the
         // raw field above to the legacy WebSocket default.
-        manager.DefaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native;
+        manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
         EditorUtility.SetDirty(manager);
     }
 
@@ -461,8 +461,8 @@ public static class Phase179AcceptancePlayerBuilder
             if (GetBoolean(managerSerialized, "_foxgloveOutputEnabled")
                 || GetBoolean(managerSerialized, "_ros2NativeEnabled")
                 || !GetBoolean(managerSerialized, "_enableFoxRunInbound")
-                || GetEnumName(managerSerialized, "_defaultFoxRunSubscriptionProvider")
-                    != nameof(FoxRunSubscriptionProvider.Ros2Native))
+                || GetEnumName(managerSerialized, "_defaultFoxRunSubscriptionSource")
+                    != nameof(FoxRunEndpoint.Ros2Native))
             {
                 throw new InvalidOperationException(
                     "The Phase179 acceptance Manager must keep output disabled and native FoxRun subscriptions enabled.");

@@ -13,6 +13,7 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -85,10 +86,16 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _ros2BridgeNamespace = "";
         private string _cachedRos2BridgeNamespace;
         private bool _ros2BridgeNamespaceCacheValid;
-        [SerializeField] private Ros2BridgeQosPreset _ros2BridgeQosPreset = Ros2BridgeQosPreset.ReliableDefault;
-        [SerializeField] private Ros2BridgeReliability _ros2BridgeCustomReliability = Ros2BridgeReliability.Reliable;
-        [SerializeField] private Ros2BridgeDurability _ros2BridgeCustomDurability = Ros2BridgeDurability.Volatile;
-        [SerializeField, Min(1)] private int _ros2BridgeCustomDepth = 10;
+        [FormerlySerializedAs("_ros2BridgeQosPreset")]
+        [SerializeField, HideInInspector] private int _legacyRos2BridgeQosPreset;
+        [FormerlySerializedAs("_ros2BridgeCustomReliability")]
+        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomReliability;
+        [FormerlySerializedAs("_ros2BridgeCustomDurability")]
+        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomDurability;
+        [FormerlySerializedAs("_ros2BridgeCustomDepth")]
+        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomDepth = 10;
+        [SerializeField, HideInInspector] private int _ros2BridgeQosSerializationVersion;
+        [SerializeField] private FoxRunQosProfileSettings _ros2BridgeQos = new();
         [SerializeField, Min(1)] private int _ros2BridgeQueueCapacity = 1024;
         [SerializeField, Min(1)] private int _ros2BridgeReconnectIntervalMs = 1000;
         [SerializeField, Min(1)] private int _ros2BridgeSendTimeoutMs = 1000;
@@ -210,6 +217,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _foxRunRecordingChannelCache
+            = new System.Collections.Generic.Dictionary<(string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<ReplayMessageContext> _replayContextForwarder;
@@ -338,16 +347,23 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgeNamespaceCacheValid = false;
         }
 
-        /// <summary>Manager-level ROS2 Bridge QoS preset.</summary>
-        public Ros2BridgeQosPreset Ros2BridgeQosPreset => _ros2BridgeQosPreset;
+        /// <summary>
+        /// Resolve the effective ROS2 Bridge QoS for the current publish
+        /// session. An active session returns its immutable captured value;
+        /// otherwise this returns the value configured for the next session.
+        /// </summary>
+        public FoxRunResolvedQos ResolveRos2BridgeQos()
+            => ActiveFoxRunBridgePublishQos;
 
-        /// <summary>Resolve the active ROS2 Bridge QoS profile.</summary>
-        public Ros2BridgeQosProfile ResolveRos2BridgeQos()
-            => Ros2BridgeQosProfile.Resolve(
-                _ros2BridgeQosPreset,
-                _ros2BridgeCustomReliability,
-                _ros2BridgeCustomDurability,
-                _ros2BridgeCustomDepth);
+        /// <summary>
+        /// Resolve the configured ROS2 Bridge QoS that will be captured by the
+        /// next publish session.
+        /// </summary>
+        private FoxRunResolvedQos ResolveConfiguredRos2BridgeQos()
+        {
+            _ros2BridgeQos ??= new FoxRunQosProfileSettings();
+            return _ros2BridgeQos.Resolve();
+        }
 
         /// <summary>Resolve an effective ROS2 Bridge topic without mutating the publisher's WebSocket topic.</summary>
         public bool TryResolveRos2BridgeTopic(string publisherTopic, string overrideTopic, out string effectiveTopic, out string error)
@@ -437,7 +453,6 @@ namespace Unity.FoxgloveSDK.Components
                 _replayAutoPlay = false;
             }
 
-            _ros2BridgeCustomDepth = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeCustomDepth);
             _ros2BridgeQueueCapacity = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeQueueCapacity);
             _ros2BridgeReconnectIntervalMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeReconnectIntervalMs);
             _ros2BridgeSendTimeoutMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeSendTimeoutMs);
@@ -467,6 +482,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnEnable()
         {
+            BeginFoxRunPublishSessionIfNeeded();
             BeginFoxRunSubscriptionSessionIfNeeded();
 
             if (_startOnEnable)
@@ -509,11 +525,13 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDisable()
         {
-            EndFoxRunSubscriptionSession();
-            _ros2BridgeRuntime?.Stop();
-            StopServer(restoreLivePublishers: true);
-            _connectionState.OutputModeWatchInitialized = false;
-            FoxgloveProfiler.ResetGlobal(this);
+            FoxgloveManagerTeardownState.RunDisable(
+                EndFoxRunSubscriptionSession,
+                () => _ros2BridgeRuntime?.Stop(),
+                () => StopServer(restoreLivePublishers: true),
+                EndFoxRunPublishSession,
+                () => _connectionState.OutputModeWatchInitialized = false,
+                () => FoxgloveProfiler.ResetGlobal(this));
         }
 
         /// <summary>
@@ -521,17 +539,55 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDestroy()
         {
-            EndFoxRunSubscriptionSession();
-            StopServer(restoreLivePublishers: true);
-            _ros2BridgeRuntime?.Dispose();
-            _ros2BridgeRuntime = null;
-            _replayCursorEndpoint?.Dispose();
-            _replayCursorEndpoint = null;
-            _certificateDistributor?.Dispose();
-            _certificateDistributor = null;
-            _runtime?.Dispose();
-            _runtime = null;
-            FoxgloveProfiler.ResetGlobal(this);
+            FoxgloveManagerTeardownState.RunDestroy(
+                EndFoxRunSubscriptionSession,
+                () => StopServer(restoreLivePublishers: true),
+                () =>
+                {
+                    try
+                    {
+                        _ros2BridgeRuntime?.Dispose();
+                    }
+                    finally
+                    {
+                        _ros2BridgeRuntime = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _replayCursorEndpoint?.Dispose();
+                    }
+                    finally
+                    {
+                        _replayCursorEndpoint = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _certificateDistributor?.Dispose();
+                    }
+                    finally
+                    {
+                        _certificateDistributor = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _runtime?.Dispose();
+                    }
+                    finally
+                    {
+                        _runtime = null;
+                    }
+                },
+                EndFoxRunPublishSession,
+                () => FoxgloveProfiler.ResetGlobal(this));
         }
 
         /// <summary>
@@ -633,7 +689,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 else
                 {
-                    _ros2BridgeRuntime?.Stop();
+                    if (!_foxRunRos2BridgeRuntimeDemand)
+                        _ros2BridgeRuntime?.Stop();
                 }
             }
 

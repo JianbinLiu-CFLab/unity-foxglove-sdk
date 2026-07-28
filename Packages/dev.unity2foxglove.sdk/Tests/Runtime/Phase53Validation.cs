@@ -57,8 +57,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "53A-3a: FixedRate behavior remains unchanged");
             Check(!FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, 10, true, false, 8, 0),
                 "53A-3b: Change unchanged values still skip");
-            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.ChangeOrInterval, 15, true, false, 10, 5),
-                "53A-3c: ChangeOrInterval heartbeat still publishes");
+            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, 15, true, false, 10, 5),
+                "53A-3c: Change with an explicit heartbeat still publishes");
         }
 
         private static void VerifyEmitterGeneratesTriggerMethods()
@@ -66,13 +66,13 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "TriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_state", "System.String", "/events/state", 10f, "",
-                    (int)FoxRunPolicy.Trigger, 0f, 0f)
+                    (int)FoxRunPolicy.Trigger, 0f)
             });
 
-            Check(source.Contains("public bool FoxRun_Trigger_state()"),
-                "53B-1: emitter includes member trigger method for Trigger field");
-            Check(source.Contains("public bool FoxRun_TriggerAll()"),
-                "53B-2: emitter includes TriggerAll when any trigger topic exists");
+            Check(source.Contains("public bool FoxRun_Publish_state()"),
+                "53B-1: emitter includes member publish method for Trigger field");
+            Check(source.Contains("public bool FoxRun_PublishAll()"),
+                "53B-2: emitter includes PublishAll when any trigger topic exists");
             Check(source.Contains("FoxgloveLogHub.Trigger(this, 0)"),
                 "53B-3: generated trigger method calls FoxgloveLogHub.Trigger");
             Check(!source.Contains("System.Reflection") && !source.Contains("GetCustomAttributes"),
@@ -84,11 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "TimerOnlySource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_value", "System.Int32", "/debug/value", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f)
             });
 
-            Check(!source.Contains("FoxRun_Trigger_value") && !source.Contains("FoxRun_TriggerAll"),
-                "53B-5: emitter does not generate trigger methods for timer-only members");
+            Check(!source.Contains("FoxRun_Publish_value") && !source.Contains("FoxRun_PublishAll"),
+                "53B-5: emitter does not generate explicit publish methods for timer-only members");
             Check(!source.Contains("FoxgloveLogHub.Trigger"),
                 "53B-6: timer-only generated source does not route through trigger API");
         }
@@ -98,14 +98,14 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "MultiTriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/events/a", 10f, "",
-                    (int)FoxRunPolicy.Trigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/events/b", 10f, "",
-                    (int)FoxRunPolicy.Trigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/debug/timer", 10f, "",
-                    (int)FoxRunPolicy.FixedRate, 0f, 0f)
+                    (int)FoxRunPolicy.FixedRate, 0f)
             });
 
-            var body = ExtractMethodBody(source, "FoxRun_Trigger_event");
+            var body = ExtractMethodBody(source, "FoxRun_Publish_event");
             Check(body.Contains("FoxgloveLogHub.Trigger(this, 1)") && body.Contains("FoxgloveLogHub.Trigger(this, 2)"),
                 "53B-7: same member trigger method calls every trigger topic index after ordinal topic ordering");
             Check(!body.Contains("FoxgloveLogHub.Trigger(this, 0)"),
@@ -117,19 +117,19 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "MixedTriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.String", "/events/mixed", 10f, "",
-                    (int)FoxRunPolicy.Trigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_counter", "System.Int32", "/events/mixed", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f)
             });
 
             Check(source.Contains("FoxRunPolicy.Trigger"),
                 "53C-1: mixed topic with any trigger member reports Trigger topic metadata");
             Check(source.Contains("case 0: return false;"),
                 "53C-2: mixed trigger topic is skipped by scheduled policy path");
-            Check(source.Contains("public bool FoxRun_Trigger_event()"),
-                "53C-3: trigger member in mixed topic gets a member trigger method");
-            Check(!source.Contains("FoxRun_Trigger_counter()"),
-                "53C-4: timer-only member in mixed topic does not get a trigger method");
+            Check(source.Contains("public bool FoxRun_Publish_event()"),
+                "53C-3: trigger member in mixed topic gets a member publish method");
+            Check(!source.Contains("FoxRun_Publish_counter()"),
+                "53C-4: timer-only member in mixed topic does not get an explicit publish method");
         }
 
         private static void VerifyTriggerApiSourceContract()

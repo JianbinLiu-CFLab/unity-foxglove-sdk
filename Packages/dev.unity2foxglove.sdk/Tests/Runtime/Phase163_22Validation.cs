@@ -44,10 +44,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "value",
                 "/phase163/descriptor",
                 "float",
-                when: "isReady",
-                unless: "isPaused",
+                onlyIf: "isReady",
                 isAggregateMember: true,
-                jsonFieldName: "renamedValue"));
+                jsonFieldName: "renamedValue",
+                isStream: true));
 
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var root = JObject.Parse(json);
@@ -55,33 +55,40 @@ namespace Unity.FoxgloveSDK.Tests
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var rereadMember = reread.Types[0].Members[0];
 
-            Check(member.Value<string>("when") == "isReady"
-                  && member.Value<string>("unless") == "isPaused"
+            Check(member.Value<string>("onlyIf") == "isReady"
+                  && member.Value<string>("onlyIfMemberKind") == "Unresolved"
                   && member.Value<bool>("isAggregateMember")
+                  && member.Value<bool>("isStream")
                   && member.Value<string>("jsonFieldName") == "renamedValue",
-                "163-22A-1: descriptor JSON writes conditional, aggregate, and JSON field semantics");
-            Check(rereadMember.When == "isReady"
-                  && rereadMember.Unless == "isPaused"
+                "163-22A-1: descriptor JSON writes conditional, aggregate, stream, and JSON field semantics");
+            Check(rereadMember.OnlyIf == "isReady"
+                  && rereadMember.ConditionMemberKind == FoxRunConditionMemberKind.Unresolved
                   && rereadMember.IsAggregateMember
+                  && rereadMember.IsStream
                   && rereadMember.JsonFieldName == "renamedValue",
-                "163-22A-2: descriptor reader restores conditional, aggregate, and JSON field semantics");
+                "163-22A-2: descriptor reader restores conditional, aggregate, stream, and JSON field semantics");
             Check(FoxRunGenerationDescriptorComparer.Compare(model, reread).IsSemanticEqual,
                 "163-22A-3: descriptor comparer treats round-tripped semantic policy fields as equal");
         }
 
         private static void DescriptorComparerDetectsSemanticPolicyDrift()
         {
-            var left = Model(Member("value", "/phase163/descriptor", "float", when: "ready"));
+            var left = Model(Member("value", "/phase163/descriptor", "float", onlyIf: "ready"));
 
-            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "float", when: "other"))).IsSemanticEqual,
-                "163-22B-1: descriptor comparer detects When drift");
-            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "float", unless: "paused"))).IsSemanticEqual,
-                "163-22B-2: descriptor comparer detects Unless drift");
+            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "float", onlyIf: "other"))).IsSemanticEqual,
+                "163-22B-1: descriptor comparer detects OnlyIf drift");
+            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member(
+                    "value",
+                    "/phase163/descriptor",
+                    "float",
+                    onlyIf: "ready",
+                    conditionMemberKind: FoxRunConditionMemberKind.Field))).IsSemanticEqual,
+                "163-22B-2: descriptor comparer detects OnlyIf member-kind drift");
             Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "float", isAggregateMember: true))).IsSemanticEqual,
                 "163-22B-3: descriptor comparer detects aggregate membership drift");
             Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "float", jsonFieldName: "renamed"))).IsSemanticEqual,
                 "163-22B-4: descriptor comparer detects JSON field name drift");
-            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "double", when: "ready"))).IsSemanticEqual,
+            Check(!FoxRunGenerationDescriptorComparer.Compare(left, Model(Member("value", "/phase163/descriptor", "double", onlyIf: "ready"))).IsSemanticEqual,
                 "163-22B-5: descriptor comparer detects same-member canonical type drift");
         }
 
@@ -177,7 +184,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         0,
                         0f,
-                        0f,
                         "Test",
                         0,
                         string.Empty,
@@ -218,9 +224,10 @@ namespace Unity.FoxgloveSDK.Tests
             var topicEmitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var channelRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/ChannelRegistry.cs");
 
-            Check(writer.Contains("\"when\"", StringComparison.Ordinal)
-                  && writer.Contains("\"unless\"", StringComparison.Ordinal)
+            Check(writer.Contains("\"onlyIf\"", StringComparison.Ordinal)
+                  && writer.Contains("\"onlyIfMemberKind\"", StringComparison.Ordinal)
                   && writer.Contains("\"isAggregateMember\"", StringComparison.Ordinal)
+                  && writer.Contains("\"isStream\"", StringComparison.Ordinal)
                   && writer.Contains("\"jsonFieldName\"", StringComparison.Ordinal),
                 "163-22G-1: descriptor writer includes all semantic policy fields");
             Check(comparer.Contains("member.CanonicalType", StringComparison.Ordinal)
@@ -259,32 +266,33 @@ namespace Unity.FoxgloveSDK.Tests
             string memberName,
             string topic,
             string typeName,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            bool isStream = false)
             => new FoxRunGenerationMember(
-                "Demo",
-                "DescriptorProbe",
-                memberName,
-                "field",
-                typeName,
-                true,
-                false,
-                string.Empty,
-                topic,
-                1f,
-                string.Empty,
-                0,
-                0f,
-                0f,
-                "Test",
-                0,
-                string.Empty,
-                when,
-                unless,
-                isAggregateMember,
-                jsonFieldName);
+                ns: "Demo",
+                className: "DescriptorProbe",
+                memberName: memberName,
+                memberKind: "field",
+                rawTypeName: typeName,
+                isValueType: true,
+                isArray: false,
+                elementTypeName: string.Empty,
+                topic: topic,
+                hz: 1f,
+                schemaName: string.Empty,
+                policy: (int)FoxRunPolicy.FixedRate,
+                tolerance: 0f,
+                hostKind: "Test",
+                rawMemberOrder: 0,
+                conditionalSymbols: string.Empty,
+                onlyIf: onlyIf,
+                isAggregateMember: isAggregateMember,
+                jsonFieldName: jsonFieldName,
+                conditionMemberKind: conditionMemberKind,
+                isStream: isStream);
 
         private static FoxRunSchemaContractInfo Contract(string schemaName, string topic, params FoxRunSchemaFieldInfo[] fields)
             => new FoxRunSchemaContractInfo(
@@ -297,7 +305,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "policy",
                 "FixedRate",
                 10f,
-                0f,
                 0f,
                 fields);
 

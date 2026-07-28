@@ -24,8 +24,8 @@ namespace Unity.FoxgloveSDK.Components
         public static JObject BuildResponse(
             FoxRunSchemaManifestInfo manifest,
             bool subscriptionsEnabled,
-            FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault,
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault,
             int subscriptionRateLimitHz,
             string requestedTopic,
             bool includeDescriptor)
@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Components
                 subscriptionsEnabled,
                 publishDefault,
                 subscriptionDefault,
-                FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                FoxRunEndpoint.Foxglove,
                 subscriptionRateLimitHz,
                 requestedTopic,
                 includeDescriptor);
@@ -42,16 +42,16 @@ namespace Unity.FoxgloveSDK.Components
         public static JObject BuildResponse(
             FoxRunSchemaManifestInfo manifest,
             bool subscriptionsEnabled,
-            FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault,
-            FoxRunSubscriptionProvider defaultProvider,
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault,
+            FoxRunEndpoint defaultProvider,
             int subscriptionRateLimitHz,
             string requestedTopic,
             bool includeDescriptor)
         {
-            publishDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(publishDefault);
-            subscriptionDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(subscriptionDefault);
-            defaultProvider = FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(defaultProvider);
+            publishDefault = FoxRunEncodingResolver.ValidateProfileDefault(publishDefault);
+            subscriptionDefault = FoxRunEncodingResolver.ValidateProfileDefault(subscriptionDefault);
+            defaultProvider = FoxRunEndpointResolver.ValidateProfileSource(defaultProvider);
 
             var contracts = new JArray();
             var response = new JObject
@@ -78,9 +78,10 @@ namespace Unity.FoxgloveSDK.Components
                     ["declaringType"] = contract.DeclaringType,
                     ["topic"] = contract.Topic,
                     ["flow"] = contract.Flow,
-                    ["encoding"] = FoxRunWireEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
+                    ["encoding"] = FoxRunEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
                     ["schemaName"] = contract.SchemaName,
-                    ["rateHz"] = contract.RateHz,
+                    ["hz"] = contract.Hz,
+                    ["isStream"] = entry.IsStream,
                     ["writableFieldCount"] = contract.Fields?.Count ?? 0,
                     ["protobufDescriptorAvailable"] = descriptor.Length > 0,
                     ["protobufDescriptorDigest"] = descriptor.Length > 0 ? ComputeSha256Hex(descriptor) : string.Empty
@@ -90,7 +91,7 @@ namespace Unity.FoxgloveSDK.Components
 
                 if (includeDescriptor
                     && hasDetail
-                    && entry.EffectiveEncoding == FoxRunWireEncoding.Protobuf
+                    && entry.EffectiveEncoding == FoxRunEncoding.Protobuf
                     && descriptor.Length > 0)
                 {
                     objectValue["protobufDescriptorBase64"] = Convert.ToBase64String(descriptor);
@@ -104,9 +105,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private static IEnumerable<CatalogContract> EnumerateContracts(
             FoxRunSchemaManifestInfo manifest,
-            FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault,
-            FoxRunSubscriptionProvider defaultProvider)
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault,
+            FoxRunEndpoint defaultProvider)
         {
             foreach (var type in manifest.Types ?? Array.Empty<FoxRunSchemaTypeInfo>())
             {
@@ -122,35 +123,34 @@ namespace Unity.FoxgloveSDK.Components
                     var variants = group.ToArray();
                     var declared = ResolveDeclaredEncoding(variants);
                     var mode = ParseFlow(group.Key.Flow);
-                    if (!ResolvesToWebSocket(
+                    if (!TryResolveToWebSocket(
                             manifest,
                             variants,
                             mode,
                             declared,
-                            defaultProvider))
+                            defaultProvider,
+                            out var isStream))
                     {
                         continue;
                     }
-                    var effective = FoxRunWireEncodingResolver.Resolve(
-                        declared,
-                        mode,
-                        publishDefault,
-                        subscriptionDefault);
-                    var protocolEncoding = FoxRunWireEncodingResolver.ToProtocolEncoding(effective);
+                    var effective = FoxRunEncodingResolver.Resolve(declared, subscriptionDefault);
+                    var protocolEncoding = FoxRunEncodingResolver.ToProtocolEncoding(effective);
                     var selected = variants.FirstOrDefault(contract =>
                         string.Equals(contract.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? variants[0];
-                    yield return new CatalogContract(selected, effective);
+                    yield return new CatalogContract(selected, effective, isStream);
                 }
             }
         }
 
-        private static bool ResolvesToWebSocket(
+        private static bool TryResolveToWebSocket(
             FoxRunSchemaManifestInfo manifest,
             IReadOnlyList<FoxRunSchemaContractInfo> contracts,
             FoxRunFlow mode,
-            FoxRunWireEncoding declaredEncoding,
-            FoxRunSubscriptionProvider defaultProvider)
+            FoxRunEncoding declaredEncoding,
+            FoxRunEndpoint defaultProvider,
+            out bool isStream)
         {
+            isStream = false;
             if (contracts == null || contracts.Count == 0)
                 return false;
             var contract = contracts[0];
@@ -163,41 +163,34 @@ namespace Unity.FoxgloveSDK.Components
                 .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToArray();
             if (bindings.Length == 0)
-            {
-                if (manifest.ManifestVersion >= 2)
-                    return false;
-                var legacy = FoxRunSubscriptionProviderResolver.Resolve(
-                    FoxRunSubscriptionProvider.Inherit,
-                    defaultProvider,
-                    mode,
-                    declaredEncoding,
-                    supportsWebSocket: true,
-                    supportsRos2Native: false);
-                return legacy.Success
-                       && legacy.Provider == FoxRunSubscriptionProvider.FoxgloveWebSocket;
-            }
-
-            if (manifest.ManifestVersion >= 2
-                && !BindingIdentityMatchesContracts(contracts, bindings))
-            {
                 return false;
-            }
+
+            if (manifest.ManifestVersion < 3
+                || !BindingIdentityMatchesContracts(contracts, bindings))
+                return false;
 
             foreach (var binding in bindings)
             {
-                var resolution = FoxRunSubscriptionProviderResolver.Resolve(
-                    binding.DeclaredProvider,
-                    defaultProvider,
+                var resolution = FoxRunEndpointResolver.Resolve(
                     mode,
+                    binding.DeclaredSource,
+                    hasExplicitSource: binding.DeclaredSource != 0,
+                    declaredTargets: 0,
+                    hasExplicitTargets: false,
                     declaredEncoding,
-                    binding.SupportsWebSocket,
-                    binding.SupportsRos2Native);
+                    hasExplicitEncoding: declaredEncoding != 0,
+                    defaultProvider,
+                    defaultTargets: FoxRunEndpoint.Foxglove,
+                    publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                    subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
                 if (!resolution.Success
-                    || resolution.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket)
+                    || resolution.Topology.Source != FoxRunEndpoint.Foxglove
+                    || !binding.SupportsWebSocket)
                 {
                     return false;
                 }
             }
+            isStream = bindings.Any(binding => binding.IsStream);
             return true;
         }
 
@@ -254,13 +247,13 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private static FoxRunWireEncoding ResolveDeclaredEncoding(IReadOnlyList<FoxRunSchemaContractInfo> variants)
+        private static FoxRunEncoding ResolveDeclaredEncoding(IReadOnlyList<FoxRunSchemaContractInfo> variants)
         {
             var hasJson = variants.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
             var hasProtobuf = variants.Any(contract => string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal));
             return hasJson && hasProtobuf
-                ? FoxRunWireEncoding.Inherit
-                : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
+                ? (FoxRunEncoding)0
+                : hasProtobuf ? FoxRunEncoding.Protobuf : FoxRunEncoding.JSON;
         }
 
         private static bool IsSubscriptionFlow(string flow)
@@ -282,14 +275,19 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct CatalogContract
         {
-            public CatalogContract(FoxRunSchemaContractInfo contract, FoxRunWireEncoding effectiveEncoding)
+            public CatalogContract(
+                FoxRunSchemaContractInfo contract,
+                FoxRunEncoding effectiveEncoding,
+                bool isStream)
             {
                 Contract = contract;
                 EffectiveEncoding = effectiveEncoding;
+                IsStream = isStream;
             }
 
             public FoxRunSchemaContractInfo Contract { get; }
-            public FoxRunWireEncoding EffectiveEncoding { get; }
+            public FoxRunEncoding EffectiveEncoding { get; }
+            public bool IsStream { get; }
         }
 
         private readonly struct ContractKey : IEquatable<ContractKey>
@@ -347,7 +345,8 @@ namespace Unity.FoxgloveSDK.Components
                 ["flow"] = TypeSchema("string"),
                 ["encoding"] = TypeSchema("string"),
                 ["schemaName"] = TypeSchema("string"),
-                ["rateHz"] = TypeSchema("number"),
+                ["hz"] = TypeSchema("number"),
+                ["isStream"] = TypeSchema("boolean"),
                 ["writableFieldCount"] = TypeSchema("integer"),
                 ["protobufDescriptorAvailable"] = TypeSchema("boolean"),
                 ["protobufDescriptorDigest"] = TypeSchema("string"),

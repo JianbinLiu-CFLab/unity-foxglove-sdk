@@ -35,6 +35,22 @@ namespace Unity.FoxgloveSDK.Components
         public Exception Exception { get; }
     }
 
+    /// <summary>Aggregate result from one typed local-bus publication.</summary>
+    public readonly struct FoxTopicPublishResult
+    {
+        internal FoxTopicPublishResult(int matched, int succeeded, int failed)
+        {
+            Matched = matched;
+            Succeeded = succeeded;
+            Failed = failed;
+        }
+
+        public int Matched { get; }
+        public int Succeeded { get; }
+        public int Failed { get; }
+        public bool AllSucceeded => Matched > 0 && Succeeded == Matched && Failed == 0;
+    }
+
     /// <summary>Process-local typed bus for FoxRun topic envelopes.</summary>
     /// <remarks>Not thread-safe. Register, subscribe, publish, and unsubscribe from the Unity main thread only.</remarks>
     public sealed class FoxTopicBus
@@ -58,6 +74,16 @@ namespace Unity.FoxgloveSDK.Components
                 return new FoxTopicRegistrationResult(true, string.Empty);
             }
 
+            if (existing.HasOrigin(origin))
+            {
+                return ContractsMatch(existing.Contract, contract)
+                    ? new FoxTopicRegistrationResult(true, string.Empty)
+                    : new FoxTopicRegistrationResult(
+                        false,
+                        "Topic '" + contract.Topic
+                        + "' registration from the existing origin does not match its accepted contract.");
+            }
+
             if (existing.Contract.WriterPolicy == FoxTopicWriterPolicy.MultiWriter
                 && contract.WriterPolicy == FoxTopicWriterPolicy.MultiWriter)
             {
@@ -72,13 +98,21 @@ namespace Unity.FoxgloveSDK.Components
                 return new FoxTopicRegistrationResult(true, string.Empty);
             }
 
-            if (existing.HasOrigin(origin))
-                return new FoxTopicRegistrationResult(true, string.Empty);
-
             return new FoxTopicRegistrationResult(
                 false,
                 "Topic '" + contract.Topic + "' already has a single writer.");
         }
+
+        /// <summary>
+        /// Whether the exact contract and origin pair currently owns this
+        /// topic.  This is the admission gate used by transport endpoint hubs;
+        /// knowing only the topic or only the primary origin is insufficient.
+        /// </summary>
+        public bool IsRegistered(FoxTopicContract contract, string origin)
+            => contract != null
+               && _registrations.TryGetValue(contract.Topic, out var registration)
+               && registration.HasOrigin(origin)
+               && ContractsMatch(registration.Contract, contract);
 
         public string GetRegisteredOrigin(string topic)
             => topic != null && _registrations.TryGetValue(topic, out var registration)
@@ -118,6 +152,34 @@ namespace Unity.FoxgloveSDK.Components
             list.Add(new Subscription<T>(++_nextSubscriptionId, callback));
         }
 
+        /// <summary>
+        /// Subscribe a result-bearing transport callback. Returning false
+        /// reports a normal target rejection to the generated fanout path.
+        /// </summary>
+        public void SubscribeResult<T>(
+            string topic,
+            string origin,
+            Func<FoxTopicEnvelope<T>, bool> callback)
+        {
+            if (string.IsNullOrWhiteSpace(topic))
+                throw new ArgumentException("Topic is required.", nameof(topic));
+            if (string.IsNullOrWhiteSpace(origin))
+                throw new ArgumentException("Origin is required.", nameof(origin));
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            if (!_subscriptions.TryGetValue(topic, out var list))
+            {
+                list = new List<ISubscription>();
+                _subscriptions.Add(topic, list);
+            }
+
+            list.Add(new ResultSubscription<T>(
+                ++_nextSubscriptionId,
+                origin,
+                callback));
+        }
+
         public bool Unsubscribe<T>(string topic, Action<FoxTopicEnvelope<T>> callback)
         {
             if (string.IsNullOrWhiteSpace(topic) || callback == null)
@@ -142,28 +204,139 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        public bool UnsubscribeResult<T>(
+            string topic,
+            string origin,
+            Func<FoxTopicEnvelope<T>, bool> callback)
+        {
+            if (string.IsNullOrWhiteSpace(topic)
+                || string.IsNullOrWhiteSpace(origin)
+                || callback == null)
+                return false;
+            if (!_subscriptions.TryGetValue(topic, out var list))
+                return false;
+
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                if (list[i] is ResultSubscription<T> typedSubscription
+                    && typedSubscription.Matches(origin, callback))
+                {
+                    var subscriptionId = typedSubscription.Id;
+                    list.RemoveAt(i);
+                    if (list.Count == 0)
+                        _subscriptions.Remove(topic);
+                    RemoveReportedFaults(subscriptionId, topic);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool HasSubscribers(string topic)
             => topic != null
                && _subscriptions.TryGetValue(topic, out var list)
                && list.Count > 0;
 
+        /// <summary>
+        /// Whether an exact ordinary observer is subscribed for the requested
+        /// payload type. Result-bearing transport endpoints are deliberately
+        /// excluded from this side-channel demand.
+        /// </summary>
+        public bool HasObservers<T>(string topic)
+        {
+            if (topic == null
+                || !_subscriptions.TryGetValue(topic, out var list))
+                return false;
+            for (var index = 0; index < list.Count; index++)
+            {
+                if (list[index] is Subscription<T>)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Whether an exact result-bearing transport endpoint is subscribed for
+        /// the requested payload type.
+        /// </summary>
+        public bool HasResultSubscribers<T>(string topic, string origin)
+        {
+            if (topic == null
+                || string.IsNullOrWhiteSpace(origin)
+                || !_subscriptions.TryGetValue(topic, out var list))
+                return false;
+            for (var index = 0; index < list.Count; index++)
+            {
+                if (list[index] is ResultSubscription<T> subscription
+                    && subscription.AcceptsOrigin(origin))
+                    return true;
+            }
+            return false;
+        }
+
         public void Publish<T>(FoxTopicContract contract, ulong timestampNs, in T payload, string origin)
+            => _ = PublishWithResult(contract, timestampNs, in payload, origin);
+
+        private FoxTopicPublishResult PublishWithResult<T>(
+            FoxTopicContract contract,
+            ulong timestampNs,
+            in T payload,
+            string origin,
+            ulong sequence = 0)
         {
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
 
             if (!_subscriptions.TryGetValue(contract.Topic, out var list) || list.Count == 0)
-                return;
+                return default;
 
-            var envelope = new FoxTopicEnvelope<T>(contract, timestampNs, payload, origin);
+            var envelope = new FoxTopicEnvelope<T>(
+                contract,
+                timestampNs,
+                payload,
+                origin,
+                sequence);
+            var matched = 0;
+            var succeeded = 0;
+            var failed = 0;
             for (var i = 0; i < list.Count; i++)
             {
                 var subscription = list[i];
-                if (subscription is Subscription<T> typedSubscription
-                    && !typedSubscription.TryInvoke(envelope, out var exception))
-                    ReportSubscriberFault(typedSubscription.Id, contract.Topic, origin, exception);
-                else if (!(subscription is Subscription<T>))
+                if (subscription is Subscription<T> typedSubscription)
                 {
+                    matched++;
+                    if (typedSubscription.TryInvoke(envelope, out var exception))
+                        succeeded++;
+                    else
+                    {
+                        failed++;
+                        ReportSubscriberFault(typedSubscription.Id, contract.Topic, origin, exception);
+                    }
+                }
+                else if (subscription is ResultSubscription<T> resultSubscription)
+                {
+                    if (!resultSubscription.AcceptsOrigin(origin))
+                        continue;
+                    matched++;
+                    if (resultSubscription.TryInvoke(envelope, out var exception))
+                        succeeded++;
+                    else
+                    {
+                        failed++;
+                        if (exception != null)
+                            ReportSubscriberFault(resultSubscription.Id, contract.Topic, origin, exception);
+                    }
+                }
+                else
+                {
+                    if (subscription is IResultSubscription scoped
+                        && !scoped.AcceptsOrigin(origin))
+                    {
+                        continue;
+                    }
+                    matched++;
+                    failed++;
                     if (HasReportedFault(subscription.Id, contract.Topic, typeof(InvalidOperationException)))
                         continue;
 
@@ -177,6 +350,132 @@ namespace Unity.FoxgloveSDK.Components
                             + subscription.PayloadType.FullName + "'."));
                 }
             }
+
+            return new FoxTopicPublishResult(matched, succeeded, failed);
+        }
+
+        /// <summary>
+        /// Publish only to ordinary observers. Result-bearing transport
+        /// endpoints are excluded so this independent side-channel can run
+        /// exactly once per logical capture without changing a target verdict.
+        /// </summary>
+        public void PublishToObservers<T>(
+            FoxTopicContract contract,
+            ulong timestampNs,
+            in T payload,
+            string origin,
+            ulong sequence = 0)
+        {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+            if (!_subscriptions.TryGetValue(contract.Topic, out var list)
+                || list.Count == 0)
+            {
+                return;
+            }
+
+            var envelope = new FoxTopicEnvelope<T>(
+                contract,
+                timestampNs,
+                payload,
+                origin,
+                sequence);
+            for (var index = 0; index < list.Count; index++)
+            {
+                if (list[index] is Subscription<T> observer)
+                {
+                    if (!observer.TryInvoke(envelope, out var exception))
+                    {
+                        ReportSubscriberFault(
+                            observer.Id,
+                            contract.Topic,
+                            origin,
+                            exception);
+                    }
+                    continue;
+                }
+
+                // Result-bearing callbacks describe a selected transport and
+                // run only through PublishToResultSubscribers.
+                if (list[index] is IResultSubscription)
+                    continue;
+
+                var subscription = list[index];
+                if (HasReportedFault(
+                        subscription.Id,
+                        contract.Topic,
+                        typeof(InvalidOperationException)))
+                {
+                    continue;
+                }
+
+                ReportSubscriberFault(
+                    subscription.Id,
+                    contract.Topic,
+                    origin,
+                    new InvalidOperationException(
+                        "FoxRun topic '" + contract.Topic
+                        + "' published payload type '" + typeof(T).FullName
+                        + "' to incompatible subscriber type '"
+                        + subscription.PayloadType.FullName + "'."));
+            }
+        }
+
+        /// <summary>
+        /// Publish only to result-bearing transport subscribers and aggregate
+        /// only those callbacks. Ordinary observers stay on their independent
+        /// side-channel and cannot change a transport target verdict.
+        /// </summary>
+        public FoxTopicPublishResult PublishToResultSubscribers<T>(
+            FoxTopicContract contract,
+            ulong timestampNs,
+            in T payload,
+            string origin,
+            ulong sequence = 0)
+        {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+            if (!_subscriptions.TryGetValue(contract.Topic, out var list)
+                || list.Count == 0)
+            {
+                return default;
+            }
+
+            var envelope = new FoxTopicEnvelope<T>(
+                contract,
+                timestampNs,
+                payload,
+                origin,
+                sequence);
+            var matched = 0;
+            var succeeded = 0;
+            var failed = 0;
+            for (var index = 0; index < list.Count; index++)
+            {
+                if (!(list[index] is ResultSubscription<T> subscription))
+                    continue;
+                if (!subscription.AcceptsOrigin(origin))
+                    continue;
+                matched++;
+                if (subscription.TryInvoke(envelope, out var exception))
+                {
+                    succeeded++;
+                }
+                else
+                {
+                    failed++;
+                    if (exception != null)
+                    {
+                        ReportSubscriberFault(
+                            subscription.Id,
+                            contract.Topic,
+                            origin,
+                            exception);
+                    }
+                }
+            }
+
+            return new FoxTopicPublishResult(matched, succeeded, failed);
         }
 
         private void ReportSubscriberFault(int subscriptionId, string topic, string origin, Exception exception)
@@ -185,7 +484,24 @@ namespace Unity.FoxgloveSDK.Components
             if (!_reportedSubscriberFaults.Add(key))
                 return;
 
-            SubscriberFaulted?.Invoke(new FoxTopicSubscriberFault(topic, origin, exception));
+            var handlers = SubscriberFaulted;
+            if (handlers == null)
+                return;
+
+            var fault = new FoxTopicSubscriberFault(topic, origin, exception);
+            foreach (Action<FoxTopicSubscriberFault> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(fault);
+                }
+                catch (Exception diagnosticException) when (
+                    FoxRunExceptionPolicy.IsRecoverable(diagnosticException))
+                {
+                    // A diagnostic observer is not part of topic delivery.
+                    // Keep notifying later observers and subscribers.
+                }
+            }
         }
 
         private bool HasReportedFault(int subscriptionId, string topic, Type exceptionType)
@@ -200,13 +516,20 @@ namespace Unity.FoxgloveSDK.Components
             return string.Equals(existing.StableFingerprint, candidate.StableFingerprint, StringComparison.Ordinal)
                    && string.Equals(existing.SchemaName, candidate.SchemaName, StringComparison.Ordinal)
                    && string.Equals(existing.Encoding, candidate.Encoding, StringComparison.Ordinal)
-                   && string.Equals(existing.CanonicalType, candidate.CanonicalType, StringComparison.Ordinal);
+                   && string.Equals(existing.CanonicalType, candidate.CanonicalType, StringComparison.Ordinal)
+                   && existing.Visibility == candidate.Visibility
+                   && existing.WriterPolicy == candidate.WriterPolicy;
         }
 
         private interface ISubscription
         {
             int Id { get; }
             Type PayloadType { get; }
+        }
+
+        private interface IResultSubscription : ISubscription
+        {
+            bool AcceptsOrigin(string origin);
         }
 
         private sealed class Subscription<T> : ISubscription
@@ -233,7 +556,49 @@ namespace Unity.FoxgloveSDK.Components
                     exception = null;
                     return true;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
+                {
+                    exception = ex;
+                    return false;
+                }
+            }
+        }
+
+        private sealed class ResultSubscription<T> : IResultSubscription
+        {
+            private readonly string _origin;
+            private readonly Func<FoxTopicEnvelope<T>, bool> _callback;
+
+            public ResultSubscription(
+                int id,
+                string origin,
+                Func<FoxTopicEnvelope<T>, bool> callback)
+            {
+                Id = id;
+                _origin = origin;
+                _callback = callback;
+            }
+
+            public int Id { get; }
+            public Type PayloadType => typeof(T);
+
+            public bool AcceptsOrigin(string origin)
+                => string.Equals(_origin, origin, StringComparison.Ordinal);
+
+            public bool Matches(
+                string origin,
+                Func<FoxTopicEnvelope<T>, bool> callback)
+                => AcceptsOrigin(origin) && _callback == callback;
+
+            public bool TryInvoke(FoxTopicEnvelope<T> envelope, out Exception exception)
+            {
+                try
+                {
+                    var accepted = _callback(envelope);
+                    exception = null;
+                    return accepted;
+                }
+                catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
                 {
                     exception = ex;
                     return false;

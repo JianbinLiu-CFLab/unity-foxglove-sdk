@@ -68,7 +68,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
                     EditorGUILayout.TextField("State", snapshot.State.ToString());
                     EditorGUILayout.TextField("CLR Type", snapshot.DeclaringType);
                     EditorGUILayout.TextField("Member", snapshot.MemberName);
-                    EditorGUILayout.TextField("QoS Preset", snapshot.QosPreset.ToString());
+                    EditorGUILayout.TextField("QoS Profile", snapshot.Qos.Profile.ToString());
+                    EditorGUILayout.TextField("Reliability", snapshot.Qos.Reliability.ToString());
+                    EditorGUILayout.TextField("Durability", snapshot.Qos.Durability.ToString());
+                    EditorGUILayout.TextField("History", snapshot.Qos.History.ToString());
+                    EditorGUILayout.IntField("Depth", snapshot.Qos.Depth);
                     EditorGUILayout.TextField("Selected Runtime", selectedRuntime);
                     EditorGUILayout.TextField("Active ROS Distro", DisplayOrWaiting(snapshot.RosDistro));
                     EditorGUILayout.TextField("Active RMW", DisplayOrWaiting(snapshot.RmwImplementation));

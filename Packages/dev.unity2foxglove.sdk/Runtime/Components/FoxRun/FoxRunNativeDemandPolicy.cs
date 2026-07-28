@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Components
             for (var i = 0; i < bindings.Count; i++)
             {
                 if (bindings[i] != null
-                    && bindings[i].DeclaredProvider == FoxRunSubscriptionProvider.Ros2Native)
+                    && bindings[i].DeclaredSource == FoxRunEndpoint.Ros2Native)
                 {
                     return true;
                 }
@@ -45,13 +45,17 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public static bool HasNativeRuntimeDemand(
             bool nativeOutputEnabled,
+            FoxRunEndpoint defaultPublishTargets,
+            bool hasExplicitNativePublishContract,
             bool subscriptionsEnabled,
-            FoxRunSubscriptionProvider defaultSubscriptionProvider,
+            FoxRunEndpoint defaultSubscriptionSource,
             bool hasExplicitNativeContract)
         {
             return nativeOutputEnabled
+                   || (defaultPublishTargets & FoxRunEndpoint.Ros2Native) != 0
+                   || hasExplicitNativePublishContract
                    || (subscriptionsEnabled
-                       && (defaultSubscriptionProvider == FoxRunSubscriptionProvider.Ros2Native
+                       && (defaultSubscriptionSource == FoxRunEndpoint.Ros2Native
                            || hasExplicitNativeContract));
         }
     }

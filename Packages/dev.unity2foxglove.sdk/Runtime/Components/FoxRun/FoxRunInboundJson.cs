@@ -5,6 +5,8 @@
 // Purpose: Bounded, non-polymorphic JSON decoding for generated FoxRun inputs.
 
 using System;
+using System.Globalization;
+using System.IO;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -21,6 +23,19 @@ namespace Unity.FoxgloveSDK.Components
             CommentHandling = CommentHandling.Ignore,
             DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
         };
+
+        private static readonly JsonSerializerSettings GeneratedObjectSettings =
+            new JsonSerializerSettings
+            {
+                Culture = CultureInfo.InvariantCulture,
+                DateParseHandling = DateParseHandling.None,
+                Formatting = Formatting.None,
+                MaxDepth = MaxTypeHintScanDepth,
+                MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
+                ReferenceLoopHandling = ReferenceLoopHandling.Error,
+                StringEscapeHandling = StringEscapeHandling.EscapeNonAscii,
+                TypeNameHandling = TypeNameHandling.None
+            };
 
         /// <remarks>
         /// This parser is intended for low-frequency FoxRun control inputs. It decodes UTF-8
@@ -39,7 +54,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 var json = Encoding.UTF8.GetString(payload);
-                var root = JToken.Parse(json, LoadSettings);
+                var root = ParseToken(json);
                 if (ContainsForbiddenTypeHint(root, 0, out var typeHintError))
                 {
                     error = typeHintError;
@@ -55,8 +70,31 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex) when (ex is JsonException || ex is DecoderFallbackException)
             {
-                error = "FoxRun inbound JSON is invalid: " + ex.Message;
+                var detail = ex.Message;
+                if (ex is JsonReaderException
+                    && detail.IndexOf("MaxDepth", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    detail = "JSON nesting exceeds the explicit depth limit.";
+                }
+                error = "FoxRun inbound JSON is invalid: " + detail;
                 return false;
+            }
+        }
+
+        private static JToken ParseToken(string json)
+        {
+            using (var textReader = new StringReader(json))
+            using (var jsonReader = new JsonTextReader(textReader)
+                   {
+                       DateParseHandling = DateParseHandling.None,
+                       MaxDepth = MaxTypeHintScanDepth
+                   })
+            {
+                var root = JToken.ReadFrom(jsonReader, LoadSettings);
+                if (jsonReader.Read())
+                    throw new JsonReaderException(
+                        "FoxRun inbound JSON contains more than one root value.");
+                return root;
             }
         }
 
@@ -189,6 +227,56 @@ namespace Unity.FoxgloveSDK.Components
                 && TryNumber(obj, "g", out value.g, out error)
                 && TryNumber(obj, "b", out value.b, out error)
                 && TryNumber(obj, "a", out value.a, out error);
+        }
+
+        /// <summary>
+        /// Decodes a generator-validated DTO shape without enabling polymorphic
+        /// type metadata. The source generator emits this call only for a
+        /// statically inspected object or enum graph.
+        /// </summary>
+        public static bool TryReadObject<T>(
+            byte[] payload,
+            string field,
+            out T value,
+            out string error)
+        {
+            value = default;
+            if (!TryToken(payload, field, out var token, out error))
+                return false;
+
+            try
+            {
+                var serializer = JsonSerializer.Create(GeneratedObjectSettings);
+                using (var reader = token.CreateReader())
+                    value = serializer.Deserialize<T>(reader);
+                error = string.Empty;
+                return true;
+            }
+            catch (Exception ex) when (
+                ex is JsonException
+                || ex is FormatException
+                || ex is OverflowException
+                || ex is InvalidCastException)
+            {
+                error = "FoxRun inbound field '" + field
+                        + "' cannot be converted to its generated DTO shape: "
+                        + ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Appends one generator-validated DTO value as deterministic JSON.
+        /// Type metadata stays disabled and cyclic graphs fail closed.
+        /// </summary>
+        public static void AppendObject(StringBuilder json, object value)
+        {
+            if (json == null)
+                throw new ArgumentNullException(nameof(json));
+            json.Append(JsonConvert.SerializeObject(
+                value,
+                Formatting.None,
+                GeneratedObjectSettings));
         }
 
         private static bool TryObject(byte[] payload, string field, out JObject obj, out string error)

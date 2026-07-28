@@ -28,7 +28,10 @@ namespace Unity.FoxgloveSDK.Util
         /// <param name="hasPreviousValue">True after the first publish.</param>
         /// <param name="valueChanged">True when the value differs from last published.</param>
         /// <param name="lastPublishSec">Last successful publish time. 0 before first publish.</param>
-        /// <param name="forceIntervalSec">Heartbeat interval; non-positive disables.</param>
+        /// <param name="heartbeatIntervalSec">
+        /// Heartbeat interval derived from an explicit positive Hz on a Change
+        /// declaration; non-positive disables the heartbeat.
+        /// </param>
         /// <returns>True if the value should be published.</returns>
         public static bool ShouldPublish(
             FoxRunPolicy policy,
@@ -36,7 +39,7 @@ namespace Unity.FoxgloveSDK.Util
             bool hasPreviousValue,
             bool valueChanged,
             double lastPublishSec,
-            double forceIntervalSec)
+            double heartbeatIntervalSec)
         {
             if (!IsFinite(nowSec))
                 return false;
@@ -47,16 +50,12 @@ namespace Unity.FoxgloveSDK.Util
                     return true; // Hub already rate-limits via timer
 
                 case FoxRunPolicy.Change:
-                    if (!hasPreviousValue) return true;  // first sample always
-                    return valueChanged;
-
-                case FoxRunPolicy.ChangeOrInterval:
                     if (!hasPreviousValue) return true;
                     if (valueChanged) return true;
                     if (IsFinite(lastPublishSec)
-                        && IsFinite(forceIntervalSec)
-                        && forceIntervalSec > 0
-                        && nowSec - lastPublishSec >= forceIntervalSec) return true;
+                        && IsFinite(heartbeatIntervalSec)
+                        && heartbeatIntervalSec > 0d
+                        && nowSec - lastPublishSec >= heartbeatIntervalSec) return true;
                     return false;
 
                 case FoxRunPolicy.Trigger:
@@ -79,7 +78,11 @@ namespace Unity.FoxgloveSDK.Util
         /// <param name="valueChanged">Whether the staged value differs from the last applied value.</param>
         /// <param name="nowSec">Current monotonic time in seconds.</param>
         /// <param name="lastApplySec">Time of the prior application.</param>
-        /// <param name="forceIntervalSec">Fresh-duplicate interval for ChangeOrInterval.</param>
+        /// <param name="heartbeatIntervalSec">
+        /// Fresh-duplicate refresh interval derived from an explicit positive
+        /// Hz on a Change declaration. A refresh still requires newer pending
+        /// input; this helper never replays stale applied state.
+        /// </param>
         /// <returns>True when the caller may apply its staged value now.</returns>
         public static bool ShouldApply(
             FoxRunPolicy policy,
@@ -88,7 +91,7 @@ namespace Unity.FoxgloveSDK.Util
             bool valueChanged,
             double nowSec,
             double lastApplySec,
-            double forceIntervalSec)
+            double heartbeatIntervalSec)
         {
             if (!hasPendingValue || !IsFinite(nowSec))
                 return false;
@@ -99,15 +102,12 @@ namespace Unity.FoxgloveSDK.Util
                     return true;
 
                 case FoxRunPolicy.Change:
-                    return !hasLastAppliedValue || valueChanged;
-
-                case FoxRunPolicy.ChangeOrInterval:
                     if (!hasLastAppliedValue || valueChanged)
                         return true;
                     return IsFinite(lastApplySec)
-                           && IsFinite(forceIntervalSec)
-                           && forceIntervalSec > 0d
-                           && nowSec - lastApplySec >= forceIntervalSec;
+                           && IsFinite(heartbeatIntervalSec)
+                           && heartbeatIntervalSec > 0d
+                           && nowSec - lastApplySec >= heartbeatIntervalSec;
 
                 case FoxRunPolicy.Trigger:
                 default:

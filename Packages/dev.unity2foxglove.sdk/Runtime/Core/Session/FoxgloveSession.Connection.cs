@@ -26,46 +26,49 @@ namespace Unity.FoxgloveSDK.Core
         {
             try
             {
-                var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
-                var graphChanged = false;
-                if (msg?.Subscriptions != null)
+                lock (_channelLifecycleLock)
                 {
-                    var requested = new List<(uint subscriptionId, uint channelId)>();
-                    foreach (var sub in msg.Subscriptions)
+                    var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
+                    var graphChanged = false;
+                    if (msg?.Subscriptions != null)
                     {
-                        var ch = _channels.Get(sub.ChannelId);
-                        if (ch != null && AllowLiveWebSocket(ch))
-                            requested.Add((sub.Id, sub.ChannelId));
-                    }
-
-                    if (!_subscriptions.TryAddSubscriptions(clientId, requested, out var changes, out var error))
-                    {
-                        WarnSubscriptionBudgetRejected(clientId, error);
-                        return;
-                    }
-
-                    foreach (var change in changes)
-                    {
-                        if (change.HadPrevious && change.PreviousChannelId != change.ChannelId)
+                        var requested = new List<(uint subscriptionId, uint channelId)>();
+                        foreach (var sub in msg.Subscriptions)
                         {
-                            var previous = _channels.Get(change.PreviousChannelId);
-                            if (previous != null)
-                                _graph.RemoveSubscribedTopic(clientId, change.SubscriptionId, previous.Topic);
+                            var ch = _channels.Get(sub.ChannelId);
+                            if (ch != null && AllowLiveWebSocket(ch))
+                                requested.Add((sub.Id, sub.ChannelId));
                         }
 
-                        var ch = _channels.Get(change.ChannelId);
-                        if (ch != null)
+                        if (!_subscriptions.TryAddSubscriptions(clientId, requested, out var changes, out var error))
                         {
-                            _graph.AddSubscribedTopic(clientId, change.SubscriptionId, ch.Topic);
-                            graphChanged = true;
+                            WarnSubscriptionBudgetRejected(clientId, error);
+                            return;
                         }
-                    }
 
-                    if (changes.Count > 0)
-                        Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
+                        foreach (var change in changes)
+                        {
+                            if (change.HadPrevious && change.PreviousChannelId != change.ChannelId)
+                            {
+                                var previous = _channels.Get(change.PreviousChannelId);
+                                if (previous != null)
+                                    _graph.RemoveSubscribedTopic(clientId, change.SubscriptionId, previous.Topic);
+                            }
+
+                            var ch = _channels.Get(change.ChannelId);
+                            if (ch != null)
+                            {
+                                _graph.AddSubscribedTopic(clientId, change.SubscriptionId, ch.Topic);
+                                graphChanged = true;
+                            }
+                        }
+
+                        if (changes.Count > 0)
+                            Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
+                    }
+                    if (graphChanged)
+                        _graph.BroadcastUpdate();
                 }
-                if (graphChanged)
-                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning("subscribe error: " + ex); }
         }
@@ -90,26 +93,29 @@ namespace Unity.FoxgloveSDK.Core
         {
             try
             {
-                var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
-                var graphChanged = false;
-                if (msg?.SubscriptionIds != null)
+                lock (_channelLifecycleLock)
                 {
-                    var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
-                    if (removed.Count > 0 && _transport is IClientDataQueueResettableFoxgloveTransport resettable)
-                        resettable.ClearDataQueue(clientId);
-
-                    foreach (var (subId, chId) in removed)
+                    var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
+                    var graphChanged = false;
+                    if (msg?.SubscriptionIds != null)
                     {
-                        var ch = _channels.Get(chId);
-                        if (ch != null)
+                        var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+                        if (removed.Count > 0 && _transport is IClientDataQueueResettableFoxgloveTransport resettable)
+                            resettable.ClearDataQueue(clientId);
+
+                        foreach (var (subId, chId) in removed)
                         {
-                            _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
-                            graphChanged = true;
+                            var ch = _channels.Get(chId);
+                            if (ch != null)
+                            {
+                                _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
+                                graphChanged = true;
+                            }
                         }
                     }
+                    if (graphChanged)
+                        _graph.BroadcastUpdate();
                 }
-                if (graphChanged)
-                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning("unsubscribe error: " + ex); }
         }
@@ -122,13 +128,15 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void HandleSubscribeConnectionGraph(uint clientId)
         {
-            _graph.Subscribe(clientId);
+            lock (_channelLifecycleLock)
+                _graph.Subscribe(clientId);
         }
 
         /// <summary>Unsubscribe a client from connection graph updates.</summary>
         private void HandleUnsubscribeConnectionGraph(uint clientId)
         {
-            _graph.Unsubscribe(clientId);
+            lock (_channelLifecycleLock)
+                _graph.Unsubscribe(clientId);
         }
 
         // ── ClientPublish ──

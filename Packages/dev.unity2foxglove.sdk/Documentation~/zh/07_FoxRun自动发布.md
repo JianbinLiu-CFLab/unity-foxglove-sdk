@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 
 public partial class RobotTelemetry : MonoBehaviour
 {
-    [FoxRun("/robot/pose")]
+    [FoxRun("/topic")]
     private Vector3 _position;
 
     private void Update()
@@ -22,7 +22,7 @@ public partial class RobotTelemetry : MonoBehaviour
 }
 ```
 
-`[FoxRun("/robot/pose")]` 默认表示 `Publish`、`FixedRate`、10 Hz。所在类型必须是 `partial`，topic 必须以 `/` 开头，值类型必须能生成受支持的线格式。
+`[FoxRun("/topic")]` 默认表示 `Publish`、`FixedRate`、10 Hz。所在类型必须是 `partial`，topic 必须以 `/` 开头，值类型必须能生成受支持的线格式。
 
 ## 3. 声明语法
 
@@ -38,12 +38,12 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 [FoxRun("/robot/pose")]
 private PoseState _pose;
 
-[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, RateHz = 30)]
+[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, Hz = 30)]
 private RobotCommand _command;
 
 [FoxRun("/debug/state", Mode = PublishAndSubscribe,
-    Policy = FixedRate, RateHz = 10,
-    Encoding = FoxRunWireEncoding.Protobuf)]
+    Policy = FixedRate, Hz = 10,
+    Encoding = FoxRunEncoding.Protobuf)]
 private DebugState _debugState;
 ```
 
@@ -52,42 +52,43 @@ private DebugState _debugState;
 | 值 | 含义 |
 |---|---|
 | `Publish` | Unity 是数据源并发送当前值；这是默认模式。 |
-| `Subscribe` | 一个选定的外部 provider 是数据源；Unity 在主线程应用已接收的值。 |
+| `Subscribe` | 一个选定的外部端点是数据源；Unity 在主线程应用已接收的值。 |
 | `PublishAndSubscribe` | 同时生成两个方向，主要用于调试和联调，不建议作为生产环境的默认权属模型。 |
 
-每个订阅声明只解析到一个输入 provider；发布可以扇出到多个已启用目的地。
+每个订阅声明只解析到一个 `Source`；发布可以扇出到一个或多个 `Targets`。
 
 ### Policy
 
 | 值 | 发布行为 | 订阅行为 |
 |---|---|---|
 | `FixedRate` | 按有效节拍发送当前值。 | 只有存在更新的暂存值时才应用，不会因定时器重复应用旧值。 |
-| `Change` | 首次及语义变化时发送。 | 仅在值与上次应用结果不同时应用。 |
-| `ChangeOrInterval` | 变化时发送，并按间隔发送心跳。 | 应用变化值，或间隔到期后新收到的重复值；不会凭空制造重复值。 |
+| `Change`（无 `Hz`） | 首次及语义变化时发送。 | 在下一次主线程机会应用变化值，并受最大订阅频率保护。 |
+| `Change`（带 `Hz`） | 变化时发送，并按 `Hz` 发送心跳。 | 立即应用变化值；新收到的相同值可按 `Hz` 刷新，但不会用旧暂存值制造刷新。 |
 | `Trigger` | 仅在调用生成的发布触发方法时发送。 | 保留最新暂存值，直到调用生成的应用触发方法。 |
 
-`Trigger` 不能同时设置正数 `RateHz`；生成器会报告 `FOXRUN609`，不会静默忽略其中一个设置。
+`Trigger` 不能同时设置正数 `Hz`；生成器会报告 `FOXRUN609`，不会静默忽略其中一个设置。
 
-`ChangeEpsilon` 控制浮点数、双精度数和向量的变化阈值；`ForceIntervalSeconds`
-控制 `ChangeOrInterval` 的心跳间隔。同一 topic 的成员必须使用一致的 `Policy`、
-`ChangeEpsilon` 和 `ForceIntervalSeconds`，否则生成器报告 `FOXRUN005`。
+`Tolerance` 控制支持的浮点数、双精度数和向量变化阈值；`Change + Hz`
+直接表达心跳，不再需要第二种策略。`OnlyIf` 指向一个 bool 字段、属性或零参数方法，
+只表达正向条件。同一 topic 的成员必须使用一致的 `Policy`、`Hz`、`Tolerance`
+和 `OnlyIf`，否则生成器报告 `FOXRUN005`。
 
 ## 4. 频率与准入
 
-`RateHz` 表示边界更新节拍：
+`Hz` 表示声明级的边界更新节拍：
 
 - `Publish`：生成代码的最大发布频率。
 - `Subscribe`：通过传输准入后，在 Unity 主线程应用值的最大频率。
 - `PublishAndSubscribe`：同一个显式值分别控制两个方向。
 
-省略 `RateHz` 时，发布使用 10 Hz；订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。
+省略 `Hz` 时，FixedRate 发布使用 10 Hz；FixedRate 订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。`Change` 不带 `Hz` 时在下一次主线程机会应用变化值；带 `Hz` 时增加心跳或新重复值刷新节拍。
 
 在 **Foxglove Manager > Data Transport > Subscribe Data > Subscription Delivery** 中有两个相邻但职责不同的设置：
 
-- **Default Subscribe Rate Hz**：默认值为 10 Hz，仅供未显式设置正数 `RateHz` 的订阅声明继承。
+- **Default Subscribe Rate Hz**：默认值为 10 Hz，仅供未显式设置正数 `Hz` 的订阅声明继承。
 - **Maximum Subscribe Rate Hz (per Topic)**：Foxglove WebSocket 与 ROS 2 Native 共用的硬准入上限。超额消息会尽量在 DTO 解码或原生深拷贝之前丢弃。
 
-声明级 `RateHz` 不能突破准入上限。通过准入的数据采用有界 latest-wins：Unity 来不及应用全部输入时，新值替换旧的待处理值。
+声明级 `Hz` 不能突破准入上限。通过准入的数据采用有界 latest-wins：Unity 来不及应用全部输入时，新值替换旧的待处理值。
 
 ## 5. 订阅输入
 
@@ -102,8 +103,9 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
-        Policy = Change, RateHz = 30,
-        Encoding = FoxRunWireEncoding.Json)]
+        Source = FoxRunEndpoint.Foxglove,
+        Policy = Change, Hz = 30,
+        Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
 
     private void Update()
@@ -113,21 +115,103 @@ public partial class SpeedController : MonoBehaviour
 }
 ```
 
-输入目标必须可写。生成的 allowlist、负载大小限制、编码与 provider 检查、传输准入、有界 latest-wins 暂存和主线程应用都会继续生效。非 loopback 监听默认 fail-closed，只有 Manager 明确允许远程输入并配置认证策略后才开放。
+输入目标必须可写。生成的 allowlist、负载大小限制、编码与 Source 检查、传输准入、有界 latest-wins 暂存和主线程应用都会继续生效。非 loopback 监听默认 fail-closed，只有 Manager 明确允许远程输入并配置认证策略后才开放。
 
-## 6. 编码与输入 Provider
+## 6. 方向端点与编码
 
-`Encoding = FoxRunWireEncoding.Inherit` 使用 Manager 会话冻结的方向默认值。`PublishAndSubscribe` 的两个方向共用一个 wire contract，因此必须显式选择 JSON 或 Protobuf。
+省略 `Source`、`Targets` 或 `Encoding` 时，声明继承对应方向冻结的 Manager Profile；用户代码不应写数值零哨兵。全双工声明可以分别继承发布与订阅方向的 Foxglove 编码；显式 `Encoding` 则应用于该声明选中的所有 Foxglove 方向。
 
-核心 SDK 的常规输入路径是 Foxglove WebSocket。`SubscriptionProvider = Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。provider、编码、QoS、复制预算、最大订阅频率和默认订阅频率都会在一次已启用的订阅会话中冻结。
+`Source` 选择唯一输入源，核心 SDK 默认使用 `FoxRunEndpoint.Foxglove`。`FoxRunEndpoint.Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。一般 Foxglove 与 ROS2 Bridge 路径只需 `dev.unity2foxglove.sdk`。`FoxRunEndpoint.Ros2Bridge` 仅支持发布，必须使用手动运行的 localhost sidecar；它既不是订阅 Source，也不是远程网关。
 
-## 7. Trigger 与全双工
+`Targets` 接受一个或多个端点标志，并替换而不是追加 Publish Profile 的默认值：
 
-发布触发先更新值，再调用生成的 `FoxRun_Trigger_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
+```csharp
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native)]
+private RobotState _state;
+```
+
+JSON 和 Protobuf 只描述 Foxglove 线格式。Native 与 Bridge 使用生成的 ROS 2 消息契约；CDR 不是公开的 `Encoding` 选项。Source、Targets、编码、QoS、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
+
+## 7. 官方 ROS 2 QoS
+
+QoS 使用可移植的官方 ROS 2 词汇，不负责选择发行版或 RMW。只有声明最终包含 ROS 2 Native 或 Bridge 方向时才能设置 QoS；纯 Foxglove 声明不使用 ROS 2 QoS。
+
+```csharp
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+    QoS = FoxRunQosProfile.Default,
+    Reliability = FoxRunQosReliability.BestEffort,
+    Durability = FoxRunQosDurability.TransientLocal,
+    History = FoxRunQosHistory.KeepLast,
+    Depth = 7)]
+private RobotState _state;
+```
+
+基础 Profile 是 `Default`、`SensorData` 和 `SystemDefault`。可选覆盖项为
+`Reliable`/`BestEffort`、`Volatile`/`TransientLocal`、
+`KeepLast`/`KeepAll`，以及 Keep Last 的正数 `Depth`。`SystemDefault`
+与 `KeepAll` 会原样进入传输层，不会被静默改写；`KeepAll` 不能同时设置
+`Depth`。Native 与 Bridge 接收同一个已解析的可移植契约，再由所选 ROS 2
+传输执行官方映射。
+
+## 8. Trigger 与全双工
+
+发布触发先更新值，再调用生成的 `FoxRun_Publish_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
+
+```csharp
+[FoxRun("/events/state", Policy = FoxRunPolicy.Trigger)]
+private string _state;
+
+private void OnEnable()
+{
+    _state = "enabled";
+    FoxRun_Publish_state();
+}
+```
 
 `PublishAndSubscribe` 为同一个声明生成独立的发布与应用节拍。应用外部值后，该版本会被标记，避免立即作为本地变化回传；之后真正发生的本地修改仍可正常发布。生产环境权属边界通常应拆成独立的 `Publish` 和 `Subscribe` 声明。
 
-## 8. Foxglove 与 Player 工作流
+## 9. 有界输入流
+
+普通订阅字段是有界 latest-wins 状态。需要按序消费有限批次的高频输入时，必须显式使用 `FoxRunStream<T>`：
+
+```csharp
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+public partial class ControlSamples : MonoBehaviour
+{
+    [FoxRun("/control/samples", Mode = Subscribe, Source = Foxglove)]
+    private FoxRunStream<ControlSample> _samples =
+        new FoxRunStream<ControlSample>(
+            new FoxRunStreamOptions(
+                capacity: 32,
+                maxInputHz: 1000,
+                maxBatch: 16,
+                overflow: FoxRunStreamOverflowPolicy.DropOldest));
+
+    private void Update()
+    {
+        _samples.Drain(sample => Process(sample));
+    }
+}
+```
+
+流声明必须是一个已初始化的非静态字段，并且只有一个 `Subscribe` 特性。
+`Source`、Foxglove `Encoding` 和 ROS 2 QoS 仍然合法；`Targets`、`Policy`、
+`Hz`、`Tolerance` 与 `OnlyIf` 不合法，因为流自己的准入和用户驱动消费取代
+了普通字段调度。
+
+无参数构造使用容量 1024、有限的 1000 Hz 准入上限、最大批次 128 和
+`DropOldest`。`Drain(Action<T>)` 仍由流持有所有权，每次至多调用
+`MaxBatch` 个回调，并在回调结束后释放值；回调不能保留该值。`TryTake` 与
+`TryTakeLatest` 会把一个 `FoxRunStreamSample<T>` lease 转移给调用方，调用方
+必须释放它。`Stats` 提供饱和的接收、准入、消费、溢出、频率丢弃、高水位、
+清空和释放诊断，不产生逐消息日志。流始终仅支持 Subscribe。
+
+## 10. Foxglove 与 Player 工作流
 
 1. 在场景中添加业务组件和 `FoxgloveManager`。
 2. 在 Play Mode 前配置 Publish Data；需要输入时再配置并启用 Subscribe Data。
@@ -154,14 +238,15 @@ Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 调试覆盖层（debug overlay）是非契约（non-contract）诊断，不包含在（not included）
 规范 hash 中，也不是 Replay 的防护键。
 
-## 9. 常见问题
+## 11. 常见问题
 
 | 现象 | 检查项 |
 |---|---|
 | 看不到 topic | 类型是否为 `partial`、topic 是否以 `/` 开头、组件是否启用、是否已进入 Play Mode。 |
-| 订阅没有数据 | 是否启用订阅、provider 与编码是否匹配、传输准入诊断是否出现丢弃。 |
-| 输入应用太慢 | 声明 `RateHz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
+| 订阅没有数据 | 是否启用订阅、Source 与编码是否匹配、传输准入诊断是否出现丢弃。 |
+| 输入应用太慢 | 声明 `Hz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
 | 消息被丢弃 | **Maximum Subscribe Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
+| 流保留的样本少于发送量 | 检查流自己的有限 `MaxInputHz`、容量、overflow、`MaxBatch` 与 `Stats`；流始终有界。 |
 | Trigger 不生效 | 是否从 Unity 主线程调用了对应的发布或应用触发方法。 |
 | 全双工值没有立即回传 | 刚应用的外部版本会执行一次 echo suppression，这是设计行为。 |
 | Editor 正常、Player 异常 | 检查 build preprocess 日志与生成的 fallback source。 |

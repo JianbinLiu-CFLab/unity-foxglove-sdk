@@ -41,12 +41,19 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [Tooltip("Immutable FoxRun subscription-session snapshot captured when the assigned Manager starts or ends a session.")]
     [SerializeField] private bool capturedSessionEnabled;
     [SerializeField] private ulong capturedSessionGeneration;
-    [SerializeField] private FoxRunSubscriptionProvider capturedDefaultSubscriptionProvider =
-        FoxRunSubscriptionProvider.FoxgloveWebSocket;
-    [SerializeField] private FoxRunWireEncoding capturedWebSocketSubscriptionEncoding =
-        FoxRunWireEncoding.Protobuf;
-    [SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos =
-        FoxRunRos2QosPreset.Default;
+    [SerializeField] private FoxRunEndpoint capturedDefaultSubscriptionSource =
+        FoxRunEndpoint.Foxglove;
+    [SerializeField] private FoxRunEncoding capturedFoxgloveEncoding =
+        FoxRunEncoding.Protobuf;
+    [SerializeField] private FoxRunQosProfile capturedQosProfile =
+        FoxRunQosProfile.Default;
+    [SerializeField] private FoxRunQosReliability capturedQosReliability =
+        FoxRunQosReliability.Reliable;
+    [SerializeField] private FoxRunQosDurability capturedQosDurability =
+        FoxRunQosDurability.Volatile;
+    [SerializeField] private FoxRunQosHistory capturedQosHistory =
+        FoxRunQosHistory.KeepLast;
+    [SerializeField] private int capturedQosDepth = 10;
     [SerializeField] private int capturedNativeCopyBudgetBytes = 4 * 1024 * 1024;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -56,8 +63,8 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [FoxRun(
         Topic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+        Source = FoxRunEndpoint.Ros2Native,
+        QoS = FoxRunQosProfile.Default)]
     private std_msgs.msg.String inputString;
 #else
     [Header("Native Input Availability")]
@@ -215,9 +222,13 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
 
         capturedSessionEnabled = policy.SubscriptionsEnabled;
         capturedSessionGeneration = policy.SessionGeneration;
-        capturedDefaultSubscriptionProvider = policy.DefaultProvider;
-        capturedWebSocketSubscriptionEncoding = policy.WebSocketSubscriptionEncoding;
-        capturedDefaultRos2Qos = policy.DefaultRos2Qos;
+        capturedDefaultSubscriptionSource = policy.DefaultSource;
+        capturedFoxgloveEncoding = policy.FoxgloveEncoding;
+        capturedQosProfile = policy.DefaultRos2Qos.Profile;
+        capturedQosReliability = policy.DefaultRos2Qos.Reliability;
+        capturedQosDurability = policy.DefaultRos2Qos.Durability;
+        capturedQosHistory = policy.DefaultRos2Qos.History;
+        capturedQosDepth = policy.DefaultRos2Qos.Depth;
         capturedNativeCopyBudgetBytes = policy.NativeCopyBudgetBytes;
     }
 

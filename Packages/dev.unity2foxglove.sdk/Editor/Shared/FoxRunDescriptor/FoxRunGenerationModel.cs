@@ -11,6 +11,49 @@ using System.Linq;
 namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
+    /// Records which optional <c>[FoxRun]</c> named arguments were written by
+    /// the author. Values and presence are separate: explicit zero, empty
+    /// string, and invalid enum casts must not collapse into omission.
+    /// </summary>
+    [Flags]
+    public enum FoxRunNamedArgumentPresence : long
+    {
+        None = 0,
+        Hz = 1L << 0,
+        Tolerance = 1L << 1,
+        OnlyIf = 1L << 2,
+        SchemaName = 1L << 3,
+        Policy = 1L << 4,
+        Mode = 1L << 5,
+        Encoding = 1L << 6,
+        Source = 1L << 7,
+        QoS = 1L << 8,
+        ProtobufFieldNumber = 1L << 9,
+        Targets = 1L << 10,
+        Reliability = 1L << 11,
+        Durability = 1L << 12,
+        History = 1L << 13,
+        Depth = 1L << 14
+    }
+
+    /// <summary>
+    /// Canonical member shape resolved for an explicit <c>OnlyIf</c>
+    /// declaration. Generation hosts must preserve the distinction because a
+    /// zero-argument bool method requires invocation while fields and
+    /// properties require direct access.
+    /// </summary>
+    public enum FoxRunConditionMemberKind
+    {
+        None = 0,
+        Field = 1,
+        Property = 2,
+        Method = 3,
+        Missing = 4,
+        Invalid = 5,
+        Unresolved = 6
+    }
+
+    /// <summary>
     /// Host-independent semantic model shared by FoxRun emission, descriptor
     /// evidence, and validation so all hosts report the same contract they emit.
     /// </summary>
@@ -153,8 +196,13 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string Topic;
         public readonly string SchemaName;
         public readonly string Encoding;
-        public readonly string SubscriptionProvider;
-        public readonly string Ros2Qos;
+        public readonly string Source;
+        public readonly string Targets;
+        public readonly string QosProfile;
+        public readonly string QosReliability;
+        public readonly string QosDurability;
+        public readonly string QosHistory;
+        public readonly int QosDepth;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
@@ -171,27 +219,29 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
-        /// <summary>Raw declaration value; a non-positive value means no explicit per-contract rate.</summary>
-        public readonly float DeclaredRateHz;
-        /// <summary>True only when the declaration supplied a positive finite rate.</summary>
-        public readonly bool HasExplicitRateHz;
-        public readonly float RateHz;
+        /// <summary>Raw declaration value retained separately from explicit presence.</summary>
+        public readonly float DeclaredHz;
+        public readonly bool HasExplicitHz;
+        public readonly float Hz;
         public readonly int Policy;
         public readonly string PolicyName;
         public readonly int Mode;
         public readonly string FlowName;
-        public readonly float ChangeEpsilon;
-        public readonly float ForceIntervalSeconds;
-        public readonly bool HasNonFiniteRateHz;
-        public readonly bool HasNonFiniteChangeEpsilon;
-        public readonly bool HasNonFiniteForceIntervalSeconds;
+        public readonly float DeclaredTolerance;
+        public readonly float Tolerance;
+        public readonly bool HasExplicitTolerance;
+        public readonly bool HasNonFiniteHz;
+        public readonly bool HasNonFiniteTolerance;
         public readonly string HostKind;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
-        public readonly string When;
-        public readonly string Unless;
+        public readonly string OnlyIf;
+        public readonly bool HasExplicitOnlyIf;
+        public readonly FoxRunConditionMemberKind ConditionMemberKind;
+        public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
+        public readonly bool IsStream;
 
         public FoxRunGenerationMember(
             string ns,
@@ -203,29 +253,35 @@ namespace Unity.FoxgloveSDK.Editor
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             string hostKind,
             int rawMemberOrder,
             string conditionalSymbols,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string source = FoxRunGenerationDescriptorConstants.InheritSource,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            FoxRunNamedArgumentPresence? namedArgumentPresence = null,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0,
+            bool isStream = false)
             : this(
                 ns,
                 className,
@@ -237,29 +293,35 @@ namespace Unity.FoxgloveSDK.Editor
                 isArray,
                 elementTypeName,
                 topic,
-                rateHz,
+                hz,
                 schemaName,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds,
+                tolerance,
                 hostKind,
                 rawMemberOrder,
                 conditionalSymbols,
-                when,
-                unless,
+                onlyIf,
                 isAggregateMember,
                 jsonFieldName,
                 mode,
                 encoding,
                 protobufFieldNumber,
                 protobufTypeShape,
-                subscriptionProvider,
-                ros2Qos,
+                source,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
                 ros2CustomDtoShape,
-                ros2ContractKind)
+                ros2ContractKind,
+                namedArgumentPresence,
+                conditionMemberKind,
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth,
+                isStream)
         {
         }
 
@@ -274,29 +336,35 @@ namespace Unity.FoxgloveSDK.Editor
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             string hostKind,
             int rawMemberOrder,
             string conditionalSymbols,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string source = FoxRunGenerationDescriptorConstants.InheritSource,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            FoxRunNamedArgumentPresence? namedArgumentPresence = null,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0,
+            bool isStream = false)
             : this(
                 ns,
                 className,
@@ -309,29 +377,35 @@ namespace Unity.FoxgloveSDK.Editor
                 isArray,
                 elementTypeName,
                 topic,
-                rateHz,
+                hz,
                 schemaName,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds,
+                tolerance,
                 hostKind,
                 rawMemberOrder,
                 conditionalSymbols,
-                when,
-                unless,
+                onlyIf,
                 isAggregateMember,
                 jsonFieldName,
                 mode,
                 encoding,
                 protobufFieldNumber,
                 protobufTypeShape,
-                subscriptionProvider,
-                ros2Qos,
+                source,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
                 ros2CustomDtoShape,
-                ros2ContractKind)
+                ros2ContractKind,
+                namedArgumentPresence,
+                conditionMemberKind,
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth,
+                isStream)
         {
         }
 
@@ -347,29 +421,35 @@ namespace Unity.FoxgloveSDK.Editor
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             string hostKind,
             int rawMemberOrder,
             string conditionalSymbols,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string source = FoxRunGenerationDescriptorConstants.InheritSource,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            FoxRunNamedArgumentPresence? namedArgumentPresence = null,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0,
+            bool isStream = false)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -387,8 +467,14 @@ namespace Unity.FoxgloveSDK.Editor
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
-            SubscriptionProvider = subscriptionProvider ?? string.Empty;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            Source = source ?? string.Empty;
+            Targets = targets ?? string.Empty;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
+            IsStream = isStream;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
@@ -399,23 +485,44 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2CustomDtoShape);
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
-            DeclaredRateHz = rateHz;
-            HasNonFiniteRateHz = IsNonFinite(rateHz);
-            HasExplicitRateHz = !HasNonFiniteRateHz && rateHz > 0f;
-            HasNonFiniteChangeEpsilon = IsNonFinite(changeEpsilon);
-            HasNonFiniteForceIntervalSeconds = IsNonFinite(forceIntervalSeconds);
-            RateHz = NormalizeRateHz(rateHz);
+            NamedArgumentPresence = namedArgumentPresence
+                ?? InferNamedArgumentPresence(
+                    hz,
+                    tolerance,
+                    onlyIf,
+                    schemaName,
+                    policy,
+                    mode,
+                    encoding,
+                    source,
+                    targets,
+                    qosProfile,
+                    qosReliability,
+                    qosDurability,
+                    qosHistory,
+                    qosDepth,
+                    protobufFieldNumber);
+            DeclaredHz = hz;
+            HasExplicitHz = HasNamedArgument(FoxRunNamedArgumentPresence.Hz);
+            HasNonFiniteHz = IsNonFinite(hz);
+            Hz = NormalizeHz(hz);
             Policy = policy;
             PolicyName = PolicyToName(policy);
-            ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
-            ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
+            DeclaredTolerance = tolerance;
+            HasExplicitTolerance = HasNamedArgument(FoxRunNamedArgumentPresence.Tolerance);
+            HasNonFiniteTolerance = IsNonFinite(tolerance);
+            Tolerance = NormalizeNonNegative(tolerance);
             Mode = mode;
             FlowName = FlowToName(mode);
             HostKind = hostKind ?? string.Empty;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
-            When = when ?? string.Empty;
-            Unless = unless ?? string.Empty;
+            OnlyIf = onlyIf ?? string.Empty;
+            HasExplicitOnlyIf = HasNamedArgument(FoxRunNamedArgumentPresence.OnlyIf);
+            ConditionMemberKind = NormalizeConditionMemberKind(
+                conditionMemberKind,
+                OnlyIf,
+                HasExplicitOnlyIf);
             IsAggregateMember = isAggregateMember;
             JsonFieldName = string.IsNullOrWhiteSpace(jsonFieldName)
                 ? DefaultJsonFieldName(MemberName)
@@ -439,13 +546,11 @@ namespace Unity.FoxgloveSDK.Editor
                 MemberName,
                 EmissionTypeName,
                 Topic,
-                RateHz,
+                Hz,
                 SchemaName,
                 Policy,
-                ChangeEpsilon,
-                ForceIntervalSeconds,
-                When,
-                Unless,
+                Tolerance,
+                OnlyIf,
                 IsAggregateMember,
                 JsonFieldName,
                 Mode,
@@ -453,15 +558,26 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding,
                 ProtobufFieldNumber,
                 ProtobufTypeShape,
-                SubscriptionProvider,
-                Ros2Qos,
+                Source,
+                QosProfile,
                 GeneratesWebSocketCodec,
                 GeneratesRos2NativeRegistration,
                 Ros2MessageShape,
                 Ros2CustomDtoShape,
                 Ros2ContractKind,
-                hasExplicitRateHz: HasExplicitRateHz);
+                hasExplicitHz: HasExplicitHz,
+                conditionMemberKind: ConditionMemberKind,
+                namedArgumentPresence: NamedArgumentPresence,
+                targets: Targets,
+                qosReliability: QosReliability,
+                qosDurability: QosDurability,
+                qosHistory: QosHistory,
+                qosDepth: QosDepth,
+                isStream: IsStream);
         }
+
+        public bool HasNamedArgument(FoxRunNamedArgumentPresence argument)
+            => (NamedArgumentPresence & argument) == argument;
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
             FoxRunRos2ContractKind declared,
@@ -504,33 +620,87 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        public static string DeclaredSubscriptionProviderToText(int provider)
+        public static string DeclaredSourceToText(int provider)
         {
             switch (provider)
             {
-                case 0: return FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
-                case 1: return FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider;
-                case 2: return FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider;
+                case 0: return FoxRunGenerationDescriptorConstants.InheritSource;
+                case 1: return FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource;
+                case 2: return FoxRunGenerationDescriptorConstants.Ros2NativeSource;
                 default: return string.Empty;
             }
         }
 
-        public static string DeclaredRos2QosToText(int qos)
+        public static string DeclaredTargetsToText(int targets)
+        {
+            if (targets == 0)
+                return FoxRunGenerationDescriptorConstants.InheritTargets;
+
+            const int knownTargets = 1 | 2 | 4;
+            if ((targets & ~knownTargets) != 0)
+                return string.Empty;
+
+            var values = new List<string>(3);
+            if ((targets & 1) != 0)
+                values.Add(FoxRunGenerationDescriptorConstants.FoxgloveTarget);
+            if ((targets & 2) != 0)
+                values.Add(FoxRunGenerationDescriptorConstants.Ros2NativeTarget);
+            if ((targets & 4) != 0)
+                values.Add(FoxRunGenerationDescriptorConstants.Ros2BridgeTarget);
+            return string.Join(",", values);
+        }
+
+        public static string DeclaredQosProfileToText(int qos)
         {
             switch (qos)
             {
-                case 0: return FoxRunGenerationDescriptorConstants.InheritRos2Qos;
-                case 1: return FoxRunGenerationDescriptorConstants.DefaultRos2Qos;
-                case 2: return FoxRunGenerationDescriptorConstants.ReliableRos2Qos;
-                case 3: return FoxRunGenerationDescriptorConstants.SensorDataRos2Qos;
-                case 4: return FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos;
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosProfile;
+                case 1: return FoxRunGenerationDescriptorConstants.DefaultQosProfile;
+                case 2: return FoxRunGenerationDescriptorConstants.SensorDataQosProfile;
+                case 3: return FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile;
                 default: return string.Empty;
             }
         }
 
-        public static float NormalizeRateHz(float rateHz)
+        public static string DeclaredQosReliabilityToText(int value)
         {
-            return !IsNonFinite(rateHz) && rateHz > 0f ? rateHz : 10f;
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.ReliableQosReliability;
+                case 3: return FoxRunGenerationDescriptorConstants.BestEffortQosReliability;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredQosDurabilityToText(int value)
+        {
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.VolatileQosDurability;
+                case 3: return FoxRunGenerationDescriptorConstants.TransientLocalQosDurability;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredQosHistoryToText(int value)
+        {
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.KeepLastQosHistory;
+                case 3: return FoxRunGenerationDescriptorConstants.KeepAllQosHistory;
+                default: return string.Empty;
+            }
+        }
+
+        public static float NormalizeHz(float hz)
+        {
+            return !IsNonFinite(hz) && hz > 0f ? hz : 10f;
         }
 
         public static float NormalizeNonNegative(float value)
@@ -551,10 +721,112 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 case 1: return "FixedRate";
                 case 2: return "Change";
-                case 3: return "ChangeOrInterval";
                 case 4: return "Trigger";
                 default: return "Unknown";
             }
+        }
+
+        public static string ConditionMemberKindToName(FoxRunConditionMemberKind kind)
+        {
+            switch (kind)
+            {
+                case FoxRunConditionMemberKind.None: return "None";
+                case FoxRunConditionMemberKind.Field: return "Field";
+                case FoxRunConditionMemberKind.Property: return "Property";
+                case FoxRunConditionMemberKind.Method: return "Method";
+                case FoxRunConditionMemberKind.Missing: return "Missing";
+                case FoxRunConditionMemberKind.Invalid: return "Invalid";
+                case FoxRunConditionMemberKind.Unresolved: return "Unresolved";
+                default: return "Invalid";
+            }
+        }
+
+        public static string ExplicitArgumentsToText(FoxRunNamedArgumentPresence presence)
+        {
+            var names = new List<string>();
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Hz, "Hz");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Tolerance, "Tolerance");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.OnlyIf, "OnlyIf");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.SchemaName, "SchemaName");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Policy, "Policy");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Mode, "Mode");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Encoding, "Encoding");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Source, "Source");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Targets, "Targets");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.QoS, "QoS");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Reliability, "Reliability");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Durability, "Durability");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.History, "History");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Depth, "Depth");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.ProtobufFieldNumber, "ProtobufFieldNumber");
+            return string.Join(",", names);
+        }
+
+        private static void AppendPresenceName(
+            List<string> names,
+            FoxRunNamedArgumentPresence presence,
+            FoxRunNamedArgumentPresence value,
+            string name)
+        {
+            if ((presence & value) == value)
+                names.Add(name);
+        }
+
+        private static FoxRunNamedArgumentPresence InferNamedArgumentPresence(
+            float hz,
+            float tolerance,
+            string onlyIf,
+            string schemaName,
+            int policy,
+            int mode,
+            string encoding,
+            string source,
+            string targets,
+            string qosProfile,
+            string qosReliability,
+            string qosDurability,
+            string qosHistory,
+            int qosDepth,
+            int protobufFieldNumber)
+        {
+            var presence = FoxRunNamedArgumentPresence.None;
+            if (hz > 0f || IsNonFinite(hz)) presence |= FoxRunNamedArgumentPresence.Hz;
+            if (tolerance != 0f || IsNonFinite(tolerance)) presence |= FoxRunNamedArgumentPresence.Tolerance;
+            if (!string.IsNullOrEmpty(onlyIf)) presence |= FoxRunNamedArgumentPresence.OnlyIf;
+            if (!string.IsNullOrEmpty(schemaName)) presence |= FoxRunNamedArgumentPresence.SchemaName;
+            if (policy != 1) presence |= FoxRunNamedArgumentPresence.Policy;
+            if (mode != 1) presence |= FoxRunNamedArgumentPresence.Mode;
+            if (!string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Encoding;
+            if (!string.Equals(source, FoxRunGenerationDescriptorConstants.InheritSource, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Source;
+            if (!string.Equals(targets, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Targets;
+            if (!string.Equals(qosProfile, FoxRunGenerationDescriptorConstants.InheritQosProfile, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.QoS;
+            if (!string.Equals(qosReliability, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Reliability;
+            if (!string.Equals(qosDurability, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Durability;
+            if (!string.Equals(qosHistory, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.History;
+            if (qosDepth != 0) presence |= FoxRunNamedArgumentPresence.Depth;
+            if (protobufFieldNumber != 0) presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
+            return presence;
+        }
+
+        private static FoxRunConditionMemberKind NormalizeConditionMemberKind(
+            FoxRunConditionMemberKind declared,
+            string onlyIf,
+            bool hasExplicitOnlyIf)
+        {
+            if (declared != FoxRunConditionMemberKind.None)
+                return declared;
+            if (!hasExplicitOnlyIf)
+                return FoxRunConditionMemberKind.None;
+            return string.IsNullOrWhiteSpace(onlyIf)
+                ? FoxRunConditionMemberKind.Missing
+                : FoxRunConditionMemberKind.Unresolved;
         }
 
         public static string FlowToName(int flow)

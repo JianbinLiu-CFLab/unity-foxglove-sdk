@@ -265,35 +265,86 @@ namespace Unity.FoxgloveSDK.Editor
                 contract.MemberName,
                 contract.Topic,
                 contract.Flow,
-                ToSubscriptionProvider(contract.DeclaredProvider),
-                ToRos2QosPreset(contract.Ros2Qos),
+                ToSource(contract.DeclaredSource),
+                ToQosProfile(contract.QosProfile),
                 contract.SupportsRos2Native,
                 contract.CustomDtoIdentity,
                 contract.CustomPayloadIdentity,
-                contract.CustomEnvelopeIdentity);
+                contract.CustomEnvelopeIdentity,
+                ToTargets(contract.DeclaredTargets),
+                ToQosReliability(contract.QosReliability),
+                ToQosDurability(contract.QosDurability),
+                ToQosHistory(contract.QosHistory),
+                contract.QosDepth);
         }
 
-        private static FoxRunSubscriptionProvider ToSubscriptionProvider(string provider)
+        private static FoxRunEndpoint ToSource(string provider)
         {
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
-                return FoxRunSubscriptionProvider.Ros2Native;
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
-                return FoxRunSubscriptionProvider.FoxgloveWebSocket;
-            return FoxRunSubscriptionProvider.Inherit;
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
+                return FoxRunEndpoint.Ros2Native;
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
+                return FoxRunEndpoint.Foxglove;
+            return (FoxRunEndpoint)0;
         }
 
-        private static FoxRunRos2QosPreset ToRos2QosPreset(string qos)
+        private static FoxRunEndpoint ToTargets(string targets)
         {
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
-                return FoxRunRos2QosPreset.Default;
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
-                return FoxRunRos2QosPreset.Reliable;
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
-                return FoxRunRos2QosPreset.SensorData;
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
-                return FoxRunRos2QosPreset.TransientLocal;
-            return FoxRunRos2QosPreset.Inherit;
+            if (string.Equals(targets, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
+                return 0;
+
+            var result = (FoxRunEndpoint)0;
+            foreach (var target in (targets ?? string.Empty).Split(','))
+            {
+                if (string.Equals(target, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
+                    result |= FoxRunEndpoint.Foxglove;
+                else if (string.Equals(target, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
+                    result |= FoxRunEndpoint.Ros2Native;
+                else if (string.Equals(target, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
+                    result |= FoxRunEndpoint.Ros2Bridge;
+                else
+                    return 0;
+            }
+
+            return result;
         }
+
+        private static FoxRunQosProfile ToQosProfile(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
+                return FoxRunQosProfile.Default;
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
+                return FoxRunQosProfile.SensorData;
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
+                return FoxRunQosProfile.SystemDefault;
+            return 0;
+        }
+
+        private static FoxRunQosReliability ToQosReliability(string value)
+            => string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal)
+                ? FoxRunQosReliability.Reliable
+                : string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal)
+                    ? FoxRunQosReliability.BestEffort
+                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
+                        ? FoxRunQosReliability.SystemDefault
+                        : 0;
+
+        private static FoxRunQosDurability ToQosDurability(string value)
+            => string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal)
+                ? FoxRunQosDurability.Volatile
+                : string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal)
+                    ? FoxRunQosDurability.TransientLocal
+                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
+                        ? FoxRunQosDurability.SystemDefault
+                        : 0;
+
+        private static FoxRunQosHistory ToQosHistory(string value)
+            => string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal)
+                ? FoxRunQosHistory.KeepLast
+                : string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal)
+                    ? FoxRunQosHistory.KeepAll
+                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
+                        ? FoxRunQosHistory.SystemDefault
+                        : 0;
 
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
         {

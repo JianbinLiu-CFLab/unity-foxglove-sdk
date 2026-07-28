@@ -18,8 +18,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Foxglove topic name for the aggregate payload.</summary>
         public string Topic { get; }
 
-        /// <summary>Optional output rate in Hz; an omitted value resolves to 10 Hz.</summary>
-        public float RateHz { get; set; } = -1f;
+        /// <summary>
+        /// Optional output rate in Hz. For <see cref="FoxRunPolicy.Change"/>,
+        /// a positive value also enables periodic heartbeats.
+        /// </summary>
+        public float Hz { get; set; } = -1f;
 
         /// <summary>Optional schema name. Defaults to the declaring type when empty.</summary>
         public string SchemaName { get; set; }
@@ -28,22 +31,43 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
 
         /// <summary>
-        /// Declared wire encoding for this aggregate topic. The default is
-        /// resolved by FoxgloveManager when the topic is registered.
+        /// Publish targets. Omission inherits the frozen Publish Profile.
+        /// An explicit non-empty flags set replaces the profile target set.
         /// </summary>
-        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
+        public FoxRunEndpoint Targets { get; set; }
 
-        /// <summary>Epsilon for numeric and Unity value-type change detection.</summary>
-        public float ChangeEpsilon { get; set; } = 0f;
+        /// <summary>
+        /// Foxglove encoding when the effective targets include Foxglove.
+        /// Omission inherits the frozen Publish Profile.
+        /// </summary>
+        public FoxRunEncoding Encoding { get; set; }
 
-        /// <summary>Heartbeat interval in seconds for ChangeOrInterval.</summary>
-        public float ForceIntervalSeconds { get; set; } = 0f;
+        /// <summary>
+        /// Optional portable ROS 2 QoS base profile. Omission inherits each
+        /// selected ROS 2 publish direction's frozen profile.
+        /// </summary>
+        public FoxRunQosProfile QoS { get; set; }
 
-        /// <summary>Optional bool field, property, or zero-argument method that must be true to publish.</summary>
-        public string When { get; set; } = string.Empty;
+        /// <summary>Optional ROS 2 reliability override.</summary>
+        public FoxRunQosReliability Reliability { get; set; }
 
-        /// <summary>Optional bool field, property, or zero-argument method that must be false to publish.</summary>
-        public string Unless { get; set; } = string.Empty;
+        /// <summary>Optional ROS 2 durability override.</summary>
+        public FoxRunQosDurability Durability { get; set; }
+
+        /// <summary>Optional ROS 2 history override.</summary>
+        public FoxRunQosHistory History { get; set; }
+
+        /// <summary>Optional positive Keep Last depth.</summary>
+        public int Depth { get; set; }
+
+        /// <summary>Tolerance for supported numeric change detection.</summary>
+        public float Tolerance { get; set; } = 0f;
+
+        /// <summary>
+        /// Optional bool field, property, or zero-argument method that must be
+        /// true before publishing.
+        /// </summary>
+        public string OnlyIf { get; set; } = string.Empty;
 
         /// <summary>Create a class-level FoxRun message for the given topic.</summary>
         public FoxRunMessageAttribute(string topic)

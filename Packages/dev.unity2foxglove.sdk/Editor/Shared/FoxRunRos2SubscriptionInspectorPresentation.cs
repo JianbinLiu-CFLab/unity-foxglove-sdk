@@ -21,16 +21,16 @@ namespace Unity.FoxgloveSDK.Editor
     internal readonly struct FoxRunRos2QosInspectorChoice
     {
         internal FoxRunRos2QosInspectorChoice(
-            FoxRunRos2QosPreset preset,
+            FoxRunQosProfile profile,
             string label,
             string summary)
         {
-            Preset = preset;
+            Profile = profile;
             Label = label;
             Summary = summary;
         }
 
-        internal FoxRunRos2QosPreset Preset { get; }
+        internal FoxRunQosProfile Profile { get; }
         internal string Label { get; }
         internal string Summary { get; }
     }
@@ -42,30 +42,25 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static readonly string[] ConcreteManagerQosLabels =
         {
-            "ROS 2 Default (R2FU)",
-            "Reliable",
+            "Default",
             "Sensor Data",
-            "Transient Local"
+            "System Default"
         };
 
         private static readonly FoxRunRos2QosInspectorChoice[] ConcreteManagerQosChoices =
         {
             new(
-                FoxRunRos2QosPreset.Default,
+                FoxRunQosProfile.Default,
                 ConcreteManagerQosLabels[0],
-                "R2FU default / Keep Last 10"),
-            new(
-                FoxRunRos2QosPreset.Reliable,
-                ConcreteManagerQosLabels[1],
                 "Reliable / Volatile / Keep Last 10"),
             new(
-                FoxRunRos2QosPreset.SensorData,
-                ConcreteManagerQosLabels[2],
+                FoxRunQosProfile.SensorData,
+                ConcreteManagerQosLabels[1],
                 "Best Effort / Volatile / Keep Last 5"),
             new(
-                FoxRunRos2QosPreset.TransientLocal,
-                ConcreteManagerQosLabels[3],
-                "Reliable / Transient Local / Keep Last 1")
+                FoxRunQosProfile.SystemDefault,
+                ConcreteManagerQosLabels[2],
+                "System Default / System Default / System Default")
         };
 
         /// <summary>Concrete Manager choices; source-only Inherit is deliberately omitted.</summary>
@@ -79,6 +74,78 @@ namespace Unity.FoxgloveSDK.Editor
         /// Human-facing decimal unit labels. The stored budget remains an exact byte count.
         /// </summary>
         internal static string[] NativeCopyBudgetLabels => NativeCopyBudgetUnitLabels;
+
+        /// <summary>
+        /// Human-facing decimal unit labels for the exact stored subscription payload limit.
+        /// </summary>
+        internal static string[] SubscriptionMaxPayloadLabels => NativeCopyBudgetUnitLabels;
+
+        internal static string Summary(FoxRunResolvedQos qos)
+        {
+            var depth = qos.History == FoxRunQosHistory.KeepLast
+                ? " " + qos.Depth.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : string.Empty;
+            return PolicyLabel(qos.Reliability)
+                   + " / "
+                   + PolicyLabel(qos.Durability)
+                   + " / "
+                   + PolicyLabel(qos.History)
+                   + depth;
+        }
+
+        internal static string DeclaredSummary(
+            FoxRunQosProfile profile,
+            FoxRunQosReliability reliability,
+            FoxRunQosDurability durability,
+            FoxRunQosHistory history,
+            int depth)
+        {
+            var parts = new List<string> { ProfileLabel(profile) };
+            if (reliability != 0)
+                parts.Add("Reliability=" + PolicyLabel(reliability));
+            if (durability != 0)
+                parts.Add("Durability=" + PolicyLabel(durability));
+            if (history != 0)
+                parts.Add("History=" + PolicyLabel(history));
+            if (depth > 0)
+            {
+                parts.Add(
+                    "Depth="
+                    + depth.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            return string.Join("; ", parts);
+        }
+
+        private static string ProfileLabel(FoxRunQosProfile value)
+            => value == 0
+                ? "Inherit"
+                : value == FoxRunQosProfile.SensorData
+                    ? "Sensor Data"
+                    : value == FoxRunQosProfile.SystemDefault
+                        ? "System Default"
+                        : "Default";
+
+        private static string PolicyLabel(FoxRunQosReliability value)
+            => value == FoxRunQosReliability.BestEffort
+                ? "Best Effort"
+                : value == FoxRunQosReliability.SystemDefault
+                    ? "System Default"
+                    : "Reliable";
+
+        private static string PolicyLabel(FoxRunQosDurability value)
+            => value == FoxRunQosDurability.TransientLocal
+                ? "Transient Local"
+                : value == FoxRunQosDurability.SystemDefault
+                    ? "System Default"
+                    : "Volatile";
+
+        private static string PolicyLabel(FoxRunQosHistory value)
+            => value == FoxRunQosHistory.KeepAll
+                ? "Keep All"
+                : value == FoxRunQosHistory.SystemDefault
+                    ? "System Default"
+                    : "Keep Last";
 
         /// <summary>Converts a serialized budget to the selected display unit.</summary>
         internal static double ToDisplayValue(
@@ -109,6 +176,35 @@ namespace Unity.FoxgloveSDK.Editor
                 displayValue * bytesPerUnit,
                 MidpointRounding.AwayFromZero);
             return FoxRunRos2NativeCopyBudgetPolicy.ClampUserEditedBytes((int)roundedBytes);
+        }
+
+        internal static double ToSubscriptionPayloadDisplayValue(
+            int serializedBytes,
+            FoxRunRos2NativeCopyBudgetUnit unit)
+        {
+            return Math.Max(256, serializedBytes) / (double)GetBytesPerUnit(unit);
+        }
+
+        internal static int ToClampedSubscriptionPayloadBytes(
+            double displayValue,
+            FoxRunRos2NativeCopyBudgetUnit unit)
+        {
+            var bytesPerUnit = GetBytesPerUnit(unit);
+            if (double.IsNaN(displayValue) || displayValue <= 0d)
+                return 256;
+
+            var maximumDisplayValue = int.MaxValue / (double)bytesPerUnit;
+            if (double.IsPositiveInfinity(displayValue) || displayValue >= maximumDisplayValue)
+                return int.MaxValue;
+
+            var roundedBytes = Math.Round(
+                displayValue * bytesPerUnit,
+                MidpointRounding.AwayFromZero);
+            if (roundedBytes < 256d)
+                return 256;
+            return roundedBytes >= int.MaxValue
+                ? int.MaxValue
+                : (int)roundedBytes;
         }
 
         private static int GetBytesPerUnit(FoxRunRos2NativeCopyBudgetUnit unit)

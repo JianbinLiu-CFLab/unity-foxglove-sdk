@@ -21,12 +21,13 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class FoxRunRos2GenerationModelParityTests
     {
         [Theory]
-        [InlineData(1, 2, "foxglove-websocket", "reliable", true, true)]
-        [InlineData(2, 3, "ros2-native", "sensor-data", true, true)]
+        [InlineData(2, 1, "ros2-native", "default", true, true)]
+        [InlineData(2, 2, "ros2-native", "sensor-data", true, true)]
+        [InlineData(2, 3, "ros2-native", "system-default", true, true)]
         [InlineData(0, 0, "inherit", "inherit", true, true)]
         public void RoslynAndReflectionLowerersPreserveNormalizedProviderCapabilitiesAndNativeShape(
             int provider,
-            int qos,
+            int qosProfile,
             string expectedProvider,
             string expectedQos,
             bool generatesWebSocketCodec,
@@ -55,10 +56,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
-                    subscriptionProvider: provider, ros2Qos: qos,
+                    source: provider, qosProfile: qosProfile,
                     generatesWebSocketCodec: generatesWebSocketCodec,
                     generatesRos2NativeRegistration: generatesRos2NativeRegistration,
                     ros2MessageShape: shape)
@@ -69,10 +70,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
-                    subscriptionProvider: provider, ros2Qos: qos,
+                    source: provider, qosProfile: qosProfile,
                     generatesWebSocketCodec: generatesWebSocketCodec,
                     generatesRos2NativeRegistration: generatesRos2NativeRegistration,
                     ros2MessageShape: shape)
@@ -82,8 +83,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.True(comparison.IsSemanticEqual, string.Join(Environment.NewLine, comparison.SemanticDifferences));
 
             var member = Assert.Single(roslyn.Types[0].Members);
-            Assert.Equal(expectedProvider, member.SubscriptionProvider);
-            Assert.Equal(expectedQos, member.Ros2Qos);
+            Assert.Equal(expectedProvider, member.Source);
+            Assert.Equal(expectedQos, member.QosProfile);
             Assert.Equal(generatesWebSocketCodec, member.GeneratesWebSocketCodec);
             Assert.Equal(generatesRos2NativeRegistration, member.GeneratesRos2NativeRegistration);
             Assert.Equal("std_msgs.msg.String", member.EmissionTypeName);
@@ -99,15 +100,186 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var root = document.RootElement;
             var member = root.GetProperty("types")[0].GetProperty("members")[0];
 
-            Assert.Equal(2, root.GetProperty("descriptorVersion").GetInt32());
-            Assert.Equal("2.0.0", root.GetProperty("generatorVersion").GetString());
-            Assert.Equal("ros2-native", member.GetProperty("subscriptionProvider").GetString());
-            Assert.Equal("sensor-data", member.GetProperty("ros2Qos").GetString());
+            Assert.Equal(FoxRunGenerationDescriptorConstants.DescriptorVersion, root.GetProperty("descriptorVersion").GetInt32());
+            Assert.Equal(FoxRunGenerationDescriptorConstants.GeneratorVersion, root.GetProperty("generatorVersion").GetString());
+            Assert.Equal("ros2-native", member.GetProperty("source").GetString());
+            Assert.Equal("system-default", member.GetProperty("qosProfile").GetString());
             Assert.True(member.GetProperty("generatesWebSocketCodec").GetBoolean());
             Assert.True(member.GetProperty("generatesRos2NativeRegistration").GetBoolean());
             Assert.Equal(
                 "std_msgs/msg/String|Data:string",
                 member.GetProperty("ros2MessageShape").GetProperty("copyShapeIdentity").GetString());
+        }
+
+        [Fact]
+        public void FullDuplexQosFlowsIdenticallyToEveryRos2DirectionAcrossGenerationHosts()
+        {
+            const FoxRunNamedArgumentPresence presence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var shape = BuildShape("full-duplex-qos");
+            var roslyn = FoxRunRoslynGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunRoslynGenerationMember(
+                    "Demo", "Duplex", "Value", "field",
+                    "std_msgs.msg.String", "global::std_msgs.msg.String",
+                    false, false, "", "/duplex", "std_msgs/msg/String",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    mode: (int)FoxRunFlow.PublishAndSubscribe,
+                    source: (int)FoxRunEndpoint.Ros2Native,
+                    targets: (int)(FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge),
+                    qosProfile: (int)FoxRunQosProfile.SensorData,
+                    qosReliability: (int)FoxRunQosReliability.Reliable,
+                    qosDurability: (int)FoxRunQosDurability.TransientLocal,
+                    qosHistory: (int)FoxRunQosHistory.KeepLast,
+                    qosDepth: 37,
+                    namedArgumentPresence: presence,
+                    generatesWebSocketCodec: true,
+                    generatesRos2NativeRegistration: true,
+                    ros2MessageShape: shape)
+            });
+            var reflection = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "Duplex", "Value", "field",
+                    "std_msgs.msg.String", "global::std_msgs.msg.String",
+                    false, false, "", "/duplex", "std_msgs/msg/String",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    mode: (int)FoxRunFlow.PublishAndSubscribe,
+                    source: (int)FoxRunEndpoint.Ros2Native,
+                    targets: (int)(FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge),
+                    qosProfile: (int)FoxRunQosProfile.SensorData,
+                    qosReliability: (int)FoxRunQosReliability.Reliable,
+                    qosDurability: (int)FoxRunQosDurability.TransientLocal,
+                    qosHistory: (int)FoxRunQosHistory.KeepLast,
+                    qosDepth: 37,
+                    namedArgumentPresence: presence,
+                    generatesWebSocketCodec: true,
+                    generatesRos2NativeRegistration: true,
+                    ros2MessageShape: shape)
+            });
+
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(roslyn, reflection);
+            Assert.True(comparison.IsSemanticEqual, string.Join(Environment.NewLine, comparison.SemanticDifferences));
+            var member = Assert.Single(Assert.Single(roslyn.Types).Members);
+            Assert.Equal("ros2-native", member.Source);
+            Assert.Equal("ros2-native,ros2-bridge", member.Targets);
+            Assert.Equal("sensor-data", member.QosProfile);
+            Assert.Equal("reliable", member.QosReliability);
+            Assert.Equal("transient-local", member.QosDurability);
+            Assert.Equal("keep-last", member.QosHistory);
+            Assert.Equal(37, member.QosDepth);
+            Assert.Equal(presence, member.NamedArgumentPresence & presence);
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(roslyn),
+                diagnostic => diagnostic.Severity == "Error");
+
+            var binding = Assert.Single(
+                FoxRunManifestBuilder.Build(
+                    new[] { FoxRunManifestMember.FromGenerationMember(member) },
+                    manifestVersion: FoxrunManifestWriter.CurrentManifestVersion)
+                .Sections.Subscriptions.Bindings);
+            Assert.Equal(member.Source, binding.DeclaredSource);
+            Assert.Equal(member.Targets, binding.DeclaredTargets);
+            Assert.Equal(member.QosProfile, binding.QosProfile);
+            Assert.Equal(member.QosReliability, binding.QosReliability);
+            Assert.Equal(member.QosDurability, binding.QosDurability);
+            Assert.Equal(member.QosHistory, binding.QosHistory);
+            Assert.Equal(member.QosDepth, binding.QosDepth);
+        }
+
+        [Theory]
+        [InlineData(0, 0, 0, 0, 0, "inherit", "inherit", "inherit", "inherit")]
+        [InlineData(99, 98, 97, 96, -4, "", "", "", "")]
+        public void QosPresenceSurvivesZeroAndInvalidValuesAcrossBothLowerers(
+            int profile,
+            int reliability,
+            int durability,
+            int history,
+            int depth,
+            string expectedProfile,
+            string expectedReliability,
+            string expectedDurability,
+            string expectedHistory)
+        {
+            const FoxRunNamedArgumentPresence qosPresence =
+                FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var roslyn = FoxRunRoslynGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunRoslynGenerationMember(
+                    "Demo", "Presence", "Value", "field", "System.Single", "float",
+                    true, false, "", "/qos-presence", "", 10f,
+                    (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    qosProfile: profile,
+                    qosReliability: reliability,
+                    qosDurability: durability,
+                    qosHistory: history,
+                    qosDepth: depth,
+                    namedArgumentPresence: qosPresence)
+            });
+            var reflection = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "Presence", "Value", "field", "System.Single", "float",
+                    true, false, "", "/qos-presence", "", 10f,
+                    (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    qosProfile: profile,
+                    qosReliability: reliability,
+                    qosDurability: durability,
+                    qosHistory: history,
+                    qosDepth: depth,
+                    namedArgumentPresence: qosPresence)
+            });
+
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(roslyn, reflection);
+            Assert.True(comparison.IsSemanticEqual, string.Join(Environment.NewLine, comparison.SemanticDifferences));
+            var member = Assert.Single(Assert.Single(roslyn.Types).Members);
+            Assert.Equal(qosPresence, member.NamedArgumentPresence & qosPresence);
+            Assert.Equal(expectedProfile, member.QosProfile);
+            Assert.Equal(expectedReliability, member.QosReliability);
+            Assert.Equal(expectedDurability, member.QosDurability);
+            Assert.Equal(expectedHistory, member.QosHistory);
+            Assert.Equal(depth, member.QosDepth);
+            Assert.Single(
+                FoxRunGenerationModelValidator.Validate(roslyn),
+                diagnostic => diagnostic.Id == "FOXRUN613");
+        }
+
+        [Fact]
+        public void OmittedQosKeepsEveryAxisIndependentlyInheritable()
+        {
+            var model = BuildModel(0, 0, true, true, BuildShape("omitted-qos"));
+            var member = Assert.Single(Assert.Single(model.Types).Members);
+
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritQosProfile, member.QosProfile);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritQosPolicy, member.QosReliability);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritQosPolicy, member.QosDurability);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritQosPolicy, member.QosHistory);
+            Assert.Equal(0, member.QosDepth);
+            Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.QoS));
+            Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.Reliability));
+            Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.Durability));
+            Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.History));
+            Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.Depth));
+
+            using var document = JsonDocument.Parse(FoxRunGenerationDescriptorJsonWriter.Write(model));
+            var descriptorMember = document.RootElement.GetProperty("types")[0].GetProperty("members")[0];
+            Assert.Equal("inherit", descriptorMember.GetProperty("qosProfile").GetString());
+            Assert.Equal("inherit", descriptorMember.GetProperty("qosReliability").GetString());
+            Assert.Equal("inherit", descriptorMember.GetProperty("qosDurability").GetString());
+            Assert.Equal("inherit", descriptorMember.GetProperty("qosHistory").GetString());
+            Assert.Equal(0, descriptorMember.GetProperty("qosDepth").GetInt32());
+            Assert.Equal(string.Empty, descriptorMember.GetProperty("explicitArguments").GetString());
         }
 
         [Fact]
@@ -131,9 +303,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             {
                 new FoxRunRoslynGenerationMember(
                     "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
-                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.PublishAndSubscribe,
-                    encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
+                    encoding: 2, source: 2, qosProfile: 0,
                     generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
                     ros2CustomDtoShape: customShape,
                     ros2ContractKind: FoxRunRos2ContractKind.CustomDto)
@@ -142,9 +314,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             {
                 new FoxRunReflectionGenerationMember(
                     "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
-                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.PublishAndSubscribe,
-                    encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
+                    encoding: 2, source: 2, qosProfile: 0,
                     generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
                     ros2CustomDtoShape: customShape,
                     ros2ContractKind: FoxRunRos2ContractKind.CustomDto)
@@ -169,9 +341,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                    subscriptionProvider: 2, ros2Qos: 3,
+                    source: 2, qosProfile: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
                     ros2MessageShape: shape)
@@ -182,9 +354,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                    subscriptionProvider: 2, ros2Qos: 3,
+                    source: 2, qosProfile: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
                     ros2MessageShape: shape)
@@ -205,9 +377,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                    subscriptionProvider: 2, ros2Qos: 3,
+                    source: 2, qosProfile: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
                     ros2MessageShape: BuildImuShape(canWrite: true))
@@ -240,17 +412,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [InlineData("ros2-native")]
         [InlineData("inherit")]
         public void NativeProviderOrInheritedValidNativeCapabilityDoesNotRequireAWebSocketShape(
-            string subscriptionProvider)
+            string source)
         {
             var nativeOnly = new FoxRunGenerationMember(
                 "Demo", "Receiver", "_incoming", "field",
                 "vendor_msgs.msg.NativeOnly", "global::vendor_msgs.msg.NativeOnly", "vendor_msgs.msg.NativeOnly",
                 false, false, "", "/demo/input", 10f, "vendor_msgs/msg/NativeOnly",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                (int)FoxRunPolicy.FixedRate, 0f,
                 "Roslyn", 1, "", mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
-                subscriptionProvider: subscriptionProvider,
-                ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                source: source,
+                qosProfile: FoxRunGenerationDescriptorConstants.SensorDataQosProfile,
                 generatesWebSocketCodec: false,
                 generatesRos2NativeRegistration: true,
                 ros2MessageShape: BuildShape(
@@ -274,12 +446,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "Demo", "Receiver", "_incoming", "field",
                 "Demo.CommandDto", "global::Demo.CommandDto", "Demo.CommandDto",
                 false, false, "", "/demo/input", 10f, "demo/CommandDto",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                (int)FoxRunPolicy.FixedRate, 0f,
                 "Roslyn", 1, "", mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                 protobufTypeShape: protobufShape,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-                ros2Qos: FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+                source: FoxRunGenerationDescriptorConstants.InheritSource,
+                qosProfile: FoxRunGenerationDescriptorConstants.InheritQosProfile,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: false);
             var model = FoxRunGenerationModel.FromMembers(new[] { member });
@@ -299,12 +471,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void UnknownMemberDataThatRequiresWebSocketShapeKeepsDetailedDiagnostic(
             string typeName,
             string expectedDiagnosticText,
-            int subscriptionProvider)
+            int source)
         {
             var topic = new TopicEntry(
-                "/demo/input", 10f, "demo/Unknown", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                "/demo/input", 10f, "demo/Unknown", (int)FoxRunPolicy.FixedRate, 0f,
                 mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                subscriptionProvider: subscriptionProvider, ros2Qos: 0);
+                source: source, qosProfile: 0);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
                 typeName, "global::" + typeName,
@@ -312,7 +484,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeName, "/demo/input", 10f, "demo/Unknown",
                 mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                subscriptionProvider: subscriptionProvider, ros2Qos: 0);
+                source: source, qosProfile: 0);
             var models = new[]
             {
                 FoxRunRoslynGenerationModelLowerer.Lower(sourceData.ToRoslynMembers()),
@@ -337,12 +509,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var shape = BuildShape("source-chain");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
-                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
+                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, source: 2, qosProfile: 3);
             var reflectedData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
                 "/demo/input", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                subscriptionProvider: 2, ros2Qos: 3, ros2MessageShape: shape);
+                source: 2, qosProfile: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
                 fixtureTypeName, "global::" + fixtureTypeName,
@@ -356,8 +528,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.True(comparison.IsSemanticEqual, string.Join(Environment.NewLine, comparison.SemanticDifferences));
             var member = Assert.Single(roslyn.Types.Single().Members);
-            Assert.Equal("ros2-native", member.SubscriptionProvider);
-            Assert.Equal("sensor-data", member.Ros2Qos);
+            Assert.Equal("ros2-native", member.Source);
+            Assert.Equal("system-default", member.QosProfile);
             Assert.Equal("source-chain", member.Ros2MessageShape.CopyShapeIdentity);
         }
 
@@ -367,12 +539,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var shape = BuildShape("explicit-native-dual");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/native", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
-                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
+                "/demo/native", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, source: 2, qosProfile: 3);
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
                 "/demo/native", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                subscriptionProvider: 2, ros2Qos: 3, ros2MessageShape: shape);
+                source: 2, qosProfile: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
                 fixtureTypeName, "global::" + fixtureTypeName,
@@ -390,10 +562,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             var roslynManifest = FoxRunManifestBuilder.Build(
                 new[] { FoxRunManifestMember.FromGenerationMember(roslynMember) },
-                manifestVersion: 2);
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var reflectionManifest = FoxRunManifestBuilder.Build(
                 new[] { reflectionMember },
-                manifestVersion: 2);
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             Assert.Empty(roslynManifest.Sections.FoxRun.Types);
             Assert.Empty(reflectionManifest.Sections.FoxRun.Types);
@@ -401,23 +573,23 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 FoxRunManifestJsonWriter.WriteCanonical(roslynManifest),
                 FoxRunManifestJsonWriter.WriteCanonical(reflectionManifest));
             var binding = Assert.Single(roslynManifest.Sections.Subscriptions.Bindings);
-            Assert.Equal(FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, binding.DeclaredProvider);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.Ros2NativeSource, binding.DeclaredSource);
             Assert.True(binding.SupportsWebSocket);
             Assert.True(binding.SupportsRos2Native);
         }
 
         [Fact]
-        public void RoslynAndReflectionManifestProjectionProduceIdenticalCanonicalV2Evidence()
+        public void RoslynAndReflectionManifestProjectionProduceIdenticalCanonicalV3Evidence()
         {
             var shape = BuildShape("manifest-parity");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
-                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 0, ros2Qos: 3);
+                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, source: 0, qosProfile: 3);
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
                 "/demo/input", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
-                subscriptionProvider: 0, ros2Qos: 3, ros2MessageShape: shape);
+                source: 0, qosProfile: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
                 fixtureTypeName, "global::" + fixtureTypeName,
@@ -429,10 +601,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var roslynMember = Assert.Single(Assert.Single(roslynModel.Types).Members);
             var roslynManifest = FoxRunManifestBuilder.Build(
                 new[] { FoxRunManifestMember.FromGenerationMember(roslynMember) },
-                manifestVersion: 2);
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var reflectionManifest = FoxRunManifestBuilder.Build(
                 new[] { reflectionData.ToManifestMember() },
-                manifestVersion: 2);
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             Assert.Equal(
                 FoxRunManifestJsonWriter.WriteCanonical(roslynManifest),
@@ -445,7 +617,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void SourceGeneratorExtractsDeclaredProviderAndQosIntoNormalizedDescriptorModel()
+        public void SourceGeneratorExtractsDeclaredSourceAndQosIntoNormalizedDescriptorModel()
         {
             var compilation = CSharpCompilation.Create(
                 "Phase179ProviderExtraction",
@@ -455,12 +627,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 using Unity.FoxgloveSDK.Components;
 namespace Demo
 {
+    public sealed class NativePayload
+    {
+        public float Value { get; set; }
+    }
+
     public partial class Receiver
     {
-        [FoxRun(""/demo/input"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-        private string _incoming;
+        [FoxRun(""/demo/input"", Mode = FoxRunFlow.Subscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.SystemDefault)]
+        private NativePayload _incoming;
     }
 }")
                 },
@@ -468,15 +645,18 @@ namespace Demo
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
             var result = driver.RunGenerators(compilation).GetRunResult();
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
             var descriptor = result.Results.Single().GeneratedSources
                 .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
                 .SourceText
                 .ToString();
 
-            Assert.Contains("\\\"subscriptionProvider\\\":\\\"foxglove-websocket\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"ros2Qos\\\":\\\"reliable\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"source\\\":\\\"ros2-native\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"qosProfile\\\":\\\"system-default\\\"", descriptor, StringComparison.Ordinal);
             Assert.Contains("\\\"generatesWebSocketCodec\\\":true", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":false", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -493,9 +673,230 @@ namespace Demo
             Assert.Contains(comparison.SemanticDifferences, difference => difference.Contains("Duplicate", StringComparison.Ordinal));
         }
 
+        [Theory]
+        [InlineData("flow")]
+        [InlineData("source")]
+        [InlineData("targets")]
+        [InlineData("profile")]
+        [InlineData("reliability")]
+        [InlineData("durability")]
+        [InlineData("history")]
+        [InlineData("depth")]
+        [InlineData("presence")]
+        public void SharedTopicRejectsMixedDirectionalQosContract(string mismatch)
+        {
+            const FoxRunNamedArgumentPresence presence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var first = BuildGroupedQosMember("_first", presence);
+            var second = BuildGroupedQosMember(
+                "_second",
+                mismatch == "presence"
+                    ? presence & ~FoxRunNamedArgumentPresence.Depth
+                    : presence,
+                mode: mismatch == "flow"
+                    ? (int)FoxRunFlow.Publish
+                    : (int)FoxRunFlow.PublishAndSubscribe,
+                source: mismatch == "source"
+                    ? FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource
+                    : FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                targets: mismatch == "targets"
+                    ? FoxRunGenerationDescriptorConstants.Ros2BridgeTarget
+                    : FoxRunGenerationDescriptorConstants.Ros2NativeTarget,
+                qosProfile: mismatch == "profile"
+                    ? FoxRunGenerationDescriptorConstants.SensorDataQosProfile
+                    : FoxRunGenerationDescriptorConstants.DefaultQosProfile,
+                qosReliability: mismatch == "reliability"
+                    ? FoxRunGenerationDescriptorConstants.BestEffortQosReliability
+                    : FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: mismatch == "durability"
+                    ? FoxRunGenerationDescriptorConstants.TransientLocalQosDurability
+                    : FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: mismatch == "history"
+                    ? FoxRunGenerationDescriptorConstants.KeepAllQosHistory
+                    : FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: mismatch == "depth" ? 19 : 17);
+
+            var diagnostics = FoxRunGenerationModelValidator.Validate(
+                FoxRunGenerationModel.FromMembers(new[] { first, second }));
+
+            Assert.Single(diagnostics, diagnostic => diagnostic.Id == "FOXRUN615");
+        }
+
+        [Fact]
+        public void SharedTopicAcceptsIdenticalDirectionalQosContract()
+        {
+            const FoxRunNamedArgumentPresence presence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                BuildGroupedQosMember("_first", presence, mode: (int)FoxRunFlow.Publish),
+                BuildGroupedQosMember(
+                    "_second",
+                    presence & ~FoxRunNamedArgumentPresence.Mode,
+                    mode: (int)FoxRunFlow.Publish)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN615");
+        }
+
+        [Fact]
+        public void SharedTopicAllowsIndependentSubscribeOnlyTransportContracts()
+        {
+            const FoxRunNamedArgumentPresence presence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.QoS;
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                BuildGroupedQosMember(
+                    "_first",
+                    presence,
+                    mode: (int)FoxRunFlow.Subscribe,
+                    source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile),
+                BuildGroupedQosMember(
+                    "_second",
+                    presence,
+                    mode: (int)FoxRunFlow.Subscribe,
+                    source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    qosProfile: FoxRunGenerationDescriptorConstants.SensorDataQosProfile)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN615");
+        }
+
+        [Fact]
+        public void SharedTopicAllowsIndependentPublishAndSubscribeMembers()
+        {
+            const FoxRunNamedArgumentPresence publishPresence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS;
+            const FoxRunNamedArgumentPresence subscribePresence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.QoS;
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                BuildGroupedQosMember(
+                    "_publish",
+                    publishPresence,
+                    mode: (int)FoxRunFlow.Publish,
+                    source: FoxRunGenerationDescriptorConstants.InheritSource,
+                    targets: FoxRunGenerationDescriptorConstants.Ros2NativeTarget),
+                BuildGroupedQosMember(
+                    "_subscribe",
+                    subscribePresence,
+                    mode: (int)FoxRunFlow.Subscribe,
+                    source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    targets: FoxRunGenerationDescriptorConstants.InheritTargets)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN615");
+        }
+
+        [Fact]
+        public void SharedTopicMixedDirectionalQosAnchorsFirstPublishingMember()
+        {
+            const FoxRunNamedArgumentPresence publishPresence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS;
+            const FoxRunNamedArgumentPresence subscribePresence =
+                FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.QoS;
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                BuildGroupedQosMember(
+                    "_aSubscribe",
+                    subscribePresence,
+                    mode: (int)FoxRunFlow.Subscribe,
+                    source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    targets: FoxRunGenerationDescriptorConstants.InheritTargets),
+                BuildGroupedQosMember(
+                    "_bPublish",
+                    publishPresence,
+                    mode: (int)FoxRunFlow.Publish,
+                    source: FoxRunGenerationDescriptorConstants.InheritSource,
+                    targets: FoxRunGenerationDescriptorConstants.Ros2NativeTarget),
+                BuildGroupedQosMember(
+                    "_cPublish",
+                    publishPresence,
+                    mode: (int)FoxRunFlow.Publish,
+                    source: FoxRunGenerationDescriptorConstants.InheritSource,
+                    targets: FoxRunGenerationDescriptorConstants.Ros2BridgeTarget)
+            });
+
+            var diagnostic = Assert.Single(
+                FoxRunGenerationModelValidator.Validate(model),
+                candidate => candidate.Id == "FOXRUN615");
+
+            Assert.Equal("_bPublish", diagnostic.MemberName);
+            Assert.Contains("every publishing member", diagnostic.Message, StringComparison.Ordinal);
+        }
+
+        private static FoxRunGenerationMember BuildGroupedQosMember(
+            string memberName,
+            FoxRunNamedArgumentPresence presence,
+            int mode = (int)FoxRunFlow.PublishAndSubscribe,
+            string source = FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+            string targets = FoxRunGenerationDescriptorConstants.Ros2NativeTarget,
+            string qosProfile = FoxRunGenerationDescriptorConstants.DefaultQosProfile,
+            string qosReliability = FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+            string qosDurability = FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+            string qosHistory = FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+            int qosDepth = 17)
+            => new(
+                "Demo",
+                "GroupedQos",
+                memberName,
+                "field",
+                "System.Single",
+                true,
+                false,
+                "",
+                "/phase184/grouped-qos",
+                10f,
+                "Demo.GroupedQos",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                "UnitTest",
+                0,
+                "",
+                mode: mode,
+                source: source,
+                qosProfile: qosProfile,
+                namedArgumentPresence: presence,
+                targets: targets,
+                qosReliability: qosReliability,
+                qosDurability: qosDurability,
+                qosHistory: qosHistory,
+                qosDepth: qosDepth);
+
         private static FoxRunGenerationModel BuildModel(
             int provider,
-            int qos,
+            int qosProfile,
             bool generatesWebSocketCodec,
             bool generatesRos2NativeRegistration,
             FoxRunRos2MessageShape shape)
@@ -505,10 +906,10 @@ namespace Demo
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
-                    subscriptionProvider: provider, ros2Qos: qos,
+                    source: provider, qosProfile: qosProfile,
                     generatesWebSocketCodec: generatesWebSocketCodec,
                     generatesRos2NativeRegistration: generatesRos2NativeRegistration,
                     ros2MessageShape: shape)

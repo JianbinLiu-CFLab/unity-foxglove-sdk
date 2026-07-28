@@ -11,7 +11,9 @@ using System.Net.Sockets;
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
     /// <summary>Sends U2R2 bridge frames to a loopback-only ROS 2 sidecar.</summary>
-    public sealed class Ros2BridgeTcpClient : IRos2BridgeSink
+    public sealed class Ros2BridgeTcpClient :
+        IRos2BridgeSink,
+        IRos2BridgePublisherPreparationTransport
     {
         private TcpClient _client;
         private int _sendTimeoutMs;
@@ -97,6 +99,25 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var stream = _client.GetStream();
             Ros2BridgeFrameWriter.Write(frame, stream);
             stream.Flush();
+        }
+
+        public byte[] ExchangePublisherPreparation(byte[] request, int timeoutMs)
+        {
+            if (request == null || request.Length == 0)
+                throw new ArgumentException("Publisher preparation request is empty.", nameof(request));
+            if (_client == null || !_client.Connected)
+                throw new InvalidOperationException("ROS 2 bridge TCP client is not connected.");
+            if (timeoutMs <= 0)
+                throw new ArgumentOutOfRangeException(nameof(timeoutMs));
+
+            var socket = _client.Client;
+            socket.SendTimeout = timeoutMs;
+            socket.ReceiveTimeout = timeoutMs;
+            _sendTimeoutMs = timeoutMs;
+            var stream = _client.GetStream();
+            stream.Write(request, 0, request.Length);
+            stream.Flush();
+            return Ros2BridgePublisherPreparationCodec.ReadFrame(stream);
         }
 
         public void Disconnect()

@@ -46,7 +46,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             EnsureRuntimeCreated();
-            CaptureFoxRunPublishEncodingForServer();
 
             try
             {
@@ -116,7 +115,6 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
-            ClearFoxRunPublishEncodingForServer();
         }
 
         private static void TryCleanupStartupStep(System.Action cleanup, string description)
@@ -237,10 +235,7 @@ namespace Unity.FoxgloveSDK.Components
                 StopCertificateDistributor();
                 DetachRuntimeForwarders(_runtime?.Session);
                 if (_runtime?.Session == null)
-                {
-                    ClearFoxRunPublishEncodingForServer();
                     return;
-                }
             }
 
             // Capture and detach manager callbacks before runtime Stop clears
@@ -257,12 +252,12 @@ namespace Unity.FoxgloveSDK.Components
             AdvanceChannelSessionGeneration();
             UnregisterFoxRunSubscriptionCatalogService();
             _runtime.Stop();
-            ClearFoxRunPublishEncodingForServer();
             _sharedSensorClock.Reset();
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
             StopCertificateDistributor();
             _channelCache.Clear();
+            _foxRunRecordingChannelCache.Clear();
             ClearClientEvents();
             _connectionState.ResetChannelIds(FirstAutoChannelId);
             if (restoreLivePublishers)

@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            var invalidUnless = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
+            var invalidOnlyIf = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
             {
                 new FoxRunGenerationType(
                     "Demo",
@@ -61,20 +61,21 @@ namespace Unity.FoxgloveSDK.Tests
                         new FoxRunGenerationMember(
                             "Demo", "ConditionalTelemetry", "_speed", "field", "float",
                             true, false, "", "/phase163/condition", 10f, "",
-                            0, 0f, 0f, "UnitTest", 0, "", unless: "not valid")
+                            (int)Components.FoxRunPolicy.FixedRate, 0f, "UnitTest", 0, "",
+                            onlyIf: "not valid",
+                            namedArgumentPresence: FoxRunNamedArgumentPresence.OnlyIf)
                     })
             }));
 
-            Check(invalidUnless.Any(diagnostic => diagnostic.Id == "FOXRUN601" && diagnostic.MemberName == "_speed"),
-                "163-23B-1: invalid Unless condition names use FOXRUN601 instead of When/boolean diagnostics");
-            Check(generator.Contains("TryGetConditionDiagnostic(containingType, topics, out var conditionDiagnosticId)", StringComparison.Ordinal)
-                  && generator.Contains("diagnosticId = \"FOXRUN016\";", StringComparison.Ordinal)
-                  && generator.Contains("\"FOXRUN601\"", StringComparison.Ordinal)
+            Check(invalidOnlyIf.Any(diagnostic => diagnostic.Id == "FOXRUN015" && diagnostic.MemberName == "_speed"),
+                "163-23B-1: invalid OnlyIf condition names use FOXRUN015");
+            Check(generator.Contains("ResolveConditionMemberKind", StringComparison.Ordinal)
+                  && generator.Contains("FoxRunNamedArgumentPresence.OnlyIf", StringComparison.Ordinal)
                   && generator.Contains("SpecialType.System_Boolean", StringComparison.Ordinal),
-                "163-23B-2: Roslyn generator validates resolved When/Unless members are bool");
-            Check(validator.Contains("FoxRun Unless condition member name is invalid or missing.", StringComparison.Ordinal)
-                  && !validator.Contains("Error(\"FOXRUN016\", target, member.MemberName, \"FoxRun Unless condition member name is invalid or missing.\")", StringComparison.Ordinal),
-                "163-23B-3: shared validator no longer maps invalid Unless syntax to FOXRUN016");
+                "163-23B-2: Roslyn generator resolves OnlyIf members and requires bool");
+            Check(validator.Contains("FoxRun OnlyIf condition member name is invalid or missing.", StringComparison.Ordinal)
+                  && validator.Contains("FoxRun OnlyIf must name a bool field, bool property, or zero-argument bool method.", StringComparison.Ordinal),
+                "163-23B-3: shared validator distinguishes missing and non-bool OnlyIf members");
         }
 
         private static void DescriptorCarrierChunksLargeJson()

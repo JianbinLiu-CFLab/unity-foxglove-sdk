@@ -23,18 +23,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<T, FoxRunRos2CopyContext, T> copy,
             Action<T> dispose,
             Action<T> apply,
-            Func<T, bool> clearIfOwned)
-            where T : ROS2.Message, new();
-
-        void Register<T>(
-            FoxRunRos2GeneratedContract contract,
-            Func<T, FoxRunRos2CopyContext, T> copy,
-            Action<T> dispose,
-            Action<T> apply,
             Func<T, bool> clearIfOwned,
             Func<T, T, bool> valuesEqual,
-            Func<bool> consumeTrigger)
+            Func<bool> consumeTrigger,
+            Func<bool> canApply)
             where T : ROS2.Message, new();
+
+        void RegisterStream<TTransport, TSample>(
+            FoxRunRos2GeneratedContract contract,
+            Func<bool> tryAdmitInput,
+            Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
+            Action<TSample> transferOwned,
+            Action clearOwned)
+            where TTransport : ROS2.Message, new();
     }
 }
 #endif

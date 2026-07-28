@@ -65,15 +65,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            Targets = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
         [Tooltip("The selected native ROS2 runtime applies this custom DTO on Unity's main thread.")]
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            Source = FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _inputPort;
 
         /// <summary>
@@ -82,16 +83,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         /// </summary>
         public Phase181State NativeInputPort => _inputPort;
 
-        [Tooltip("Native ROS2 is the inbound provider while this member keeps an explicit JSON WebSocket output contract.")]
-#pragma warning disable FOXRUN400 // The sample deliberately documents its bidirectional ownership and peer protocol.
+        [Tooltip("Native ROS2 is the inbound source while Foxglove is the explicit JSON output target.")]
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            Encoding = FoxRunEncoding.JSON,
+            Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Foxglove,
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
-#pragma warning restore FOXRUN400
 
         private void Reset()
         {

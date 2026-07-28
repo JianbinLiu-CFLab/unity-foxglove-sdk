@@ -12,14 +12,14 @@ namespace Unity.FoxgloveSDK.Editor
     /// <summary>
     /// Emits the <c>ShouldPublish</c> and <c>MarkPublished</c> interface
     /// implementation methods for FoxRun partial classes with change-detection
-    /// or interval-based publish policies.
+    /// or heartbeat-based publish policies.
     /// </summary>
     internal static class PolicyEmitter
     {
         /// <summary>
         /// Emits last-value storage fields and the <c>IFoxgloveLogPolicySource</c>
         /// implementation (<c>ShouldPublish</c> and <c>MarkPublished</c>) for
-        /// topics that use Change or ChangeOrInterval publish modes.
+        /// topics that use Change publish mode.
         /// </summary>
         internal static void EmitPolicy(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, Dictionary<string, int> topicModes, string pad)
         {
@@ -66,12 +66,16 @@ namespace Unity.FoxgloveSDK.Editor
                 for (int j = 0; j < fields.Count; j++)
                 {
                     var f = fields[j];
-                    var eps = f.ChangeEpsilon;
-                    sb.AppendLine($"{pad}                if (!changed) changed = {TypeExprEmitter.ChangeExpr(f.MemberName, f.TypeName, "__last_" + i + "_" + j, eps)};");
+                    var tolerance = f.Tolerance;
+                    sb.AppendLine($"{pad}                if (!changed) changed = {TypeExprEmitter.ChangeExpr(f.MemberName, f.TypeName, "__last_" + i + "_" + j, tolerance)};");
                 }
-                var forceInt = fields.Max(f => f.ForceIntervalSeconds);
+                var heartbeatInterval = fields
+                    .Where(f => f.HasExplicitHz && f.Hz > 0f)
+                    .Select(f => 1f / f.Hz)
+                    .DefaultIfEmpty(0f)
+                    .Min();
                 sb.AppendLine($"{pad}                return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(" +
-                    $"{TopicMetadataEmitter.PolicyLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {TypeExprEmitter.FloatLiteral(forceInt < 0 ? 0 : forceInt)});");
+                    $"{TopicMetadataEmitter.PolicyLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {TypeExprEmitter.FloatLiteral(heartbeatInterval)});");
             }
             sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");

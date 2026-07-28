@@ -187,7 +187,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             DeclaringType = binding.DeclaringType ?? string.Empty;
             MemberName = binding.MemberName ?? string.Empty;
             CanonicalRosType = binding.CanonicalRosType ?? string.Empty;
-            QosPreset = binding.QosPreset;
+            Qos = binding.Qos;
             State = binding.State;
             SessionGeneration = binding.SessionGeneration;
             Received = binding.Received;
@@ -213,7 +213,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string CanonicalRosType { get; }
-        public FoxRunRos2QosPreset QosPreset { get; }
+        public FoxRunResolvedQos Qos { get; }
         public FoxRunRos2SubscriptionBindingState State { get; }
         public long SessionGeneration { get; }
         public long Received { get; }

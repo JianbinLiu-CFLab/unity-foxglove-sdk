@@ -143,8 +143,12 @@ namespace Unity.FoxgloveSDK.Tests
             var oldCountdownFallback = "t[i] = info.RateHz > 0 ? 1f / " + "info.RateHz : 1f";
             Check(!update.Contains(oldCountdownFallback),
                 "72C-5: FoxRun no longer resets countdown timers from elapsed frames");
-            Check(update.Contains("var rateHz = info.RateHz"),
-                "72C-6: FoxRun passes raw non-positive rates through so they disable scheduled publish");
+            Check(update.Contains("var publishRateHz = info.HasExplicitHz")
+                  && update.Contains("? info.Hz")
+                  && update.Contains(": _mgr.ActiveFoxRunDefaultPublishRateHz;")
+                  && update.Contains("publishRateHz,")
+                  && !update.Contains("Math.Max(1"),
+                "72C-6: FoxRun preserves explicit Hz while resolving omitted cadence from the frozen publish profile");
             Check(update.Contains("FixedRatePublishScheduler.ShouldPublish"),
                 "72C-7: FoxRun routes cadence through the shared scheduler");
             Check(update.Contains("nonPositivePublishesEveryFrame: false"),
@@ -153,8 +157,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && addSource.Contains("private bool AddSourceNow")
                   && addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
-            Check(!triggerSource.Contains("_timers"),
-                "72C-10: triggered FoxRun publications bypass normal cadence state");
+            Check(triggerSource.Contains("TryPublishTriggeredTopic")
+                  && !triggerSource.Contains("FixedRatePublishScheduler.ShouldPublish")
+                  && !triggerSource.Contains(".Timers["),
+                "72C-10: triggered FoxRun publications bypass normal cadence scheduling");
         }
 
         private static int SimulatePublishes(float rateHz, double frameHz, double seconds, bool nonPositivePublishesEveryFrame)

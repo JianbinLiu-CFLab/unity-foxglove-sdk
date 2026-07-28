@@ -8,7 +8,7 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Optional interface for FoxRun sources that have per-topic conditional
-    /// publish gates from <c>FoxRunAttribute.When</c> or <c>Unless</c>.
+    /// publish gates from <c>FoxRunAttribute.OnlyIf</c>.
     /// </summary>
     public interface IFoxgloveLogConditionSource
     {

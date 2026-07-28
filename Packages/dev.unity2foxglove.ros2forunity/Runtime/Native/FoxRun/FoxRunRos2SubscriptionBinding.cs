@@ -7,53 +7,51 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     /// <summary>
-    /// Lock-free fixed-window admission gate for a single generated native
-    /// subscription. The packed state keeps the stopwatch-second bucket and
-    /// accepted count in one compare/exchange operation so callback threads
-    /// never allocate or block before generated deep copy.
+    /// Lock-free minimum-interval admission gate for a single generated native
+    /// subscription. Spacing accepted callbacks prevents a burst at the start
+    /// of a wall-clock bucket from suppressing fresher values for its remainder.
     /// </summary>
     internal sealed class FoxRunRos2TransportAdmissionGate
     {
-        private readonly int _maximumAcceptedPerSecond;
-        private long _state;
+        private const long NoAcceptedTimestamp = long.MinValue;
+        private readonly long _minimumIntervalTicks;
+        private long _lastAcceptedTimestamp = NoAcceptedTimestamp;
 
         internal FoxRunRos2TransportAdmissionGate(int maximumAcceptedPerSecond)
         {
-            _maximumAcceptedPerSecond = Math.Max(1, maximumAcceptedPerSecond);
+            var normalized = Math.Max(1, maximumAcceptedPerSecond);
+            _minimumIntervalTicks = normalized == int.MaxValue
+                ? 0L
+                : Math.Max(1L, (Stopwatch.Frequency + normalized - 1L) / normalized);
         }
 
         internal bool TryAccept(long stopwatchTimestamp)
         {
-            var bucket = stopwatchTimestamp / Stopwatch.Frequency;
+            if (_minimumIntervalTicks == 0L)
+                return true;
+
             while (true)
             {
-                var observed = Volatile.Read(ref _state);
-                var observedBucket = (long)((ulong)observed >> 32);
-                var observedCount = (uint)observed;
-                if (observedBucket != bucket)
-                {
-                    var reset = Pack(bucket, 1U);
-                    if (Interlocked.CompareExchange(ref _state, reset, observed) == observed)
-                        return true;
-                    continue;
-                }
-
-                if (observedCount >= (uint)_maximumAcceptedPerSecond)
+                var observed = Volatile.Read(ref _lastAcceptedTimestamp);
+                if (observed != NoAcceptedTimestamp
+                    && (stopwatchTimestamp <= observed
+                        || stopwatchTimestamp - observed < _minimumIntervalTicks))
                     return false;
-                var incremented = Pack(bucket, observedCount + 1U);
-                if (Interlocked.CompareExchange(ref _state, incremented, observed) == observed)
+
+                if (Interlocked.CompareExchange(
+                        ref _lastAcceptedTimestamp,
+                        stopwatchTimestamp,
+                        observed) == observed)
                     return true;
             }
         }
-
-        private static long Pack(long bucket, uint count)
-            => unchecked((bucket << 32) | count);
     }
 
     internal readonly struct FoxRunRos2SubscriptionBindingSnapshot
@@ -77,7 +75,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 string.Empty,
                 string.Empty,
                 string.Empty,
-                FoxRunRos2QosPreset.Inherit,
+                FoxRunResolvedQos.Default,
                 sessionGeneration,
                 state,
                 error,
@@ -102,7 +100,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         /// </summary>
         public FoxRunRos2SubscriptionBindingSnapshot(
             FoxRunRos2GeneratedContract contract,
-            FoxRunRos2QosPreset qosPreset,
+            FoxRunResolvedQos qos,
             long sessionGeneration,
             FoxRunRos2SubscriptionBindingState state,
             FoxRunRos2RegistrationError error,
@@ -123,7 +121,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract.DeclaringType,
                 contract.MemberName,
                 contract.CanonicalRosType,
-                qosPreset,
+                qos,
                 sessionGeneration,
                 state,
                 error,
@@ -147,7 +145,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string declaringType,
             string memberName,
             string canonicalRosType,
-            FoxRunRos2QosPreset qosPreset,
+            FoxRunResolvedQos qos,
             long sessionGeneration,
             FoxRunRos2SubscriptionBindingState state,
             FoxRunRos2RegistrationError error,
@@ -168,7 +166,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
-            QosPreset = qosPreset;
+            Qos = qos;
             SessionGeneration = sessionGeneration;
             State = state;
             Error = error;
@@ -190,7 +188,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string CanonicalRosType { get; }
-        public FoxRunRos2QosPreset QosPreset { get; }
+        public FoxRunResolvedQos Qos { get; }
         public long SessionGeneration { get; }
         public FoxRunRos2SubscriptionBindingState State { get; }
         public FoxRunRos2RegistrationError Error { get; }
@@ -233,10 +231,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<T, bool> _dropBeforeApply;
         private readonly Func<T, T, bool> _valuesEqual;
         private readonly Func<bool> _consumeTrigger;
+        private readonly Func<bool> _canApply;
         private readonly FoxRunRos2TransportAdmissionGate _transportAdmission;
         private readonly Func<long> _admissionTimestamp;
         private readonly IFoxRunRos2NativeBackend _backend;
-        private readonly FoxRunRos2QosPreset _qosPreset;
+        private readonly FoxRunResolvedQos _qos;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private readonly FoxRunRos2OwnedLatestSlot<object> _slot;
         private readonly Func<T, object> _copyBorrowed;
@@ -262,6 +261,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _nodeReleaseClaimed;
         private bool _teardownFailureRecorded;
         private bool _preserveTerminalFailure;
+        private bool _conditionRejectedSinceLastApply;
         private FoxRunRos2RegistrationResult _lastRegistration;
         private long _acceptanceAdmission;
         private long _acceptanceEpochSequence;
@@ -283,11 +283,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Action<T> apply,
             Func<T, bool> clearIfOwned,
             IFoxRunRos2NativeBackend backend,
-            FoxRunRos2QosPreset qosPreset = FoxRunRos2QosPreset.Default,
+            FoxRunResolvedQos? qos = null,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
             Func<T, bool> dropBeforeApply = null,
             Func<T, T, bool> valuesEqual = null,
             Func<bool> consumeTrigger = null,
+            Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
             Func<long> admissionTimestamp = null)
         {
@@ -305,11 +306,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _dropBeforeApply = dropBeforeApply;
             _valuesEqual = valuesEqual;
             _consumeTrigger = consumeTrigger;
+            _canApply = canApply;
             _transportAdmission = new FoxRunRos2TransportAdmissionGate(
                 transportAdmissionRateLimitHz);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
-            _qosPreset = qosPreset;
+            _qos = qos ?? FoxRunResolvedQos.Default;
             _qosFactory = qosFactory;
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _copyBorrowed = CopyBorrowed;
@@ -380,11 +382,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 generationBefore = _activeGeneration();
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 return CompleteWithoutBackend(
                     FoxRunRos2RegistrationError.BackendFailure,
                     DescribeException(exception));
+            }
+            catch (Exception exception)
+            {
+                RethrowRegistrationFatal(exception, null);
+                throw;
             }
             if (generationBefore != SessionGeneration)
                 return CompleteWithoutBackend(
@@ -415,32 +423,43 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeQosProfile qosProfile = null;
             try
             {
-                var qosResult = _qosFactory == null
-                    ? Ros2ForUnityNativeQosMapper.TryCreate(_qosPreset, out qosProfile)
-                    : Ros2ForUnityNativeQosMapper.TryCreate(_qosPreset, _qosFactory, out qosProfile);
-                if (!qosResult.Succeeded)
-                    return CompleteWithoutBackend(qosResult.Error, qosResult.Diagnostic);
+                try
+                {
+                    var qosResult = _qosFactory == null
+                        ? Ros2ForUnityNativeQosMapper.TryCreate(_qos, out qosProfile)
+                        : Ros2ForUnityNativeQosMapper.TryCreate(_qos, _qosFactory, out qosProfile);
+                    if (!qosResult.Succeeded)
+                        return CompleteWithoutBackend(qosResult.Error, qosResult.Diagnostic);
 
-                backendResult = _backend.Register<T>(
-                    Contract,
-                    qosProfile,
-                    borrowed => OnBorrowedMessage(registrationAttempt, borrowed));
+                    backendResult = _backend.Register<T>(
+                        Contract,
+                        qosProfile,
+                        borrowed => OnBorrowedMessage(registrationAttempt, borrowed));
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    registrationFailure = exception;
+                }
+                finally
+                {
+                    try
+                    {
+                        qosProfile?.Dispose();
+                    }
+                    catch (Exception exception) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    {
+                        if (registrationFailure == null)
+                            registrationFailure = exception;
+                    }
+                }
             }
             catch (Exception exception)
             {
-                registrationFailure = exception;
-            }
-            finally
-            {
-                try
-                {
-                    qosProfile?.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    if (registrationFailure == null)
-                        registrationFailure = exception;
-                }
+                var fatalToken = backendResult.Succeeded ? backendResult.Token : null;
+                RethrowRegistrationFatal(exception, fatalToken);
+                throw;
             }
 
             bool tokenUsable = false;
@@ -452,9 +471,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     tokenUsable = returnedToken.IsUsable;
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     tokenInspectionFailure = exception;
+                }
+                catch (Exception exception)
+                {
+                    RethrowRegistrationFatal(exception, returnedToken);
+                    throw;
                 }
             }
 
@@ -464,9 +489,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 generationAfter = _activeGeneration();
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 generationAfterFailure = exception;
+            }
+            catch (Exception exception)
+            {
+                RethrowRegistrationFatal(exception, returnedToken);
+                throw;
             }
             var generationAfterDiagnostic = generationAfterFailure == null
                 ? string.Empty
@@ -538,8 +569,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 releaseAfterRegistration = TryClaimNodeReleaseUnderLock();
             }
 
-            RollbackToken(rollbackToken);
-            ReleaseNodeIfClaimed(releaseAfterRegistration);
+            RollbackTokenAndReleaseNode(
+                rollbackToken,
+                releaseAfterRegistration);
             return result;
         }
 
@@ -569,13 +601,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
             var usesPolicy = Contract.Policy != FoxRunPolicy.FixedRate
-                             || _dropBeforeApply != null;
+                             || _dropBeforeApply != null
+                             || _canApply != null;
             _policyNowSeconds = nowSeconds;
             var applied = usesPolicy
                 ? _slot.TryApplyLatest(_decideOwned, _applyOwned, _clearOwned)
                 : _slot.TryApplyLatest(_applyOwned, _clearOwned);
             if (applied)
             {
+                _conditionRejectedSinceLastApply = false;
                 _lastSemanticApplySeconds = nowSeconds;
                 Interlocked.Exchange(ref _lastApplyStopwatchTimestamp, Stopwatch.GetTimestamp());
             }
@@ -604,12 +638,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return FoxRunRos2PendingDecision.Drop;
             }
 
+            if (_canApply != null && !_canApply())
+            {
+                _conditionRejectedSinceLastApply = true;
+                return FoxRunRos2PendingDecision.Drop;
+            }
+
             if (Contract.Policy == FoxRunPolicy.Trigger)
                 return _consumeTrigger != null && _consumeTrigger()
                     ? FoxRunRos2PendingDecision.Apply
                     : FoxRunRos2PendingDecision.Defer;
 
-            var hasApplied = applied != null;
+            var hasApplied = applied != null && !_conditionRejectedSinceLastApply;
             var changed = !hasApplied
                           || _valuesEqual == null
                           || !_valuesEqual(typedCandidate, (T)applied);
@@ -620,11 +660,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 valueChanged: changed,
                 nowSec: _policyNowSeconds,
                 lastApplySec: _lastSemanticApplySeconds,
-                forceIntervalSec: Contract.ForceIntervalSeconds)
+                heartbeatIntervalSec: Contract.HeartbeatIntervalSeconds)
                 ? FoxRunRos2PendingDecision.Apply
                 : Contract.Policy == FoxRunPolicy.Change
-                    ? FoxRunRos2PendingDecision.Drop
+                    ? HasFinitePositiveHeartbeat()
+                        ? FoxRunRos2PendingDecision.Defer
+                        : FoxRunRos2PendingDecision.Drop
                     : FoxRunRos2PendingDecision.Defer;
+        }
+
+        private bool HasFinitePositiveHeartbeat()
+        {
+            var interval = Contract.HeartbeatIntervalSeconds;
+            return interval > 0f
+                   && !float.IsNaN(interval)
+                   && !float.IsInfinity(interval);
         }
 
         public FoxRunRos2AcceptanceArmStatus ArmAcceptanceAttempt(
@@ -828,7 +878,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var registration = _lastRegistration;
                 snapshot = new FoxRunRos2SubscriptionBindingSnapshot(
                     Contract,
-                    _qosPreset,
+                    _qos,
                     SessionGeneration,
                     State,
                     registration.Error,
@@ -898,15 +948,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
             }
 
+            ExceptionDispatchInfo fatal = null;
             if (beginStop)
             {
                 try
                 {
                     _slot.BeginStop(_clearOwned);
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     RecordTeardownFailure("begin owned-message drain", exception);
+                }
+                catch (Exception exception)
+                {
+                    fatal = ExceptionDispatchInfo.Capture(exception);
                 }
 
                 if (token != null)
@@ -915,9 +971,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         _backend.RemoveSubscription(token);
                     }
-                    catch (Exception exception)
+                    catch (Exception exception) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                     {
                         RecordTeardownFailure("remove subscription", exception);
+                    }
+                    catch (Exception exception)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(exception);
                     }
                 }
             }
@@ -926,9 +987,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _slot.Stop(_clearOwned);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 RecordTeardownFailure("drain owned messages", exception);
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
             }
 
             var slotStopped = _slot.IsStopped;
@@ -942,7 +1008,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     releaseNode = TryClaimNodeReleaseUnderLock();
                 }
             }
-            ReleaseNodeIfClaimed(releaseNode);
+            try
+            {
+                ReleaseNodeIfClaimed(releaseNode);
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+
+            fatal?.Throw();
         }
 
         private FoxRunRos2RegistrationResult CompleteWithoutBackend(
@@ -962,6 +1037,51 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             ReleaseNodeIfClaimed(releaseNode);
             return result;
+        }
+
+        private void RethrowRegistrationFatal(
+            Exception exception,
+            IFoxRunRos2NativeSubscriptionToken returnedToken)
+        {
+            var primary = ExceptionDispatchInfo.Capture(exception);
+            lock (_lifecycleLock)
+                _registrationInFlight = false;
+
+            try
+            {
+                RollbackToken(returnedToken);
+            }
+            catch (Exception)
+            {
+                // Preserve the fatal admission/registration failure while
+                // continuing the mandatory binding and node teardown.
+            }
+
+            try
+            {
+                StopCore(null);
+            }
+            catch (Exception)
+            {
+                // StopCore is best-effort across all teardown stages. The
+                // original fatal exception remains the primary signal.
+            }
+
+            // Stop may have completed on another thread while registration
+            // was still marked in flight. Re-check the deferred release gate.
+            var releaseNode = false;
+            lock (_lifecycleLock)
+                releaseNode = TryClaimNodeReleaseUnderLock();
+            try
+            {
+                ReleaseNodeIfClaimed(releaseNode);
+            }
+            catch (Exception)
+            {
+                // Preserve the primary fatal exception.
+            }
+
+            primary.Throw();
         }
 
         private FoxRunRos2RegistrationResult SetRegistrationFailureUnderLock(
@@ -987,7 +1107,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 return _activeGeneration() == SessionGeneration;
             }
-            catch
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 return false;
             }
@@ -1052,7 +1173,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         (int)FoxRunRos2SubscriptionBindingState.Ready);
                 }
             }
-            catch
+            catch (Exception exception) when (FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 // Never unwind generated copy/backend failures into the ROS executor.
             }
@@ -1105,7 +1226,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 generation = _activeGeneration();
                 return true;
             }
-            catch
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 generation = 0;
                 return false;
@@ -1131,10 +1253,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _backend.RemoveSubscription(token);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 RecordTeardownFailure("rollback subscription", exception);
             }
+        }
+
+        private void RollbackTokenAndReleaseNode(
+            IFoxRunRos2NativeSubscriptionToken token,
+            bool releaseNode)
+        {
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                RollbackToken(token);
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
+
+            try
+            {
+                ReleaseNodeIfClaimed(releaseNode);
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+
+            fatal?.Throw();
         }
 
         private void ReleaseNodeIfClaimed(bool claimed)
@@ -1145,7 +1294,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _backend.ReleaseNodeOwnership();
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 RecordTeardownFailure("release node", exception);
             }

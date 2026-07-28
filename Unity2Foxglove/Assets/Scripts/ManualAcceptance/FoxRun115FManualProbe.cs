@@ -50,26 +50,26 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
     [SerializeField] private string _lastStatus = "Not started.";
 
     [Header("FoxRun Values")]
-    [FoxRun("/debug/115f/scalar", RateHz = 2f)]
+    [FoxRun("/debug/115f/scalar", Hz = 2f)]
     public float scalarValue;
 
-    [FoxRun("/debug/115f/string", RateHz = 2f)]
+    [FoxRun("/debug/115f/string", Hz = 2f)]
     public string textValue = "hello FoxRun user";
 
-    [FoxRun("/debug/115f/vector", RateHz = 2f)]
+    [FoxRun("/debug/115f/vector", Hz = 2f)]
     public Vector3 vectorValue;
 
-    [FoxRun("/debug/115f/array", RateHz = 2f)]
+    [FoxRun("/debug/115f/array", Hz = 2f)]
     public float[] sampleArray = new float[] { 0f, 1f, 2f };
 
-    [FoxRun("/debug/115f/list", RateHz = 2f)]
+    [FoxRun("/debug/115f/list", Hz = 2f)]
     public List<float> sampleList = new List<float> { 0f, 1f, 2f };
 
-    [FoxRun("/debug/115f/nullable", RateHz = 2f)]
+    [FoxRun("/debug/115f/nullable", Hz = 2f)]
     public int? optionalCount = 0;
 
     // Test from Phase136, test for FOXRUN006 message
-    // [FoxRun("/test/native", RateHz = 10f)]
+    // [FoxRun("/test/native", Hz = 10f)]
     // public NativeArray<float> _testNative;
 
     // Negative diagnostic probe: uncomment this attribute to verify that

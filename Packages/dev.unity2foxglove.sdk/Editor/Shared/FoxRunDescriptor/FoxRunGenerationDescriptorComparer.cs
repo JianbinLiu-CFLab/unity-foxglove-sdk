@@ -130,22 +130,38 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "isArray", left.IsArray ? "true" : "false", right.IsArray ? "true" : "false", semantic);
             CompareSemantic(key, "elementTypeName", left.ElementTypeName, right.ElementTypeName, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
-            CompareSemantic(key, "subscriptionProvider", left.SubscriptionProvider, right.SubscriptionProvider, semantic);
-            CompareSemantic(key, "ros2Qos", left.Ros2Qos, right.Ros2Qos, semantic);
+            CompareSemantic(key, "source", left.Source, right.Source, semantic);
+            CompareSemantic(key, "targets", left.Targets, right.Targets, semantic);
+            CompareSemantic(key, "qosProfile", left.QosProfile, right.QosProfile, semantic);
+            CompareSemantic(key, "qosReliability", left.QosReliability, right.QosReliability, semantic);
+            CompareSemantic(key, "qosDurability", left.QosDurability, right.QosDurability, semantic);
+            CompareSemantic(key, "qosHistory", left.QosHistory, right.QosHistory, semantic);
+            CompareSemantic(key, "qosDepth", left.QosDepth, right.QosDepth, semantic);
             CompareSemantic(key, "generatesWebSocketCodec", left.GeneratesWebSocketCodec ? "true" : "false", right.GeneratesWebSocketCodec ? "true" : "false", semantic);
             CompareSemantic(key, "generatesRos2NativeRegistration", left.GeneratesRos2NativeRegistration ? "true" : "false", right.GeneratesRos2NativeRegistration ? "true" : "false", semantic);
             CompareSemantic(key, "ros2ContractKind", left.Ros2ContractKind.ToString(), right.Ros2ContractKind.ToString(), semantic);
             CompareRos2MessageShape(key, left.Ros2MessageShape, right.Ros2MessageShape, semantic);
             CompareRos2CustomDtoShape(key, left.Ros2CustomDtoShape, right.Ros2CustomDtoShape, semantic);
             CompareSemantic(key, "protobufFieldNumber", left.ProtobufFieldNumber.ToString(), right.ProtobufFieldNumber.ToString(), semantic);
-            CompareSemantic(key, "rateHz", left.RateHz, right.RateHz, semantic);
+            CompareSemantic(key, "hz", left.Hz, right.Hz, semantic);
             CompareSemantic(key, "policy", left.PolicyName, right.PolicyName, semantic);
             CompareSemantic(key, "mode", left.FlowName, right.FlowName, semantic);
-            CompareSemantic(key, "changeEpsilon", left.ChangeEpsilon, right.ChangeEpsilon, semantic);
-            CompareSemantic(key, "forceIntervalSeconds", left.ForceIntervalSeconds, right.ForceIntervalSeconds, semantic);
-            CompareSemantic(key, "when", left.When, right.When, semantic);
-            CompareSemantic(key, "unless", left.Unless, right.Unless, semantic);
+            CompareSemantic(key, "tolerance", left.Tolerance, right.Tolerance, semantic);
+            CompareSemantic(key, "onlyIf", left.OnlyIf, right.OnlyIf, semantic);
+            CompareSemantic(
+                key,
+                "onlyIfMemberKind",
+                FoxRunGenerationMember.ConditionMemberKindToName(left.ConditionMemberKind),
+                FoxRunGenerationMember.ConditionMemberKindToName(right.ConditionMemberKind),
+                semantic);
+            CompareSemantic(
+                key,
+                "explicitArguments",
+                FoxRunGenerationMember.ExplicitArgumentsToText(left.NamedArgumentPresence),
+                FoxRunGenerationMember.ExplicitArgumentsToText(right.NamedArgumentPresence),
+                semantic);
             CompareSemantic(key, "isAggregateMember", left.IsAggregateMember ? "true" : "false", right.IsAggregateMember ? "true" : "false", semantic);
+            CompareSemantic(key, "isStream", left.IsStream ? "true" : "false", right.IsStream ? "true" : "false", semantic);
             CompareSemantic(key, "jsonFieldName", left.JsonFieldName, right.JsonFieldName, semantic);
             CompareProvenance(key, "hostKind", left.HostKind, right.HostKind, provenance);
             CompareProvenance(key, "rawTypeName", left.RawTypeName, right.RawTypeName, provenance);

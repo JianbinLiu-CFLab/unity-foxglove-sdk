@@ -5,6 +5,7 @@
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Proto",
     "Unity.FoxgloveSDK.Sensors",
+    "Unity2Foxglove.Ros2ForUnity",
     "Unity2Foxglove.Ros2ForUnity.Runtime"
   ],
   "includePlatforms": [

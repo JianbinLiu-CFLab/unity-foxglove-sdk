@@ -132,7 +132,97 @@ namespace Unity.FoxgloveSDK.Components
         public bool Ros2NativeEnabled { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
+        public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy { get; set; }
+        public float ActiveFoxRunDefaultPublishRateHz { get; set; } = 10f;
+        public FoxRunEndpoint ActiveFoxRunPublishTargets { get; set; } = FoxRunEndpoint.Foxglove;
+        public FoxRunEncoding ActiveFoxRunPublishEncoding { get; set; } = FoxRunEncoding.Protobuf;
+        public FoxRunEndpoint ActiveFoxRunSubscriptionSource { get; set; } = FoxRunEndpoint.Foxglove;
+        public FoxRunEncoding ActiveFoxRunSubscriptionEncoding { get; set; } = FoxRunEncoding.Protobuf;
+        public FoxRunResolvedQos DefaultFoxRunNativePublishQos { get; set; } =
+            FoxRunResolvedQos.Default;
+        public FoxRunResolvedQos ActiveFoxRunNativePublishQos =>
+            ActiveFoxRunPublishSessionPolicy != null
+            && ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.NativeRos2Qos
+                : DefaultFoxRunNativePublishQos;
+        public FoxRunResolvedQos ActiveFoxRunBridgePublishQos { get; set; } =
+            FoxRunResolvedQos.Default;
         public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }
+        public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
         public event Action<FoxRunSubscriptionSessionPolicy> FoxRunSubscriptionSessionChanged;
+
+        public FoxRunEncoding ResolveFoxRunEncoding(
+            FoxRunEncoding declaredEncoding,
+            FoxRunFlow flow)
+            => declaredEncoding == 0 ? ActiveFoxRunPublishEncoding : declaredEncoding;
+
+        public void PublishJson<T>(
+            string topic,
+            string schemaName,
+            T payload,
+            ulong logTimeNs) { }
+
+        public void PublishProto<T>(
+            string topic,
+            string schemaName,
+            T payload,
+            ulong logTimeNs) { }
+
+        public void PublishFoxRunJsonBytes(
+            string topic,
+            string schemaName,
+            byte[] payload,
+            ulong logTimeNs) { }
+
+        public bool TryPrepareFoxRunRos2BridgePublish(
+            string topic,
+            string schemaName,
+            FoxRunResolvedQos qos,
+            out string effectiveTopic,
+            out string reason)
+        {
+            effectiveTopic = topic ?? string.Empty;
+            reason = string.Empty;
+            return false;
+        }
+
+        public bool TryPublishFoxRunRos2BridgeCdr(
+            string topic,
+            string schemaName,
+            byte[] payload,
+            ulong logTimeNs,
+            FoxRunResolvedQos qos,
+            out string reason)
+        {
+            reason = string.Empty;
+            return false;
+        }
+
+        public bool TryPrepareFoxRunRos2Recording(
+            string topic,
+            string schemaName,
+            string schemaContent,
+            out uint channelId,
+            out string reason)
+        {
+            channelId = 0;
+            reason = string.Empty;
+            return false;
+        }
+
+        public bool TryPublishFoxRunRos2Recording(
+            string topic,
+            string schemaName,
+            string schemaContent,
+            byte[] payload,
+            ulong logTimeNs,
+            out string reason)
+        {
+            reason = string.Empty;
+            return false;
+        }
+
+        public void RaiseFoxRunPublishSessionChanged()
+            => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);
     }
 }

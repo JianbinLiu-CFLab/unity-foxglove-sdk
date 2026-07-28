@@ -39,13 +39,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(field.Mode == FoxRunFlow.Publish
                   && field.Policy == FoxRunPolicy.FixedRate
-                  && field.RateHz < 0f
+                  && field.Hz < 0f
                   && aggregate.Policy == FoxRunPolicy.FixedRate
-                  && aggregate.RateHz < 0f,
+                  && aggregate.Hz < 0f,
                 "Behavior 183A-1: field and aggregate declarations use Publish/FixedRate with an explicit unspecified-rate sentinel");
             Check(Enum.GetValues(typeof(FoxRunFlow)).Cast<int>().SequenceEqual(new[] { 1, 2, 3 })
-                  && Enum.GetValues(typeof(FoxRunPolicy)).Cast<int>().SequenceEqual(new[] { 1, 2, 3, 4 }),
-                "Behavior 183A-2: all three flows and four policies use fresh non-zero values");
+                  && Enum.GetValues(typeof(FoxRunPolicy)).Cast<int>().SequenceEqual(new[] { 1, 2, 4 }),
+                "Behavior 183A-2: all three flows and three policies use fresh non-zero values while retired value 3 stays invalid");
         }
 
         private static void VerifyDirectionAwareUpdatePolicies()
@@ -58,9 +58,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, true, 2d, 1d, 0d)
                   && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 2d, 1d, 0d),
                 "Behavior 183A-4: Change accepts first or changed values and suppresses fresh duplicates");
-            Check(FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.ChangeOrInterval, true, true, false, 3d, 1d, 2d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.ChangeOrInterval, false, true, false, 4d, 1d, 2d),
-                "Behavior 183A-5: ChangeOrInterval requires a newly received duplicate and never invents a stale heartbeat");
+            Check(FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 3d, 1d, 2d)
+                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, false, true, false, 4d, 1d, 2d),
+                "Behavior 183A-5: Change with Hz requires a newly received duplicate and never invents a stale heartbeat");
             Check(!FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Trigger, 1d, false, true, 0d, 0d)
                   && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d),
                 "Behavior 183A-6: Trigger blocks automatic publication and application");
@@ -70,16 +70,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var state = new FoxRunSubscriptionSessionState();
             var policy = state.BeginIfNeeded(
-                FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                FoxRunWireEncoding.Protobuf,
-                FoxRunRos2QosPreset.Default,
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.Protobuf,
+                FoxRunResolvedQos.Default,
                 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 120,
                 defaultSubscribeRateHz: 30);
             var frozen = state.BeginIfNeeded(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunWireEncoding.Json,
-                FoxRunRos2QosPreset.SensorData,
+                FoxRunEndpoint.Ros2Native,
+                FoxRunEncoding.JSON,
+                FoxRunResolvedQos.SensorData,
                 1,
                 transportAdmissionRateLimitHz: 1,
                 defaultSubscribeRateHz: 1);
@@ -113,16 +113,18 @@ namespace Unity.FoxgloveSDK.Tests
             var input = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var native = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
+            var trigger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TriggerEmitter.cs");
 
-            Check(input.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
+            Check(input.Contains("member.HasExplicitHz", StringComparison.Ordinal)
                   && input.Contains("inheritedSubscribeRateHz", StringComparison.Ordinal)
-                  && input.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
-                  && input.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal),
+                  && trigger.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
+                  && input.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal),
                 "Structural 183A-9: generated WebSocket input inherits or overrides subscription rate, exposes Trigger apply, and marks remote-echo suppression");
             Check(publish.Contains("fields.Any(field => field.Mode == 3)", StringComparison.Ordinal)
-                  && publish.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal)
-                  && native.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
-                  && native.Contains("member.RateHz", StringComparison.Ordinal),
+                  && publish.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal)
+                  && publish.Contains("__foxRunRemoteOwned_", StringComparison.Ordinal)
+                  && native.Contains("member.HasExplicitHz", StringComparison.Ordinal)
+                  && native.Contains("member.Hz", StringComparison.Ordinal),
                 "Structural 183A-10: PublishAndSubscribe generates both independently scheduled directions with one-shot echo suppression");
         }
 
@@ -137,24 +139,35 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
             var expectedProperties = new[]
             {
-                "ChangeEpsilon",
+                "Depth",
+                "Durability",
                 "Encoding",
-                "ForceIntervalSeconds",
+                "History",
+                "Hz",
                 "Mode",
+                "OnlyIf",
                 "Policy",
                 "ProtobufFieldNumber",
-                "RateHz",
-                "Ros2Qos",
+                "QoS",
+                "Reliability",
                 "SchemaName",
-                "SubscriptionProvider",
+                "Source",
+                "Targets",
+                "Tolerance",
                 "Topic",
-                "Unless",
-                "When",
             };
             Check(declaredProperties.SequenceEqual(expectedProperties, StringComparer.Ordinal)
                   && typeof(FoxRunAttribute).GetProperty("Mode")?.PropertyType == typeof(FoxRunFlow)
-                  && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy),
-                "Structural 183A-11: the public attribute surface exposes only the fresh flow and policy model");
+                  && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy)
+                  && typeof(FoxRunAttribute).GetProperty("Source")?.PropertyType == typeof(FoxRunEndpoint)
+                  && typeof(FoxRunAttribute).GetProperty("Targets")?.PropertyType == typeof(FoxRunEndpoint)
+                  && typeof(FoxRunAttribute).GetProperty("Encoding")?.PropertyType == typeof(FoxRunEncoding)
+                  && typeof(FoxRunAttribute).GetProperty("QoS")?.PropertyType == typeof(FoxRunQosProfile)
+                  && typeof(FoxRunAttribute).GetProperty("Reliability")?.PropertyType == typeof(FoxRunQosReliability)
+                  && typeof(FoxRunAttribute).GetProperty("Durability")?.PropertyType == typeof(FoxRunQosDurability)
+                  && typeof(FoxRunAttribute).GetProperty("History")?.PropertyType == typeof(FoxRunQosHistory)
+                  && typeof(FoxRunAttribute).GetProperty("Depth")?.PropertyType == typeof(int),
+                "Structural 183A-11: the public attribute surface exposes only the fresh declaration and portable ROS 2 QoS model");
             Check(!assembly.GetReferencedAssemblies().Any(reference =>
                     reference.Name.IndexOf("Ros2ForUnity", StringComparison.OrdinalIgnoreCase) >= 0
                     || reference.Name.Equals("ros2cs_common", StringComparison.OrdinalIgnoreCase)),
@@ -197,9 +210,9 @@ namespace Unity.FoxgloveSDK.Tests
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index)
                 => new(
                     "/phase183/latest",
-                    FoxRunWireEncoding.Json,
+                    FoxRunEncoding.JSON,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    FoxRunEndpoint.Foxglove,
                     supportsWebSocket: true,
                     supportsRos2Native: false);
 

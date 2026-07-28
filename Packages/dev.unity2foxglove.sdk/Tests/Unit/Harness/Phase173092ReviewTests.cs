@@ -86,13 +86,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void TriggerEmitterAcceptsReadOnlyTopicModeMap()
+        public void DirectionalEmitterAcceptsReadOnlyCollections()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TriggerEmitter.cs");
-            var signature = TestSources.Slice(source, "internal static void EmitTriggers", "if (triggerMembers.Count == 0)");
+            var signature = TestSources.Slice(
+                source,
+                "internal static void EmitApplyMethods",
+                "for (var inputIndex = 0;");
 
-            Assert.Contains("IReadOnlyDictionary<string, int> topicModes", signature, StringComparison.Ordinal);
-            Assert.DoesNotContain("IReadOnlyList<string> topics, Dictionary<string, int> topicModes", signature, StringComparison.Ordinal);
+            Assert.Contains("IReadOnlyList<ApplyMember> applyMembers", signature, StringComparison.Ordinal);
+            Assert.Contains(
+                "IReadOnlyList<FoxgloveSourceEmitter.TopicMember> webSocketInputMembers",
+                signature,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Dictionary<", signature, StringComparison.Ordinal);
         }
 
         [Fact]
