@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
@@ -24,6 +25,12 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
 {
     public const string AcceptanceSceneAssetPath =
         "Assets/Scenes/ManualAcceptance/Phase184FoxRunProfileAcceptance.unity";
+
+    private const string ProfileRouteName = "Helper-owned Route - Foxglove Profile";
+    private const string MultiTargetRouteName = "Helper-owned Route - Multi Target";
+    private const string DegradedTargetRouteName = "Helper-owned Route - Degraded Target";
+    private const string QosRouteName = "Helper-owned Route - QoS Contract";
+    private const string StreamRouteName = "Helper-owned Route - Stream 640 Hz";
 
     [MenuItem("Foxglove/Manual Acceptance/Phase184/Create or Refresh Profile Acceptance Scene")]
     public static void CreateOrRefreshAcceptanceScene()
@@ -59,21 +66,11 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
             {
                 manager = RequireExactlyOne<FoxgloveManager>(scene);
                 controller = RequireExactlyOne<Phase184FoxRunProfileAcceptance>(scene);
-                profile = RequireExactlyOne<Phase184FoxgloveProfileRoute>(
-                    scene,
-                    requireInactive: true);
-                multi = RequireExactlyOne<Phase184MultiTargetRoute>(
-                    scene,
-                    requireInactive: true);
-                degraded = RequireExactlyOne<Phase184DegradedTargetRoute>(
-                    scene,
-                    requireInactive: true);
-                qos = RequireExactlyOne<Phase184QosContractRoute>(
-                    scene,
-                    requireInactive: true);
-                stream = RequireExactlyOne<Phase184StreamRoute>(
-                    scene,
-                    requireInactive: true);
+                profile = RequireExactlyOne<Phase184FoxgloveProfileRoute>(scene);
+                multi = RequireExactlyOne<Phase184MultiTargetRoute>(scene);
+                degraded = RequireExactlyOne<Phase184DegradedTargetRoute>(scene);
+                qos = RequireExactlyOne<Phase184QosContractRoute>(scene);
+                stream = RequireExactlyOne<Phase184StreamRoute>(scene);
             }
             else
             {
@@ -86,22 +83,19 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
                 controller =
                     controllerObject.AddComponent<Phase184FoxRunProfileAcceptance>();
 
-                profile = AddInactiveRoute<Phase184FoxgloveProfileRoute>(
-                    scene,
-                    "Case - Foxglove Profile");
-                multi = AddInactiveRoute<Phase184MultiTargetRoute>(
-                    scene,
-                    "Case - Multi Target");
-                degraded = AddInactiveRoute<Phase184DegradedTargetRoute>(
-                    scene,
-                    "Case - Degraded Target");
-                qos = AddInactiveRoute<Phase184QosContractRoute>(
-                    scene,
-                    "Case - QoS Contract");
-                stream = AddInactiveRoute<Phase184StreamRoute>(
-                    scene,
-                    "Case - Stream 640 Hz");
+                var routes = CreateFreshRouteSet(scene);
+                profile = routes.Profile;
+                multi = routes.Multi;
+                degraded = routes.Degraded;
+                qos = routes.Qos;
+                stream = routes.Stream;
             }
+
+            NormalizeHelperOwnedRoute(profile, ProfileRouteName);
+            NormalizeHelperOwnedRoute(multi, MultiTargetRouteName);
+            NormalizeHelperOwnedRoute(degraded, DegradedTargetRouteName);
+            NormalizeHelperOwnedRoute(qos, QosRouteName);
+            NormalizeHelperOwnedRoute(stream, StreamRouteName);
 
             manager.gameObject.SetActive(false);
             controller.gameObject.SetActive(false);
@@ -163,6 +157,7 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
 
     public static void ValidateAcceptanceScene()
     {
+        ValidateFreshRouteSetInMemory();
         if (!File.Exists(Path.Combine(ProjectRoot(), AcceptanceSceneAssetPath)))
         {
             throw new FileNotFoundException(
@@ -179,11 +174,11 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         {
             RequireExactlyOne<FoxgloveManager>(scene);
             RequireExactlyOne<Phase184FoxRunProfileAcceptance>(scene);
-            RequireExactlyOne<Phase184FoxgloveProfileRoute>(scene, requireInactive: true);
-            RequireExactlyOne<Phase184MultiTargetRoute>(scene, requireInactive: true);
-            RequireExactlyOne<Phase184DegradedTargetRoute>(scene, requireInactive: true);
-            RequireExactlyOne<Phase184QosContractRoute>(scene, requireInactive: true);
-            RequireExactlyOne<Phase184StreamRoute>(scene, requireInactive: true);
+            RequireHelperOwnedRoute<Phase184FoxgloveProfileRoute>(scene, ProfileRouteName);
+            RequireHelperOwnedRoute<Phase184MultiTargetRoute>(scene, MultiTargetRouteName);
+            RequireHelperOwnedRoute<Phase184DegradedTargetRoute>(scene, DegradedTargetRouteName);
+            RequireHelperOwnedRoute<Phase184QosContractRoute>(scene, QosRouteName);
+            RequireHelperOwnedRoute<Phase184StreamRoute>(scene, StreamRouteName);
             var guid = AssetDatabase.AssetPathToGUID(AcceptanceSceneAssetPath);
             if (!IsUnityGuid(guid))
                 throw new InvalidOperationException("The Phase184 scene has no valid Unity GUID.");
@@ -294,8 +289,16 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
     private static GameObject NewObject(Scene scene, string name)
     {
         var value = new GameObject(name);
-        SceneManager.MoveGameObjectToScene(value, scene);
-        return value;
+        try
+        {
+            SceneManager.MoveGameObjectToScene(value, scene);
+            return value;
+        }
+        catch
+        {
+            UnityEngine.Object.DestroyImmediate(value);
+            throw;
+        }
     }
 
     private static T AddInactiveRoute<T>(Scene scene, string name)
@@ -304,6 +307,150 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         var value = NewObject(scene, name);
         value.SetActive(false);
         return value.AddComponent<T>();
+    }
+
+    private static RouteSet CreateFreshRouteSet(Scene scene)
+    {
+        return new RouteSet(
+            AddInactiveRoute<Phase184FoxgloveProfileRoute>(scene, ProfileRouteName),
+            AddInactiveRoute<Phase184MultiTargetRoute>(scene, MultiTargetRouteName),
+            AddInactiveRoute<Phase184DegradedTargetRoute>(scene, DegradedTargetRouteName),
+            AddInactiveRoute<Phase184QosContractRoute>(scene, QosRouteName),
+            AddInactiveRoute<Phase184StreamRoute>(scene, StreamRouteName));
+    }
+
+    private static void NormalizeHelperOwnedRoute<T>(T route, string name)
+        where T : Phase184AcceptanceRoute
+    {
+        if (route == null)
+            throw new ArgumentNullException(nameof(route));
+        route.gameObject.name = name;
+        route.gameObject.SetActive(false);
+        route.gameObject.hideFlags |= HideFlags.NotEditable;
+        route.hideFlags |= HideFlags.NotEditable;
+        EditorUtility.SetDirty(route.gameObject);
+        EditorUtility.SetDirty(route);
+    }
+
+    private static T RequireHelperOwnedRoute<T>(Scene scene, string name)
+        where T : Phase184AcceptanceRoute
+    {
+        var route = RequireExactlyOne<T>(scene, requireInactive: true);
+        if (!string.Equals(route.gameObject.name, name, StringComparison.Ordinal)
+            || (route.gameObject.hideFlags & HideFlags.NotEditable) == 0
+            || (route.hideFlags & HideFlags.NotEditable) == 0)
+        {
+            throw new InvalidOperationException(
+                "Phase184 route " + typeof(T).Name + " must be helper-owned and read-only.");
+        }
+        return route;
+    }
+
+    private static void ValidateFreshRouteSetInMemory()
+    {
+        var scene = EditorSceneManager.NewPreviewScene();
+        Exception validationException = null;
+        try
+        {
+            var routes = CreateFreshRouteSet(scene);
+            NormalizeHelperOwnedRoute(routes.Profile, ProfileRouteName);
+            NormalizeHelperOwnedRoute(routes.Multi, MultiTargetRouteName);
+            NormalizeHelperOwnedRoute(routes.Degraded, DegradedTargetRouteName);
+            NormalizeHelperOwnedRoute(routes.Qos, QosRouteName);
+            NormalizeHelperOwnedRoute(routes.Stream, StreamRouteName);
+            RequireHelperOwnedRoute<Phase184FoxgloveProfileRoute>(scene, ProfileRouteName);
+            RequireHelperOwnedRoute<Phase184MultiTargetRoute>(scene, MultiTargetRouteName);
+            RequireHelperOwnedRoute<Phase184DegradedTargetRoute>(scene, DegradedTargetRouteName);
+            RequireHelperOwnedRoute<Phase184QosContractRoute>(scene, QosRouteName);
+            RequireHelperOwnedRoute<Phase184StreamRoute>(scene, StreamRouteName);
+        }
+        catch (Exception exception)
+        {
+            validationException = exception;
+        }
+
+        var cleanupException = ClosePreviewSceneWithFallback(scene);
+
+        if (validationException != null && cleanupException != null)
+        {
+            throw new AggregateException(
+                "Phase184 preview validation and cleanup both failed.",
+                validationException,
+                cleanupException);
+        }
+        if (validationException != null)
+            ExceptionDispatchInfo.Capture(validationException).Throw();
+        if (cleanupException != null)
+            ExceptionDispatchInfo.Capture(cleanupException).Throw();
+    }
+
+    private static Exception ClosePreviewSceneWithFallback(Scene scene)
+    {
+        var failures = new List<Exception>();
+        var initiallyClosed = false;
+        try
+        {
+            initiallyClosed = EditorSceneManager.ClosePreviewScene(scene);
+            if (!initiallyClosed)
+            {
+                failures.Add(new InvalidOperationException(
+                    "Could not close the Phase184 preview validation scene."));
+            }
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+
+        if (!initiallyClosed)
+        {
+            GameObject[] roots;
+            try
+            {
+                roots = scene.IsValid() && scene.isLoaded
+                    ? scene.GetRootGameObjects()
+                    : Array.Empty<GameObject>();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+                roots = Array.Empty<GameObject>();
+            }
+
+            foreach (var root in roots)
+            {
+                if (root == null)
+                    continue;
+                try
+                {
+                    UnityEngine.Object.DestroyImmediate(root);
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            }
+
+            if (scene.IsValid() && scene.isLoaded)
+            {
+                try
+                {
+                    if (!EditorSceneManager.ClosePreviewScene(scene))
+                    {
+                        failures.Add(new InvalidOperationException(
+                            "Could not close the Phase184 preview validation scene after fallback cleanup."));
+                    }
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            }
+        }
+
+        return failures.Count == 0
+            ? null
+            : new AggregateException("Phase184 preview cleanup failed.", failures);
     }
 
     private static List<T> FindComponentsInScene<T>(Scene scene)
@@ -330,6 +477,29 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
                 "Phase184 route " + typeof(T).Name + " must be inactive in the tracked scene.");
         }
         return values[0];
+    }
+
+    private sealed class RouteSet
+    {
+        internal RouteSet(
+            Phase184FoxgloveProfileRoute profile,
+            Phase184MultiTargetRoute multi,
+            Phase184DegradedTargetRoute degraded,
+            Phase184QosContractRoute qos,
+            Phase184StreamRoute stream)
+        {
+            Profile = profile;
+            Multi = multi;
+            Degraded = degraded;
+            Qos = qos;
+            Stream = stream;
+        }
+
+        internal Phase184FoxgloveProfileRoute Profile { get; }
+        internal Phase184MultiTargetRoute Multi { get; }
+        internal Phase184DegradedTargetRoute Degraded { get; }
+        internal Phase184QosContractRoute Qos { get; }
+        internal Phase184StreamRoute Stream { get; }
     }
 
     private static void SetObject(

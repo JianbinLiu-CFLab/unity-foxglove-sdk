@@ -12,6 +12,7 @@ import inspect
 import json
 import os
 import pathlib
+import re
 import struct
 import sys
 import tempfile
@@ -2697,6 +2698,90 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 "Unity2Foxglove.Phase184FoxRunProfileAcceptanceBuilder.CreateOrRefreshAcceptanceScene",
                 command,
             )
+
+    def test_manual_play_prompt_is_helper_selected_and_single_play(self):
+        """Manual helpers must own the selected case and exactly one Play session."""
+
+        prompt = getattr(load_module(), "manual_play_prompt", lambda _case: "")(
+            "multi-target"
+        )
+
+        self.assertIn("helper-selected case multi-target", prompt)
+        self.assertIn("exactly one Play session", prompt)
+        self.assertNotIn("select a route", prompt.lower())
+        self.assertNotIn("wait for endpoint readiness", prompt.lower())
+
+    def test_generated_scene_routes_are_read_only_inactive_and_helper_owned(self):
+        """The generated route assets must stay read-only until the controller arms one."""
+
+        scene = (
+            ROOT
+            / "Unity2Foxglove"
+            / "Assets"
+            / "Scenes"
+            / "ManualAcceptance"
+            / "Phase184FoxRunProfileAcceptance.unity"
+        )
+        contents = scene.read_text(encoding="utf-8")
+        object_blocks = re.findall(
+            r"(?ms)^--- !u!1 &(\d+)\r?\n(.*?)(?=^--- !u!|\Z)",
+            contents,
+        )
+        component_blocks = dict(
+            re.findall(
+                r"(?ms)^--- !u!114 &(\d+)\r?\n(.*?)(?=^--- !u!|\Z)",
+                contents,
+            )
+        )
+        transform_blocks = dict(
+            re.findall(
+                r"(?ms)^--- !u!4 &(\d+)\r?\n(.*?)(?=^--- !u!|\Z)",
+                contents,
+            )
+        )
+        for name, route_guid in {
+            "Helper-owned Route - Foxglove Profile": "983acb559504477ebd0c4d69a7d1edbe",
+            "Helper-owned Route - Multi Target": "7b052fef51264defb3b5934d0271da7a",
+            "Helper-owned Route - Degraded Target": "7f1320889ffd4aae8580cf5507278c6a",
+            "Helper-owned Route - QoS Contract": "ae2bf84a4ef244ccb4185841a415279b",
+            "Helper-owned Route - Stream 640 Hz": "f08839578006415a9d94a9ce4ef663a9",
+        }.items():
+            with self.subTest(name=name):
+                matching = [
+                    (file_id, block)
+                    for file_id, block in object_blocks
+                    if f"m_Name: {name}" in block
+                ]
+                self.assertEqual(1, len(matching))
+                file_id, block = matching[0]
+                self.assertRegex(block, r"(?m)^  m_ObjectHideFlags: 8$")
+                self.assertRegex(block, rf"(?m)^  m_Name: {re.escape(name)}$")
+                self.assertRegex(block, r"(?m)^  m_IsActive: 0$")
+                component_ids = re.findall(
+                    r"(?m)^  - component: \{fileID: (\d+)\}$",
+                    block,
+                )
+                self.assertEqual(2, len(component_ids))
+                route_components = [
+                    component_blocks[component_id]
+                    for component_id in component_ids
+                    if component_id in component_blocks
+                    and f"m_GameObject: {{fileID: {file_id}}}" in component_blocks[component_id]
+                ]
+                self.assertEqual(1, len(route_components))
+                self.assertRegex(route_components[0], r"(?m)^  m_ObjectHideFlags: 8$")
+                self.assertRegex(
+                    route_components[0],
+                    rf"(?m)^  m_Script: \{{fileID: 11500000, guid: {route_guid}, type: 3\}}$",
+                )
+                transforms = [
+                    transform_blocks[component_id]
+                    for component_id in component_ids
+                    if component_id in transform_blocks
+                    and f"m_GameObject: {{fileID: {file_id}}}" in transform_blocks[component_id]
+                ]
+                self.assertEqual(1, len(transforms))
+                self.assertRegex(transforms[0], r"(?m)^  m_ObjectHideFlags: 8$")
 
     def test_workers_wait_for_correlated_unity_context_in_batch_and_manual_modes(self):
         """Cold Batch imports cannot consume finite actor deadlines before Play."""

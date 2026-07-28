@@ -376,19 +376,32 @@ namespace Unity2Foxglove.ManualAcceptance
         {
             context = default;
             error = string.Empty;
+            var isBatchContext = false;
             try
             {
-                var configPath = ReadCommandLineValue(BatchConfigArgument);
-                var isBatchContext = !string.IsNullOrWhiteSpace(configPath);
+                var hasBatchConfigArgument = TryReadCommandLineValue(
+                    BatchConfigArgument,
+                    out var configPath);
+                isBatchContext = Application.isBatchMode || hasBatchConfigArgument;
                 var pointerToken = string.Empty;
-                if (string.IsNullOrWhiteSpace(configPath))
+                if (isBatchContext && string.IsNullOrWhiteSpace(configPath))
+                {
+                    error = Phase184ContextDiagnostic.Format(
+                        "The Batch Phase184 run config argument is missing or blank.",
+                        isManual: false);
+                    return false;
+                }
+
+                if (!isBatchContext)
                 {
                     var repository = Directory.GetParent(
                         Directory.GetParent(Application.dataPath)?.FullName
                         ?? string.Empty)?.FullName;
                     if (string.IsNullOrWhiteSpace(repository))
                     {
-                        error = "Could not resolve the repository root for manual-active.json.";
+                        error = Phase184ContextDiagnostic.Format(
+                            "Could not resolve the repository root for manual-active.json.",
+                            isManual: !isBatchContext);
                         return false;
                     }
 
@@ -401,14 +414,21 @@ namespace Unity2Foxglove.ManualAcceptance
                             out configPath,
                             out pointerToken,
                             out error))
+                    {
+                        error = Phase184ContextDiagnostic.Format(
+                            error,
+                            isManual: !isBatchContext);
                         return false;
+                    }
                 }
 
                 var fullPath = Path.GetFullPath(configPath);
                 var info = new FileInfo(fullPath);
                 if (!info.Exists || info.Length <= 0 || info.Length > MaximumConfigBytes)
                 {
-                    error = "The Phase184 run config is missing, empty, or oversized.";
+                    error = Phase184ContextDiagnostic.Format(
+                        "The Phase184 run config is missing, empty, or oversized.",
+                        isManual: !isBatchContext);
                     return false;
                 }
 
@@ -427,8 +447,9 @@ namespace Unity2Foxglove.ManualAcceptance
                     || negativeSeconds < 1
                     || negativeSeconds > 30)
                 {
-                    error =
-                        "The Phase184 run config has an invalid case, token, mode, or window.";
+                    error = Phase184ContextDiagnostic.Format(
+                        "The Phase184 run config has an invalid case, token, mode, or window.",
+                        isManual: !isBatchContext);
                     return false;
                 }
 
@@ -445,7 +466,9 @@ namespace Unity2Foxglove.ManualAcceptance
                 || exception is ArgumentException
                 || exception is InvalidOperationException)
             {
-                error = exception.GetType().Name + ": " + exception.Message;
+                error = Phase184ContextDiagnostic.Format(
+                    exception.GetType().Name + ": " + exception.Message,
+                    isManual: !isBatchContext);
                 return false;
             }
         }
@@ -509,7 +532,10 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
             if (string.IsNullOrWhiteSpace(configPath))
+            {
+                error = "The Phase184 manual-active pointer has no runConfig path.";
                 return false;
+            }
             var fullConfigPath = Path.GetFullPath(configPath);
             var acceptanceRoot = Path.GetFullPath(
                 Path.Combine(repository, "build", "phase184", "acceptance"))
@@ -533,15 +559,20 @@ namespace Unity2Foxglove.ManualAcceptance
                || value == QosContractCase
                || value == StreamCase;
 
-        private static string ReadCommandLineValue(string name)
+        private static bool TryReadCommandLineValue(string name, out string value)
         {
+            value = string.Empty;
             var arguments = Environment.GetCommandLineArgs();
-            for (var index = 0; index + 1 < arguments.Length; index++)
+            for (var index = 0; index < arguments.Length; index++)
             {
                 if (string.Equals(arguments[index], name, StringComparison.Ordinal))
-                    return arguments[index + 1];
+                {
+                    if (index + 1 < arguments.Length)
+                        value = arguments[index + 1];
+                    return true;
+                }
             }
-            return string.Empty;
+            return false;
         }
 
         private void Emit(string marker, string fields)
@@ -690,6 +721,16 @@ namespace Unity2Foxglove.ManualAcceptance
         internal string Token { get; }
         internal int NegativeSeconds { get; }
         internal string TokenDigestPrefix { get; }
+    }
+
+    internal static class Phase184ContextDiagnostic
+    {
+        internal const string ManualRecoveryAction =
+            " Start a fresh Phase184 helper, wait for endpoint readiness, enter Play Mode once; "
+            + "each helper authorizes exactly one Play.";
+
+        internal static string Format(string reason, bool isManual)
+            => isManual ? (reason ?? string.Empty) + ManualRecoveryAction : reason;
     }
 
     public abstract class Phase184AcceptanceRoute : MonoBehaviour

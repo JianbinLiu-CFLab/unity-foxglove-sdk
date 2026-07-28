@@ -3705,6 +3705,16 @@ def choose_parent_domain_id(requested: int | None, execution_mode: str) -> int:
     return choose_domain_id(requested)
 
 
+def manual_play_prompt(case: str) -> str:
+    """Describe the one helper-authorized Play session without route-selection advice."""
+
+    return (
+        "[phase184] External endpoints are ready for helper-selected case "
+        + str(case)
+        + ". Enter Play Mode now for exactly one Play session; this helper run is single-use."
+    )
+
+
 def _require_file(path: pathlib.Path, code: str, description: str) -> pathlib.Path:
     """Require file."""
 
@@ -6453,11 +6463,7 @@ def run_manual_parent(args: argparse.Namespace) -> int:
             expires_utc=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
         )
         pointer_written = True
-        print(
-            "[phase184] External endpoints are ready. Open the Phase184 acceptance "
-            "scene, select the Manager, and Enter Play Mode now.",
-            flush=True,
-        )
+        print(manual_play_prompt(str(config["case"])), flush=True)
         terminal = _wait_for_manual_session(
             config,
             mirror,

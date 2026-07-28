@@ -2999,6 +2999,118 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "184-H")]
+        public void Phase184ManualContextDiagnosticsPreserveReasonAndConstrainPlayAuthorization()
+        {
+            var acceptanceSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptance.cs");
+            var diagnostic = new Phase184ContextDiagnosticProbe(acceptanceSource);
+
+            foreach (var reason in new[]
+                     {
+                         "No valid Phase184 manual-active pointer is present.",
+                         "The Phase184 helper process is no longer alive.",
+                     })
+            {
+                var formatted = diagnostic.Format(reason, isManual: true);
+                Assert.Contains(reason, formatted, StringComparison.Ordinal);
+                Assert.Contains("Start a fresh Phase184 helper", formatted, StringComparison.Ordinal);
+                Assert.Contains("exactly one Play", formatted, StringComparison.Ordinal);
+            }
+
+            const string batchReason =
+                "The Phase184 run config is missing, empty, or oversized.";
+            Assert.Equal(batchReason, diagnostic.Format(batchReason, isManual: false));
+            const string blankBatchReason =
+                "The Batch Phase184 run config argument is missing or blank.";
+            Assert.Equal(
+                blankBatchReason,
+                diagnostic.Format(blankBatchReason, isManual: false));
+
+            Assert.Contains(
+                "Phase184ContextDiagnostic.Format(",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains("isManual: !isBatchContext", acceptanceSource, StringComparison.Ordinal);
+            Assert.Contains("Application.isBatchMode", acceptanceSource, StringComparison.Ordinal);
+            Assert.Contains("TryReadCommandLineValue", acceptanceSource, StringComparison.Ordinal);
+            Assert.Contains(
+                "The Batch Phase184 run config argument is missing or blank.",
+                acceptanceSource,
+                StringComparison.Ordinal);
+            Assert.Contains("isManual: false", acceptanceSource, StringComparison.Ordinal);
+            var builderSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptanceBuilder.cs");
+            foreach (var contract in new[]
+                     {
+                         "CreateFreshRouteSet",
+                         "NormalizeHelperOwnedRoute",
+                         "ValidateFreshRouteSetInMemory",
+                         "RequireHelperOwnedRoute",
+                         "HideFlags.NotEditable",
+                     })
+            {
+                Assert.Contains(contract, builderSource, StringComparison.Ordinal);
+            }
+            var builderRoot = CSharpSyntaxTree.ParseText(
+                builderSource,
+                new CSharpParseOptions(preprocessorSymbols: new[] { "UNITY_EDITOR" }))
+                .GetRoot();
+            var previewValidation = builderRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "ValidateFreshRouteSetInMemory")
+                .ToFullString();
+            var newObject = builderRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "NewObject")
+                .ToFullString();
+            Assert.Contains("try", newObject, StringComparison.Ordinal);
+            Assert.Contains(
+                "SceneManager.MoveGameObjectToScene(value, scene)",
+                newObject,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "UnityEngine.Object.DestroyImmediate(value)",
+                newObject,
+                StringComparison.Ordinal);
+            Assert.True(
+                newObject.IndexOf("UnityEngine.Object.DestroyImmediate(value)", StringComparison.Ordinal)
+                > newObject.IndexOf("SceneManager.MoveGameObjectToScene(value, scene)", StringComparison.Ordinal));
+            Assert.Contains("EditorSceneManager.NewPreviewScene()", previewValidation, StringComparison.Ordinal);
+            Assert.Contains("ClosePreviewSceneWithFallback(scene)", previewValidation, StringComparison.Ordinal);
+            Assert.Contains("AggregateException", previewValidation, StringComparison.Ordinal);
+            Assert.Contains("ExceptionDispatchInfo.Capture", previewValidation, StringComparison.Ordinal);
+            Assert.Contains("catch (Exception", previewValidation, StringComparison.Ordinal);
+            Assert.DoesNotContain("NewScene(", previewValidation, StringComparison.Ordinal);
+            var previewCleanup = builderRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == "ClosePreviewSceneWithFallback")
+                .Select(method => method.ToFullString())
+                .SingleOrDefault() ?? string.Empty;
+            Assert.Contains("scene.GetRootGameObjects()", previewCleanup, StringComparison.Ordinal);
+            Assert.Contains(
+                "UnityEngine.Object.DestroyImmediate(root)",
+                previewCleanup,
+                StringComparison.Ordinal);
+            Assert.Contains("AggregateException", previewCleanup, StringComparison.Ordinal);
+            Assert.True(
+                previewCleanup.Split(
+                    "EditorSceneManager.ClosePreviewScene(scene)",
+                    StringSplitOptions.None).Length >= 3,
+                "Preview cleanup must make one initial close attempt and one bounded retry.");
+            var existingStart = builderSource.IndexOf("if (sceneExists)", StringComparison.Ordinal);
+            var existingEnd = builderSource.IndexOf("            else", existingStart, StringComparison.Ordinal);
+            Assert.True(existingStart >= 0 && existingEnd > existingStart);
+            var existingBranch = builderSource.Substring(existingStart, existingEnd - existingStart);
+            Assert.DoesNotContain("requireInactive: true", existingBranch, StringComparison.Ordinal);
+            Assert.True(
+                builderSource.IndexOf("NormalizeHelperOwnedRoute(profile", StringComparison.Ordinal)
+                > existingEnd);
+        }
+
+        [Fact]
         [Trait("Phase", "184-G")]
         public void Phase184RuntimeAcceptanceRoutesUseBoundedNonRacingEvidenceWindows()
         {
@@ -4114,6 +4226,56 @@ namespace Demo
 
             [FoxRun("/phase184/reflection/invalid-shadow", OnlyIf = "ShadowedCondition")]
             public float InvalidShadowProbe;
+        }
+
+        private sealed class Phase184ContextDiagnosticProbe
+        {
+            private readonly MethodInfo _format;
+
+            internal Phase184ContextDiagnosticProbe(string acceptanceSource)
+            {
+                var declaration = CSharpSyntaxTree.ParseText(acceptanceSource)
+                    .GetRoot()
+                    .DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>()
+                    .Single(type => type.Identifier.ValueText == "Phase184ContextDiagnostic")
+                    .NormalizeWhitespace()
+                    .ToFullString();
+                var isolatedSource =
+                    "using System;\n"
+                    + "namespace Unity2Foxglove.ManualAcceptance\n{\n"
+                    + declaration
+                    + "\n}";
+                var trustedAssemblies =
+                    AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+                    ?? string.Empty;
+                var references = trustedAssemblies
+                    .Split(Path.PathSeparator)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Select(path => MetadataReference.CreateFromFile(path));
+                var compilation = CSharpCompilation.Create(
+                    "Phase184ContextDiagnosticProbe_" + Guid.NewGuid().ToString("N"),
+                    new[] { CSharpSyntaxTree.ParseText(isolatedSource) },
+                    references,
+                    new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                using var image = new MemoryStream();
+                var emit = compilation.Emit(image);
+                Assert.True(
+                    emit.Success,
+                    string.Join(
+                        Environment.NewLine,
+                        emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+                var type = Assembly.Load(image.ToArray()).GetType(
+                    "Unity2Foxglove.ManualAcceptance.Phase184ContextDiagnostic",
+                    throwOnError: true);
+                _format = type.GetMethod(
+                    "Format",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                Assert.NotNull(_format);
+            }
+
+            internal string Format(string reason, bool isManual)
+                => Assert.IsType<string>(_format.Invoke(null, new object[] { reason, isManual }));
         }
     }
 }
