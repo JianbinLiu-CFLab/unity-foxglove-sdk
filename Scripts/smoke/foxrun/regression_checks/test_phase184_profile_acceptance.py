@@ -1870,6 +1870,89 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             self.assertIn("PHASE184G_CONTEXT_READY", copied)
             self.assertNotIn("stale history", copied)
 
+    def test_manual_editor_log_mirror_retries_transient_windows_open_contention(self):
+        """Unity log rotation may briefly deny the stat-to-open transition."""
+
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        token = "p184g_A1b2C3d4E5f6"
+        with tempfile.TemporaryDirectory(prefix="mirror-contention-", dir=TEST_ROOT) as raw:
+            root = pathlib.Path(raw)
+            editor_log = root / "Editor.log"
+            owned_log = root / "unity-editor.log"
+            editor_log.write_text("existing\n", encoding="utf-8")
+            mirror = module.EditorLogMirror(editor_log, owned_log, token)
+            mirror.capture()
+            with editor_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"PHASE184G_CONTEXT_READY case=multi-target token={token}\n"
+                )
+
+            original_open = pathlib.Path.open
+            source_attempts = 0
+
+            def open_with_one_contention(path, *args, **kwargs):
+                """Fail only the first binary source read."""
+
+                nonlocal source_attempts
+                if path == editor_log and args and args[0] == "rb":
+                    source_attempts += 1
+                    if source_attempts == 1:
+                        raise PermissionError("simulated Windows sharing violation")
+                return original_open(path, *args, **kwargs)
+
+            with mock.patch.object(
+                pathlib.Path,
+                "open",
+                autospec=True,
+                side_effect=open_with_one_contention,
+            ):
+                mirror.poll()
+                mirror.poll()
+
+            self.assertEqual(2, source_attempts)
+            self.assertIn(token, owned_log.read_text(encoding="utf-8"))
+
+    def test_manual_editor_log_mirror_fails_after_bounded_open_contention(self):
+        """Persistent inability to read Editor.log must remain fail closed."""
+
+        module = load_module()
+        TEST_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="mirror-contention-bound-", dir=TEST_ROOT) as raw:
+            root = pathlib.Path(raw)
+            editor_log = root / "Editor.log"
+            owned_log = root / "unity-editor.log"
+            editor_log.write_text("existing\n", encoding="utf-8")
+            mirror = module.EditorLogMirror(
+                editor_log,
+                owned_log,
+                "p184g_A1b2C3d4E5f6",
+            )
+            mirror._ACCESS_FAILURE_GRACE_SECONDS = 0.0
+            mirror.capture()
+
+            original_open = pathlib.Path.open
+
+            def deny_source_open(path, *args, **kwargs):
+                """Deny only binary reads of the interactive Editor log."""
+
+                if path == editor_log and args and args[0] == "rb":
+                    raise PermissionError("persistent Windows sharing violation")
+                return original_open(path, *args, **kwargs)
+
+            with mock.patch.object(
+                pathlib.Path,
+                "open",
+                autospec=True,
+                side_effect=deny_source_open,
+            ):
+                mirror.poll()
+                with self.assertRaisesRegex(
+                    module.AcceptanceFailure,
+                    r"FAIL_TERMINAL.*bounded retry window",
+                ):
+                    mirror.poll()
+
     def test_manual_session_does_not_latch_pass_over_a_later_failure(self):
         """The latest correlated terminal marker remains authoritative until exit."""
 

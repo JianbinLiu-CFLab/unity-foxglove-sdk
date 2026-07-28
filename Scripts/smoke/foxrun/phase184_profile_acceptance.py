@@ -5885,6 +5885,7 @@ class EditorLogMirror:
 
     _MAX_SOURCE_BYTES = 64 * 1024 * 1024
     _RESCUE_SCAN_INTERVAL_SECONDS = 1.0
+    _ACCESS_FAILURE_GRACE_SECONDS = 5.0
 
     def __init__(
         self,
@@ -5901,6 +5902,7 @@ class EditorLogMirror:
         self._offset = 0
         self._seen_token_lines: set[str] = set()
         self._next_rescue_scan = 0.0
+        self._access_failure_started: dict[str, float] = {}
 
     @staticmethod
     def _stat_identity(stat: os.stat_result) -> tuple[int, int]:
@@ -5932,12 +5934,53 @@ class EditorLogMirror:
             stream.write(text)
             stream.flush()
 
+    def _defer_access_failure(
+        self,
+        operation: str,
+        diagnostic: str,
+        failure: OSError,
+    ) -> None:
+        """Retry transient Windows file contention but keep a bounded terminal."""
+
+        now = time.monotonic()
+        started = self._access_failure_started.get(operation)
+        if started is None:
+            self._access_failure_started[operation] = now
+            return
+        if now - started < self._ACCESS_FAILURE_GRACE_SECONDS:
+            return
+        raise AcceptanceFailure(
+            "FAIL_TERMINAL",
+            diagnostic
+            + " after a bounded retry window ("
+            + type(failure).__name__
+            + ").",
+        ) from failure
+
+    def _clear_access_failure(self, operation: str) -> None:
+        """Reset one retry clock only after that source operation succeeds."""
+
+        self._access_failure_started.pop(operation, None)
+
     def poll(self) -> None:
         """Copy fresh bytes, resetting safely after truncation or replacement."""
 
         try:
             stat = self._source.stat()
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
+            if self._identity is not None:
+                self._defer_access_failure(
+                    "mirror",
+                    "The interactive Unity Editor log could not be mirrored",
+                    exc,
+                )
+            return
+        except OSError as exc:
+            self._defer_access_failure(
+                "mirror",
+                "The interactive Unity Editor log could not be mirrored",
+                exc,
+            )
             return
         identity = self._stat_identity(stat)
         if (
@@ -5954,10 +5997,13 @@ class EditorLogMirror:
                 appended = stream.read()
                 self._offset = stream.tell()
         except OSError as exc:
-            raise AcceptanceFailure(
-                "FAIL_TERMINAL",
-                "The interactive Unity Editor log could not be mirrored.",
-            ) from exc
+            self._defer_access_failure(
+                "mirror",
+                "The interactive Unity Editor log could not be mirrored",
+                exc,
+            )
+            return
+        self._clear_access_failure("mirror")
 
         text = appended.decode("utf-8", errors="replace")
         self._append(text)
@@ -5984,10 +6030,13 @@ class EditorLogMirror:
                 errors="replace",
             )
         except OSError as exc:
-            raise AcceptanceFailure(
-                "FAIL_TERMINAL",
-                "The interactive Unity Editor log could not be rescanned.",
-            ) from exc
+            self._defer_access_failure(
+                "rescan",
+                "The interactive Unity Editor log could not be rescanned",
+                exc,
+            )
+            return
+        self._clear_access_failure("rescan")
         rescued: list[str] = []
         for line in current.splitlines():
             if token_field not in line or line in self._seen_token_lines:
