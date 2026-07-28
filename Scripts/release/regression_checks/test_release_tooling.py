@@ -27,6 +27,7 @@ BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
 MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
+LOCAL_ENTRYPOINT_VALIDATOR_PATH = ROOT / "Scripts" / "package" / "validate_local_entrypoints.py"
 
 
 def load_module(name: str, path: Path):
@@ -1392,6 +1393,51 @@ class RunCiTests(unittest.TestCase):
             observed["names"],
         )
         self.assertEqual(2, observed["max_workers"])
+
+
+class LocalEntrypointValidatorTests(unittest.TestCase):
+    """Regression coverage for machine-local path detection boundaries."""
+
+    def setUp(self) -> None:
+        """Load a fresh local-entrypoint validator for each test."""
+        self.validator = load_module(
+            "validate_local_entrypoints_under_test",
+            LOCAL_ENTRYPOINT_VALIDATOR_PATH,
+        )
+
+    def test_release_asset_rule_allows_host_allowlists_but_rejects_concrete_urls(self) -> None:
+        """A trusted host constant is not itself a temporary signed asset URL."""
+        pattern = next(
+            pattern
+            for label, pattern in self.validator.FORBIDDEN_PATTERNS
+            if label == "temporary GitHub signed release asset URL"
+        )
+
+        self.assertIsNone(pattern.search('"release-assets.githubusercontent.com",'))
+        self.assertIsNotNone(
+            pattern.search(
+                "https://release-assets.githubusercontent.com/"
+                "github-production-release-asset/431693744/object?sig=opaque"
+            )
+        )
+
+    def test_git_grep_excludes_regression_fixtures(self) -> None:
+        """Intentional invalid-path fixtures must not be treated as production defaults."""
+        completed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+        with mock.patch.object(self.validator.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(
+                [],
+                self.validator.git_grep_failures(
+                    "temporary GitHub signed release asset URL",
+                    self.validator.FORBIDDEN_PATTERNS[-1][1],
+                ),
+            )
+
+        command = run.call_args.args[0]
+        self.assertIn(
+            ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
+            command,
+        )
 
 
 class McapConformanceToolTests(unittest.TestCase):

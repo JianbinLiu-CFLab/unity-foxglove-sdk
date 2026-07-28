@@ -21,7 +21,10 @@ THIS_SCRIPT_RELATIVE_PATH = "Scripts/package/validate_local_entrypoints.py"
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Windows ROS2 install root", re.compile(r"C:[\\/]+ros2_[A-Za-z0-9_-]+[\\/]+ros2-windows", re.IGNORECASE)),
     ("external R2FU artifact cache", re.compile(r"D:[\\/]+ros2unity", re.IGNORECASE)),
-    ("temporary GitHub signed release asset URL", re.compile(r"release-assets\.githubusercontent\.com", re.IGNORECASE)),
+    (
+        "temporary GitHub signed release asset URL",
+        re.compile(r"(https?|ftp)://release-assets\.githubusercontent\.com/", re.IGNORECASE),
+    ),
 )
 
 
@@ -37,6 +40,7 @@ def git_grep_failures(label: str, pattern: re.Pattern[str]) -> list[str]:
             pattern.pattern,
             "--",
             ":(glob)Scripts/**/*.py",
+            ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
             f":!{THIS_SCRIPT_RELATIVE_PATH}",
         ],
         cwd=REPO_ROOT,
