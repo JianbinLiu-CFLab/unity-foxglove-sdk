@@ -842,17 +842,32 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
                 }
             }
         }
+        events = []
 
-        with mock.patch.object(module, "write_actor_ready") as ready:
+        with mock.patch.object(
+            module,
+            "write_actor_ready",
+            side_effect=lambda *_args, **_kwargs: events.append("ready"),
+        ) as ready:
             with mock.patch.object(
                 module,
-                "_wait_for_peer_result_document",
-                return_value=peer_result,
-            ):
-                with mock.patch.object(module, "wait_for_terminal_marker"):
-                    evidence = module._run_peer_graph_auditor(config)
+                "_wait_for_unity_context",
+                side_effect=lambda *_args, **_kwargs: events.append("context"),
+            ) as context:
+                with mock.patch.object(
+                    module,
+                    "_wait_for_peer_result_document",
+                    side_effect=lambda *_args, **_kwargs: (
+                        events.append("peer-result"),
+                        peer_result,
+                    )[1],
+                ):
+                    with mock.patch.object(module, "wait_for_terminal_marker"):
+                        evidence = module._run_peer_graph_auditor(config)
 
         ready.assert_called_once()
+        context.assert_called_once_with(config)
+        self.assertEqual(["ready", "context", "peer-result"], events)
         self.assertTrue(evidence["endpointsObserved"])
         self.assertTrue(evidence["qosMatches"])
         self.assertEqual(
@@ -860,6 +875,37 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             evidence["nodeIdentities"],
         )
         self.assertEqual(graphs, evidence["topics"])
+
+    def test_peer_graph_auditor_rejects_missing_unity_context_before_peer_budget(self):
+        """The finite peer-result budget cannot start before the Play barrier."""
+
+        module = load_module()
+        config = {
+            "case": "multi-target",
+            "topics": ["/foxrun/phase184/multi/state"],
+            "interfaceType": "demo/msg/State",
+        }
+
+        with mock.patch.object(module, "write_actor_ready"):
+            with mock.patch.object(
+                module,
+                "_wait_for_unity_context",
+                side_effect=module.AcceptanceFailure(
+                    "FAIL_UNITY_STARTUP",
+                    "Unity context missing.",
+                ),
+            ):
+                with mock.patch.object(
+                    module,
+                    "_wait_for_peer_result_document",
+                ) as peer_result:
+                    with self.assertRaisesRegex(
+                        module.AcceptanceFailure,
+                        r"FAIL_UNITY_STARTUP.*context missing",
+                    ):
+                        module._run_peer_graph_auditor(config)
+
+        peer_result.assert_not_called()
 
     def test_run_config_is_immutable_case_specific_and_protocol_valid(self):
         """Verify run config is immutable case specific and protocol valid."""

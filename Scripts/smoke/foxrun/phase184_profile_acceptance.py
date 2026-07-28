@@ -3371,6 +3371,7 @@ def _run_peer_graph_auditor(
         "graph-observer",
         {"state": "peer-graph-auditor-ready", "topicCount": len(config["topics"])},
     )
+    _wait_for_unity_context(config)
     peer_result = _wait_for_peer_result_document(config)
     evidence = peer_result.get("evidence")
     graph_evidence = (
