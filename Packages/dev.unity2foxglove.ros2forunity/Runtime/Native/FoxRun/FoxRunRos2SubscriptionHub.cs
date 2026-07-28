@@ -831,15 +831,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Awake()
         {
-            _hostThreadId = Thread.CurrentThread.ManagedThreadId;
-            _hostCleanupQueue = new FoxRunRos2HostCleanupQueue(
-                _hostThreadId,
-                SynchronizationContext.Current,
-                exception => WarnHostOnce(
-                    "deferred-cleanup|" + exception.GetType().Name,
-                    "Deferred native ROS2 stream cleanup failed: "
-                    + FoxRunRos2PublicDiagnostic.Describe(
-                        FoxRunRos2RegistrationError.TeardownFailure)));
+            EnsureHostCleanupQueue();
             if (_instance != null && _instance != this)
             {
                 _duplicate = true;
@@ -852,6 +844,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void OnEnable()
         {
+            EnsureHostCleanupQueue();
             if (_duplicate)
             {
                 _stopping = true;
@@ -864,6 +857,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Update()
         {
+            EnsureHostCleanupQueue();
             DrainPendingHostCleanup();
             if (_stopping)
             {
@@ -901,6 +895,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             using (DrainMarker.Auto())
                 DrainBindings(Time.realtimeSinceStartupAsDouble);
+        }
+
+        private FoxRunRos2HostCleanupQueue EnsureHostCleanupQueue()
+        {
+            var queue = _hostCleanupQueue;
+            if (queue != null)
+                return queue;
+
+            var currentThreadId = Thread.CurrentThread.ManagedThreadId;
+            if (_hostThreadId != 0 && _hostThreadId != currentThreadId)
+            {
+                throw new InvalidOperationException(
+                    "The deferred ROS2 cleanup queue must be initialized on the Unity host thread.");
+            }
+
+            _hostThreadId = currentThreadId;
+            queue = new FoxRunRos2HostCleanupQueue(
+                currentThreadId,
+                SynchronizationContext.Current,
+                exception => WarnHostOnce(
+                    "deferred-cleanup|" + exception.GetType().Name,
+                    "Deferred native ROS2 stream cleanup failed: "
+                    + FoxRunRos2PublicDiagnostic.Describe(
+                        FoxRunRos2RegistrationError.TeardownFailure)));
+            _hostCleanupQueue = queue;
+            return queue;
         }
 
         private void PauseForLifecycleWindow()
@@ -1519,11 +1539,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var cleanupComplete = false;
             var owner = _nodeOwner;
             _nodeOwner = null;
+            var cleanupQueue = EnsureHostCleanupQueue();
             try
             {
                 StopHostedBindingsAndDrainDeferredCleanupThenReleaseHost(
                     _bindings,
-                    _hostCleanupQueue,
+                    cleanupQueue,
                     TimeSpan.FromMilliseconds(DeferredCleanupDrainTimeoutMilliseconds),
                     exception => WarnHostOnce(
                         "stop-binding|" + exception.GetType().Name,

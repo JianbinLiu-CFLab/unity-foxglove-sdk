@@ -628,6 +628,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        [Trait("Phase", "184-G")]
+        public void SubscriptionHubRehydratesHostCleanupQueueBeforeLifecyclePause()
+        {
+            var hub = new FoxRunRos2SubscriptionHub();
+            var queueField = typeof(FoxRunRos2SubscriptionHub).GetField(
+                "_hostCleanupQueue",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var pause = typeof(FoxRunRos2SubscriptionHub).GetMethod(
+                "PauseForLifecycleWindow",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(queueField);
+            Assert.NotNull(pause);
+            Assert.Null(queueField.GetValue(hub));
+
+            var failure = Record.Exception(() => pause.Invoke(hub, null));
+
+            Assert.Null(failure);
+            var queue = Assert.IsType<FoxRunRos2HostCleanupQueue>(
+                queueField.GetValue(hub));
+            var cleanupCount = 0;
+            queue.Dispatch(() => cleanupCount++);
+            Assert.Equal(1, cleanupCount);
+        }
+
+        [Fact]
         public void HostCleanupQueuePostsAHostDrainIndependentOfHubUpdate()
         {
             var hostContext = new CapturingSynchronizationContext();
