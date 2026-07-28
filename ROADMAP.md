@@ -1,21 +1,28 @@
 # Unity2Foxglove Roadmap
 
-Updated: 2026-07-20
+Updated: 2026-07-28
 
 This public roadmap describes the current development baseline and the remaining product directions. It is intentionally higher level than private implementation plans. A tagged release can lag this document; release notes remain the authority for the exact contents of a published package.
+
+The current product is a Unity-first C# SDK. Its longer-term architectural
+direction is an open interoperability data plane connecting real-time 3D
+systems with visualization platforms, robotics middleware, durable
+recording/replay, and bounded query consumers. That direction is not a claim
+that the current package is already engine-, language-, or backend-agnostic.
 
 ## 1. Status at a Glance
 
 | Area | Current status | Remaining boundary |
 | --- | --- | --- |
-| Foxglove WebSocket protocol | Product baseline complete | Continue parity work only when it supports a concrete Unity workflow. |
+| Foxglove WebSocket protocol | Unity workflow baseline complete | Continue parity work only when it supports a concrete Unity workflow; this is not a claim of complete protocol or platform coverage. |
 | FoxRun generated bindings | Bidirectional development baseline complete | Broader complex-type depth, clearer diagnostics, and cross-target emitter reuse. |
-| MCAP recording and replay | Recording, indexed reading, scene reproduction, and Foxglove-owned timeline workflow complete | Large-file latency, multi-file/search workflows, and explicit deterministic-simulation contracts. |
+| MCAP recording and replay | Recording, indexed reading, scene reproduction, and Foxglove-owned timeline development baseline implemented | Large-file latency, multi-file/search workflows, and explicit deterministic-simulation contracts. |
 | Unity data transport | Independent output/input configuration, coordinate modes, recording boundary, and Inspector workflows complete | More end-user onboarding and cross-platform evidence. |
+| Interoperability boundary | One validated Unity/C# vertical slice spans Foxglove WebSocket, independent MCAP recording/replay, and optional ROS2 Native/Bridge routes | Prove a portable managed-core boundary, language-neutral conformance artifacts, and a second real backend or non-Unity consumer before broader claims. |
 | Optional ROS2 For Unity | Windows x64 Humble, Jazzy, and Lyrical package lines plus built-in/custom typed transport implemented | Windows Player and Linux-peer certification, Linux packaging, and broader redistribution evidence. |
 | Camera and point cloud | Async camera, raw/compressed point-cloud, QoS, sampling, and native ROS2 paths implemented | In-Unity renderer, repeatable multi-LiDAR fixtures, remote QoS, and hardware validation. |
 | Security | Local WSS, certificate tooling, Origin allowance, and token gates implemented | Identity and authorization for untrusted remote deployment. |
-| Platform support | Windows Editor/Player paths receive the strongest current evidence | Expand IL2CPP and package acceptance on Linux and macOS before claiming support. |
+| Platform support | Windows Editor paths receive the strongest current evidence; selected Player paths have narrower acceptance | Complete the remaining Windows Player cells and expand IL2CPP/package acceptance on Linux and macOS before broader claims. |
 
 “Complete” in this table means the architecture and repository implementation exist with automated evidence. Platform-specific support is claimed only where its separate acceptance cell has actually run.
 
@@ -79,6 +86,7 @@ This is deterministic state application, not deterministic execution of Unity ph
 
 - The Manager Inspector groups `Publish Data` and `Subscribe Data` under one `Data Transport` workflow.
 - Output destinations remain independently selectable: Foxglove WebSocket, ROS2 Native, and ROS2 Bridge can coexist where the contract supports them.
+- MCAP recording is a separately enabled durable sink; it can record the same canonical external payload without becoming another live transport destination.
 - Input and output coordinate modes are separate because conversion responsibility reverses with direction.
 - MCAP records the external boundary representation rather than applying an extra replay conversion.
 - Camera publishing supports bounded async JPEG work and optional video sidecar modes.
@@ -116,13 +124,33 @@ That evidence covers the local Editor data path and graph/type/QoS observations.
 - Schema manifests, artifact inventories, checksums, third-party notices, analyzer freshness, package validators, MCAP conformance, and Unity manual acceptance form separate evidence layers.
 - Large runtime packages and generated artifacts are validated as package content; temporary colcon, CMake, Unity, `bin`, and `obj` output is not source.
 
+### 2.7 Current Interoperability Boundary
+
+The current architecture separates the engine host from four external planes.
+Those planes share message, schema, time, coordinate, and ownership semantics,
+but they are not one interchangeable backend:
+
+| Plane | Current implementation | Boundary |
+| --- | --- | --- |
+| Visualization clients | Foxglove is the direct live/file client. RViz and other ROS2 tools are indirect consumers through the ROS graph. | RViz is not a Manager destination or a dedicated Unity backend. |
+| Live transport and middleware | Foxglove WebSocket, ROS2 Native, and ROS2 Bridge are independently selectable output routes; subscriptions select one admitted source per member. | A transport is not a viewer, file format, or query API. |
+| Durable recording and replay | MCAP is an independent sink and indexed replay source that reuses the same external message semantics. | MCAP is a Foxglove ecosystem project, but the runtime file path must remain usable without Foxglove. |
+| Control and query | Foxglove client publish/services and the bounded loopback replay cursor provide current control surfaces. | The replay cursor carries time intent; it is not a general scene-snapshot or agent-query API. |
+
+The middle layer is still implemented in C# and compiled inside the Unity
+package. A future multi-language SDK would mean multiple implementations
+conforming to language-neutral contracts and test vectors. It would not mean
+embedding the C# runtime in every engine. Likewise, a future Unreal integration
+would normally be a native C++ plugin with optional Blueprint exposure, not a
+C# adapter.
+
 ## 3. Near-Term Priorities
 
 ### 3.1 FoxRun and Source-Generation Platform
 
 1. Converge reusable source-generator build plumbing across related Unity telemetry targets.
 2. Expand explicitly supported complex-type depth while retaining bounded generated copy/dispose behavior.
-3. Extract a clearer multi-backend emitter seam only after shared infrastructure and type semantics are stable.
+3. Separate canonical binding semantics from C# syntax emission before calling the model a portable emitter IR.
 4. Improve diagnostics, generated-source visibility, and first-error guidance without growing a second declaration model.
 
 ### 3.2 Onboarding and Trust
@@ -160,6 +188,33 @@ That evidence covers the local Editor data path and graph/type/QoS observations.
 3. Add repeatable bag-based multi-LiDAR fixtures and TF integration.
 4. Run Ouster/Livox hardware validation only after the renderer and recorded fixtures are stable.
 
+### 3.7 Portable-Core and Interoperability Gates
+
+This is an evidence-gathering track, not a promise to ship every language,
+engine, or visualization backend:
+
+1. Maintain an explicit dependency map for the candidate Unity-neutral
+   surfaces: logging/profiling/clock abstractions, transport framing,
+   low-level MCAP IO, and scalar replay/query primitives.
+2. Prove a separately compiled managed core with a non-Unity console fixture
+   before publishing a standalone package. Moving files without isolating
+   Unity lifecycle, types, and assembly dependencies does not satisfy this
+   gate.
+3. Define language-neutral schemas, time/coordinate semantics, ownership
+   rules, canonical emitter input, and cross-language test vectors. C# remains
+   the first reference implementation.
+4. Keep adapters separated by role: live protocol, middleware, durable format,
+   viewer integration, and control/query. Foxglove WebSocket and MCAP must not
+   become a mandatory pair, and RViz must remain a ROS2 consumer rather than
+   a fictitious direct sink.
+5. Require a second real backend or non-Unity consumer to validate the seam
+   before designing a broad `IEngineHost`, a C++ SDK, or engine-specific
+   adapters.
+6. Specify any future agent/MCP surface as bounded, local-first, and explicit
+   about whether it returns raw messages, latest-at registered state, or a
+   wider scene reconstruction. Do not infer those capabilities from
+   `ReplayCursor`.
+
 ## 4. Longer-Term Candidates
 
 These are options, not release promises:
@@ -168,14 +223,21 @@ These are options, not release promises:
 - indexed MCAP query and differential trace comparison;
 - runtime insight dashboards and rule/anomaly-driven capture;
 - bounded local agent/MCP query surfaces for existing telemetry and replay state;
-- cross-project emitter reuse for Foxglove/MCAP and Rerun/RRD;
-- standalone managed protocol or MCAP packages if a clean non-Unity consumer emerges.
+- a language-neutral semantic contract and emitter IR, with C# retained as the first reference implementation;
+- cross-project backend-adapter reuse for Foxglove WebSocket, MCAP, and a separately validated Rerun/RRD path;
+- standalone managed protocol or MCAP packages if a clean non-Unity consumer emerges;
+- a native C++ implementation or concrete engine plugin only after a real consumer and cross-language conformance fixture exist.
 
 Each candidate should start from a concrete user workflow, fixture, and acceptance gate rather than a broad parity goal.
 
 ## 5. Explicit Non-Goals
 
-- Replacing the official Foxglove SDK ecosystem or pursuing multi-language SDK parity.
+- Replacing Foxglove, Rerun, RViz, ROS2, MCAP, RRD, or their official SDK ecosystems.
+- Describing the current Unity/C# package as engine-, language-, or backend-agnostic before an independent implementation and conformance evidence exist.
+- Building another 3D engine, renderer, general robotics middleware, or universal data format.
+- Pursuing language or engine parity as a feature-count goal; every implementation must start from a real consumer.
+- Treating Foxglove WebSocket and MCAP as one inseparable backend, or treating RViz as a direct Manager sink.
+- Treating `ReplayCursor` as proof of a complete world-state query service, independent per-agent replay sessions, or deterministic simulation.
 - Making the ROS2 optional package a dependency of the core SDK.
 - Supporting simultaneous subscription from multiple providers for one FoxRun member.
 - Claiming deterministic simulation from timestamped scene-state replay alone.
