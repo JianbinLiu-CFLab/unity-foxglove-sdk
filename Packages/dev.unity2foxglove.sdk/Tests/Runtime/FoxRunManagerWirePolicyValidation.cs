@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && inbound.Contains("ActiveFoxRunSubscriptionSessionPolicy.FoxgloveEncoding", StringComparison.Ordinal)
                   && publishing.Contains("FoxRunPublishSessionState", StringComparison.Ordinal)
                   && publishing.Contains("_foxRunPublishSessionState.BeginIfNeeded(", StringComparison.Ordinal)
-                  && manager.Contains("EndFoxRunPublishSession();", StringComparison.Ordinal),
+                  && manager.Contains("EndFoxRunPublishSession,", StringComparison.Ordinal),
                 "175C-3: Manager freezes directional policies before transports and releases publish policy with the Manager lifetime");
         }
 
@@ -107,12 +107,12 @@ namespace Unity.FoxgloveSDK.Tests
             var onEnableBeginIndex = onEnable.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
             var onEnableStartIndex = onEnable.IndexOf("StartServer();", StringComparison.Ordinal);
             var onEnablePublishIndex = onEnable.IndexOf("BeginFoxRunPublishSessionIfNeeded();", StringComparison.Ordinal);
-            var onDisableEndIndex = onDisable.IndexOf("EndFoxRunSubscriptionSession();", StringComparison.Ordinal);
-            var onDisableStopIndex = onDisable.IndexOf("StopServer(", StringComparison.Ordinal);
-            var onDisablePublishIndex = onDisable.IndexOf("EndFoxRunPublishSession();", StringComparison.Ordinal);
-            var onDestroyEndIndex = onDestroy.IndexOf("EndFoxRunSubscriptionSession();", StringComparison.Ordinal);
-            var onDestroyStopIndex = onDestroy.IndexOf("StopServer(", StringComparison.Ordinal);
-            var onDestroyPublishIndex = onDestroy.IndexOf("EndFoxRunPublishSession();", StringComparison.Ordinal);
+            var onDisableEndIndex = onDisable.IndexOf("EndFoxRunSubscriptionSession,", StringComparison.Ordinal);
+            var onDisableStopIndex = onDisable.IndexOf("() => StopServer(", StringComparison.Ordinal);
+            var onDisablePublishIndex = onDisable.IndexOf("EndFoxRunPublishSession,", StringComparison.Ordinal);
+            var onDestroyEndIndex = onDestroy.IndexOf("EndFoxRunSubscriptionSession,", StringComparison.Ordinal);
+            var onDestroyStopIndex = onDestroy.IndexOf("() => StopServer(", StringComparison.Ordinal);
+            var onDestroyPublishIndex = onDestroy.IndexOf("EndFoxRunPublishSession,", StringComparison.Ordinal);
             var beginStateIndex = beginSession.IndexOf("_foxRunSubscriptionSessionState.BeginIfNeeded(", StringComparison.Ordinal);
             var beginNotifyIndex = beginSession.IndexOf("NotifyFoxRunSubscriptionSessionChanged(policy);", StringComparison.Ordinal);
             var endStateIndex = endSession.IndexOf("_foxRunSubscriptionSessionState.End();", StringComparison.Ordinal);
