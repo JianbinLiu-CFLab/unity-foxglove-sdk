@@ -54,11 +54,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyWireEncodingAndProviderAxes()
         {
             var wireNames = Enum.GetNames(typeof(FoxRunEncoding));
-            Check(wireNames.SequenceEqual(new[] { "Protobuf", "JSON" })
+            Check(wireNames.SequenceEqual(new[] { "Protobuf", "JSON", "MessagePack" })
                   && (int)(FoxRunEncoding)0 == 0
                   && (int)FoxRunEncoding.Protobuf == 1
-                  && (int)FoxRunEncoding.JSON == 2,
-                "FoxRun encoding exposes only Protobuf and JSON while zero remains an internal omission sentinel");
+                  && (int)FoxRunEncoding.JSON == 2
+                  && (int)FoxRunEncoding.MessagePack == 3,
+                "FoxRun encoding exposes Protobuf, JSON, and MessagePack while zero remains an internal omission sentinel");
 
             var endpointNames = Enum.GetNames(typeof(FoxRunEndpoint));
             var sourceProperty = typeof(FoxRunAttribute).GetProperty(

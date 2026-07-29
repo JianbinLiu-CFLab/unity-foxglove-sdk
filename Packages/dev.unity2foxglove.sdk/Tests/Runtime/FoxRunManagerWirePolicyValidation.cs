@@ -236,14 +236,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorSources.Contains("\"Publish Data\"", StringComparison.Ordinal)
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal),
                 "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
-            Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
-                  && labels.Contains("property.enumValueIndex == (int)FoxRunEncoding.JSON ? 1 : 0", StringComparison.Ordinal)
-                  && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
-                  && labels.Contains("? (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
-                  && labels.Contains(": (int)FoxRunEncoding.JSON", StringComparison.Ordinal)
-                  && !labels.Contains("MsgPack", StringComparison.Ordinal)
+            Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\", \"MessagePack\" }", StringComparison.Ordinal)
+                  && labels.Contains("(int)FoxRunEncoding.JSON => 1", StringComparison.Ordinal)
+                  && labels.Contains("(int)FoxRunEncoding.MessagePack => 2", StringComparison.Ordinal)
+                  && labels.Contains("1 => (int)FoxRunEncoding.JSON", StringComparison.Ordinal)
+                  && labels.Contains("2 => (int)FoxRunEncoding.MessagePack", StringComparison.Ordinal)
+                  && labels.Contains("_ => (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
-                "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
+                "175C-8: Manager dropdown offers Protobuf, JSON, and MessagePack and cannot persist Inherit");
             Check(inspector.Contains("FoxRun Subscribe Profile", StringComparison.Ordinal)
                   && inspector.Contains("\"Source\"", StringComparison.Ordinal)
                   && inspector.Contains("Foxglove Encoding", StringComparison.Ordinal)

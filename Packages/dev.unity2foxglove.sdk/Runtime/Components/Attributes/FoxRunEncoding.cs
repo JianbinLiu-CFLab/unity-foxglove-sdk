@@ -17,6 +17,9 @@ namespace Unity.FoxgloveSDK.Components
         Protobuf = 1,
 
         /// <summary>Use the generated JSON payload contract.</summary>
-        JSON = 2
+        JSON = 2,
+
+        /// <summary>Use the generated schemaless MessagePack payload contract.</summary>
+        MessagePack = 3
     }
 }

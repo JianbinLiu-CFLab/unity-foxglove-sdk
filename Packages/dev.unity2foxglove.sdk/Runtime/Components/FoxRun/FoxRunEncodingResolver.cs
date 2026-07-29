@@ -55,12 +55,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Validates a concrete directional profile default.</summary>
         public static FoxRunEncoding ValidateProfileDefault(FoxRunEncoding encoding)
         {
-            if (encoding == FoxRunEncoding.Protobuf || encoding == FoxRunEncoding.JSON)
+            if (encoding == FoxRunEncoding.Protobuf
+                || encoding == FoxRunEncoding.JSON
+                || encoding == FoxRunEncoding.MessagePack)
                 return encoding;
 
             throw new ArgumentOutOfRangeException(
                 nameof(encoding),
-                "FoxRun profile encoding must be Protobuf or JSON.");
+                "FoxRun profile encoding must be Protobuf, JSON, or MessagePack.");
         }
 
         /// <summary>Returns the Foxglove protocol spelling.</summary>
@@ -70,6 +72,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 case FoxRunEncoding.Protobuf: return "protobuf";
                 case FoxRunEncoding.JSON: return "json";
+                case FoxRunEncoding.MessagePack: return "msgpack";
                 default: throw new ArgumentOutOfRangeException(nameof(encoding));
             }
         }
@@ -81,6 +84,8 @@ namespace Unity.FoxgloveSDK.Components
                 return FoxRunEncoding.Protobuf;
             if (string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase))
                 return FoxRunEncoding.JSON;
+            if (string.Equals(encoding, "msgpack", StringComparison.OrdinalIgnoreCase))
+                return FoxRunEncoding.MessagePack;
 
             throw new ArgumentException(
                 "Unsupported FoxRun encoding: " + (encoding ?? string.Empty),

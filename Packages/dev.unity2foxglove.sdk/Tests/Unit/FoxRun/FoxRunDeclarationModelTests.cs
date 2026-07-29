@@ -395,12 +395,14 @@ namespace Demo
                 new[]
                 {
                     FoxRunEncoding.Protobuf,
-                    FoxRunEncoding.JSON
+                    FoxRunEncoding.JSON,
+                    (FoxRunEncoding)3
                 },
                 values);
             Assert.Equal(0, (int)(FoxRunEncoding)0);
             Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
             Assert.Equal(2, (int)FoxRunEncoding.JSON);
+            Assert.Equal(3, (int)(FoxRunEncoding)3);
         }
 
         [Fact]

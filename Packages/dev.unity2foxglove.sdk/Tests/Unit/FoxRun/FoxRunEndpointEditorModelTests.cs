@@ -117,5 +117,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.DoesNotContain("_overrideFoxRunPublishTargets", publish);
             Assert.DoesNotContain("DrawTargets(", publish);
         }
+
+        [Fact]
+        public void DirectionalEncodingPopupIncludesMessagePackWithoutAnInheritChoice()
+        {
+            var labels = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEncodingEditorLabels.cs");
+
+            Assert.Contains(
+                "{ \"Protobuf\", \"JSON\", \"MessagePack\" }",
+                labels);
+            Assert.Contains(
+                "case FoxRunEncoding.MessagePack: return \"MessagePack\";",
+                labels);
+            Assert.DoesNotContain(
+                "{ \"Inherit\", \"Protobuf\", \"JSON\", \"MessagePack\" }",
+                labels);
+        }
     }
 }

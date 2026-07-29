@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(FoxRunEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
         private int _foxRunRos2NativeCopyBudgetBytes = FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
 
-        [Tooltip("Allow generated Subscribe and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Enabled by default for the ordinary Unity and Foxglove workflow.")]
+        [Tooltip("Allow generated Subscribe and PublishAndSubscribe FoxRun members to receive client-published Protobuf, JSON, or MessagePack. Enabled by default for the ordinary Unity and Foxglove workflow.")]
         [SerializeField] private bool _enableFoxRunInbound = true;
         [Tooltip("Permit non-loopback FoxRun inbound only when a configured shared token is required at WebSocket connect time. This is shared-token authorization, not per-client identity.")]
         [SerializeField] private bool _allowRemoteFoxRunInboundWithSharedToken;

@@ -82,6 +82,36 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void MessagePackPublishDefaultIsFrozenUntilTheSessionEnds()
+        {
+            var state = new FoxRunPublishSessionState();
+            var first = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                (FoxRunEncoding)3,
+                10f,
+                FoxRunResolvedQos.Default,
+                FoxRunResolvedQos.Default);
+            var repeated = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.JSON,
+                20f,
+                FoxRunResolvedQos.SensorData,
+                FoxRunResolvedQos.SensorData);
+
+            Assert.Same(first, repeated);
+            Assert.Equal((FoxRunEncoding)3, repeated.FoxgloveEncoding);
+
+            state.End();
+            var recaptured = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.JSON,
+                20f,
+                FoxRunResolvedQos.SensorData,
+                FoxRunResolvedQos.SensorData);
+            Assert.Equal(FoxRunEncoding.JSON, recaptured.FoxgloveEncoding);
+        }
+
+        [Fact]
         public void EndThenBeginRecapturesAndAdvancesGeneration()
         {
             var state = new FoxRunPublishSessionState();

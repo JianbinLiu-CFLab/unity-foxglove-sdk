@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Components
             if (hasExplicitEncoding && !IsValidEncoding(declaredEncoding))
             {
                 return Failure(mode, FoxRunEndpointDiagnosticCode.InvalidEncoding,
-                    "FoxRun Encoding must be Protobuf or JSON.");
+                    "FoxRun Encoding must be Protobuf, JSON, or MessagePack.");
             }
 
             var publishesToFoxglove = publishes
@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Components
                 else if (!TryValidateProfileEncoding(publishDefaultEncoding))
                 {
                     return Failure(mode, FoxRunEndpointDiagnosticCode.InvalidProfileEncoding,
-                        "FoxRun Publish Profile Encoding must be Protobuf or JSON.");
+                        "FoxRun Publish Profile Encoding must be Protobuf, JSON, or MessagePack.");
                 }
                 else
                 {
@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Components
                 else if (!TryValidateProfileEncoding(subscribeDefaultEncoding))
                 {
                     return Failure(mode, FoxRunEndpointDiagnosticCode.InvalidProfileEncoding,
-                        "FoxRun Subscribe Profile Encoding must be Protobuf or JSON.");
+                        "FoxRun Subscribe Profile Encoding must be Protobuf, JSON, or MessagePack.");
                 }
                 else
                 {
@@ -235,7 +235,9 @@ namespace Unity.FoxgloveSDK.Components
             => targets != 0 && (targets & ~AllPublishTargets) == 0;
 
         private static bool IsValidEncoding(FoxRunEncoding encoding)
-            => encoding == FoxRunEncoding.Protobuf || encoding == FoxRunEncoding.JSON;
+            => encoding == FoxRunEncoding.Protobuf
+               || encoding == FoxRunEncoding.JSON
+               || encoding == FoxRunEncoding.MessagePack;
 
         private static bool TryValidateProfileEncoding(FoxRunEncoding encoding)
             => IsValidEncoding(encoding);

@@ -136,6 +136,39 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void MessagePackSubscribeDefaultIsFrozenUntilDisableAndReenable()
+        {
+            var state = new FoxRunSubscriptionSessionState();
+            var first = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                (FoxRunEncoding)3,
+                FoxRunResolvedQos.Default,
+                4 * 1024 * 1024,
+                60,
+                10);
+            var repeated = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.Protobuf,
+                FoxRunResolvedQos.SensorData,
+                8 * 1024 * 1024,
+                120,
+                30);
+
+            Assert.Same(first, repeated);
+            Assert.Equal((FoxRunEncoding)3, repeated.FoxgloveEncoding);
+
+            state.End();
+            var recaptured = state.BeginIfNeeded(
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.Protobuf,
+                FoxRunResolvedQos.SensorData,
+                8 * 1024 * 1024,
+                120,
+                30);
+            Assert.Equal(FoxRunEncoding.Protobuf, recaptured.FoxgloveEncoding);
+        }
+
+        [Fact]
         public void EndIsIdempotentAndKeepsTheCurrentGeneration()
         {
             var state = new FoxRunSubscriptionSessionState();

@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void EncodingProtocolVocabularyContainsOnlyProtobufAndJson()
+        public void EncodingProtocolVocabularyContainsEveryFoxgloveEncoding()
         {
             Assert.Equal(
                 "protobuf",
@@ -182,12 +182,87 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(
                 "json",
                 FoxRunEncodingResolver.ToProtocolEncoding(FoxRunEncoding.JSON));
+            Assert.Equal(
+                "msgpack",
+                FoxRunEncodingResolver.ToProtocolEncoding((FoxRunEncoding)3));
             Assert.Throws<ArgumentException>(() =>
                 FoxRunEncodingResolver.FromProtocolEncoding("cdr"));
             Assert.Throws<ArgumentException>(() =>
                 FoxRunEncodingResolver.FromProtocolEncoding("ros2"));
             Assert.Throws<ArgumentException>(() =>
                 FoxRunEncodingResolver.FromProtocolEncoding("inherit"));
+        }
+
+        [Theory]
+        [InlineData(FoxRunFlow.Publish)]
+        [InlineData(FoxRunFlow.Subscribe)]
+        [InlineData(FoxRunFlow.PublishAndSubscribe)]
+        public void ExplicitMessagePackResolvesForEveryEffectiveFoxgloveDirection(
+            FoxRunFlow mode)
+        {
+            var result = FoxRunEndpointResolver.Resolve(
+                mode,
+                declaredSource: FoxRunEndpoint.Foxglove,
+                hasExplicitSource: mode != FoxRunFlow.Publish,
+                declaredTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitTargets: mode != FoxRunFlow.Subscribe,
+                declaredEncoding: (FoxRunEncoding)3,
+                hasExplicitEncoding: true,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+
+            Assert.True(result.Success, result.DiagnosticMessage);
+            Assert.Equal(
+                mode == FoxRunFlow.Subscribe ? (FoxRunEncoding)0 : (FoxRunEncoding)3,
+                result.Topology.PublishEncoding);
+            Assert.Equal(
+                mode == FoxRunFlow.Publish ? (FoxRunEncoding)0 : (FoxRunEncoding)3,
+                result.Topology.SubscribeEncoding);
+        }
+
+        [Fact]
+        public void ExplicitMessagePackStillRequiresAnEffectiveFoxgloveDirection()
+        {
+            var result = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: FoxRunEndpoint.Ros2Native,
+                hasExplicitSource: true,
+                declaredTargets: FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+                hasExplicitTargets: true,
+                declaredEncoding: (FoxRunEncoding)3,
+                hasExplicitEncoding: true,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+
+            Assert.False(result.Success);
+            Assert.Equal(
+                FoxRunEndpointDiagnosticCode.EncodingRequiresFoxglove,
+                result.DiagnosticCode);
+        }
+
+        [Fact]
+        public void OmittedFullDuplexEncodingCanInheritMessagePackInOnlyOneDirection()
+        {
+            var result = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: FoxRunEndpoint.Foxglove,
+                hasExplicitSource: false,
+                declaredTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitTargets: false,
+                declaredEncoding: (FoxRunEncoding)0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: (FoxRunEncoding)3,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
+
+            Assert.True(result.Success, result.DiagnosticMessage);
+            Assert.Equal((FoxRunEncoding)3, result.Topology.PublishEncoding);
+            Assert.Equal(FoxRunEncoding.Protobuf, result.Topology.SubscribeEncoding);
         }
 
         private static FoxRunEndpointResolution ResolveSubscribe(

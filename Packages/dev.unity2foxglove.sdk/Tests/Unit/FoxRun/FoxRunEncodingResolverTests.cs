@@ -11,6 +11,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunEncodingResolverTests
     {
         [Fact]
+        public void PublicEncodingValuesRemainSerializedAsOneTwoThreeWithZeroReserved()
+        {
+            Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunEncoding.JSON);
+            Assert.Equal(3, (int)(FoxRunEncoding)3);
+            Assert.False(Enum.IsDefined(typeof(FoxRunEncoding), 0));
+            Assert.Equal(
+                new[] { "Protobuf", "JSON", "MessagePack" },
+                Enum.GetNames(typeof(FoxRunEncoding)));
+        }
+
+        [Fact]
         public void InheritResolvesToTheManagerProtobufDefault()
         {
             Assert.Equal(
@@ -41,7 +53,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void WebSocketWireResolverOnlyReturnsProtobufOrJsonAndRejectsRos2Cdr()
+        public void WebSocketWireResolverRoundTripsAllFoxgloveEncodingsAndRejectsRos2Cdr()
         {
             Assert.Equal(
                 "protobuf",
@@ -49,6 +61,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(
                 "json",
                 FoxRunEncodingResolver.ToProtocolEncoding(FoxRunEncoding.JSON));
+            Assert.Equal(
+                "msgpack",
+                FoxRunEncodingResolver.ToProtocolEncoding((FoxRunEncoding)3));
+            Assert.Equal(
+                (FoxRunEncoding)3,
+                FoxRunEncodingResolver.FromProtocolEncoding("msgpack"));
             Assert.Throws<ArgumentException>(() =>
                 FoxRunEncodingResolver.FromProtocolEncoding("ros2"));
             Assert.Throws<ArgumentException>(() =>
@@ -81,6 +99,40 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunEncoding.JSON));
 
             Assert.IsType<ArgumentException>(exception.InnerException);
+        }
+
+        [Theory]
+        [InlineData(FoxRunFlow.Publish)]
+        [InlineData(FoxRunFlow.Subscribe)]
+        [InlineData(FoxRunFlow.PublishAndSubscribe)]
+        public void ExplicitMessagePackIsConcreteForEveryFoxgloveFlow(FoxRunFlow mode)
+        {
+            Assert.Equal(
+                (FoxRunEncoding)3,
+                InvokeDirectionalResolver(
+                    (FoxRunEncoding)3,
+                    mode,
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.JSON));
+        }
+
+        [Fact]
+        public void InheritedMessagePackDefaultsRemainDirectionallyIndependent()
+        {
+            Assert.Equal(
+                (FoxRunEncoding)3,
+                InvokeDirectionalResolver(
+                    (FoxRunEncoding)0,
+                    FoxRunFlow.Publish,
+                    (FoxRunEncoding)3,
+                    FoxRunEncoding.JSON));
+            Assert.Equal(
+                (FoxRunEncoding)3,
+                InvokeDirectionalResolver(
+                    (FoxRunEncoding)0,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEncoding.Protobuf,
+                    (FoxRunEncoding)3));
         }
 
         [Fact]
