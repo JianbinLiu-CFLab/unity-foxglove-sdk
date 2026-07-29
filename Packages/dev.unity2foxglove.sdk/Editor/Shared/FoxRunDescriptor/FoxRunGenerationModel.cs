@@ -217,8 +217,8 @@ namespace Unity.FoxgloveSDK.Editor
         /// precompiled ros2cs <see cref="FoxRunRos2MessageShape"/>.
         /// </summary>
         public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
-        public readonly int ProtobufFieldNumber;
-        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+        public readonly FoxRunProtobufMetadata ProtobufMetadata;
+        public readonly FoxRunTypeShape TypeShape;
         /// <summary>Raw declaration value retained separately from explicit presence.</summary>
         public readonly float DeclaredHz;
         public readonly bool HasExplicitHz;
@@ -266,7 +266,7 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
             string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
@@ -281,7 +281,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
-            bool isStream = false)
+            bool isStream = false,
+            FoxRunProtobufMetadata protobufMetadata = null)
             : this(
                 ns,
                 className,
@@ -306,7 +307,7 @@ namespace Unity.FoxgloveSDK.Editor
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape,
+                typeShape,
                 source,
                 qosProfile,
                 generatesWebSocketCodec,
@@ -321,7 +322,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosDurability,
                 qosHistory,
                 qosDepth,
-                isStream)
+                isStream,
+                protobufMetadata)
         {
         }
 
@@ -349,7 +351,7 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
             string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
@@ -364,7 +366,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
-            bool isStream = false)
+            bool isStream = false,
+            FoxRunProtobufMetadata protobufMetadata = null)
             : this(
                 ns,
                 className,
@@ -390,7 +393,7 @@ namespace Unity.FoxgloveSDK.Editor
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape,
+                typeShape,
                 source,
                 qosProfile,
                 generatesWebSocketCodec,
@@ -405,7 +408,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosDurability,
                 qosHistory,
                 qosDepth,
-                isStream)
+                isStream,
+                protobufMetadata)
         {
         }
 
@@ -434,7 +438,7 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
             string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
@@ -449,7 +453,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
-            bool isStream = false)
+            bool isStream = false,
+            FoxRunProtobufMetadata protobufMetadata = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -483,8 +488,21 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2ContractKind,
                 ros2MessageShape,
                 ros2CustomDtoShape);
-            ProtobufFieldNumber = protobufFieldNumber;
-            ProtobufTypeShape = protobufTypeShape;
+            TypeShape = typeShape;
+            ProtobufMetadata = protobufMetadata
+                               ?? (protobufFieldNumber != 0
+                                   || string.Equals(
+                                       Encoding,
+                                       FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                                       StringComparison.Ordinal)
+                                   || string.Equals(
+                                       Encoding,
+                                       FoxRunGenerationDescriptorConstants.InheritEncoding,
+                                       StringComparison.Ordinal)
+                                       ? FoxRunProtobufMetadata.FromTypeShape(
+                                           typeShape,
+                                           protobufFieldNumber)
+                                       : null);
             NamedArgumentPresence = namedArgumentPresence
                 ?? InferNamedArgumentPresence(
                     hz,
@@ -556,8 +574,8 @@ namespace Unity.FoxgloveSDK.Editor
                 Mode,
                 CanonicalType,
                 Encoding,
-                ProtobufFieldNumber,
-                ProtobufTypeShape,
+                0,
+                TypeShape,
                 Source,
                 QosProfile,
                 GeneratesWebSocketCodec,
@@ -573,7 +591,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosDurability: QosDurability,
                 qosHistory: QosHistory,
                 qosDepth: QosDepth,
-                isStream: IsStream);
+                isStream: IsStream,
+                protobufMetadata: ProtobufMetadata);
         }
 
         public bool HasNamedArgument(FoxRunNamedArgumentPresence argument)

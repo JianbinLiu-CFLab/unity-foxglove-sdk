@@ -128,11 +128,11 @@ namespace Unity.FoxgloveSDK.Editor
                 && !string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity)
                     ? member.Ros2CustomDtoShape.PayloadIdentity + "Envelope"
                     : string.Empty);
-            if (member.ProtobufFieldNumber > 0)
+            if ((member.ProtobufMetadata?.FieldNumber ?? 0) > 0)
             {
                 sb.Append(',');
                 WriteName(sb, "protobufFieldNumber");
-                sb.Append(member.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+                sb.Append(member.ProtobufMetadata.FieldNumber.ToString(CultureInfo.InvariantCulture));
             }
             sb.Append(',');
             WriteName(sb, "hz");

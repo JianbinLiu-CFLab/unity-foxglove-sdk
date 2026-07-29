@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     mode: member.Mode,
                     encoding: FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
                     protobufFieldNumber: member.ProtobufFieldNumber,
-                    protobufTypeShape: member.ProtobufTypeShape,
+                    typeShape: member.TypeShape,
                     source: FoxRunGenerationMember.DeclaredSourceToText(member.Source),
                     qosProfile: FoxRunGenerationMember.DeclaredQosProfileToText(member.QosProfile),
                     generatesWebSocketCodec: member.GeneratesWebSocketCodec,
@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
         public readonly FoxRunRos2ContractKind Ros2ContractKind;
         public readonly int ProtobufFieldNumber;
-        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+        public readonly FoxRunTypeShape TypeShape;
         public readonly float Tolerance;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int mode = 1,
             int encoding = 0,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             int source = 0,
             int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
@@ -167,7 +167,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             QosHistory = qosHistory;
             QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec
-                ?? (protobufTypeShape != null
+                ?? (typeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
                         FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
                             isArray && !string.IsNullOrEmpty(elementTypeName)
@@ -181,7 +181,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Ros2CustomDtoShape = ros2CustomDtoShape;
             Ros2ContractKind = ros2ContractKind;
             ProtobufFieldNumber = protobufFieldNumber;
-            ProtobufTypeShape = protobufTypeShape;
+            TypeShape = typeShape;
             Tolerance = tolerance;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int mode = 1,
             int encoding = 0,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             int source = 0,
             int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
@@ -253,7 +253,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape,
+                typeShape,
                 source,
                 qosProfile,
                 generatesWebSocketCodec,

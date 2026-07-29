@@ -55,6 +55,7 @@
     <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/Channels/**/*.cs;../../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;../../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;../../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;../../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/Builders/ImuMessageBuilder.cs" />
     <Compile Include="../../Runtime/Utilities/*.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Fixtures/FoxRunGenerationModelFixture.cs" />
     <Compile Include="ValidationCategory.cs" />

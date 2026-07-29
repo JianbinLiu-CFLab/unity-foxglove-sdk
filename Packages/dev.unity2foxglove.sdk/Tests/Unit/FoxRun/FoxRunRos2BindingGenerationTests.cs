@@ -253,14 +253,14 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [Fact]
         public void InheritedDualCapabilityStillValidatesAdvertisedWebSocketShape()
         {
-            var protobufShape = FoxRunProtobufTypeShape.Object(
+            var protobufShape = FoxRunTypeShape.Object(
                 "vendor_msgs.msg.Command",
                 new[]
                 {
-                    new FoxRunProtobufTypeField(
+                    new FoxRunTypeField(
                         "value",
                         "Value",
-                        FoxRunProtobufTypeShape.Canonical("int32"),
+                        FoxRunTypeShape.Canonical("int32"),
                         canAssign: false)
                 });
             var member = BuildMember(
@@ -272,7 +272,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 generatesWebSocketCodec: true,
                 generatesNativeRegistration: true,
                 protobufFieldNumber: 19000,
-                protobufTypeShape: protobufShape);
+                typeShape: protobufShape);
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(
                 FoxRunGenerationModel.FromMembers(new[] { member }));
@@ -1256,7 +1256,7 @@ namespace Demo
             bool generatesWebSocketCodec = false,
             bool generatesNativeRegistration = true,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             FoxRunNamedArgumentPresence? namedArgumentPresence = null)
             => BuildMember(
                 provider,
@@ -1268,7 +1268,7 @@ namespace Demo
                 generatesWebSocketCodec,
                 generatesNativeRegistration,
                 protobufFieldNumber,
-                protobufTypeShape,
+                typeShape,
                 namedArgumentPresence);
 
         private static FoxRunGenerationMember BuildMember(
@@ -1281,7 +1281,7 @@ namespace Demo
             bool generatesWebSocketCodec = false,
             bool generatesNativeRegistration = true,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             FoxRunNamedArgumentPresence? namedArgumentPresence = null)
             => new FoxRunGenerationMember(
                 "Demo", "Receiver", "_incoming", "field",
@@ -1290,7 +1290,7 @@ namespace Demo
                 (int)FoxRunPolicy.FixedRate, 0f,
                 "Roslyn", 1, "", mode: mode, encoding: encoding,
                 protobufFieldNumber: protobufFieldNumber,
-                protobufTypeShape: protobufTypeShape,
+                typeShape: typeShape,
                 source: provider, qosProfile: qosProfile,
                 generatesWebSocketCodec: generatesWebSocketCodec,
                 generatesRos2NativeRegistration: generatesNativeRegistration,
@@ -1486,7 +1486,7 @@ namespace Demo
                 mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                 protobufFieldNumber: 17,
-                protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"),
+                typeShape: FoxRunTypeShape.Canonical("int32"),
                 source: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                 qosProfile: FoxRunGenerationDescriptorConstants.InheritQosProfile,
                 generatesWebSocketCodec: true,

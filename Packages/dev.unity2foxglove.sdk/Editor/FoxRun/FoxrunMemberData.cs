@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
             public readonly FoxRunRos2ContractKind Ros2ContractKind;
             public readonly int ProtobufFieldNumber;
-            public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+            public readonly FoxRunTypeShape TypeShape;
             /// <summary>Change tolerance.</summary>
             public readonly float Tolerance;
             public readonly int RawMemberOrder;
@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Editor
                     Ros2MessageShape,
                     Ros2CustomDtoShape);
                 ProtobufFieldNumber = protobufFieldNumber;
-                ProtobufTypeShape = TryBuildProtobufTypeShape(elementType ?? type);
+                TypeShape = TryBuildTypeShape(type);
                 Tolerance = tolerance;
                 RawMemberOrder = rawMemberOrder;
                 ConditionalSymbols = conditionalSymbols ?? "";
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Editor
                     Ros2MessageShape,
                     Ros2CustomDtoShape);
                 ProtobufFieldNumber = protobufFieldNumber;
-                ProtobufTypeShape = null;
+                TypeShape = null;
                 Tolerance = tolerance;
                 RawMemberOrder = rawMemberOrder;
                 ConditionalSymbols = conditionalSymbols ?? "";
@@ -206,10 +206,10 @@ namespace Unity.FoxgloveSDK.Editor
                     Mode,
                     Encoding,
                     ProtobufFieldNumber,
-                    ProtobufTypeShape,
+                    TypeShape,
                     Source,
                     QosProfile,
-                    ProtobufTypeShape != null
+                    TypeShape != null
                         || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
                             FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
                                 IsArray && !string.IsNullOrEmpty(ElementTypeName)
@@ -505,11 +505,11 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static FoxRunProtobufTypeShape TryBuildProtobufTypeShape(Type type)
+        private static FoxRunTypeShape TryBuildTypeShape(Type type)
         {
             try
             {
-                return FoxRunProtobufReflectionTypeShapeBuilder.Build(type);
+                return FoxRunReflectionTypeShapeBuilder.Build(type);
             }
             catch (ArgumentException)
             {

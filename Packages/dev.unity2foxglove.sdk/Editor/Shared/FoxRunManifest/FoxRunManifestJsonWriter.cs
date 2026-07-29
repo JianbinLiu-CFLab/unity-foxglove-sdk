@@ -427,23 +427,30 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "array");
             sb.Append(field.Array ? "true" : "false");
-            if (field.ProtobufFieldNumber > 0)
+            if ((field.ProtobufMetadata?.FieldNumber ?? 0) > 0)
             {
                 sb.Append(',');
                 AppendPropertyName(sb, "protobufFieldNumber");
-                sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+                sb.Append(field.ProtobufMetadata.FieldNumber.ToString(CultureInfo.InvariantCulture));
             }
-            if (field.ProtobufTypeShape != null)
+            if (field.TypeShape != null)
             {
                 sb.Append(',');
                 AppendPropertyName(sb, "protobufShape");
-                WriteProtobufTypeShape(sb, field.ProtobufTypeShape);
+                WriteProtobufTypeShape(
+                    sb,
+                    field.TypeShape,
+                    field.ProtobufMetadata?.TypeMetadata);
             }
             sb.Append('}');
         }
 
-        private static void WriteProtobufTypeShape(StringBuilder sb, FoxRunProtobufTypeShape shape)
+        private static void WriteProtobufTypeShape(
+            StringBuilder sb,
+            FoxRunTypeShape shape,
+            FoxRunProtobufTypeMetadata protobufMetadata = null)
         {
+            shape = LegacyProtobufValueShape(shape);
             sb.Append('{');
             AppendPropertyName(sb, "kind");
             AppendString(sb, shape.Kind.ToString());
@@ -460,7 +467,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 sb.Append(',');
                 AppendPropertyName(sb, "fields");
-                WriteProtobufTypeFields(sb, shape.Fields);
+                WriteProtobufTypeFields(sb, shape.Fields, protobufMetadata);
             }
             if (shape.EnumValues.Count > 0)
             {
@@ -471,9 +478,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append('}');
         }
 
-        private static void WriteProtobufTypeFields(StringBuilder sb, IReadOnlyList<FoxRunProtobufTypeField> fields)
+        private static void WriteProtobufTypeFields(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunTypeField> fields,
+            FoxRunProtobufTypeMetadata protobufMetadata)
         {
-            var ordered = new List<FoxRunProtobufTypeField>(fields ?? Array.Empty<FoxRunProtobufTypeField>());
+            var ordered = new List<FoxRunTypeField>(fields ?? Array.Empty<FoxRunTypeField>());
             ordered.Sort((left, right) => string.Compare(left.MemberName, right.MemberName, StringComparison.Ordinal));
             sb.Append('[');
             for (var index = 0; index < ordered.Count; index++)
@@ -490,23 +500,38 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.Append(',');
                 AppendPropertyName(sb, "repeated");
                 sb.Append(field.Repeated ? "true" : "false");
-                if (field.ProtobufFieldNumber > 0)
+                var fieldMetadata = protobufMetadata?.Find(
+                    field.MemberName,
+                    field.JsonName);
+                if ((fieldMetadata?.FieldNumber ?? 0) > 0)
                 {
                     sb.Append(',');
                     AppendPropertyName(sb, "protobufFieldNumber");
-                    sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+                    sb.Append(fieldMetadata.FieldNumber.ToString(CultureInfo.InvariantCulture));
                 }
                 sb.Append(',');
                 AppendPropertyName(sb, "shape");
-                WriteProtobufTypeShape(sb, field.TypeShape);
+                WriteProtobufTypeShape(
+                    sb,
+                    field.TypeShape,
+                    fieldMetadata?.TypeMetadata);
                 sb.Append('}');
             }
             sb.Append(']');
         }
 
-        private static void WriteProtobufEnumValues(StringBuilder sb, IReadOnlyList<FoxRunProtobufEnumValue> values)
+        private static FoxRunTypeShape LegacyProtobufValueShape(FoxRunTypeShape shape)
         {
-            var ordered = new List<FoxRunProtobufEnumValue>(values ?? Array.Empty<FoxRunProtobufEnumValue>());
+            while (shape != null && shape.Kind == FoxRunTypeShapeKind.Collection)
+                shape = shape.ElementShape;
+            return FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
+        }
+
+        private static void WriteProtobufEnumValues(StringBuilder sb, IReadOnlyList<FoxRunEnumValue> values)
+        {
+            var ordered = new List<FoxRunEnumValue>(values ?? Array.Empty<FoxRunEnumValue>());
+            if (!ordered.Exists(value => value.Number == 0))
+                ordered.Add(new FoxRunEnumValue("UNSPECIFIED", 0));
             ordered.Sort((left, right) =>
             {
                 var byNumber = left.Number.CompareTo(right.Number);

@@ -74,8 +74,10 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string Encoding;
             /// <summary>Optional stable Protobuf field-number override.</summary>
             public readonly int ProtobufFieldNumber;
+            /// <summary>Protobuf-only root and nested field metadata.</summary>
+            public readonly FoxRunProtobufMetadata ProtobufMetadata;
             /// <summary>DTO/enum shape used for direct Protobuf code generation.</summary>
-            public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+            public readonly FoxRunTypeShape TypeShape;
             /// <summary>Normalized declared subscription provider.</summary>
             public readonly string Source;
             /// <summary>Normalized declared publish-target set.</summary>
@@ -117,7 +119,7 @@ namespace Unity.FoxgloveSDK.Editor
                 string schemaName,
                 string encoding,
                 int protobufFieldNumber = 0,
-                FoxRunProtobufTypeShape protobufTypeShape = null)
+                FoxRunTypeShape typeShape = null)
                 : this(
                     memberName,
                     typeName,
@@ -128,7 +130,7 @@ namespace Unity.FoxgloveSDK.Editor
                     0f,
                     encoding: encoding,
                     protobufFieldNumber: protobufFieldNumber,
-                    protobufTypeShape: protobufTypeShape,
+                    typeShape: typeShape,
                     mode: FlowPublish) { }
 
             /// <summary>
@@ -138,7 +140,7 @@ namespace Unity.FoxgloveSDK.Editor
                 int policy, float tolerance, string onlyIf = "",
                 bool isAggregateMember = false, string jsonFieldName = "", int mode = FlowPublish, string canonicalType = "",
                 string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding, int protobufFieldNumber = 0,
-                FoxRunProtobufTypeShape protobufTypeShape = null,
+                FoxRunTypeShape typeShape = null,
                 string source = FoxRunGenerationDescriptorConstants.InheritSource,
                 string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
                 bool generatesWebSocketCodec = true,
@@ -154,7 +156,8 @@ namespace Unity.FoxgloveSDK.Editor
                 string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
                 string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
                 int qosDepth = 0,
-                bool isStream = false)
+                bool isStream = false,
+                FoxRunProtobufMetadata protobufMetadata = null)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -177,8 +180,22 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding = string.IsNullOrWhiteSpace(encoding)
                     ? FoxRunGenerationDescriptorConstants.InheritEncoding
                     : encoding;
-                ProtobufFieldNumber = protobufFieldNumber;
-                ProtobufTypeShape = protobufTypeShape;
+                TypeShape = typeShape;
+                ProtobufMetadata = protobufMetadata
+                                   ?? (protobufFieldNumber != 0
+                                       || string.Equals(
+                                           Encoding,
+                                           FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                                           StringComparison.Ordinal)
+                                       || string.Equals(
+                                           Encoding,
+                                           FoxRunGenerationDescriptorConstants.InheritEncoding,
+                                           StringComparison.Ordinal)
+                                           ? FoxRunProtobufMetadata.FromTypeShape(
+                                               typeShape,
+                                               protobufFieldNumber)
+                                           : null);
+                ProtobufFieldNumber = ProtobufMetadata?.FieldNumber ?? 0;
                 Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
                 Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
                 QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;

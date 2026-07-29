@@ -78,7 +78,14 @@ namespace Unity.FoxgloveSDK.Editor
                         ? FieldDescriptorProto.Types.Label.Repeated
                         : FieldDescriptorProto.Types.Label.Optional
                 };
-                ApplyType(descriptorField, field.CanonicalType, field.TypeShape, file, namedTypes, usedTypeNames);
+                ApplyType(
+                    descriptorField,
+                    field.CanonicalType,
+                    ProtobufValueShape(field.TypeShape, field.IsArray),
+                    field.ProtobufMetadata?.TypeMetadata,
+                    file,
+                    namedTypes,
+                    usedTypeNames);
                 message.Field.Add(descriptorField);
             }
 
@@ -108,14 +115,15 @@ namespace Unity.FoxgloveSDK.Editor
         private static void ApplyType(
             FieldDescriptorProto field,
             string canonicalType,
-            FoxRunProtobufTypeShape typeShape,
+            FoxRunTypeShape typeShape,
+            FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
             ISet<string> usedTypeNames)
         {
             if (typeShape != null)
             {
-                ApplyTypeShape(field, typeShape, file, namedTypes, usedTypeNames);
+                ApplyTypeShape(field, typeShape, protobufMetadata, file, namedTypes, usedTypeNames);
                 return;
             }
 
@@ -184,49 +192,77 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void ApplyTypeShape(
             FieldDescriptorProto field,
-            FoxRunProtobufTypeShape shape,
+            FoxRunTypeShape shape,
+            FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
             ISet<string> usedTypeNames)
         {
+            shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
             switch (shape.Kind)
             {
-                case FoxRunProtobufTypeShapeKind.Canonical:
-                    ApplyType(field, shape.CanonicalType, null, file, namedTypes, usedTypeNames);
+                case FoxRunTypeShapeKind.Canonical:
+                    ApplyType(field, shape.CanonicalType, null, null, file, namedTypes, usedTypeNames);
                     return;
-                case FoxRunProtobufTypeShapeKind.Object:
+                case FoxRunTypeShapeKind.Object:
                     field.Type = FieldDescriptorProto.Types.Type.Message;
-                    field.TypeName = "." + PackageName + "." + EnsureObjectDescriptor(shape, file, namedTypes, usedTypeNames);
+                    field.TypeName = "." + PackageName + "." + EnsureObjectDescriptor(
+                        shape,
+                        protobufMetadata,
+                        file,
+                        namedTypes,
+                        usedTypeNames);
                     return;
-                case FoxRunProtobufTypeShapeKind.Enum:
+                case FoxRunTypeShapeKind.Enum:
                     field.Type = FieldDescriptorProto.Types.Type.Enum;
                     field.TypeName = "." + PackageName + "." + EnsureEnumDescriptor(shape, file, namedTypes, usedTypeNames);
                     return;
+                case FoxRunTypeShapeKind.Collection:
+                    throw new InvalidOperationException(
+                        "FoxRun Protobuf collection metadata must be separated from its element type before descriptor emission.");
                 default:
                     throw new InvalidOperationException("FoxRun Protobuf type shape kind is not supported: " + shape.Kind + ".");
             }
         }
 
         private static string EnsureObjectDescriptor(
-            FoxRunProtobufTypeShape shape,
+            FoxRunTypeShape shape,
+            FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
             ISet<string> usedTypeNames)
         {
             var typeKey = "object|" + shape.TypeName;
             var name = EnsureTypeName(typeKey, shape.TypeName, namedTypes, usedTypeNames);
+            var identityKey = typeKey + "#identity";
+            var identity = FoxRunProtobufObjectShapeIdentity.Build(
+                shape,
+                protobufMetadata);
             if (namedTypes.ContainsKey(typeKey + "#defined"))
+            {
+                if (!namedTypes.TryGetValue(identityKey, out var existingIdentity)
+                    || !string.Equals(existingIdentity, identity, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun Protobuf object type '" + shape.TypeName
+                        + "' was reused with an inconsistent shape or Protobuf metadata contract.");
+                }
                 return name;
+            }
 
+            namedTypes[identityKey] = identity;
             namedTypes[typeKey + "#defined"] = string.Empty;
             var message = new DescriptorProto { Name = name };
             file.MessageType.Add(message);
             var usedNumbers = new Dictionary<int, string>();
             foreach (var nestedField in shape.Fields.OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
             {
+                var fieldMetadata = protobufMetadata?.Find(
+                    nestedField.MemberName,
+                    nestedField.JsonName);
                 var number = FoxRunProtobufFieldNumber.Resolve(
                     shape.TypeName + "|" + nestedField.MemberName,
-                    nestedField.ProtobufFieldNumber);
+                    fieldMetadata?.FieldNumber ?? 0);
                 if (usedNumbers.TryGetValue(number, out var existingMember))
                 {
                     throw new InvalidOperationException(
@@ -245,15 +281,35 @@ namespace Unity.FoxgloveSDK.Editor
                         ? FieldDescriptorProto.Types.Label.Repeated
                         : FieldDescriptorProto.Types.Label.Optional
                 };
-                ApplyTypeShape(descriptorField, nestedField.TypeShape, file, namedTypes, usedTypeNames);
+                ApplyTypeShape(
+                    descriptorField,
+                    ProtobufValueShape(nestedField.TypeShape, nestedField.Repeated),
+                    fieldMetadata?.TypeMetadata,
+                    file,
+                    namedTypes,
+                    usedTypeNames);
                 message.Field.Add(descriptorField);
             }
 
             return name;
         }
 
+        private static FoxRunTypeShape ProtobufValueShape(
+            FoxRunTypeShape shape,
+            bool repeated)
+        {
+            if (!repeated || shape == null)
+                return shape;
+            if (shape.Kind != FoxRunTypeShapeKind.Collection || shape.ElementShape == null)
+            {
+                throw new InvalidOperationException(
+                    "FoxRun repeated Protobuf metadata requires a collection type shape with an element shape.");
+            }
+            return shape.ElementShape;
+        }
+
         private static string EnsureEnumDescriptor(
-            FoxRunProtobufTypeShape shape,
+            FoxRunTypeShape shape,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
             ISet<string> usedTypeNames)
@@ -268,17 +324,59 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new InvalidOperationException("FoxRun Protobuf enum '" + shape.TypeName + "' has no values.");
 
             var descriptor = new EnumDescriptorProto { Name = name };
-            foreach (var value in shape.EnumValues.OrderBy(candidate => candidate.Number).ThenBy(candidate => candidate.Name, StringComparer.Ordinal))
+            var ordered = shape.EnumValues
+                .OrderBy(candidate => candidate.Number)
+                .ThenBy(candidate => candidate.Name, StringComparer.Ordinal)
+                .ToList();
+            var zero = ordered.FirstOrDefault(candidate => candidate.Number == 0);
+            if (zero == null)
             {
                 descriptor.Value.Add(new EnumValueDescriptorProto
                 {
-                    Name = ToIdentifier(value.Name, "UNSPECIFIED", upperFirst: true),
-                    Number = value.Number
+                    Name = SyntheticUnspecifiedName(ordered),
+                    Number = 0
                 });
+            }
+            else
+            {
+                AppendEnumValue(descriptor, zero);
+            }
+
+            foreach (var value in ordered)
+            {
+                if (ReferenceEquals(value, zero))
+                    continue;
+                AppendEnumValue(descriptor, value);
             }
 
             file.EnumType.Add(descriptor);
             return name;
+        }
+
+        private static void AppendEnumValue(
+            EnumDescriptorProto descriptor,
+            FoxRunEnumValue value)
+        {
+            descriptor.Value.Add(new EnumValueDescriptorProto
+            {
+                Name = ToIdentifier(value.Name, "UNSPECIFIED", upperFirst: true),
+                Number = value.Number
+            });
+        }
+
+        private static string SyntheticUnspecifiedName(
+            IReadOnlyList<FoxRunEnumValue> declaredValues)
+        {
+            var declaredNames = new HashSet<string>(
+                declaredValues.Select(value =>
+                    ToIdentifier(value.Name, "UNSPECIFIED", upperFirst: true)),
+                StringComparer.Ordinal);
+            var baseName = "UNSPECIFIED";
+            var candidate = baseName;
+            var suffix = 2;
+            while (declaredNames.Contains(candidate))
+                candidate = baseName + "_" + suffix++.ToString(CultureInfo.InvariantCulture);
+            return candidate;
         }
 
         private static string EnsureTypeName(
@@ -403,21 +501,26 @@ namespace Unity.FoxgloveSDK.Editor
             string canonicalType,
             bool isArray,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape typeShape = null)
+            FoxRunTypeShape typeShape = null,
+            FoxRunProtobufMetadata protobufMetadata = null)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             CanonicalType = canonicalType ?? string.Empty;
             IsArray = isArray;
-            ProtobufFieldNumber = protobufFieldNumber;
             TypeShape = typeShape;
+            ProtobufMetadata = protobufMetadata
+                               ?? FoxRunProtobufMetadata.FromTypeShape(
+                                   typeShape,
+                                   protobufFieldNumber);
         }
 
         public string JsonName { get; }
         public string MemberName { get; }
         public string CanonicalType { get; }
         public bool IsArray { get; }
-        public int ProtobufFieldNumber { get; }
-        public FoxRunProtobufTypeShape TypeShape { get; }
+        public int ProtobufFieldNumber => ProtobufMetadata?.FieldNumber ?? 0;
+        public FoxRunTypeShape TypeShape { get; }
+        public FoxRunProtobufMetadata ProtobufMetadata { get; }
     }
 }

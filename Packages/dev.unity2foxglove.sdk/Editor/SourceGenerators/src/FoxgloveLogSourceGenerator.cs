@@ -454,9 +454,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var isArray = TryGetArrayElementType(typeSymbol, out var elementType);
             var elementTypeName = elementType == null ? "" : elementType.ToDisplayString();
             var rawMemberOrder = symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start ?? 0;
-            FoxRunRoslynProtobufTypeShapeBuilder.TryBuild(
-                isArray ? elementType : typeSymbol,
-                out var protobufTypeShape);
+            FoxRunRoslynTypeShapeBuilder.TryBuild(
+                typeSymbol,
+                out var typeShape);
             var ros2MessageShape = FoxRunRoslynRos2MessageShapeBuilder.Build(
                 typeSymbol,
                 ctx.SemanticModel.Compilation);
@@ -492,7 +492,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream);
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), typeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream);
         }
 
         private static bool HasNonNullStreamInitializer(

@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Editor
                 ? ProtobufInputDispatchEmitter.ReaderCall(
                     protobufFieldNumber,
                     typeName,
-                    member.ProtobufTypeShape,
+                    member.TypeShape,
                     index)
                 : string.Empty;
             var jsonReader = SupportsGeneratedJsonObject(member)
@@ -526,8 +526,23 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool SupportsGeneratedJsonObject(
             FoxgloveSourceEmitter.TopicMember member)
-            => member?.ProtobufTypeShape != null
-               && (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
-                   || member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum);
+        {
+            var shape = member?.TypeShape;
+            if (shape?.Kind == FoxRunTypeShapeKind.Collection)
+                shape = shape.ElementShape;
+            return shape != null
+                   && (shape.Kind == FoxRunTypeShapeKind.Object
+                       || shape.Kind == FoxRunTypeShapeKind.Enum)
+                   && !UsesBuiltInJsonCodec(shape);
+        }
+
+        private static bool UsesBuiltInJsonCodec(FoxRunTypeShape shape)
+        {
+            var typeName = shape?.TypeName ?? string.Empty;
+            return string.Equals(typeName, "UnityEngine.Vector2", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Vector3", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Quaternion", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal);
+        }
     }
 }

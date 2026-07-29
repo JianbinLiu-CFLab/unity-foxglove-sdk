@@ -226,11 +226,14 @@ namespace Unity.FoxgloveSDK.Editor
                     + member.Ros2MessageShape.CanonicalRosType + "'."));
             }
 
-            if (requiresWebSocketShapeValidation && member.ProtobufFieldNumber != 0)
+            if (requiresWebSocketShapeValidation
+                && (member.ProtobufMetadata?.FieldNumber ?? 0) != 0)
             {
                 try
                 {
-                    FoxRunProtobufFieldNumber.Resolve(target, member.ProtobufFieldNumber);
+                    FoxRunProtobufFieldNumber.Resolve(
+                        target,
+                        member.ProtobufMetadata?.FieldNumber ?? 0);
                 }
                 catch (ArgumentOutOfRangeException)
                 {
@@ -255,9 +258,12 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (requiresWebSocketShapeValidation
                 && member.Mode != 1
-                && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
-                && member.ProtobufTypeShape != null
-                && !IsInboundAssignable(member.ProtobufTypeShape))
+                && string.Equals(
+                    member.Encoding,
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    StringComparison.Ordinal)
+                && member.TypeShape != null
+                && !IsInboundAssignable(member.TypeShape))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     "FOXRUN200",
@@ -300,13 +306,13 @@ namespace Unity.FoxgloveSDK.Editor
             if (requiresWebSocketShapeValidation
                 && !IsNativeCustomBidirectionalOutputContract(member)
                 && !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
-                && (member.ProtobufTypeShape == null
+                && (member.TypeShape == null
                     || (!string.Equals(
                             member.Encoding,
                             FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                             StringComparison.Ordinal)
-                        && member.ProtobufTypeShape.Kind != FoxRunProtobufTypeShapeKind.Object
-                        && member.ProtobufTypeShape.Kind != FoxRunProtobufTypeShapeKind.Enum)))
+                        && member.TypeShape.Kind != FoxRunTypeShapeKind.Object
+                        && member.TypeShape.Kind != FoxRunTypeShapeKind.Enum)))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
                 var message = string.IsNullOrWhiteSpace(raw)
@@ -727,8 +733,8 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 var duplicateProtobufTag = members
-                    .Where(member => member.ProtobufFieldNumber > 0)
-                    .GroupBy(member => member.ProtobufFieldNumber)
+                    .Where(member => (member.ProtobufMetadata?.FieldNumber ?? 0) > 0)
+                    .GroupBy(member => member.ProtobufMetadata.FieldNumber)
                     .FirstOrDefault(tags => tags.Count() > 1);
                 if (duplicateProtobufTag != null)
                 {
@@ -944,9 +950,13 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool IsNativeProvider(string provider)
             => string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal);
 
-        private static bool IsInboundAssignable(FoxRunProtobufTypeShape shape)
+        private static bool IsInboundAssignable(FoxRunTypeShape shape)
         {
-            if (shape == null || shape.Kind != FoxRunProtobufTypeShapeKind.Object)
+            if (shape == null)
+                return true;
+            if (shape.Kind == FoxRunTypeShapeKind.Collection)
+                return IsInboundAssignable(shape.ElementShape);
+            if (shape.Kind != FoxRunTypeShapeKind.Object)
                 return true;
 
             foreach (var field in shape.Fields)

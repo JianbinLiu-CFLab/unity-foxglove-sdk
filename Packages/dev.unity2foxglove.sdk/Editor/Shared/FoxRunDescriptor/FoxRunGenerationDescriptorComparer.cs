@@ -142,7 +142,12 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "ros2ContractKind", left.Ros2ContractKind.ToString(), right.Ros2ContractKind.ToString(), semantic);
             CompareRos2MessageShape(key, left.Ros2MessageShape, right.Ros2MessageShape, semantic);
             CompareRos2CustomDtoShape(key, left.Ros2CustomDtoShape, right.Ros2CustomDtoShape, semantic);
-            CompareSemantic(key, "protobufFieldNumber", left.ProtobufFieldNumber.ToString(), right.ProtobufFieldNumber.ToString(), semantic);
+            CompareSemantic(
+                key,
+                "protobufFieldNumber",
+                (left.ProtobufMetadata?.FieldNumber ?? 0).ToString(),
+                (right.ProtobufMetadata?.FieldNumber ?? 0).ToString(),
+                semantic);
             CompareSemantic(key, "hz", left.Hz, right.Hz, semantic);
             CompareSemantic(key, "policy", left.PolicyName, right.PolicyName, semantic);
             CompareSemantic(key, "mode", left.FlowName, right.FlowName, semantic);

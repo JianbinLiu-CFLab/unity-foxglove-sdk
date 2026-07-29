@@ -76,7 +76,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs" Link="Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs" />

@@ -800,7 +800,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool SupportsDirectOriginSnapshot(
             FoxgloveSourceEmitter.TopicMember field)
         {
-            if (field?.ProtobufTypeShape?.Kind == FoxRunProtobufTypeShapeKind.Enum)
+            if (field?.TypeShape?.Kind == FoxRunTypeShapeKind.Enum)
                 return true;
             var type = NormalizeType((field?.TypeName ?? string.Empty).Trim());
             if (type.EndsWith("?", System.StringComparison.Ordinal))
@@ -942,9 +942,13 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var type = NormalizeType(field.TypeName);
             var access = $"__foxRunCapture_{topicIndex}_{fieldIndex}";
-            if (field.ProtobufTypeShape != null
-                && (field.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
-                    || field.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum))
+            var valueShape = field.TypeShape?.Kind == FoxRunTypeShapeKind.Collection
+                ? field.TypeShape.ElementShape
+                : field.TypeShape;
+            if (valueShape != null
+                && (valueShape.Kind == FoxRunTypeShapeKind.Object
+                    || valueShape.Kind == FoxRunTypeShapeKind.Enum)
+                && !UsesBuiltInJsonCodec(valueShape))
             {
                 sb.AppendLine(
                     $"{pad}global::Unity.FoxgloveSDK.Components.FoxRunInboundJson.AppendObject(__json, {access});");
@@ -957,6 +961,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EmitScalarOrObjectJsonValueAppend(sb, type, access, pad);
+        }
+
+        private static bool UsesBuiltInJsonCodec(FoxRunTypeShape shape)
+        {
+            var typeName = shape?.TypeName ?? string.Empty;
+            return string.Equals(typeName, "UnityEngine.Vector2", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Vector3", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Quaternion", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal);
         }
 
         private static void EmitCollectionJsonValueAppend(

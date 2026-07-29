@@ -118,7 +118,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly bool IsValueType;
         public readonly bool IsArray;
         public readonly string ElementTypeName;
-        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+        public readonly FoxRunTypeShape TypeShape;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
         public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
         public readonly FoxRunRos2ContractKind Ros2ContractKind;
@@ -143,8 +143,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>
         /// Creates a valid member-data record with no diagnostic.
         /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream)
+        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunTypeShape typeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, typeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream)
         {
         }
 
@@ -157,7 +157,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
         }
 
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
+        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunTypeShape typeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
         {
             Ns = ns;
             ClassName = cn;
@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             IsValueType = isValueType;
             IsArray = isArray;
             ElementTypeName = elementTypeName;
-            ProtobufTypeShape = protobufTypeShape;
+            TypeShape = typeShape;
             Ros2MessageShape = ros2MessageShape;
             Ros2CustomDtoShape = ros2CustomDtoShape;
             Ros2ContractKind = ResolveRos2ContractKind(
@@ -228,10 +228,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.Mode,
                 topic.Encoding,
                 topic.ProtobufFieldNumber,
-                ProtobufTypeShape,
+                TypeShape,
                 topic.Source,
                 topic.QosProfile,
-                ProtobufTypeShape != null
+                TypeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
                         FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
                             IsArray && !string.IsNullOrEmpty(ElementTypeName)

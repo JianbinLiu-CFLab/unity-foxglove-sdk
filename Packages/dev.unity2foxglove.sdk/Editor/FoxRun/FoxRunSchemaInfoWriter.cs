@@ -407,7 +407,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Nullable) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + ",");
-                sb.AppendLine(inner + "    " + field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture) + "),");
+                sb.AppendLine(inner + "    " + (field.ProtobufMetadata?.FieldNumber ?? 0).ToString(CultureInfo.InvariantCulture) + "),");
             }
             sb.AppendLine(indent + (trailingComma ? "}," : "}"));
         }
@@ -439,8 +439,8 @@ namespace Unity.FoxgloveSDK.Editor
                     field.MemberName,
                     field.Type,
                     field.Array,
-                    field.ProtobufFieldNumber,
-                    field.ProtobufTypeShape));
+                    field.ProtobufMetadata?.FieldNumber ?? 0,
+                    field.TypeShape));
             }
 
             return new FoxRunProtobufContractInput(

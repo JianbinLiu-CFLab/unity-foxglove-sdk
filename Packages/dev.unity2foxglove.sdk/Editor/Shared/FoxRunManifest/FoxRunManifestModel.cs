@@ -25,8 +25,8 @@ namespace Unity.FoxgloveSDK.Editor
         public int Policy { get; }
         public int Flow { get; }
         public int Encoding { get; }
-        public int ProtobufFieldNumber { get; }
-        public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
+        public FoxRunProtobufMetadata ProtobufMetadata { get; }
+        public FoxRunTypeShape TypeShape { get; }
         public float Tolerance { get; }
         public bool IsAggregateMember { get; }
         public bool IsStream { get; }
@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Editor
             int flow = 1,
             int encoding = 2,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null,
+            FoxRunTypeShape typeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
             string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
@@ -76,7 +76,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
-            bool isStream = false)
+            bool isStream = false,
+            FoxRunProtobufMetadata protobufMetadata = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -92,8 +93,11 @@ namespace Unity.FoxgloveSDK.Editor
             Policy = policy;
             Flow = flow;
             Encoding = encoding;
-            ProtobufFieldNumber = protobufFieldNumber;
-            ProtobufTypeShape = protobufTypeShape;
+            TypeShape = typeShape;
+            ProtobufMetadata = protobufMetadata
+                               ?? FoxRunProtobufMetadata.FromTypeShape(
+                                   typeShape,
+                                   protobufFieldNumber);
             Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
             IsStream = isStream;
@@ -162,8 +166,8 @@ namespace Unity.FoxgloveSDK.Editor
                 member.JsonFieldName,
                 member.Mode,
                 EncodingValue(member.Encoding),
-                member.ProtobufFieldNumber,
-                member.ProtobufTypeShape,
+                0,
+                member.TypeShape,
                 member.Source,
                 member.QosProfile,
                 member.GeneratesWebSocketCodec,
@@ -176,7 +180,8 @@ namespace Unity.FoxgloveSDK.Editor
                 member.QosDurability,
                 member.QosHistory,
                 member.QosDepth,
-                member.IsStream);
+                member.IsStream,
+                member.ProtobufMetadata);
         }
 
         private static int EncodingValue(string encoding)
@@ -490,8 +495,8 @@ namespace Unity.FoxgloveSDK.Editor
         public bool Nullable { get; }
         public bool Array { get; }
         public bool Aggregate { get; }
-        public int ProtobufFieldNumber { get; }
-        public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
+        public FoxRunProtobufMetadata ProtobufMetadata { get; }
+        public FoxRunTypeShape TypeShape { get; }
 
         public FoxRunManifestField(
             string jsonName,
@@ -502,7 +507,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool array,
             bool aggregate = false,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunTypeShape typeShape = null,
+            FoxRunProtobufMetadata protobufMetadata = null)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -511,8 +517,13 @@ namespace Unity.FoxgloveSDK.Editor
             Nullable = nullable;
             Array = array;
             Aggregate = aggregate;
-            ProtobufFieldNumber = protobufFieldNumber;
-            ProtobufTypeShape = protobufTypeShape;
+            TypeShape = typeShape;
+            ProtobufMetadata = protobufMetadata
+                               ?? (protobufFieldNumber == 0
+                                   ? null
+                                   : FoxRunProtobufMetadata.FromTypeShape(
+                                       typeShape,
+                                       protobufFieldNumber));
         }
     }
 

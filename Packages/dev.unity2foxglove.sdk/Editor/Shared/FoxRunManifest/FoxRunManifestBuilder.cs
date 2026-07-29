@@ -276,8 +276,9 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 member.IsArray,
                 member.IsAggregateMember,
-                includeProtobufFieldNumber ? member.ProtobufFieldNumber : 0,
-                includeProtobufFieldNumber ? member.ProtobufTypeShape : null);
+                0,
+                includeProtobufFieldNumber ? member.TypeShape : null,
+                includeProtobufFieldNumber ? member.ProtobufMetadata : null);
         }
 
         private static IEnumerable<string> ResolveEncodings(FoxRunManifestMember member)
