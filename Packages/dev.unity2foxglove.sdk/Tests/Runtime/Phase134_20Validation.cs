@@ -84,11 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeHealthCancellation()
         {
-            var options = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
-            var runner = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
-            var commandRunner = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
-            var probe = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
-            var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
+            var options = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            var runner = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
+            var commandRunner = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
+            var probe = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+            var drawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
 
             Check(options.Contains("CancellationToken CancellationToken", StringComparison.Ordinal)
                   && runner.Contains("options.CancellationToken", StringComparison.Ordinal),
@@ -140,7 +140,7 @@ namespace Unity.FoxgloveSDK.Tests
             var paths = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidencePaths.cs");
             var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs");
             var settings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidenceSettings.cs");
-            var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
+            var prefs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
             Check(paths.Contains("StringComparison.OrdinalIgnoreCase", StringComparison.Ordinal)
                   && paths.Contains("ProjectAssetsRoot", StringComparison.Ordinal)

@@ -5,7 +5,7 @@
 # Purpose: Generate direct ROS 2 CDR serializers/deserializers for official Foxglove .msg schemas.
 # Usage: python Scripts/schema/generate_ros2_cdr_serializers.py
 # Inputs: third-party/foxglove-sdk/schemas/ros2/*.msg and generated Foxglove protobuf C# classes.
-# Outputs: Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/*.g.cs.
+# Outputs: Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/*.g.cs.
 """Generate direct ROS 2 CDR serializers/deserializers for official Foxglove .msg schemas."""
 
 from __future__ import annotations

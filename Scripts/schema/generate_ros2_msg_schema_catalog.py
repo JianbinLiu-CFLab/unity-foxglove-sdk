@@ -5,7 +5,7 @@
 # Purpose: Generate the Unity runtime catalog for official Foxglove ROS 2 .msg schemas.
 # Usage: python Scripts/schema/generate_ros2_msg_schema_catalog.py
 # Inputs: third-party/foxglove-sdk/schemas/ros2/*.msg by default.
-# Outputs: Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs.
+# Outputs: Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs.
 """Generate the Unity runtime catalog for official Foxglove ROS 2 .msg schemas."""
 
 from __future__ import annotations

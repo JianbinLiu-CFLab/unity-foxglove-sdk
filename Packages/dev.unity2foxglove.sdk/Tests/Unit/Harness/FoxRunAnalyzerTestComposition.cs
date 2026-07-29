@@ -17,12 +17,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     {
         private static readonly Lazy<IIncrementalGenerator> R2fuGenerator =
             new Lazy<IIncrementalGenerator>(LoadR2fuGenerator);
+        private static readonly Lazy<IIncrementalGenerator> BridgeGenerator =
+            new Lazy<IIncrementalGenerator>(LoadBridgeGenerator);
 
         internal static ISourceGenerator[] CoreAndR2fu()
             => new[]
             {
                 new FoxgloveLogSourceGenerator().AsSourceGenerator(),
                 R2fuGenerator.Value.AsSourceGenerator()
+            };
+
+        internal static ISourceGenerator[] CoreAndBridge()
+            => new[]
+            {
+                new FoxgloveLogSourceGenerator().AsSourceGenerator(),
+                BridgeGenerator.Value.AsSourceGenerator()
+            };
+
+        internal static ISourceGenerator[] AllProviders()
+            => new[]
+            {
+                new FoxgloveLogSourceGenerator().AsSourceGenerator(),
+                R2fuGenerator.Value.AsSourceGenerator(),
+                BridgeGenerator.Value.AsSourceGenerator()
             };
 
         internal static ISourceGenerator[] LegacyCombined()
@@ -50,6 +67,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 throw new FileNotFoundException(
                     "The checked-in R2FU FoxRun analyzer is missing.",
+                    path);
+            }
+
+            var assembly = Assembly.LoadFrom(path);
+            var generatorType = assembly
+                .GetTypes()
+                .Single(type =>
+                    !type.IsAbstract
+                    && typeof(IIncrementalGenerator).IsAssignableFrom(type));
+            return (IIncrementalGenerator)Activator.CreateInstance(generatorType);
+        }
+
+        private static IIncrementalGenerator LoadBridgeGenerator()
+        {
+            var root = FindRepositoryRoot();
+            var path = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Editor",
+                "SourceGenerators",
+                "analyzers",
+                "dotnet",
+                "cs",
+                "Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll");
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException(
+                    "The checked-in ROS2 Bridge FoxRun analyzer is missing.",
                     path);
             }
 

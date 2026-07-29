@@ -10,8 +10,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Foxglove;
-using Unity.FoxgloveSDK.Ros2Bridge;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {

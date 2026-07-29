@@ -535,7 +535,7 @@ class Program
 
             Console.WriteLine($"Phase 97 health report written: {jsonPath}");
             Console.WriteLine($"Summary: {report.Summary}");
-            if (liveMode && report.Summary != Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
+            if (liveMode && report.Summary != Unity2Foxglove.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
                 return 1;
             return 0;
         }

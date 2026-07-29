@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             var protoGeneratedAsmdefPath = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/Unity.FoxgloveSDK.Proto.Generated.asmdef";
             var protoGeneratedAsmdef = Text(protoGeneratedAsmdefPath);
             var protoGeneratedAsmdefMeta = Text(protoGeneratedAsmdefPath + ".meta");
-            var generatedAsmdefPath = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Unity.FoxgloveSDK.Ros2Msg.Generated.asmdef";
+            var generatedAsmdefPath = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Unity.FoxgloveSDK.Ros2Msg.Generated.asmdef";
             var generatedAsmdefMetaPath = generatedAsmdefPath + ".meta";
             var generatedAsmdef = Text(generatedAsmdefPath);
             var generatedAsmdefMeta = Text(generatedAsmdefMetaPath);
@@ -68,9 +68,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             var runtimeAssemblyInfo = Text("Packages/dev.unity2foxglove.sdk/Runtime/AssemblyInfo.cs");
             var protoAsmdef = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Unity.FoxgloveSDK.Proto.asmdef");
             var registry = Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
-            var ros2Generated = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedDeserializers.g.cs");
-            var ros2TypedFactoryMeta = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/McapRos2CdrTypedDecoderFactory.cs.meta");
-            var ros2BridgePublisherMeta = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs.meta");
+            var ros2Generated = Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedDeserializers.g.cs");
+            var ros2TypedFactoryMeta = Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/McapRos2CdrTypedDecoderFactory.cs.meta");
+            var ros2BridgePublisherMeta = Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs.meta");
 
             Assert.Contains("\"name\": \"Unity.FoxgloveSDK.Proto.Generated\"", protoGeneratedAsmdef, StringComparison.Ordinal);
             Assert.Contains("\"references\": []", protoGeneratedAsmdef, StringComparison.Ordinal);
@@ -90,8 +90,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("MonoImporter:", ros2TypedFactoryMeta, StringComparison.Ordinal);
             Assert.Contains("MonoImporter:", ros2BridgePublisherMeta, StringComparison.Ordinal);
             Assert.Contains("Unity.FoxgloveSDK.Ros2Msg.Generated", registry, StringComparison.Ordinal);
-            Assert.True(File.Exists(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/McapRos2CdrTypedDecoderFactory.cs")));
-            Assert.True(File.Exists(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs")));
+            Assert.True(File.Exists(PathOf("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/McapRos2CdrTypedDecoderFactory.cs")));
+            Assert.True(File.Exists(PathOf("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs")));
             Assert.False(File.Exists(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/Messages/Unity.FoxgloveSDK.Proto.Messages.asmdef")));
             Assert.False(File.Exists(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/DataLoader/McapRos2CdrTypedDecoderFactory.cs")));
             Assert.False(File.Exists(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Bridge/Ros2BridgePublisher.cs")));

@@ -6,9 +6,9 @@
 using System;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
+using Google.Protobuf;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Components
             int captureWidth,
             int captureHeight,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding,
             double readbackLatencyMs,
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Components
                 captureWidth,
                 captureHeight,
                 publishWebSocket,
-                publishBridge,
+                publishProvider,
                 publishNativeFrame,
                 webSocketEncoding,
                 readbackLatencyMs,
@@ -213,12 +213,6 @@ namespace Unity.FoxgloveSDK.Components
                 _lastPublishedCaptureUnixNs = captureUnixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
-            else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                PublishRos2(result.WebSocketPayload, captureUnixNs);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
             else if (result.Request.PublishWebSocket)
             {
                 Publish(result.JsonMessage, captureUnixNs);
@@ -226,9 +220,15 @@ namespace Unity.FoxgloveSDK.Components
                 _backpressureGate.ResetSkipLogCount();
             }
 
-            if (result.Request.PublishBridge)
+            if (result.Request.PublishProvider)
             {
-                PublishRos2Bridge(result.BridgePayload, captureUnixNs);
+                var providerValue = result.Request.UseStandardSensorCompressedImage
+                    ? (object)result.SensorFrame
+                    : result.ProtobufMessage;
+                var logicalSchemaName = result.Request.UseStandardSensorCompressedImage
+                    ? typeof(SensorCompressedImageFrame).FullName
+                    : Foxglove.CompressedImage.Descriptor.FullName;
+                PublishOrdinaryTransport(providerValue, logicalSchemaName, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
@@ -261,22 +261,16 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
             var publishNativeFrame = HasSensorCompressedImageDemand();
             var frameId = ResolveFrameId();
-            byte[] ros2Payload = null;
+            Foxglove.CompressedImage protobufMessage = null;
+            SensorCompressedImageFrame sensorFrame = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                var payload = CameraCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg");
-                PublishProto(payload, unixNs);
-                _lastPublishedCaptureUnixNs = unixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = SerializeRos2CompressedImage(unixNs, frameId, jpeg);
-                PublishRos2(ros2Payload, unixNs);
+                protobufMessage = CameraCompressedImageBuilder.Create(unixNs, frameId, jpeg, "jpeg");
+                PublishProto(protobufMessage.ToByteArray(), unixNs);
                 _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
@@ -295,17 +289,31 @@ namespace Unity.FoxgloveSDK.Components
                 _backpressureGate.ResetSkipLogCount();
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                ros2Payload ??= SerializeRos2CompressedImage(unixNs, frameId, jpeg);
-                PublishRos2Bridge(ros2Payload, unixNs);
+                object providerValue;
+                string logicalSchemaName;
+                if (_publishStandardRos2CompressedImage)
+                {
+                    sensorFrame ??= new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg");
+                    providerValue = sensorFrame;
+                    logicalSchemaName = typeof(SensorCompressedImageFrame).FullName;
+                }
+                else
+                {
+                    protobufMessage ??= CameraCompressedImageBuilder.Create(unixNs, frameId, jpeg, "jpeg");
+                    providerValue = protobufMessage;
+                    logicalSchemaName = Foxglove.CompressedImage.Descriptor.FullName;
+                }
+                PublishOrdinaryTransport(providerValue, logicalSchemaName, unixNs);
                 _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
 
             if (publishNativeFrame)
             {
-                SensorCompressedImageReady?.Invoke(new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg"));
+                sensorFrame ??= new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg");
+                SensorCompressedImageReady?.Invoke(sensorFrame);
                 _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }

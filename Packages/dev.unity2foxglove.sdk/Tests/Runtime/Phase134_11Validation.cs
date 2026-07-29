@@ -255,7 +255,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SceneCdrBuilderUnsupportedMessageIsGeneric()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
             Check(source.Contains("EnsureUnsupportedEmpty<T>", StringComparison.Ordinal)
                   && !source.Contains("Phase 91 CDR smoke builder", StringComparison.Ordinal),
                 "134-11J-1: SceneUpdate CDR unsupported primitive guard is generic and not phase-specific");

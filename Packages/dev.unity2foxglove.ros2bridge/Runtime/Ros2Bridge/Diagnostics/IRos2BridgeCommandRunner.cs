@@ -1,0 +1,193 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Ros2Bridge/Diagnostics
+// Purpose: Command runner abstraction for ROS2 Bridge health diagnostics.
+
+using System;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
+
+namespace Unity2Foxglove.Ros2Bridge
+{
+    /// <summary>Runs ROS2 CLI commands for health diagnostics without coupling callers to Process.</summary>
+    public interface IRos2BridgeCommandRunner
+    {
+        Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs);
+        Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs, CancellationToken cancellationToken);
+    }
+
+    /// <summary>Result of one ROS2 CLI command, including timeout and launch-error state.</summary>
+    public sealed class Ros2BridgeCommandResult
+    {
+        public Ros2BridgeCommandResult(
+            int exitCode,
+            string stdout,
+            string stderr,
+            bool timedOut,
+            string error,
+            long durationMs)
+        {
+            ExitCode = exitCode;
+            Stdout = stdout ?? string.Empty;
+            Stderr = stderr ?? string.Empty;
+            TimedOut = timedOut;
+            Error = error ?? string.Empty;
+            DurationMs = durationMs < 0 ? 0 : durationMs;
+        }
+
+        public int ExitCode { get; }
+        public string Stdout { get; }
+        public string Stderr { get; }
+        public bool TimedOut { get; }
+        public string Error { get; }
+        public long DurationMs { get; }
+        public bool Succeeded => !TimedOut && ExitCode == 0 && string.IsNullOrEmpty(Error);
+        public string FailureMessage => TimedOut
+            ? "Command timed out."
+            : !string.IsNullOrEmpty(Error)
+                ? Error
+                : !string.IsNullOrWhiteSpace(Stderr)
+                    ? Stderr.Trim()
+                    : $"Command exited with code {ExitCode}.";
+    }
+
+    /// <summary>Process-based command runner used by the Inspector health check.</summary>
+    public sealed class ProcessRos2BridgeCommandRunner : IRos2BridgeCommandRunner
+    {
+        public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
+            => Run(executable, arguments, timeoutMs, CancellationToken.None);
+
+        public Ros2BridgeCommandResult Run(
+            string executable,
+            string arguments,
+            int timeoutMs,
+            CancellationToken cancellationToken)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            if (string.IsNullOrWhiteSpace(executable))
+            {
+                return new Ros2BridgeCommandResult(
+                    -1,
+                    string.Empty,
+                    string.Empty,
+                    timedOut: false,
+                    error: "ros2 executable path is empty.",
+                    durationMs: 0);
+            }
+
+            var stdout = new StringBuilder();
+            var stderr = new StringBuilder();
+            if (!ProcessLaunchSupported)
+            {
+                return new Ros2BridgeCommandResult(
+                    -1,
+                    string.Empty,
+                    string.Empty,
+                    timedOut: false,
+                    error: "Process-based ROS2 bridge diagnostics are only supported in the Unity Editor or desktop standalone players.",
+                    durationMs: stopwatch.ElapsedMilliseconds);
+            }
+
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                Arguments = arguments ?? string.Empty,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                    stdout.AppendLine(e.Data);
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                    stderr.AppendLine(e.Data);
+            };
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                var timedOut = !WaitForExitOrCancellation(process, Math.Max(1, timeoutMs), cancellationToken);
+                if (timedOut || cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit(Math.Max(1, timeoutMs));
+                    }
+                    catch
+                    {
+                        // The process may have exited between WaitForExit and Kill, or rejected termination.
+                    }
+
+                    stopwatch.Stop();
+                    return new Ros2BridgeCommandResult(
+                        -1,
+                        stdout.ToString(),
+                        stderr.ToString(),
+                        timedOut: timedOut,
+                        error: cancellationToken.IsCancellationRequested ? "Command was cancelled." : string.Empty,
+                        durationMs: stopwatch.ElapsedMilliseconds);
+                }
+
+                process.WaitForExit();
+                stopwatch.Stop();
+                return new Ros2BridgeCommandResult(
+                    process.ExitCode,
+                    stdout.ToString(),
+                    stderr.ToString(),
+                    timedOut: false,
+                    error: string.Empty,
+                    durationMs: stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                return new Ros2BridgeCommandResult(
+                    -1,
+                    stdout.ToString(),
+                    stderr.ToString(),
+                    timedOut: false,
+                    error: ex.Message,
+                    durationMs: stopwatch.ElapsedMilliseconds);
+            }
+        }
+
+        private static bool WaitForExitOrCancellation(
+            Process process,
+            int timeoutMs,
+            CancellationToken cancellationToken)
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.ElapsedMilliseconds < timeoutMs)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    return true;
+                // Bound the poll interval by the remaining budget so sub-50ms
+                // timeoutMs values are not silently rounded up to 50ms.
+                var remaining = (int)Math.Max(1, timeoutMs - deadline.ElapsedMilliseconds);
+                if (process.WaitForExit(Math.Min(50, remaining)))
+                    return true;
+            }
+
+            return process.HasExited;
+        }
+
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || UNITY_STANDALONE_OSX || !UNITY_5_3_OR_NEWER
+        private static bool ProcessLaunchSupported => true;
+#else
+        private static bool ProcessLaunchSupported => false;
+#endif
+    }
+}

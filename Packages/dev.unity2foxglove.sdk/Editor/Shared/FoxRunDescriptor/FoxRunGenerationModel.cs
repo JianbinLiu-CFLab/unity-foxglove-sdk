@@ -966,6 +966,7 @@ namespace Unity.FoxgloveSDK.Editor
             return EmissionTypeName;
         }
 
+#if !FOXRUN_BRIDGE_ANALYZER
         public FoxgloveSourceEmitter.TopicMember ToTopicMember()
         {
             return new FoxgloveSourceEmitter.TopicMember(
@@ -1002,6 +1003,7 @@ namespace Unity.FoxgloveSDK.Editor
                 isStream: IsStream,
                 protobufMetadata: ProtobufMetadata);
         }
+#endif
 
         public bool HasNamedArgument(FoxRunNamedArgumentPresence argument)
             => (NamedArgumentPresence & argument) == argument;

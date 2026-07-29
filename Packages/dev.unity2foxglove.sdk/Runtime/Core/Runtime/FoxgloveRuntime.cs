@@ -47,7 +47,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
-        private bool _ros2MsgSchemasRegistered;
+        private readonly HashSet<string> _additionalMessageEncodings =
+            new HashSet<string>(StringComparer.Ordinal);
         private readonly string[] _singleParameterBroadcastName = new string[1];
         // Runtime-owned start-time routing policy. Like parameters and services,
         // these survive Stop/Start and are re-applied to the next session; Stop
@@ -110,7 +111,6 @@ namespace Unity.FoxgloveSDK.Core
             _parameters = new FoxgloveParameterStore(_logger);
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
-            TryRegisterRos2MsgSchemas();
             _recording = new RecordingController(_logger, _playbackClock);
             _replay = new ReplayController(_logger, _recording, _playbackClock);
             _replayOrchestrator = new ReplayOrchestrator(_logger);
@@ -125,6 +125,19 @@ namespace Unity.FoxgloveSDK.Core
         public bool HasChannelDemand(uint channelId) => _session?.HasChannelDemand(channelId) ?? false;
         /// <summary>Schema registry used by this runtime.</summary>
         public ISchemaRegistry Schemas => _schemaRegistry;
+        /// <summary>
+        /// Adds one Provider-owned message encoding to future session
+        /// serverInfo snapshots. Configuration is frozen while running.
+        /// </summary>
+        public void EnableMessageEncoding(string encoding)
+        {
+            if (_session != null)
+                throw new InvalidOperationException(
+                    "Message encodings must be configured before the runtime starts.");
+            if (string.IsNullOrWhiteSpace(encoding))
+                throw new ArgumentException("Message encoding cannot be empty.", nameof(encoding));
+            _additionalMessageEncodings.Add(encoding.Trim().ToLowerInvariant());
+        }
         /// <summary>Runtime-owned parameter store.</summary>
         public FoxgloveParameterStore Parameters => _parameters;
 
@@ -246,7 +259,7 @@ namespace Unity.FoxgloveSDK.Core
         /// message forwarding. Protobuf encoding is enabled automatically
         /// when the proto assembly is available.
         /// </summary>
-        public void Start(string name, string host = "127.0.0.1", int port = 8765, bool enableCdrClientPublish = true)
+        public void Start(string name, string host = "127.0.0.1", int port = 8765)
         {
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
@@ -255,10 +268,10 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 session = SessionFactory.Create(
-                    name, enableCdrClientPublish,
+                    name,
                     _transport, _playbackClock, _schemaRegistry, _logger,
                     _parameters, _services, _recording,
-                    _protobufSchemasRegistered, _ros2MsgSchemasRegistered,
+                    _protobufSchemasRegistered, _additionalMessageEncodings,
                     this,
                     Volatile.Read(ref _liveWebSocketChannelFilter),
                     Volatile.Read(ref _mcapRecordingChannelFilter),
@@ -380,7 +393,7 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>Whether an MCAP recorder currently accepts this hidden channel.</summary>
-        internal bool HasRecordingDemand(uint channelId)
+        public bool HasRecordingDemand(uint channelId)
             => !ReplayEnabled
                && _session != null
                && _session.HasRecordingDemand(channelId);
@@ -418,43 +431,8 @@ namespace Unity.FoxgloveSDK.Core
             _session.Publish(channelId, payload, logTimeNs);
         }
 
-        /// <summary>Publish a validated ROS 2 CDR payload. Timestamp is taken from the clock.</summary>
-        public void PublishRos2Cdr(uint channelId, byte[] payload)
-        {
-            if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
-            {
-                WarnReplaySuppressed(nameof(PublishRos2Cdr), channelId);
-                return;
-            }
-
-            _session.PublishRos2Cdr(channelId, payload);
-        }
-
-        /// <summary>Publish a validated ROS 2 CDR payload with an explicit nanosecond timestamp.</summary>
-        public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
-        {
-            if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
-            {
-                WarnReplaySuppressed(nameof(PublishRos2Cdr), channelId);
-                return;
-            }
-
-            _session.PublishRos2Cdr(channelId, payload, logTimeNs);
-        }
-
-        /// <summary>Publish validated CDR only to a previously hidden MCAP channel.</summary>
-        internal bool PublishRecordingOnlyRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
-        {
-            if (_session == null || ReplayEnabled || !_session.HasRecordingDemand(channelId))
-                return false;
-            _session.PublishRos2Cdr(channelId, payload, logTimeNs);
-            return true;
-        }
-
         /// <summary>Publish raw bytes only to a previously hidden MCAP channel.</summary>
-        internal bool PublishRecordingOnly(uint channelId, byte[] payload, ulong logTimeNs)
+        public bool PublishRecordingOnly(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null || ReplayEnabled || !_session.HasRecordingDemand(channelId))
                 return false;
@@ -478,12 +456,6 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding, schemaEncoding);
-        }
-
-        /// <summary>Register a ROS 2 .msg schema channel with CDR message encoding.</summary>
-        public void RegisterRos2MsgSchemaChannel(uint channelId, string topic, string schemaName)
-        {
-            RegisterSchemaChannel(channelId, topic, schemaName, "cdr", "ros2msg");
         }
 
         /// <summary>Serialize and publish a JSON message. Timestamp is taken from the clock.</summary>

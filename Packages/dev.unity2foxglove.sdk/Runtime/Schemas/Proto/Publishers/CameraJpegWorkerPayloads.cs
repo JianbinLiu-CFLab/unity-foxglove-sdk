@@ -5,9 +5,9 @@
 
 using System;
 using Foxglove.Schemas;
+using Google.Protobuf;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
@@ -47,22 +47,19 @@ namespace Unity.FoxgloveSDK.Components
 
             var serializeStart = Stopwatch.GetTimestamp();
             byte[] webSocketPayload = null;
-            byte[] bridgePayload = null;
-            byte[] ros2Payload = null;
             CompressedImageMessage jsonMessage = null;
+            Foxglove.CompressedImage protobufMessage = null;
 
             try
             {
                 if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
                 {
-                    webSocketPayload = CameraCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
-                }
-                else if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-                {
-                    ros2Payload = request.UseStandardRos2CompressedImage
-                        ? Ros2CdrSensorCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg")
-                        : Ros2CdrCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
-                    webSocketPayload = ros2Payload;
+                    protobufMessage = CameraCompressedImageBuilder.Create(
+                        request.CaptureUnixNs,
+                        request.FrameId,
+                        jpeg,
+                        "jpeg");
+                    webSocketPayload = protobufMessage.ToByteArray();
                 }
                 else if (request.PublishWebSocket)
                 {
@@ -75,23 +72,25 @@ namespace Unity.FoxgloveSDK.Components
                     };
                 }
 
-                if (request.PublishBridge)
+                if (request.PublishProvider && !request.UseStandardSensorCompressedImage)
                 {
-                    ros2Payload ??= request.UseStandardRos2CompressedImage
-                        ? Ros2CdrSensorCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg")
-                        : Ros2CdrCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
-                    bridgePayload = ros2Payload;
+                    protobufMessage ??= CameraCompressedImageBuilder.Create(
+                        request.CaptureUnixNs,
+                        request.FrameId,
+                        jpeg,
+                        "jpeg");
                 }
 
                 SensorCompressedImageFrame sensorFrame = null;
-                if (request.PublishNativeFrame)
+                if (request.PublishNativeFrame
+                    || (request.PublishProvider && request.UseStandardSensorCompressedImage))
                     sensorFrame = new SensorCompressedImageFrame(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
 
                 return JpegEncodeResult.Completed(
                     request,
                     webSocketPayload,
-                    bridgePayload,
                     jsonMessage,
+                    protobufMessage,
                     sensorFrame,
                     jpeg.Length,
                     encodeMs,
@@ -122,9 +121,9 @@ namespace Unity.FoxgloveSDK.Components
             ulong captureUnixNs,
             string frameId,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             bool publishNativeFrame,
-            bool useStandardRos2CompressedImage,
+            bool useStandardSensorCompressedImage,
             PublisherEffectiveEncoding webSocketEncoding,
             int maxEncodedBytes,
             int generation,
@@ -137,9 +136,9 @@ namespace Unity.FoxgloveSDK.Components
             CaptureUnixNs = captureUnixNs;
             FrameId = frameId ?? "";
             PublishWebSocket = publishWebSocket;
-            PublishBridge = publishBridge;
+            PublishProvider = publishProvider;
             PublishNativeFrame = publishNativeFrame;
-            UseStandardRos2CompressedImage = useStandardRos2CompressedImage;
+            UseStandardSensorCompressedImage = useStandardSensorCompressedImage;
             WebSocketEncoding = webSocketEncoding;
             MaxEncodedBytes = maxEncodedBytes;
             Generation = generation;
@@ -153,9 +152,9 @@ namespace Unity.FoxgloveSDK.Components
         public ulong CaptureUnixNs { get; }
         public string FrameId { get; }
         public bool PublishWebSocket { get; }
-        public bool PublishBridge { get; }
+        public bool PublishProvider { get; }
         public bool PublishNativeFrame { get; }
-        public bool UseStandardRos2CompressedImage { get; }
+        public bool UseStandardSensorCompressedImage { get; }
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
         public int MaxEncodedBytes { get; }
         public int Generation { get; }
@@ -169,8 +168,8 @@ namespace Unity.FoxgloveSDK.Components
             bool success,
             bool droppedByEncodedBudget,
             byte[] webSocketPayload,
-            byte[] bridgePayload,
             CompressedImageMessage jsonMessage,
+            Foxglove.CompressedImage protobufMessage,
             SensorCompressedImageFrame sensorFrame,
             int jpegBytes,
             string error,
@@ -181,8 +180,8 @@ namespace Unity.FoxgloveSDK.Components
             Success = success;
             DroppedByEncodedBudget = droppedByEncodedBudget;
             WebSocketPayload = webSocketPayload;
-            BridgePayload = bridgePayload;
             JsonMessage = jsonMessage;
+            ProtobufMessage = protobufMessage;
             SensorFrame = sensorFrame;
             JpegBytes = jpegBytes;
             Error = error;
@@ -194,8 +193,8 @@ namespace Unity.FoxgloveSDK.Components
         public bool Success { get; }
         public bool DroppedByEncodedBudget { get; }
         public byte[] WebSocketPayload { get; }
-        public byte[] BridgePayload { get; }
         public CompressedImageMessage JsonMessage { get; }
+        public Foxglove.CompressedImage ProtobufMessage { get; }
         public SensorCompressedImageFrame SensorFrame { get; }
         public int JpegBytes { get; }
         public string Error { get; }
@@ -205,8 +204,8 @@ namespace Unity.FoxgloveSDK.Components
         public static JpegEncodeResult Completed(
             JpegEncodeRequest request,
             byte[] webSocketPayload,
-            byte[] bridgePayload,
             CompressedImageMessage jsonMessage,
+            Foxglove.CompressedImage protobufMessage,
             SensorCompressedImageFrame sensorFrame,
             int jpegBytes,
             double encodeMs,
@@ -216,8 +215,8 @@ namespace Unity.FoxgloveSDK.Components
                 success: true,
                 droppedByEncodedBudget: false,
                 webSocketPayload,
-                bridgePayload,
                 jsonMessage,
+                protobufMessage,
                 sensorFrame,
                 jpegBytes,
                 error: null,
@@ -235,8 +234,8 @@ namespace Unity.FoxgloveSDK.Components
                 success: false,
                 droppedByEncodedBudget: false,
                 webSocketPayload: null,
-                bridgePayload: null,
                 jsonMessage: null,
+                protobufMessage: null,
                 sensorFrame: null,
                 jpegBytes,
                 error,
@@ -253,8 +252,8 @@ namespace Unity.FoxgloveSDK.Components
                 success: false,
                 droppedByEncodedBudget: true,
                 webSocketPayload: null,
-                bridgePayload: null,
                 jsonMessage: null,
+                protobufMessage: null,
                 sensorFrame: null,
                 jpegBytes,
                 error: null,

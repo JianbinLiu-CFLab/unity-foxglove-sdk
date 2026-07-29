@@ -134,14 +134,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             finally
             {
-                try
-                {
-                    ReleaseFoxRunRos2BridgeRuntimeDemand();
-                }
-                finally
-                {
-                    EndFoxRunTransportSession();
-                }
+                EndFoxRunTransportSession();
             }
         }
 

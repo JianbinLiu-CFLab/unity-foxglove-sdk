@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Unity.FoxgloveSDK.IO;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -166,6 +167,280 @@ namespace Unity.FoxgloveSDK.Components
             catch (Exception ex)
             {
                 return FoxRunTransportPublishResult.Failed(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Maps and publishes one ordinary publisher value through a selected,
+        /// frozen Provider session. No optional package type crosses this API.
+        /// </summary>
+        public FoxRunTransportPublishResult PublishOrdinaryTransport(
+            string providerId,
+            in FoxRunOrdinaryPayloadRequest request)
+        {
+            FoxRunTransportId id;
+            try
+            {
+                id = new FoxRunTransportId(providerId);
+            }
+            catch (ArgumentException exception)
+            {
+                return FoxRunTransportPublishResult.Rejected(exception.Message);
+            }
+
+            var snapshot = _activeFoxRunTransportSession;
+            if (snapshot == null
+                || !snapshot.TryGetPublishTransport(id, out var session))
+            {
+                return FoxRunTransportPublishResult.Unavailable(
+                    "The selected Provider is not present in the frozen transport session.");
+            }
+            if (!(session is IFoxRunOrdinaryPayloadMapper mapper))
+            {
+                return FoxRunTransportPublishResult.Rejected(
+                    "The selected Provider does not map ordinary publisher payloads.");
+            }
+
+            try
+            {
+                if (!mapper.TryMap(
+                        in request,
+                        out var contribution,
+                        out var reason))
+                {
+                    return FoxRunTransportPublishResult.Rejected(reason);
+                }
+
+                var route = new FoxRunTransportPublishRoute(
+                    request.StablePublisherId,
+                    request.Topic,
+                    contribution.LogicalSchemaName,
+                    contribution.Payload,
+                    request.LogTimeNs,
+                    request.Sequence,
+                    request.DeliveryPolicy,
+                    contribution.MessageEncoding,
+                    contribution.SchemaEncoding);
+                return session.Publish(in route);
+            }
+            catch (Exception exception)
+            {
+                return FoxRunTransportPublishResult.Failed(exception.Message);
+            }
+        }
+
+        /// <summary>
+        /// True when the frozen session contains at least one optional
+        /// Provider capable of mapping ordinary publisher values.
+        /// </summary>
+        public bool HasOrdinaryTransportDemand
+        {
+            get
+            {
+                var sessions =
+                    _activeFoxRunTransportSession?.PublishTransports;
+                if (sessions == null)
+                    return false;
+                for (var index = 0; index < sessions.Count; index++)
+                    if (sessions[index] is IFoxRunOrdinaryPayloadMapper)
+                        return true;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Fan out one captured ordinary value to every selected Provider
+        /// mapper in the frozen session. The value is captured once by the
+        /// publisher; each Provider owns only its wire mapping.
+        /// </summary>
+        public FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
+            in FoxRunOrdinaryPayloadRequest request)
+        {
+            var matched = 0;
+            var accepted = 0;
+            var rejected = 0;
+            var unavailable = 0;
+            var failed = 0;
+            var sessions =
+                _activeFoxRunTransportSession?.PublishTransports;
+            if (sessions == null)
+            {
+                return new FoxRunOrdinaryTransportFanoutResult(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
+            }
+
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                var session = sessions[index];
+                if (!(session is IFoxRunOrdinaryPayloadMapper mapper))
+                    continue;
+                matched++;
+                FoxRunTransportPublishResult result;
+                try
+                {
+                    if (!mapper.TryMap(
+                            in request,
+                            out var contribution,
+                            out var reason))
+                    {
+                        result =
+                            FoxRunTransportPublishResult.Rejected(reason);
+                    }
+                    else
+                    {
+                        var route = new FoxRunTransportPublishRoute(
+                            request.StablePublisherId,
+                            request.Topic,
+                            contribution.LogicalSchemaName,
+                            contribution.Payload,
+                            request.LogTimeNs,
+                            request.Sequence,
+                            request.DeliveryPolicy,
+                            contribution.MessageEncoding,
+                            contribution.SchemaEncoding);
+                        result = session.Publish(in route);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    result =
+                        FoxRunTransportPublishResult.Failed(exception.Message);
+                }
+
+                switch (result.State)
+                {
+                    case FoxRunTransportRouteResultState.Accepted:
+                        accepted++;
+                        break;
+                    case FoxRunTransportRouteResultState.Rejected:
+                        rejected++;
+                        break;
+                    case FoxRunTransportRouteResultState.Unavailable:
+                        unavailable++;
+                        break;
+                    case FoxRunTransportRouteResultState.Failed:
+                        failed++;
+                        break;
+                }
+            }
+
+            return new FoxRunOrdinaryTransportFanoutResult(
+                matched,
+                accepted,
+                rejected,
+                unavailable,
+                failed);
+        }
+
+        /// <summary>Resolve one schema from a frozen Provider session.</summary>
+        public bool TryResolveTransportSchema(
+            string providerId,
+            in FoxRunTransportSchemaRequest request,
+            out FoxRunTransportSchemaContribution contribution,
+            out string reason)
+        {
+            contribution = default;
+            reason = string.Empty;
+            FoxRunTransportId id;
+            try
+            {
+                id = new FoxRunTransportId(providerId);
+            }
+            catch (ArgumentException exception)
+            {
+                reason = exception.Message;
+                return false;
+            }
+
+            var snapshot = _activeFoxRunTransportSession;
+            if (snapshot == null
+                || !snapshot.TryGetPublishTransport(id, out var session))
+            {
+                reason =
+                    "The selected Provider is not present in the frozen transport session.";
+                return false;
+            }
+            if (!(session is IFoxRunTransportSchemaContributor contributor))
+            {
+                reason = "The selected Provider does not contribute schemas.";
+                return false;
+            }
+            return contributor.TryResolveSchema(
+                in request,
+                out contribution,
+                out reason);
+        }
+
+        /// <summary>
+        /// Builds one immutable-by-convention decode-options snapshot. Caller
+        /// factories retain order and precede Provider and SDK built-ins.
+        /// </summary>
+        public McapDecodeOptions CreateMcapDecodeOptionsSnapshot(
+            McapDecodeOptions callerOptions = null)
+        {
+            callerOptions ??= new McapDecodeOptions();
+            var snapshot = new McapDecodeOptions
+            {
+                UseBuiltInDecoders = callerOptions.UseBuiltInDecoders,
+                FailurePolicy = callerOptions.FailurePolicy,
+                DecoderFactories = new List<IMcapMessageDecoderFactory>()
+            };
+            var stableIds = new HashSet<string>(StringComparer.Ordinal);
+            AppendStableFactories(
+                callerOptions.DecoderFactories,
+                snapshot.DecoderFactories,
+                stableIds);
+
+            var sessions = _activeFoxRunTransportSession?.PublishTransports;
+            if (sessions == null)
+                return snapshot;
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                if (!(sessions[index] is IFoxRunMcapDecoderContribution contribution))
+                    continue;
+                var factory = contribution.CreateFactory();
+                AppendStableFactories(
+                    new[] { factory },
+                    snapshot.DecoderFactories,
+                    stableIds);
+            }
+            return snapshot;
+        }
+
+        private static void AppendStableFactories(
+            IEnumerable<IMcapMessageDecoderFactory> source,
+            ICollection<IMcapMessageDecoderFactory> destination,
+            ISet<string> stableIds)
+        {
+            if (source == null)
+                return;
+            foreach (var factory in source)
+            {
+                if (factory == null)
+                {
+                    throw new ArgumentException(
+                        "MCAP decoder factory snapshots reject null entries.",
+                        nameof(source));
+                }
+                if (!(factory is IStableMcapMessageDecoderFactory stable)
+                    || string.IsNullOrWhiteSpace(stable.StableDecoderId))
+                {
+                    throw new ArgumentException(
+                        "MCAP decoder factories require a non-empty stable decoder ID.",
+                        nameof(source));
+                }
+                if (!stableIds.Add(stable.StableDecoderId))
+                {
+                    throw new ArgumentException(
+                        "Duplicate MCAP decoder factory ID: "
+                        + stable.StableDecoderId,
+                        nameof(source));
+                }
+                destination.Add(factory);
             }
         }
 

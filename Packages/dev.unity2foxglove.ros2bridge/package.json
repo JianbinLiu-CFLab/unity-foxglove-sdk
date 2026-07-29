@@ -1,0 +1,27 @@
+{
+  "name": "dev.unity2foxglove.ros2bridge",
+  "version": "0.1.0-preview.1",
+  "displayName": "Unity2Foxglove ROS2 Bridge",
+  "license": "Apache-2.0",
+  "description": "Optional ROS 2 Bridge transport Provider for Unity2Foxglove. Owns U2R2, CDR codecs, ROS schema adapters, diagnostics, and Bridge tooling.",
+  "unity": "6000.0",
+  "dependencies": {
+    "dev.unity2foxglove.sdk": "1.9.6"
+  },
+  "samples": [
+    {
+      "displayName": "ROS2 Bridge Sample",
+      "description": "Guided Unity-to-ROS2 Bridge sample with sidecar health and Foxglove layout.",
+      "path": "Samples~/Ros2BridgeSample"
+    }
+  ],
+  "keywords": [
+    "unity2foxglove",
+    "ros2",
+    "bridge",
+    "robotics"
+  ],
+  "author": {
+    "name": "Unity2Foxglove"
+  }
+}

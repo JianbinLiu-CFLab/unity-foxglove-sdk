@@ -13,7 +13,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -334,7 +334,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && phase98.Contains("frames.Count == 41"),
                 "99E-2: Phase98 live evidence exposes product topics and all-schema count");
 
-            var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/README.md");
+            var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
             Check(sampleReadme.Contains("Required bridge topics")
                   && sampleReadme.Contains("Optional topic")
                   && sampleReadme.Contains("skips compressed point-cloud output"),
@@ -425,7 +425,7 @@ namespace Unity.FoxgloveSDK.Tests
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/16_ROS2_Bridge_Sample.md");
-            yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/README.md");
+            yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
             yield return ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
         }
 

@@ -1,0 +1,222 @@
+{
+  "fixtureVersion": 1,
+  "sampleTimeNs": 1700092000000000000,
+  "resolvedDeliveryPolicy": {
+    "profile": "Default",
+    "reliability": "Reliable",
+    "durability": "Volatile",
+    "history": "KeepLast",
+    "depth": 10
+  },
+  "preparationOrdering": [
+    "demand_gate",
+    "serialize_cdr",
+    "validate",
+    "create_frame",
+    "enqueue"
+  ],
+  "ordinaryPublishers": [
+    {
+      "id": "transform",
+      "publisher": "FoxgloveTransformPublisher",
+      "topic": "/tf",
+      "schemaName": "foxglove_msgs/msg/FrameTransform",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 100,
+      "payloadBase64": "AAEAAGBYVWUAAAAADAAAAHVuaXR5X3dvcmxkAAUAAABjdWJlAAAAAAAAAAAAAAAAAADwPwAAAAAAAABAAAAAAAAACEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPw==",
+      "payloadSha256": "401a8638978f421b9c91d756ea9c91adc6601f2b3a56bd0a8c76cd383e0d1442",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "scene",
+      "publisher": "FoxgloveSceneCubePublisher",
+      "topic": "/scene",
+      "schemaName": "foxglove_msgs/msg/SceneUpdate",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 212,
+      "payloadBase64": "AAEAAAAAAAABAAAAYFhVZQAAAAAMAAAAdW5pdHlfd29ybGQABQAAAGN1YmUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAAAAAAAAAAAADwPwAAAAAAAAAAAAAAAAAA8D8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "payloadSha256": "a793522b84171a5b25a0b831026c124e4a27aca3cfc396ce867b8a655b46ce2b",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "compressed_image",
+      "publisher": "FoxgloveCameraPublisher",
+      "topic": "/unity/camera",
+      "schemaName": "foxglove_msgs/msg/CompressedImage",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 41,
+      "payloadBase64": "AAEAAGBYVWUAAAAABwAAAGNhbWVyYQAAAwAAAP/Y/wAFAAAAanBlZwA=",
+      "payloadSha256": "0f4e27c4ab6048f8a54b928db70b41cb8948d52c7bf576f6f718cd4fb8647607",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "camera_calibration",
+      "publisher": "FoxgloveCameraCalibrationPublisher",
+      "topic": "/unity/camera/calibration",
+      "schemaName": "foxglove_msgs/msg/CameraCalibration",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 292,
+      "payloadBase64": "AAEAAGBYVWUAAAAABwAAAGNhbWVyYQAAgAIAAOABAAAKAAAAcGx1bWJfYm9iAAAAAAAAAAAAAAAAAFlAAAAAAAAAAAAAAAAAAAB0QAAAAAAAAAAAAAAAAAAAWUAAAAAAAABuQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPwAAAAAAAPA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPwAAAAAAAFlAAAAAAAAAAAAAAAAAAAB0QAAAAAAAAAAAAAAAAAAAAAAAAAAAAABZQAAAAAAAAG5AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAAAAAA==",
+      "payloadSha256": "4373b3fc4f1aab57443329fa5b2f9cc185a0fa6fdd7b6a0f77ba2f2165168fc9",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "sensor_compressed_image",
+      "publisher": "FoxgloveCameraPublisher",
+      "topic": "/unity/sensor/camera/image/compressed",
+      "schemaName": "sensor_msgs/msg/CompressedImage",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 43,
+      "payloadBase64": "AAEAAGBYVWUAAAAABwAAAGNhbWVyYQAABQAAAGpwZWcAAAAAAwAAAP/Y/w==",
+      "payloadSha256": "639eca9bc773eded8bc84f06b18665ecd8ee9f385da5d9681bb9313d9b86a869",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "sensor_camera_info",
+      "publisher": "FoxgloveCameraInfoPublisher",
+      "topic": "/unity/sensor/camera/camera_info",
+      "schemaName": "sensor_msgs/msg/CameraInfo",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 317,
+      "payloadBase64": "AAEAAGBYVWUAAAAABwAAAGNhbWVyYQAA4AEAAIACAAAKAAAAcGx1bWJfYm9iAAAAAAAAAAAAAAAAAFlAAAAAAAAAAAAAAAAAAAB0QAAAAAAAAAAAAAAAAAAAWUAAAAAAAABuQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPwAAAAAAAPA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPwAAAAAAAFlAAAAAAAAAAAAAAAAAAAB0QAAAAAAAAAAAAAAAAAAAAAAAAAAAAABZQAAAAAAAAG5AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "payloadSha256": "b72e29105cb2204a7e6d1f8b1c9e165e295949e8ed7c0369fff5d55131696316",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "laser_scan",
+      "publisher": "FoxgloveLaserScanPublisher",
+      "topic": "/unity/laser_scan",
+      "schemaName": "foxglove_msgs/msg/LaserScan",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 128,
+      "payloadBase64": "AAEAAGBYVWUAAAAABgAAAGxhc2VyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/AAAAAAAA8L8AAAAAAADwPwIAAAAAAAAAAAAAAAAA8D8AAAAAAAAAQAAAAAA=",
+      "payloadSha256": "43eb5648a51607adff3d82e7d258f11473091c7b4be5318ede39f22c2dd9c761",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "point_cloud",
+      "publisher": "FoxglovePointCloudPublisher",
+      "topic": "/unity/point_cloud",
+      "schemaName": "foxglove_msgs/msg/PointCloud",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 200,
+      "payloadBase64": "AAEAAGBYVWUAAAAADAAAAHVuaXR5X3dvcmxkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/EAAAAAQAAAACAAAAeAAAAAAAAAAHAAAAAgAAAHkAAAAEAAAABwAAAAIAAAB6AAAACAAAAAcAAAAKAAAAaW50ZW5zaXR5AAAADAAAAAcAAAAgAAAAAACAPwAAAEAAAEBAAACAQAAAoEAAAMBAAADgQAAAAEE=",
+      "payloadSha256": "bca9fe0aa55d831c920ede4108314374f9bc35399c6aa649942ccec3a1bc4e8f",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "sensor_point_cloud2",
+      "publisher": "FoxglovePointCloudPublisher",
+      "topic": "/unity/sensor/point_cloud2",
+      "schemaName": "sensor_msgs/msg/PointCloud2",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 177,
+      "payloadBase64": "AAEAAGBYVWUAAAAADAAAAHVuaXR5X3dvcmxkAAEAAAACAAAABAAAAAIAAAB4AAAAAAAAAAcAAAABAAAAAgAAAHkAAAAEAAAABwAAAAEAAAACAAAAegAAAAgAAAAHAAAAAQAAAAoAAABpbnRlbnNpdHkAAAAMAAAABwAAAAEAAAAAAAAAEAAAACAAAAAgAAAAAACAPwAAAEAAAEBAAACAQAAAoEAAAMBAAADgQAAAAEEB",
+      "payloadSha256": "baa4ca0d77f06ec4db0f035f3015f2a5427cccc8f747765ed0f832b060b1d38a",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    },
+    {
+      "id": "compressed_point_cloud",
+      "publisher": "FoxglovePointCloudPublisher",
+      "topic": "/unity/point_cloud_draco",
+      "schemaName": "foxglove_msgs/msg/CompressedPointCloud",
+      "schemaEncoding": "ros2msg",
+      "messageEncoding": "cdr",
+      "payloadLength": 106,
+      "payloadBase64": "AAEAAGBYVWUAAAAADAAAAHVuaXR5X3dvcmxkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/BQAAAERSQUNPAAAABgAAAGRyYWNvAA==",
+      "payloadSha256": "6c1a96210d49c5d55e6924c07f28c2bc5edd44df838718e07f1a96cb5acee449",
+      "invalidInput": {
+        "kind": "empty_payload",
+        "exceptionType": "ArgumentException",
+        "parameter": "payload"
+      }
+    }
+  ],
+  "mcap": {
+    "typedFactory": {
+      "available": true,
+      "schemaName": "foxglove_msgs/msg/FrameTransform",
+      "schemaEncoding": "ros2msg",
+      "topic": "/tf",
+      "messageEncoding": "cdr",
+      "decodedKind": "Provider",
+      "decoderId": "unity2foxglove.ros2bridge/cdr-typed",
+      "decodedType": "Foxglove.FrameTransform",
+      "decodedTextSha256": "4f4b42eea86fad4525ef6d66ee43cf73d93b692ea322e7346ac98c34b4f527f8"
+    },
+    "diagnosticFallback": {
+      "schemaName": "sensor_msgs/msg/CompressedImage",
+      "schemaEncoding": "ros2msg",
+      "topic": "/unity/sensor/camera/image/compressed",
+      "messageEncoding": "cdr",
+      "decodedKind": "Provider",
+      "decoderId": "unity2foxglove.ros2bridge/cdr-diagnostic",
+      "schemaKnown": true,
+      "encapsulationKind": 1,
+      "payloadByteLength": 43
+    },
+    "selectionOrder": {
+      "calls": [
+        "explicit_0",
+        "explicit_1"
+      ],
+      "decodedKind": "Json",
+      "marker": "phase186-explicit-override"
+    },
+    "packageAbsent": {
+      "decodedKind": "Unsupported",
+      "problemCode": "McapDecodeUnsupported"
+    },
+    "typedFailure": {
+      "decodedKind": "Provider",
+      "decoderId": "unity2foxglove.ros2bridge/cdr-diagnostic",
+      "problemCode": "McapRos2CdrTypedDecodeFailed",
+      "exceptionType": "InvalidDataException"
+    }
+  }
+}

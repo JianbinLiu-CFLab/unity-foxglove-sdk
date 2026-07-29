@@ -11,7 +11,6 @@ using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UVector3 = UnityEngine.Vector3;
 using UQuaternion = UnityEngine.Quaternion;
 
@@ -31,8 +30,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _useSharedSensorClock = true;
 
         public override bool SupportsProtobufEncoding => true;
-        public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.FrameTransform;
 
         public event Action<FrameTransformMessage> FrameTransformReady;
 
@@ -84,25 +81,22 @@ namespace Unity.FoxgloveSDK.Components
             var publishNativeFrame = nativeHandler != null;
             if (!ShouldPrepareAnyPublishPayload(
                 out var publishWebSocket,
-                out var publishBridge,
-                out var encodingResolution,
-                out var bridgeResolution) && !publishNativeFrame)
+                out var publishProvider,
+                out var encodingResolution) && !publishNativeFrame)
                 return;
 
             var unixNs = CurrentTransformTimeNs();
             ResolveTransform(out var pos, out var rot);
             FrameTransformMessage message = null;
-            byte[] ros2Payload = null;
-
+            Foxglove.FrameTransform providerMessage = null;
             if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProtobufTransform(unixNs, encodingResolution, pos, rot);
-            }
-            else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
-            {
-                message = CreateMessage(unixNs, pos, rot);
-                ros2Payload = Ros2CdrFrameTransformBuilder.Serialize(message);
-                PublishRos2(ros2Payload, unixNs, encodingResolution);
+                providerMessage =
+                    CreateProtobufTransform(unixNs, pos, rot);
+                PublishProto(
+                    providerMessage.ToByteArray(),
+                    unixNs,
+                    encodingResolution);
             }
             else if (publishWebSocket)
             {
@@ -110,11 +104,14 @@ namespace Unity.FoxgloveSDK.Components
                 Publish(message, unixNs, encodingResolution);
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                message ??= CreateMessage(unixNs, pos, rot);
-                ros2Payload ??= Ros2CdrFrameTransformBuilder.Serialize(message);
-                PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
+                providerMessage ??=
+                    CreateProtobufTransform(unixNs, pos, rot);
+                PublishOrdinaryTransport(
+                    providerMessage,
+                    SchemaName,
+                    unixNs);
             }
 
             if (publishNativeFrame)
@@ -149,9 +146,12 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private void PublishProtobufTransform(ulong unixNs, PublisherEncodingResolution resolution, UVector3 pos, UQuaternion rot)
+        private Foxglove.FrameTransform CreateProtobufTransform(
+            ulong unixNs,
+            UVector3 pos,
+            UQuaternion rot)
         {
-            var protoFt = new Foxglove.FrameTransform
+            return new Foxglove.FrameTransform
             {
                 Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
                 ParentFrameId = ResolvedParentFrameId,
@@ -159,8 +159,6 @@ namespace Unity.FoxgloveSDK.Components
                 Translation = new Foxglove.Vector3 { X = (double)pos.x, Y = (double)pos.y, Z = (double)pos.z },
                 Rotation = new Foxglove.Quaternion { X = (double)rot.x, Y = (double)rot.y, Z = (double)rot.z, W = (double)rot.w }
             };
-
-            PublishProto(protoFt.ToByteArray(), unixNs, resolution);
         }
 
         private string ResolveChildFrameId()

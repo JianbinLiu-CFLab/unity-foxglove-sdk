@@ -38,14 +38,14 @@ namespace Unity.FoxgloveSDK.Components
             PointCloudFrame frame,
             ulong unixNs,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             PublisherEffectiveEncoding webSocketEncoding,
             double cloneMs)
         {
             Frame = frame;
             UnixNs = unixNs;
             PublishWebSocket = publishWebSocket;
-            PublishBridge = publishBridge;
+            PublishProvider = publishProvider;
             WebSocketEncoding = webSocketEncoding;
             CloneMs = cloneMs;
         }
@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Components
             string frameId,
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             PublisherEffectiveEncoding webSocketEncoding,
             double cloneMs)
         {
@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.Components
             FrameId = frameId;
             EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
             PublishWebSocket = publishWebSocket;
-            PublishBridge = publishBridge;
+            PublishProvider = publishProvider;
             WebSocketEncoding = webSocketEncoding;
             CloneMs = cloneMs;
         }
@@ -97,8 +97,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True when the websocket output path should receive the result.</summary>
         public bool PublishWebSocket { get; }
 
-        /// <summary>True when the local ROS2 bridge output path should receive the result.</summary>
-        public bool PublishBridge { get; }
+        /// <summary>True when an ordinary-payload Provider should receive the result.</summary>
+        public bool PublishProvider { get; }
 
         /// <summary>Effective websocket encoding selected when this request was queued.</summary>
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Components
             string frameId,
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding,
             bool logPerformanceDiagnostics,
@@ -148,7 +148,7 @@ namespace Unity.FoxgloveSDK.Components
             FrameId = frameId;
             EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
             PublishWebSocket = publishWebSocket;
-            PublishBridge = publishBridge;
+            PublishProvider = publishProvider;
             PublishNativeFrame = publishNativeFrame;
             WebSocketEncoding = webSocketEncoding;
             LogPerformanceDiagnostics = logPerformanceDiagnostics;
@@ -174,8 +174,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True when the websocket output path should receive the result.</summary>
         public bool PublishWebSocket { get; }
 
-        /// <summary>True when the local ROS2 bridge output path should receive the result.</summary>
-        public bool PublishBridge { get; }
+        /// <summary>True when an ordinary-payload Provider should receive the result.</summary>
+        public bool PublishProvider { get; }
 
         /// <summary>True when optional native DDS adapters should receive the frame handoff.</summary>
         public bool PublishNativeFrame { get; }
@@ -219,7 +219,7 @@ namespace Unity.FoxgloveSDK.Components
             PointCloudFrame frame,
             bool success,
             byte[] webSocketPayload,
-            byte[] bridgePayload,
+            Foxglove.CompressedPointCloud protobufMessage,
             string error,
             double encodeMs)
         {
@@ -227,7 +227,7 @@ namespace Unity.FoxgloveSDK.Components
             Frame = frame;
             Success = success;
             WebSocketPayload = webSocketPayload;
-            BridgePayload = bridgePayload;
+            ProtobufMessage = protobufMessage;
             Error = error;
             EncodeMs = encodeMs;
         }
@@ -244,8 +244,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Prepared websocket payload bytes, when requested.</summary>
         public byte[] WebSocketPayload { get; }
 
-        /// <summary>Prepared ROS2 bridge payload bytes, when requested.</summary>
-        public byte[] BridgePayload { get; }
+        /// <summary>Neutral protobuf value for ordinary Provider mapping.</summary>
+        public Foxglove.CompressedPointCloud ProtobufMessage { get; }
 
         /// <summary>Failure reason when <see cref="Success"/> is false.</summary>
         public string Error { get; }
@@ -321,8 +321,6 @@ namespace Unity.FoxgloveSDK.Components
         public PointCloud2NativeResult(
             PointCloud2NativeRequest request,
             bool success,
-            byte[] webSocketPayload,
-            byte[] bridgePayload,
             PointCloud2NativeFrame nativeFrame,
             PointCloud2NativeFrame motionCompensatedNativeFrame,
             string error,
@@ -337,8 +335,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             Request = request;
             Success = success;
-            WebSocketPayload = webSocketPayload;
-            BridgePayload = bridgePayload;
             NativeFrame = nativeFrame;
             MotionCompensatedNativeFrame = motionCompensatedNativeFrame;
             Error = error;
@@ -357,12 +353,6 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>True when packing and optional deskew frame construction succeeded.</summary>
         public bool Success { get; }
-
-        /// <summary>Prepared websocket CDR payload bytes, when requested.</summary>
-        public byte[] WebSocketPayload { get; }
-
-        /// <summary>Prepared ROS2 bridge CDR payload bytes, when requested.</summary>
-        public byte[] BridgePayload { get; }
 
         /// <summary>Raw PointCloud2 Native frame handoff for optional DDS adapters.</summary>
         public PointCloud2NativeFrame NativeFrame { get; }

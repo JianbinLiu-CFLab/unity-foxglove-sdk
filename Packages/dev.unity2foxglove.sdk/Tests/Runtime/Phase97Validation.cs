@@ -10,8 +10,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json.Linq;
-using Unity.FoxgloveSDK.Ros2Bridge;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -231,8 +231,8 @@ namespace Unity.FoxgloveSDK.Tests
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
             var diagnosticsEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
-            var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
-            var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
+            var drawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
+            var prefs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
             var bridgeMethod = SourceMethod(ros2BridgeEditor, "void DrawRos2BridgeSection");
             var diagnosticsMethod = SourceMethod(diagnosticsEditor, "void DrawDiagnosticsSection");
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "97F-2: Inspector exposes one-click health check");
             Check(drawer.Contains("Task.Run") && drawer.Contains("progress: progress =>"),
                 "97F-3: Inspector health check runs command/probe work in background");
-            var options = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            var options = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
             Check(options.Contains("public Action<Ros2BridgeHealthProgress> Progress { get; }", StringComparison.Ordinal)
                   && !options.Contains("public Action<Ros2BridgeHealthProgress> Progress { get; set; }", StringComparison.Ordinal),
                 "97F-3b: health options keep progress callback immutable after construction");

@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private bool _hasPreparedPublishDemand;
         private bool _preparedPublishWebSocket;
-        private bool _preparedPublishBridge;
+        private bool _preparedPublishProvider;
         private int _hasSourceDrivenFrames;
         private int _warnedTransformFallbackSuppressed;
 
@@ -36,10 +36,10 @@ namespace Unity.FoxgloveSDK.Components
         public bool ShouldLogTransformFallbackSuppressedWarning()
             => Interlocked.Exchange(ref _warnedTransformFallbackSuppressed, 1) == 0;
 
-        public void SetPreparedDemand(bool publishWebSocket, bool publishBridge)
+        public void SetPreparedDemand(bool publishWebSocket, bool publishProvider)
         {
             _preparedPublishWebSocket = publishWebSocket;
-            _preparedPublishBridge = publishBridge;
+            _preparedPublishProvider = publishProvider;
             _hasPreparedPublishDemand = true;
         }
 
@@ -47,13 +47,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             _hasPreparedPublishDemand = false;
             _preparedPublishWebSocket = false;
-            _preparedPublishBridge = false;
+            _preparedPublishProvider = false;
         }
 
-        public bool TryGetPreparedDemand(out bool publishWebSocket, out bool publishBridge)
+        public bool TryGetPreparedDemand(out bool publishWebSocket, out bool publishProvider)
         {
             publishWebSocket = _preparedPublishWebSocket;
-            publishBridge = _preparedPublishBridge;
+            publishProvider = _preparedPublishProvider;
             return _hasPreparedPublishDemand;
         }
     }

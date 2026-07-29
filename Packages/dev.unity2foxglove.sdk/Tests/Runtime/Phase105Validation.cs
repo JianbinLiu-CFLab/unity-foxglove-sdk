@@ -57,42 +57,42 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDiagnosticsCommentTargets()
         {
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs",
                 "public interface IRos2BridgeCommandRunner",
                 "105B-1: command runner interface documents ROS2 CLI boundary",
                 "ROS2", "Process");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs",
                 "public sealed class Ros2BridgeCommandResult",
                 "105B-2: command result DTO documents timeout and launch errors",
                 "timeout", "error");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeHealthProbe.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeHealthProbe.cs",
                 "public interface IRos2BridgeHealthProbe",
                 "105B-3: health probe interface documents U2R2 sidecar ping boundary",
                 "U2R2", "sidecar");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthReport.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthReport.cs",
                 "public sealed class Ros2BridgeHealthReport",
                 "105B-4: health report documents offline/live diagnostics",
                 "diagnostic");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthReport.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthReport.cs",
                 "public const int CurrentSchemaVersion = 1;",
                 "105B-5: health report schema version documents JSON compatibility",
                 "JSON");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs",
                 "public sealed class Ros2BridgeHealthRunner",
                 "105B-6: health runner documents offline/live sidecar workflow",
                 "offline", "live");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthCodec.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthCodec.cs",
                 "public const int ProtocolVersion = 1;",
                 "105B-7: U2R2 health protocol version documents wire compatibility",
                 "U2R2");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs",
                 "public sealed class Ros2BridgeU2R2HealthProbe",
                 "105B-8: U2R2 health probe documents loopback diagnostics",
                 "loopback", "Inspector");
@@ -101,22 +101,22 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeProtocolCommentTargets()
         {
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs",
                 "public sealed class Ros2BridgeRuntime",
                 "105C-1: bridge runtime summary documents queue/reconnect lifecycle",
                 "queue", "reconnect");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs",
                 "public sealed class Ros2BridgeTcpClient",
                 "105C-2: TCP client summary documents loopback-only guardrail",
                 "loopback");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs",
                 "public const string CdrEncoding = \"cdr\";",
                 "105C-3: bridge frame CDR encoding constant documents wire meaning",
                 "CDR");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs",
                 "public const int MaxHeaderBytes = 64 * 1024;",
                 "105C-4: U2R2 max header size documents protocol units",
                 "U2R2", "bytes");
@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "105D-4: point-cloud default topic constants document product defaults",
                 "Default");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
                 "public const string FrameTransform",
                 "105D-5: ROS2 publisher schema constants document official foxglove_msgs names",
                 "foxglove_msgs");
@@ -179,27 +179,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEditorAndSampleCommentTargets()
         {
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs",
                 "internal sealed class Ros2BridgeHealthDrawer",
                 "105E-1: ROS2 Bridge health drawer summary documents Inspector UI role",
                 "Inspector");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs",
                 "internal static class Ros2BridgeEditorPrefs",
                 "105E-2: ROS2 Bridge editor prefs summary documents persisted ros2 path",
                 "ros2", "path");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs",
                 "public sealed class Ros2BridgeSampleController",
                 "105E-3: ROS2 sample controller summary documents visible sample behavior",
                 "sample");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs",
                 "public sealed class Ros2BridgeSamplePointCloud",
                 "105E-4: ROS2 sample point cloud summary documents emitted sample data",
                 "point");
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs",
                 "public sealed class Ros2BridgeSampleLaserScan",
                 "105E-5: ROS2 sample laser scan summary documents emitted sample data",
                 "laser");

@@ -8,10 +8,10 @@ using System;
 using System.IO;
 using System.Linq;
 using Foxglove.Schemas;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 using Unity.FoxgloveSDK.Util;
 using Xunit;
@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void CdrWriterAvoidsTemporaryArraysAndPreservesPayloadBytes()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
 
             Assert.Contains("private byte[] _buffer", source, StringComparison.Ordinal);
             Assert.Contains("private int _position", source, StringComparison.Ordinal);
@@ -221,12 +221,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void GeneratedAndManualCdrBuildersUseSpanAndCapacityPatterns()
         {
-            var generated = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
+            var generated = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
             var generator = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
             var generatorTests = TestSources.Text("Scripts/schema/regression_checks/test_schema_tooling.py");
-            var frame = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs");
-            var scene = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
-            var camera = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs");
+            var frame = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs");
+            var scene = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
+            var camera = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs");
 
             Assert.DoesNotContain(".ToByteArray()", generated, StringComparison.Ordinal);
             Assert.Contains(".Data.Span", generated, StringComparison.Ordinal);
@@ -259,8 +259,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void BridgeFrameOwnedPayloadPathPreservesPublicCopySemantics()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var publisher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var publisher = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
             Assert.Contains("internal static Ros2BridgeFrame CreateOwned", source, StringComparison.Ordinal);
             Assert.Contains("clonePayload: false", source, StringComparison.Ordinal);
@@ -292,8 +292,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Ros2BridgeFrameWriter.Write(frame, stream);
             Assert.True(stream.ToArray().SequenceEqual(bytes));
 
-            var writer = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var tcp = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
+            var writer = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var tcp = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
             var sidecar = TestSources.Text("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
 
             Assert.Contains("internal static void Write(Ros2BridgeFrame frame, Stream destination)", writer, StringComparison.Ordinal);

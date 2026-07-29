@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     [Generator]
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator
     {
-#if !FOXRUN_R2FU_ANALYZER
+#if !FOXRUN_R2FU_ANALYZER && !FOXRUN_BRIDGE_ANALYZER
         private readonly bool _emitLegacyCombinedRos2Partial;
 
         public FoxgloveLogSourceGenerator()
@@ -81,6 +81,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 members.Collect().Combine(nativeCompilationEvidence),
                 static (spc, input) =>
                     GenerateR2fu(spc, input.Left, input.Right));
+#elif FOXRUN_BRIDGE_ANALYZER
+            context.RegisterSourceOutput(
+                members.Collect(),
+                static (spc, items) =>
+                    GenerateBridge(spc, items));
 #else
             var nativeCompilationEvidence = context.CompilationProvider.Select(
                 static (compilation, _) => NativeCompilationEvidence.FromCompilation(compilation));
@@ -977,6 +982,63 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     source);
             }
         }
+#elif FOXRUN_BRIDGE_ANALYZER
+        private static void GenerateBridge(
+            SourceProductionContext spc,
+            ImmutableArray<MemberData> items)
+        {
+            var roslynMembers = new List<FoxRunRoslynGenerationMember>();
+            var firstMemberByClass =
+                new Dictionary<(string Ns, string ClassName), MemberData>();
+            foreach (var item in items)
+            {
+                if (item == null || item.DiagnosticLocation != null)
+                    continue;
+
+                item.AppendRoslynMembers(roslynMembers);
+                var key = (item.Ns, item.ClassName);
+                if (!firstMemberByClass.ContainsKey(key))
+                    firstMemberByClass.Add(key, item);
+            }
+
+            if (roslynMembers.Count == 0)
+                return;
+
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(
+                roslynMembers);
+            var invalidDeclaringTypes = new HashSet<string>(
+                FoxRunGenerationModelValidator.Validate(model)
+                    .Where(diagnostic =>
+                        diagnostic.Severity == "Error")
+                    .Select(DiagnosticDeclaringType),
+                StringComparer.Ordinal);
+            foreach (var type in model.Types)
+            {
+                if (invalidDeclaringTypes.Contains(type.DeclaringType)
+                    || !firstMemberByClass.TryGetValue(
+                        (type.Namespace, type.ClassName),
+                        out var first)
+                    || !first.IsPartial)
+                {
+                    continue;
+                }
+
+                var source =
+                    global::Unity2Foxglove.Ros2Bridge.Editor
+                        .FoxRunBridgeSourceEmitter
+                        .EmitBridgeContribution(type);
+                if (string.IsNullOrWhiteSpace(source))
+                    continue;
+
+                var identity = string.IsNullOrEmpty(type.Namespace)
+                    ? type.ClassName
+                    : type.Namespace + "." + type.ClassName;
+                spc.AddSource(
+                    IdentifierUtils.SanitizeFileStem(identity)
+                    + "_unity2foxglove_ros2bridge_typed_cdr_FoxRun.g.cs",
+                    source);
+            }
+        }
 #else
         private static void Generate(
             SourceProductionContext spc,
@@ -1536,6 +1598,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
         }
 
+#if !FOXRUN_BRIDGE_ANALYZER
         /// <summary>
         /// Emits the generated partial class implementing <c>IFoxgloveLogSource</c>
         /// for one class name/namespace pair. Shared model validation handles
@@ -1560,6 +1623,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     emitRos2NativePartial);
             spc.AddSource(FoxgloveSourceEmitter.GeneratedSourceName(ns, className), source);
         }
+#endif
 
         private static Location LocationFor(FoxRunGenerationDiagnostic diagnostic, Dictionary<string, Location> memberLocations)
         {

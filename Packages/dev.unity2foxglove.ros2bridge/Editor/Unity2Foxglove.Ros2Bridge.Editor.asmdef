@@ -1,0 +1,17 @@
+{
+  "name": "Unity2Foxglove.Ros2Bridge.Editor",
+  "rootNamespace": "Unity2Foxglove.Ros2Bridge.Editor",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Editor",
+    "Unity2Foxglove.Ros2Bridge"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

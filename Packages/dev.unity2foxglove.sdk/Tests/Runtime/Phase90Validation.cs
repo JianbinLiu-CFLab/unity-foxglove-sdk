@@ -14,7 +14,7 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -45,9 +45,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPlannedSourceFilesExist()
         {
-            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs")),
+            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs")),
                 "90A-1: ROS2 msg schema catalog source exists");
-            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Ros2MsgSchemasSetup.cs")),
+            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Ros2MsgSchemasSetup.cs")),
                 "90A-2: ROS2 msg schemas setup source exists");
         }
 
@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Directory.Exists(runtimeRoot), "90G-0: Runtime source root exists");
             var componentsRoot = Path.Combine(runtimeRoot, "Components");
             Check(Directory.Exists(componentsRoot), "90G-0b: Runtime Components source root exists");
-            var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
+            var catalog = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
 
             Check(SourceTreeAvoids(runtimeRoot, "class CdrWriter", "Ros2CdrPublisher"),
                 "90G-1: Phase90 does not introduce CDR writer or CDR publisher");

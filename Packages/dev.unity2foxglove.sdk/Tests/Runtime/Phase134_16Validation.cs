@@ -7,7 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -75,9 +75,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void WriterAndRuntimeUseOwnedPayloadSnapshot()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
 
             Check(frameSource.Contains("private readonly byte[] _payload", StringComparison.Ordinal)
                   && frameSource.Contains("clonePayload: true", StringComparison.Ordinal)
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PublicPayloadGetterDocumentsCopyCost()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
 
             Check(frameSource.Contains("[Obsolete(", StringComparison.Ordinal)
                   && frameSource.Contains("PayloadLength", StringComparison.Ordinal)
@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CommandRunnerDrainsTimedOutProcessOutput()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
 
             Check(source.Contains("process.Kill()", StringComparison.Ordinal)
                   && source.Contains("process.WaitForExit(Math.Max(1, timeoutMs))", StringComparison.Ordinal)
@@ -119,8 +119,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation()
         {
-            var optionsSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
-            var runnerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
+            var optionsSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            var runnerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
 
             Check(optionsSource.Contains("CancellationToken cancellationToken = default", StringComparison.Ordinal)
                   && optionsSource.Contains("public CancellationToken CancellationToken", StringComparison.Ordinal)
@@ -133,7 +133,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RuntimeConnectContractAndWorkerGenerationAreExplicit()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
 
             Check(source.Contains("_workerGeneration", StringComparison.Ordinal)
                   && source.Contains("WorkerLoop(generation)", StringComparison.Ordinal)
@@ -246,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void HealthProbeValidatesFixedHeaderBeforeAllocation()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
 
             Check(source.Contains("U2R2 response magic is invalid", StringComparison.Ordinal)
                   && source.Contains("U2R2 response version is unsupported", StringComparison.Ordinal)
@@ -257,9 +257,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TopicAndFrameWritersRejectNewlinesAndReportSizes()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var topicProfileSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var topicProfileSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
 
             Check(frameSource.Contains("topic.IndexOf('\\r')", StringComparison.Ordinal)
                   && topicProfileSource.Contains("ContainsNewline", StringComparison.Ordinal)

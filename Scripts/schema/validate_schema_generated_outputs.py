@@ -22,11 +22,11 @@ SCHEMA_SNAPSHOT_DIR = REPO_ROOT / "third-party" / "foxglove-sdk" / "schemas" / "
 GENERATOR_TIMEOUT_SECONDS = 120
 COMMITTED_CATALOG = (
     REPO_ROOT
-    / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs"
+    / "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs"
 )
 COMMITTED_CDR_DIR = (
     REPO_ROOT
-    / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated"
+    / "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated"
 )
 EXPECTED_CDR_SOURCES = (
     "Ros2CdrGeneratedSerializers.g.cs",

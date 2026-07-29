@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IncludeRos2Bridge>false</IncludeRos2Bridge>
+    <IncludeRos2ForUnityAdapter>true</IncludeRos2ForUnityAdapter>
+    <IncludeRos2ForUnityNative>false</IncludeRos2ForUnityNative>
+    <MatrixName>SdkR2fu</MatrixName>
+    <ExpectR2fu>true</ExpectR2fu>
+    <ExpectBridge>false</ExpectBridge>
+    <AssemblyName>Unity2Foxglove.SdkR2fu.Compile</AssemblyName>
+  </PropertyGroup>
+  <Import Project="../FoxgloveSdk.TestSurface.props" />
+  <Import Project="PackageMatrix.Common.props" />
+</Project>

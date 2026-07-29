@@ -7,7 +7,6 @@
 using System;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
 using NumericQuaternion = System.Numerics.Quaternion;
 using NumericVector3 = System.Numerics.Vector3;
@@ -47,10 +46,6 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsJsonEncoding => false;
         public override bool SupportsProtobufEncoding => false;
-        public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.SensorCameraInfo;
-        protected override bool IsExpectedEncodingFallback(PublisherEncodingResolution resolution)
-            => resolution.Effective == PublisherEffectiveEncoding.Ros2;
 
         /// <summary>Raised when a standard camera-info frame is ready for optional native ROS2 adapters.</summary>
         public event Action<SensorCameraInfoFrame> SensorCameraInfoReady;
@@ -104,43 +99,16 @@ namespace Unity.FoxgloveSDK.Components
 
             var publishNativeFrame = SensorCameraInfoReady != null;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame)
+            var publishProvider =
+                ShouldPrepareOrdinaryTransportPayload();
+            if (!publishWebSocket && !publishProvider && !publishNativeFrame)
                 return;
 
             var unixNs = ResolveCameraInfoUnixNs();
             var frame = BuildSensorCameraInfoFrame(unixNs);
-            byte[] ros2Payload = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = Ros2CdrSensorCameraInfoBuilder.Serialize(
-                    frame.UnixNs,
-                    frame.FrameId,
-                    frame.Width,
-                    frame.Height,
-                    frame.DistortionModel,
-                    frame.D,
-                    frame.K,
-                    frame.R,
-                    frame.P);
-                PublishRos2(ros2Payload, unixNs);
-            }
-
-            if (publishBridge)
-            {
-                ros2Payload ??= Ros2CdrSensorCameraInfoBuilder.Serialize(
-                    frame.UnixNs,
-                    frame.FrameId,
-                    frame.Width,
-                    frame.Height,
-                    frame.DistortionModel,
-                    frame.D,
-                    frame.K,
-                    frame.R,
-                    frame.P);
-                PublishRos2Bridge(ros2Payload, unixNs);
-            }
+            if (publishProvider)
+                PublishOrdinaryTransport(frame, SchemaName, unixNs);
 
             if (publishNativeFrame)
                 SensorCameraInfoReady?.Invoke(frame);

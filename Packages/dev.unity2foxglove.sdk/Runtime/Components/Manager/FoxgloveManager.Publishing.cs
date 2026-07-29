@@ -5,7 +5,6 @@
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
 #if UNITY_2020_3_OR_NEWER
 using Unity.Profiling;
@@ -102,11 +101,13 @@ namespace Unity.FoxgloveSDK.Components
                 return id;
             }
 
-            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
-                throw new System.InvalidOperationException($"Unknown ROS2 schema '{schemaName}'.");
-
             id = (uint)_connectionState.NextChannelId;
-            _runtime.RegisterRos2MsgSchemaChannel(id, topic, schemaName);
+            _runtime.RegisterSchemaChannel(
+                id,
+                topic,
+                schemaName,
+                CdrEncoding,
+                Ros2MsgSchemaEncoding);
             _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
@@ -445,7 +446,10 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId, "publish ROS2"))
                 return;
 
-            _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+            _runtime.Publish(
+                channelId,
+                payload ?? System.Array.Empty<byte>(),
+                logTimeNs);
             RecordPublishCadence(topic, CdrEncoding);
 #if UNITY_2020_3_OR_NEWER
             }
@@ -496,12 +500,6 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrWhiteSpace(schemaName))
             {
                 WarnInvalidRos2Schema(operation, "ROS2 schema channels require a schema name.");
-                return false;
-            }
-
-            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
-            {
-                WarnInvalidRos2Schema(operation, $"Unknown ROS2 schema '{schemaName}'.");
                 return false;
             }
 

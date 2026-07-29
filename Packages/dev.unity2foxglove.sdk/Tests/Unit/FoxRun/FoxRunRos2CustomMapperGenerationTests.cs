@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "catch (global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrWriterBudgetExceededException exception)",
+                "catch (global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrWriterBudgetExceededException exception)",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -238,14 +238,14 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void BoundedCdrWriterRejectsGrowthBeforeAllocatingPastItsCap()
         {
             var writer =
-                new Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrWriter(
+                new Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrWriter(
                     capacityBytes: 4,
                     maximumBytes: 8);
 
             writer.WriteUInt32(184);
             Assert.Equal(8, writer.Position);
             Assert.Equal(8, writer.ToArray().Length);
-            Assert.Throws<Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrWriterBudgetExceededException>(
+            Assert.Throws<Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrWriterBudgetExceededException>(
                 () => writer.WriteUInt8(1));
         }
 
@@ -644,7 +644,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
         private static void AssertNullableEnumCdr(byte[] payload, ushort expectedValue, bool expectedPresence)
         {
-            var reader = new Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrReader(payload);
+            var reader = new Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrReader(payload);
             reader.ReadString();
             reader.ReadUInt64();
             reader.ReadInt32();

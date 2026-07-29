@@ -1229,7 +1229,7 @@ namespace Demo
 
             void StartAndAttach(FoxRunSubscriptionSessionPolicy activePolicy)
             {
-                runtime.Start("phase179-restart", enableCdrClientPublish: false);
+                runtime.Start("phase179-restart");
                 router.DefaultSubscriptionEncoding = activePolicy.FoxgloveEncoding;
                 router.MaxMessagesPerSecondPerTopic = activePolicy.TransportAdmissionRateLimitHz;
                 runtime.Session.OnClientMessageWithEncoding += (_, _, topic, encoding, payload) =>

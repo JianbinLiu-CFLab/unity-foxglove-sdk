@@ -7,10 +7,10 @@
 using System;
 using System.Buffers;
 using Foxglove.Schemas;
+using Google.Protobuf;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 byte[] webSocketPayload = null;
-                byte[] bridgePayload = null;
+                Foxglove.CompressedPointCloud protobufMessage = null;
                 if (success)
                 {
                     try
@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Components
                             metadataFrame,
                             dracoPayload,
                             out webSocketPayload,
-                            out bridgePayload);
+                            out protobufMessage);
                     }
                     catch (Exception ex)
                     {
@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Components
                     metadataFrame,
                     success,
                     webSocketPayload,
-                    bridgePayload,
+                    protobufMessage,
                     error,
                     ElapsedMs(encodeStart));
             }
@@ -98,8 +98,6 @@ namespace Unity.FoxgloveSDK.Components
                 var encodeStart = Stopwatch.GetTimestamp();
                 var success = false;
                 var error = "";
-                byte[] webSocketPayload = null;
-                byte[] bridgePayload = null;
                 PointCloud2NativeFrame nativeFrame = null;
                 PointCloud2NativeFrame motionCompensatedNativeFrame = null;
                 var validCount = 0;
@@ -141,29 +139,7 @@ namespace Unity.FoxgloveSDK.Components
                     validCount = packed.ValidPointCount;
                     nativeFrame = BuildPointCloud2NativeFrame(request, packed);
 
-                    byte[] ros2Payload = null;
-                    if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-                    {
-                        var rawPayloadStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                        ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
-                        rawPayloadBuildMs += DiagnosticElapsedMs(rawPayloadStart);
-                        webSocketPayload = ros2Payload;
-                    }
-
-                    if (request.PublishBridge)
-                    {
-                        if (ros2Payload == null)
-                        {
-                            var rawPayloadStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                            ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
-                            rawPayloadBuildMs += DiagnosticElapsedMs(rawPayloadStart);
-                        }
-                        bridgePayload = ros2Payload;
-                    }
-
-                    // When neither websocket nor bridge publication needs CDR bytes, diagnostics
-                    // report the retained native frame payload size rather than forcing CDR build.
-                    payloadBytes = ros2Payload?.Length ?? nativeFrame.Data.Length;
+                    payloadBytes = nativeFrame.Data.Length;
 
                     if (request.HasMotionCompensation)
                     {
@@ -264,8 +240,6 @@ namespace Unity.FoxgloveSDK.Components
                 return new PointCloud2NativeResult(
                     request,
                     success,
-                    webSocketPayload,
-                    bridgePayload,
                     nativeFrame,
                     motionCompensatedNativeFrame,
                     error,
@@ -348,45 +322,23 @@ namespace Unity.FoxgloveSDK.Components
                 preferPooledDataRetention: packed.PreferPooledDataRetention);
         }
 
-        private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)
-        {
-            return Ros2CdrSensorPointCloud2Builder.Serialize(
-                frame.UnixNs,
-                frame.FrameId,
-                frame.Height,
-                frame.Width,
-                frame.Fields,
-                frame.PointStep,
-                frame.Data,
-                frame.IsDense);
-        }
-
         private static void BuildDracoPublishPayloads(
             DracoEncodeRequest request,
             PointCloudFrame frame,
             byte[] dracoPayload,
             out byte[] webSocketPayload,
-            out byte[] bridgePayload)
+            out Foxglove.CompressedPointCloud protobufMessage)
         {
             webSocketPayload = null;
-            bridgePayload = null;
-            byte[] ros2Payload = null;
+            protobufMessage = null;
+            if (!request.PublishWebSocket && !request.PublishProvider)
+                return;
 
-            if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                webSocketPayload = ros2Payload;
-            }
-            else if (request.PublishWebSocket)
-            {
-                webSocketPayload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
-            }
-
-            if (request.PublishBridge)
-            {
-                ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                bridgePayload = ros2Payload;
-            }
+            protobufMessage = CompressedPointCloudMessageBuilder.CreateProtobuf(
+                frame,
+                dracoPayload);
+            if (request.PublishWebSocket)
+                webSocketPayload = protobufMessage.ToByteArray();
         }
 
         private static double ElapsedMs(long startTicks)

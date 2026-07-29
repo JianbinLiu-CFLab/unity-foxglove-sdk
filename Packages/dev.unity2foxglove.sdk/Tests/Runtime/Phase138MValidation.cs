@@ -11,7 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "138M-1B: standard camera-info schema name is sensor_msgs/msg/CameraInfo");
 
             var compressedPayload = InvokeStaticByteArray(
-                "Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSensorCompressedImageBuilder",
+                "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrSensorCompressedImageBuilder",
                 "Serialize",
                 1_700_000_001_234_567_890UL,
                 "os_camera",
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
             var r = new[] { 1d, 0d, 0d, 0d, 1d, 0d, 0d, 0d, 1d };
             var p = new[] { 320d, 0d, 160d, 0d, 0d, 320d, 120d, 0d, 0d, 0d, 1d, 0d };
             var cameraInfoPayload = InvokeStaticByteArray(
-                "Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSensorCameraInfoBuilder",
+                "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrSensorCameraInfoBuilder",
                 "Serialize",
                 1_700_000_002_345_678_901UL,
                 "os_camera",

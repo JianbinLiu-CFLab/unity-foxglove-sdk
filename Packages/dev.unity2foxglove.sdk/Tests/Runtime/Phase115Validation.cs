@@ -13,7 +13,7 @@ using Foxglove.Schemas;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {

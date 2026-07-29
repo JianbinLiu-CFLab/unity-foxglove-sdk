@@ -15,7 +15,7 @@ using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var files = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase92Validation.cs",
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/PublisherEncodingEditorLabels.cs",
             };
@@ -189,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPublisherIntegration()
         {
-            var schemaNames = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
+            var schemaNames = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
             foreach (var mapping in ProductSchemaMappings())
                 Check(schemaNames.Contains(mapping.sourceToken),
                     "92D-1: schema mapping contains " + mapping.schemaName);

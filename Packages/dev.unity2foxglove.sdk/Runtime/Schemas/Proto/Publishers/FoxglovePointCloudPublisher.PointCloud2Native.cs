@@ -10,7 +10,6 @@ using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
@@ -42,7 +41,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
             var motionRequestStart = boundaryTimings.Start();
             var motionSettings = ResolveMotionCompensationSettings();
@@ -63,7 +62,7 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            if (publishRaw && !publishWebSocket && !publishBridge && !publishNativeFrame && motionCompensation == null)
+            if (publishRaw && !publishWebSocket && !publishProvider && !publishNativeFrame && motionCompensation == null)
             {
                 VirtualLidarPointSnapshotPool.Return(points);
                 return true;
@@ -77,7 +76,7 @@ namespace Unity.FoxgloveSDK.Components
                 frameId,
                 emitAbsoluteTimeNs,
                 publishRaw && publishWebSocket,
-                publishRaw && publishBridge,
+                publishRaw && publishProvider,
                 publishRaw && publishNativeFrame,
                 EffectiveEncoding,
                 publishRaw ? PointCloud2NativeTopic : null,
@@ -91,48 +90,49 @@ namespace Unity.FoxgloveSDK.Components
             ulong unixNs,
             PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishProvider))
             {
                 publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
+                publishProvider = ShouldPrepareOrdinaryTransportPayload();
             }
 
-            byte[] ros2Payload = null;
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            if (!publishProvider && !publishNativeFrame)
+                return;
+
+            var nativeFrame = BuildPreparedPointCloud2NativeFrame(
+                frame,
+                unixNs,
+                packedLayout);
+            if (nativeFrame == null)
+                return;
+
+            if (publishProvider)
             {
-                ros2Payload = packedLayout == null
-                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
-                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
-                PublishRos2(ros2Payload, unixNs);
+                PublishOrdinaryTransport(
+                    nativeFrame,
+                    typeof(PointCloud2NativeFrame).FullName,
+                    unixNs);
             }
 
-            if (publishBridge)
-            {
-                ros2Payload ??= packedLayout == null
-                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
-                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
-                PublishRos2Bridge(ros2Payload, unixNs);
-            }
-
-            if (ShouldPreparePointCloud2NativeFrame())
-                PublishPreparedPointCloud2NativeFrame(frame, unixNs, packedLayout);
+            if (publishNativeFrame)
+                PublishPointCloud2NativeFrameReady(nativeFrame, "preparedNativeFrameReady");
         }
 
-        private void PublishPreparedPointCloud2NativeFrame(
+        private PointCloud2NativeFrame BuildPreparedPointCloud2NativeFrame(
             PointCloudFrame frame,
             ulong unixNs,
             PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
-            var handler = PointCloud2NativeFrameReady;
-            if (handler == null || frame == null)
-                return;
+            if (frame == null)
+                return null;
 
             try
             {
                 var packed = packedLayout == null
                     ? PointCloudPackedDataBuilder.Build(frame)
                     : PointCloudPackedDataBuilder.Build(frame, packedLayout);
-                var nativeFrame = new PointCloud2NativeFrame(
+                return new PointCloud2NativeFrame(
                     unixNs,
                     string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId,
                     height: 1U,
@@ -142,11 +142,11 @@ namespace Unity.FoxgloveSDK.Components
                     data: packed.Data,
                     isDense: true,
                     topic: PointCloud2NativeTopic);
-                PublishPointCloud2NativeFrameReady(nativeFrame, "preparedNativeFrameReady");
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
+                return null;
             }
         }
 
@@ -157,7 +157,7 @@ namespace Unity.FoxgloveSDK.Components
             string frameId,
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding,
             string nativeTopic = null,
@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Components
                 string.IsNullOrEmpty(frameId) ? _frameId : frameId,
                 emitAbsoluteTimeNs,
                 publishWebSocket,
-                publishBridge,
+                publishProvider,
                 publishNativeFrame,
                 webSocketEncoding,
                 _logPerformanceDiagnostics,
@@ -196,11 +196,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
             LogPointCloud2NativeWorkerTiming(result);
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
-
-            if (result.Request.PublishBridge)
-                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
+            if (result.Request.PublishProvider && result.NativeFrame != null)
+            {
+                PublishOrdinaryTransport(
+                    result.NativeFrame,
+                    typeof(PointCloud2NativeFrame).FullName,
+                    result.Request.UnixNs);
+            }
 
             if (result.Request.PublishNativeFrame && result.NativeFrame != null)
                 PublishPointCloud2NativeFrameReady(result.NativeFrame, "rawNativeFrameReady");

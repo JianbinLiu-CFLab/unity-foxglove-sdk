@@ -8,7 +8,6 @@
 using System.IO;
 using System.Reflection;
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEditor;
@@ -107,10 +106,6 @@ namespace Unity.FoxgloveSDK.Editor
         private string _cachedRemoteSourceId;
         private string _cachedRemoteBaseUrl;
         private string _cachedRemoteDirectFileUrl;
-        private Components.FoxRunResolvedQos _ros2BridgeQosThisRepaint =
-            Components.FoxRunResolvedQos.Default;
-        private Ros2BridgeStatsSnapshot _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
-        private int _ros2BridgeStatsFrame = -1;
 
         static FoxgloveManagerEditor()
         {
@@ -129,15 +124,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void OnDisable()
         {
-            _ros2BridgeHealthDrawer.Dispose();
             _mcapReplayPreflight.Dispose();
             _transportStatsThisRepaint = TransportStatsSnapshot.Unsupported;
             _transportStatsFrame = -1;
             _cachedServiceHub = null;
             _cachedServiceSnapshotFrame = -1;
             _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
-            _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
-            _ros2BridgeStatsFrame = -1;
             ResetLoadedSceneContractsForInspectorDraw();
             ClearTransportClientLabelCache();
         }

@@ -214,7 +214,7 @@ Scripts/schema/generate_ros2_msg_schema_catalog.py
 Purpose:
 
 - Read the local official Foxglove ROS 2 `.msg` snapshot from `third-party/foxglove-sdk/schemas/ros2`.
-- Generate the package runtime catalog at `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs`.
+- Generate the package runtime catalog at `Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs`.
 - Embed merged `.msg` schema text with deterministic source counts and SHA-256 provenance.
 
 Basic usage:

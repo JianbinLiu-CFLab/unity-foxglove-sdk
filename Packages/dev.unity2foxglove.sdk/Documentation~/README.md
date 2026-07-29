@@ -35,6 +35,6 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 - Package root: `Packages/dev.unity2foxglove.sdk`
 - Basic sample: `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization`
 - Full demo sample: `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization`
-- ROS2 Bridge sample: `Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample`
+- ROS2 Bridge sample: `Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample`
 - Standalone demo project: `Unity2Foxglove`
 - Repository build scripts: `Scripts`

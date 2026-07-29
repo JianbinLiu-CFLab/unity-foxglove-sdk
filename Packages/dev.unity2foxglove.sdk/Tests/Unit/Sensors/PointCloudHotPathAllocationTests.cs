@@ -197,8 +197,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
             var messageBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
-            var rosPointCloud = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
-            var rosPointCloud2 = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+            var rosPointCloud = Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
+            var rosPointCloud2 = Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
 
             Assert.Contains("internal void RecycleData()", packedBuilder, StringComparison.Ordinal);
             Assert.Contains("internal static PointCloudPackedData BuildPooled", packedBuilder, StringComparison.Ordinal);

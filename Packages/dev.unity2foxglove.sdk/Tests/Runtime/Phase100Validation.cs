@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeRuntimeHardening()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
             Check(source.Contains("sinkToClose = _sink")
                   && source.Contains("_sink = null")
                   && source.Contains("CloseSink(sinkToClose)")
@@ -151,13 +151,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeFrameImmutabilityDecision()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             Check(source.Contains("private readonly byte[] _payload")
                   && source.Contains("clonePayload ? (byte[])payload.Clone() : payload")
                   && source.Contains("internal static Ros2BridgeFrame CreateOwned")
                   && source.Contains("public byte[] Payload => (byte[])_payload.Clone()"),
                 "100F-1: bridge frame keeps public defensive payload copies while allowing internal owned payload transfer");
-            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(destination)")
                   && !writer.Contains("stream.Write(frame.Payload"),
                 "100F-2: bridge writer serializes the owned payload snapshot without using the public clone");

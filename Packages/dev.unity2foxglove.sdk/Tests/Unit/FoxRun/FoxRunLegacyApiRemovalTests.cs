@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                          "Unity.FoxgloveSDK.Components.FoxRunRos2QosDiagnosticCode",
                          "Unity.FoxgloveSDK.Components.FoxRunRos2QosResolution",
                          "Unity.FoxgloveSDK.Components.FoxRunRos2QosResolver",
-                         "Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeQosProfile",
+                         "Unity2Foxglove.Ros2Bridge.Ros2BridgeQosProfile",
                      })
             {
                 Assert.Null(assembly.GetType(typeName, throwOnError: false));

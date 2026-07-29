@@ -535,13 +535,6 @@ namespace Unity.FoxgloveSDK.Editor
                     topics,
                     topicMap,
                     pad);
-                Ros2CustomCdrEmitter.EmitBuilders(
-                    sb,
-                    ns,
-                    className,
-                    topics,
-                    topicMap,
-                    pad);
                 PublishDispatchEmitter.EmitPublishToBus(
                     sb,
                     ns,

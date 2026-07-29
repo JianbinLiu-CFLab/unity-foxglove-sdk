@@ -6,7 +6,7 @@
 
 using System;
 using System.IO;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -48,8 +48,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2BridgeTransportSourceShapeIsHardened()
         {
-            var tcp = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var tcp = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
 
             Check(tcp.Contains("client = null;", StringComparison.Ordinal)
                   && tcp.Contains("client?.Dispose();", StringComparison.Ordinal)
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2BridgeFrameExposesNonAllocatingPayloadView()
         {
-            var frame = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var frame = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
 
             Check(frame.Contains("public ReadOnlyMemory<byte> PayloadMemory", StringComparison.Ordinal),
                 "163-20G-1: ROS2 Bridge frame exposes a non-allocating public payload view");

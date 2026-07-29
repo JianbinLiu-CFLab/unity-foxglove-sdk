@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
@@ -631,7 +632,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 nameof(FoxgloveRuntime.HasRecordingDemand));
             AssertInternalInstanceMethod(
                 typeof(FoxgloveRuntime),
-                nameof(FoxgloveRuntime.PublishRecordingOnlyRos2Cdr));
+                nameof(FoxgloveRuntime.PublishRecordingOnly));
             AssertInternalStaticMethod(
                 typeof(FoxRunRos2InterfaceIdentity),
                 nameof(FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType));

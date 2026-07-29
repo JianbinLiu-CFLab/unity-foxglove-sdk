@@ -14,10 +14,10 @@ using Google.Protobuf;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -205,7 +205,7 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var relativePath in SampleMetaFiles())
                 Check(File.Exists(RepoPath(relativePath)), "98A-4: sample meta file exists " + relativePath);
 
-            var scene = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity");
+            var scene = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity");
             var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             Check(scene.StartsWith("%YAML", StringComparison.Ordinal),
                 "98A-5a: sample scene is serialized as readable Unity YAML");
@@ -240,7 +240,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDocsAndLayout()
         {
-            var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/README.md");
+            var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
             var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/16_ROS2_Bridge_Sample.md");
             var samplesDoc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
 
@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "98B-5: docs do not claim native ROS2 visualization message support");
             }
 
-            var layoutText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json");
+            var layoutText = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json");
             Check(ParseJson(layoutText, "98B-6: Foxglove layout is valid JSON") != null,
                 "98B-6: Foxglove layout is valid JSON");
             foreach (var topic in LayoutTopics)
@@ -553,32 +553,32 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static IEnumerable<string> SampleFiles()
         {
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/README.md";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs";
         }
 
         private static IEnumerable<string> SampleMetaFiles()
         {
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/README.md.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs.meta";
-            yield return "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scenes.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs.meta";
+            yield return "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs.meta";
         }
 
         private static IEnumerable<string> SampleScriptSources()
         {
-            yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
-            yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs");
-            yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
+            yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
+            yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs");
+            yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
         }
 
         private static void WriteEvidence(string fullPath, Phase98LiveEvidence evidence)

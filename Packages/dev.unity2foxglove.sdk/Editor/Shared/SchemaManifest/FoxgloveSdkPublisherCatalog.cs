@@ -7,7 +7,6 @@
 using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -24,7 +23,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 "/tf",
                 "foxglove.FrameTransform",
-                Ros2PublisherSchemaNames.FrameTransform,
+                "foxglove_msgs/msg/FrameTransform",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -34,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 "/scene",
                 "foxglove.SceneUpdate",
-                Ros2PublisherSchemaNames.SceneUpdate,
+                "foxglove_msgs/msg/SceneUpdate",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -44,7 +43,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 "/unity/camera/calibration",
                 "foxglove.CameraCalibration",
-                Ros2PublisherSchemaNames.CameraCalibration,
+                "foxglove_msgs/msg/CameraCalibration",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -54,7 +53,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 "/unity/sensor/camera/camera_info",
                 "",
-                Ros2PublisherSchemaNames.SensorCameraInfo,
+                "sensor_msgs/msg/CameraInfo",
                 supportsJson: false,
                 supportsProtobuf: false,
                 supportsRos2: true,
@@ -64,7 +63,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 "/unity/laser_scan",
                 "foxglove.LaserScan",
-                Ros2PublisherSchemaNames.LaserScan,
+                "foxglove_msgs/msg/LaserScan",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -74,7 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 PointCloudOutputModeDefaults.RawTopic,
                 PointCloudOutputModeDefaults.RawSchema,
-                Ros2PublisherSchemaNames.PointCloud,
+                "foxglove_msgs/msg/PointCloud",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -84,7 +83,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 PointCloudOutputModeDefaults.DracoTopic,
                 PointCloudOutputModeDefaults.DracoSchema,
-                Ros2PublisherSchemaNames.CompressedPointCloud,
+                "foxglove_msgs/msg/CompressedPointCloud",
                 supportsJson: false,
                 supportsProtobuf: true,
                 supportsRos2: true,
@@ -94,7 +93,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 PointCloudOutputModeDefaults.PointCloud2NativeTopic,
                 "",
-                Ros2PublisherSchemaNames.SensorPointCloud2,
+                "sensor_msgs/msg/PointCloud2",
                 supportsJson: false,
                 supportsProtobuf: false,
                 supportsRos2: true,
@@ -104,7 +103,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "dedicatedPublisher",
                 CameraOutputModeDefaults.JpegTopic,
                 CameraOutputModeDefaults.JpegSchema,
-                Ros2PublisherSchemaNames.CompressedImage,
+                "foxglove_msgs/msg/CompressedImage",
                 supportsJson: true,
                 supportsProtobuf: true,
                 supportsRos2: true,

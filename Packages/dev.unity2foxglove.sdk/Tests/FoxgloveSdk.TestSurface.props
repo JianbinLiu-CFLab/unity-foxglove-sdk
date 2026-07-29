@@ -44,7 +44,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Protocol/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Transport/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/IO/**/*.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Ros2Bridge/**/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/**/*.cs" LinkBase="Ros2BridgeRuntime" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Sensors/**/*.cs" Exclude="$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidar.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualImu.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/SensorUnitProfile.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Registry/*.cs" />
@@ -54,7 +54,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/MsgPack/FoxgloveMsgPackWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/MsgPack/FoxgloveMsgPackReader.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/MsgPack/FoxgloveMsgPackReadLimits.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Ros2Msg/**/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/**/*.cs" LinkBase="Ros2BridgeSchemas" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*.cs" Exclude="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*Publisher.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/Channels/**/*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Utilities/*.cs" />
 

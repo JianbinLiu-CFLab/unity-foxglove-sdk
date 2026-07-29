@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCdrWriterHotPathOptimizations()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
             var writeString = PhaseValidationSourceHelpers.SourceMethod(source, "public void WriteString");
             var align = PhaseValidationSourceHelpers.SourceMethod(source, "private void Align");
             var ensureCapacity = PhaseValidationSourceHelpers.SourceMethod(source, "private void EnsureCapacity");
@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyGeneratedSerializersUseCapacityHints()
         {
             var generator = Read("Scripts/schema/generate_ros2_cdr_serializers.py");
-            var generated = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
+            var generated = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
 
             Check(generator.Contains("def capacity_hint_for_schema(schema: Schema) -> int:", StringComparison.Ordinal)
                   && generator.Contains("fixed_size_floor(field)", StringComparison.Ordinal)
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyGeometryWritersExposeUncheckedInternalPath()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrGeometryWriter.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrGeometryWriter.cs");
             var writeVector3 = PhaseValidationSourceHelpers.SourceMethod(source, "public static void WriteVector3");
             var writeQuaternion = PhaseValidationSourceHelpers.SourceMethod(source, "public static void WriteQuaternion");
             var writePose = PhaseValidationSourceHelpers.SourceMethod(source, "public static void WritePose");

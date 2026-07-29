@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.IO;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -244,7 +244,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && generator.Contains("generate_deserializer_registry", StringComparison.Ordinal),
                 "125-H3: generator owns deserializer source and registry output");
 
-            var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
+            var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
             Check(!cdrReader.Contains("CopyEndianBytes", StringComparison.Ordinal)
                   && !cdrReader.Contains("CopyReversedBytes", StringComparison.Ordinal)
                   && cdrReader.Contains("BinaryPrimitives.ReadInt64LittleEndian", StringComparison.Ordinal),

@@ -11,7 +11,6 @@ using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Google.Protobuf.WellKnownTypes;
 using UVector3 = UnityEngine.Vector3;
 using UColor = UnityEngine.Color;
@@ -34,8 +33,6 @@ namespace Unity.FoxgloveSDK.Components
         private string _cachedExplicitFrameId;
 
         public override bool SupportsProtobufEncoding => true;
-        public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.SceneUpdate;
 
         public UColor SceneCubeColor
         {
@@ -140,27 +137,23 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             if (!ShouldPrepareAnyPublishPayload(
                 out var publishWebSocket,
-                out var publishBridge,
-                out var encodingResolution,
-                out var bridgeResolution))
+                out var publishProvider,
+                out var encodingResolution))
             {
                 return;
             }
 
             var unixNs = CurrentLogTimeNs;
-            byte[] ros2Payload = null;
             SceneUpdateMessage message = null;
+            Foxglove.SceneUpdate providerMessage = null;
 
             if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProtobufSceneUpdate(unixNs, encodingResolution);
-            }
-            else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
-            {
-                message = CreateMessage(unixNs);
-                if (message == null) return;
-                if (TryBuildRos2SceneUpdate(message, out ros2Payload))
-                    PublishRos2(ros2Payload, unixNs, encodingResolution);
+                providerMessage = CreateProtobufSceneUpdate(unixNs);
+                PublishProto(
+                    providerMessage.ToByteArray(),
+                    unixNs,
+                    encodingResolution);
             }
             else if (publishWebSocket)
             {
@@ -169,12 +162,13 @@ namespace Unity.FoxgloveSDK.Components
                 Publish(message, unixNs, encodingResolution);
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                message = message ?? CreateMessage(unixNs);
-                if (message == null) return;
-                if (ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload))
-                    PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
+                providerMessage ??= CreateProtobufSceneUpdate(unixNs);
+                PublishOrdinaryTransport(
+                    providerMessage,
+                    SchemaName,
+                    unixNs);
             }
         }
 
@@ -211,27 +205,7 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private bool TryBuildRos2SceneUpdate(SceneUpdateMessage message, out byte[] payload)
-        {
-            payload = null;
-            try
-            {
-                payload = Ros2CdrSceneUpdateBuilder.Serialize(message);
-                return true;
-            }
-            catch (System.NotSupportedException ex)
-            {
-                Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish skipped: " + ex.Message);
-                return false;
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish failed: " + ex.Message);
-                return false;
-            }
-        }
-
-        private void PublishProtobufSceneUpdate(ulong unixNs, PublisherEncodingResolution resolution)
+        private Foxglove.SceneUpdate CreateProtobufSceneUpdate(ulong unixNs)
         {
             var protoScene = new Foxglove.SceneUpdate
             {
@@ -260,7 +234,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             };
 
-            PublishProto(protoScene.ToByteArray(), unixNs, resolution);
+            return protoScene;
         }
     }
 }

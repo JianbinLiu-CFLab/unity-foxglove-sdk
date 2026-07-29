@@ -14,7 +14,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -178,7 +178,7 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
-            var wrapper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
+            var wrapper = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
             Check(manager.Contains("_ros2BridgeNamespace") && manager.Contains("_ros2BridgeQos"),
                 "96D-1: Manager owns bridge namespace and QoS settings");

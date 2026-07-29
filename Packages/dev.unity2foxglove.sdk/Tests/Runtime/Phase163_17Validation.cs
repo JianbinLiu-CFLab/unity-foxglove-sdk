@@ -191,7 +191,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloud2CdrBuilderDocumentsLittleEndianBoundary()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
             var normalizedSource = source.Replace("\r\n", "\n");
             var serialize = ExtractMethod(normalizedSource, "public static byte[] Serialize(\n            ulong unixNs");
             var guard = ExtractMethod(normalizedSource, "private static void EnsureLittleEndianRuntime");

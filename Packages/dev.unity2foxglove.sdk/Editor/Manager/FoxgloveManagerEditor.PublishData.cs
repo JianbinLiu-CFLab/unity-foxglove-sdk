@@ -5,7 +5,6 @@
 
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEditor;
@@ -79,15 +78,6 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox(
                     "FoxRun Publish Profile changes apply after this Manager is disabled and re-enabled. Restarting one transport does not recapture the active profile.",
                     MessageType.Info);
-            }
-
-            if (GetBool("_ros2BridgeEnabled") || includesRos2Bridge)
-            {
-                DrawDataTransportSubsection(
-                    "ROS 2 Bridge Output",
-                    "DataTransportRos2Bridge",
-                    ref _dataTransportRos2BridgeExpanded,
-                    DrawRos2BridgeSection);
             }
 
             FoxgloveManagerInspectorLayout.Subheader("Publisher Encoding");

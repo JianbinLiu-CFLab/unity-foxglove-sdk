@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
-// Purpose: Resolves sensor camera profile topics, frame ids, and ROS image payloads.
+// Purpose: Resolves sensor camera profile topics and frame ids.
 
 using System;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -99,14 +98,5 @@ namespace Unity.FoxgloveSDK.Components
         public static bool HasRawImageDemand(bool standardRos2RawImageOutput, bool hasSubscribers)
             => standardRos2RawImageOutput && hasSubscribers;
 
-        public static byte[] SerializeCompressedImage(
-            bool publishStandardRos2CompressedImage,
-            ulong unixNs,
-            string frameId,
-            byte[] jpeg,
-            string format)
-            => publishStandardRos2CompressedImage
-                ? Ros2CdrSensorCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, format)
-                : Ros2CdrCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, format);
     }
 }

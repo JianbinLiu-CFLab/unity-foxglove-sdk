@@ -6,9 +6,9 @@
 
 using System;
 using Foxglove.Schemas;
+using Google.Protobuf;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -40,8 +40,6 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsProtobufEncoding => true;
-        public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.CameraCalibration;
 
         private void Awake()
         {
@@ -69,20 +67,18 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             if (!ShouldPrepareAnyPublishPayload(
                 out var publishWebSocket,
-                out var publishBridge,
-                out var encodingResolution,
-                out var bridgeResolution))
+                out var publishProvider,
+                out var encodingResolution))
             {
                 return;
             }
 
             var unixNs = CurrentLogTimeNs;
             var calibration = BuildCalibration(unixNs);
-            byte[] ros2Payload = null;
-
+            Foxglove.CameraCalibration providerMessage = null;
             if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                var payload = CameraCalibrationMessageBuilder.SerializeProtobuf(
+                providerMessage = CameraCalibrationMessageBuilder.CreateProtobuf(
                     unixNs,
                     calibration.FrameId,
                     calibration.Width,
@@ -92,40 +88,33 @@ namespace Unity.FoxgloveSDK.Components
                     calibration.K,
                     calibration.R,
                     calibration.P);
-                PublishProto(payload, unixNs, encodingResolution);
-            }
-            else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = Ros2CdrCameraCalibrationBuilder.Serialize(
+                PublishProto(
+                    providerMessage.ToByteArray(),
                     unixNs,
-                    calibration.FrameId,
-                    calibration.Width,
-                    calibration.Height,
-                    calibration.DistortionModel,
-                    calibration.D,
-                    calibration.K,
-                    calibration.R,
-                    calibration.P);
-                PublishRos2(ros2Payload, unixNs, encodingResolution);
+                    encodingResolution);
             }
             else if (publishWebSocket)
             {
                 Publish(calibration, unixNs, encodingResolution);
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                ros2Payload ??= Ros2CdrCameraCalibrationBuilder.Serialize(
-                    unixNs,
-                    calibration.FrameId,
-                    calibration.Width,
-                    calibration.Height,
-                    calibration.DistortionModel,
-                    calibration.D,
-                    calibration.K,
-                    calibration.R,
-                    calibration.P);
-                PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
+                providerMessage ??=
+                    CameraCalibrationMessageBuilder.CreateProtobuf(
+                        unixNs,
+                        calibration.FrameId,
+                        calibration.Width,
+                        calibration.Height,
+                        calibration.DistortionModel,
+                        calibration.D,
+                        calibration.K,
+                        calibration.R,
+                        calibration.P);
+                PublishOrdinaryTransport(
+                    providerMessage,
+                    SchemaName,
+                    unixNs);
             }
         }
 

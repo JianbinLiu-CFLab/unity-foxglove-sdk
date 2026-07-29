@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IsPackable>false</IsPackable>
+    <IncludeRos2Bridge>true</IncludeRos2Bridge>
+    <IncludeRos2ForUnityAdapter>false</IncludeRos2ForUnityAdapter>
+    <IncludeRos2ForUnityNative>false</IncludeRos2ForUnityNative>
+    <AssemblyName>Unity2Foxglove.Ros2Bridge.UnitTests</AssemblyName>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Ros2Bridge\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Ros2Bridge\obj\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <Import Project="../../../dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs" />
+    <Compile Include="../../Editor/FoxRun/Ros2CustomCdrEmitter.cs"
+             Link="Editor/FoxRun/Ros2CustomCdrEmitter.cs" />
+    <Compile Include="../../../dev.unity2foxglove.sdk/Tests/Unit/Harness/FoxRunAnalyzerTestComposition.cs"
+             Link="Harness/FoxRunAnalyzerTestComposition.cs" />
+    <Compile Include="../../../dev.unity2foxglove.sdk/Tests/Unit/Fixtures/UnityEngineMathTypes.cs"
+             Link="CompileStubs/UnityEngineMathTypes.cs" />
+  </ItemGroup>
+</Project>

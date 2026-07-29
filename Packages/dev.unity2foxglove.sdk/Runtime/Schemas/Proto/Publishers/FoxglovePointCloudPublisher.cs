@@ -11,7 +11,6 @@ using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
@@ -123,11 +122,6 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Whether the selected output mode supports protobuf payloads.</summary>
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
-        /// <summary>Whether this publisher can emit ROS2 CDR payloads for compatible modes.</summary>
-        public override bool SupportsRos2Encoding => true;
-        protected override bool IsExpectedEncodingFallback(PublisherEncodingResolution resolution)
-            => IsPointCloud2NativeOutput && resolution.Effective == PublisherEffectiveEncoding.Ros2;
-
         /// <summary>Current user-selected point-cloud output mode.</summary>
         public PointCloudOutputMode OutputMode => _outputMode;
 
@@ -182,8 +176,6 @@ namespace Unity.FoxgloveSDK.Components
                 return new Quaternion(q.X, q.Y, q.Z, q.W);
             }
         }
-
-        protected override string Ros2SchemaName => ActiveProfile.Ros2SchemaName;
 
         protected virtual void Awake()
         {
@@ -287,13 +279,13 @@ namespace Unity.FoxgloveSDK.Components
             ResolveManager();
             if (_manager == null || frame == null) return;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
+            if (!publishWebSocket && !publishProvider && !publishNativeFrame) return;
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs, out var packedLayout);
             if (prepared == null || prepared.GetPointCount() == 0) return;
-            SetPreparedPublishDemand(publishWebSocket, publishBridge);
+            SetPreparedPublishDemand(publishWebSocket, publishProvider);
             try
             {
                 PublishPreparedFrame(prepared, logTimeNs, packedLayout);
@@ -337,9 +329,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
+            if (!publishWebSocket && !publishProvider && !publishNativeFrame) return;
 
             var unixNs = CurrentLogTimeNs;
             var pendingFrame = _pendingFrameSlot.Take();
@@ -378,7 +370,7 @@ namespace Unity.FoxgloveSDK.Components
             _pendingFrameSlot.ResetReplacementWarning();
             if (frame == null || frame.GetPointCount() == 0) return;
 
-            SetPreparedPublishDemand(publishWebSocket, publishBridge);
+            SetPreparedPublishDemand(publishWebSocket, publishProvider);
             try
             {
                 PublishPreparedFrame(frame, unixNs, packedLayout);
@@ -491,9 +483,9 @@ namespace Unity.FoxgloveSDK.Components
 
 
 
-        private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
+        private void SetPreparedPublishDemand(bool publishWebSocket, bool publishProvider)
         {
-            _publishState.SetPreparedDemand(publishWebSocket, publishBridge);
+            _publishState.SetPreparedDemand(publishWebSocket, publishProvider);
         }
 
         private void ClearPreparedPublishDemand()
@@ -501,9 +493,9 @@ namespace Unity.FoxgloveSDK.Components
             _publishState.ClearPreparedDemand();
         }
 
-        private bool TryGetPreparedPublishDemand(out bool publishWebSocket, out bool publishBridge)
+        private bool TryGetPreparedPublishDemand(out bool publishWebSocket, out bool publishProvider)
         {
-            return _publishState.TryGetPreparedDemand(out publishWebSocket, out publishBridge);
+            return _publishState.TryGetPreparedDemand(out publishWebSocket, out publishProvider);
         }
 
 

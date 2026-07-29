@@ -70,7 +70,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBridgeLifecycle()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
             Check(source.Contains("auto-connect is disabled", StringComparison.Ordinal)
                   && source.Contains("return false", StringComparison.Ordinal),
                 "111F-B1: Ros2Bridge rejects sends when auto-connect is disabled");

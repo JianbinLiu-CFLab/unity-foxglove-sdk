@@ -10,7 +10,6 @@ using System.Linq;
 using System.Threading;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -174,32 +173,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Unity2FoxgloveRos2MsgRegistrySection BuildRos2MsgRegistrySection()
         {
-            var entries = FoxgloveRos2MsgSchemaCatalog.RegisteredEntries
-                .Select(entry => new Unity2FoxgloveRos2MsgRegistryEntry(
-                    entry.SchemaName,
-                    entry.SourceFile,
-                    entry.SourceSha256,
-                    entry.Category,
-                    entry.HasDedicatedJsonOrProtobufPublisher))
-                .OrderBy(entry => entry.SchemaName, StringComparer.Ordinal)
-                .ThenBy(entry => entry.SourceFile, StringComparer.Ordinal)
-                .ToList()
-                .AsReadOnly();
-
-            if (entries.Count != FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount)
-            {
-                throw new InvalidOperationException(
-                    "ROS2 .msg schema catalog count mismatch. " +
-                    $"Entries={entries.Count}, TotalRegisteredCount={FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount}.");
-            }
-
+            var entries = Array.AsReadOnly(Array.Empty<Unity2FoxgloveRos2MsgRegistryEntry>());
             return new Unity2FoxgloveRos2MsgRegistrySection(
-                FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
-                FoxgloveRos2MsgSchemaCatalog.SourceSnapshot,
-                FoxgloveRos2MsgSchemaCatalog.SourceCommit,
-                FoxgloveRos2MsgSchemaCatalog.SourceTreeSha256,
-                FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount,
-                entries.Count,
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
                 entries);
         }
 
@@ -268,11 +249,6 @@ namespace Unity.FoxgloveSDK.Editor
                         entry.PublisherTypeFullName);
                 }
 
-                if (!string.IsNullOrEmpty(entry.Ros2SchemaName)
-                    && !FoxgloveRos2MsgSchemaCatalog.TryGet(entry.Ros2SchemaName, out _))
-                {
-                    throw new InvalidOperationException("SDK publisher catalog references unknown ROS2 schema: " + entry.Ros2SchemaName);
-                }
 
                 if (entry.SupportsRos2 && string.IsNullOrEmpty(entry.Ros2SchemaName))
                 {

@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2SampleReviewFalsePositivesRemainGuarded()
         {
-            var ros2BridgeSample = RepoPath("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample");
+            var ros2BridgeSample = RepoPath("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample");
             Check(File.Exists(Path.Combine(ros2BridgeSample, "README.md"))
                   && File.Exists(Path.Combine(ros2BridgeSample, "Scenes", "Ros2BridgeSample.unity"))
                   && File.Exists(Path.Combine(ros2BridgeSample, "Scripts", "Ros2BridgeSampleController.cs")),

@@ -11,7 +11,6 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -129,13 +128,6 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => ActiveProfile.SchemaName;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
-        public override bool SupportsRos2Encoding => ActiveProfile.Mode == CameraOutputMode.Jpeg;
-        protected override string Ros2SchemaName => ActiveProfile.Mode == CameraOutputMode.Jpeg
-            ? (_publishStandardRos2CompressedImage
-                ? Ros2PublisherSchemaNames.SensorCompressedImage
-                : Ros2PublisherSchemaNames.CompressedImage)
-            : "";
-
         /// <summary>
         /// Raised after the JPEG path produces a standard compressed image frame.
         /// Optional ROS2 adapters translate this core-SDK DTO into native ROS messages.
@@ -235,15 +227,15 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
             var publishNativeFrame = HasSensorCompressedImageDemand(profile);
             var publishRawFrame = HasSensorRawImageDemand();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame && !publishRawFrame) return;
-            var publishJpegOutput = !profile.IsVideo && (publishWebSocket || publishBridge || publishNativeFrame);
+            if (!publishWebSocket && !publishProvider && !publishNativeFrame && !publishRawFrame) return;
+            var publishJpegOutput = !profile.IsVideo && (publishWebSocket || publishProvider || publishNativeFrame);
             if (publishJpegOutput && !AllowJpegCaptureByBackpressure()) return;
             LogRawBandwidthWarningIfNeeded();
 
-            var requestVideoOutput = profile.IsVideo && (publishWebSocket || publishBridge);
+            var requestVideoOutput = profile.IsVideo && publishWebSocket;
             if (requestVideoOutput && !EnsureVideoSidecarStarted(profile)) return;
             if (!profile.IsVideo && !AllowJpegCaptureByMainLoopHealth())
             {
@@ -330,10 +322,10 @@ namespace Unity.FoxgloveSDK.Components
                 var publishRawFrame = HasSensorRawImageDemand();
 
                 var publishWebSocket = ShouldPreparePublishPayload();
-                var publishBridge = ShouldPrepareRos2BridgePayload();
+                var publishProvider = ShouldPrepareOrdinaryTransportPayload();
                 var publishNativeFrame = HasSensorCompressedImageDemand(profile);
-                var publishJpegFrame = publishWebSocket || publishBridge || publishNativeFrame;
-                var publishVideo = profile.IsVideo && (publishWebSocket || publishBridge);
+                var publishJpegFrame = publishWebSocket || publishProvider || publishNativeFrame;
+                var publishVideo = profile.IsVideo && publishWebSocket;
                 if (publishVideo)
                 {
                     SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight);
@@ -369,7 +361,7 @@ namespace Unity.FoxgloveSDK.Components
                         captureWidth,
                         captureHeight,
                         publishWebSocket,
-                        publishBridge,
+                        publishProvider,
                         publishNativeFrame,
                         EffectiveEncoding,
                         readbackLatencyMs,
@@ -488,14 +480,6 @@ namespace Unity.FoxgloveSDK.Components
                 ref _sensorCameraRawImageTopic,
                 ref _frameId);
         }
-
-        private byte[] SerializeRos2CompressedImage(ulong unixNs, string frameId, byte[] jpeg)
-            => CameraSensorProfileResolver.SerializeCompressedImage(
-                _publishStandardRos2CompressedImage,
-                unixNs,
-                frameId,
-                jpeg,
-                "jpeg");
 
         private int DesiredVideoWidth => CameraVideoSidecarConfigFactory.ResolveDimension(_width);
 

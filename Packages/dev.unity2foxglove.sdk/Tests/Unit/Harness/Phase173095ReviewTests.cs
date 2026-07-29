@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void Ros2BridgeFrameHasValidatedInternalPath()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             var manager = TestSources.ManagerPublishingSources();
 
             Assert.Contains("internal static Ros2BridgeFrame CreateValidated", source, StringComparison.Ordinal);

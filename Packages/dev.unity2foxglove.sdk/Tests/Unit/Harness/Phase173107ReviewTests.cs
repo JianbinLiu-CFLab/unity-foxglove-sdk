@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var camera = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/CameraCompressedImageBuilder.cs");
             var sample = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
+                "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
             var accessUnit = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/EncodedVideoAccessUnit.cs");
 

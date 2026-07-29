@@ -10,7 +10,6 @@
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -164,7 +163,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, HideInInspector] private string _sharedToken = "";
 
         private Core.FoxgloveRuntime _runtime;
-        private Ros2BridgeRuntime _ros2BridgeRuntime;
         private UnityReplayCursorEndpoint _replayCursorEndpoint;
         private bool _replayCursorEndpointLoggedFirstCursor;
         private bool _replayCursorEndpointLoggedUnavailable;
@@ -335,10 +333,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (!_ros2BridgeNamespaceCacheValid)
                 {
-                    _cachedRos2BridgeNamespace = Ros2BridgeTopicProfile.TryNormalizeRos2BridgeNamespace(
-                        _ros2BridgeNamespace, out var normalized, out _)
-                        ? normalized
-                        : string.Empty;
+                    _cachedRos2BridgeNamespace =
+                        NormalizeLegacyProviderNamespace(_ros2BridgeNamespace);
                     _ros2BridgeNamespaceCacheValid = true;
                 }
 
@@ -371,7 +367,27 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Resolve an effective ROS2 Bridge topic without mutating the publisher's WebSocket topic.</summary>
         public bool TryResolveRos2BridgeTopic(string publisherTopic, string overrideTopic, out string effectiveTopic, out string error)
-            => Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic(_ros2BridgeNamespace, publisherTopic, overrideTopic, out effectiveTopic, out error);
+        {
+            var selected = string.IsNullOrWhiteSpace(overrideTopic)
+                ? publisherTopic
+                : overrideTopic;
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                effectiveTopic = string.Empty;
+                error = "Provider topic is required.";
+                return false;
+            }
+
+            selected = selected.Trim();
+            if (!selected.StartsWith("/", System.StringComparison.Ordinal))
+                selected = "/" + selected;
+            var prefix = NormalizeLegacyProviderNamespace(_ros2BridgeNamespace);
+            effectiveTopic = string.IsNullOrEmpty(prefix)
+                ? selected
+                : prefix + selected;
+            error = string.Empty;
+            return true;
+        }
 
         /// <summary>Resolve an effective ROS2 Bridge topic, or an empty string when the profile is invalid.</summary>
         public string ResolveRos2BridgeTopic(string publisherTopic, string overrideTopic)
@@ -397,7 +413,6 @@ namespace Unity.FoxgloveSDK.Components
 
             ConfigureProfiler();
             EnsureRuntimeCreated();
-            CreateRos2BridgeRuntime();
 
             if (_enableRecording && _enableReplay)
             {
@@ -497,7 +512,6 @@ namespace Unity.FoxgloveSDK.Components
                 StartServer();
             }
 
-            StartRos2BridgeIfNeeded();
             InitializeOutputModeWatchers();
         }
 
@@ -534,7 +548,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             FoxgloveManagerTeardownState.RunDisable(
                 EndFoxRunSubscriptionSession,
-                () => _ros2BridgeRuntime?.Stop(),
+                () => { },
                 () => StopServer(restoreLivePublishers: true),
                 EndFoxRunPublishSession,
                 () => _connectionState.OutputModeWatchInitialized = false,
@@ -549,17 +563,7 @@ namespace Unity.FoxgloveSDK.Components
             FoxgloveManagerTeardownState.RunDestroy(
                 EndFoxRunSubscriptionSession,
                 () => StopServer(restoreLivePublishers: true),
-                () =>
-                {
-                    try
-                    {
-                        _ros2BridgeRuntime?.Dispose();
-                    }
-                    finally
-                    {
-                        _ros2BridgeRuntime = null;
-                    }
-                },
+                () => { },
                 () =>
                 {
                     try
@@ -622,38 +626,6 @@ namespace Unity.FoxgloveSDK.Components
             _replayState.InvalidateResolvedReplayFilePathCache();
         }
 
-        private void CreateRos2BridgeRuntime()
-        {
-            try
-            {
-                _ros2BridgeRuntime?.Dispose();
-                _ros2BridgeRuntime = new Ros2BridgeRuntime(
-                    string.IsNullOrWhiteSpace(_ros2BridgeHost) ? "127.0.0.1" : _ros2BridgeHost,
-                    ManagerConfigValidator.ClampTcpPort(_ros2BridgePort),
-                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeQueueCapacity),
-                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeReconnectIntervalMs),
-                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeSendTimeoutMs));
-                _connectionState.Ros2BridgeSetupError = string.Empty;
-            }
-            catch (System.Exception ex)
-            {
-                _ros2BridgeRuntime = null;
-                _connectionState.Ros2BridgeSetupError = ex.Message;
-                Debug.LogWarning(StatusTextBuilder.CreateRos2BridgeDisabledWarning(ex.Message));
-            }
-        }
-
-        private void StartRos2BridgeIfNeeded()
-        {
-            if (!_ros2BridgeEnabled)
-                return;
-
-            if (_ros2BridgeRuntime == null)
-                CreateRos2BridgeRuntime();
-
-            _ros2BridgeRuntime?.Start(enabled: true, autoConnect: _ros2BridgeAutoConnect);
-        }
-
         /// <summary>
         /// Captures the first observed runtime output-mode state.
         /// </summary>
@@ -688,21 +660,23 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            if (_connectionState.LastRos2BridgeEnabled != _ros2BridgeEnabled)
-            {
-                if (_ros2BridgeEnabled)
-                {
-                    StartRos2BridgeIfNeeded();
-                }
-                else
-                {
-                    if (!_foxRunRos2BridgeRuntimeDemand)
-                        _ros2BridgeRuntime?.Stop();
-                }
-            }
-
             _connectionState.LastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
             _connectionState.LastRos2BridgeEnabled = _ros2BridgeEnabled;
+        }
+
+        private static string NormalizeLegacyProviderNamespace(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+            var normalized = value.Trim().Replace('\\', '/');
+            if (!normalized.StartsWith("/", System.StringComparison.Ordinal))
+                normalized = "/" + normalized;
+            while (normalized.Length > 1
+                   && normalized.EndsWith("/", System.StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1);
+            }
+            return normalized == "/" ? string.Empty : normalized;
         }
 
     }

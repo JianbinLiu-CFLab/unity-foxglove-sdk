@@ -62,7 +62,9 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             string logicalSchemaName,
             object value,
-            ulong logTimeNs)
+            ulong logTimeNs,
+            ulong sequence,
+            FoxRunDeliveryPolicy deliveryPolicy)
         {
             if (string.IsNullOrWhiteSpace(stablePublisherId))
                 throw new ArgumentException(
@@ -76,6 +78,8 @@ namespace Unity.FoxgloveSDK.Components
             LogicalSchemaName = logicalSchemaName ?? string.Empty;
             Value = value ?? throw new ArgumentNullException(nameof(value));
             LogTimeNs = logTimeNs;
+            Sequence = sequence;
+            DeliveryPolicy = deliveryPolicy;
         }
 
         public string StablePublisherId { get; }
@@ -83,20 +87,28 @@ namespace Unity.FoxgloveSDK.Components
         public string LogicalSchemaName { get; }
         public object Value { get; }
         public ulong LogTimeNs { get; }
+        public ulong Sequence { get; }
+        public FoxRunDeliveryPolicy DeliveryPolicy { get; }
     }
 
     public readonly struct FoxRunOrdinaryPayloadContribution
     {
         public FoxRunOrdinaryPayloadContribution(
             string logicalSchemaName,
-            ReadOnlyMemory<byte> payload)
+            ReadOnlyMemory<byte> payload,
+            string messageEncoding,
+            string schemaEncoding)
         {
             LogicalSchemaName = logicalSchemaName ?? string.Empty;
             Payload = payload;
+            MessageEncoding = messageEncoding ?? string.Empty;
+            SchemaEncoding = schemaEncoding ?? string.Empty;
         }
 
         public string LogicalSchemaName { get; }
         public ReadOnlyMemory<byte> Payload { get; }
+        public string MessageEncoding { get; }
+        public string SchemaEncoding { get; }
     }
 
     public interface IFoxRunOrdinaryPayloadMapper
@@ -107,6 +119,32 @@ namespace Unity.FoxgloveSDK.Components
             in FoxRunOrdinaryPayloadRequest request,
             out FoxRunOrdinaryPayloadContribution contribution,
             out string reason);
+    }
+
+    /// <summary>Allocation-free aggregate for one ordinary-publisher Provider fanout.</summary>
+    public readonly struct FoxRunOrdinaryTransportFanoutResult
+    {
+        internal FoxRunOrdinaryTransportFanoutResult(
+            int matched,
+            int accepted,
+            int rejected,
+            int unavailable,
+            int failed)
+        {
+            Matched = matched;
+            Accepted = accepted;
+            Rejected = rejected;
+            Unavailable = unavailable;
+            Failed = failed;
+        }
+
+        public int Matched { get; }
+        public int Accepted { get; }
+        public int Rejected { get; }
+        public int Unavailable { get; }
+        public int Failed { get; }
+        public bool AnyAccepted => Accepted > 0;
+        public bool AllAccepted => Matched > 0 && Accepted == Matched;
     }
 
     /// <summary>

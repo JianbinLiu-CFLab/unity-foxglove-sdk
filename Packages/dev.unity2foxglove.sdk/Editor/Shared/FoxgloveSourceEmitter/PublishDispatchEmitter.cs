@@ -300,20 +300,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}            }}");
             sb.AppendLine($"{pad}            reason = \"No exact native ROS 2 serializer is available for this declaration.\"; return false;");
             sb.AppendLine($"{pad}        }}");
-            sb.AppendLine($"{pad}        if (target == FoxRunEndpoint.Ros2Bridge)");
-            sb.AppendLine($"{pad}        {{");
-            sb.AppendLine($"{pad}            switch (topicIndex)");
-            sb.AppendLine($"{pad}            {{");
-            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
-            {
-                var fields = topicMap[topics[topicIndex]];
-                if (!TryGetRos2CdrSchema(fields, out var schema))
-                    continue;
-                sb.AppendLine($"{pad}                case {topicIndex}: return mgr.TryPrepareFoxRunRos2BridgePublish(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", resolved.BridgeQos, out _, out reason);");
-            }
-            sb.AppendLine($"{pad}            }}");
-            sb.AppendLine($"{pad}            reason = \"No exact ROS 2 Bridge serializer is available for this declaration.\"; return false;");
-            sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}        reason = \"Unknown publish target.\"; return false;");
             sb.AppendLine($"{pad}    }}");
 
@@ -366,32 +352,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                default: reason = \"No exact native ROS 2 serializer is available for this declaration.\"; return false;");
             sb.AppendLine($"{pad}            }}");
             sb.AppendLine($"{pad}        }}");
-            sb.AppendLine($"{pad}        if (target == FoxRunEndpoint.Ros2Bridge)");
-            sb.AppendLine($"{pad}        {{");
-            sb.AppendLine($"{pad}            switch (topicIndex)");
-            sb.AppendLine($"{pad}            {{");
-            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
-            {
-                var fields = topicMap[topics[topicIndex]];
-                if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
-                {
-                    var schema = StringLiteralEmitter.CSharpStringLiteral(
-                        Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]));
-                    sb.AppendLine($"{pad}                case {topicIndex}:");
-                    sb.AppendLine($"{pad}                    if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var __bridgeCdr_{topicIndex}, out reason)) return false;");
-                    sb.AppendLine($"{pad}                    return mgr.TryPublishFoxRunRos2BridgeCdr(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{schema}\", __bridgeCdr_{topicIndex}, nowNs, resolved.BridgeQos, out reason);");
-                }
-                else if (TryGetBundledCdrMember(fields, out var packaged))
-                {
-                    var schema = StringLiteralEmitter.CSharpStringLiteral(packaged.SchemaName);
-                    sb.AppendLine($"{pad}                case {topicIndex}:");
-                    sb.AppendLine($"{pad}                    if (!global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TrySerialize(\"{schema}\", (global::Google.Protobuf.IMessage)(object)__foxRunCapture_{topicIndex}_0, out var __bridgeCdr_{topicIndex})) {{ reason = \"Bundled ROS 2 CDR serializer rejected the sample.\"; return false; }}");
-                    sb.AppendLine($"{pad}                    return mgr.TryPublishFoxRunRos2BridgeCdr(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{schema}\", __bridgeCdr_{topicIndex}, nowNs, resolved.BridgeQos, out reason);");
-                }
-            }
-            sb.AppendLine($"{pad}                default: reason = \"No exact ROS 2 Bridge serializer is available for this declaration.\"; return false;");
-            sb.AppendLine($"{pad}            }}");
-            sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}        reason = \"Unknown publish target.\"; return false;");
             sb.AppendLine($"{pad}    }}");
 
@@ -430,18 +390,7 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack) {{ reason = \"Typed MessagePack shape is unavailable.\"; return false; }}");
                     }
-                    if (TryGetRos2CdrSchema(fields, out var inheritedSchema))
-                    {
-                        var inheritedSchemaContent =
-                            fields.Count == 1 && IsSupportedCustomCdr(fields[0])
-                                ? "__foxRunRos2Schema_" + topicIndex
-                                : "string.Empty";
-                        sb.AppendLine($"{pad}                return mgr.TryPrepareFoxRunRos2Recording(\"{topic}\", \"{StringLiteralEmitter.CSharpStringLiteral(inheritedSchema)}\", {inheritedSchemaContent}, out _, out reason);");
-                    }
-                    else
-                    {
-                        sb.AppendLine($"{pad}                return false;");
-                    }
+                    sb.AppendLine($"{pad}                return false;");
                     continue;
                 }
                 if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
@@ -452,12 +401,6 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}            case {topicIndex}: reason = \"Typed MessagePack shape is unavailable.\"; return false;");
                     continue;
                 }
-                if (!TryGetRos2CdrSchema(fields, out var schema))
-                    continue;
-                var schemaContent = fields.Count == 1 && IsSupportedCustomCdr(fields[0])
-                    ? "__foxRunRos2Schema_" + topicIndex
-                    : "string.Empty";
-                sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunRos2Recording(\"{topic}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", {schemaContent}, out _, out reason);");
             }
             sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
@@ -486,24 +429,7 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack) {{ reason = \"Typed MessagePack shape is unavailable.\"; return false; }}");
                     }
-                    if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
-                    {
-                        var inheritedSchema = StringLiteralEmitter.CSharpStringLiteral(
-                            Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]));
-                        sb.AppendLine($"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var __recordCdr_{topicIndex}, out reason)) return false;");
-                        sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{inheritedSchema}\", __foxRunRos2Schema_{topicIndex}, __recordCdr_{topicIndex}, nowNs, out reason);");
-                    }
-                    else if (TryGetBundledCdrMember(fields, out var inheritedPackaged))
-                    {
-                        var inheritedSchema = StringLiteralEmitter.CSharpStringLiteral(
-                            inheritedPackaged.SchemaName);
-                        sb.AppendLine($"{pad}                if (!global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TrySerialize(\"{inheritedSchema}\", (global::Google.Protobuf.IMessage)(object)__foxRunCapture_{topicIndex}_0, out var __recordCdr_{topicIndex})) {{ reason = \"Bundled ROS 2 CDR serializer rejected the sample.\"; return false; }}");
-                        sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{inheritedSchema}\", string.Empty, __recordCdr_{topicIndex}, nowNs, out reason);");
-                    }
-                    else
-                    {
-                        sb.AppendLine($"{pad}                return false;");
-                    }
+                    sb.AppendLine($"{pad}                return false;");
                     continue;
                 }
                 if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
@@ -515,43 +441,10 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                reason = \"Typed MessagePack shape is unavailable.\"; return false;");
                     continue;
                 }
-                if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
-                {
-                    var schema = StringLiteralEmitter.CSharpStringLiteral(
-                        Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]));
-                    sb.AppendLine($"{pad}            case {topicIndex}:");
-                    sb.AppendLine($"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var __recordCdr_{topicIndex}, out reason)) return false;");
-                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{schema}\", __foxRunRos2Schema_{topicIndex}, __recordCdr_{topicIndex}, nowNs, out reason);");
-                }
-                else if (TryGetBundledCdrMember(fields, out var packaged))
-                {
-                    var schema = StringLiteralEmitter.CSharpStringLiteral(packaged.SchemaName);
-                    sb.AppendLine($"{pad}            case {topicIndex}:");
-                    sb.AppendLine($"{pad}                if (!global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TrySerialize(\"{schema}\", (global::Google.Protobuf.IMessage)(object)__foxRunCapture_{topicIndex}_0, out var __recordCdr_{topicIndex})) {{ reason = \"Bundled ROS 2 CDR serializer rejected the sample.\"; return false; }}");
-                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{schema}\", string.Empty, __recordCdr_{topicIndex}, nowNs, out reason);");
-                }
             }
             sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
-        }
-
-        private static bool TryGetRos2CdrSchema(
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields,
-            out string schema)
-        {
-            schema = string.Empty;
-            if (fields == null || fields.Count != 1)
-                return false;
-            if (IsSupportedCustomCdr(fields[0]))
-            {
-                schema = Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]);
-                return true;
-            }
-            if (!TryGetBundledCdrMember(fields, out var member))
-                return false;
-            schema = member.SchemaName;
-            return true;
         }
 
         private static bool IsSupportedCustomCdr(FoxgloveSourceEmitter.TopicMember member)

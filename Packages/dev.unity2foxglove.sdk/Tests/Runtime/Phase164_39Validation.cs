@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeFrameWriterUsesBatchedFixedHeader()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             var write = PhaseValidationSourceHelpers.SourceMethod(source, "private static void Write(Ros2BridgeFrame frame, Stream destination, byte[] headerBytes)");
 
             Check(source.Contains("private static readonly byte[] FramePrefix", StringComparison.Ordinal)
@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHealthRunnerUsesPackageInterfaceCatalog()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
             var checkInterfaces = PhaseValidationSourceHelpers.SourceMethod(source, "private Ros2BridgeHealthCheckResult CheckInterfaces");
 
             Check(checkInterfaces.Contains("\"interface package foxglove_msgs\"", StringComparison.Ordinal)
@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEditorPrefsMigrationIsCached()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
             var migrate = PhaseValidationSourceHelpers.SourceMethod(source, "private static void MigrateLegacyRos2ExecutablePath");
 
             Check(source.Contains("private static bool _legacyMigrationChecked;", StringComparison.Ordinal)
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopicProfileAvoidsCommonCaseSlashAllocation()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
             var collapse = PhaseValidationSourceHelpers.SourceMethod(source, "private static string CollapseSlashes");
 
             Check(source.Contains("private static bool ContainsConsecutiveSlashes", StringComparison.Ordinal)
@@ -99,8 +99,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHealthProbeParsesHeaderWithoutReassemblingFrame()
         {
-            var probe = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
-            var codec = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthCodec.cs");
+            var probe = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+            var codec = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthCodec.cs");
             var readHeader = PhaseValidationSourceHelpers.SourceMethod(probe, "private static byte[] ReadU2R2Header");
 
             Check(probe.Contains("ParseHealthPongHeader(responseHeader, requestId)", StringComparison.Ordinal)

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AssemblyName>Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator</AssemblyName>
+    <DefineConstants>$(DefineConstants);FOXRUN_BRIDGE_ANALYZER</DefineConstants>
+    <NoWarn>$(NoWarn);RS2000;RS2008</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\SourceGenerators\src\**\*.cs"
+             LinkBase="CoreSourceGenerators" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxgloveSourceEmitter\IdentifierUtils.cs"
+             Link="Shared\IdentifierUtils.cs" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxgloveSourceEmitter\StringLiteralEmitter.cs"
+             Link="Shared\StringLiteralEmitter.cs" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxServiceSourceEmitter\**\*.cs"
+             LinkBase="Shared\FoxServiceSourceEmitter" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxServiceSchema\**\*.cs"
+             LinkBase="Shared\FoxServiceSchema" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxServiceDtoValidation\**\*.cs"
+             LinkBase="Shared\FoxServiceDtoValidation" />
+    <Compile Include="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\**\*.cs"
+             Exclude="..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs;..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\FoxRunRos2InterfaceDigest.cs;..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\FoxRunRos2InterfaceJsonWriter.cs;..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\FoxRunRos2InterfaceLock.cs;..\..\..\dev.unity2foxglove.sdk\Editor\Shared\FoxRunDescriptor\FoxRunTransportEmitterContributionRegistry.cs"
+             LinkBase="Shared\FoxRunDescriptor" />
+    <Compile Include="..\FoxRun\Ros2CustomCdrEmitter.cs"
+             Link="Bridge\FoxRunBridgeSourceEmitter.cs" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

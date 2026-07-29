@@ -120,12 +120,12 @@ namespace Unity.FoxgloveSDK.Tests
                 ("FoxgloveManager.PublishJson", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
                 ("FoxgloveManager.PublishProto", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
                 ("FoxgloveManager.PublishRos2", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
-                ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
-                ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
-                ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
-                ("CdrBuild.PointCloud", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs"),
-                ("CdrBuild.PointCloud2", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs"),
-                ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
+                ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
+                ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
+                ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
+                ("CdrBuild.PointCloud", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs"),
+                ("CdrBuild.PointCloud2", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs"),
+                ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
                 ("VirtualLidar.Update", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs"),
                 ("VirtualLidar.ScheduleScan", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
                 // BuildPoints.Schedule marks the main-thread job scheduling boundary; the Burst job body itself stays marker-free.
@@ -149,7 +149,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+            var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
             var serialize = ExtractMethod(pointCloud2, "public static byte[] Serialize(");
             Check(pointCloud2.Contains("static Ros2CdrSensorPointCloud2Builder()", StringComparison.Ordinal)
                   && pointCloud2.Contains("EnsureLittleEndianRuntime();", StringComparison.Ordinal)

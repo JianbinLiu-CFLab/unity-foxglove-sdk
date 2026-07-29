@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Ros2BridgeSampleStatusFormatsOnlyChange()
         {
-            var controller = TestSources.Text("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
+            var controller = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
             var update = TestSources.Slice(controller, "private void Update()", "    private void UpdateStatusIfChanged");
 
             Assert.Contains("private bool _lastRos2BridgeEnabled;", controller, StringComparison.Ordinal);

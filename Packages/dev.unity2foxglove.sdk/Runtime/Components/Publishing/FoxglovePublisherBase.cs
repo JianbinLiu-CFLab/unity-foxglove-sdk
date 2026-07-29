@@ -6,7 +6,6 @@
 // Provides FoxgloveManager auto-resolution, publish-rate throttling,
 // frame ID sanitization, encoding override, and publish helpers.
 
-using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Util;
 using System.Collections.Generic;
 using UnityEngine;
@@ -39,12 +38,8 @@ namespace Unity.FoxgloveSDK.Components
         [Header("Encoding")]
         [Tooltip("Override the global default encoding for this publisher.")]
         [SerializeField] protected PublisherEncodingOverride _encodingOverride = PublisherEncodingOverride.UseManager;
-
-        [Header("ROS2 Bridge")]
-        [Tooltip("Mirror this publisher's ROS2 CDR payload to the optional local ROS2 Bridge sidecar.")]
-        [SerializeField] protected Ros2BridgeOutputOverride _ros2BridgeOutput = Ros2BridgeOutputOverride.UseManager;
-        [Tooltip("Optional absolute ROS2 Bridge topic. Leave empty to use manager namespace plus this publisher topic.")]
-        [SerializeField] protected string _ros2BridgeTopicOverride = "";
+        [System.NonSerialized]
+        private string _ordinaryTransportPublisherId;
 
         private FixedRatePublishState _publishRateState;
         private FixedRatePublishState _publishRateStateFixed;
@@ -57,13 +52,12 @@ namespace Unity.FoxgloveSDK.Components
         private float _cachedPublishRateHz;
         private int _lastEncodingFallbackWarningKey;
         private int _lastEncodingMismatchWarningKey;
-        private int _lastBridgeFallbackWarningKey;
-        private string _lastBridgeWarningKey;
         private string _lastPublishTopicWarningKey;
-        private string _lastRos2BridgeTopicWarningKey;
+        private string _lastOrdinaryTransportWarningKey;
         private string _supportedEncodingSummaryCache;
         private bool _managerWasResolved;
         private double _nextManagerResolveTime;
+        private ulong _ordinaryTransportSequence;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
@@ -110,16 +104,6 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual bool IsExpectedEncodingFallback(PublisherEncodingResolution resolution) => false;
 
         /// <summary>
-        /// True when this publisher can mirror a ROS 2 CDR payload to ROS2 Bridge.
-        /// </summary>
-        public virtual bool SupportsRos2BridgeOutput => SupportsRos2Encoding;
-
-        /// <summary>
-        /// ROS 2 .msg schema name used for ROS2 Bridge output.
-        /// </summary>
-        protected virtual string Ros2BridgeSchemaName => Ros2SchemaName;
-
-        /// <summary>
         /// Resolved effective encoding for this publisher.
         /// Reads global default, override permission, publisher override, and capabilities.
         /// This property resolves on each access; cache the value locally before
@@ -154,44 +138,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public static bool HasValidPublisherTopic(string topic)
             => !string.IsNullOrWhiteSpace(topic);
-
-        /// <summary>
-        /// Publisher ROS2 Bridge override selected in the Inspector.
-        /// </summary>
-        public Ros2BridgeOutputOverride Ros2BridgeOutput => _ros2BridgeOutput;
-
-        /// <summary>
-        /// Full ROS2 Bridge output resolution used by Inspector UI and publish helpers.
-        /// This property resolves on each access; cache the value locally before
-        /// using it more than once in a hot path.
-        /// </summary>
-        public Ros2BridgeOutputResolution BridgeOutputResolution => ResolveRos2BridgeOutput();
-
-        /// <summary>Publisher-local ROS2 Bridge topic override.</summary>
-        public string Ros2BridgeTopicOverride => _ros2BridgeTopicOverride;
-
-        /// <summary>Resolved ROS2 Bridge topic after manager namespace and publisher override are applied.</summary>
-        public string EffectiveRos2BridgeTopic
-        {
-            get
-            {
-                if (_manager != null && _manager.TryResolveRos2BridgeTopic(_topic, _ros2BridgeTopicOverride, out var effectiveTopic, out _))
-                    return effectiveTopic;
-
-                return Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic(
-                    string.Empty,
-                    _topic,
-                    _ros2BridgeTopicOverride,
-                    out effectiveTopic,
-                    out _)
-                    ? effectiveTopic
-                    : "";
-            }
-        }
-
-        /// <summary>Resolved ROS2 Bridge QoS profile.</summary>
-        public FoxRunResolvedQos EffectiveRos2BridgeQos =>
-            _manager != null ? _manager.ActiveFoxRunBridgePublishQos : FoxRunResolvedQos.Default;
 
         /// <summary>
         /// Source used to resolve this publisher's effective publish rate.
@@ -239,10 +185,8 @@ namespace Unity.FoxgloveSDK.Components
             _warnedManagerMissing = false;
             _lastEncodingFallbackWarningKey = 0;
             _lastEncodingMismatchWarningKey = 0;
-            _lastBridgeFallbackWarningKey = 0;
-            _lastBridgeWarningKey = null;
             _lastPublishTopicWarningKey = null;
-            _lastRos2BridgeTopicWarningKey = null;
+            _lastOrdinaryTransportWarningKey = null;
             ResolveManager();
         }
 
@@ -406,14 +350,16 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Return whether any enabled output path needs this publisher to prepare
-        /// payload data, and return both the web-socket and bridge resolutions.
+        /// Return whether any enabled output path needs this publisher to
+        /// prepare payload data.
         /// </summary>
         protected bool ShouldPrepareAnyPublishPayload(
-            out PublisherEncodingResolution encodingResolution,
-            out Ros2BridgeOutputResolution bridgeResolution)
+            out PublisherEncodingResolution encodingResolution)
         {
-            return ShouldPrepareAnyPublishPayload(out _, out _, out encodingResolution, out bridgeResolution);
+            return ShouldPrepareAnyPublishPayload(
+                out _,
+                out _,
+                out encodingResolution);
         }
 
         /// <summary>
@@ -422,13 +368,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPrepareAnyPublishPayload(
             out bool shouldPrepareWebSocket,
-            out bool shouldPrepareRos2Bridge,
-            out PublisherEncodingResolution encodingResolution,
-            out Ros2BridgeOutputResolution bridgeResolution)
+            out bool shouldPrepareOrdinaryTransport,
+            out PublisherEncodingResolution encodingResolution)
         {
             shouldPrepareWebSocket = TryPreparePublishPayload(out encodingResolution);
-            shouldPrepareRos2Bridge = ShouldPrepareRos2BridgePayload(out bridgeResolution);
-            return shouldPrepareWebSocket || shouldPrepareRos2Bridge;
+            shouldPrepareOrdinaryTransport =
+                ShouldPrepareOrdinaryTransportPayload();
+            return shouldPrepareWebSocket
+                   || shouldPrepareOrdinaryTransport;
         }
 
         /// <summary>
@@ -476,43 +423,14 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Return whether this publisher should prepare payload data for ROS2 Bridge output.
-        /// The bridge path is independent from Foxglove WebSocket demand.
+        /// Return whether any selected optional Provider needs an ordinary
+        /// publisher value. The wire mapping remains Provider-owned.
         /// </summary>
-        protected bool ShouldPrepareRos2BridgePayload()
-        {
-            return ShouldPrepareRos2BridgePayload(out _);
-        }
-
-        protected bool ShouldPrepareRos2BridgePayload(out Ros2BridgeOutputResolution resolution)
-        {
-            resolution = ResolveRos2BridgeOutput();
-            return ShouldPrepareRos2BridgePayload(resolution);
-        }
-
-        private bool ShouldPrepareRos2BridgePayload(Ros2BridgeOutputResolution resolution)
+        protected bool ShouldPrepareOrdinaryTransportPayload()
         {
             if (!EnsureManagerAvailable()) return false;
-            if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return false;
-
-            WarnIfRos2BridgeFallback(resolution);
-            if (!resolution.IsEnabled)
-                return false;
-
-            if (string.IsNullOrWhiteSpace(Ros2BridgeSchemaName))
-            {
-                WarnRos2BridgeSkipped("missing-schema", "ROS2 Bridge schema name is missing.");
-                return false;
-            }
-
-            if (!_manager.TryPrepareRos2BridgePublish(_topic, _ros2BridgeTopicOverride, Ros2BridgeSchemaName, out _, out _, out var reason))
-            {
-                if (!string.IsNullOrWhiteSpace(reason))
-                    WarnRos2BridgeSkipped("prepare:" + reason, reason);
-                return false;
-            }
-
-            return true;
+            if (!ValidateConfiguredTopic("Provider publish")) return false;
+            return _manager.HasOrdinaryTransportDemand;
         }
 
         /// <summary>
@@ -520,7 +438,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPrepareAnyPublishPayload()
         {
-            return ShouldPrepareAnyPublishPayload(out _, out _);
+            return ShouldPrepareAnyPublishPayload(out _);
         }
 
         /// <summary>Publish a message through the manager. Safe no-op if manager is null.</summary>
@@ -625,29 +543,65 @@ namespace Unity.FoxgloveSDK.Components
             _manager.PublishRos2(_topic, Ros2SchemaName, payload, logTimeNs);
         }
 
-        /// <summary>Mirror ROS 2 CDR bytes to ROS2 Bridge. Safe no-op if manager is null or disabled.</summary>
-        protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs)
+        /// <summary>
+        /// Publish one already captured logical value through every selected
+        /// ordinary-payload Provider.
+        /// </summary>
+        protected FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransport(
+            object value,
+            string logicalSchemaName,
+            ulong logTimeNs)
         {
-            var resolution = ResolveRos2BridgeOutput();
-            PublishRos2Bridge(payload, logTimeNs, resolution);
+            if (!EnsureManagerAvailable()
+                || !ValidateConfiguredTopic("Provider publish"))
+            {
+                return default;
+            }
+            if (value == null)
+                throw new System.ArgumentNullException(nameof(value));
+            if (_ordinaryTransportSequence == ulong.MaxValue)
+                throw new System.InvalidOperationException(
+                    "Ordinary Provider sequence is exhausted.");
+
+            var request = new FoxRunOrdinaryPayloadRequest(
+                EnsureOrdinaryTransportPublisherId(),
+                _topic,
+                logicalSchemaName,
+                value,
+                logTimeNs,
+                ++_ordinaryTransportSequence,
+                FoxRunDeliveryPolicy.ProviderDefault);
+            var result = _manager.PublishOrdinaryTransports(in request);
+            if (result.Matched > 0
+                && result.Accepted == 0
+                && result.Failed + result.Rejected > 0)
+            {
+                var key = logicalSchemaName + ":"
+                          + result.Rejected + ":"
+                          + result.Failed;
+                if (!string.Equals(
+                        _lastOrdinaryTransportWarningKey,
+                        key,
+                        System.StringComparison.Ordinal))
+                {
+                    _lastOrdinaryTransportWarningKey = key;
+                    Debug.LogWarning(
+                        $"[Foxglove] {GetType().Name} Provider fanout rejected "
+                        + $"logical schema '{logicalSchemaName}'.");
+                }
+            }
+            return result;
         }
 
-        /// <summary>Mirror ROS 2 CDR bytes to ROS2 Bridge using an already resolved output resolution.</summary>
-        protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs, Ros2BridgeOutputResolution resolution)
+        private string EnsureOrdinaryTransportPublisherId()
         {
-            if (!EnsureManagerAvailable()) return;
-            if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return;
-
-            WarnIfRos2BridgeFallback(resolution);
-            if (!resolution.IsEnabled) return;
-
-            if (string.IsNullOrWhiteSpace(Ros2BridgeSchemaName))
+            if (string.IsNullOrWhiteSpace(_ordinaryTransportPublisherId))
             {
-                WarnRos2BridgeSkipped("missing-schema", "ROS2 Bridge schema name is missing.");
-                return;
+                _ordinaryTransportPublisherId =
+                    "ordinary-" + System.Guid.NewGuid().ToString("N");
             }
 
-            _manager.PublishRos2BridgeCdr(_topic, _ros2BridgeTopicOverride, Ros2BridgeSchemaName, payload, logTimeNs);
+            return _ordinaryTransportPublisherId;
         }
 
         protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
@@ -662,19 +616,6 @@ namespace Unity.FoxgloveSDK.Components
                 SupportsProtobufEncoding,
                 SupportsRos2Encoding,
                 SupportsMsgPackEncoding);
-        }
-
-        protected virtual Ros2BridgeOutputResolution ResolveRos2BridgeOutput()
-        {
-            var managerEnabled = _manager != null && _manager.Ros2BridgeEnabled;
-            var managerDefaultEnabled = _manager != null && _manager.DefaultRos2BridgeOutputEnabled;
-            var allowPublisherOverride = _manager == null || _manager.AllowPublisherRos2BridgeOverride;
-            return Ros2BridgeOutputPolicy.Resolve(
-                managerEnabled,
-                managerDefaultEnabled,
-                allowPublisherOverride,
-                _ros2BridgeOutput,
-                SupportsRos2BridgeOutput);
         }
 
         private float ResolvePublishRateHz()
@@ -791,31 +732,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private ref string GetTopicWarningKey(string operation)
         {
-            if (string.Equals(operation, "ROS2 Bridge publish", System.StringComparison.Ordinal))
-                return ref _lastRos2BridgeTopicWarningKey;
-
             return ref _lastPublishTopicWarningKey;
-        }
-
-        private void WarnIfRos2BridgeFallback(Ros2BridgeOutputResolution resolution)
-        {
-            if (!resolution.FellBack) return;
-
-            var key = BridgeWarningKey(resolution.Requested, resolution.Effective);
-            if (_lastBridgeFallbackWarningKey == key) return;
-            _lastBridgeFallbackWarningKey = key;
-
-            Debug.LogWarning(
-                $"[Foxglove] {GetType().Name} does not support ROS2 Bridge output; bridge publishing is disabled for this publisher.");
-        }
-
-        private void WarnRos2BridgeSkipped(string key, string reason)
-        {
-            key = "skip:" + key;
-            if (_lastBridgeWarningKey == key) return;
-            _lastBridgeWarningKey = key;
-
-            Debug.LogWarning($"[Foxglove] {GetType().Name} ROS2 Bridge publish skipped: {reason}");
         }
 
         private static int EncodingWarningKey(PublisherEffectiveEncoding requested, PublisherEffectiveEncoding effective)
@@ -837,7 +754,5 @@ namespace Unity.FoxgloveSDK.Components
             return 5;
         }
 
-        private static int BridgeWarningKey(Ros2BridgeEffectiveOutput requested, Ros2BridgeEffectiveOutput effective)
-            => (((int)requested + 1) << 8) | ((int)effective + 1);
     }
 }

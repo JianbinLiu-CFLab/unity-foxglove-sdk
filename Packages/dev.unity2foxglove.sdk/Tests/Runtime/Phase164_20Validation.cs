@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBridgeFrameWriterAvoidsExtraPublicCopy()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             var write = PhaseValidationSourceHelpers.SourceMethod(source, "public static byte[] Write");
 
             Check(write.Contains("var buffer = new byte[checked(16 + headerBytes.Length + frame.PayloadLength)];", StringComparison.Ordinal)
@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTcpClientUsesStreamWriterPath()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
             var send = PhaseValidationSourceHelpers.SourceMethod(source, "public void Send");
 
             Check(send.Contains("var stream = _client.GetStream();", StringComparison.Ordinal)

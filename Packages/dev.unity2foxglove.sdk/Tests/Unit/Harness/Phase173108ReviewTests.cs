@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness

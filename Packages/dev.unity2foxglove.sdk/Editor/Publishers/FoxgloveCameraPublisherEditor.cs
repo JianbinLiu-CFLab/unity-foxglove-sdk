@@ -10,7 +10,6 @@ using System.IO;
 using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEditor;
 using UnityEngine;
 
@@ -74,8 +73,6 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _encodingOverride;
         private SerializedProperty _publishRateSource;
         private SerializedProperty _publishRateHz;
-        private SerializedProperty _bridgeOutput;
-        private SerializedProperty _bridgeTopicOverride;
         private SerializedProperty _ffmpegPath;
         private SerializedProperty _openH264HelperPath;
         private SerializedProperty _openH264DllPath;
@@ -140,8 +137,6 @@ namespace Unity.FoxgloveSDK.Editor
             _encodingOverride = serializedObject.FindProperty("_encodingOverride");
             _publishRateSource = serializedObject.FindProperty("_publishRateSource");
             _publishRateHz = serializedObject.FindProperty("_publishRateHz");
-            _bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
-            _bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
             _ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
             _openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
             _openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
@@ -261,8 +256,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
-            if (IsRos2BridgeUiRelevant())
-                DrawRos2BridgeSection();
 
             serializedObject.ApplyModifiedProperties();
 
@@ -632,35 +625,10 @@ namespace Unity.FoxgloveSDK.Editor
             PublisherEncodingEditorLabels.DrawPublisherOverride(_encodingOverride, "Encoding Override");
         }
 
-        private void DrawRos2BridgeSection()
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            PublisherEncodingEditorLabels.DrawRos2BridgeOverride(_bridgeOutput, "Bridge Output");
-            if (_bridgeTopicOverride != null)
-                EditorGUILayout.PropertyField(_bridgeTopicOverride, Label("Bridge Topic Override"));
-            EditorGUILayout.HelpBox(
-                "JPEG mode can mirror the same ROS2 CDR image payload to the optional local bridge. Video modes keep using WebSocket output only.",
-                MessageType.Info);
-        }
-
-        private bool IsRos2BridgeUiRelevant()
-        {
-            var publisher = (FoxgloveCameraPublisher)target;
-            if (publisher.BridgeOutputResolution.IsEnabled)
-                return true;
-            if (publisher.ConfiguredManager != null && publisher.ConfiguredManager.Ros2BridgeEnabled)
-                return true;
-
-            return _bridgeOutput != null
-                   && _bridgeOutput.enumValueIndex == (int)Ros2BridgeOutputOverride.Enabled;
-        }
-
         private void DrawResolvedSummaries()
         {
             var publisher = (FoxgloveCameraPublisher)target;
             var resolution = publisher.EncodingResolution;
-            var bridgeResolution = publisher.BridgeOutputResolution;
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
@@ -673,9 +641,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
-                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
-                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
-                EditorGUILayout.TextField("Effective Bridge QoS", FoxRunRos2SubscriptionInspectorPresentation.Summary(publisher.EffectiveRos2BridgeQos));
             }
 
             if (publisher.ConfiguredManager != null
@@ -699,12 +664,6 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Warning);
             }
 
-            if (bridgeResolution.FellBack)
-            {
-                EditorGUILayout.HelpBox(
-                    "Requested ROS2 Bridge output, but this camera mode cannot mirror a ROS2 payload.",
-                    MessageType.Warning);
-            }
         }
 
         private static void DrawCameraOutputMode(SerializedProperty outputMode)
