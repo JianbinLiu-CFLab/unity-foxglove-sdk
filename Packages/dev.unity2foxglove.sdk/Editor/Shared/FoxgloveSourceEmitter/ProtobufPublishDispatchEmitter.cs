@@ -591,6 +591,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             FoxRunTypeField candidate)
             => candidate != null
+               && !candidate.CanAssign
                && candidate.TypeShape?.Kind == FoxRunTypeShapeKind.Canonical
                && string.Equals(
                    candidate.TypeShape.CanonicalType,

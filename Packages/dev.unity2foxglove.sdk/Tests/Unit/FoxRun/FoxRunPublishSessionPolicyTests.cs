@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void ManagerNotifiesPublishSessionBeginAndEndSynchronously()
+        public void ManagerPublishSessionEventSurfaceIsPresent()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/"
@@ -322,6 +322,74 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 FoxRunSchemaInfoRegistry.ClearForTests();
             }
+        }
+
+        [Theory]
+        [InlineData(FoxRunFlow.Publish)]
+        [InlineData(FoxRunFlow.Subscribe)]
+        [Trait("Phase", "185-A")]
+        public void RuntimeDerivedTypeResolvesMessagePackContractDeclaredOnBaseType(
+            FoxRunFlow direction)
+        {
+            const string topic = "/phase185/inherited-contract";
+            var declaringType = typeof(InheritedContractBase).FullName!
+                .Replace('+', '.');
+            var contractInfo = new FoxRunSchemaContractInfo(
+                declaringType,
+                topic,
+                string.Empty,
+                "msgpack",
+                "msgpack",
+                "msgpack",
+                "policy",
+                "FixedRate",
+                10f,
+                0f,
+                Array.Empty<FoxRunSchemaFieldInfo>(),
+                flow: "PublishAndSubscribe",
+                publishAvailable: true,
+                subscribeAvailable: true);
+            var manifest = new FoxRunSchemaManifestInfo(
+                5,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "phase185-inherited-session-gate",
+                "phase185-inherited-session-gate",
+                new[]
+                {
+                    new FoxRunSchemaTypeInfo(
+                        declaringType,
+                        new[] { contractInfo })
+                });
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+
+                Assert.True(FoxRunSchemaInfoRegistry.TryResolveSessionContract(
+                    typeof(InheritedContractDerived),
+                    topic,
+                    direction,
+                    FoxRunEncoding.MessagePack,
+                    out var resolved,
+                    out var diagnostic));
+                Assert.Same(contractInfo, resolved);
+                Assert.Equal(string.Empty, diagnostic);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        private class InheritedContractBase
+        {
+        }
+
+        private sealed class InheritedContractDerived : InheritedContractBase
+        {
         }
     }
 }

@@ -358,6 +358,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ManagerNotifiesPublishSessionBeginAndEndSynchronously()
+        {
+            var assembly = CompileManagerBridgeQosHarness();
+            var managerType = assembly.GetType(
+                "Unity.FoxgloveSDK.Components.FoxgloveManager",
+                throwOnError: true);
+            var manager = Activator.CreateInstance(managerType);
+
+            Invoke(manager, "SubscribePublishSessionEventsForTest");
+            Invoke(manager, "BeginPublishSessionForTest");
+
+            Assert.Equal(1, GetProperty(manager, "ObservedPublishSessionCount"));
+            var begin = Invoke(manager, "ObservedPublishSessionForTest", 0);
+            Assert.True((bool)GetProperty(begin, "SessionActive"));
+            Assert.Same(begin, GetProperty(manager, "ActiveFoxRunPublishSessionPolicy"));
+
+            Invoke(manager, "EndPublishSessionForTest");
+
+            Assert.Equal(2, GetProperty(manager, "ObservedPublishSessionCount"));
+            var end = Invoke(manager, "ObservedPublishSessionForTest", 1);
+            Assert.False((bool)GetProperty(end, "SessionActive"));
+            Assert.Same(end, GetProperty(manager, "ActiveFoxRunPublishSessionPolicy"));
+        }
+
+        [Fact]
         public void BridgeQosConsumersUseActivePublishSessionAccessor()
         {
             var managerPublishing = ReadRepoText(
@@ -643,6 +668,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private const string ManagerHarnessSupportSource = @"
 using System;
+using System.Collections.Generic;
 
 namespace UnityEngine
 {
@@ -687,6 +713,8 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxgloveManager
     {
         private readonly HarnessConnectionState _connectionState = new HarnessConnectionState();
+        private readonly List<FoxRunPublishSessionPolicy> _observedPublishSessions =
+            new List<FoxRunPublishSessionPolicy>();
         private FoxRunQosProfileSettings _ros2BridgeQos = new FoxRunQosProfileSettings();
         private bool _foxgloveOutputEnabled;
         private bool _ros2NativeEnabled;
@@ -707,6 +735,14 @@ namespace Unity.FoxgloveSDK.Components
 
         public void EndPublishSessionForTest()
             => EndFoxRunPublishSession();
+
+        public int ObservedPublishSessionCount => _observedPublishSessions.Count;
+
+        public FoxRunPublishSessionPolicy ObservedPublishSessionForTest(int index)
+            => _observedPublishSessions[index];
+
+        public void SubscribePublishSessionEventsForTest()
+            => FoxRunPublishSessionChanged += _observedPublishSessions.Add;
 
         private void ReleaseFoxRunRos2BridgeRuntimeDemand() { }
 

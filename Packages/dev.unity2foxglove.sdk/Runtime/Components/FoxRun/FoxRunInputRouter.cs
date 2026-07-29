@@ -207,7 +207,7 @@ namespace Unity.FoxgloveSDK.Components
                                 continue;
                             }
                             if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
-                                    source.GetType().FullName,
+                                    source.GetType(),
                                     info.Topic,
                                     FoxRunFlow.Subscribe,
                                     topology.Topology.SubscribeEncoding,
@@ -274,7 +274,7 @@ namespace Unity.FoxgloveSDK.Components
                                     continue;
                                 }
                                 if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
-                                        source.GetType().FullName,
+                                        source.GetType(),
                                         info.Topic,
                                         FoxRunFlow.Subscribe,
                                         FoxRunEncoding.MessagePack,

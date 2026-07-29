@@ -49,12 +49,12 @@ namespace Unity.FoxgloveSDK.Tests
             var manifest = FoxRunManifestBuilder.Build(FixtureMembers());
             var json = FoxRunManifestJsonWriter.WriteCanonical(manifest);
 
-            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"encoding\":\"json\",\"contractHash\":\"d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false}],\"policy\":{\"mode\":\"Change\",\"hz\":10,\"tolerance\":0.00100000005}}]}]}},\"globalManifestHash\":\"1ac1f1a3fe37b3857369362d3744a015284a91e4b3f5927c4408de7652f75f76\"}";
-            const string expectedContractHash = "d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16";
+            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"262502c3999d4140c8b809fc0110ea5ea2fa4898702a117743140e672502fcef\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"wireSchemaName\":\"\",\"logicalSchemaName\":\"Demo.RobotState\",\"encoding\":\"json\",\"availability\":{\"publishAvailable\":true,\"subscribeAvailable\":false,\"unavailableDiagnosticId\":\"\",\"unavailableReason\":\"\"},\"contractHash\":\"3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false,\"normalizedSchedule\":{\"policy\":2,\"hasExplicitHz\":true,\"hz\":10,\"tolerance\":0.00100000005,\"onlyIf\":\"\",\"conditionMemberKind\":\"None\"}}],\"policy\":{\"mode\":\"Change\",\"hz\":10,\"tolerance\":0.00100000005}}]}]}},\"globalManifestHash\":\"898b97e6379e09221d3b251a41682f2062dd4ba236aa4e2dd5c9faa056faa8da\"}";
+            const string expectedContractHash = "3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207";
             const string expectedBindingHash = "dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52";
             const string expectedPolicyHash = "86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d";
-            const string expectedManifestHash = "594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e";
-            const string expectedGlobalManifestHash = "1ac1f1a3fe37b3857369362d3744a015284a91e4b3f5927c4408de7652f75f76";
+            const string expectedManifestHash = "262502c3999d4140c8b809fc0110ea5ea2fa4898702a117743140e672502fcef";
+            const string expectedGlobalManifestHash = "898b97e6379e09221d3b251a41682f2062dd4ba236aa4e2dd5c9faa056faa8da";
 
             var contract = manifest.Sections.FoxRun.Types[0].Contracts[0];
             Check(json == expectedJson, "112-A1: fixture canonical JSON is exact and compact");
@@ -77,9 +77,10 @@ namespace Unity.FoxgloveSDK.Tests
             var rateChanged = FoxRunManifestBuilder.Build(FixtureMembers(hz: 5f));
             var rateContract = rateChanged.Sections.FoxRun.Types[0].Contracts[0];
             Check(rateContract.PolicyHash != baselineContract.PolicyHash
-                  && rateContract.ContractHash == baselineContract.ContractHash
+                  && rateContract.ContractHash != baselineContract.ContractHash
+                  && rateContract.BindingHash == baselineContract.BindingHash
                   && rateChanged.Sections.FoxRun.ManifestHash != baseline.Sections.FoxRun.ManifestHash,
-                "112-B1: Hz changes policyHash and manifestHash only");
+                "112-B1: Hz changes policyHash, contractHash, and manifestHash while bindingHash stays stable");
 
             var typeChanged = FoxRunManifestBuilder.Build(FixtureMembers(typeName: "System.Double"));
             var typeContract = typeChanged.Sections.FoxRun.Types[0].Contracts[0];

@@ -180,8 +180,18 @@ the Publish Profile default:
 private RobotState _state;
 ```
 
-JSON and Protobuf are Foxglove wire encodings. Native and Bridge targets use
-their generated ROS 2 message contracts; CDR is not a public `Encoding` option.
+JSON, Protobuf, and MessagePack are Foxglove wire encodings. MessagePack
+supports `Publish`, `Subscribe`, and `PublishAndSubscribe` on the Foxglove
+WebSocket direction. Its live channels use `message_encoding=msgpack` with
+empty schema fields. MCAP preserves the exact payload bytes on a channel with
+schema id zero and no associated Schema record; unrelated JSON or Protobuf
+channels in the same recording may still own valid Schema records.
+
+Typed MessagePack field discovery and editing requires the maintained
+**FoxRun Publish** extension. Built-in Foxglove panels do not currently
+visualize or author typed MessagePack. Native and Bridge targets use their
+generated ROS 2 message contracts and CDR; neither path consumes MessagePack
+bytes, and CDR is not a public `Encoding` option.
 Source, targets, encoding, QoS, copy budget, maximum subscribe rate, and
 directional default rates are frozen for the corresponding enabled session.
 
@@ -281,6 +291,12 @@ A stream declaration is one initialized, non-static field with exactly one
 `Targets`, `Policy`, `Hz`, `Tolerance`, and `OnlyIf` are not: stream admission
 and user-driven consumption replace ordinary field scheduling.
 
+For MessagePack input, a topic may contain ordinary members or exactly one
+`FoxRunStream<T>`. Mixed ordinary/stream and multi-stream topologies are
+unavailable. A multi-member publish or subscribe direction must also resolve
+one normalized `Policy`, explicit/effective `Hz`, `Tolerance`, and `OnlyIf`
+schedule tuple.
+
 The parameterless stream uses capacity 1024, a finite 1000 Hz admission
 ceiling, maximum batch 128, and `DropOldest`. `Drain(Action<T>)` retains stream
 ownership, invokes at most `MaxBatch` callbacks, and disposes each value after
@@ -314,12 +330,13 @@ public partial class RobotSummary
 3. Enter Play Mode.
 4. Connect Foxglove to `ws://127.0.0.1:8765`.
 5. Use Topics, Raw Messages, or Plot for output.
-6. Use the optional **FoxRun Publish** extension for generated writable JSON
-   and Protobuf subscription contracts.
+6. Use the optional **FoxRun Publish** extension for generated writable JSON,
+   Protobuf, and MessagePack subscription contracts.
 
 The panel discovers contracts through `/foxrun/subscription-contracts`; it
-does not guess topics or encodings. Protobuf input uses binary MessageData and
-does not fall back to JSON.
+does not guess topics or encodings. Protobuf and MessagePack input use binary
+MessageData and do not fall back to JSON. MessagePack rows retain a logical
+type shape for the custom panel while their wire schema fields remain empty.
 
 ## 13. Generated Evidence and Player Builds
 

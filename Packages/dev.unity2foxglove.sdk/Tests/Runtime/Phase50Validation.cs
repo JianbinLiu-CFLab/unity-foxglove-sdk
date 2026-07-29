@@ -144,12 +144,37 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxRunPhysicalGeneratedFileFreshness()
         {
-            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
+            var source =
+                ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs")
+                + Environment.NewLine
+                + ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.MessagePack.cs");
             var generated = ReadRepoText("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs");
 
-            var declaredTopics = Regex.Matches(source, @"\[FoxRun\(""([^""]+)""")
+            var stringConstants = Regex.Matches(
+                    source,
+                    @"const\s+string\s+(?<name>[A-Za-z_]\w*)\s*=\s*""(?<value>[^""]+)""\s*;",
+                    RegexOptions.Singleline)
                 .Cast<Match>()
-                .Select(m => m.Groups[1].Value)
+                .ToDictionary(
+                    match => match.Groups["name"].Value,
+                    match => match.Groups["value"].Value,
+                    StringComparer.Ordinal);
+            var declaredTopics = Regex.Matches(
+                    source,
+                    @"\[FoxRun\(\s*(?:""(?<literal>[^""]+)""|(?<constant>[A-Za-z_]\w*))",
+                    RegexOptions.Singleline)
+                .Cast<Match>()
+                .Select(match =>
+                {
+                    var literal = match.Groups["literal"].Value;
+                    if (!string.IsNullOrEmpty(literal))
+                        return literal;
+                    var constant = match.Groups["constant"].Value;
+                    return stringConstants.TryGetValue(constant, out var value)
+                        ? value
+                        : constant;
+                })
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
             var topicCountMatch = Regex.Match(generated, @"TopicCount\s*=>\s*(\d+)");
             var generatedCount = topicCountMatch.Success ? int.Parse(topicCountMatch.Groups[1].Value) : -1;

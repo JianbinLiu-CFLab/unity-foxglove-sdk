@@ -4,6 +4,8 @@
 // Module: Runtime/Components/FoxRun
 // Purpose: Immutable, session-resolved publish topology and QoS contract.
 
+using System;
+
 namespace Unity.FoxgloveSDK.Components
 {
     public sealed class FoxRunResolvedPublishContract
@@ -40,7 +42,7 @@ namespace Unity.FoxgloveSDK.Components
             out string diagnostic)
             => TryResolveForDeclaringType(
                 info,
-                string.Empty,
+                null,
                 defaultTargets,
                 publishDefaultEncoding,
                 nativeDefaultQos,
@@ -52,7 +54,7 @@ namespace Unity.FoxgloveSDK.Components
 
         internal static bool TryResolveForDeclaringType(
             FoxgloveLogTopicInfo info,
-            string declaringType,
+            Type declaringType,
             FoxRunEndpoint defaultTargets,
             FoxRunEncoding publishDefaultEncoding,
             FoxRunResolvedQos nativeDefaultQos,

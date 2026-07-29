@@ -131,7 +131,9 @@ public partial class SpeedController : MonoBehaviour
 private RobotState _state;
 ```
 
-JSON 和 Protobuf 只描述 Foxglove 线格式。Native 与 Bridge 使用生成的 ROS 2 消息契约；CDR 不是公开的 `Encoding` 选项。Source、Targets、编码、QoS、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
+JSON、Protobuf 和 MessagePack 只描述 Foxglove 线格式。MessagePack 在 Foxglove WebSocket 方向支持 `Publish`、`Subscribe` 和 `PublishAndSubscribe`。实时通道使用 `message_encoding=msgpack` 且线 schema 字段为空；MCAP 在 schema id 为零、没有关联 Schema record 的通道上原样保存负载字节，同一记录中的其他 JSON/Protobuf 通道仍可拥有自己的 Schema record。
+
+MessagePack 的类型字段发现与编辑必须使用维护中的 **FoxRun Publish** 扩展；Foxglove 内置面板目前不会可视化或编辑 typed MessagePack。Native 与 Bridge 继续使用生成的 ROS 2 DTO/CDR 契约，绝不消费 MessagePack 字节；CDR 不是公开的 `Encoding` 选项。Source、Targets、编码、QoS、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
 
 ## 7. 官方 ROS 2 QoS
 
@@ -204,6 +206,8 @@ public partial class ControlSamples : MonoBehaviour
 `Hz`、`Tolerance` 与 `OnlyIf` 不合法，因为流自己的准入和用户驱动消费取代
 了普通字段调度。
 
+MessagePack 输入 topic 可以包含普通成员，或恰好一个 `FoxRunStream<T>`；普通成员与流混合、多个流都不可用。多成员的发布或订阅方向还必须解析为同一个规范化 `Policy`、显式/有效 `Hz`、`Tolerance` 和 `OnlyIf` 调度元组。
+
 无参数构造使用容量 1024、有限的 1000 Hz 准入上限、最大批次 128 和
 `DropOldest`。`Drain(Action<T>)` 仍由流持有所有权，每次至多调用
 `MaxBatch` 个回调，并在回调结束后释放值；回调不能保留该值。`TryTake` 与
@@ -217,7 +221,7 @@ public partial class ControlSamples : MonoBehaviour
 2. 在 Play Mode 前配置 Publish Data；需要输入时再配置并启用 Subscribe Data。
 3. 进入 Play Mode，让 Foxglove 连接 `ws://127.0.0.1:8765`。
 4. 使用 Topics、Raw Messages 或 Plot 查看输出。
-5. 可选的 **FoxRun Publish** 扩展只展示生成的可写 JSON/Protobuf 契约，不猜测 topic 或编码。
+5. 可选的 **FoxRun Publish** 扩展展示生成的可写 JSON、Protobuf 与 MessagePack 契约，不猜测 topic 或编码。Protobuf 与 MessagePack 使用二进制 MessageData；MessagePack 保留供自定义面板使用的逻辑 type shape，同时线 schema 字段保持为空。
 
 Roslyn 生成器是创作期权威。Editor Play Mode 会刷新 canonical descriptor、manifest、hash 和 runtime schema info；Player 构建前还会生成物理 `.g.cs` fallback。MCAP 记录外部边界表示，Replay 会核对 FoxRun schema identity，并在回放权威期间抑制实时 WebSocket 与 native fanout。
 

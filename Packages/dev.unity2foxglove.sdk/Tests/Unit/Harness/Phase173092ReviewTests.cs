@@ -96,7 +96,11 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.Contains("IReadOnlyList<ApplyMember> applyMembers", signature, StringComparison.Ordinal);
             Assert.Contains(
-                "IReadOnlyList<FoxgloveSourceEmitter.TopicMember> webSocketInputMembers",
+                "IReadOnlyList<FoxgloveSourceEmitter.TopicMember> legacyWebSocketInputMembers",
+                signature,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "IReadOnlyList<FoxgloveSourceEmitter.TopicMember> transactionalInputMembers",
                 signature,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("Dictionary<", signature, StringComparison.Ordinal);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
@@ -245,7 +246,122 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     "/phase185/tagged-second",
                     "Demo.TaggedSecond",
                     shape,
-                    secondMetadata));
+                secondMetadata));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void SameObjectTypeRequiredAndNullableFieldsShareOneProtobufMessageDefinition()
+        {
+            var nested = FoxRunTypeShape.Object(
+                "Demo.ReusedSample",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "value",
+                        "Value",
+                        FoxRunTypeShape.Canonical("int32"))
+                });
+            var root = FoxRunTypeShape.Object(
+                "Demo.ReusedEnvelope",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "required",
+                        "Required",
+                        nested),
+                    new FoxRunTypeField(
+                        "optional",
+                        "Optional",
+                        nested.WithNullable(),
+                        isNullable: true)
+                });
+
+            var contract = FoxRunProtobufContractBuilder.Build(
+                new FoxRunProtobufContractInput(
+                    "Demo.ReusedSource",
+                    "/phase185/reused-nullable",
+                    "Demo.ReusedEnvelope",
+                    new[]
+                    {
+                        new FoxRunProtobufFieldInput(
+                            "value",
+                            "_value",
+                            "Demo.ReusedEnvelope",
+                            false,
+                            typeShape: root)
+                    }));
+            var descriptor = FileDescriptorSet.Parser.ParseFrom(
+                contract.FileDescriptorSet);
+            var file = Assert.Single(descriptor.File);
+            var envelope = Assert.Single(
+                file.MessageType,
+                message => string.Equals(
+                    message.Name,
+                    "Demo_ReusedEnvelope",
+                    StringComparison.Ordinal));
+
+            Assert.Equal(
+                envelope.Field[0].TypeName,
+                envelope.Field[1].TypeName);
+            Assert.Single(
+                file.MessageType,
+                message => string.Equals(
+                    message.Name,
+                    "Demo_ReusedSample",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void CustomDtoNullableBoolFingerprintWritesValueAndPresenceSeparately()
+        {
+            var customShape = new FoxRunRos2CustomDtoShape(
+                "Demo.OptionalFlag",
+                "demo/OptionalFlag",
+                "DemoOptionalFlag",
+                hasPublicParameterlessConstructor: true,
+                isSupported: true,
+                members: new[]
+                {
+                    new FoxRunRos2CustomDtoMemberShape(
+                        "Flag",
+                        "flag",
+                        FoxRunRos2CustomDtoMemberKind.Scalar,
+                        "System.Nullable<System.Boolean>",
+                        "bool",
+                        string.Empty,
+                        string.Empty,
+                        hasPresence: true,
+                        canRead: true,
+                        canWrite: true)
+                },
+                diagnostics: Array.Empty<string>());
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_state",
+                "Demo.OptionalFlag",
+                "/phase185/optional-flag",
+                10f,
+                "Demo.OptionalFlag",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
+                encoding: "json",
+                typeShape: null,
+                ros2CustomDtoShape: customShape,
+                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Demo",
+                "OptionalFlagSource",
+                new[] { member });
+
+            Assert.Contains(", __value.Flag.Value);", source, StringComparison.Ordinal);
+            Assert.Single(
+                Regex.Matches(
+                        source,
+                        @"WriteBool\(__nested, \d+, __value\.Flag\.HasValue\);")
+                    .Cast<Match>());
         }
 
         [Fact]

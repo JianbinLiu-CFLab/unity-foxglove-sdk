@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Editor
                 .Where(member => member.GeneratesWebSocketCodec
                                  // A custom DTO P&S contract has native input
                                  // but still deliberately exposes its selected
-                                 // JSON/Protobuf contract as WebSocket output.
+                                 // JSON/Protobuf/MessagePack contract as WebSocket output.
                                  // Subscribe native contracts remain absent
                                  // so this never creates a fallback input path.
                                  && (!string.Equals(

@@ -127,6 +127,68 @@ namespace Demo
 
         [Fact]
         [Trait("Phase", "185-C")]
+        public void RequiredAndNullableCanonicalMembersCompileWithDistinctReaders()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase185MessagePackNullableInbound_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class NullableReceiver
+    {
+        [FoxRun(""/phase185/nullable"", Mode = Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public int Required;
+
+        [FoxRun(""/phase185/nullable"", Mode = Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public int? Optional;
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver =
+                CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var output,
+                out _);
+            var generatedSource = driver.GetRunResult()
+                .Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName.EndsWith(
+                    "_FoxRun.g.cs",
+                    StringComparison.Ordinal))
+                .SourceText
+                .ToString();
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+
+            Assert.True(
+                emit.Success,
+                "Generated nullable MessagePack consumer failed to compile: "
+                + string.Join(
+                    "; ",
+                    emit.Diagnostics.Select(diagnostic => diagnostic.ToString()))
+                + Environment.NewLine
+                + generatedSource);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-C")]
         public void GeneratedSourceDeclaresDistinctTransactionalSurface()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(

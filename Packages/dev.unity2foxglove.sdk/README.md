@@ -59,6 +59,7 @@ public partial class MyLogger : MonoBehaviour
 - Structured data publishing (FrameTransform, SceneUpdate, CompressedImage)
 - Typed sensor publishers for PointCloud, LaserScan, and CameraCalibration
 - `[FoxRun]` attribute for generated fixed-rate, change-driven, interval, and explicit trigger publishing
+- FoxRun `Publish`, `Subscribe`, and `PublishAndSubscribe` over Foxglove WebSocket with JSON, Protobuf, or typed schemaless MessagePack; typed MessagePack authoring uses the maintained FoxRun Publish extension
 - MCAP recording and replay (LZ4/Zstd compression)
 - Paused replay scrubbing with Unity scene snapshot updates and bounded panel-history rebuilds
 - Managed WebSocket backpressure for slow clients

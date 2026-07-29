@@ -605,12 +605,14 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
                         sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
                         sb.AppendLine($"{pad}                }}");
-                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.JSON)");
                         sb.AppendLine($"{pad}                {{");
                         sb.AppendLine($"{pad}                    var __payload_{i} = __BuildFoxRunJson_{i}();");
                         sb.AppendLine($"{pad}                    __foxRunLastJson_{i} = __payload_{i};");
                         sb.AppendLine($"{pad}                    mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
                         sb.AppendLine($"{pad}                }}");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Frozen FoxRun publish encoding is unsupported.\");");
                     }
                     else if (protobuf)
                     {
@@ -640,8 +642,10 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
                         sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
                         sb.AppendLine($"{pad}                }}");
-                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.JSON)");
                         sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields, i)}, nowNs);");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Frozen FoxRun publish encoding is unsupported.\");");
                     }
                     else if (protobuf)
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");

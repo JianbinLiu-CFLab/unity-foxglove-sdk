@@ -38,6 +38,51 @@ def load_module(name: str, relative: str):
 class SampleSyncToolingTests(unittest.TestCase):
     """Regression coverage for sample sync tooling."""
 
+    def test_full_demo_messagepack_source_and_meta_have_canonical_mappings(self) -> None:
+        """The controlled MessagePack partial must sync live -> package -> imported."""
+        module = load_module(
+            "sync_full_demo_messagepack_maps_under_test",
+            "Scripts/samples/sync_full_demo.py",
+        )
+
+        mapped = {
+            (item.demo.name, item.sample.name)
+            for item in module.FILE_MAPS
+        }
+
+        self.assertIn(
+            ("TestLog.MessagePack.cs", "TestLog.MessagePack.cs"),
+            mapped,
+        )
+        self.assertIn(
+            ("TestLog.MessagePack.cs.meta", "TestLog.MessagePack.cs.meta"),
+            mapped,
+        )
+
+    def test_full_demo_messagepack_imported_pairs_preserve_meta_parity(self) -> None:
+        """Imported sync must derive both MessagePack destinations from package mappings."""
+        module = load_module(
+            "sync_full_demo_messagepack_import_under_test",
+            "Scripts/samples/sync_full_demo.py",
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            imported = Path(temp) / "Full Demo Visualization"
+            pairs = module.imported_maps(imported, "package")
+
+        by_name = {
+            destination.name: source.name
+            for source, destination in pairs
+            if destination.name.startswith("TestLog.MessagePack")
+        }
+        self.assertEqual(
+            {
+                "TestLog.MessagePack.cs": "TestLog.MessagePack.cs",
+                "TestLog.MessagePack.cs.meta": "TestLog.MessagePack.cs.meta",
+            },
+            by_name,
+        )
+
     def test_full_demo_scene_sanitizes_portable_fields_with_variable_indentation(self) -> None:
         """Sample sync should sanitize local-only fields even if Unity changes indentation."""
         module = load_module("sync_full_demo_under_test", "Scripts/samples/sync_full_demo.py")

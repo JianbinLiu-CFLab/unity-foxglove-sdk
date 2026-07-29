@@ -505,6 +505,70 @@ namespace Demo
         }
 
         [Fact]
+        public void ReusedNullableObjectShapeKeepsCallSiteNullabilityAcrossBothHostsAndMemberOrders()
+        {
+            const string source = @"
+namespace Demo
+{
+    public struct Sample { public int Value; }
+    public sealed class RequiredFirst
+    {
+        public Sample Required;
+        public Sample? Optional;
+    }
+    public sealed class OptionalFirst
+    {
+        public Sample? Optional;
+        public Sample Required;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185NullableMemoParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            foreach (var metadataName in new[] { "Demo.RequiredFirst", "Demo.OptionalFirst" })
+            {
+                var symbol = compilation.GetTypeByMetadataName(metadataName);
+                Assert.NotNull(symbol);
+                Assert.True(FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out var roslyn));
+                AssertNullableReuseShape(roslyn);
+            }
+
+            AssertNullableReuseShape(
+                FoxRunReflectionTypeShapeBuilder.Build(typeof(RequiredFirstNullableReusePayload)));
+            AssertNullableReuseShape(
+                FoxRunReflectionTypeShapeBuilder.Build(typeof(OptionalFirstNullableReusePayload)));
+        }
+
+        [Fact]
+        public void RoslynAndReflectionBuildersExcludePropertiesWithoutPublicGetters()
+        {
+            const string source = @"
+namespace Demo
+{
+    public sealed class PrivateGetterPayload
+    {
+        public int Value { private get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185PrivateGetterParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName("Demo.PrivateGetterPayload");
+
+            Assert.NotNull(symbol);
+            Assert.True(FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(PrivateGetterPayload));
+            Assert.Empty(roslyn.Fields);
+            Assert.Empty(reflection.Fields);
+        }
+
+        [Fact]
         public void ExplicitMessagePackRejectsProtobufOnlyFieldNumbers()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
@@ -834,6 +898,21 @@ namespace Demo
             });
         }
 
+        private static void AssertNullableReuseShape(FoxRunTypeShape shape)
+        {
+            var required = Assert.Single(
+                shape.Fields,
+                field => field.MemberName == "Required");
+            var optional = Assert.Single(
+                shape.Fields,
+                field => field.MemberName == "Optional");
+
+            Assert.False(required.IsNullable);
+            Assert.False(required.TypeShape.Nullable);
+            Assert.True(optional.IsNullable);
+            Assert.True(optional.TypeShape.Nullable);
+        }
+
         private static string FieldIdentity(FoxRunTypeField field)
             => field.JsonName
                + "|"
@@ -909,6 +988,28 @@ namespace Demo
         private sealed class InitOnlyPayload
         {
             public int Value { get; init; }
+        }
+
+        private struct NullableReuseSample
+        {
+            public int Value;
+        }
+
+        private sealed class RequiredFirstNullableReusePayload
+        {
+            public NullableReuseSample Required;
+            public NullableReuseSample? Optional;
+        }
+
+        private sealed class OptionalFirstNullableReusePayload
+        {
+            public NullableReuseSample? Optional;
+            public NullableReuseSample Required;
+        }
+
+        private sealed class PrivateGetterPayload
+        {
+            public int Value { private get; set; }
         }
 
         private sealed class ListContractPayload

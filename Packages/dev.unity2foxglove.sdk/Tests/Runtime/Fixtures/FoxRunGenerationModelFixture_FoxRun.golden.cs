@@ -50,19 +50,26 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
 
         private readonly string __foxRunOrigin = "unity2foxglove-" + global::System.Guid.NewGuid().ToString("N");
         private bool __foxRunCaptureActive_0;
+        private FoxRunEncoding __foxRunCaptureEncoding_0;
         private float[] __foxRunCapture_0_0;
         private bool __foxRunCaptureActive_1;
+        private FoxRunEncoding __foxRunCaptureEncoding_1;
         private string __foxRunCapture_1_0;
         private bool __foxRunCaptureActive_2;
+        private FoxRunEncoding __foxRunCaptureEncoding_2;
         private global::System.Collections.Generic.List<float> __foxRunCapture_2_0;
         private bool __foxRunCaptureActive_3;
+        private FoxRunEncoding __foxRunCaptureEncoding_3;
         private int? __foxRunCapture_3_0;
         private bool __foxRunCaptureActive_4;
+        private FoxRunEncoding __foxRunCaptureEncoding_4;
         private int __foxRunCapture_4_0;
         private bool __foxRunCaptureActive_5;
+        private FoxRunEncoding __foxRunCaptureEncoding_5;
         private float __foxRunCapture_5_0;
         private float __foxRunCapture_5_1;
         private bool __foxRunCaptureActive_6;
+        private FoxRunEncoding __foxRunCaptureEncoding_6;
         private global::UnityEngine.Vector3 __foxRunCapture_6_0;
 
         bool IFoxglovePublishCaptureSource.FoxgloveLog_BeginCapture(int topicIndex)
@@ -74,12 +81,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_0_0 = this._samples;
+                        if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_0 = __BuildFoxRunMessagePack_0();
+                            __foxRunLastMessagePack_0 = __payload_0;
+                        }
                         __foxRunCaptureActive_0 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_0_0 = default;
+                        __foxRunLastMessagePack_0 = null;
+                        __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_0 = false;
                         throw;
                     }
@@ -88,12 +102,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_1_0 = this._extra;
+                        if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_1 = __BuildFoxRunMessagePack_1();
+                            __foxRunLastMessagePack_1 = __payload_1;
+                        }
                         __foxRunCaptureActive_1 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_1_0 = default;
+                        __foxRunLastMessagePack_1 = null;
+                        __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_1 = false;
                         throw;
                     }
@@ -102,12 +123,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_2_0 = this._sampleList;
+                        if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_2 = __BuildFoxRunMessagePack_2();
+                            __foxRunLastMessagePack_2 = __payload_2;
+                        }
                         __foxRunCaptureActive_2 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_2_0 = default;
+                        __foxRunLastMessagePack_2 = null;
+                        __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_2 = false;
                         throw;
                     }
@@ -116,12 +144,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_3_0 = this._optionalCount;
+                        if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_3 = __BuildFoxRunMessagePack_3();
+                            __foxRunLastMessagePack_3 = __payload_3;
+                        }
                         __foxRunCaptureActive_3 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_3_0 = default;
+                        __foxRunLastMessagePack_3 = null;
+                        __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_3 = false;
                         throw;
                     }
@@ -130,12 +165,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_4_0 = this._trigger;
+                        if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_4 = __BuildFoxRunMessagePack_4();
+                            __foxRunLastMessagePack_4 = __payload_4;
+                        }
                         __foxRunCaptureActive_4 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_4_0 = default;
+                        __foxRunLastMessagePack_4 = null;
+                        __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_4 = false;
                         throw;
                     }
@@ -145,6 +187,11 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_5_0 = this._value;
                         __foxRunCapture_5_1 = this._valueMirror;
+                        if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_5 = __BuildFoxRunMessagePack_5();
+                            __foxRunLastMessagePack_5 = __payload_5;
+                        }
                         __foxRunCaptureActive_5 = true;
                         return true;
                     }
@@ -152,6 +199,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_5_0 = default;
                         __foxRunCapture_5_1 = default;
+                        __foxRunLastMessagePack_5 = null;
+                        __foxRunCaptureEncoding_5 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_5 = false;
                         throw;
                     }
@@ -160,12 +209,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_6_0 = this._position;
+                        if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                        {
+                            var __payload_6 = __BuildFoxRunMessagePack_6();
+                            __foxRunLastMessagePack_6 = __payload_6;
+                        }
                         __foxRunCaptureActive_6 = true;
                         return true;
                     }
                     catch
                     {
                         __foxRunCapture_6_0 = default;
+                        __foxRunLastMessagePack_6 = null;
+                        __foxRunCaptureEncoding_6 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_6 = false;
                         throw;
                     }
@@ -180,31 +236,45 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 0:
                     __foxRunCapture_0_0 = default;
                     __foxRunCaptureActive_0 = false;
+                    __foxRunLastMessagePack_0 = null;
+                    __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                     break;
                 case 1:
                     __foxRunCapture_1_0 = default;
                     __foxRunCaptureActive_1 = false;
+                    __foxRunLastMessagePack_1 = null;
+                    __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                     break;
                 case 2:
                     __foxRunCapture_2_0 = default;
                     __foxRunCaptureActive_2 = false;
+                    __foxRunLastMessagePack_2 = null;
+                    __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                     break;
                 case 3:
                     __foxRunCapture_3_0 = default;
                     __foxRunCaptureActive_3 = false;
+                    __foxRunLastMessagePack_3 = null;
+                    __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                     break;
                 case 4:
                     __foxRunCapture_4_0 = default;
                     __foxRunCaptureActive_4 = false;
+                    __foxRunLastMessagePack_4 = null;
+                    __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                     break;
                 case 5:
                     __foxRunCapture_5_0 = default;
                     __foxRunCapture_5_1 = default;
                     __foxRunCaptureActive_5 = false;
+                    __foxRunLastMessagePack_5 = null;
+                    __foxRunCaptureEncoding_5 = (FoxRunEncoding)0;
                     break;
                 case 6:
                     __foxRunCapture_6_0 = default;
                     __foxRunCaptureActive_6 = false;
+                    __foxRunLastMessagePack_6 = null;
+                    __foxRunCaptureEncoding_6 = (FoxRunEncoding)0;
                     break;
             }
         }
@@ -231,6 +301,16 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             reason = string.Empty;
             if (resolved == null || !resolved.Selects(target)) { reason = "Target was not selected."; return false; }
+            switch (topicIndex)
+            {
+                case 0: __foxRunCaptureEncoding_0 = resolved.FoxgloveEncoding; break;
+                case 1: __foxRunCaptureEncoding_1 = resolved.FoxgloveEncoding; break;
+                case 2: __foxRunCaptureEncoding_2 = resolved.FoxgloveEncoding; break;
+                case 3: __foxRunCaptureEncoding_3 = resolved.FoxgloveEncoding; break;
+                case 4: __foxRunCaptureEncoding_4 = resolved.FoxgloveEncoding; break;
+                case 5: __foxRunCaptureEncoding_5 = resolved.FoxgloveEncoding; break;
+                case 6: __foxRunCaptureEncoding_6 = resolved.FoxgloveEncoding; break;
+            }
             if (mgr == null) { reason = "Foxglove Manager is unavailable."; return false; }
             if (mgr.SuppressLivePublishersForReplay) { reason = "Replay is suppressing live publishers."; return false; }
             if (target == FoxRunEndpoint.Foxglove)
@@ -302,6 +382,41 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             if (mgr == null || mgr.SuppressLivePublishersForReplay) { reason = "MCAP recording is unavailable."; return false; }
             switch (topicIndex)
             {
+                case 0:
+                    __foxRunCaptureEncoding_0 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/array", out _, out reason);
+                    return false;
+                case 1:
+                    __foxRunCaptureEncoding_1 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/extra", out _, out reason);
+                    return false;
+                case 2:
+                    __foxRunCaptureEncoding_2 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/list", out _, out reason);
+                    return false;
+                case 3:
+                    __foxRunCaptureEncoding_3 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/nullable", out _, out reason);
+                    return false;
+                case 4:
+                    __foxRunCaptureEncoding_4 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/trigger", out _, out reason);
+                    return false;
+                case 5:
+                    __foxRunCaptureEncoding_5 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/value", out _, out reason);
+                    return false;
+                case 6:
+                    __foxRunCaptureEncoding_6 = resolved.FoxgloveEncoding;
+                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/vector", out _, out reason);
+                    return false;
                 default: return false;
             }
         }
@@ -313,6 +428,34 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             if (resolved == null || resolved.Selects(FoxRunEndpoint.Foxglove) || mgr == null) return false;
             switch (topicIndex)
             {
+                case 0:
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/array", __foxRunLastMessagePack_0, nowNs, out reason);
+                    return false;
+                case 1:
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/extra", __foxRunLastMessagePack_1, nowNs, out reason);
+                    return false;
+                case 2:
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/list", __foxRunLastMessagePack_2, nowNs, out reason);
+                    return false;
+                case 3:
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/nullable", __foxRunLastMessagePack_3, nowNs, out reason);
+                    return false;
+                case 4:
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/trigger", __foxRunLastMessagePack_4, nowNs, out reason);
+                    return false;
+                case 5:
+                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/value", __foxRunLastMessagePack_5, nowNs, out reason);
+                    return false;
+                case 6:
+                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/vector", __foxRunLastMessagePack_6, nowNs, out reason);
+                    return false;
                 default: return false;
             }
         }
@@ -322,46 +465,95 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/array", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_ec5506f3", __BuildFoxRunProtobuf_0(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_0 = __foxRunLastMessagePack_0 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/array", __payload_0, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = __foxRunCapture_0_0 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 1:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/extra", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_24e6e6b0", __BuildFoxRunProtobuf_1(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_1 = __foxRunLastMessagePack_1 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/extra", __payload_1, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_1 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = __foxRunCapture_1_0 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 2:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/list", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_38cbea4e", __BuildFoxRunProtobuf_2(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_2 = __foxRunLastMessagePack_2 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/list", __payload_2, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_2 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = __foxRunCapture_2_0 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 3:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/nullable", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_432b270f", __BuildFoxRunProtobuf_3(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_3 = __foxRunLastMessagePack_3 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/nullable", __payload_3, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_3 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = __foxRunCapture_3_0 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 4:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/trigger", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_307d8952", __BuildFoxRunProtobuf_4(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_4 = __foxRunLastMessagePack_4 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/trigger", __payload_4, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_4 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = __foxRunCapture_4_0 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 5:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/value", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_7d41f57b", __BuildFoxRunProtobuf_5(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_5 = __foxRunLastMessagePack_5 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/value", __payload_5, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_5 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = __foxRunCapture_5_0, ["valueMirror"] = __foxRunCapture_5_1 }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
                 case 6:
-                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
+                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/vector", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_efb474f9", __BuildFoxRunProtobuf_6(), nowNs);
-                    else
+                    else if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                    {
+                        var __payload_6 = __foxRunLastMessagePack_6 ?? throw new global::System.InvalidOperationException("Frozen MessagePack capture is unavailable.");
+                        mgr.PublishFoxRunMessagePackBytes("/debug/vector", __payload_6, nowNs);
+                    }
+                    else if (__foxRunCaptureEncoding_6 == FoxRunEncoding.JSON)
                         mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = __foxRunCapture_6_0.x, ["y"] = __foxRunCapture_6_0.y, ["z"] = __foxRunCapture_6_0.z } }, nowNs);
+                    else
+                        throw new global::System.InvalidOperationException("Frozen FoxRun publish encoding is unsupported.");
                     break;
             }
         }
@@ -597,6 +789,136 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             FoxRunProtobufWire.WriteVector3(__payload, 39083297, __foxRunCapture_6_0);
             return __payload.ToArray();
         }
+        private byte[] __foxRunLastMessagePack_0;
+
+        private byte[] __BuildFoxRunMessagePack_0()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("samples");
+                if (__foxRunCapture_0_0 == null)
+                {
+                    __writer.WriteNil();
+                }
+                else
+                {
+                    var __count_0 = __foxRunCapture_0_0.Length;
+                    __writer.WriteArrayHeader(__count_0);
+                    for (var __index_0 = 0; __index_0 < __count_0; __index_0++)
+                    {
+                        __writer.WriteFloat(__foxRunCapture_0_0[__index_0]);
+                    }
+                }
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_1;
+
+        private byte[] __BuildFoxRunMessagePack_1()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("extra");
+                __writer.WriteString(__foxRunCapture_1_0);
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_2;
+
+        private byte[] __BuildFoxRunMessagePack_2()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("sampleList");
+                if (__foxRunCapture_2_0 == null)
+                {
+                    __writer.WriteNil();
+                }
+                else
+                {
+                    var __count_0 = __foxRunCapture_2_0.Count;
+                    __writer.WriteArrayHeader(__count_0);
+                    for (var __index_0 = 0; __index_0 < __count_0; __index_0++)
+                    {
+                        __writer.WriteFloat(__foxRunCapture_2_0[__index_0]);
+                    }
+                }
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_3;
+
+        private byte[] __BuildFoxRunMessagePack_3()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("optionalCount");
+                if ((object)__foxRunCapture_3_0 == null)
+                {
+                    __writer.WriteNil();
+                }
+                else
+                {
+                    __writer.WriteInt32((int)__foxRunCapture_3_0.Value);
+                }
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_4;
+
+        private byte[] __BuildFoxRunMessagePack_4()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("trigger");
+                __writer.WriteInt32((int)__foxRunCapture_4_0);
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_5;
+
+        private byte[] __BuildFoxRunMessagePack_5()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(2);
+                __writer.WriteString("value");
+                __writer.WriteFloat(__foxRunCapture_5_0);
+                __writer.WriteString("valueMirror");
+                __writer.WriteFloat(__foxRunCapture_5_1);
+                return __writer.ToArray();
+            }
+        }
+        private byte[] __foxRunLastMessagePack_6;
+
+        private byte[] __BuildFoxRunMessagePack_6()
+        {
+            using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+            {
+                __writer.WriteMapHeader(1);
+                __writer.WriteString("position");
+                __WriteFoxRunMessagePackObject_0(__writer, __foxRunCapture_6_0);
+                return __writer.ToArray();
+            }
+        }
+
+        private static void __WriteFoxRunMessagePackObject_0(
+            global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter __writer,
+            global::UnityEngine.Vector3 __value)
+        {
+            __writer.WriteMapHeader(3);
+            __writer.WriteString("x");
+            __writer.WriteFloat(__value.x);
+            __writer.WriteString("y");
+            __writer.WriteFloat(__value.y);
+            __writer.WriteString("z");
+            __writer.WriteFloat(__value.z);
+        }
 
         [Preserve]
         bool IFoxgloveTopicObserverSource.FoxgloveLog_HasObservers(int topicIndex, FoxTopicBus bus)
@@ -700,32 +1022,67 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    var __sink_0 = __BuildFoxRunJson_0();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_0 = __BuildFoxRunJson_0();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0, __foxRunOrigin);
+                    }
                     break;
                 case 1:
-                    var __sink_1 = __BuildFoxRunJson_1();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, __sink_1, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_1, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_1 = __BuildFoxRunJson_1();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, __sink_1, __foxRunOrigin);
+                    }
                     break;
                 case 2:
-                    var __sink_2 = __BuildFoxRunJson_2();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, __sink_2, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_2, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_2 = __BuildFoxRunJson_2();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, __sink_2, __foxRunOrigin);
+                    }
                     break;
                 case 3:
-                    var __sink_3 = __BuildFoxRunJson_3();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, __sink_3, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_3, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_3 = __BuildFoxRunJson_3();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, __sink_3, __foxRunOrigin);
+                    }
                     break;
                 case 4:
-                    var __sink_4 = __BuildFoxRunJson_4();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, __sink_4, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_4, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_4 = __BuildFoxRunJson_4();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, __sink_4, __foxRunOrigin);
+                    }
                     break;
                 case 5:
-                    var __sink_5 = __BuildFoxRunJson_5();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), nowNs, __sink_5, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_5, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_5 = __BuildFoxRunJson_5();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), nowNs, __sink_5, __foxRunOrigin);
+                    }
                     break;
                 case 6:
-                    var __sink_6 = __BuildFoxRunJson_6();
-                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), nowNs, __sink_6, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_6, __foxRunOrigin);
+                    else
+                    {
+                        var __sink_6 = __BuildFoxRunJson_6();
+                        router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), nowNs, __sink_6, __foxRunOrigin);
+                    }
                     break;
             }
         }

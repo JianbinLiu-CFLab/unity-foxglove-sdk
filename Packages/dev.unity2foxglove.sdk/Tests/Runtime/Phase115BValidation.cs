@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115BValidation
     {
-        private const string ExpectedFoxRunFixtureHash = "cff942e33353cec4b011b7792845b396c137b0813b3bf64a9f2dd5fb5e4b8695";
+        private const string ExpectedFoxRunFixtureHash = "b35e6b56c8dd0da65b5d32b0835f130ae577bba655eefca8eef4fb66ddfec116";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private const string RuntimeIdentityModePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SchemaIdentityMode.cs";
         private const string SidecarWriterPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs";
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
                           && !warn.LastEnableBlockedBySchemaMismatch
                           && warnLogger.LastWarning.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("Recorded: 000000000000", StringComparison.Ordinal)
-                          && warnLogger.LastWarning.Contains("Current:  cff942e33353", StringComparison.Ordinal)
+                          && warnLogger.LastWarning.Contains("Current:  b35e6b56c8dd", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("will continue", StringComparison.OrdinalIgnoreCase)
                           && !warnLogger.LastWarning.Contains("Replay blocked.", StringComparison.Ordinal),
                         "115B-B3: Warn mode reports mismatch but continues replay load");

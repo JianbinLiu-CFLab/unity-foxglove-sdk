@@ -193,7 +193,10 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         onlyIf: "isReady",
                         isAggregateMember: true,
-                        jsonFieldName: "values")
+                        jsonFieldName: "values",
+                        typeShape: FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.Array,
+                            FoxRunTypeShape.Canonical("float32")))
                 })
             });
 
@@ -242,7 +245,8 @@ namespace Unity.FoxgloveSDK.Tests
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
                         (int)FoxRunPolicy.FixedRate, 0f, "Test", 0, string.Empty,
-                        mode: (int)FoxRunFlow.Subscribe)
+                        mode: (int)FoxRunFlow.Subscribe,
+                        typeShape: FoxRunTypeShape.Canonical("float32"))
                 })
             });
             var inboundJson = FoxRunGenerationDescriptorJsonWriter.Write(inboundModel);

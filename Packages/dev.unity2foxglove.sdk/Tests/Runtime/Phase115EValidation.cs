@@ -382,6 +382,7 @@ namespace Unity.FoxgloveSDK.Tests
                     member.Name,
                     memberKind,
                     memberType.FullName ?? memberType.Name,
+                    FoxRunEmissionTypeNameFormatter.FromReflectionType(memberType),
                     isValueType: memberType.IsValueType,
                     isArray: isArray,
                     elementTypeName: elementType == null ? string.Empty : elementType.FullName ?? elementType.Name,
@@ -392,6 +393,7 @@ namespace Unity.FoxgloveSDK.Tests
                     tolerance: tolerance,
                     rawMemberOrder: rawMemberOrder,
                     conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(memberType),
                     ros2CustomDtoShape: customDtoShape,
                     ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
                     namedArgumentPresence: presence));

@@ -391,24 +391,26 @@ namespace Unity.FoxgloveSDK.Editor
     }
 
     /// <summary>
-    /// Stable Protobuf object identity shared by descriptor and generated-code
-    /// emission. Reusing one CLR type name with a different nested wire shape
-    /// must fail closed rather than silently reusing the first definition.
+    /// Stable encoding-neutral shape identity. Callers choose whether
+    /// usage-only traits participate: MessagePack reader/writer method
+    /// signatures require them, while Protobuf wire identity deliberately
+    /// excludes them.
     /// </summary>
-    internal static class FoxRunProtobufObjectShapeIdentity
+    internal static class FoxRunTypeShapeIdentityFormatter
     {
         public static string Build(
             FoxRunTypeShape shape,
-            FoxRunProtobufTypeMetadata metadata)
+            bool includeUsageTraits)
         {
             var sb = new StringBuilder();
-            AppendShape(sb, shape);
-            sb.Append("|protobuf:");
-            AppendMetadata(sb, metadata);
+            AppendShape(sb, shape, includeUsageTraits);
             return sb.ToString();
         }
 
-        private static void AppendShape(StringBuilder sb, FoxRunTypeShape shape)
+        private static void AppendShape(
+            StringBuilder sb,
+            FoxRunTypeShape shape,
+            bool includeUsageTraits)
         {
             if (shape == null)
             {
@@ -422,12 +424,15 @@ namespace Unity.FoxgloveSDK.Editor
                 .Append(':')
                 .Append(shape.CanonicalType)
                 .Append(':')
-                .Append(shape.Nullable ? '1' : '0')
-                .Append(':')
-                .Append(((int)shape.CollectionKind).ToString(CultureInfo.InvariantCulture))
-                .Append(':')
-                .Append(shape.CanConstruct ? '1' : '0')
-                .Append('[');
+                .Append(((int)shape.CollectionKind).ToString(CultureInfo.InvariantCulture));
+            if (includeUsageTraits)
+            {
+                sb.Append(':')
+                    .Append(shape.Nullable ? '1' : '0')
+                    .Append(':')
+                    .Append(shape.CanConstruct ? '1' : '0');
+            }
+            sb.Append('[');
             foreach (var field in shape.Fields)
             {
                 sb.Append(field.JsonName)
@@ -442,7 +447,7 @@ namespace Unity.FoxgloveSDK.Editor
                     .Append(':')
                     .Append(field.IsNullable ? '1' : '0')
                     .Append('{');
-                AppendShape(sb, field.TypeShape);
+                AppendShape(sb, field.TypeShape, includeUsageTraits);
                 sb.Append("};");
             }
             sb.Append(']');
@@ -463,9 +468,43 @@ namespace Unity.FoxgloveSDK.Editor
             if (shape.ElementShape != null)
             {
                 sb.Append('<');
-                AppendShape(sb, shape.ElementShape);
+                AppendShape(sb, shape.ElementShape, includeUsageTraits);
                 sb.Append('>');
             }
+        }
+    }
+
+    /// <summary>
+    /// Stable MessagePack code-generation identity. Nullable and
+    /// constructibility traits affect generated reader/writer signatures and
+    /// therefore cannot share the Protobuf wire identity.
+    /// </summary>
+    internal static class FoxRunMessagePackTypeShapeIdentity
+    {
+        public static string Build(FoxRunTypeShape shape)
+            => FoxRunTypeShapeIdentityFormatter.Build(
+                shape,
+                includeUsageTraits: true);
+    }
+
+    /// <summary>
+    /// Stable Protobuf object identity shared by descriptor and generated-code
+    /// emission. Reusing one CLR type name with a different nested wire shape
+    /// must fail closed rather than silently reusing the first definition.
+    /// </summary>
+    internal static class FoxRunProtobufObjectShapeIdentity
+    {
+        public static string Build(
+            FoxRunTypeShape shape,
+            FoxRunProtobufTypeMetadata metadata)
+        {
+            var sb = new StringBuilder();
+            sb.Append(FoxRunTypeShapeIdentityFormatter.Build(
+                shape,
+                includeUsageTraits: false));
+            sb.Append("|protobuf:");
+            AppendMetadata(sb, metadata);
+            return sb.ToString();
         }
 
         private static void AppendMetadata(

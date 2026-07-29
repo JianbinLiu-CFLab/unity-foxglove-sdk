@@ -1970,6 +1970,44 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "185-A")]
+        public void DescriptorComparerTreatsValueTypeClassificationAsSemanticState()
+        {
+            FoxRunGenerationModel Build(bool isValueType)
+                => FoxRunGenerationModel.FromMembers(new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "ValueTypeProbe",
+                        "_value",
+                        "field",
+                        "System.Int32",
+                        isValueType,
+                        false,
+                        string.Empty,
+                        "/phase185/value-type",
+                        10f,
+                        "Demo.Value",
+                        (int)FoxRunPolicy.FixedRate,
+                        0f,
+                        "UnitTest",
+                        0,
+                        string.Empty)
+                });
+
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(
+                Build(isValueType: true),
+                Build(isValueType: false));
+
+            Assert.False(comparison.IsSemanticEqual);
+            Assert.Contains(
+                comparison.SemanticDifferences,
+                difference => difference.Contains(
+                    "isValueType",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
         [Trait("Phase", "184-E")]
         public void DescriptorWriterAndComparerPreserveStreamSemantics()
         {
@@ -3887,7 +3925,9 @@ namespace Demo
         {
             var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
-            var result = RunGenerator(source);
+            var messagePackSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.MessagePack.cs");
+            var result = RunGenerator(source, messagePackSource);
             var core = result.Results
                 .Single()
                 .GeneratedSources
@@ -4074,9 +4114,9 @@ namespace Demo
             }
         }
 
-        private static GeneratorDriverRunResult RunGenerator(string source)
+        private static GeneratorDriverRunResult RunGenerator(params string[] sources)
         {
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilation(sources);
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
             driver = driver.RunGenerators(compilation);
@@ -4140,11 +4180,11 @@ namespace Demo
             return outputCompilation;
         }
 
-        private static CSharpCompilation CreateCompilation(string source)
+        private static CSharpCompilation CreateCompilation(params string[] sources)
         {
             return CSharpCompilation.Create(
                 "Phase157GeneratorProbe",
-                new[] { CSharpSyntaxTree.ParseText(source) },
+                sources.Select(source => CSharpSyntaxTree.ParseText(source)),
                 BasicReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         }

@@ -353,15 +353,6 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private static FoxRunFlow ParseFlow(string flow)
-        {
-            if (string.Equals(flow, "Subscribe", StringComparison.Ordinal))
-                return FoxRunFlow.Subscribe;
-            if (string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal))
-                return FoxRunFlow.PublishAndSubscribe;
-            throw new ArgumentException("Unsupported FoxRun subscription flow mode: " + (flow ?? string.Empty), nameof(flow));
-        }
-
         private readonly struct CatalogContract
         {
             public CatalogContract(
@@ -377,33 +368,6 @@ namespace Unity.FoxgloveSDK.Components
             public FoxRunSchemaContractInfo Contract { get; }
             public FoxRunEncoding EffectiveEncoding { get; }
             public bool IsStream { get; }
-        }
-
-        private readonly struct ContractKey : IEquatable<ContractKey>
-        {
-            public ContractKey(string topic, string flow)
-            {
-                Topic = topic ?? string.Empty;
-                Flow = flow ?? string.Empty;
-            }
-
-            public string Topic { get; }
-            public string Flow { get; }
-
-            public bool Equals(ContractKey other)
-                => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
-                   && string.Equals(Flow, other.Flow, StringComparison.Ordinal);
-
-            public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    var hash = StringComparer.Ordinal.GetHashCode(Topic);
-                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Flow);
-                }
-            }
         }
     }
 

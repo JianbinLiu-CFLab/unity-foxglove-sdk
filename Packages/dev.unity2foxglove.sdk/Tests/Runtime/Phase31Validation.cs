@@ -101,7 +101,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var members = new List<FoxgloveSourceEmitter.TopicMember>
             {
-                new("_pos", "UnityEngine.Vector3", "/pos", 10f, "")
+                new(
+                    "_pos",
+                    "UnityEngine.Vector3",
+                    "/pos",
+                    10f,
+                    "",
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3)))
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
             Check(
@@ -114,7 +121,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var members = new List<FoxgloveSourceEmitter.TopicMember>
             {
-                new("_rot", "UnityEngine.Quaternion", "/rot", 10f, "")
+                new(
+                    "_rot",
+                    "UnityEngine.Quaternion",
+                    "/rot",
+                    10f,
+                    "",
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Quaternion)))
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
             Check(
@@ -127,7 +141,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var members = new List<FoxgloveSourceEmitter.TopicMember>
             {
-                new("_color", "UnityEngine.Color", "/color", 10f, "")
+                new(
+                    "_color",
+                    "UnityEngine.Color",
+                    "/color",
+                    10f,
+                    "",
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Color)))
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
             Check(

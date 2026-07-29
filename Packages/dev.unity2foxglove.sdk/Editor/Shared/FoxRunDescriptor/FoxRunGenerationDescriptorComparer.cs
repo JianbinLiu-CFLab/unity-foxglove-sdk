@@ -127,6 +127,7 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "memberKind", left.MemberKind, right.MemberKind, semantic);
             CompareSemantic(key, "emissionTypeName", left.EmissionTypeName, right.EmissionTypeName, semantic);
             CompareSemantic(key, "canonicalType", left.CanonicalType, right.CanonicalType, semantic);
+            CompareSemantic(key, "isValueType", left.IsValueType ? "true" : "false", right.IsValueType ? "true" : "false", semantic);
             CompareSemantic(key, "isArray", left.IsArray ? "true" : "false", right.IsArray ? "true" : "false", semantic);
             CompareSemantic(key, "elementTypeName", left.ElementTypeName, right.ElementTypeName, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);

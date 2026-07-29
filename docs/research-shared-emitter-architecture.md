@@ -154,7 +154,7 @@ The declaration layer captures the compact user contract. The resolver expands i
 - declaring type and directly accessible member expression;
 - topic and schema identity;
 - `Flow`, `Policy`, explicit/effective rate, and trigger shape;
-- JSON or Protobuf wire contract;
+- JSON, Protobuf, or typed schemaless MessagePack wire contract;
 - one resolved input provider and its admission policy;
 - ROS2 canonical type, QoS preset, and custom-interface identity;
 - publish sink demand and replay suppression behavior;
@@ -175,15 +175,17 @@ The emitter is split by responsibility under `Editor/Shared/FoxgloveSourceEmitte
 | `TriggerEmitter.cs` | Emits explicit trigger/apply entry points. |
 | `PublishDispatchEmitter.cs` | Emits JSON/output dispatch and sink fanout. |
 | `ProtobufPublishDispatchEmitter.cs` | Emits static Protobuf output encoding. |
+| `MessagePackPublishDispatchEmitter.cs` | Emits deterministic typed MessagePack output encoding and immutable sink fanout. |
 | `InputDispatchEmitter.cs` | Emits WebSocket input registration, decode, staging, and apply. |
 | `ProtobufInputDispatchEmitter.cs` | Emits typed Protobuf input decoding. |
+| `MessagePackInputDispatchEmitter.cs` | Emits bounded transactional MessagePack input decoding and main-thread apply wiring. |
 | `Ros2InputDispatchEmitter.cs` | Emits native ROS2 registration and owned-copy/apply wiring. |
 | `Ros2CustomPublishEmitter.cs` | Emits custom ROS2 DTO output binding. |
 | `Ros2CustomDtoMapperEmitter.cs` | Emits static DTO-to-ROS2 mapping, copy, and cleanup code. |
 | `ConditionEmitter.cs` | Emits declaration gates resolved by the model. |
 | `TypeExprEmitter.cs`, `StringLiteralEmitter.cs`, `IdentifierUtils.cs` | Keep generated C# syntax, names, and literals deterministic. |
 
-Splitting the emitter this way is not a second architecture layer. It keeps input, output, Protobuf, ROS2, policy, and syntax concerns independently testable while preserving one model and one generated class.
+Splitting the emitter this way is not a second architecture layer. It keeps input, output, Protobuf, MessagePack, ROS2, policy, and syntax concerns independently testable while preserving one model and one generated class.
 
 ### 3.3 Dual Hosts
 
@@ -453,7 +455,7 @@ The individual ingredients—source generation, AOT pre-generation, direct membe
 
 - outbound live Foxglove/ROS2 telemetry and independent MCAP recording;
 - inbound WebSocket or ROS2 state application;
-- JSON and Protobuf contracts;
+- JSON, Protobuf, and typed schemaless MessagePack contracts;
 - custom typed ROS2 DTOs;
 - deterministic schema evidence and replay guards.
 

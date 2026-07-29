@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (memo.TryGetValue(typeName, out var cached))
-                return cached;
+                return cached.WithNullable(nullable);
             if (!stack.Add(typeName))
             {
                 throw Unsupported(

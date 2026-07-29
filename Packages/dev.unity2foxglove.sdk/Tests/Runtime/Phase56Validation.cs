@@ -59,7 +59,14 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     new FoxgloveSourceEmitter.TopicMember("_1", "System.Int32", "/phase56/mixed", 10f, ""),
                     new FoxgloveSourceEmitter.TopicMember("class", "System.Int32", "/phase56/mixed", 10f, ""),
-                    new FoxgloveSourceEmitter.TopicMember("_velocity", "UnityEngine.Vector3", "/phase56/mixed", 10f, "")
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "_velocity",
+                        "UnityEngine.Vector3",
+                        "/phase56/mixed",
+                        10f,
+                        "",
+                        FoxRunGenerationDescriptorConstants.InheritEncoding,
+                        typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3)))
                 });
 
             Check(source.Contains("new Dictionary<string, object>"),

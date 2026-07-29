@@ -38,12 +38,13 @@ You will learn what the main Inspector fields do, when to change them, and which
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
-| Default Wire Encoding | `Protobuf` | Resolves generated `[FoxRun]` topics that leave `Encoding` as `Inherit`. | Select `JSON` only for a deliberate legacy-client compatibility session. | Expecting the popup to override an explicit `[FoxRun(Encoding = ...)]` declaration. |
+| Publish Profile > Foxglove Encoding | `Protobuf` | Resolves generated publish directions that leave `Encoding` omitted. Options are `Protobuf`, `JSON`, and `MessagePack`. | Select `MessagePack` for a generated schemaless custom-panel contract; select `JSON` for deliberate legacy-client compatibility. | Expecting the popup to override an explicit `[FoxRun(Encoding = ...)]` declaration. |
+| Subscribe Profile > Foxglove Encoding | `Protobuf` | Resolves generated subscribe directions that leave `Encoding` omitted. Options are `Protobuf`, `JSON`, and `MessagePack`. | Select `MessagePack` only when the client uses the bounded generated contract and maintained FoxRun Publish extension. | Assuming Foxglove built-in panels author typed MessagePack. |
 | Enable FoxRun Inbound | Disabled | Enables generated `Subscribe` and `PublishAndSubscribe` inputs. | Enable only for an intentional remote-control surface. | Enabling it on a non-loopback endpoint without the explicit shared-token policy. |
 | Inbound Max Payload | `65536` | Maximum accepted client message size in bytes. | Lower it for small command messages. | Treating it as an outbound publish limit. |
 | Inbound Max Rate | `60` | Per-topic cap on incoming client messages per second. | Lower it to bound external-control traffic. | Treating it as a Unity publish scheduler frequency. |
 
-FoxRun policy is captured when the server starts. Changing **Default Wire Encoding** while Play Mode is running is visible in the Inspector but applies after server restart or re-enable. The runtime topic summary distinguishes source-owned `Inherit`, explicit JSON/Protobuf declarations, and the active effective contract.
+FoxRun policy is captured when the server starts. Changing either directional Foxglove encoding popup while Play Mode is running is visible in the Inspector but applies after server restart or re-enable. Explicit declarations still take precedence. The runtime topic summary distinguishes omitted/inherited values, explicit JSON/Protobuf/MessagePack declarations, and the active effective contract. MessagePack rows are schemaless on the wire and require the maintained custom FoxRun Publish extension for typed editing; ROS2 Native and Bridge remain CDR contracts.
 
 ### 3.4 MCAP Recording
 

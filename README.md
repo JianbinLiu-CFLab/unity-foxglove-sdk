@@ -39,7 +39,7 @@ For a ready-made project, open the `Unity2Foxglove` directory in Unity Hub. The 
 | Area | Current capability |
 | --- | --- |
 | Live protocol | In-process managed WebSocket/WSS server with schemas, channels, time, status, graph, client publish, assets, parameters, services, and playback control. |
-| FoxRun | AOT-safe generated field/property bindings for publish, subscribe, and debug-oriented full duplex; JSON, Protobuf, multi-sink output, single-source input, and main-thread apply. |
+| FoxRun | AOT-safe generated field/property bindings for publish, subscribe, and debug-oriented full duplex; JSON, Protobuf, or typed MessagePack over Foxglove WebSocket, plus multi-sink output, single-source input, and main-thread apply. |
 | MCAP | Indexed recording with LZ4/Zstd, attachments, schema evidence, bounded reading, seek/history, and Unity scene reproduction. |
 | Foxglove replay control | Remote files plus the `Unity Replay Sync` panel let Foxglove Timeline and Plot seek drive the Unity scene. |
 | Sensors | Transform, scene primitives, camera, IMU, laser scan, point cloud, camera calibration, raw/compressed point-cloud, and high-rate pipeline controls. |
@@ -93,6 +93,17 @@ One subscribed member resolves one `Source`; published data may select multiple
 `FoxRun_Publish_*` and `FoxRun_Apply_*` methods. Full duplex is intended for
 debug and integration loops; use separate one-way declarations for production
 authority. `FoxRunStream<T>` is Subscribe-only, finite, and user-drained.
+
+FoxRun MessagePack supports `Publish`, `Subscribe`, and
+`PublishAndSubscribe` on the Foxglove WebSocket direction. Its live and MCAP
+channels use `message_encoding=msgpack`, empty wire-schema fields, schema id
+zero, and the exact generated payload bytes. Typed discovery and editing use
+the maintained **FoxRun Publish** extension; built-in Foxglove panels do not
+visualize or author typed MessagePack. ROS2 Native and ROS2 Bridge continue to
+use generated ROS2 DTO/CDR contracts and never consume MessagePack bytes.
+MessagePack input permits ordinary fields or exactly one `FoxRunStream<T>` per
+topic, not a mixed or multi-stream topology; multi-member directions must also
+share one normalized schedule.
 
 The normal Foxglove WebSocket and localhost ROS2 Bridge paths need only
 `dev.unity2foxglove.sdk`. Bridge is publish-only and its sidecar is not a

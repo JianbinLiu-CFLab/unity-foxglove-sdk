@@ -874,7 +874,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             ICollection<ShapeEntry> result)
         {
-            var identity = FoxRunProtobufObjectShapeIdentity.Build(shape, null);
+            var identity = FoxRunMessagePackTypeShapeIdentity.Build(shape);
             if (result.Any(entry =>
                     string.Equals(entry.Identity, identity, StringComparison.Ordinal)))
             {
@@ -896,7 +896,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             IReadOnlyList<ShapeEntry> shapes)
         {
-            var identity = FoxRunProtobufObjectShapeIdentity.Build(shape, null);
+            var identity = FoxRunMessagePackTypeShapeIdentity.Build(shape);
             for (var index = 0; index < shapes.Count; index++)
             {
                 if (string.Equals(shapes[index].Identity, identity, StringComparison.Ordinal))
@@ -977,6 +977,12 @@ namespace Unity.FoxgloveSDK.Editor
                 || typeName.StartsWith("global::", StringComparison.Ordinal))
             {
                 return typeName;
+            }
+            if (typeName.EndsWith("?", StringComparison.Ordinal))
+            {
+                return GlobalTypeName(
+                           typeName.Substring(0, typeName.Length - 1))
+                       + "?";
             }
             if (typeName.EndsWith("[]", StringComparison.Ordinal))
                 return GlobalTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";

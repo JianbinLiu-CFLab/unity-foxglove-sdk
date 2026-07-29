@@ -55,7 +55,8 @@ namespace Unity.FoxgloveSDK.Components
                         continue;
 
                     foreach (var group in type.Contracts
-                                 .Where(contract => contract != null)
+                                 .Where(contract => contract != null
+                                                    && IsWebSocketEncoding(contract.Encoding))
                                  .GroupBy(contract => contract.Topic, StringComparer.Ordinal))
                     {
                         var contracts = group.ToList();
@@ -110,13 +111,46 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunEncoding selectedEncoding,
             out FoxRunSchemaContractInfo contract,
             out string diagnostic)
+            => TryResolveSessionContract(
+                string.IsNullOrEmpty(declaringType)
+                    ? new HashSet<string>(StringComparer.Ordinal)
+                    : new HashSet<string>(
+                        new[] { NormalizeDeclaringType(declaringType) },
+                        StringComparer.Ordinal),
+                topic,
+                direction,
+                selectedEncoding,
+                out contract,
+                out diagnostic);
+
+        internal static bool TryResolveSessionContract(
+            Type runtimeType,
+            string topic,
+            FoxRunFlow direction,
+            FoxRunEncoding selectedEncoding,
+            out FoxRunSchemaContractInfo contract,
+            out string diagnostic)
+            => TryResolveSessionContract(
+                RuntimeDeclaringTypes(runtimeType),
+                topic,
+                direction,
+                selectedEncoding,
+                out contract,
+                out diagnostic);
+
+        private static bool TryResolveSessionContract(
+            ISet<string> declaringTypes,
+            string topic,
+            FoxRunFlow direction,
+            FoxRunEncoding selectedEncoding,
+            out FoxRunSchemaContractInfo contract,
+            out string diagnostic)
         {
             contract = null;
             diagnostic = string.Empty;
             if (selectedEncoding != FoxRunEncoding.MessagePack)
                 return true;
 
-            var normalizedDeclaringType = NormalizeDeclaringType(declaringType);
             var protocolEncoding = FoxRunEncodingResolver.ToProtocolEncoding(selectedEncoding);
             lock (Sync)
             {
@@ -134,11 +168,9 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     if (type == null)
                         continue;
-                    if (normalizedDeclaringType.Length > 0
-                        && !string.Equals(
-                            NormalizeDeclaringType(type.DeclaringType),
-                            normalizedDeclaringType,
-                            StringComparison.Ordinal))
+                    if (declaringTypes.Count > 0
+                        && !declaringTypes.Contains(
+                            NormalizeDeclaringType(type.DeclaringType)))
                     {
                         continue;
                     }
@@ -208,6 +240,23 @@ namespace Unity.FoxgloveSDK.Components
                 .ToArray();
             return concrete.Length == 1 ? concrete[0] : (FoxRunEncoding)0;
         }
+
+        private static HashSet<string> RuntimeDeclaringTypes(Type runtimeType)
+        {
+            var declaringTypes = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = runtimeType;
+                 current != null && current != typeof(object);
+                 current = current.BaseType)
+            {
+                declaringTypes.Add(NormalizeDeclaringType(current.FullName));
+            }
+            return declaringTypes;
+        }
+
+        private static bool IsWebSocketEncoding(string encoding)
+            => string.Equals(encoding, "json", StringComparison.Ordinal)
+               || string.Equals(encoding, "protobuf", StringComparison.Ordinal)
+               || string.Equals(encoding, "msgpack", StringComparison.Ordinal);
 
         private static void AppendDirectionalSummary(
             ICollection<FoxRunTopicSummary> summaries,
@@ -538,45 +587,6 @@ namespace Unity.FoxgloveSDK.Components
                 GeneratedSchemaCache[key] = built;
                 return built;
             }
-        }
-
-        private readonly struct ContractKey : IEquatable<ContractKey>
-        {
-            public ContractKey(string topic, string flow)
-            {
-                Topic = topic ?? string.Empty;
-                Flow = flow ?? string.Empty;
-            }
-
-            public string Topic { get; }
-            public string Flow { get; }
-
-            public bool Equals(ContractKey other)
-                => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
-                   && string.Equals(Flow, other.Flow, StringComparison.Ordinal);
-
-            public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    var hash = StringComparer.Ordinal.GetHashCode(Topic);
-                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Flow);
-                }
-            }
-        }
-
-        private static FoxRunFlow ParseFlow(string flow)
-        {
-            if (string.Equals(flow, "Publish", StringComparison.Ordinal))
-                return FoxRunFlow.Publish;
-            if (string.Equals(flow, "Subscribe", StringComparison.Ordinal))
-                return FoxRunFlow.Subscribe;
-            if (string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal))
-                return FoxRunFlow.PublishAndSubscribe;
-
-            throw new ArgumentException("Unsupported FoxRun flow mode: " + (flow ?? string.Empty), nameof(flow));
         }
 
         private static bool FlowSupports(string flow, FoxRunFlow direction)

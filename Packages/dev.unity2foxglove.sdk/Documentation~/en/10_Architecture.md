@@ -61,6 +61,15 @@ In Editor, FoxRun uses a Roslyn source generator. For Player builds, a pre-build
 
 Runtime publishing uses generated accessors, not runtime reflection.
 
+The FoxRun-specific generated WebSocket path supports JSON, Protobuf, and
+typed MessagePack for publish, subscribe, and full duplex. MessagePack output
+uses the maintained deterministic writer; input uses the maintained bounded
+reader and a generated transactional apply path. Its wire schema is empty and
+MCAP records the exact bytes with schema id zero. Typed editing belongs to the
+custom FoxRun Publish extension, while ROS2 Native and Bridge stay on their
+generated DTO/CDR paths. This does not imply that ordinary component
+publishers gained MessagePack support.
+
 Generated files are meant to be build artifacts, not hand-edited source.
 
 ## 9. Transport Backpressure

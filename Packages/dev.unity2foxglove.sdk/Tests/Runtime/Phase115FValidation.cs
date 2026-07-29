@@ -104,12 +104,15 @@ namespace Unity.FoxgloveSDK.Tests
                         10f,
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
-                        0f,
-                        "Roslyn",
-                        7,
-                        "FOXRUN_FIXTURE_EXTRA")
-                })
-            });
+                         0f,
+                         "Roslyn",
+                         7,
+                         "FOXRUN_FIXTURE_EXTRA",
+                         typeShape: FoxRunTypeShape.Collection(
+                             FoxRunCollectionKind.List,
+                             FoxRunTypeShape.Canonical("float32")))
+                 })
+             });
 
             var json = FoxRunGenerationDescriptorJsonWriter.Write(original);
             var parsed = FoxRunGenerationDescriptorJsonReader.Read(json);
@@ -132,9 +135,9 @@ namespace Unity.FoxgloveSDK.Tests
             catch (InvalidOperationException exception)
             {
                 Check(
-                    exception.Message.Contains(
-                        "Unsupported FoxRun generation descriptor version: 1",
-                        StringComparison.Ordinal),
+                     exception.Message.Contains(
+                         "Unsupported FoxRun generation descriptor version pair: 1/1.0.0.",
+                         StringComparison.Ordinal),
                     "115F-B6: incompatible legacy descriptors fail closed instead of inventing current directional defaults");
             }
         }
@@ -492,10 +495,11 @@ namespace Unity.FoxgloveSDK.Tests
                     schemaName: schemaName,
                     hz: hz,
                     policy: policy,
-                    tolerance: tolerance,
-                    rawMemberOrder: rawMemberOrder,
-                    conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
-                    namedArgumentPresence: presence));
+                     tolerance: tolerance,
+                     rawMemberOrder: rawMemberOrder,
+                     conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
+                     typeShape: FoxRunReflectionTypeShapeBuilder.Build(memberType),
+                     namedArgumentPresence: presence));
             }
         }
 

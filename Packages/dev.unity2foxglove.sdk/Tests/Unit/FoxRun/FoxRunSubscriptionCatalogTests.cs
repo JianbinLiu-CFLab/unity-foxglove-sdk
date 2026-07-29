@@ -715,6 +715,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-A")]
+        public void InspectorSummariesExcludeRos2CdrAndUnknownVariantsWithoutThrowing()
+        {
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(
+                    CreateUnsupportedEncodingManifest());
+
+                var summaries = FoxRunSchemaInfoRegistry.GetTopicSummaries(
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.Protobuf);
+
+                Assert.Equal(2, summaries.Count);
+                Assert.Equal(
+                    new[] { "/phase179/json", "/phase179/protobuf" },
+                    summaries.Select(summary => summary.Topic).ToArray());
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
         public void CatalogFiltersCoexistingBindingsByCapturedEffectiveProvider()
         {
             var manifest = CreateProviderAwareManifest();

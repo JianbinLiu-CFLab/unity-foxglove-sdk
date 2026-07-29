@@ -583,7 +583,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = FoxgloveSourceEmitter.EmitClass("", "Phase51Source", new[]
             {
-                new FoxgloveSourceEmitter.TopicMember("Position", "UnityEngine.Vector3", "/phase51", 10f, ""),
+                new FoxgloveSourceEmitter.TopicMember(
+                    "Position",
+                    "UnityEngine.Vector3",
+                    "/phase51",
+                    10f,
+                    "",
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3))),
                 new FoxgloveSourceEmitter.TopicMember("_health", "System.Single", "/phase51/health", 10f, "")
             });
 

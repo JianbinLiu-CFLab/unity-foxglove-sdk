@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
 
             if (memo.TryGetValue(typeName, out var cached))
-                return cached;
+                return cached.WithNullable(nullable);
             if (!stack.Add(typeName))
             {
                 throw new InvalidOperationException(
@@ -131,7 +131,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (property.DeclaredAccessibility != Accessibility.Public
                         || property.IsIndexer
-                        || property.GetMethod == null)
+                        || property.GetMethod == null
+                        || property.GetMethod.DeclaredAccessibility != Accessibility.Public)
                         continue;
                     AddMember(fields, property.Name, JsonPropertyName(property), property.Type,
                         property.SetMethod != null && property.SetMethod.DeclaredAccessibility == Accessibility.Public && !property.SetMethod.IsInitOnly,

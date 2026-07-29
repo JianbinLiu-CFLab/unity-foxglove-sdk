@@ -178,6 +178,11 @@
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs" />
     <Compile Include="FoxRunDeclarationModelValidation.cs" />
     <Compile Include="FoxRunProfileModelValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublicContractValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublishFanoutValidation.cs" />
+    <Compile Include="FoxRunMessagePackBoundedInputValidation.cs" />
+    <Compile Include="FoxRunMessagePackDuplexToolingValidation.cs" />
+    <Compile Include="FoxRunMessagePackArtifactAcceptanceValidation.cs" />
     <Compile Include="Phase163_2Validation.cs" />
     <Compile Include="Phase163_3Validation.cs" />
     <Compile Include="Phase163_4Validation.cs" />

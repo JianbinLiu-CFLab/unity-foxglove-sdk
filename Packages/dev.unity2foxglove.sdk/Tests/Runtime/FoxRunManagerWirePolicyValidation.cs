@@ -206,12 +206,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var input = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
+            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
 
             Check(input.Contains("(FoxRunEncoding)0", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),
-                "175C-4: generated inbound dispatch preserves Inherit and supports both concrete encodings");
-            Check(publish.Contains("mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish)", StringComparison.Ordinal),
+                "175C-4: generated inbound dispatch preserves Inherit and supports every concrete wire encoding");
+            Check(hub.Contains("FoxRunResolvedPublishContract.TryResolveForDeclaringType(", StringComparison.Ordinal)
+                  && hub.Contains("? _mgr.ActiveFoxRunPublishEncoding", StringComparison.Ordinal)
+                  && publish.Contains("__foxRunCaptureEncoding_", StringComparison.Ordinal)
+                  && publish.Contains("resolved.FoxgloveEncoding", StringComparison.Ordinal),
                 "175C-5: generated publish dispatch resolves inherited encoding through the publish policy");
             Check(router.Contains("DeclaredEncoding", StringComparison.Ordinal)
                   && router.Contains("DefaultSubscriptionEncoding", StringComparison.Ordinal),

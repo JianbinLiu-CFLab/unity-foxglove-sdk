@@ -1061,7 +1061,7 @@ namespace Unity.FoxgloveSDK.Components
 
             return FoxRunResolvedPublishContract.TryResolveForDeclaringType(
                 info,
-                source?.GetType().FullName,
+                source?.GetType(),
                 _mgr != null
                     ? _mgr.ActiveFoxRunPublishTargets
                     : FoxRunEndpoint.Foxglove,

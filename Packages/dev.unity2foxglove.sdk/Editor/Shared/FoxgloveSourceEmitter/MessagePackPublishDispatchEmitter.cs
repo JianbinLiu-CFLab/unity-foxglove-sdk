@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.Editor
             public ObjectShape(FoxRunTypeShape shape)
             {
                 Shape = shape;
-                Identity = FoxRunProtobufObjectShapeIdentity.Build(shape, null);
+                Identity = FoxRunMessagePackTypeShapeIdentity.Build(shape);
             }
 
             public FoxRunTypeShape Shape { get; }
@@ -311,7 +311,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             if (shape.Kind == FoxRunTypeShapeKind.Object)
             {
-                var identity = FoxRunProtobufObjectShapeIdentity.Build(shape, null);
+                var identity = FoxRunMessagePackTypeShapeIdentity.Build(shape);
                 if (!objectShapes.Any(candidate =>
                         string.Equals(candidate.Identity, identity, StringComparison.Ordinal)))
                 {
@@ -329,7 +329,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             IReadOnlyList<ObjectShape> objectShapes)
         {
-            var identity = FoxRunProtobufObjectShapeIdentity.Build(shape, null);
+            var identity = FoxRunMessagePackTypeShapeIdentity.Build(shape);
             for (var index = 0; index < objectShapes.Count; index++)
             {
                 if (string.Equals(objectShapes[index].Identity, identity, StringComparison.Ordinal))

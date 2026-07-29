@@ -84,6 +84,14 @@ FILE_MAPS = (
     FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.cs", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs"),
     FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.cs.meta", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs.meta"),
     FileMap(
+        FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.MessagePack.cs",
+        PACKAGE_SAMPLE / "Scripts" / "TestLog.MessagePack.cs",
+    ),
+    FileMap(
+        FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.MessagePack.cs.meta",
+        PACKAGE_SAMPLE / "Scripts" / "TestLog.MessagePack.cs.meta",
+    ),
+    FileMap(
         FOXRUN_SCRIPTS / "FoxRunTriggerTelemetrySmoke.cs",
         PACKAGE_SAMPLE / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs",
     ),

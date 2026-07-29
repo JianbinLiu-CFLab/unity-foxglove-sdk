@@ -194,6 +194,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0",
                 source,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.JSON)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Frozen FoxRun publish encoding is unsupported.",
+                source,
+                StringComparison.Ordinal);
         }
 
         [Fact]
