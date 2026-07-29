@@ -17,8 +17,12 @@
 #include <atomic>
 #include <array>
 #include <exception>
+#include <fstream>
 #include <limits>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 // Include the production translation unit directly to exercise internal parser helpers.
 #define UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
@@ -26,6 +30,83 @@
 
 namespace
 {
+#ifndef U2R2_PROTOCOL_FIXTURE_PATH
+#error "U2R2_PROTOCOL_FIXTURE_PATH must identify the shared v1 authority fixture"
+#endif
+
+nlohmann::json LoadV1AuthorityFixture()
+{
+  std::ifstream input(U2R2_PROTOCOL_FIXTURE_PATH, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error(
+            std::string("unable to open shared U2R2 v1 authority fixture: ") +
+            U2R2_PROTOCOL_FIXTURE_PATH);
+  }
+  nlohmann::json fixture;
+  input >> fixture;
+  return fixture;
+}
+
+std::vector<uint8_t> HexToBytes(const std::string & hex)
+{
+  if (hex.size() % 2 != 0) {
+    throw std::runtime_error("fixture hex contains an incomplete byte");
+  }
+  std::vector<uint8_t> bytes;
+  bytes.reserve(hex.size() / 2);
+  for (size_t offset = 0; offset < hex.size(); offset += 2) {
+    bytes.push_back(static_cast<uint8_t>(
+      std::stoul(hex.substr(offset, 2), nullptr, 16)));
+  }
+  return bytes;
+}
+
+RawFrame ReadFixtureFrame(const nlohmann::json & vector)
+{
+  const auto bytes = HexToBytes(vector.at("frameHex").get<std::string>());
+  if (bytes.size() < 16 ||
+    bytes[0] != 'U' || bytes[1] != '2' || bytes[2] != 'R' || bytes[3] != '2')
+  {
+    throw std::runtime_error("fixture frame has an invalid fixed header");
+  }
+  const auto header_length = read_u32_le(&bytes[8]);
+  const auto payload_length = read_u32_le(&bytes[12]);
+  if (bytes.size() != 16U + header_length + payload_length) {
+    throw std::runtime_error("fixture frame length does not match its fixed header");
+  }
+  const std::string header_json(
+    bytes.begin() + 16,
+    bytes.begin() + 16 + header_length);
+  if (header_json != vector.at("headerJson").get<std::string>()) {
+    throw std::runtime_error("fixture frame JSON does not match headerJson");
+  }
+
+  RawFrame raw;
+  raw.header = nlohmann::json::parse(header_json);
+  raw.payload.assign(bytes.begin() + 16 + header_length, bytes.end());
+  if (raw.header != vector.at("header")) {
+    throw std::runtime_error("fixture frame JSON does not match structured header");
+  }
+  if (raw.payload.size() != vector.at("payloadLength").get<size_t>()) {
+    throw std::runtime_error("fixture payload length does not match structured metadata");
+  }
+  return raw;
+}
+
+std::vector<uint8_t> ReadSocketBytes(SocketHandle socket, size_t count)
+{
+  std::vector<uint8_t> bytes(count, 0);
+  size_t offset = 0;
+  while (offset < count) {
+    const auto received = receive_socket(socket, bytes.data() + offset, count - offset);
+    if (received <= 0) {
+      throw std::runtime_error("fixture response socket closed before the frame completed");
+    }
+    offset += static_cast<size_t>(received);
+  }
+  return bytes;
+}
+
 struct WireQosContract
 {
   std::string profile = "default";
@@ -162,6 +243,123 @@ int ShutdownSocketWrite(SocketHandle socket)
 #endif
 }
 }  // namespace
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCppProtocol)
+{
+  const auto fixture = LoadV1AuthorityFixture();
+  ASSERT_EQ(1, fixture.at("fixtureVersion").get<int>());
+  const auto & limits = fixture.at("limits");
+  EXPECT_EQ(16, limits.at("fixedHeaderBytes").get<int>());
+  EXPECT_EQ(kMaxHeaderBytes, limits.at("maxJsonHeaderBytes").get<uint32_t>());
+  EXPECT_EQ(kMaxPayloadBytes, limits.at("maxPayloadBytes").get<uint32_t>());
+  EXPECT_EQ(1024, limits.at("defaultQueueCapacityFrames").get<int>());
+  EXPECT_EQ(68719476736ULL, limits.at("maxQueuedPayloadBytes").get<uint64_t>());
+  EXPECT_EQ(1, limits.at("activeConnectionCount").get<int>());
+  EXPECT_EQ(4, limits.at("listenBacklog").get<int>());
+  EXPECT_EQ(
+    std::chrono::milliseconds(5000),
+    std::chrono::duration_cast<std::chrono::milliseconds>(kReadStallTimeout));
+
+  const auto & health = fixture.at("health");
+  const auto health_request = ReadFixtureFrame(health.at("request"));
+  EXPECT_EQ("health_ping", health_request.header.at("op").get<std::string>());
+  EXPECT_EQ(
+    health.at("requestId").get<std::string>(),
+    health_request.header.at("requestId").get<std::string>());
+  EXPECT_EQ(
+    kHealthProtocolVersion,
+    health_request.header.at("protocolVersion").get<int>());
+  EXPECT_TRUE(health_request.payload.empty());
+
+  {
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    const auto expected = HexToBytes(
+      health.at("response").at("sidecarFrameHex").get<std::string>());
+    write_health_pong_ok(writer.get(), health.at("requestId").get<std::string>());
+    EXPECT_EQ(expected, ReadSocketBytes(reader.get(), expected.size()));
+  }
+
+  const auto & preparation = fixture.at("preparePublisher");
+  const auto preparation_request = parse_prepare_publisher_frame(
+    ReadFixtureFrame(preparation.at("request")));
+  EXPECT_EQ(
+    preparation.at("requestId").get<std::string>(),
+    preparation_request.request_id);
+  EXPECT_EQ(
+    preparation.at("topic").get<std::string>(),
+    preparation_request.frame.topic);
+  EXPECT_EQ(
+    preparation.at("schemaName").get<std::string>(),
+    preparation_request.frame.schema_name);
+  EXPECT_EQ("default", preparation_request.frame.profile);
+  EXPECT_EQ("reliable", preparation_request.frame.reliability);
+  EXPECT_EQ("volatile", preparation_request.frame.durability);
+  EXPECT_EQ("keep_last", preparation_request.frame.history);
+  EXPECT_EQ(10, preparation_request.frame.depth);
+
+  {
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    const auto expected = HexToBytes(
+      preparation.at("response").at("sidecarFrameHex").get<std::string>());
+    write_u2r2_frame(
+      writer.get(),
+      publisher_ready_ok(preparation_request.request_id),
+      {});
+    EXPECT_EQ(expected, ReadSocketBytes(reader.get(), expected.size()));
+  }
+
+  const auto & publish = fixture.at("publish");
+  const auto publish_frame = parse_publish_frame(
+    ReadFixtureFrame(publish.at("frame")));
+  EXPECT_EQ(publish.at("topic").get<std::string>(), publish_frame.topic);
+  EXPECT_EQ(publish.at("schemaName").get<std::string>(), publish_frame.schema_name);
+  EXPECT_EQ(publish.at("encoding").get<std::string>(), publish_frame.encoding);
+  EXPECT_EQ(publish.at("logTimeNs").get<uint64_t>(), publish_frame.log_time_ns);
+  EXPECT_EQ(publish.at("sequence").get<uint64_t>(), publish_frame.sequence);
+  EXPECT_EQ(
+    HexToBytes(publish.at("payloadHex").get<std::string>()),
+    publish_frame.payload);
+
+  const std::array<std::string, 19> expected_negative_ids = {
+    "bad_magic",
+    "bad_version",
+    "bad_flags",
+    "oversized_header",
+    "oversized_payload",
+    "truncated_fixed",
+    "truncated_header",
+    "truncated_payload",
+    "partial_payload_stall",
+    "duplicate_operation",
+    "unknown_operation",
+    "illegal_sequence",
+    "invalid_utf8",
+    "trailing_json_root",
+    "invalid_topic",
+    "invalid_type",
+    "invalid_delivery_policy",
+    "correlation_mismatch",
+    "peer_close"
+  };
+  const auto & negative_vectors = fixture.at("negativeVectors");
+  ASSERT_EQ(expected_negative_ids.size(), negative_vectors.size());
+  for (size_t index = 0; index < expected_negative_ids.size(); ++index) {
+    EXPECT_EQ(
+      expected_negative_ids[index],
+      negative_vectors[index].at("id").get<std::string>());
+    EXPECT_EQ(
+      "reject",
+      negative_vectors[index].at("expected").get<std::string>());
+  }
+}
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, ValidatesTopicNames)
 {

@@ -569,6 +569,123 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "186-A")]
+        public void SharedV1AuthorityFixtureMatchesCurrentCSharpCodecs()
+        {
+            var fixture = JObject.Parse(File.ReadAllText(FindV1AuthorityFixture()));
+            Assert.Equal(1, fixture.Value<int>("fixtureVersion"));
+
+            var limits = Assert.IsType<JObject>(fixture["limits"]);
+            Assert.Equal(16, limits.Value<int>("fixedHeaderBytes"));
+            Assert.Equal(Ros2BridgeFrameWriter.MaxHeaderBytes, limits.Value<int>("maxJsonHeaderBytes"));
+            Assert.Equal(Ros2BridgeFrameWriter.MaxPayloadBytes, limits.Value<int>("maxPayloadBytes"));
+            Assert.Equal(1024, limits.Value<int>("defaultQueueCapacityFrames"));
+            Assert.Equal(68719476736L, limits.Value<long>("maxQueuedPayloadBytes"));
+            Assert.Equal(1, limits.Value<int>("activeConnectionCount"));
+            Assert.Equal(4, limits.Value<int>("listenBacklog"));
+            Assert.Equal(5000, limits.Value<int>("partialFrameStallMs"));
+
+            var health = Assert.IsType<JObject>(fixture["health"]);
+            var healthRequestId = health.Value<string>("requestId");
+            var healthRequest = Ros2BridgeU2R2HealthCodec.WriteHealthPing(healthRequestId);
+            AssertAuthorityFrame(Assert.IsType<JObject>(health["request"]), healthRequest);
+            var healthResponse = Ros2BridgeU2R2HealthCodec.WriteHealthPongForTests(
+                healthRequestId,
+                sidecarName: health.Value<string>("sidecarName"),
+                sidecarVersion: health.Value<string>("sidecarVersion"));
+            AssertAuthorityFrame(Assert.IsType<JObject>(health["response"]), healthResponse);
+            var pong = Ros2BridgeU2R2HealthCodec.ParseHealthPong(
+                healthResponse,
+                healthRequestId);
+            Assert.Equal("ok", pong.Status);
+            Assert.Equal(
+                new[] { "disconnected", "request_sent", "healthy" },
+                health["stateTransitions"]?.Values<string>().ToArray());
+
+            var preparation = Assert.IsType<JObject>(fixture["preparePublisher"]);
+            var qos = ReadAuthorityQos(Assert.IsType<JObject>(preparation["qos"]));
+            var preparationRequest = Ros2BridgePublisherPreparationCodec.WriteRequest(
+                preparation.Value<string>("requestId"),
+                preparation.Value<string>("topic"),
+                preparation.Value<string>("schemaName"),
+                qos);
+            AssertAuthorityFrame(
+                Assert.IsType<JObject>(preparation["request"]),
+                preparationRequest);
+            var parsedRequest =
+                Ros2BridgePublisherPreparationCodec.ParseRequest(preparationRequest);
+            Assert.Equal(preparation.Value<string>("requestId"), parsedRequest.RequestId);
+            Assert.Equal(preparation.Value<string>("topic"), parsedRequest.Topic);
+            Assert.Equal(preparation.Value<string>("schemaName"), parsedRequest.SchemaName);
+            Assert.Equal(qos, parsedRequest.Qos);
+
+            var preparationResponse =
+                Ros2BridgePublisherPreparationCodec.WriteResponseForTests(
+                    preparation.Value<string>("requestId"),
+                    "ok");
+            AssertAuthorityFrame(
+                Assert.IsType<JObject>(preparation["response"]),
+                preparationResponse);
+            var parsedResponse = Ros2BridgePublisherPreparationCodec.ParseResponse(
+                preparationResponse,
+                preparation.Value<string>("requestId"));
+            Assert.Equal("ok", parsedResponse.Status);
+            Assert.Equal(
+                new[] { "unknown", "pending", "ready" },
+                preparation["stateTransitions"]?.Values<string>().ToArray());
+
+            var publish = Assert.IsType<JObject>(fixture["publish"]);
+            var payload = HexToBytes(publish.Value<string>("payloadHex"));
+            var publishFrame = Ros2BridgeFrame.CreateValidated(
+                publish.Value<string>("topic"),
+                publish.Value<string>("schemaName"),
+                publish.Value<string>("encoding"),
+                publish.Value<ulong>("logTimeNs"),
+                publish.Value<ulong>("sequence"),
+                payload,
+                ReadAuthorityQos(Assert.IsType<JObject>(publish["qos"])));
+            AssertAuthorityFrame(
+                Assert.IsType<JObject>(publish["frame"]),
+                Ros2BridgeFrameWriter.Write(publishFrame));
+            Assert.Equal(
+                new[] { "prepared", "queued", "sent" },
+                publish["stateTransitions"]?.Values<string>().ToArray());
+
+            var expectedNegativeIds = new[]
+            {
+                "bad_magic",
+                "bad_version",
+                "bad_flags",
+                "oversized_header",
+                "oversized_payload",
+                "truncated_fixed",
+                "truncated_header",
+                "truncated_payload",
+                "partial_payload_stall",
+                "duplicate_operation",
+                "unknown_operation",
+                "illegal_sequence",
+                "invalid_utf8",
+                "trailing_json_root",
+                "invalid_topic",
+                "invalid_type",
+                "invalid_delivery_policy",
+                "correlation_mismatch",
+                "peer_close"
+            };
+            var negativeVectors = Assert.IsType<JArray>(fixture["negativeVectors"]);
+            Assert.Equal(
+                expectedNegativeIds,
+                negativeVectors
+                    .Values<JObject>()
+                    .Select(vector => vector.Value<string>("id"))
+                    .ToArray());
+            Assert.All(
+                negativeVectors.Values<JObject>(),
+                vector => Assert.Equal("reject", vector.Value<string>("expected")));
+        }
+
+        [Fact]
         public void RealTcpTransportPreparesAndPublishesOnOnePersistentSocket()
         {
             using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -859,6 +976,105 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Buffer.BlockCopy(headerBytes, 0, result, 16, headerBytes.Length);
             return result;
         }
+
+        private static string FindV1AuthorityFixture()
+        {
+            const string relativePath =
+                "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json";
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (Directory.Exists(Path.Combine(directory.FullName, "Packages"))
+                    && Directory.Exists(Path.Combine(directory.FullName, "Tools")))
+                {
+                    return Path.Combine(
+                        directory.FullName,
+                        relativePath.Replace('/', Path.DirectorySeparatorChar));
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException(
+                "Could not locate the repository root for the shared U2R2 v1 authority fixture.");
+        }
+
+        private static void AssertAuthorityFrame(JObject vector, byte[] actual)
+        {
+            Assert.Equal(
+                vector.Value<string>("frameHex"),
+                BytesToHex(actual));
+            var headerLength = checked((int)ReadUInt32LE(actual, 8));
+            var headerJson = Encoding.UTF8.GetString(actual, 16, headerLength);
+            Assert.Equal(vector.Value<string>("headerJson"), headerJson);
+            Assert.True(
+                JToken.DeepEquals(
+                    Assert.IsType<JObject>(vector["header"]),
+                    JObject.Parse(headerJson)));
+            Assert.Equal(
+                vector.Value<int>("payloadLength"),
+                checked((int)ReadUInt32LE(actual, 12)));
+        }
+
+        private static FoxRunResolvedQos ReadAuthorityQos(JObject qos)
+            => new(
+                ParseAuthorityProfile(qos.Value<string>("profile")),
+                ParseAuthorityReliability(qos.Value<string>("reliability")),
+                ParseAuthorityDurability(qos.Value<string>("durability")),
+                ParseAuthorityHistory(qos.Value<string>("history")),
+                qos.Value<int>("depth"));
+
+        private static FoxRunQosProfile ParseAuthorityProfile(string value)
+            => value switch
+            {
+                "default" => FoxRunQosProfile.Default,
+                "sensor_data" => FoxRunQosProfile.SensorData,
+                "system_default" => FoxRunQosProfile.SystemDefault,
+                _ => throw new FormatException("Unknown fixture QoS profile: " + value)
+            };
+
+        private static FoxRunQosReliability ParseAuthorityReliability(string value)
+            => value switch
+            {
+                "system_default" => FoxRunQosReliability.SystemDefault,
+                "reliable" => FoxRunQosReliability.Reliable,
+                "best_effort" => FoxRunQosReliability.BestEffort,
+                _ => throw new FormatException("Unknown fixture QoS reliability: " + value)
+            };
+
+        private static FoxRunQosDurability ParseAuthorityDurability(string value)
+            => value switch
+            {
+                "system_default" => FoxRunQosDurability.SystemDefault,
+                "volatile" => FoxRunQosDurability.Volatile,
+                "transient_local" => FoxRunQosDurability.TransientLocal,
+                _ => throw new FormatException("Unknown fixture QoS durability: " + value)
+            };
+
+        private static FoxRunQosHistory ParseAuthorityHistory(string value)
+            => value switch
+            {
+                "system_default" => FoxRunQosHistory.SystemDefault,
+                "keep_last" => FoxRunQosHistory.KeepLast,
+                "keep_all" => FoxRunQosHistory.KeepAll,
+                _ => throw new FormatException("Unknown fixture QoS history: " + value)
+            };
+
+        private static byte[] HexToBytes(string hex)
+        {
+            if (hex == null || (hex.Length & 1) != 0)
+                throw new FormatException("Fixture hex must contain complete bytes.");
+            var bytes = new byte[hex.Length / 2];
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                bytes[index] = Convert.ToByte(hex.Substring(index * 2, 2), 16);
+            }
+
+            return bytes;
+        }
+
+        private static string BytesToHex(byte[] bytes)
+            => string.Concat(bytes.Select(value => value.ToString("x2")));
 
         private static uint ReadUInt32LE(byte[] data, int offset)
             => (uint)(data[offset]

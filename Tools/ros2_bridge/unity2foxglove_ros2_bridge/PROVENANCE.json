@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "repository": "https://github.com/Unity-Technologies/ROS-TCP-Connector.git",
+    "revision": "c27f00c6cf750d2d0564349b3039d19aa3925e7c",
+    "commitDate": "2022-02-02T09:25:06-08:00",
+    "subject": "Release 0.7.0",
+    "license": "Apache-2.0",
+    "inspectedFiles": [
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/ROSConnection.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/OutgoingMessageSender.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/MessagePool.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/TopicMessageSender.cs",
+      "com.unity.robotics.ros-tcp-connector/Editor/MessageGeneration/MessageParser.cs"
+    ],
+    "ideasReviewed": [
+      "one component owns a connection lifecycle",
+      "outbound work crosses a bounded sender boundary",
+      "payload ownership can be pooled explicitly",
+      "topic routing has a stable per-topic sender identity",
+      "code generation separates parsing from emitted artifacts"
+    ],
+    "materialCopied": false
+  },
+  "implementations": [
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json",
+      "classification": "original",
+      "influence": "Original U2R2 v1 authority vectors derived from this repository's pre-Phase186 C# and C++ behavior."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance.py",
+      "classification": "original",
+      "influence": "Original fail-closed provenance, overlap, and compact path-inventory validator."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance.py",
+      "classification": "original",
+      "influence": "Original regression coverage for the Phase186 provenance validator."
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_sdk_ros_inventory.json",
+      "classification": "original",
+      "influence": "Original compact inventory of the exact pre-extraction SDK ROS ownership surface."
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json",
+      "classification": "original",
+      "influence": "Original machine-readable legal and implementation provenance ledger."
+    }
+  ]
+}

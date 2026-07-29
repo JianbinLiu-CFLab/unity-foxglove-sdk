@@ -1,0 +1,258 @@
+{
+  "fixtureVersion": 1,
+  "protocol": "U2R2",
+  "limits": {
+    "fixedHeaderBytes": 16,
+    "maxJsonHeaderBytes": 65536,
+    "maxPayloadBytes": 67108864,
+    "defaultQueueCapacityFrames": 1024,
+    "maxQueuedPayloadBytes": 68719476736,
+    "queuedBytesAccounting": "derived_from_default_frame_capacity_not_independently_enforced",
+    "activeConnectionCount": 1,
+    "listenBacklog": 4,
+    "partialFrameStallMs": 5000
+  },
+  "health": {
+    "requestId": "phase186-v1-health-001",
+    "sidecarName": "unity2foxglove_ros2_bridge",
+    "sidecarVersion": "0.1.0",
+    "request": {
+      "header": {
+        "op": "health_ping",
+        "requestId": "phase186-v1-health-001",
+        "protocolVersion": 1
+      },
+      "headerJson": "{\"op\":\"health_ping\",\"requestId\":\"phase186-v1-health-001\",\"protocolVersion\":1}",
+      "payloadLength": 0,
+      "frameHex": "55325232010000004d000000000000007b226f70223a226865616c74685f70696e67222c22726571756573744964223a2270686173653138362d76312d6865616c74682d303031222c2270726f746f636f6c56657273696f6e223a317d"
+    },
+    "response": {
+      "header": {
+        "op": "health_pong",
+        "requestId": "phase186-v1-health-001",
+        "protocolVersion": 1,
+        "status": "ok",
+        "sidecarName": "unity2foxglove_ros2_bridge",
+        "sidecarVersion": "0.1.0"
+      },
+      "headerJson": "{\"op\":\"health_pong\",\"requestId\":\"phase186-v1-health-001\",\"protocolVersion\":1,\"status\":\"ok\",\"sidecarName\":\"unity2foxglove_ros2_bridge\",\"sidecarVersion\":\"0.1.0\"}",
+      "payloadLength": 0,
+      "frameHex": "55325232010000009f000000000000007b226f70223a226865616c74685f706f6e67222c22726571756573744964223a2270686173653138362d76312d6865616c74682d303031222c2270726f746f636f6c56657273696f6e223a312c22737461747573223a226f6b222c22736964656361724e616d65223a22756e69747932666f78676c6f76655f726f73325f627269646765222c227369646563617256657273696f6e223a22302e312e30227d",
+      "sidecarHeaderJson": "{\"op\":\"health_pong\",\"protocolVersion\":1,\"requestId\":\"phase186-v1-health-001\",\"sidecarName\":\"unity2foxglove_ros2_bridge\",\"sidecarVersion\":\"0.1.0\",\"status\":\"ok\"}",
+      "sidecarFrameHex": "55325232010000009f000000000000007b226f70223a226865616c74685f706f6e67222c2270726f746f636f6c56657273696f6e223a312c22726571756573744964223a2270686173653138362d76312d6865616c74682d303031222c22736964656361724e616d65223a22756e69747932666f78676c6f76655f726f73325f627269646765222c227369646563617256657273696f6e223a22302e312e30222c22737461747573223a226f6b227d"
+    },
+    "stateTransitions": [
+      "disconnected",
+      "request_sent",
+      "healthy"
+    ]
+  },
+  "preparePublisher": {
+    "requestId": "phase186-v1-prepare-001",
+    "topic": "/phase186/v1/state",
+    "schemaName": "std_msgs/msg/String",
+    "encoding": "cdr",
+    "qos": {
+      "profile": "default",
+      "reliability": "reliable",
+      "durability": "volatile",
+      "history": "keep_last",
+      "depth": 10
+    },
+    "request": {
+      "header": {
+        "op": "prepare_publisher",
+        "requestId": "phase186-v1-prepare-001",
+        "protocolVersion": 1,
+        "topic": "/phase186/v1/state",
+        "schemaName": "std_msgs/msg/String",
+        "encoding": "cdr",
+        "qos": {
+          "profile": "default",
+          "reliability": "reliable",
+          "durability": "volatile",
+          "history": "keep_last",
+          "depth": 10
+        }
+      },
+      "headerJson": "{\"op\":\"prepare_publisher\",\"requestId\":\"phase186-v1-prepare-001\",\"protocolVersion\":1,\"topic\":\"/phase186/v1/state\",\"schemaName\":\"std_msgs/msg/String\",\"encoding\":\"cdr\",\"qos\":{\"profile\":\"default\",\"reliability\":\"reliable\",\"durability\":\"volatile\",\"history\":\"keep_last\",\"depth\":10}}",
+      "payloadLength": 0,
+      "frameHex": "553252320100000013010000000000007b226f70223a22707265706172655f7075626c6973686572222c22726571756573744964223a2270686173653138362d76312d707265706172652d303031222c2270726f746f636f6c56657273696f6e223a312c22746f706963223a222f70686173653138362f76312f7374617465222c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c22656e636f64696e67223a22636472222c22716f73223a7b2270726f66696c65223a2264656661756c74222c2272656c696162696c697479223a2272656c6961626c65222c226475726162696c697479223a22766f6c6174696c65222c22686973746f7279223a226b6565705f6c617374222c226465707468223a31307d7d"
+    },
+    "response": {
+      "header": {
+        "op": "publisher_ready",
+        "requestId": "phase186-v1-prepare-001",
+        "protocolVersion": 1,
+        "status": "ok"
+      },
+      "headerJson": "{\"op\":\"publisher_ready\",\"requestId\":\"phase186-v1-prepare-001\",\"protocolVersion\":1,\"status\":\"ok\"}",
+      "payloadLength": 0,
+      "frameHex": "553252320100000060000000000000007b226f70223a227075626c69736865725f7265616479222c22726571756573744964223a2270686173653138362d76312d707265706172652d303031222c2270726f746f636f6c56657273696f6e223a312c22737461747573223a226f6b227d",
+      "sidecarHeaderJson": "{\"op\":\"publisher_ready\",\"protocolVersion\":1,\"requestId\":\"phase186-v1-prepare-001\",\"status\":\"ok\"}",
+      "sidecarFrameHex": "553252320100000060000000000000007b226f70223a227075626c69736865725f7265616479222c2270726f746f636f6c56657273696f6e223a312c22726571756573744964223a2270686173653138362d76312d707265706172652d303031222c22737461747573223a226f6b227d"
+    },
+    "stateTransitions": [
+      "unknown",
+      "pending",
+      "ready"
+    ]
+  },
+  "publish": {
+    "topic": "/phase186/v1/state",
+    "schemaName": "std_msgs/msg/String",
+    "encoding": "cdr",
+    "logTimeNs": 1700186000000000000,
+    "sequence": 7,
+    "payloadHex": "00010000020000004100",
+    "qos": {
+      "profile": "default",
+      "reliability": "reliable",
+      "durability": "volatile",
+      "history": "keep_last",
+      "depth": 10
+    },
+    "frame": {
+      "header": {
+        "op": "publish",
+        "topic": "/phase186/v1/state",
+        "schemaName": "std_msgs/msg/String",
+        "encoding": "cdr",
+        "logTimeNs": 1700186000000000000,
+        "sequence": 7,
+        "profileName": "default",
+        "qos": {
+          "profile": "default",
+          "reliability": "reliable",
+          "durability": "volatile",
+          "history": "keep_last",
+          "depth": 10
+        }
+      },
+      "headerJson": "{\"op\":\"publish\",\"topic\":\"/phase186/v1/state\",\"schemaName\":\"std_msgs/msg/String\",\"encoding\":\"cdr\",\"logTimeNs\":1700186000000000000,\"sequence\":7,\"profileName\":\"default\",\"qos\":{\"profile\":\"default\",\"reliability\":\"reliable\",\"durability\":\"volatile\",\"history\":\"keep_last\",\"depth\":10}}",
+      "payloadLength": 10,
+      "frameHex": "5532523201000000140100000a0000007b226f70223a227075626c697368222c22746f706963223a222f70686173653138362f76312f7374617465222c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c22656e636f64696e67223a22636472222c226c6f6754696d654e73223a313730303138363030303030303030303030302c2273657175656e6365223a372c2270726f66696c654e616d65223a2264656661756c74222c22716f73223a7b2270726f66696c65223a2264656661756c74222c2272656c696162696c697479223a2272656c6961626c65222c226475726162696c697479223a22766f6c6174696c65222c22686973746f7279223a226b6565705f6c617374222c226465707468223a31307d7d00010000020000004100"
+    },
+    "stateTransitions": [
+      "prepared",
+      "queued",
+      "sent"
+    ]
+  },
+  "negativeVectors": [
+    {
+      "id": "bad_magic",
+      "family": "fixed_header",
+      "mutation": "replace U2R2 with X2R2",
+      "expected": "reject"
+    },
+    {
+      "id": "bad_version",
+      "family": "fixed_header",
+      "mutation": "set envelope version to 2",
+      "expected": "reject"
+    },
+    {
+      "id": "bad_flags",
+      "family": "fixed_header",
+      "mutation": "set flags to 1",
+      "expected": "reject"
+    },
+    {
+      "id": "oversized_header",
+      "family": "length",
+      "mutation": "declare 65537 JSON header bytes",
+      "expected": "reject"
+    },
+    {
+      "id": "oversized_payload",
+      "family": "length",
+      "mutation": "declare 67108865 payload bytes",
+      "expected": "reject"
+    },
+    {
+      "id": "truncated_fixed",
+      "family": "length",
+      "mutation": "send 15 fixed-header bytes",
+      "expected": "reject"
+    },
+    {
+      "id": "truncated_header",
+      "family": "length",
+      "mutation": "close before declared JSON header completes",
+      "expected": "reject"
+    },
+    {
+      "id": "truncated_payload",
+      "family": "length",
+      "mutation": "close before declared payload completes",
+      "expected": "reject"
+    },
+    {
+      "id": "partial_payload_stall",
+      "family": "timeout",
+      "mutation": "stall for 5000 ms after a partial payload",
+      "expected": "reject"
+    },
+    {
+      "id": "duplicate_operation",
+      "family": "json",
+      "mutation": "provide duplicate op properties",
+      "expected": "reject"
+    },
+    {
+      "id": "unknown_operation",
+      "family": "operation",
+      "mutation": "set op to phase186_unknown",
+      "expected": "reject"
+    },
+    {
+      "id": "illegal_sequence",
+      "family": "state",
+      "mutation": "publish before publisher_ready",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid_utf8",
+      "family": "json",
+      "mutation": "place ff in the JSON header",
+      "expected": "reject"
+    },
+    {
+      "id": "trailing_json_root",
+      "family": "json",
+      "mutation": "append a second JSON root",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid_topic",
+      "family": "contract",
+      "mutation": "remove the leading slash",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid_type",
+      "family": "contract",
+      "mutation": "replace package/msg/Type with a non-canonical type",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid_delivery_policy",
+      "family": "contract",
+      "mutation": "set keep_all with non-zero depth",
+      "expected": "reject"
+    },
+    {
+      "id": "correlation_mismatch",
+      "family": "correlation",
+      "mutation": "return a different requestId",
+      "expected": "reject"
+    },
+    {
+      "id": "peer_close",
+      "family": "connection",
+      "mutation": "close after accept before a complete frame",
+      "expected": "reject"
+    }
+  ]
+}
