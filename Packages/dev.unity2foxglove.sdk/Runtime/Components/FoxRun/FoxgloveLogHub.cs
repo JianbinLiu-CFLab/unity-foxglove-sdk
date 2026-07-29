@@ -997,6 +997,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (TryResolvePublishContract(
+                    source,
                     source.FoxgloveLog_GetTopic(topicIndex),
                     out contract,
                     out var diagnostic))
@@ -1033,6 +1034,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private bool TryResolvePublishContract(
+            IFoxgloveLogSource source,
             FoxgloveLogTopicInfo info,
             out FoxRunResolvedPublishContract contract,
             out string diagnostic)
@@ -1051,8 +1053,9 @@ namespace Unity.FoxgloveSDK.Components
                     ? _mgr.ActiveFoxRunSubscriptionEncoding
                     : FoxRunEncoding.JSON;
 
-            return FoxRunResolvedPublishContract.TryResolve(
+            return FoxRunResolvedPublishContract.TryResolveForDeclaringType(
                 info,
+                source?.GetType().FullName,
                 _mgr != null
                     ? _mgr.ActiveFoxRunPublishTargets
                     : FoxRunEndpoint.Foxglove,
@@ -1134,7 +1137,7 @@ namespace Unity.FoxgloveSDK.Components
                 var contracts = new FoxRunResolvedPublishContract[count];
                 for (var i = 0; i < count; i++)
                 {
-                    if (!TryResolvePublishContract(topics[i], out contracts[i], out var diagnostic))
+                    if (!TryResolvePublishContract(source, topics[i], out contracts[i], out var diagnostic))
                     {
                         LogSourceFailure(
                             source,
@@ -1376,6 +1379,7 @@ namespace Unity.FoxgloveSDK.Components
                 for (var index = 0; index < state.Topics.Length; index++)
                 {
                     var resolved = TryResolvePublishContract(
+                        source,
                         state.Topics[index],
                         out var nextContract,
                         out var diagnostic);

@@ -142,12 +142,10 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "ros2ContractKind", left.Ros2ContractKind.ToString(), right.Ros2ContractKind.ToString(), semantic);
             CompareRos2MessageShape(key, left.Ros2MessageShape, right.Ros2MessageShape, semantic);
             CompareRos2CustomDtoShape(key, left.Ros2CustomDtoShape, right.Ros2CustomDtoShape, semantic);
-            CompareSemantic(
-                key,
-                "protobufFieldNumber",
-                (left.ProtobufMetadata?.FieldNumber ?? 0).ToString(),
-                (right.ProtobufMetadata?.FieldNumber ?? 0).ToString(),
-                semantic);
+            CompareProtobufMetadata(key, left.ProtobufMetadata, right.ProtobufMetadata, semantic);
+            CompareTypeShape(key, "typeShape", left.TypeShape, right.TypeShape, semantic);
+            CompareEncodingVariants(key, left.EncodingVariants, right.EncodingVariants, semantic);
+            CompareNormalizedSchedule(key, left.NormalizedSchedule, right.NormalizedSchedule, semantic);
             CompareSemantic(key, "hz", left.Hz, right.Hz, semantic);
             CompareSemantic(key, "policy", left.PolicyName, right.PolicyName, semantic);
             CompareSemantic(key, "mode", left.FlowName, right.FlowName, semantic);
@@ -172,6 +170,296 @@ namespace Unity.FoxgloveSDK.Editor
             CompareProvenance(key, "rawTypeName", left.RawTypeName, right.RawTypeName, provenance);
             CompareProvenance(key, "rawMemberOrder", left.RawMemberOrder.ToString(), right.RawMemberOrder.ToString(), provenance);
             CompareProvenance(key, "conditionalSymbols", left.ConditionalSymbols, right.ConditionalSymbols, provenance);
+        }
+
+        private static void CompareEncodingVariants(
+            string key,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> left,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> right,
+            List<string> semantic)
+        {
+            var leftValues = left ?? Array.Empty<FoxRunEncodingVariantAvailability>();
+            var rightValues = right ?? Array.Empty<FoxRunEncodingVariantAvailability>();
+            CompareSemantic(
+                key,
+                "encodingVariants.count",
+                leftValues.Count.ToString(),
+                rightValues.Count.ToString(),
+                semantic);
+            var count = Math.Min(leftValues.Count, rightValues.Count);
+            for (var index = 0; index < count; index++)
+            {
+                var leftValue = leftValues[index];
+                var rightValue = rightValues[index];
+                var prefix = "encodingVariants[" + index + "].";
+                CompareSemantic(key, prefix + "encoding", leftValue.Encoding, rightValue.Encoding, semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "publishAvailable",
+                    leftValue.PublishAvailable ? "true" : "false",
+                    rightValue.PublishAvailable ? "true" : "false",
+                    semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "subscribeAvailable",
+                    leftValue.SubscribeAvailable ? "true" : "false",
+                    rightValue.SubscribeAvailable ? "true" : "false",
+                    semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "publishUnavailableDiagnosticId",
+                    leftValue.PublishUnavailableDiagnosticId,
+                    rightValue.PublishUnavailableDiagnosticId,
+                    semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "publishUnavailableReason",
+                    leftValue.PublishUnavailableReason,
+                    rightValue.PublishUnavailableReason,
+                    semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "subscribeUnavailableDiagnosticId",
+                    leftValue.SubscribeUnavailableDiagnosticId,
+                    rightValue.SubscribeUnavailableDiagnosticId,
+                    semantic);
+                CompareSemantic(
+                    key,
+                    prefix + "subscribeUnavailableReason",
+                    leftValue.SubscribeUnavailableReason,
+                    rightValue.SubscribeUnavailableReason,
+                    semantic);
+            }
+        }
+
+        private static void CompareNormalizedSchedule(
+            string key,
+            FoxRunNormalizedScheduleTuple left,
+            FoxRunNormalizedScheduleTuple right,
+            List<string> semantic)
+        {
+            if (ReferenceEquals(left, right))
+                return;
+            if (left == null || right == null)
+            {
+                CompareSemantic(
+                    key,
+                    "normalizedSchedule",
+                    left == null ? "null" : "present",
+                    right == null ? "null" : "present",
+                    semantic);
+                return;
+            }
+
+            CompareSemantic(key, "normalizedSchedule.policy", left.Policy.ToString(), right.Policy.ToString(), semantic);
+            CompareSemantic(
+                key,
+                "normalizedSchedule.hasExplicitHz",
+                left.HasExplicitHz ? "true" : "false",
+                right.HasExplicitHz ? "true" : "false",
+                semantic);
+            CompareSemantic(key, "normalizedSchedule.hz", left.Hz, right.Hz, semantic);
+            CompareSemantic(key, "normalizedSchedule.tolerance", left.Tolerance, right.Tolerance, semantic);
+            CompareSemantic(key, "normalizedSchedule.onlyIf", left.OnlyIf, right.OnlyIf, semantic);
+            CompareSemantic(
+                key,
+                "normalizedSchedule.conditionMemberKind",
+                left.ConditionMemberKind.ToString(),
+                right.ConditionMemberKind.ToString(),
+                semantic);
+        }
+
+        private static void CompareTypeShape(
+            string key,
+            string path,
+            FoxRunTypeShape left,
+            FoxRunTypeShape right,
+            List<string> semantic)
+        {
+            if (ReferenceEquals(left, right))
+                return;
+            if (left == null || right == null)
+            {
+                CompareSemantic(
+                    key,
+                    path,
+                    left == null ? "null" : "present",
+                    right == null ? "null" : "present",
+                    semantic);
+                return;
+            }
+
+            CompareSemantic(key, path + ".kind", left.Kind.ToString(), right.Kind.ToString(), semantic);
+            CompareSemantic(key, path + ".typeName", left.TypeName, right.TypeName, semantic);
+            CompareSemantic(key, path + ".canonicalType", left.CanonicalType, right.CanonicalType, semantic);
+            CompareSemantic(
+                key,
+                path + ".nullable",
+                left.Nullable ? "true" : "false",
+                right.Nullable ? "true" : "false",
+                semantic);
+            CompareSemantic(
+                key,
+                path + ".canConstruct",
+                left.CanConstruct ? "true" : "false",
+                right.CanConstruct ? "true" : "false",
+                semantic);
+            CompareSemantic(
+                key,
+                path + ".collectionKind",
+                left.CollectionKind.ToString(),
+                right.CollectionKind.ToString(),
+                semantic);
+            CompareTypeShape(key, path + ".elementShape", left.ElementShape, right.ElementShape, semantic);
+
+            CompareSemantic(
+                key,
+                path + ".enumValues.count",
+                left.EnumValues.Count.ToString(),
+                right.EnumValues.Count.ToString(),
+                semantic);
+            var enumCount = Math.Min(left.EnumValues.Count, right.EnumValues.Count);
+            for (var index = 0; index < enumCount; index++)
+            {
+                CompareSemantic(
+                    key,
+                    path + ".enumValues[" + index + "].name",
+                    left.EnumValues[index].Name,
+                    right.EnumValues[index].Name,
+                    semantic);
+                CompareSemantic(
+                    key,
+                    path + ".enumValues[" + index + "].number",
+                    left.EnumValues[index].Number.ToString(),
+                    right.EnumValues[index].Number.ToString(),
+                    semantic);
+            }
+
+            CompareSemantic(
+                key,
+                path + ".fields.count",
+                left.Fields.Count.ToString(),
+                right.Fields.Count.ToString(),
+                semantic);
+            var fieldCount = Math.Min(left.Fields.Count, right.Fields.Count);
+            for (var index = 0; index < fieldCount; index++)
+            {
+                var leftField = left.Fields[index];
+                var rightField = right.Fields[index];
+                var fieldPath = path + ".fields[" + index + "]";
+                CompareSemantic(key, fieldPath + ".jsonName", leftField.JsonName, rightField.JsonName, semantic);
+                CompareSemantic(key, fieldPath + ".memberName", leftField.MemberName, rightField.MemberName, semantic);
+                CompareSemantic(
+                    key,
+                    fieldPath + ".repeated",
+                    leftField.Repeated ? "true" : "false",
+                    rightField.Repeated ? "true" : "false",
+                    semantic);
+                CompareSemantic(
+                    key,
+                    fieldPath + ".collectionKind",
+                    leftField.RepeatedCollectionKind.ToString(),
+                    rightField.RepeatedCollectionKind.ToString(),
+                    semantic);
+                CompareSemantic(
+                    key,
+                    fieldPath + ".canAssign",
+                    leftField.CanAssign ? "true" : "false",
+                    rightField.CanAssign ? "true" : "false",
+                    semantic);
+                CompareSemantic(
+                    key,
+                    fieldPath + ".nullable",
+                    leftField.IsNullable ? "true" : "false",
+                    rightField.IsNullable ? "true" : "false",
+                    semantic);
+                CompareTypeShape(
+                    key,
+                    fieldPath + ".shape",
+                    leftField.TypeShape,
+                    rightField.TypeShape,
+                    semantic);
+            }
+        }
+
+        private static void CompareProtobufMetadata(
+            string key,
+            FoxRunProtobufMetadata left,
+            FoxRunProtobufMetadata right,
+            List<string> semantic)
+        {
+            if (ReferenceEquals(left, right))
+                return;
+            if (left == null || right == null)
+            {
+                CompareSemantic(
+                    key,
+                    "protobuf",
+                    left == null ? "null" : "present",
+                    right == null ? "null" : "present",
+                    semantic);
+                return;
+            }
+
+            CompareSemantic(
+                key,
+                "protobuf.fieldNumber",
+                left.FieldNumber.ToString(),
+                right.FieldNumber.ToString(),
+                semantic);
+            CompareProtobufTypeMetadata(
+                key,
+                "protobuf.type",
+                left.TypeMetadata,
+                right.TypeMetadata,
+                semantic);
+        }
+
+        private static void CompareProtobufTypeMetadata(
+            string key,
+            string path,
+            FoxRunProtobufTypeMetadata left,
+            FoxRunProtobufTypeMetadata right,
+            List<string> semantic)
+        {
+            if (ReferenceEquals(left, right))
+                return;
+            if (left == null || right == null)
+            {
+                CompareSemantic(
+                    key,
+                    path,
+                    left == null ? "null" : "present",
+                    right == null ? "null" : "present",
+                    semantic);
+                return;
+            }
+
+            CompareSemantic(key, path + ".typeName", left.TypeName, right.TypeName, semantic);
+            CompareSemantic(
+                key,
+                path + ".fields.count",
+                left.Fields.Count.ToString(),
+                right.Fields.Count.ToString(),
+                semantic);
+            var count = Math.Min(left.Fields.Count, right.Fields.Count);
+            for (var index = 0; index < count; index++)
+            {
+                var leftField = left.Fields[index];
+                var rightField = right.Fields[index];
+                var fieldPath = path + ".fields[" + index + "]";
+                CompareSemantic(key, fieldPath + ".memberName", leftField.MemberName, rightField.MemberName, semantic);
+                CompareSemantic(key, fieldPath + ".jsonName", leftField.JsonName, rightField.JsonName, semantic);
+                CompareSemantic(key, fieldPath + ".fieldNumber", leftField.FieldNumber.ToString(), rightField.FieldNumber.ToString(), semantic);
+                CompareSemantic(key, fieldPath + ".presenceOnly", leftField.PresenceOnly ? "true" : "false", rightField.PresenceOnly ? "true" : "false", semantic);
+                CompareSemantic(key, fieldPath + ".presenceUsesHasValue", leftField.PresenceUsesHasValue ? "true" : "false", rightField.PresenceUsesHasValue ? "true" : "false", semantic);
+                CompareProtobufTypeMetadata(
+                    key,
+                    fieldPath + ".type",
+                    leftField.TypeMetadata,
+                    rightField.TypeMetadata,
+                    semantic);
+            }
         }
 
         private static void CompareRos2MessageShape(

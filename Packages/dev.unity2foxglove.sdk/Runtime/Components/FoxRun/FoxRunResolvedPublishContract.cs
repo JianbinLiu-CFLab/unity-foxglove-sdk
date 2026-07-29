@@ -38,6 +38,29 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunEncoding subscribeDefaultEncoding,
             out FoxRunResolvedPublishContract contract,
             out string diagnostic)
+            => TryResolveForDeclaringType(
+                info,
+                string.Empty,
+                defaultTargets,
+                publishDefaultEncoding,
+                nativeDefaultQos,
+                bridgeDefaultQos,
+                defaultSource,
+                subscribeDefaultEncoding,
+                out contract,
+                out diagnostic);
+
+        internal static bool TryResolveForDeclaringType(
+            FoxgloveLogTopicInfo info,
+            string declaringType,
+            FoxRunEndpoint defaultTargets,
+            FoxRunEncoding publishDefaultEncoding,
+            FoxRunResolvedQos nativeDefaultQos,
+            FoxRunResolvedQos bridgeDefaultQos,
+            FoxRunEndpoint defaultSource,
+            FoxRunEncoding subscribeDefaultEncoding,
+            out FoxRunResolvedPublishContract contract,
+            out string diagnostic)
         {
             contract = null;
             diagnostic = string.Empty;
@@ -58,6 +81,18 @@ namespace Unity.FoxgloveSDK.Components
             if (!topology.Success)
             {
                 diagnostic = topology.DiagnosticMessage;
+                return false;
+            }
+
+            if ((topology.Topology.Targets & FoxRunEndpoint.Foxglove) != 0
+                && !FoxRunSchemaInfoRegistry.TryResolveSessionContract(
+                    declaringType,
+                    info.Topic,
+                    FoxRunFlow.Publish,
+                    topology.Topology.PublishEncoding,
+                    out _,
+                    out diagnostic))
+            {
                 return false;
             }
 

@@ -1059,7 +1059,10 @@ namespace Demo
                 "\\\"explicitArguments\\\":\\\"Encoding,Targets,ProtobufFieldNumber\\\"",
                 descriptor,
                 StringComparison.Ordinal);
-            Assert.Contains("\\\"protobufFieldNumber\\\":17", descriptor, StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"protobuf\\\":{\\\"fieldNumber\\\":17",
+                descriptor,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -1465,7 +1468,10 @@ namespace Demo
                 .ToString();
 
             Assert.Contains("\\\"encoding\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"protobufFieldNumber\\\":23", descriptor, StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"protobuf\\\":{\\\"fieldNumber\\\":23",
+                descriptor,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -2134,8 +2140,11 @@ namespace Demo
 
             var contracts = manifest.Sections.FoxRun.Types.Single().Contracts;
 
-            Assert.Equal(new[] { "json", "protobuf" }, contracts.Select(contract => contract.Encoding).OrderBy(encoding => encoding));
+            Assert.Equal(
+                new[] { "json", "msgpack", "protobuf" },
+                contracts.Select(contract => contract.Encoding).OrderBy(encoding => encoding));
             Assert.Null(contracts.Single(contract => contract.Encoding == "json").Fields.Single().ProtobufMetadata);
+            Assert.Null(contracts.Single(contract => contract.Encoding == "msgpack").Fields.Single().ProtobufMetadata);
             Assert.Equal(
                 17,
                 contracts.Single(contract => contract.Encoding == "protobuf")

@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.FoxRun
@@ -24,6 +25,19 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Contains("../../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs", Normalize(runtimeProject), StringComparison.Ordinal);
             Assert.DoesNotContain("FoxRunProtobufReflectionTypeShapeBuilder.cs", props, StringComparison.Ordinal);
             Assert.DoesNotContain("FoxRunProtobufReflectionTypeShapeBuilder.cs", runtimeProject, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void UnitProjectLinksTheMaintainedDescriptorReader()
+        {
+            var unitProject = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj");
+
+            Assert.Contains(
+                "../Runtime/FoxRunGenerationDescriptorJsonReader.cs",
+                Normalize(unitProject),
+                StringComparison.Ordinal);
+            Assert.NotNull(typeof(FoxRunGenerationModel).Assembly.GetType(
+                "Unity.FoxgloveSDK.Editor.FoxRunReflectionTypeShapeBuilder"));
         }
 
         private static string ReadRepoText(string relativePath)

@@ -33,6 +33,10 @@ FOXRUN612 | FoxRun | Error | Source, Targets, and Encoding must be legal for the
 FOXRUN613 | FoxRun | Error | FoxRun ROS 2 QoS profile, policies, and depth must form a valid portable contract.
 FOXRUN614 | FoxRun | Error | Explicit FoxRun QoS requires at least one ROS 2 Native or ROS 2 Bridge direction.
 FOXRUN615 | FoxRun | Error | Members sharing one FoxRun topic must declare an identical directional QoS contract.
+FOXRUN616 | FoxRun | Error | Typed MessagePack requires a supported bounded recursive value shape and signed Int32 enum values.
+FOXRUN617 | FoxRun | Error | Explicit MessagePack cannot use Protobuf-only field-number metadata.
+FOXRUN618 | FoxRun | Error | Explicit MessagePack subscribe topics cannot mix ordinary and stream members or contain multiple streams.
+FOXRUN619 | FoxRun | Error | Explicit multi-member MessagePack directions require one normalized schedule tuple.
 
 ### Removed Rules
 

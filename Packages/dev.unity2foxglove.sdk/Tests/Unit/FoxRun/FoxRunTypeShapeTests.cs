@@ -272,20 +272,108 @@ namespace UnityEngine
             Assert.Equal(
                 new[] { "first", "second" },
                 first.Fields[0].TypeShape.Fields.Select(field => field.JsonName));
-            Assert.Equal(ShapeIdentity(first), ShapeIdentity(second));
+            Assert.Equal(
+                ShapeIdentity(first),
+                ShapeIdentity(second));
 
             var firstModel = FoxRunGenerationModel.FromMembers(new[]
             {
-                ShapedMember(first, memberName: "_root")
+                ShapedMember(
+                    first,
+                    (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_root")
             });
             var secondModel = FoxRunGenerationModel.FromMembers(new[]
             {
-                ShapedMember(second, memberName: "_root")
+                ShapedMember(
+                    second,
+                    (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_root")
             });
 
             Assert.Equal(
                 FoxRunGenerationDescriptorJsonWriter.Write(firstModel),
                 FoxRunGenerationDescriptorJsonWriter.Write(secondModel));
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ExplicitMessagePackAcceptsOneOrdinaryOrExactlyOneStreamSubscribeMember(
+            bool isStream)
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member(
+                    "_incoming",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    isStream: isStream)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN618");
+        }
+
+        [Fact]
+        public void ExplicitMessagePackAcceptsEqualNormalizedScheduleTuples()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member(
+                    "_first",
+                    mode: (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    hz: 20f,
+                    explicitHz: true),
+                Member(
+                    "_second",
+                    mode: (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    hz: 20f,
+                    explicitHz: true)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN619");
+            Assert.All(
+                model.Types.Single().Members,
+                member => Assert.True(Assert.Single(member.EncodingVariants).PublishAvailable));
+        }
+
+        [Fact]
+        public void ExplicitMessagePackTreatsByteArrayAsSupportedBinaryWithoutLegacyBlobWarning()
+        {
+            var memberData = new FoxrunCodeGenerator.MemberData(
+                "_payload",
+                typeof(byte[]),
+                "field",
+                "Demo",
+                "BinaryPublisher",
+                "/phase185/binary",
+                10f,
+                "Demo.Binary",
+                mode: (int)FoxRunFlow.Publish,
+                encoding: (int)FoxRunEncoding.MessagePack,
+                namedArgumentPresence: FoxRunNamedArgumentPresence.Encoding);
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(
+                new[] { memberData.ToReflectionMember() });
+            var diagnostics = FoxRunGenerationModelValidator.Validate(model);
+
+            Assert.DoesNotContain(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN010"
+                              || diagnostic.Id == "FOXRUN616");
+            Assert.True(Assert.Single(model.Types.Single().Members).TypeShape.IsBinary);
         }
 
         [Fact]
@@ -323,6 +411,70 @@ namespace UnityEngine
         }
 
         [Fact]
+        public void PublishAndSubscribeMessagePackShapeCapabilitiesAreIndependent()
+        {
+            var noDefaultConstructor = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(NoDefaultConstructorPayload));
+            var initOnly = FoxRunReflectionTypeShapeBuilder.Build(typeof(InitOnlyPayload));
+
+            AssertDirectionAvailability(
+                noDefaultConstructor,
+                publishAvailable: true,
+                subscribeAvailable: false);
+            AssertDirectionAvailability(
+                initOnly,
+                publishAvailable: true,
+                subscribeAvailable: false);
+            AssertDirectionAvailability(
+                FoxRunReflectionTypeShapeBuilder.Build(typeof(ListContractPayload)),
+                publishAvailable: true,
+                subscribeAvailable: true);
+        }
+
+        [Fact]
+        public void ExplicitMessagePackSubscribeRejectsNonConstructibleAndInitOnlyDtosWithFoxRun616()
+        {
+            foreach (var type in new[]
+                     {
+                         typeof(NoDefaultConstructorPayload),
+                         typeof(InitOnlyPayload)
+                     })
+            {
+                var member = ShapedMember(
+                    FoxRunReflectionTypeShapeBuilder.Build(type),
+                    (int)FoxRunFlow.Subscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true);
+
+                Assert.Contains(
+                    FoxRunGenerationModelValidator.Validate(
+                        FoxRunGenerationModel.FromMembers(new[] { member })),
+                    diagnostic => diagnostic.Id == "FOXRUN616");
+            }
+        }
+
+        [Fact]
+        public void InheritedMessagePackSubscribeMarksOnlyThatVariantUnavailableForInvalidDto()
+        {
+            var member = ShapedMember(
+                FoxRunReflectionTypeShapeBuilder.Build(typeof(NoDefaultConstructorPayload)),
+                (int)FoxRunFlow.Subscribe,
+                FoxRunGenerationDescriptorConstants.InheritEncoding,
+                explicitEncoding: false);
+            var model = FoxRunGenerationModel.FromMembers(new[] { member });
+            var variants = Assert.Single(model.Types).Members[0].EncodingVariants;
+
+            Assert.True(Assert.Single(variants, value => value.Encoding == "json").SubscribeAvailable);
+            Assert.True(Assert.Single(variants, value => value.Encoding == "protobuf").SubscribeAvailable);
+            var messagePack = Assert.Single(variants, value => value.Encoding == "msgpack");
+            Assert.False(messagePack.SubscribeAvailable);
+            Assert.Equal("FOXRUN616", messagePack.SubscribeUnavailableDiagnosticId);
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN616");
+        }
+
+        [Fact]
         public void RoslynAndReflectionBuildersAgreeThatInitOnlyMembersAreNotInboundAssignable()
         {
             const string source = @"
@@ -352,10 +504,255 @@ namespace Demo
             Assert.False(Assert.Single(reflection.Fields).CanAssign);
         }
 
+        [Fact]
+        public void ExplicitMessagePackRejectsProtobufOnlyFieldNumbers()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member(
+                    "_state",
+                    mode: (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    protobufFieldNumber: 17,
+                    explicitEncoding: true)
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN617");
+        }
+
+        [Fact]
+        public void ExplicitMessagePackRejectsMixedOrdinaryAndStreamSubscribeTopology()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member(
+                    "_ordinary",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true),
+                Member(
+                    "_stream",
+                    mode: (int)FoxRunFlow.Subscribe,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    isStream: true)
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN618");
+        }
+
+        [Fact]
+        public void InheritedTopologyConflictKeepsLegacyVariantsAndMarksOnlyMessagePackSubscribeUnavailable()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member("_ordinary", mode: (int)FoxRunFlow.Subscribe),
+                Member("_stream", mode: (int)FoxRunFlow.Subscribe, isStream: true)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN618");
+            var variants = Assert.Single(model.Types).Members[0].EncodingVariants;
+            Assert.True(Assert.Single(variants, value => value.Encoding == "json").SubscribeAvailable);
+            Assert.True(Assert.Single(variants, value => value.Encoding == "protobuf").SubscribeAvailable);
+            var messagePack = Assert.Single(variants, value => value.Encoding == "msgpack");
+            Assert.False(messagePack.SubscribeAvailable);
+            Assert.Equal("FOXRUN618", messagePack.SubscribeUnavailableDiagnosticId);
+        }
+
+        [Fact]
+        public void ExplicitMessagePackRejectsDifferentNormalizedSchedules()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member(
+                    "_first",
+                    mode: (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    hz: 10f,
+                    explicitHz: true),
+                Member(
+                    "_second",
+                    mode: (int)FoxRunFlow.Publish,
+                    encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    hz: 20f,
+                    explicitHz: true)
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN619");
+        }
+
+        [Fact]
+        public void InheritedScheduleConflictKeepsLegacyVariantsAndMarksOnlyMessagePackPublishUnavailable()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                Member("_first", mode: (int)FoxRunFlow.Publish, hz: 10f, explicitHz: true),
+                Member("_second", mode: (int)FoxRunFlow.Publish, hz: 20f, explicitHz: true)
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN619");
+            var variants = Assert.Single(model.Types).Members[0].EncodingVariants;
+            Assert.True(Assert.Single(variants, value => value.Encoding == "json").PublishAvailable);
+            Assert.True(Assert.Single(variants, value => value.Encoding == "protobuf").PublishAvailable);
+            var messagePack = Assert.Single(variants, value => value.Encoding == "msgpack");
+            Assert.False(messagePack.PublishAvailable);
+            Assert.Equal("FOXRUN619", messagePack.PublishUnavailableDiagnosticId);
+        }
+
+        [Fact]
+        public void InheritedFullDuplexMessagePackKeepsDirectionSpecificUnavailableDiagnostics()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    FoxRunReflectionTypeShapeBuilder.Build(typeof(NoDefaultConstructorPayload)),
+                    (int)FoxRunFlow.PublishAndSubscribe,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    explicitEncoding: false,
+                    memberName: "_fullDuplex",
+                    hz: 10f,
+                    explicitHz: true),
+                ShapedMember(
+                    FoxRunTypeShape.Canonical("int32"),
+                    (int)FoxRunFlow.Publish,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    explicitEncoding: false,
+                    memberName: "_secondPublisher",
+                    hz: 20f,
+                    explicitHz: true)
+            });
+
+            var messagePack = Assert.Single(
+                Assert.Single(model.Types).Members[0].EncodingVariants,
+                value => value.Encoding == "msgpack");
+            Assert.False(messagePack.PublishAvailable);
+            Assert.False(messagePack.SubscribeAvailable);
+            Assert.Equal("FOXRUN619", messagePack.PublishUnavailableDiagnosticId);
+            Assert.Equal("FOXRUN616", messagePack.SubscribeUnavailableDiagnosticId);
+            Assert.Contains(
+                "schedule",
+                messagePack.PublishUnavailableReason,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                "constructible",
+                messagePack.SubscribeUnavailableReason,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void FromMembersDoesNotMutateCallerMembersOrPreviouslyBuiltModels()
+        {
+            var first = Member(
+                "_first",
+                mode: (int)FoxRunFlow.Publish,
+                hz: 10f,
+                explicitHz: true);
+            var second = Member(
+                "_second",
+                mode: (int)FoxRunFlow.Publish,
+                hz: 20f,
+                explicitHz: true);
+
+            Assert.True(MessagePackPublishAvailable(first));
+            var invalidFirst = FoxRunGenerationModel.FromMembers(new[] { first, second });
+            Assert.False(MessagePackPublishAvailable(
+                Assert.Single(invalidFirst.Types).Members[0]));
+            Assert.True(MessagePackPublishAvailable(first));
+
+            var validAfterInvalid = FoxRunGenerationModel.FromMembers(new[] { first });
+            Assert.True(MessagePackPublishAvailable(
+                Assert.Single(validAfterInvalid.Types).Members[0]));
+            Assert.True(MessagePackPublishAvailable(first));
+
+            var third = Member(
+                "_third",
+                mode: (int)FoxRunFlow.Publish,
+                hz: 10f,
+                explicitHz: true);
+            var fourth = Member(
+                "_fourth",
+                mode: (int)FoxRunFlow.Publish,
+                hz: 20f,
+                explicitHz: true);
+            var validBeforeInvalid = FoxRunGenerationModel.FromMembers(new[] { third });
+            Assert.True(MessagePackPublishAvailable(
+                Assert.Single(validBeforeInvalid.Types).Members[0]));
+
+            var invalidSecond = FoxRunGenerationModel.FromMembers(new[] { third, fourth });
+            Assert.False(MessagePackPublishAvailable(
+                Assert.Single(invalidSecond.Types).Members[0]));
+            Assert.True(MessagePackPublishAvailable(
+                Assert.Single(validBeforeInvalid.Types).Members[0]));
+            Assert.True(MessagePackPublishAvailable(third));
+        }
+
+        private static FoxRunGenerationMember Member(
+            string memberName,
+            int mode,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
+            int protobufFieldNumber = 0,
+            bool explicitEncoding = false,
+            bool isStream = false,
+            float hz = 10f,
+            bool explicitHz = false)
+        {
+            var presence = FoxRunNamedArgumentPresence.None;
+            if (explicitEncoding)
+                presence |= FoxRunNamedArgumentPresence.Encoding;
+            if (explicitHz)
+                presence |= FoxRunNamedArgumentPresence.Hz;
+            return new FoxRunGenerationMember(
+                "Demo",
+                "State",
+                memberName,
+                "field",
+                "System.Int32",
+                true,
+                false,
+                string.Empty,
+                "/phase185/state",
+                hz,
+                "Demo.State",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                "Test",
+                0,
+                string.Empty,
+                mode: mode,
+                encoding: encoding,
+                protobufFieldNumber: protobufFieldNumber,
+                typeShape: FoxRunTypeShape.Canonical("int32"),
+                namedArgumentPresence: presence,
+                isStream: isStream);
+        }
+
         private static FoxRunGenerationMember ShapedMember(
             FoxRunTypeShape shape,
-            string memberName)
-            => new FoxRunGenerationMember(
+            int mode,
+            string encoding,
+            bool explicitEncoding,
+            string memberName = "_incoming",
+            float hz = 10f,
+            bool explicitHz = false)
+        {
+            var presence = explicitEncoding
+                ? FoxRunNamedArgumentPresence.Encoding
+                : FoxRunNamedArgumentPresence.None;
+            if (explicitHz)
+                presence |= FoxRunNamedArgumentPresence.Hz;
+            return new FoxRunGenerationMember(
                 "Demo",
                 "ShapeOwner",
                 memberName,
@@ -365,17 +762,58 @@ namespace Demo
                 false,
                 string.Empty,
                 "/phase185/shape",
-                10f,
+                hz,
                 shape.TypeName,
                 (int)FoxRunPolicy.FixedRate,
                 0f,
                 "Test",
                 0,
                 string.Empty,
-                mode: (int)FoxRunFlow.Publish,
-                encoding: FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                mode: mode,
+                encoding: encoding,
                 typeShape: shape,
-                namedArgumentPresence: FoxRunNamedArgumentPresence.Encoding);
+                namedArgumentPresence: presence);
+        }
+
+        private static void AssertDirectionAvailability(
+            FoxRunTypeShape shape,
+            bool publishAvailable,
+            bool subscribeAvailable)
+        {
+            var publish = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Publish,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    explicitEncoding: false)
+            });
+            var subscribe = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Subscribe,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    explicitEncoding: false)
+            });
+
+            Assert.Equal(
+                publishAvailable,
+                Assert.Single(
+                    Assert.Single(publish.Types).Members[0].EncodingVariants,
+                    value => value.Encoding == "msgpack").PublishAvailable);
+            Assert.Equal(
+                subscribeAvailable,
+                Assert.Single(
+                    Assert.Single(subscribe.Types).Members[0].EncodingVariants,
+                    value => value.Encoding == "msgpack").SubscribeAvailable);
+        }
+
+        private static bool MessagePackPublishAvailable(FoxRunGenerationMember member)
+            => Assert.Single(
+                member.EncodingVariants,
+                value => value.Encoding == FoxRunGenerationDescriptorConstants.MessagePackEncoding)
+                .PublishAvailable;
 
         private static void AssertComponentShape(
             FoxRunTypeShape shape,
@@ -458,9 +896,26 @@ namespace Demo
             public int Value { get; set; }
         }
 
+        private sealed class NoDefaultConstructorPayload
+        {
+            public NoDefaultConstructorPayload(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; set; }
+        }
+
         private sealed class InitOnlyPayload
         {
             public int Value { get; init; }
+        }
+
+        private sealed class ListContractPayload
+        {
+            public List<int> Concrete { get; set; }
+            public IList<int> Mutable { get; set; }
+            public IReadOnlyList<int> ReadOnly { get; set; }
         }
 
         private abstract class AbstractPayload

@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor InvalidEncoding = new DiagnosticDescriptor(
             "FOXRUN602", "FoxRun Encoding invalid",
-            "{0}: FoxRun Encoding must be omitted, Protobuf, or JSON",
+            "{0}: FoxRun Encoding must be omitted, Protobuf, JSON, or MessagePack",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor InvalidProtobufFieldNumber = new DiagnosticDescriptor(
@@ -286,6 +286,26 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor MixedDirectionalQosContract = new DiagnosticDescriptor(
             "FOXRUN615", "FoxRun topic directional QoS contract mixed",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor UnsupportedMessagePackShape = new DiagnosticDescriptor(
+            "FOXRUN616", "FoxRun typed MessagePack shape unsupported",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MessagePackProtobufFieldNumber = new DiagnosticDescriptor(
+            "FOXRUN617", "MessagePack cannot use Protobuf field metadata",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MessagePackInboundTopology = new DiagnosticDescriptor(
+            "FOXRUN618", "MessagePack inbound topic topology incompatible",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MessagePackSchedule = new DiagnosticDescriptor(
+            "FOXRUN619", "MessagePack topic schedule incompatible",
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
@@ -390,6 +410,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN613": return InvalidQos;
                 case "FOXRUN614": return QosRequiresRos2Direction;
                 case "FOXRUN615": return MixedDirectionalQosContract;
+                case "FOXRUN616": return UnsupportedMessagePackShape;
+                case "FOXRUN617": return MessagePackProtobufFieldNumber;
+                case "FOXRUN618": return MessagePackInboundTopology;
+                case "FOXRUN619": return MessagePackSchedule;
                 case "FOXRUN402": return CustomNativeBidirectionalContract;
                 case "FOXRUN204": return InvalidSource;
                 case "FOXRUN207": return Ros2MessageIdentity;
@@ -426,7 +450,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                || id == "FOXRUN612"
                || id == "FOXRUN613"
                || id == "FOXRUN614"
-               || id == "FOXRUN615";
+               || id == "FOXRUN615"
+               || id == "FOXRUN616"
+               || id == "FOXRUN617"
+               || id == "FOXRUN618"
+               || id == "FOXRUN619";
 
         public static DiagnosticDescriptor Member(string id)
         {

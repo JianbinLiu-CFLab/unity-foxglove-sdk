@@ -43,6 +43,8 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunRos2MessageShape Ros2MessageShape { get; }
         public FoxRunRos2ContractKind Ros2ContractKind { get; }
         public FoxRunRos2CustomDtoShape Ros2CustomDtoShape { get; }
+        public IReadOnlyList<FoxRunEncodingVariantAvailability> EncodingVariants { get; }
+        public FoxRunNormalizedScheduleTuple NormalizedSchedule { get; }
 
         public FoxRunManifestMember(
             string ns,
@@ -77,6 +79,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
             bool isStream = false,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
+            FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null)
         {
             Namespace = ns ?? string.Empty;
@@ -117,6 +121,15 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2ContractKind,
                 ros2MessageShape,
                 ros2CustomDtoShape);
+            EncodingVariants = new List<FoxRunEncodingVariantAvailability>(
+                encodingVariants ?? DefaultEncodingVariants(encoding, flow)).AsReadOnly();
+            NormalizedSchedule = normalizedSchedule ?? new FoxRunNormalizedScheduleTuple(
+                policy,
+                hz >= 0f,
+                hz,
+                tolerance,
+                string.Empty,
+                FoxRunConditionMemberKind.None);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -181,7 +194,54 @@ namespace Unity.FoxgloveSDK.Editor
                 member.QosHistory,
                 member.QosDepth,
                 member.IsStream,
+                member.EncodingVariants,
+                member.NormalizedSchedule,
                 member.ProtobufMetadata);
+        }
+
+        private static IReadOnlyList<FoxRunEncodingVariantAvailability> DefaultEncodingVariants(
+            int encoding,
+            int flow)
+        {
+            var publish = flow == 1 || flow == 3;
+            var subscribe = flow == 2 || flow == 3;
+            if (encoding == 0)
+            {
+                return new[]
+                {
+                    new FoxRunEncodingVariantAvailability(
+                        FoxRunGenerationDescriptorConstants.JsonEncoding,
+                        publish,
+                        subscribe),
+                    new FoxRunEncodingVariantAvailability(
+                        FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                        publish,
+                        subscribe),
+                    new FoxRunEncodingVariantAvailability(
+                        FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        publish,
+                        subscribe)
+                };
+            }
+
+            return new[]
+            {
+                new FoxRunEncodingVariantAvailability(
+                    EncodingText(encoding),
+                    publish,
+                    subscribe)
+            };
+        }
+
+        private static string EncodingText(int encoding)
+        {
+            switch (encoding)
+            {
+                case 1: return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
+                case 2: return FoxRunGenerationDescriptorConstants.JsonEncoding;
+                case 3: return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
+                default: return string.Empty;
+            }
         }
 
         private static int EncodingValue(string encoding)
@@ -206,6 +266,13 @@ namespace Unity.FoxgloveSDK.Editor
                     StringComparison.Ordinal))
             {
                 return 2;
+            }
+            if (string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal))
+            {
+                return 3;
             }
             return -1;
         }
@@ -453,6 +520,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string DeclaringType { get; }
         public string Topic { get; }
         public string SchemaName { get; }
+        public string WireSchemaName => SchemaName;
+        public string LogicalSchemaName { get; }
         public string Encoding { get; }
         public string ContractHash { get; }
         public string BindingHash { get; }
@@ -460,6 +529,24 @@ namespace Unity.FoxgloveSDK.Editor
         public string Flow { get; }
         public IReadOnlyList<FoxRunManifestField> Fields { get; }
         public FoxRunManifestPolicy Policy { get; }
+        public bool PublishAvailable { get; }
+        public bool SubscribeAvailable { get; }
+        public string PublishUnavailableDiagnosticId { get; }
+        public string PublishUnavailableReason { get; }
+        public string SubscribeUnavailableDiagnosticId { get; }
+        public string SubscribeUnavailableReason { get; }
+        public string UnavailableDiagnosticId
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableDiagnosticId,
+                SubscribeAvailable,
+                SubscribeUnavailableDiagnosticId);
+        public string UnavailableReason
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableReason,
+                SubscribeAvailable,
+                SubscribeUnavailableReason);
 
         public FoxRunManifestContract(
             string declaringType,
@@ -471,11 +558,21 @@ namespace Unity.FoxgloveSDK.Editor
             string policyHash,
             IReadOnlyList<FoxRunManifestField> fields,
             FoxRunManifestPolicy policy,
-            string flow = "Publish")
+            string flow = "Publish",
+            string logicalSchemaName = "",
+            bool publishAvailable = true,
+            bool subscribeAvailable = true,
+            string unavailableDiagnosticId = "",
+            string unavailableReason = "",
+            string publishUnavailableDiagnosticId = null,
+            string publishUnavailableReason = null,
+            string subscribeUnavailableDiagnosticId = null,
+            string subscribeUnavailableReason = null)
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
+            LogicalSchemaName = logicalSchemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
@@ -483,6 +580,39 @@ namespace Unity.FoxgloveSDK.Editor
             Flow = string.IsNullOrWhiteSpace(flow) ? "Publish" : flow;
             Fields = new List<FoxRunManifestField>(fields ?? Array.Empty<FoxRunManifestField>()).AsReadOnly();
             Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            PublishAvailable = publishAvailable;
+            SubscribeAvailable = subscribeAvailable;
+            PublishUnavailableDiagnosticId = publishAvailable
+                ? string.Empty
+                : publishUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            PublishUnavailableReason = publishAvailable
+                ? string.Empty
+                : publishUnavailableReason ?? unavailableReason ?? string.Empty;
+            SubscribeUnavailableDiagnosticId = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            SubscribeUnavailableReason = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableReason ?? unavailableReason ?? string.Empty;
+        }
+
+        private static string SharedUnavailableValue(
+            bool publishAvailable,
+            string publishValue,
+            bool subscribeAvailable,
+            string subscribeValue)
+        {
+            if (publishAvailable)
+                return subscribeAvailable ? string.Empty : subscribeValue;
+            if (subscribeAvailable)
+                return publishValue;
+            if (string.IsNullOrEmpty(publishValue))
+                return subscribeValue;
+            if (string.IsNullOrEmpty(subscribeValue))
+                return publishValue;
+            return string.Equals(publishValue, subscribeValue, StringComparison.Ordinal)
+                ? publishValue
+                : string.Empty;
         }
     }
 
@@ -497,6 +627,7 @@ namespace Unity.FoxgloveSDK.Editor
         public bool Aggregate { get; }
         public FoxRunProtobufMetadata ProtobufMetadata { get; }
         public FoxRunTypeShape TypeShape { get; }
+        public FoxRunNormalizedScheduleTuple NormalizedSchedule { get; }
 
         public FoxRunManifestField(
             string jsonName,
@@ -508,6 +639,7 @@ namespace Unity.FoxgloveSDK.Editor
             bool aggregate = false,
             int protobufFieldNumber = 0,
             FoxRunTypeShape typeShape = null,
+            FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null)
         {
             JsonName = jsonName ?? string.Empty;
@@ -524,6 +656,7 @@ namespace Unity.FoxgloveSDK.Editor
                                    : FoxRunProtobufMetadata.FromTypeShape(
                                        typeShape,
                                        protobufFieldNumber));
+            NormalizedSchedule = normalizedSchedule;
         }
     }
 

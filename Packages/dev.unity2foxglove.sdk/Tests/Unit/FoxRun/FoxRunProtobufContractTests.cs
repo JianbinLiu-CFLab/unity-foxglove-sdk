@@ -10,6 +10,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.Schemas;
@@ -34,10 +36,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 manifestVersion: 1);
             var jsonContract = Assert.Single(Assert.Single(jsonManifest.Sections.FoxRun.Types).Contracts);
 
-            Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", jsonContract.ContractHash);
+            Assert.Equal("3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207", jsonContract.ContractHash);
             Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", jsonContract.BindingHash);
             Assert.Equal("86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d", jsonContract.PolicyHash);
-            Assert.Equal("594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e", jsonManifest.Sections.FoxRun.ManifestHash);
+            Assert.Equal("262502c3999d4140c8b809fc0110ea5ea2fa4898702a117743140e672502fcef", jsonManifest.Sections.FoxRun.ManifestHash);
 
             var protobuf = FoxRunProtobufContractBuilder.Build(CreateContract());
             Assert.Equal(
@@ -171,11 +173,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(3, manifest.ManifestVersion);
             Assert.Equal(1, manifest.Generator.MajorVersion);
             Assert.Equal("json", contract.Encoding);
-            Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", contract.ContractHash);
+            Assert.Equal("3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207", contract.ContractHash);
             Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", contract.BindingHash);
             Assert.Single(manifest.Sections.Subscriptions.Bindings);
             Assert.True(FoxRunManifestHasher.IsLowercaseSha256Hex(manifest.Sections.Subscriptions.ManifestHash));
-            Assert.Equal("594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e", jsonOnlyV1.Sections.FoxRun.ManifestHash);
+            Assert.Equal("262502c3999d4140c8b809fc0110ea5ea2fa4898702a117743140e672502fcef", jsonOnlyV1.Sections.FoxRun.ManifestHash);
 
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
             Assert.Contains("\"subscriptions\"", canonical, StringComparison.Ordinal);
@@ -481,59 +483,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("ProtobufFieldNumber", error.Message, StringComparison.Ordinal);
         }
 
-        [Theory]
-        [InlineData(FoxRunCollectionKind.Array)]
-        [InlineData(FoxRunCollectionKind.List)]
-        public void LegacyManifestV3ProtobufShapeBytesPreserveCollectionsAndNestedTags(
-            FoxRunCollectionKind rootCollectionKind)
-        {
-            var payloadShape = FoxRunTypeShape.Object(
-                "Demo.Payload",
-                new[]
-                {
-                    new FoxRunTypeField(
-                        "samples",
-                        "Samples",
-                        FoxRunTypeShape.Canonical("float32"),
-                        repeated: true,
-                        repeatedCollectionKind: FoxRunCollectionKind.List)
-                });
-            var rootShape = FoxRunTypeShape.Collection(
-                rootCollectionKind,
-                payloadShape);
-            var protobufMetadata = new FoxRunProtobufMetadata(
-                17,
-                new FoxRunProtobufTypeMetadata(
-                    "Demo.Payload",
-                    new[]
-                    {
-                        new FoxRunProtobufFieldMetadata(
-                            "Samples",
-                            "samples",
-                            fieldNumber: 7)
-                    }));
-            var field = new FoxRunManifestField(
-                "payloads",
-                "_payloads",
-                "field",
-                "Demo.Payload",
-                nullable: false,
-                array: true,
-                protobufFieldNumber: 0,
-                typeShape: rootShape,
-                protobufMetadata: protobufMetadata);
-
-            var canonical = FoxRunManifestJsonWriter.WriteContractHashInput(
-                "Demo.ArraySource",
-                "Demo.ArrayEnvelope",
-                "protobuf",
-                new[] { field });
-
-            Assert.Equal(
-                "{\"declaringType\":\"Demo.ArraySource\",\"schemaName\":\"Demo.ArrayEnvelope\",\"encoding\":\"protobuf\",\"fields\":[{\"jsonName\":\"payloads\",\"memberName\":\"_payloads\",\"memberKind\":\"field\",\"type\":\"Demo.Payload\",\"nullable\":false,\"array\":true,\"protobufFieldNumber\":17,\"protobufShape\":{\"kind\":\"Object\",\"typeName\":\"Demo.Payload\",\"fields\":[{\"jsonName\":\"samples\",\"memberName\":\"Samples\",\"repeated\":true,\"protobufFieldNumber\":7,\"shape\":{\"kind\":\"Canonical\",\"typeName\":\"float32\",\"canonicalType\":\"float32\"}}]}}]}",
-                canonical);
-        }
-
         [Fact]
         public void ModelValidatorRejectsMixedWirePoliciesAndDuplicateExplicitTags()
         {
@@ -756,6 +705,141 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-A")]
+        public void FullDuplexTopicSummariesResolvePublishAndSubscribeDirectionsIndependently()
+        {
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo(
+                    "state",
+                    "_state",
+                    "field",
+                    "int32",
+                    false,
+                    false,
+                    typeShape: new FoxRunTypeShapeInfo(
+                        FoxRunTypeShapeInfoKind.Canonical,
+                        "int32",
+                        "int32",
+                        false,
+                        FoxRunCollectionInfoKind.None,
+                        null,
+                        Array.Empty<FoxRunTypeFieldInfo>(),
+                        Array.Empty<FoxRunEnumValueInfo>()))
+            };
+            var contracts = new[]
+            {
+                new FoxRunSchemaContractInfo(
+                    "Demo.Duplex", "/phase185/duplex", string.Empty, "json",
+                    "json", "json", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "PublishAndSubscribe", logicalSchemaName: "Demo.State"),
+                new FoxRunSchemaContractInfo(
+                    "Demo.Duplex", "/phase185/duplex", "Demo.State", "protobuf",
+                    "protobuf", "protobuf", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "PublishAndSubscribe", protobufDescriptorSet: new byte[] { 1 },
+                    logicalSchemaName: "Demo.State"),
+                new FoxRunSchemaContractInfo(
+                    "Demo.Duplex", "/phase185/duplex", string.Empty, "msgpack",
+                    "msgpack", "msgpack", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "PublishAndSubscribe", logicalSchemaName: "Demo.State")
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                3,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[] { new FoxRunSchemaTypeInfo("Demo.Duplex", contracts) });
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+
+                var summaries = FoxRunSchemaInfoRegistry.GetTopicSummaries(
+                    FoxRunEncoding.MessagePack,
+                    FoxRunEncoding.JSON);
+
+                Assert.Collection(
+                    summaries,
+                    publish =>
+                    {
+                        Assert.Equal("Publish", publish.Direction);
+                        Assert.Equal(FoxRunEncoding.MessagePack, publish.EffectiveEncoding);
+                        Assert.Equal(string.Empty, publish.WireSchemaName);
+                        Assert.Equal("Demo.State", publish.LogicalSchemaName);
+                    },
+                    subscribe =>
+                    {
+                        Assert.Equal("Subscribe", subscribe.Direction);
+                        Assert.Equal(FoxRunEncoding.JSON, subscribe.EffectiveEncoding);
+                        Assert.Equal("Demo.State", subscribe.LogicalSchemaName);
+                    });
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void TopicSummaryPreservesUnavailableInheritedMessagePackReasonWithoutFallback()
+        {
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo("state", "_state", "field", "int32", false, false)
+            };
+            var contracts = new[]
+            {
+                new FoxRunSchemaContractInfo(
+                    "Demo.Input", "/phase185/input", string.Empty, "json",
+                    "json", "json", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "Subscribe", logicalSchemaName: "Demo.State"),
+                new FoxRunSchemaContractInfo(
+                    "Demo.Input", "/phase185/input", "Demo.State", "protobuf",
+                    "protobuf", "protobuf", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "Subscribe", logicalSchemaName: "Demo.State"),
+                new FoxRunSchemaContractInfo(
+                    "Demo.Input", "/phase185/input", string.Empty, "msgpack",
+                    "msgpack", "msgpack", "policy", "FixedRate", 10f, 0f, fields,
+                    flow: "Subscribe",
+                    logicalSchemaName: "Demo.State",
+                    subscribeAvailable: false,
+                    unavailableDiagnosticId: "FOXRUN618",
+                    unavailableReason: "mixed ordinary/stream")
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                3,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[] { new FoxRunSchemaTypeInfo("Demo.Input", contracts) });
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+
+                var summary = Assert.Single(FoxRunSchemaInfoRegistry.GetTopicSummaries(
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.MessagePack));
+
+                Assert.Equal(FoxRunEncoding.MessagePack, summary.EffectiveEncoding);
+                Assert.False(summary.Available);
+                Assert.Equal("FOXRUN618", summary.UnavailableDiagnosticId);
+                Assert.DoesNotContain("protobuf", summary.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
         public void ReflectionLowererCarriesNestedDtoShapeIntoProtobufContract()
         {
             var reflected = new FoxrunCodeGenerator.MemberData(
@@ -791,6 +875,26 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     })).FileDescriptorSet);
 
             Assert.Contains(Assert.Single(descriptor.File).MessageType, message => message.Name.EndsWith("ReflectionTelemetry", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void ExplicitMessagePackManifestNeverCarriesProtobufWireMetadata()
+        {
+            var shape = FoxRunReflectionTypeShapeBuilder.Build(typeof(ReflectionTelemetry));
+            var manifest = FoxRunManifestBuilder.Build(new[]
+            {
+                new FoxRunManifestMember(
+                    "Demo", "WireState", "_telemetry", "field", "Demo.Telemetry", false, false, "",
+                    "/phase185/messagepack", 10f, "Demo.Telemetry", (int)FoxRunPolicy.FixedRate, 0f,
+                    encoding: (int)FoxRunEncoding.MessagePack,
+                    typeShape: shape)
+            });
+
+            var contract = Assert.Single(Assert.Single(manifest.Sections.FoxRun.Types).Contracts);
+            Assert.Equal("msgpack", contract.Encoding);
+            Assert.Equal(string.Empty, contract.SchemaName);
+            Assert.All(contract.Fields, field => Assert.Null(field.ProtobufMetadata));
         }
 
         [Fact]
@@ -955,6 +1059,121 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("inconsistent", error.Message, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void ProtobufTagChangesDoNotAffectMessagePackHashButDoAffectProtobufDescriptor()
+        {
+            var shape = FoxRunTypeShape.Object(
+                "Demo.TaggedPayload",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "value",
+                        "Value",
+                        FoxRunTypeShape.Canonical("int32"))
+                });
+            var first = BuildInheritedTaggedManifest(shape, nestedFieldNumber: 7);
+            var second = BuildInheritedTaggedManifest(shape, nestedFieldNumber: 11);
+            var firstContracts = Assert.Single(first.Sections.FoxRun.Types).Contracts;
+            var secondContracts = Assert.Single(second.Sections.FoxRun.Types).Contracts;
+            var firstMessagePack = Assert.Single(firstContracts, contract => contract.Encoding == "msgpack");
+            var secondMessagePack = Assert.Single(secondContracts, contract => contract.Encoding == "msgpack");
+            var firstProtobuf = Assert.Single(firstContracts, contract => contract.Encoding == "protobuf");
+            var secondProtobuf = Assert.Single(secondContracts, contract => contract.Encoding == "protobuf");
+
+            Assert.Equal(firstMessagePack.ContractHash, secondMessagePack.ContractHash);
+            Assert.All(firstMessagePack.Fields, field => Assert.Null(field.ProtobufMetadata));
+            Assert.NotEqual(
+                BuildDescriptor(firstProtobuf),
+                BuildDescriptor(secondProtobuf));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void MessagePackLogicalSchemaIdentityIsIndependentOfMemberDiscoveryOrder()
+        {
+            var alpha = MessagePackLogicalIdentityMember(
+                "_alpha",
+                "alpha",
+                "Demo.Alpha");
+            var beta = MessagePackLogicalIdentityMember(
+                "_beta",
+                "beta",
+                "Demo.Beta");
+
+            var forward = FoxRunManifestBuilder.Build(new[] { alpha, beta });
+            var reverse = FoxRunManifestBuilder.Build(new[] { beta, alpha });
+            var forwardContract = Assert.Single(
+                Assert.Single(forward.Sections.FoxRun.Types).Contracts);
+            var reverseContract = Assert.Single(
+                Assert.Single(reverse.Sections.FoxRun.Types).Contracts);
+
+            Assert.Equal("Demo.LogicalOwner", forwardContract.LogicalSchemaName);
+            Assert.Equal(forwardContract.LogicalSchemaName, reverseContract.LogicalSchemaName);
+            Assert.Equal(forwardContract.ContractHash, reverseContract.ContractHash);
+
+            var oneExplicit = FoxRunManifestBuilder.Build(new[]
+            {
+                MessagePackLogicalIdentityMember("_alpha", "alpha", "Demo.Alpha"),
+                MessagePackLogicalIdentityMember("_beta", "beta", string.Empty)
+            });
+            Assert.Equal(
+                "Demo.Alpha",
+                Assert.Single(Assert.Single(oneExplicit.Sections.FoxRun.Types).Contracts)
+                    .LogicalSchemaName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void SchemaInfoWriterCarriesObjectConstructionCapabilityIntoGeneratedRuntimeShape()
+        {
+            var shape = FoxRunTypeShape.Object(
+                "Demo.NoDefaultConstructor",
+                Array.Empty<FoxRunTypeField>(),
+                nullable: true,
+                canConstruct: false);
+            var manifest = FoxRunManifestBuilder.Build(new[]
+            {
+                new FoxRunManifestMember(
+                    "Demo",
+                    "ConstructionSource",
+                    "_value",
+                    "field",
+                    "Demo.NoDefaultConstructor",
+                    false,
+                    false,
+                    string.Empty,
+                    "/phase185/construction",
+                    10f,
+                    "Demo.NoDefaultConstructor",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    flow: (int)FoxRunFlow.Subscribe,
+                    encoding: (int)FoxRunEncoding.MessagePack,
+                    typeShape: shape)
+            }, manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+
+            var source = FoxRunSchemaInfoWriter.GenerateSource(manifest);
+            var creation = Assert.Single(
+                CSharpSyntaxTree.ParseText(source)
+                    .GetRoot()
+                    .DescendantNodes()
+                    .OfType<ObjectCreationExpressionSyntax>(),
+                candidate =>
+                    candidate.Type.ToString().EndsWith(
+                        "FoxRunTypeShapeInfo",
+                        StringComparison.Ordinal)
+                    && candidate.ArgumentList.Arguments.Count > 1
+                    && string.Equals(
+                        candidate.ArgumentList.Arguments[1].Expression.ToString(),
+                        "\"Demo.NoDefaultConstructor\"",
+                        StringComparison.Ordinal));
+
+            Assert.Equal(9, creation.ArgumentList.Arguments.Count);
+            Assert.Equal("true", creation.ArgumentList.Arguments[3].Expression.ToString());
+            Assert.Equal("false", creation.ArgumentList.Arguments[8].Expression.ToString());
+        }
+
         private static FoxRunProtobufContractInput CreateContract()
         {
             var fields = new List<FoxRunProtobufFieldInput>
@@ -970,6 +1189,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 fields);
         }
 
+        private static FoxRunManifestMember MessagePackLogicalIdentityMember(
+            string memberName,
+            string jsonName,
+            string schemaName)
+            => new FoxRunManifestMember(
+                "Demo",
+                "LogicalOwner",
+                memberName,
+                "field",
+                "System.Int32",
+                true,
+                false,
+                string.Empty,
+                "/phase185/logical-identity",
+                10f,
+                schemaName,
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                jsonFieldName: jsonName,
+                encoding: (int)FoxRunEncoding.MessagePack,
+                typeShape: FoxRunTypeShape.Canonical("int32"));
+
         private static FoxRunCanonicalManifest BuildProtobufManifest(FoxRunTypeShape shape)
         {
             return FoxRunManifestBuilder.Build(new[]
@@ -980,6 +1221,59 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     encoding: (int)FoxRunEncoding.Protobuf,
                     typeShape: shape)
             });
+        }
+
+        private static FoxRunCanonicalManifest BuildInheritedTaggedManifest(
+            FoxRunTypeShape shape,
+            int nestedFieldNumber)
+        {
+            return FoxRunManifestBuilder.Build(new[]
+            {
+                new FoxRunManifestMember(
+                    "Demo",
+                    "TaggedSource",
+                    "_payload",
+                    "field",
+                    "Demo.TaggedPayload",
+                    false,
+                    false,
+                    "",
+                    "/phase185/tag-isolation",
+                    10f,
+                    "Demo.TaggedEnvelope",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    encoding: 0,
+                    typeShape: shape,
+                    protobufMetadata: new FoxRunProtobufMetadata(
+                        17,
+                        new FoxRunProtobufTypeMetadata(
+                            "Demo.TaggedPayload",
+                            new[]
+                            {
+                                new FoxRunProtobufFieldMetadata(
+                                    "Value",
+                                    "value",
+                                    nestedFieldNumber)
+                            })))
+            });
+        }
+
+        private static string BuildDescriptor(FoxRunManifestContract contract)
+        {
+            var input = new FoxRunProtobufContractInput(
+                contract.DeclaringType,
+                contract.Topic,
+                contract.SchemaName,
+                contract.Fields.Select(field => new FoxRunProtobufFieldInput(
+                    field.JsonName,
+                    field.MemberName,
+                    field.Type,
+                    field.Array,
+                    typeShape: field.TypeShape,
+                    protobufMetadata: field.ProtobufMetadata)).ToArray());
+            return Convert.ToBase64String(
+                FoxRunProtobufContractBuilder.Build(input).FileDescriptorSet);
         }
 
         private sealed class ReflectionTelemetry

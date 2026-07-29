@@ -90,7 +90,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawFoxRunTopicGroup("Publish Topics", summaries, "Publish");
             DrawFoxRunTopicGroup("Subscribe Topics", summaries, "Subscribe");
-            DrawFoxRunTopicGroup("Publish And Subscribe Topics", summaries, "PublishAndSubscribe");
             DrawFoxRunNativeUnityContracts(manager);
         }
 
@@ -224,8 +223,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DrawFoxRunTopicSummaryRow(FoxRunTopicSummary summary)
         {
-            var schemaName = string.IsNullOrEmpty(summary.SchemaName) ? "(schemaless)" : summary.SchemaName;
-            var schemaContent = new GUIContent("Schema: " + schemaName, schemaName);
+            var wireSchemaName = string.IsNullOrEmpty(summary.WireSchemaName)
+                ? "(schemaless)"
+                : summary.WireSchemaName;
+            var logicalSchemaName = string.IsNullOrEmpty(summary.LogicalSchemaName)
+                ? "(unspecified)"
+                : summary.LogicalSchemaName;
+            var schemaContent = new GUIContent(
+                "Wire schema: " + wireSchemaName + "  |  Logical schema: " + logicalSchemaName,
+                summary.WireSchemaName);
             var schemaStyle = GetTopicSchemaStyle();
             var row = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
             GetTopicSummaryColumns(row, out var topic, out var declared, out var effective, out var copy);
@@ -240,6 +246,16 @@ namespace Unity.FoxgloveSDK.Editor
                 schemaStyle.CalcHeight(schemaContent, GetTopicSchemaLayoutWidth()));
             schemaRow.width = topic.width;
             EditorGUI.LabelField(schemaRow, schemaContent, schemaStyle);
+            if (!summary.Available)
+            {
+                EditorGUILayout.HelpBox(
+                    (string.IsNullOrEmpty(summary.UnavailableDiagnosticId)
+                        ? "FoxRun encoding variant unavailable"
+                        : summary.UnavailableDiagnosticId)
+                    + ": "
+                    + summary.UnavailableReason,
+                    MessageType.Error);
+            }
         }
 
         private const float CopyButtonWidth = 54f;

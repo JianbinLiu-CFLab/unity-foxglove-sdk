@@ -5,6 +5,7 @@
 // Purpose: Deterministic JSON writer for FoxRun generation-model descriptors.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
@@ -82,6 +83,9 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "canonicalType", member.CanonicalType);
             sb.Append(',');
+            WriteName(sb, "isValueType");
+            sb.Append(member.IsValueType ? "true" : "false");
+            sb.Append(',');
             WriteName(sb, "isArray");
             sb.Append(member.IsArray ? "true" : "false");
             sb.Append(',');
@@ -128,12 +132,18 @@ namespace Unity.FoxgloveSDK.Editor
                 && !string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity)
                     ? member.Ros2CustomDtoShape.PayloadIdentity + "Envelope"
                     : string.Empty);
-            if ((member.ProtobufMetadata?.FieldNumber ?? 0) > 0)
-            {
-                sb.Append(',');
-                WriteName(sb, "protobufFieldNumber");
-                sb.Append(member.ProtobufMetadata.FieldNumber.ToString(CultureInfo.InvariantCulture));
-            }
+            sb.Append(',');
+            WriteName(sb, "typeShape");
+            WriteTypeShape(sb, member.TypeShape);
+            sb.Append(',');
+            WriteName(sb, "protobuf");
+            WriteProtobufMetadata(sb, member.ProtobufMetadata);
+            sb.Append(',');
+            WriteName(sb, "encodingVariants");
+            WriteEncodingVariants(sb, member.EncodingVariants);
+            sb.Append(',');
+            WriteName(sb, "normalizedSchedule");
+            WriteNormalizedSchedule(sb, member.NormalizedSchedule);
             sb.Append(',');
             WriteName(sb, "hz");
             WriteFloat(sb, member.Hz);
@@ -171,6 +181,207 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(member.RawMemberOrder.ToString(CultureInfo.InvariantCulture));
             sb.Append(',');
             WriteStringField(sb, "conditionalSymbols", member.ConditionalSymbols);
+            sb.Append('}');
+        }
+
+        private static void WriteEncodingVariants(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> variants)
+        {
+            sb.Append('[');
+            var values = variants ?? Array.Empty<FoxRunEncodingVariantAvailability>();
+            for (var index = 0; index < values.Count; index++)
+            {
+                if (index > 0) sb.Append(',');
+                var variant = values[index];
+                sb.Append('{');
+                WriteStringField(sb, "encoding", variant.Encoding);
+                sb.Append(',');
+                WriteName(sb, "publishAvailable");
+                sb.Append(variant.PublishAvailable ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "subscribeAvailable");
+                sb.Append(variant.SubscribeAvailable ? "true" : "false");
+                sb.Append(',');
+                WriteStringField(
+                    sb,
+                    "publishUnavailableDiagnosticId",
+                    variant.PublishUnavailableDiagnosticId);
+                sb.Append(',');
+                WriteStringField(
+                    sb,
+                    "publishUnavailableReason",
+                    variant.PublishUnavailableReason);
+                sb.Append(',');
+                WriteStringField(
+                    sb,
+                    "subscribeUnavailableDiagnosticId",
+                    variant.SubscribeUnavailableDiagnosticId);
+                sb.Append(',');
+                WriteStringField(
+                    sb,
+                    "subscribeUnavailableReason",
+                    variant.SubscribeUnavailableReason);
+                sb.Append('}');
+            }
+            sb.Append(']');
+        }
+
+        private static void WriteNormalizedSchedule(
+            StringBuilder sb,
+            FoxRunNormalizedScheduleTuple schedule)
+        {
+            if (schedule == null)
+                throw new InvalidOperationException("FoxRun descriptor v5 requires a normalized schedule.");
+            sb.Append('{');
+            WriteIntField(sb, "policy", schedule.Policy);
+            sb.Append(',');
+            WriteName(sb, "hasExplicitHz");
+            sb.Append(schedule.HasExplicitHz ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "hz");
+            WriteFloat(sb, schedule.Hz);
+            sb.Append(',');
+            WriteName(sb, "tolerance");
+            WriteFloat(sb, schedule.Tolerance);
+            sb.Append(',');
+            WriteStringField(sb, "onlyIf", schedule.OnlyIf);
+            sb.Append(',');
+            WriteStringField(
+                sb,
+                "conditionMemberKind",
+                FoxRunGenerationMember.ConditionMemberKindToName(schedule.ConditionMemberKind));
+            sb.Append('}');
+        }
+
+        private static void WriteTypeShape(StringBuilder sb, FoxRunTypeShape shape)
+        {
+            if (shape == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            WriteStringField(sb, "kind", shape.Kind.ToString());
+            sb.Append(',');
+            WriteStringField(sb, "typeName", shape.TypeName);
+            sb.Append(',');
+            WriteStringField(sb, "canonicalType", shape.CanonicalType);
+            sb.Append(',');
+            WriteName(sb, "nullable");
+            sb.Append(shape.Nullable ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "canConstruct");
+            sb.Append(shape.CanConstruct ? "true" : "false");
+            sb.Append(',');
+            WriteStringField(sb, "collectionKind", shape.CollectionKind.ToString());
+            sb.Append(',');
+            WriteName(sb, "binary");
+            sb.Append(shape.IsBinary ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "elementShape");
+            WriteTypeShape(sb, shape.ElementShape);
+            sb.Append(',');
+            WriteName(sb, "enumValues");
+            sb.Append('[');
+            for (var index = 0; index < shape.EnumValues.Count; index++)
+            {
+                if (index > 0) sb.Append(',');
+                var value = shape.EnumValues[index];
+                sb.Append('{');
+                WriteStringField(sb, "name", value.Name);
+                sb.Append(',');
+                WriteIntField(sb, "number", value.Number);
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append(',');
+            WriteName(sb, "fields");
+            sb.Append('[');
+            for (var index = 0; index < shape.Fields.Count; index++)
+            {
+                if (index > 0) sb.Append(',');
+                var field = shape.Fields[index];
+                sb.Append('{');
+                WriteStringField(sb, "jsonName", field.JsonName);
+                sb.Append(',');
+                WriteStringField(sb, "memberName", field.MemberName);
+                sb.Append(',');
+                WriteName(sb, "repeated");
+                sb.Append(field.Repeated ? "true" : "false");
+                sb.Append(',');
+                WriteStringField(sb, "collectionKind", field.RepeatedCollectionKind.ToString());
+                sb.Append(',');
+                WriteName(sb, "canAssign");
+                sb.Append(field.CanAssign ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "nullable");
+                sb.Append(field.IsNullable ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "shape");
+                WriteTypeShape(sb, field.TypeShape);
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append('}');
+        }
+
+        private static void WriteProtobufMetadata(
+            StringBuilder sb,
+            FoxRunProtobufMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            WriteIntField(sb, "fieldNumber", metadata.FieldNumber);
+            sb.Append(',');
+            WriteName(sb, "type");
+            WriteProtobufTypeMetadata(sb, metadata.TypeMetadata);
+            sb.Append('}');
+        }
+
+        private static void WriteProtobufTypeMetadata(
+            StringBuilder sb,
+            FoxRunProtobufTypeMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            WriteStringField(sb, "typeName", metadata.TypeName);
+            sb.Append(',');
+            WriteName(sb, "fields");
+            sb.Append('[');
+            for (var index = 0; index < metadata.Fields.Count; index++)
+            {
+                if (index > 0) sb.Append(',');
+                var field = metadata.Fields[index];
+                sb.Append('{');
+                WriteStringField(sb, "memberName", field.MemberName);
+                sb.Append(',');
+                WriteStringField(sb, "jsonName", field.JsonName);
+                sb.Append(',');
+                WriteIntField(sb, "fieldNumber", field.FieldNumber);
+                sb.Append(',');
+                WriteName(sb, "presenceOnly");
+                sb.Append(field.PresenceOnly ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "presenceUsesHasValue");
+                sb.Append(field.PresenceUsesHasValue ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "type");
+                WriteProtobufTypeMetadata(sb, field.TypeMetadata);
+                sb.Append('}');
+            }
+            sb.Append(']');
             sb.Append('}');
         }
 

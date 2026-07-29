@@ -45,5 +45,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Empty(errors);
         }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void DescriptorCarrierPreservesTheSharedMessagePackSpelling()
+        {
+            const string descriptorJson =
+                "{\"descriptorVersion\":5,\"generatorVersion\":\"5.0.0\",\"encoding\":\"msgpack\"}";
+
+            var source = FoxRunDescriptorCarrierEmitter.DescriptorCarrierSource(descriptorJson);
+
+            Assert.Contains("\\\"encoding\\\":\\\"msgpack\\\"", source, StringComparison.Ordinal);
+        }
     }
 }

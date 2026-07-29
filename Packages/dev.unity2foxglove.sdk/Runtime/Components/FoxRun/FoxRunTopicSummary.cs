@@ -15,7 +15,11 @@ namespace Unity.FoxgloveSDK.Components
             string direction,
             FoxRunEncoding declaredEncoding,
             FoxRunEncoding effectiveEncoding,
-            string schemaName)
+            string schemaName,
+            string logicalSchemaName = "",
+            bool available = true,
+            string unavailableDiagnosticId = "",
+            string unavailableReason = "")
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -23,6 +27,10 @@ namespace Unity.FoxgloveSDK.Components
             DeclaredEncoding = declaredEncoding;
             EffectiveEncoding = effectiveEncoding;
             SchemaName = schemaName ?? string.Empty;
+            LogicalSchemaName = logicalSchemaName ?? string.Empty;
+            Available = available;
+            UnavailableDiagnosticId = unavailableDiagnosticId ?? string.Empty;
+            UnavailableReason = unavailableReason ?? string.Empty;
         }
 
         public string DeclaringType { get; }
@@ -31,5 +39,10 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEncoding DeclaredEncoding { get; }
         public FoxRunEncoding EffectiveEncoding { get; }
         public string SchemaName { get; }
+        public string WireSchemaName => SchemaName;
+        public string LogicalSchemaName { get; }
+        public bool Available { get; }
+        public string UnavailableDiagnosticId { get; }
+        public string UnavailableReason { get; }
     }
 }

@@ -27,6 +27,10 @@ namespace Unity.FoxgloveSDK.Editor
         private const string InvalidQosDiagnosticId = "FOXRUN613";
         private const string QosRequiresRos2DirectionDiagnosticId = "FOXRUN614";
         private const string MixedDirectionalQosContractDiagnosticId = "FOXRUN615";
+        private const string UnsupportedMessagePackShapeDiagnosticId = "FOXRUN616";
+        private const string MessagePackProtobufFieldNumberDiagnosticId = "FOXRUN617";
+        private const string MessagePackInboundTopologyDiagnosticId = "FOXRUN618";
+        private const string MessagePackScheduleDiagnosticId = "FOXRUN619";
         private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
         private const string InvalidStreamDeclarationDiagnosticId = "FOXRUN215";
         private const FoxRunNamedArgumentPresence DirectionalQosPresenceMask =
@@ -167,7 +171,7 @@ namespace Unity.FoxgloveSDK.Editor
             var hasExplicitQos = HasExplicitQos(member);
 
             if (!IsKnownDeclaredEncoding(member.Encoding, hasExplicitEncoding))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be omitted, Protobuf, or JSON."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be omitted, Protobuf, JSON, or MessagePack."));
 
             if (!IsKnownSource(member.Source, hasExplicitSource))
             {
@@ -226,8 +230,23 @@ namespace Unity.FoxgloveSDK.Editor
                     + member.Ros2MessageShape.CanonicalRosType + "'."));
             }
 
+            var isExplicitMessagePack = hasExplicitEncoding
+                                        && string.Equals(
+                                            member.Encoding,
+                                            FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                                            StringComparison.Ordinal);
             if (requiresWebSocketShapeValidation
+                && isExplicitMessagePack
                 && (member.ProtobufMetadata?.FieldNumber ?? 0) != 0)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    MessagePackProtobufFieldNumberDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun ProtobufFieldNumber is Protobuf-only metadata and cannot be combined with explicit MessagePack encoding."));
+            }
+            else if (requiresWebSocketShapeValidation
+                     && (member.ProtobufMetadata?.FieldNumber ?? 0) != 0)
             {
                 try
                 {
@@ -249,7 +268,8 @@ namespace Unity.FoxgloveSDK.Editor
                 && member.Mode != 1
                 && (member.IsAggregateMember
                     || (member.IsArray
-                        && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))))
+                        && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                        && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.MessagePackEncoding, StringComparison.Ordinal))))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     "FOXRUN200",
                     target,
@@ -303,6 +323,25 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun OnlyIf must name a bool field, bool property, or zero-argument bool method."));
             }
 
+            var hasUnsupportedMessagePackShape = requiresWebSocketShapeValidation
+                                                 && isExplicitMessagePack
+                                                 && (((member.Mode == 1 || member.Mode == 3)
+                                                      && !FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                                                          member.TypeShape,
+                                                          member.CanonicalType))
+                                                     || ((member.Mode == 2 || member.Mode == 3)
+                                                         && !FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                                                             member.TypeShape,
+                                                             member.CanonicalType)));
+            if (hasUnsupportedMessagePackShape)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    UnsupportedMessagePackShapeDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun typed MessagePack Publish requires a bounded readable shape; Subscribe additionally requires constructible DTOs with writable members."));
+            }
+
             if (requiresWebSocketShapeValidation
                 && !IsNativeCustomBidirectionalOutputContract(member)
                 && !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
@@ -312,7 +351,8 @@ namespace Unity.FoxgloveSDK.Editor
                             FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                             StringComparison.Ordinal)
                         && member.TypeShape.Kind != FoxRunTypeShapeKind.Object
-                        && member.TypeShape.Kind != FoxRunTypeShapeKind.Enum)))
+                        && member.TypeShape.Kind != FoxRunTypeShapeKind.Enum
+                        && member.TypeShape.Kind != FoxRunTypeShapeKind.Collection)))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
                 var message = string.IsNullOrWhiteSpace(raw)
@@ -343,6 +383,10 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "Tolerance must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
 
             if (requiresWebSocketShapeValidation
+                && !string.Equals(
+                    member.Encoding,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal)
                 && (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
                     || (member.IsArray && member.CanonicalType == "uint8")))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN010", target, member.MemberName, "Binary/blob values are not supported in the FoxRun contract path."));
@@ -720,6 +764,44 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' has mixed Encoding declarations. Use one policy for every member on the topic."));
                 }
 
+                var explicitlyMessagePack = members.Any(member =>
+                    member.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding)
+                    && string.Equals(
+                        member.Encoding,
+                        FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        StringComparison.Ordinal));
+                if (explicitlyMessagePack)
+                {
+                    var subscribing = members
+                        .Where(member => member.Mode == 2 || member.Mode == 3)
+                        .ToList();
+                    var streamCount = subscribing.Count(member => member.IsStream);
+                    if (streamCount > 1
+                        || (streamCount > 0 && streamCount != subscribing.Count))
+                    {
+                        var first = subscribing[0];
+                        diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                            MessagePackInboundTopologyDiagnosticId,
+                            first.DeclaringType + "." + first.MemberName,
+                            first.MemberName,
+                            "MessagePack subscribe topics must contain only ordinary members or exactly one stream."));
+                    }
+
+                    var publishing = members
+                        .Where(member => member.Mode == 1 || member.Mode == 3)
+                        .ToList();
+                    if (HasMixedNormalizedSchedule(publishing)
+                        || HasMixedNormalizedSchedule(subscribing))
+                    {
+                        var first = publishing.FirstOrDefault() ?? subscribing[0];
+                        diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                            MessagePackScheduleDiagnosticId,
+                            first.DeclaringType + "." + first.MemberName,
+                            first.MemberName,
+                            "MessagePack members in one direction must share one normalized schedule."));
+                    }
+                }
+
                 if (HasMixedDirectionalQosContract(members))
                 {
                     var first = members.First(member => member.Mode == 1 || member.Mode == 3);
@@ -871,7 +953,23 @@ namespace Unity.FoxgloveSDK.Editor
                     StringComparison.Ordinal);
 
             return string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal)
-                   || string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal);
+                   || string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                   || string.Equals(encoding, FoxRunGenerationDescriptorConstants.MessagePackEncoding, StringComparison.Ordinal);
+        }
+
+        private static bool HasMixedNormalizedSchedule(
+            IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            if (members == null || members.Count < 2)
+                return false;
+
+            var expected = members[0].NormalizedSchedule;
+            for (var index = 1; index < members.Count; index++)
+            {
+                if (!Equals(expected, members[index].NormalizedSchedule))
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsKnownSource(string provider, bool hasExplicitSource)

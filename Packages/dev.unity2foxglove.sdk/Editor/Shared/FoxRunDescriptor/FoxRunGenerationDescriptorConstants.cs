@@ -14,13 +14,14 @@ namespace Unity.FoxgloveSDK.Editor
         // Integer schema version embedded in descriptor JSON and recorded MCAP
         // metadata. Bump this together with GeneratorVersion for incompatible
         // descriptor-shape changes.
-        public const int DescriptorVersion = 4;
+        public const int DescriptorVersion = 5;
         // Descriptor/generator format version, not the package release version.
         // Bump when descriptor JSON changes in a backward-incompatible way.
-        public const string GeneratorVersion = "4.0.0";
+        public const string GeneratorVersion = "5.0.0";
         public const string InheritEncoding = "inherit";
         public const string ProtobufEncoding = "protobuf";
         public const string JsonEncoding = "json";
+        public const string MessagePackEncoding = "msgpack";
         public const string InheritSource = "inherit";
         public const string FoxgloveWebSocketSource = "foxglove-websocket";
         public const string Ros2NativeSource = "ros2-native";

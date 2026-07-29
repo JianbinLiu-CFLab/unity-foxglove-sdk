@@ -93,6 +93,36 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-A")]
+        public void RoslynAndReflectionLowerersSpellMessagePackIdentically()
+        {
+            var shape = BuildStringProtobufShape();
+            var roslyn = Assert.Single(Assert.Single(FoxRunRoslynGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunRoslynGenerationMember(
+                    "Demo", "State", "_state", "field",
+                    "System.Int32", "global::System.Int32",
+                    true, false, "", "/phase185/state", "Demo.State",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    encoding: (int)FoxRunEncoding.MessagePack,
+                    typeShape: shape)
+            }).Types).Members);
+            var reflection = Assert.Single(Assert.Single(FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "State", "_state", "field",
+                    "System.Int32", "global::System.Int32",
+                    true, false, "", "/phase185/state", "Demo.State",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
+                    encoding: (int)FoxRunEncoding.MessagePack,
+                    typeShape: shape)
+            }).Types).Members);
+
+            Assert.Equal("msgpack", roslyn.Encoding);
+            Assert.Equal(roslyn.Encoding, reflection.Encoding);
+        }
+
+        [Fact]
         public void DescriptorPersistsProviderCapabilitiesAndCopyShapeIdentity()
         {
             var model = BuildModel(2, 3, true, true, BuildShape("std_msgs/msg/String|Data:string"));

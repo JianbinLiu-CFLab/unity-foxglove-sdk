@@ -198,6 +198,18 @@ namespace Unity.FoxgloveSDK.Components
                                 }
                                 continue;
                             }
+                            if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
+                                    source.GetType().FullName,
+                                    info.Topic,
+                                    FoxRunFlow.Subscribe,
+                                    topology.Topology.SubscribeEncoding,
+                                    out _,
+                                    out var sessionDiagnostic))
+                            {
+                                if (string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                                    firstUnavailableDiagnostic = sessionDiagnostic;
+                                continue;
+                            }
                             pending.Add(new PendingRegistration(
                                 info.Topic,
                                 new Registration(

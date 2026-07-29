@@ -54,6 +54,142 @@ namespace Unity.FoxgloveSDK.Editor
     }
 
     /// <summary>
+    /// Canonical schedule semantics used to decide whether multiple members
+    /// can share one typed MessagePack topic transaction.
+    /// </summary>
+    public sealed class FoxRunNormalizedScheduleTuple : IEquatable<FoxRunNormalizedScheduleTuple>
+    {
+        public FoxRunNormalizedScheduleTuple(
+            int policy,
+            bool hasExplicitHz,
+            float hz,
+            float tolerance,
+            string onlyIf,
+            FoxRunConditionMemberKind conditionMemberKind)
+        {
+            Policy = policy;
+            HasExplicitHz = hasExplicitHz;
+            Hz = hz > 0f && !float.IsNaN(hz) && !float.IsInfinity(hz) ? hz : 0f;
+            Tolerance = tolerance >= 0f && !float.IsNaN(tolerance) && !float.IsInfinity(tolerance)
+                ? tolerance
+                : 0f;
+            OnlyIf = (onlyIf ?? string.Empty).Trim();
+            ConditionMemberKind = conditionMemberKind;
+        }
+
+        public int Policy { get; }
+        public bool HasExplicitHz { get; }
+        public float Hz { get; }
+        public float Tolerance { get; }
+        public string OnlyIf { get; }
+        public FoxRunConditionMemberKind ConditionMemberKind { get; }
+
+        public bool Equals(FoxRunNormalizedScheduleTuple other)
+            => other != null
+               && Policy == other.Policy
+               && HasExplicitHz == other.HasExplicitHz
+               && Hz.Equals(other.Hz)
+               && Tolerance.Equals(other.Tolerance)
+               && string.Equals(OnlyIf, other.OnlyIf, StringComparison.Ordinal)
+               && ConditionMemberKind == other.ConditionMemberKind;
+
+        public override bool Equals(object obj) => Equals(obj as FoxRunNormalizedScheduleTuple);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = Policy;
+                hash = (hash * 397) ^ HasExplicitHz.GetHashCode();
+                hash = (hash * 397) ^ Hz.GetHashCode();
+                hash = (hash * 397) ^ Tolerance.GetHashCode();
+                hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(OnlyIf);
+                hash = (hash * 397) ^ (int)ConditionMemberKind;
+                return hash;
+            }
+        }
+    }
+
+    /// <summary>Availability of one encoding variant in each FoxRun direction.</summary>
+    public sealed class FoxRunEncodingVariantAvailability
+    {
+        public FoxRunEncodingVariantAvailability(
+            string encoding,
+            bool publishAvailable,
+            bool subscribeAvailable,
+            string unavailableDiagnosticId = "",
+            string unavailableReason = "",
+            string publishUnavailableDiagnosticId = null,
+            string publishUnavailableReason = null,
+            string subscribeUnavailableDiagnosticId = null,
+            string subscribeUnavailableReason = null)
+        {
+            Encoding = encoding ?? string.Empty;
+            PublishAvailable = publishAvailable;
+            SubscribeAvailable = subscribeAvailable;
+            PublishUnavailableDiagnosticId = publishAvailable
+                ? string.Empty
+                : publishUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            PublishUnavailableReason = publishAvailable
+                ? string.Empty
+                : publishUnavailableReason ?? unavailableReason ?? string.Empty;
+            SubscribeUnavailableDiagnosticId = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            SubscribeUnavailableReason = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableReason ?? unavailableReason ?? string.Empty;
+        }
+
+        public string Encoding { get; }
+        public bool PublishAvailable { get; }
+        public bool SubscribeAvailable { get; }
+        public string PublishUnavailableDiagnosticId { get; }
+        public string PublishUnavailableReason { get; }
+        public string SubscribeUnavailableDiagnosticId { get; }
+        public string SubscribeUnavailableReason { get; }
+
+        /// <summary>
+        /// Compatibility alias for callers that inspect a single unavailable
+        /// direction. It is intentionally empty when both directions fail for
+        /// different reasons so an ambiguous diagnostic cannot be misreported.
+        /// </summary>
+        public string UnavailableDiagnosticId
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableDiagnosticId,
+                SubscribeAvailable,
+                SubscribeUnavailableDiagnosticId);
+
+        /// <summary>Compatibility alias; see <see cref="UnavailableDiagnosticId"/>.</summary>
+        public string UnavailableReason
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableReason,
+                SubscribeAvailable,
+                SubscribeUnavailableReason);
+
+        private static string SharedUnavailableValue(
+            bool publishAvailable,
+            string publishValue,
+            bool subscribeAvailable,
+            string subscribeValue)
+        {
+            if (publishAvailable)
+                return subscribeAvailable ? string.Empty : subscribeValue;
+            if (subscribeAvailable)
+                return publishValue;
+            if (string.IsNullOrEmpty(publishValue))
+                return subscribeValue;
+            if (string.IsNullOrEmpty(subscribeValue))
+                return publishValue;
+            return string.Equals(publishValue, subscribeValue, StringComparison.Ordinal)
+                ? publishValue
+                : string.Empty;
+        }
+    }
+
+    /// <summary>
     /// Host-independent semantic model shared by FoxRun emission, descriptor
     /// evidence, and validation so all hosts report the same contract they emit.
     /// </summary>
@@ -87,7 +223,8 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunGenerationModel FromMembers(IReadOnlyList<FoxRunGenerationMember> members)
         {
             var source = members ?? Array.Empty<FoxRunGenerationMember>();
-            var types = source
+            var normalized = ApplyMessagePackVariantAvailability(source);
+            var types = normalized
                 .GroupBy(member => new TypeKey(member.Namespace, member.ClassName))
                 .OrderBy(group => group.Key.DeclaringType, StringComparer.Ordinal)
                 .Select(group => new FoxRunGenerationType(group.Key.Namespace, group.Key.ClassName, group.ToList()))
@@ -97,6 +234,69 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationDescriptorConstants.DescriptorVersion,
                 FoxRunGenerationDescriptorConstants.GeneratorVersion,
                 typesAlreadySortedAndCopied: true);
+        }
+
+        private static IReadOnlyList<FoxRunGenerationMember> ApplyMessagePackVariantAvailability(
+            IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            var replacements = new Dictionary<FoxRunGenerationMember, FoxRunGenerationMember>();
+            foreach (var topicGroup in members
+                         .Where(member => member != null && !string.IsNullOrEmpty(member.Topic))
+                         .GroupBy(
+                             member => member.DeclaringType + "\n" + member.Topic,
+                             StringComparer.Ordinal))
+            {
+                var values = topicGroup.ToList();
+                var publishing = values
+                    .Where(member => member.Mode == 1 || member.Mode == 3)
+                    .ToList();
+                var subscribing = values
+                    .Where(member => member.Mode == 2 || member.Mode == 3)
+                    .ToList();
+                var streamCount = subscribing.Count(member => member.IsStream);
+                var ordinaryCount = subscribing.Count - streamCount;
+                var invalidSubscribeTopology = streamCount > 1
+                                               || (streamCount > 0 && ordinaryCount > 0);
+                var invalidPublishSchedule = HasMixedNormalizedSchedule(publishing);
+                var invalidSubscribeSchedule = HasMixedNormalizedSchedule(subscribing);
+
+                foreach (var member in values)
+                {
+                    replacements[member] = member.WithMessagePackVariantAvailability(
+                        invalidPublishSchedule,
+                        invalidSubscribeTopology,
+                        invalidSubscribeSchedule,
+                        invalidPublishShape:
+                            !FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                                member.TypeShape,
+                                member.CanonicalType),
+                        invalidSubscribeShape:
+                            !FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                                member.TypeShape,
+                                member.CanonicalType));
+                }
+            }
+
+            return members
+                .Select(member => replacements.TryGetValue(member, out var replacement)
+                    ? replacement
+                    : member)
+                .ToList()
+                .AsReadOnly();
+        }
+
+        private static bool HasMixedNormalizedSchedule(
+            IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            if (members == null || members.Count < 2)
+                return false;
+            var first = members[0].NormalizedSchedule;
+            for (var index = 1; index < members.Count; index++)
+            {
+                if (!Equals(first, members[index].NormalizedSchedule))
+                    return true;
+            }
+            return false;
         }
 
         private static IReadOnlyList<FoxRunGenerationType> CopyTypes(IReadOnlyList<FoxRunGenerationType> types)
@@ -242,6 +442,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
         public readonly bool IsStream;
+        public readonly FoxRunNormalizedScheduleTuple NormalizedSchedule;
+        public IReadOnlyList<FoxRunEncodingVariantAvailability> EncodingVariants { get; }
 
         public FoxRunGenerationMember(
             string ns,
@@ -282,6 +484,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
             bool isStream = false,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
+            FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null)
             : this(
                 ns,
@@ -323,6 +527,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosHistory,
                 qosDepth,
                 isStream,
+                encodingVariants,
+                normalizedSchedule,
                 protobufMetadata)
         {
         }
@@ -367,6 +573,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
             bool isStream = false,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
+            FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null)
             : this(
                 ns,
@@ -409,6 +617,8 @@ namespace Unity.FoxgloveSDK.Editor
                 qosHistory,
                 qosDepth,
                 isStream,
+                encodingVariants,
+                normalizedSchedule,
                 protobufMetadata)
         {
         }
@@ -454,6 +664,8 @@ namespace Unity.FoxgloveSDK.Editor
             string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
             int qosDepth = 0,
             bool isStream = false,
+            IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
+            FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null)
         {
             Namespace = ns ?? string.Empty;
@@ -548,7 +760,183 @@ namespace Unity.FoxgloveSDK.Editor
             CanonicalType = string.IsNullOrEmpty(canonicalType)
                 ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(SelectCanonicalSourceType())
                 : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
+            NormalizedSchedule = normalizedSchedule ?? new FoxRunNormalizedScheduleTuple(
+                Policy,
+                HasExplicitHz,
+                Hz,
+                Tolerance,
+                OnlyIf,
+                ConditionMemberKind);
+            EncodingVariants = CopyEncodingVariants(
+                encodingVariants ?? DefaultEncodingVariants(Encoding, Mode));
         }
+
+        internal FoxRunGenerationMember WithMessagePackVariantAvailability(
+            bool invalidPublishSchedule,
+            bool invalidSubscribeTopology,
+            bool invalidSubscribeSchedule,
+            bool invalidPublishShape,
+            bool invalidSubscribeShape)
+        {
+            var changed = false;
+            var values = new List<FoxRunEncodingVariantAvailability>(EncodingVariants.Count);
+            foreach (var variant in EncodingVariants)
+            {
+                if (!string.Equals(
+                        variant.Encoding,
+                        FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        StringComparison.Ordinal))
+                {
+                    values.Add(variant);
+                    continue;
+                }
+
+                var publishAvailable = variant.PublishAvailable
+                                       && !invalidPublishSchedule
+                                       && !invalidPublishShape;
+                var subscribeAvailable = variant.SubscribeAvailable
+                                         && !invalidSubscribeTopology
+                                         && !invalidSubscribeSchedule
+                                         && !invalidSubscribeShape;
+                var publishDiagnosticId = variant.PublishUnavailableDiagnosticId;
+                var publishReason = variant.PublishUnavailableReason;
+                if (variant.PublishAvailable && invalidPublishShape)
+                {
+                    publishDiagnosticId = "FOXRUN616";
+                    publishReason = "MessagePack Publish requires a supported bounded readable type shape.";
+                }
+                else if (variant.PublishAvailable && invalidPublishSchedule)
+                {
+                    publishDiagnosticId = "FOXRUN619";
+                    publishReason =
+                        "MessagePack members in one direction must share one normalized schedule.";
+                }
+
+                var subscribeDiagnosticId = variant.SubscribeUnavailableDiagnosticId;
+                var subscribeReason = variant.SubscribeUnavailableReason;
+                if (variant.SubscribeAvailable && invalidSubscribeShape)
+                {
+                    subscribeDiagnosticId = "FOXRUN616";
+                    subscribeReason =
+                        "MessagePack Subscribe requires a constructible DTO with writable members.";
+                }
+                else if (variant.SubscribeAvailable && invalidSubscribeTopology)
+                {
+                    subscribeDiagnosticId = "FOXRUN618";
+                    subscribeReason =
+                        "MessagePack subscribe topics must contain only ordinary members or exactly one stream.";
+                }
+                else if (variant.SubscribeAvailable && invalidSubscribeSchedule)
+                {
+                    subscribeDiagnosticId = "FOXRUN619";
+                    subscribeReason =
+                        "MessagePack members in one direction must share one normalized schedule.";
+                }
+
+                changed |= publishAvailable != variant.PublishAvailable
+                           || subscribeAvailable != variant.SubscribeAvailable
+                           || !string.Equals(
+                               publishDiagnosticId,
+                               variant.PublishUnavailableDiagnosticId,
+                               StringComparison.Ordinal)
+                           || !string.Equals(
+                               publishReason,
+                               variant.PublishUnavailableReason,
+                               StringComparison.Ordinal)
+                           || !string.Equals(
+                               subscribeDiagnosticId,
+                               variant.SubscribeUnavailableDiagnosticId,
+                               StringComparison.Ordinal)
+                           || !string.Equals(
+                               subscribeReason,
+                               variant.SubscribeUnavailableReason,
+                               StringComparison.Ordinal);
+                values.Add(new FoxRunEncodingVariantAvailability(
+                    variant.Encoding,
+                    publishAvailable,
+                    subscribeAvailable,
+                    publishUnavailableDiagnosticId: publishDiagnosticId,
+                    publishUnavailableReason: publishReason,
+                    subscribeUnavailableDiagnosticId: subscribeDiagnosticId,
+                    subscribeUnavailableReason: subscribeReason));
+            }
+
+            if (!changed)
+                return this;
+
+            return new FoxRunGenerationMember(
+                Namespace,
+                ClassName,
+                MemberName,
+                MemberKind,
+                RawObservedTypeName,
+                EmissionTypeName,
+                CanonicalType,
+                IsValueType,
+                IsArray,
+                ElementTypeName,
+                Topic,
+                DeclaredHz,
+                SchemaName,
+                Policy,
+                DeclaredTolerance,
+                HostKind,
+                RawMemberOrder,
+                ConditionalSymbols,
+                OnlyIf,
+                IsAggregateMember,
+                JsonFieldName,
+                Mode,
+                Encoding,
+                ProtobufMetadata?.FieldNumber ?? 0,
+                TypeShape,
+                Source,
+                QosProfile,
+                GeneratesWebSocketCodec,
+                GeneratesRos2NativeRegistration,
+                Ros2MessageShape,
+                Ros2CustomDtoShape,
+                Ros2ContractKind,
+                NamedArgumentPresence,
+                ConditionMemberKind,
+                Targets,
+                QosReliability,
+                QosDurability,
+                QosHistory,
+                QosDepth,
+                IsStream,
+                values.AsReadOnly(),
+                NormalizedSchedule,
+                ProtobufMetadata);
+        }
+
+        private static IReadOnlyList<FoxRunEncodingVariantAvailability> DefaultEncodingVariants(
+            string encoding,
+            int mode)
+        {
+            var publish = mode == 1 || mode == 3;
+            var subscribe = mode == 2 || mode == 3;
+            var values = new List<FoxRunEncodingVariantAvailability>();
+            if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
+            {
+                values.Add(new FoxRunEncodingVariantAvailability(
+                    FoxRunGenerationDescriptorConstants.JsonEncoding, publish, subscribe));
+                values.Add(new FoxRunEncodingVariantAvailability(
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding, publish, subscribe));
+                values.Add(new FoxRunEncodingVariantAvailability(
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding, publish, subscribe));
+            }
+            else
+            {
+                values.Add(new FoxRunEncodingVariantAvailability(encoding, publish, subscribe));
+            }
+            return values;
+        }
+
+        private static IReadOnlyList<FoxRunEncodingVariantAvailability> CopyEncodingVariants(
+            IReadOnlyList<FoxRunEncodingVariantAvailability> values)
+            => new List<FoxRunEncodingVariantAvailability>(
+                values ?? Array.Empty<FoxRunEncodingVariantAvailability>()).AsReadOnly();
 
         private string SelectCanonicalSourceType()
         {
@@ -635,6 +1023,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case 0: return FoxRunGenerationDescriptorConstants.InheritEncoding;
                 case 1: return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
                 case 2: return FoxRunGenerationDescriptorConstants.JsonEncoding;
+                case 3: return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
                 default: return string.Empty;
             }
         }

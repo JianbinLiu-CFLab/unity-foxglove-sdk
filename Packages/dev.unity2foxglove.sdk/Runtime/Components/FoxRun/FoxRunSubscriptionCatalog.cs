@@ -79,7 +79,14 @@ namespace Unity.FoxgloveSDK.Components
                     ["topic"] = contract.Topic,
                     ["flow"] = contract.Flow,
                     ["encoding"] = FoxRunEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
-                    ["schemaName"] = contract.SchemaName,
+                    ["schemaName"] = contract.WireSchemaName,
+                    ["wireSchemaName"] = contract.WireSchemaName,
+                    ["logicalSchemaName"] = string.IsNullOrWhiteSpace(contract.LogicalSchemaName)
+                        ? contract.DeclaringType
+                        : contract.LogicalSchemaName,
+                    ["subscribeAvailable"] = contract.SubscribeAvailable,
+                    ["unavailableDiagnosticId"] = contract.SubscribeUnavailableDiagnosticId,
+                    ["unavailableReason"] = contract.SubscribeUnavailableReason,
                     ["hz"] = contract.Hz,
                     ["isStream"] = entry.IsStream,
                     ["writableFieldCount"] = contract.Fields?.Count ?? 0,
@@ -118,15 +125,14 @@ namespace Unity.FoxgloveSDK.Components
                              .Where(contract => contract != null
                                                 && IsSubscriptionFlow(contract.Flow)
                                                 && IsWebSocketEncoding(contract.Encoding))
-                             .GroupBy(contract => new ContractKey(contract.Topic, contract.Flow)))
+                             .GroupBy(contract => contract.Topic, StringComparer.Ordinal))
                 {
                     var variants = group.ToArray();
                     var declared = ResolveDeclaredEncoding(variants);
-                    var mode = ParseFlow(group.Key.Flow);
                     if (!TryResolveToWebSocket(
                             manifest,
                             variants,
-                            mode,
+                            FoxRunFlow.Subscribe,
                             declared,
                             defaultProvider,
                             out var isStream))
@@ -136,7 +142,9 @@ namespace Unity.FoxgloveSDK.Components
                     var effective = FoxRunEncodingResolver.Resolve(declared, subscriptionDefault);
                     var protocolEncoding = FoxRunEncodingResolver.ToProtocolEncoding(effective);
                     var selected = variants.FirstOrDefault(contract =>
-                        string.Equals(contract.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? variants[0];
+                        string.Equals(contract.Encoding, protocolEncoding, StringComparison.Ordinal));
+                    if (selected == null)
+                        continue;
                     yield return new CatalogContract(selected, effective, isStream);
                 }
             }
@@ -159,7 +167,7 @@ namespace Unity.FoxgloveSDK.Components
                 .Where(binding => binding != null
                                   && string.Equals(binding.DeclaringType, contract.DeclaringType, StringComparison.Ordinal)
                                   && string.Equals(binding.Topic, contract.Topic, StringComparison.Ordinal)
-                                  && string.Equals(binding.Flow, contract.Flow, StringComparison.Ordinal))
+                                  && BindingSupportsDirection(binding.Flow, mode))
                 .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToArray();
             if (bindings.Length == 0)
@@ -232,7 +240,9 @@ namespace Unity.FoxgloveSDK.Components
                     ["type"] = field.Type,
                     ["nullable"] = field.Nullable,
                     ["array"] = field.Array,
-                    ["protobufFieldNumber"] = field.ProtobufFieldNumber
+                    ["protobufFieldNumber"] = field.ProtobufFieldNumber,
+                    ["typeShape"] = BuildTypeShape(field.TypeShape),
+                    ["normalizedSchedule"] = BuildNormalizedSchedule(field.NormalizedSchedule)
                 });
             }
             return values;
@@ -249,20 +259,99 @@ namespace Unity.FoxgloveSDK.Components
 
         private static FoxRunEncoding ResolveDeclaredEncoding(IReadOnlyList<FoxRunSchemaContractInfo> variants)
         {
-            var hasJson = variants.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
-            var hasProtobuf = variants.Any(contract => string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal));
-            return hasJson && hasProtobuf
-                ? (FoxRunEncoding)0
-                : hasProtobuf ? FoxRunEncoding.Protobuf : FoxRunEncoding.JSON;
+            var concrete = variants
+                .Select(contract => FoxRunEncodingResolver.FromProtocolEncoding(contract.Encoding))
+                .Distinct()
+                .ToArray();
+            return concrete.Length == 1 ? concrete[0] : (FoxRunEncoding)0;
         }
 
         private static bool IsSubscriptionFlow(string flow)
             => string.Equals(flow, "Subscribe", StringComparison.Ordinal)
                || string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal);
 
+        private static bool BindingSupportsDirection(string flow, FoxRunFlow direction)
+        {
+            if (direction == FoxRunFlow.Subscribe)
+            {
+                return string.Equals(flow, "Subscribe", StringComparison.Ordinal)
+                       || string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal);
+            }
+
+            if (direction == FoxRunFlow.Publish)
+            {
+                return string.Equals(flow, "Publish", StringComparison.Ordinal)
+                       || string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal);
+            }
+
+            return string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal);
+        }
+
         private static bool IsWebSocketEncoding(string encoding)
             => string.Equals(encoding, "json", StringComparison.Ordinal)
-               || string.Equals(encoding, "protobuf", StringComparison.Ordinal);
+               || string.Equals(encoding, "protobuf", StringComparison.Ordinal)
+               || string.Equals(encoding, "msgpack", StringComparison.Ordinal);
+
+        private static JToken BuildTypeShape(FoxRunTypeShapeInfo shape)
+        {
+            if (shape == null)
+                return JValue.CreateNull();
+
+            var fields = new JArray();
+            foreach (var field in shape.Fields)
+            {
+                fields.Add(new JObject
+                {
+                    ["jsonName"] = field.JsonName,
+                    ["memberName"] = field.MemberName,
+                    ["repeated"] = field.Repeated,
+                    ["collectionKind"] = field.RepeatedCollectionKind.ToString(),
+                    ["canAssign"] = field.CanAssign,
+                    ["nullable"] = field.Nullable,
+                    ["typeShape"] = BuildTypeShape(field.TypeShape)
+                });
+            }
+
+            var enumValues = new JArray();
+            foreach (var value in shape.EnumValues)
+            {
+                enumValues.Add(new JObject
+                {
+                    ["name"] = value.Name,
+                    ["number"] = value.Number
+                });
+            }
+
+            return new JObject
+            {
+                ["kind"] = shape.Kind.ToString(),
+                ["typeName"] = shape.TypeName,
+                ["canonicalType"] = shape.CanonicalType,
+                ["nullable"] = shape.Nullable,
+                ["collectionKind"] = shape.CollectionKind.ToString(),
+                ["binary"] = shape.IsBinary,
+                ["canConstruct"] = shape.CanConstruct,
+                ["elementShape"] = BuildTypeShape(shape.ElementShape),
+                ["fields"] = fields,
+                ["enumValues"] = enumValues
+            };
+        }
+
+        private static JToken BuildNormalizedSchedule(FoxRunNormalizedScheduleInfo schedule)
+        {
+            if (schedule == null)
+                return JValue.CreateNull();
+
+            return new JObject
+            {
+                ["policy"] = schedule.Policy,
+                ["hasExplicitHz"] = schedule.HasExplicitHz,
+                ["hz"] = schedule.Hz,
+                ["tolerance"] = schedule.Tolerance,
+                ["onlyIf"] = schedule.OnlyIf,
+                ["conditionMemberKind"] = schedule.ConditionMemberKind
+            };
+        }
 
         private static FoxRunFlow ParseFlow(string flow)
         {
@@ -336,7 +425,9 @@ namespace Unity.FoxgloveSDK.Components
                 ["type"] = TypeSchema("string"),
                 ["nullable"] = TypeSchema("boolean"),
                 ["array"] = TypeSchema("boolean"),
-                ["protobufFieldNumber"] = TypeSchema("integer")
+                ["protobufFieldNumber"] = TypeSchema("integer"),
+                ["typeShape"] = TypeSchema("object"),
+                ["normalizedSchedule"] = TypeSchema("object")
             };
             var contracts = new JObject
             {
@@ -345,6 +436,11 @@ namespace Unity.FoxgloveSDK.Components
                 ["flow"] = TypeSchema("string"),
                 ["encoding"] = TypeSchema("string"),
                 ["schemaName"] = TypeSchema("string"),
+                ["wireSchemaName"] = TypeSchema("string"),
+                ["logicalSchemaName"] = TypeSchema("string"),
+                ["subscribeAvailable"] = TypeSchema("boolean"),
+                ["unavailableDiagnosticId"] = TypeSchema("string"),
+                ["unavailableReason"] = TypeSchema("string"),
                 ["hz"] = TypeSchema("number"),
                 ["isStream"] = TypeSchema("boolean"),
                 ["writableFieldCount"] = TypeSchema("integer"),

@@ -144,6 +144,77 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-A")]
+        public void UnavailableInheritedMessagePackSubscribeFailsBeforeRegistrationWithoutCodecFallback()
+        {
+            const string topic = "/phase185/unavailable-subscribe";
+            var source = new UnavailableMessagePackInput(topic);
+            var declaringType = source.GetType().FullName!.Replace('+', '.');
+            var manifest = new FoxRunSchemaManifestInfo(
+                3,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "phase185-session-gate",
+                "phase185-session-gate",
+                new[]
+                {
+                    new FoxRunSchemaTypeInfo(
+                        declaringType,
+                        new[]
+                        {
+                            new FoxRunSchemaContractInfo(
+                                declaringType,
+                                topic,
+                                string.Empty,
+                                "msgpack",
+                                "msgpack",
+                                "msgpack",
+                                "policy",
+                                "FixedRate",
+                                10f,
+                                0f,
+                                Array.Empty<FoxRunSchemaFieldInfo>(),
+                                flow: "Subscribe",
+                                subscribeAvailable: false,
+                                unavailableDiagnosticId: "FOXRUN618",
+                                unavailableReason: "incompatible inbound topology")
+                        })
+                });
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove,
+                DefaultSubscriptionEncoding = FoxRunEncoding.MessagePack
+            };
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+                router.Register(source, diagnostics.Add);
+
+                var result = router.Dispatch(
+                    topic,
+                    Array.Empty<byte>(),
+                    "msgpack",
+                    1);
+
+                Assert.Equal(FoxRunInputDispatchStatus.UnknownTopic, result.Status);
+                Assert.Equal(0, source.StageCount);
+                var diagnostic = Assert.Single(diagnostics);
+                Assert.Contains("FOXRUN618", diagnostic, StringComparison.Ordinal);
+                Assert.DoesNotContain("protobuf", diagnostic, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("json", diagnostic, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                router.Unregister(source);
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
         public void RouterRegistersFoxgloveInputWhenFullDuplexExplicitQosAlsoResolvesNativePublish()
         {
             var input = new ExplicitQosInheritedTopologyInput("/phase184/qos/native-publish");
@@ -1349,6 +1420,41 @@ namespace Demo
             public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
             {
                 ApplyCount++;
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class UnavailableMessagePackInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            internal UnavailableMessagePackInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(
+                    topic,
+                    (FoxRunEncoding)0,
+                    FoxRunFlow.Subscribe,
+                    FoxRunEndpoint.Foxglove,
+                    hasExplicitSource: false,
+                    hasExplicitEncoding: false,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false);
+            }
+
+            internal int StageCount { get; private set; }
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                StageCount++;
                 error = string.Empty;
                 return true;
             }
