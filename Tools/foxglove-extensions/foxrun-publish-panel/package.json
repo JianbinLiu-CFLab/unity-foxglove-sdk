@@ -1,7 +1,7 @@
 {
   "name": "foxrun-publish-panel",
   "displayName": "FoxRun Publish",
-  "description": "Publish JSON and explicit Protobuf FoxRun subscription contracts to Unity.",
+  "description": "Publish typed JSON, Protobuf, and MessagePack FoxRun subscription contracts to Unity.",
   "publisher": "unity2foxglove",
   "version": "0.1.0",
   "license": "Apache-2.0",

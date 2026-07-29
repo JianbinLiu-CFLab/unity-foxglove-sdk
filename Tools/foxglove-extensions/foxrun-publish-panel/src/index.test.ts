@@ -3,6 +3,7 @@
 // @vitest-environment jsdom
 
 import type { PanelExtensionContext } from "@foxglove/extension";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   JsonTopicAdvertisementTracker,
@@ -47,9 +48,137 @@ const summary = {
   ],
 };
 
+const int32Shape = {
+  kind: "Canonical",
+  typeName: "",
+  canonicalType: "int32",
+  nullable: false,
+  collectionKind: "None",
+  binary: false,
+  canConstruct: true,
+  elementShape: null,
+  fields: [],
+  enumValues: [],
+};
+
 describe("FoxRun Publish catalog state", () => {
   it("sorts summary contracts without requiring detail fields", () => {
     expect(normalizeCatalog(summary)?.contracts.map((contract) => contract.topic)).toEqual(["/alpha", "/zeta"]);
+  });
+
+  it("keeps only canonical subscribe rows and accepts MessagePack input metadata", () => {
+    const contracts = [
+      {
+        ...summary.contracts[0],
+        topic: "/duplex",
+        flow: "Publish",
+        encoding: "json",
+      },
+      {
+        ...summary.contracts[0],
+        topic: "/duplex",
+        flow: "Subscribe",
+        encoding: "msgpack",
+        schemaName: "",
+        wireSchemaName: "",
+        logicalSchemaName: "Demo.Input",
+        subscribeAvailable: true,
+        unavailableDiagnosticId: "",
+        unavailableReason: "",
+        protobufDescriptorAvailable: false,
+        protobufDescriptorDigest: "",
+      },
+      {
+        ...summary.contracts[0],
+        topic: "/output-only",
+        flow: "Publish",
+        encoding: "protobuf",
+      },
+    ];
+
+    expect(normalizeCatalog({ ...summary, contracts })?.contracts).toEqual([
+      expect.objectContaining({
+        topic: "/duplex",
+        flow: "Subscribe",
+        encoding: "msgpack",
+      }),
+    ]);
+  });
+
+  it("retains one unavailable MessagePack input reason without codec fallback", () => {
+    const contracts = [{
+      ...summary.contracts[0],
+      flow: "Subscribe",
+      encoding: "msgpack",
+      schemaName: "",
+      wireSchemaName: "",
+      logicalSchemaName: "Demo.Input",
+      subscribeAvailable: false,
+      unavailableDiagnosticId: "FOXRUN618",
+      unavailableReason: "mixed ordinary and stream input",
+      protobufDescriptorAvailable: false,
+      protobufDescriptorDigest: "",
+    }];
+
+    expect(normalizeCatalog({ ...summary, contracts })?.contracts).toEqual([
+      expect.objectContaining({
+        encoding: "msgpack",
+        subscribeAvailable: false,
+        unavailableDiagnosticId: "FOXRUN618",
+        unavailableReason: "mixed ordinary and stream input",
+      }),
+    ]);
+  });
+
+  it("reads recursive MessagePack type shapes while keeping wire and logical schema identities separate", () => {
+    const catalog = {
+      ...summary,
+      contracts: [{
+        ...summary.contracts[0],
+        flow: "Subscribe",
+        encoding: "msgpack",
+        schemaName: "",
+        wireSchemaName: "",
+        logicalSchemaName: "Demo.Input",
+        subscribeAvailable: true,
+        unavailableDiagnosticId: "",
+        unavailableReason: "",
+        protobufDescriptorAvailable: false,
+        protobufDescriptorDigest: "",
+        fields: [{
+          name: "value",
+          type: "int32",
+          nullable: false,
+          array: false,
+          protobufFieldNumber: 0,
+          typeShape: int32Shape,
+        }],
+      }],
+    };
+
+    expect(readContractDetail(catalog, "/zeta")).toEqual(
+      expect.objectContaining({
+        encoding: "msgpack",
+        schemaName: "",
+        wireSchemaName: "",
+        logicalSchemaName: "Demo.Input",
+        fields: [
+          expect.objectContaining({
+            typeShape: expect.objectContaining({ canonicalType: "int32" }),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("locks installed extension metadata to JSON, Protobuf, and MessagePack", () => {
+    const metadata = JSON.parse(
+      readFileSync("package.json", "utf8"),
+    ) as { description?: string };
+
+    expect(metadata.description).toContain("JSON");
+    expect(metadata.description).toContain("Protobuf");
+    expect(metadata.description).toContain("MessagePack");
   });
 
   it("rejects the retired flowMode and rateHz catalog aliases", () => {
@@ -129,7 +258,14 @@ describe("FoxRun Publish catalog state", () => {
     });
 
     expect(parseFieldValue(field("float32"), "10.5")).toBe(10.5);
-    expect(parseFieldValue(field("uint64"), "18446744073709551615")).toBe("18446744073709551615");
+    expect(parseFieldValue(
+      field("uint64"),
+      "18446744073709551615",
+      undefined,
+      "msgpack",
+    )).toBe(18_446_744_073_709_551_615n);
+    expect(parseFieldValue(field("uint64"), "18446744073709551615"))
+      .toBe("18446744073709551615");
     expect(parseFieldValue(field("int32", true), "[1, 2]")).toEqual([1, 2]);
     expect(parseFieldValue(field("bool"), "", true)).toBe(true);
     expect(() => parseFieldValue(field("float32"), "not-a-number")).toThrow("finite number");

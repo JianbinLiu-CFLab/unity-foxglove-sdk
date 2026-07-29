@@ -5,15 +5,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildClientAdvertise,
   buildMessageDataFrame,
+  DirectFoxRunChannelTracker,
   DirectFoxRunProtocolClient,
-  DirectProtobufChannelTracker,
   waitForSocketOpen,
   withToken,
 } from "./protocol";
 
 describe("FoxRun direct protocol helpers", () => {
   it("advertises protobuf before direct publication", () => {
-    expect(JSON.parse(buildClientAdvertise("/phase176/input", 176001))).toEqual({
+    expect(JSON.parse(buildClientAdvertise("/phase176/input", 176001, "protobuf"))).toEqual({
       op: "advertise",
       channels: [{ id: 176001, topic: "/phase176/input", encoding: "protobuf" }],
     });
@@ -42,23 +42,79 @@ describe("FoxRun direct protocol helpers", () => {
 
   it("reuses one advertised channel for repeat sends and releases it before changing topics", () => {
     let nextChannelId = 176001;
-    const tracker = new DirectProtobufChannelTracker(() => nextChannelId++);
+    const tracker = new DirectFoxRunChannelTracker(() => nextChannelId++);
 
-    expect(tracker.begin("/phase176/target")).toEqual({
+    expect(tracker.begin("/phase176/target", "protobuf")).toEqual({
       channelId: 176001,
       advertise: true,
       unadvertiseChannelId: undefined,
     });
-    expect(tracker.begin("/phase176/target")).toEqual({
+    expect(tracker.begin("/phase176/target", "protobuf")).toEqual({
       channelId: 176001,
       advertise: false,
       unadvertiseChannelId: undefined,
     });
     expect(nextChannelId).toBe(176002);
-    expect(tracker.begin("/phase176/other")).toEqual({
+    expect(tracker.begin("/phase176/other", "protobuf")).toEqual({
       channelId: 176002,
       advertise: true,
       unadvertiseChannelId: 176001,
+    });
+  });
+
+  it("uses one shared socket and pair-keyed channels across Protobuf and MessagePack transitions", async () => {
+    const factory = new ControlledSocketFactory();
+    const client = new DirectFoxRunProtocolClient(factory.create);
+    const endpoint = "ws://127.0.0.1:8765";
+    const first = client.publish(
+      endpoint,
+      "session",
+      "/phase185/input",
+      "protobuf",
+      new Uint8Array([1]),
+    );
+    factory.sockets[0]!.open();
+    await first;
+    await client.publish(
+      endpoint,
+      "session",
+      "/phase185/input",
+      "protobuf",
+      new Uint8Array([2]),
+    );
+    await client.publish(
+      endpoint,
+      "session",
+      "/phase185/input",
+      "msgpack",
+      new Uint8Array([3]),
+    );
+    await client.publish(
+      endpoint,
+      "session",
+      "/phase185/input",
+      "protobuf",
+      new Uint8Array([4]),
+    );
+
+    expect(factory.sockets).toHaveLength(1);
+    const sent = factory.sockets[0]!.sent;
+    expect(JSON.parse(sent[0] as string)).toMatchObject({
+      channels: [{ id: 176001, topic: "/phase185/input", encoding: "protobuf" }],
+    });
+    expect(JSON.parse(sent[3] as string)).toEqual({
+      op: "unadvertise",
+      channelIds: [176001],
+    });
+    expect(JSON.parse(sent[4] as string)).toMatchObject({
+      channels: [{ id: 176002, topic: "/phase185/input", encoding: "msgpack" }],
+    });
+    expect(JSON.parse(sent[6] as string)).toEqual({
+      op: "unadvertise",
+      channelIds: [176002],
+    });
+    expect(JSON.parse(sent[7] as string)).toMatchObject({
+      channels: [{ id: 176003, topic: "/phase185/input", encoding: "protobuf" }],
     });
   });
 
@@ -73,8 +129,8 @@ describe("FoxRun direct protocol helpers", () => {
     const factory = new ControlledSocketFactory();
     const client = new DirectFoxRunProtocolClient(factory.create);
     const payload = new Uint8Array([0x0d, 0, 0, 0x20, 0x41]);
-    const first = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", payload);
-    const second = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", payload);
+    const first = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", payload);
+    const second = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", payload);
     const both = Promise.all([first, second]);
 
     expect(factory.sockets).toHaveLength(1);
@@ -93,10 +149,14 @@ describe("FoxRun direct protocol helpers", () => {
   it("keeps a replacement connection when an invalidated opener later signals open", async () => {
     const factory = new ControlledSocketFactory();
     const client = new DirectFoxRunProtocolClient(factory.create);
-    const oldPublish = client.publish("ws://127.0.0.1:8765", "old", "/phase182/old", new Uint8Array([1]));
+    const oldPublish = client.publish(
+      "ws://127.0.0.1:8765", "old", "/phase182/old", "protobuf", new Uint8Array([1]),
+    );
     const oldFailure = oldPublish.catch((error: unknown) => error);
     const oldSocket = factory.sockets[0]!;
-    const replacement = client.publish("ws://127.0.0.1:8766", "new", "/phase182/new", new Uint8Array([2]));
+    const replacement = client.publish(
+      "ws://127.0.0.1:8766", "new", "/phase182/new", "protobuf", new Uint8Array([2]),
+    );
 
     expect(factory.sockets).toHaveLength(2);
     expect(oldSocket.closeCalls).toBe(1);
@@ -106,7 +166,9 @@ describe("FoxRun direct protocol helpers", () => {
 
     await expect(oldFailure).resolves.toBeInstanceOf(Error);
     await expect(replacement).resolves.toBeUndefined();
-    await expect(client.publish("ws://127.0.0.1:8766", "new", "/phase182/new", new Uint8Array([3])))
+    await expect(client.publish(
+      "ws://127.0.0.1:8766", "new", "/phase182/new", "protobuf", new Uint8Array([3]),
+    ))
       .resolves.toBeUndefined();
     expect(factory.sockets).toHaveLength(2);
     expect(oldSocket.sent).toEqual([]);
@@ -116,7 +178,9 @@ describe("FoxRun direct protocol helpers", () => {
   it("makes an opening waiter fail safely after explicit close and never sends its late open", async () => {
     const factory = new ControlledSocketFactory();
     const client = new DirectFoxRunProtocolClient(factory.create);
-    const publish = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([1]));
+    const publish = client.publish(
+      "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([1]),
+    );
     const socket = factory.sockets[0]!;
 
     client.close();
@@ -129,13 +193,17 @@ describe("FoxRun direct protocol helpers", () => {
   it("clears a failed opening attempt so a retry owns one fresh socket", async () => {
     const factory = new ControlledSocketFactory();
     const client = new DirectFoxRunProtocolClient(factory.create);
-    const first = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([1]));
+    const first = client.publish(
+      "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([1]),
+    );
     const failedSocket = factory.sockets[0]!;
 
     failedSocket.fail();
     await expect(first).rejects.toThrow("Could not open");
 
-    const retry = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([2]));
+    const retry = client.publish(
+      "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([2]),
+    );
     expect(factory.sockets).toHaveLength(2);
     factory.sockets[1]!.open();
 
@@ -147,14 +215,18 @@ describe("FoxRun direct protocol helpers", () => {
     try {
       const factory = new ControlledSocketFactory();
       const client = new DirectFoxRunProtocolClient(factory.create);
-      const first = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([1]));
+      const first = client.publish(
+        "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([1]),
+      );
       const firstFailure = expect(first).rejects.toThrow("Timed out");
 
       await vi.advanceTimersByTimeAsync(10_000);
       await firstFailure;
       expect(factory.sockets[0]!.closeCalls).toBe(1);
 
-      const retry = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([2]));
+      const retry = client.publish(
+        "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([2]),
+      );
       expect(factory.sockets).toHaveLength(2);
       factory.sockets[1]!.open();
       await expect(retry).resolves.toBeUndefined();
@@ -166,11 +238,15 @@ describe("FoxRun direct protocol helpers", () => {
   it("advertises again on a replacement after releasing the old channel", async () => {
     const factory = new ControlledSocketFactory();
     const client = new DirectFoxRunProtocolClient(factory.create);
-    const first = client.publish("ws://127.0.0.1:8765", "session", "/phase182/target", new Uint8Array([1]));
+    const first = client.publish(
+      "ws://127.0.0.1:8765", "session", "/phase182/target", "protobuf", new Uint8Array([1]),
+    );
     factory.sockets[0]!.open();
     await expect(first).resolves.toBeUndefined();
 
-    const replacement = client.publish("ws://127.0.0.1:8766", "session", "/phase182/target", new Uint8Array([2]));
+    const replacement = client.publish(
+      "ws://127.0.0.1:8766", "session", "/phase182/target", "protobuf", new Uint8Array([2]),
+    );
     const replacementSocket = factory.sockets[1]!;
     replacementSocket.open();
     await expect(replacement).resolves.toBeUndefined();
@@ -178,6 +254,41 @@ describe("FoxRun direct protocol helpers", () => {
     expect(JSON.parse(replacementSocket.sent[0] as string)).toEqual({
       op: "advertise",
       channels: [{ id: 176002, topic: "/phase182/target", encoding: "protobuf" }],
+    });
+  });
+
+  it("releases advertisement ownership when the shared socket closes", async () => {
+    const factory = new ControlledSocketFactory();
+    const client = new DirectFoxRunProtocolClient(factory.create);
+    const first = client.publish(
+      "ws://127.0.0.1:8765",
+      "session",
+      "/phase185/target",
+      "msgpack",
+      new Uint8Array([1]),
+    );
+    factory.sockets[0]!.open();
+    await first;
+    factory.sockets[0]!.close();
+
+    const retry = client.publish(
+      "ws://127.0.0.1:8765",
+      "session",
+      "/phase185/target",
+      "msgpack",
+      new Uint8Array([2]),
+    );
+    expect(factory.sockets).toHaveLength(2);
+    factory.sockets[1]!.open();
+    await retry;
+
+    expect(JSON.parse(factory.sockets[1]!.sent[0] as string)).toEqual({
+      op: "advertise",
+      channels: [{
+        id: 176002,
+        topic: "/phase185/target",
+        encoding: "msgpack",
+      }],
     });
   });
 });

@@ -174,6 +174,31 @@ namespace Unity.FoxgloveSDK.Components
             byte[] payload,
             ulong logTimeNs) { }
 
+        public void PublishFoxRunMessagePackBytes(
+            string topic,
+            byte[] payload,
+            ulong logTimeNs) { }
+
+        public bool TryPrepareFoxRunMessagePackRecording(
+            string topic,
+            out uint channelId,
+            out string reason)
+        {
+            channelId = 0;
+            reason = string.Empty;
+            return false;
+        }
+
+        public bool TryPublishFoxRunMessagePackRecording(
+            string topic,
+            byte[] payload,
+            ulong logTimeNs,
+            out string reason)
+        {
+            reason = string.Empty;
+            return false;
+        }
+
         public bool TryPrepareFoxRunRos2BridgePublish(
             string topic,
             string schemaName,

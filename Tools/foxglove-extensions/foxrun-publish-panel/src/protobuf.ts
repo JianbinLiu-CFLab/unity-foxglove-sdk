@@ -4,13 +4,9 @@
 // Module: Tools/foxglove-extensions/foxrun-publish-panel
 // Purpose: Strict, descriptor-derived scalar Protobuf encoder for direct FoxRun publication.
 
-export type FoxRunSubscriptionField = {
-  name: string;
-  type: string;
-  nullable: boolean;
-  array: boolean;
-  protobufFieldNumber: number;
-};
+import type { FoxRunSubscriptionField } from "./msgpack";
+
+export type { FoxRunSubscriptionField } from "./msgpack";
 
 const MAX_FIELD_NUMBER = 536_870_911;
 const FIRST_RESERVED_FIELD_NUMBER = 19_000;

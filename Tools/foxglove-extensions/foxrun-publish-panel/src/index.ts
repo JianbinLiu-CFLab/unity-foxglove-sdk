@@ -2,21 +2,36 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tools/foxglove-extensions/foxrun-publish-panel
-// Purpose: Catalog-driven FoxRun Publish panel with explicit JSON and Protobuf wire paths.
+// Purpose: Catalog-driven FoxRun Publish panel with typed JSON, Protobuf, and MessagePack wire paths.
 
 import { ExtensionContext, PanelExtensionContext } from "@foxglove/extension";
-import { DirectFoxRunProtocolClient } from "./protocol";
-import { encodeProtobufMessage, requireProtobufDescriptor, type FoxRunSubscriptionField } from "./protobuf";
+import {
+  DirectFoxRunProtocolClient,
+  type DirectFoxRunEncoding,
+} from "./protocol";
+import {
+  encodeMessagePackMessage,
+  type FoxRunSubscriptionField,
+  type FoxRunTypeShape,
+} from "./msgpack";
+import { encodeProtobufMessage, requireProtobufDescriptor } from "./protobuf";
 
 const CATALOG_SERVICE = "/foxrun/subscription-contracts";
 const DEFAULT_ENDPOINT = "ws://127.0.0.1:8765";
+
+type FoxRunCatalogEncoding = "json" | DirectFoxRunEncoding;
 
 type SubscriptionContractSummary = {
   declaringType: string;
   topic: string;
   flow: string;
-  encoding: "json" | "protobuf";
+  encoding: FoxRunCatalogEncoding;
   schemaName: string;
+  wireSchemaName: string;
+  logicalSchemaName: string;
+  subscribeAvailable: boolean;
+  unavailableDiagnosticId: string;
+  unavailableReason: string;
   hz: number;
   isStream: boolean;
   writableFieldCount: number;
@@ -109,7 +124,9 @@ export function normalizeCatalog(value: unknown): SubscriptionCatalog | undefine
     return undefined;
   }
 
-  const contracts = raw.contracts.filter(isSubscriptionContractSummary)
+  const contracts = raw.contracts
+    .map(normalizeSubscriptionContractSummary)
+    .filter((contract): contract is SubscriptionContractSummary => contract != undefined)
     .sort((left, right) => left.topic.localeCompare(right.topic));
   return {
     version: raw.version,
@@ -132,11 +149,14 @@ export function readContractDetail(value: unknown, topic: string): SubscriptionC
   }
   const rawDetail = rawContracts.find((contract) => contract != undefined
     && typeof contract === "object"
-    && (contract as { topic?: unknown }).topic === topic) as {
+    && (contract as { topic?: unknown }).topic === topic
+    && (contract as { flow?: unknown }).flow === "Subscribe") as {
       fields?: unknown;
       protobufDescriptorBase64?: unknown;
     } | undefined;
-  if (rawDetail == undefined || !Array.isArray(rawDetail.fields) || !rawDetail.fields.every(isSubscriptionField)) {
+  if (rawDetail == undefined
+      || !Array.isArray(rawDetail.fields)
+      || !rawDetail.fields.every((field) => isSubscriptionField(field, summary.encoding))) {
     return undefined;
   }
 
@@ -159,6 +179,14 @@ export function normalizeRequestedRateHz(
   const limit = Math.max(1, Math.floor(limitHz));
   const positiveRequested = Math.max(1, requested);
   return isStream ? positiveRequested : Math.min(positiveRequested, limit);
+}
+
+function encodeSelectedProtobuf(
+  contract: SubscriptionContract,
+  message: Record<string, unknown>,
+): Uint8Array {
+  requireProtobufDescriptor(contract.protobufDescriptorBase64);
+  return encodeProtobufMessage(contract.fields, message);
 }
 
 export class JsonTopicAdvertisementTracker {
@@ -283,6 +311,7 @@ export function initPanel(context: PanelExtensionContext): () => void {
       const option = document.createElement("option");
       option.value = contract.topic;
       option.textContent = `${contract.topic} (${contract.encoding})`;
+      option.disabled = !contract.subscribeAvailable;
       panel.topic.appendChild(option);
     }
     if (catalog.contracts.length === 0) {
@@ -292,8 +321,22 @@ export function initPanel(context: PanelExtensionContext): () => void {
       return;
     }
 
-    if (!catalog.contracts.some((contract) => contract.topic === state.selectedTopic)) {
-      state = { ...state, selectedTopic: catalog.contracts[0].topic };
+    const availableContracts = catalog.contracts.filter(
+      (contract) => contract.subscribeAvailable);
+    if (availableContracts.length === 0) {
+      const unavailable = catalog.contracts[0];
+      state = { ...state, selectedTopic: unavailable.topic };
+      panel.topic.value = state.selectedTopic;
+      panel.topic.disabled = true;
+      panel.send.disabled = true;
+      const reason = unavailable.unavailableDiagnosticId.length > 0
+        ? `${unavailable.unavailableDiagnosticId}: ${unavailable.unavailableReason}`
+        : unavailable.unavailableReason || "The selected input contract is unavailable.";
+      setStatus(reason, "error");
+      return;
+    }
+    if (!availableContracts.some((contract) => contract.topic === state.selectedTopic)) {
+      state = { ...state, selectedTopic: availableContracts[0].topic };
     }
     panel.topic.value = state.selectedTopic;
     renderRateLimit();
@@ -319,12 +362,15 @@ export function initPanel(context: PanelExtensionContext): () => void {
   function readFieldMessage(contract: SubscriptionContract): Record<string, unknown> {
     const message: Record<string, unknown> = {};
     for (const field of contract.fields) {
-      const control = Array.from(panel.fields.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-foxrun-field]"))
+      const control = Array.from(panel.fields.querySelectorAll<FieldControl>("[data-foxrun-field]"))
         .find((candidate) => candidate.dataset.foxrunField === field.name);
       if (control == undefined) {
         throw new Error(`The ${field.name} field editor is unavailable.`);
       }
-      message[field.name] = readFieldValue(field, control);
+      message[field.name] = readFieldValue(
+        field,
+        control,
+        contract.encoding);
     }
     return message;
   }
@@ -368,7 +414,10 @@ export function initPanel(context: PanelExtensionContext): () => void {
     const topic = state.selectedTopic;
     selectedDetail = undefined;
     panel.send.disabled = true;
-    if (catalog?.subscriptionsEnabled !== true || topic.length === 0 || context.callService == undefined) {
+    if (catalog?.subscriptionsEnabled !== true
+        || topic.length === 0
+        || selectedContractSummary()?.subscribeAvailable !== true
+        || context.callService == undefined) {
       return;
     }
 
@@ -465,9 +514,15 @@ export function initPanel(context: PanelExtensionContext): () => void {
         ensureJsonAdvertisement(contract);
         context.publish(contract.topic, message);
       } else {
-        requireProtobufDescriptor(contract.protobufDescriptorBase64);
-        const payload = encodeProtobufMessage(contract.fields, message);
-        await directClient.publish(state.endpoint, panel.token.value, contract.topic, payload);
+        const payload = contract.encoding === "protobuf"
+          ? encodeSelectedProtobuf(contract, message)
+          : encodeMessagePackMessage(contract.fields, message);
+        await directClient.publish(
+          state.endpoint,
+          panel.token.value,
+          contract.topic,
+          contract.encoding,
+          payload);
       }
       setStatus(`Sent ${contract.encoding.toUpperCase()} to ${contract.topic}. Fire-and-forget: confirm acceptance in Unity diagnostics.`);
     } catch (error) {
@@ -493,7 +548,7 @@ export function initPanel(context: PanelExtensionContext): () => void {
   });
   panel.endpoint.addEventListener("change", () => {
     if (!isWebSocketUrl(panel.endpoint.value)) {
-      setStatus("Direct Protobuf endpoint must use ws:// or wss://.", "error");
+      setStatus("Direct FoxRun endpoint must use ws:// or wss://.", "error");
       panel.endpoint.value = state.endpoint;
       return;
     }
@@ -578,8 +633,8 @@ function buildPanel(): PanelElements {
     <select id="topic" disabled></select>
     <span id="limit" class="foxrun-limit"></span>
     <div id="fields" class="foxrun-fields"></div>
-    <div class="foxrun-field"><label for="endpoint">Direct Protobuf endpoint</label><input id="endpoint" type="text" /></div>
-    <div class="foxrun-field"><label for="token">Shared token for direct Protobuf (memory only)</label><input id="token" type="password" autocomplete="off" /></div>
+    <div class="foxrun-field"><label for="endpoint">Direct Protobuf / MessagePack endpoint</label><input id="endpoint" type="text" /></div>
+    <div class="foxrun-field"><label for="token">Shared token for direct binary sends (memory only)</label><input id="token" type="password" autocomplete="off" /></div>
     <div class="foxrun-controls"><label class="foxrun-repeat"><input id="repeat" type="checkbox" />Repeat</label><div class="foxrun-field"><label for="rate">Rate Hz</label><input id="rate" type="number" min="1" step="1" /></div></div>
     <button id="send" type="button" disabled>Send once</button>
     <div id="status" class="foxrun-status">Waiting for Unity topic and service advertisements...</div>
@@ -606,41 +661,173 @@ function required<T extends Element>(root: ParentNode, selector: string): T {
   return element;
 }
 
-function isSubscriptionContractSummary(value: unknown): value is SubscriptionContractSummary {
+function normalizeSubscriptionContractSummary(
+  value: unknown,
+): SubscriptionContractSummary | undefined {
   if (value == undefined || typeof value !== "object") {
-    return false;
+    return undefined;
   }
   const contract = value as Partial<SubscriptionContractSummary>;
-  return typeof contract.declaringType === "string"
-    && typeof contract.topic === "string"
-    && typeof contract.flow === "string"
-    && (contract.encoding === "json" || contract.encoding === "protobuf")
-    && typeof contract.schemaName === "string"
-    && typeof contract.hz === "number"
-    && typeof contract.isStream === "boolean"
-    && typeof contract.writableFieldCount === "number"
-    && typeof contract.protobufDescriptorAvailable === "boolean"
-    && typeof contract.protobufDescriptorDigest === "string";
+  if (typeof contract.declaringType !== "string"
+      || typeof contract.topic !== "string"
+      || !(typeof contract.flow === "string"
+          && contract.flow === "Subscribe")
+      || (contract.encoding !== "json"
+          && contract.encoding !== "protobuf"
+          && contract.encoding !== "msgpack")
+      || typeof contract.schemaName !== "string"
+      || !(typeof contract.hz === "number")
+      || !(typeof contract.isStream === "boolean")
+      || typeof contract.writableFieldCount !== "number"
+      || typeof contract.protobufDescriptorAvailable !== "boolean"
+      || typeof contract.protobufDescriptorDigest !== "string") {
+    return undefined;
+  }
+
+  const wireSchemaName = typeof contract.wireSchemaName === "string"
+    ? contract.wireSchemaName
+    : contract.schemaName;
+  const logicalSchemaName = typeof contract.logicalSchemaName === "string"
+    ? contract.logicalSchemaName
+    : contract.declaringType;
+  const subscribeAvailable = typeof contract.subscribeAvailable === "boolean"
+    ? contract.subscribeAvailable
+    : true;
+  const unavailableDiagnosticId =
+    typeof contract.unavailableDiagnosticId === "string"
+      ? contract.unavailableDiagnosticId
+      : "";
+  const unavailableReason = typeof contract.unavailableReason === "string"
+    ? contract.unavailableReason
+    : "";
+
+  if (contract.encoding === "msgpack"
+      && (wireSchemaName.length !== 0
+          || contract.schemaName.length !== 0
+          || logicalSchemaName.length === 0
+          || contract.protobufDescriptorAvailable
+          || contract.protobufDescriptorDigest.length !== 0)) {
+    return undefined;
+  }
+
+  return {
+    declaringType: contract.declaringType,
+    topic: contract.topic,
+    flow: "Subscribe",
+    encoding: contract.encoding,
+    schemaName: contract.schemaName,
+    wireSchemaName,
+    logicalSchemaName,
+    subscribeAvailable,
+    unavailableDiagnosticId,
+    unavailableReason,
+    hz: contract.hz,
+    isStream: contract.isStream,
+    writableFieldCount: contract.writableFieldCount,
+    protobufDescriptorAvailable: contract.protobufDescriptorAvailable,
+    protobufDescriptorDigest: contract.protobufDescriptorDigest,
+  };
 }
 
-function isSubscriptionField(value: unknown): value is FoxRunSubscriptionField {
+function isSubscriptionField(
+  value: unknown,
+  encoding: FoxRunCatalogEncoding,
+): value is FoxRunSubscriptionField {
   if (value == undefined || typeof value !== "object") {
     return false;
   }
   const field = value as Partial<FoxRunSubscriptionField>;
-  return typeof field.name === "string"
+  const valid = typeof field.name === "string"
     && typeof field.type === "string"
     && typeof field.nullable === "boolean"
     && typeof field.array === "boolean"
     && Number.isInteger(field.protobufFieldNumber);
+  return valid
+    && (encoding !== "msgpack" || isTypeShape(field.typeShape, 0));
 }
 
-function createFieldControl(field: FoxRunSubscriptionField): HTMLInputElement | HTMLTextAreaElement {
-  const type = normalizeFieldType(field.type);
-  if (field.array || !isScalarFieldType(type)) {
+function isTypeShape(value: unknown, depth: number): value is FoxRunTypeShape {
+  if (depth > 34 || value == undefined || typeof value !== "object") {
+    return false;
+  }
+  const shape = value as Partial<FoxRunTypeShape>;
+  if ((shape.kind !== "Canonical"
+       && shape.kind !== "Enum"
+       && shape.kind !== "Collection"
+       && shape.kind !== "Object")
+      || typeof shape.typeName !== "string"
+      || typeof shape.canonicalType !== "string"
+      || typeof shape.nullable !== "boolean"
+      || (shape.collectionKind !== "None"
+          && shape.collectionKind !== "Array"
+          && shape.collectionKind !== "List"
+          && shape.collectionKind !== "Binary")
+      || typeof shape.binary !== "boolean"
+      || typeof shape.canConstruct !== "boolean"
+      || !Array.isArray(shape.fields)
+      || !Array.isArray(shape.enumValues)) {
+    return false;
+  }
+  if (shape.elementShape !== null
+      && shape.elementShape !== undefined
+      && !isTypeShape(shape.elementShape, depth + 1)) {
+    return false;
+  }
+  return shape.fields.every((field) => {
+    if (field == undefined || typeof field !== "object") {
+      return false;
+    }
+    const typed = field as Partial<FoxRunTypeShape["fields"][number]>;
+    return typeof typed.jsonName === "string"
+      && typeof typed.memberName === "string"
+      && typeof typed.repeated === "boolean"
+      && typeof typed.collectionKind === "string"
+      && typeof typed.canAssign === "boolean"
+      && typeof typed.nullable === "boolean"
+      && isTypeShape(typed.typeShape, depth + 1);
+  }) && shape.enumValues.every((entry) =>
+    entry != undefined
+      && typeof entry === "object"
+      && typeof (entry as { name?: unknown }).name === "string"
+      && Number.isInteger((entry as { number?: unknown }).number));
+}
+
+type FieldControl =
+  HTMLInputElement
+  | HTMLTextAreaElement
+  | HTMLSelectElement;
+
+function createFieldControl(field: FoxRunSubscriptionField): FieldControl {
+  const shape = field.typeShape;
+  const type = normalizeFieldType(
+    shape?.canonicalType || shape?.typeName || field.type);
+  if (shape?.kind === "Enum") {
+    const select = document.createElement("select");
+    for (const entry of shape.enumValues) {
+      const option = document.createElement("option");
+      option.value = entry.name;
+      option.textContent = `${entry.name} (${entry.number})`;
+      select.appendChild(option);
+    }
+    return select;
+  }
+  if (shape?.kind === "Collection"
+      && (shape.binary || shape.collectionKind === "Binary")) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "base64";
+    input.value = "";
+    return input;
+  }
+  if (field.array
+      || shape?.kind === "Collection"
+      || shape?.kind === "Object"
+      || !isScalarFieldType(type)) {
     const input = document.createElement("textarea");
     input.spellcheck = false;
-    input.value = field.array ? "[]" : field.nullable ? "" : "{}";
+    input.value = field.array || shape?.kind === "Collection"
+      ? "[]"
+      : field.nullable ? "" : "{}";
     return input;
   }
   if (isBooleanFieldType(type)) {
@@ -665,12 +852,16 @@ function createFieldControl(field: FoxRunSubscriptionField): HTMLInputElement | 
 
 function readFieldValue(
   field: FoxRunSubscriptionField,
-  control: HTMLInputElement | HTMLTextAreaElement,
+  control: FieldControl,
+  encoding: FoxRunCatalogEncoding,
 ): unknown {
   return parseFieldValue(
     field,
     control.value,
-    control instanceof HTMLInputElement && control.type === "checkbox" ? control.checked : undefined,
+    control instanceof HTMLInputElement && control.type === "checkbox"
+      ? control.checked
+      : undefined,
+    encoding,
   );
 }
 
@@ -678,8 +869,11 @@ export function parseFieldValue(
   field: FoxRunSubscriptionField,
   rawValue: string,
   checked: boolean | undefined = undefined,
+  encoding: FoxRunCatalogEncoding = "json",
 ): unknown {
-  const type = normalizeFieldType(field.type);
+  const shape = field.typeShape;
+  const type = normalizeFieldType(
+    shape?.canonicalType || shape?.typeName || field.type);
   if (isBooleanFieldType(type) && checked != undefined) {
     return checked;
   }
@@ -688,7 +882,20 @@ export function parseFieldValue(
   if (raw.length === 0 && field.nullable) {
     return null;
   }
-  if (field.array || !isScalarFieldType(type)) {
+  if (shape?.kind === "Enum") {
+    if (raw.length === 0) {
+      throw new Error(`${field.name} must select an enum value.`);
+    }
+    return raw;
+  }
+  if (shape?.kind === "Collection"
+      && (shape.binary || shape.collectionKind === "Binary")) {
+    return rawValue;
+  }
+  if (field.array
+      || shape?.kind === "Collection"
+      || shape?.kind === "Object"
+      || !isScalarFieldType(type)) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -709,7 +916,11 @@ export function parseFieldValue(
       if (!(unsigned ? /^\d+$/ : /^-?\d+$/).test(raw)) {
         throw new Error(`${field.name} must be an integer string.`);
       }
-      return raw;
+      try {
+        return encoding === "msgpack" ? BigInt(raw) : raw;
+      } catch {
+        throw new Error(`${field.name} must be a valid 64-bit integer.`);
+      }
     }
     const value = Number(raw);
     if (!Number.isFinite(value) || (isIntegerFieldType(type) && !Number.isSafeInteger(value))) {
@@ -721,7 +932,22 @@ export function parseFieldValue(
 }
 
 function fieldTypeLabel(field: FoxRunSubscriptionField): string {
-  return field.type + (field.array ? "[]" : "") + (field.nullable ? "?" : "");
+  return field.typeShape == undefined
+    ? field.type + (field.array ? "[]" : "") + (field.nullable ? "?" : "")
+    : typeShapeLabel(field.typeShape) + (field.nullable ? "?" : "");
+}
+
+function typeShapeLabel(shape: FoxRunTypeShape): string {
+  if (shape.kind === "Collection") {
+    if (shape.binary || shape.collectionKind === "Binary") {
+      return "binary";
+    }
+    return `${typeShapeLabel(shape.elementShape!)}[]`;
+  }
+  if (shape.kind === "Enum") {
+    return shape.typeName || "enum";
+  }
+  return shape.canonicalType || shape.typeName || shape.kind;
 }
 
 function normalizeFieldType(type: string): string {
