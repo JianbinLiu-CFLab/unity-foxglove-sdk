@@ -250,7 +250,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.QosDurability,
                 topic.QosHistory,
                 topic.QosDepth,
-                IsStream);
+                IsStream,
+                topic.PublishTransportIds,
+                topic.SubscribeTransportId);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -293,6 +295,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Encoding;
         public readonly int Source;
         public readonly int Targets;
+        public readonly IReadOnlyList<string> PublishTransportIds;
+        public readonly string SubscribeTransportId;
         public readonly int QosProfile;
         public readonly int QosReliability;
         public readonly int QosDurability;
@@ -326,7 +330,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int qosReliability = 0,
             int qosDurability = 0,
             int qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             Topic = topic; Hz = hz; SchemaName = schema;
             Policy = policy;
@@ -334,6 +340,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Encoding = encoding;
             Source = source;
             Targets = targets;
+            PublishTransportIds = publishTransportIds == null
+                ? null
+                : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+            SubscribeTransportId = subscribeTransportId;
             QosProfile = qosProfile;
             QosReliability = qosReliability;
             QosDurability = qosDurability;

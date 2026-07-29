@@ -130,6 +130,8 @@ namespace Unity.FoxgloveSDK.Editor
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
             var outputDirectory = Path.Combine(Application.dataPath, "Scripts/Generated");
+            var transportContributions =
+                FoxRunTransportEmitterContributionRegistry.Capture();
 
             if (byClass.Count > 0 || serviceScan.ByClass.Count > 0)
             {
@@ -149,6 +151,37 @@ namespace Unity.FoxgloveSDK.Editor
                     }
 
                     result.Add(fileName);
+
+                    foreach (var contribution in transportContributions)
+                    {
+                        var providerSource =
+                            FoxRunTransportContributionSource.EmitSourceFile(
+                            model,
+                            type,
+                            contribution);
+                        if (string.IsNullOrWhiteSpace(providerSource))
+                            continue;
+
+                        var providerFileName =
+                            FoxRunTransportContributionSource.SourceName(
+                                type.Namespace,
+                                type.ClassName,
+                                contribution);
+                        var providerAbsolutePath =
+                            Path.Combine(outputDirectory, providerFileName);
+                        var providerSourceBytes =
+                            Utf8NoBom.GetBytes(providerSource);
+                        if (WriteSourceFileIfChanged(
+                                providerAbsolutePath,
+                                providerSourceBytes))
+                        {
+                            Debug.Log(
+                                "[FoxrunCodeGenerator] Generated "
+                                + providerFileName);
+                        }
+
+                        result.Add(providerFileName);
+                    }
                 }
 
                 foreach (var kv in serviceScan.ByClass

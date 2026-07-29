@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.Components
         public string PublishUnavailableReason { get; }
         public string SubscribeUnavailableDiagnosticId { get; }
         public string SubscribeUnavailableReason { get; }
+        public IReadOnlyList<string> PublishTransportIds { get; }
+        public string SubscribeTransportId { get; }
         public string UnavailableDiagnosticId
             => SharedUnavailableValue(
                 PublishAvailable,
@@ -68,7 +70,9 @@ namespace Unity.FoxgloveSDK.Components
             string publishUnavailableDiagnosticId = null,
             string publishUnavailableReason = null,
             string subscribeUnavailableDiagnosticId = null,
-            string subscribeUnavailableReason = null)
+            string subscribeUnavailableReason = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -98,6 +102,20 @@ namespace Unity.FoxgloveSDK.Components
             SubscribeUnavailableReason = subscribeAvailable
                 ? string.Empty
                 : subscribeUnavailableReason ?? unavailableReason ?? string.Empty;
+            PublishTransportIds = CanonicalTransportIds(publishTransportIds);
+            SubscribeTransportId = subscribeTransportId;
+        }
+
+        private static IReadOnlyList<string> CanonicalTransportIds(
+            IReadOnlyList<string> values)
+        {
+            if (values == null)
+                return null;
+
+            var canonical = new SortedSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < values.Count; index++)
+                canonical.Add(values[index] ?? string.Empty);
+            return new List<string>(canonical).AsReadOnly();
         }
 
         private static float NormalizeHz(float value)

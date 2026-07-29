@@ -101,6 +101,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "targets", member.Targets);
             sb.Append(',');
+            WriteName(sb, "publishTransportIds");
+            WriteStringArrayOrNull(sb, member.PublishTransportIds);
+            sb.Append(',');
+            WriteName(sb, "subscribeTransportId");
+            WriteStringOrNull(sb, member.SubscribeTransportId);
+            sb.Append(',');
             WriteStringField(sb, "qosProfile", member.QosProfile);
             sb.Append(',');
             WriteStringField(sb, "qosReliability", member.QosReliability);
@@ -529,6 +535,37 @@ namespace Unity.FoxgloveSDK.Editor
         private static void WriteStringField(StringBuilder sb, string name, string value)
         {
             WriteName(sb, name);
+            WriteString(sb, value);
+        }
+
+        private static void WriteStringArrayOrNull(
+            StringBuilder sb,
+            IReadOnlyList<string> values)
+        {
+            if (values == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('[');
+            for (var i = 0; i < values.Count; i++)
+            {
+                if (i > 0)
+                    sb.Append(',');
+                WriteString(sb, values[i]);
+            }
+            sb.Append(']');
+        }
+
+        private static void WriteStringOrNull(StringBuilder sb, string value)
+        {
+            if (value == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
             WriteString(sb, value);
         }
 

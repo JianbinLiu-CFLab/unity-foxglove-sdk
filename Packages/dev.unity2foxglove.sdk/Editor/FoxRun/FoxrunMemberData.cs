@@ -48,6 +48,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int Encoding;
             public readonly int Source;
             public readonly int Targets;
+            public readonly IReadOnlyList<string> PublishTransportIds;
+            public readonly string SubscribeTransportId;
             public readonly int QosProfile;
             public readonly int QosReliability;
             public readonly int QosDurability;
@@ -74,7 +76,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0, IReadOnlyList<string> publishTransportIds = null, string subscribeTransportId = null)
             {
                 IsStream = IsFoxRunStreamType(type);
                 if (IsStream)
@@ -96,6 +98,10 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding = encoding;
                 Source = source;
                 Targets = targets;
+                PublishTransportIds = publishTransportIds == null
+                    ? null
+                    : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+                SubscribeTransportId = subscribeTransportId;
                 QosProfile = qosProfile;
                 QosReliability = qosReliability;
                 QosDurability = qosDurability;
@@ -126,7 +132,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0, IReadOnlyList<string> publishTransportIds = null, string subscribeTransportId = null)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -148,6 +154,10 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding = encoding;
                 Source = source;
                 Targets = targets;
+                PublishTransportIds = publishTransportIds == null
+                    ? null
+                    : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+                SubscribeTransportId = subscribeTransportId;
                 QosProfile = qosProfile;
                 QosReliability = qosReliability;
                 QosDurability = qosDurability;
@@ -228,7 +238,9 @@ namespace Unity.FoxgloveSDK.Editor
                     QosDurability,
                     QosHistory,
                     QosDepth,
-                    IsStream);
+                    IsStream,
+                    PublishTransportIds,
+                    SubscribeTransportId);
             }
 
             private static bool IsFoxRunStreamType(Type type)
@@ -360,6 +372,18 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
                         break;
+                    case "PublishTransportIds":
+                        snapshot.PublishTransportIds =
+                            ReadStringArray(argument.TypedValue);
+                        snapshot.NamedArgumentPresence |=
+                            FoxRunNamedArgumentPresence.PublishTransportIds;
+                        break;
+                    case "SubscribeTransportId":
+                        snapshot.SubscribeTransportId =
+                            argument.TypedValue.Value as string;
+                        snapshot.NamedArgumentPresence |=
+                            FoxRunNamedArgumentPresence.SubscribeTransportId;
+                        break;
                     case "QoS":
                         snapshot.QosProfile = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.QoS;
@@ -424,6 +448,12 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
                         break;
+                    case "PublishTransportIds":
+                        snapshot.PublishTransportIds =
+                            ReadStringArray(argument.TypedValue);
+                        snapshot.NamedArgumentPresence |=
+                            FoxRunNamedArgumentPresence.PublishTransportIds;
+                        break;
                     case "QoS":
                         snapshot.QosProfile = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.QoS;
@@ -455,6 +485,20 @@ namespace Unity.FoxgloveSDK.Editor
                 : string.Empty;
         }
 
+        private static string[] ReadStringArray(
+            CustomAttributeTypedArgument argument)
+        {
+            if (argument.Value == null)
+                return null;
+            if (!(argument.Value is IList<CustomAttributeTypedArgument> values))
+                return Array.Empty<string>();
+
+            var result = new string[values.Count];
+            for (var index = 0; index < result.Length; index++)
+                result[index] = values[index].Value as string;
+            return result;
+        }
+
         private sealed class FoxRunAttributeSnapshot
         {
             public readonly string Topic;
@@ -467,6 +511,8 @@ namespace Unity.FoxgloveSDK.Editor
             public int Encoding;
             public int Source;
             public int Targets;
+            public string[] PublishTransportIds;
+            public string SubscribeTransportId;
             public int QosProfile;
             public int QosReliability;
             public int QosDurability;
@@ -492,6 +538,7 @@ namespace Unity.FoxgloveSDK.Editor
             public int Policy = (int)FoxRunPolicy.FixedRate;
             public int Encoding;
             public int Targets;
+            public string[] PublishTransportIds;
             public int QosProfile;
             public int QosReliability;
             public int QosDurability;

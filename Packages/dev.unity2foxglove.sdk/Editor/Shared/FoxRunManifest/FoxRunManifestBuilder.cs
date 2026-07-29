@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Editor
             int generatorMajorVersion = 1)
         {
             var source = members ?? Array.Empty<FoxRunManifestMember>();
-            var types = BuildTypes(source);
+            var types = BuildTypes(source, manifestVersion);
             var sectionHashInput = FoxRunManifestJsonWriter.WriteFoxRunSectionHashInput(types);
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
@@ -65,7 +65,9 @@ namespace Unity.FoxgloveSDK.Editor
                 customNativeContracts);
         }
 
-        private static IReadOnlyList<FoxRunManifestType> BuildTypes(IReadOnlyList<FoxRunManifestMember> members)
+        private static IReadOnlyList<FoxRunManifestType> BuildTypes(
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
             return members
                 .Where(member => member.GeneratesWebSocketCodec
@@ -81,7 +83,9 @@ namespace Unity.FoxgloveSDK.Editor
                                      || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
-                .Select(group => new FoxRunManifestType(group.Key, BuildContracts(group.Key, group.ToList())))
+                .Select(group => new FoxRunManifestType(
+                    group.Key,
+                    BuildContracts(group.Key, group.ToList(), manifestVersion)))
                 .ToList()
                 .AsReadOnly();
         }
@@ -188,7 +192,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static IReadOnlyList<FoxRunManifestContract> BuildContracts(
             string declaringType,
-            IReadOnlyList<FoxRunManifestMember> members)
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
             var contracts = new List<FoxRunManifestContract>();
             var groups = members
@@ -221,7 +226,8 @@ namespace Unity.FoxgloveSDK.Editor
                             group.Key.Encoding,
                             FoxRunGenerationMember.FlowToName(flows.Count == 0 ? 1 : flows[0]),
                             directionScoped: false),
-                        groupedMembers));
+                        groupedMembers,
+                        manifestVersion));
                     continue;
                 }
 
@@ -238,7 +244,8 @@ namespace Unity.FoxgloveSDK.Editor
                             group.Key.Encoding,
                             "Publish",
                             directionScoped: true),
-                        publishMembers));
+                        publishMembers,
+                        manifestVersion));
                 }
 
                 var subscribeMembers = groupedMembers
@@ -254,7 +261,8 @@ namespace Unity.FoxgloveSDK.Editor
                             group.Key.Encoding,
                             "Subscribe",
                             directionScoped: true),
-                        subscribeMembers));
+                        subscribeMembers,
+                        manifestVersion));
                 }
             }
 
@@ -287,7 +295,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunManifestContract BuildContract(
             string declaringType,
             ContractKey key,
-            IReadOnlyList<FoxRunManifestMember> members)
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
             var fields = members
                 .Select(member => BuildField(member, key.Encoding == ProtobufEncoding))
@@ -305,6 +314,13 @@ namespace Unity.FoxgloveSDK.Editor
                 members,
                 key.Encoding,
                 key.DirectionScoped ? key.Flow : string.Empty);
+            var includesTransportSelection = manifestVersion >= 4;
+            var publishTransportIds = includesTransportSelection
+                ? ResolvePublishTransportIds(members)
+                : null;
+            var subscribeTransportId = includesTransportSelection
+                ? ResolveSubscribeTransportId(members)
+                : null;
             var contractHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteContractHashInput(
                     declaringType,
@@ -320,14 +336,20 @@ namespace Unity.FoxgloveSDK.Editor
                     availability.PublishUnavailableDiagnosticId,
                     availability.PublishUnavailableReason,
                     availability.SubscribeUnavailableDiagnosticId,
-                    availability.SubscribeUnavailableReason));
+                    availability.SubscribeUnavailableReason,
+                    includesTransportSelection,
+                    publishTransportIds,
+                    subscribeTransportId));
             var bindingHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteBindingHashInput(
                     declaringType,
                     key.Topic,
                     key.SchemaName,
                     key.Encoding,
-                    key.DirectionScoped ? key.Flow : string.Empty));
+                    key.DirectionScoped ? key.Flow : string.Empty,
+                    includesTransportSelection,
+                    publishTransportIds,
+                    subscribeTransportId));
             var policyHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WritePolicyHashInput(policy));
 
@@ -350,7 +372,28 @@ namespace Unity.FoxgloveSDK.Editor
                 availability.PublishUnavailableDiagnosticId,
                 availability.PublishUnavailableReason,
                 availability.SubscribeUnavailableDiagnosticId,
-                availability.SubscribeUnavailableReason);
+                availability.SubscribeUnavailableReason,
+                includesTransportSelection,
+                publishTransportIds,
+                subscribeTransportId);
+        }
+
+        private static IReadOnlyList<string> ResolvePublishTransportIds(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var first = members.FirstOrDefault(member =>
+                member.Flow == (int)FoxRunFlow.Publish
+                || member.Flow == (int)FoxRunFlow.PublishAndSubscribe);
+            return first?.PublishTransportIds;
+        }
+
+        private static string ResolveSubscribeTransportId(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var first = members.FirstOrDefault(member =>
+                member.Flow == (int)FoxRunFlow.Subscribe
+                || member.Flow == (int)FoxRunFlow.PublishAndSubscribe);
+            return first?.SubscribeTransportId;
         }
 
         private static FoxRunManifestField BuildField(FoxRunManifestMember member, bool includeProtobufMetadata)

@@ -135,11 +135,11 @@ namespace Unity.FoxgloveSDK.Tests
                 && Exists("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs.meta"),
                 "185E-5: controlled generated source/meta contains duplex MessagePack output and input");
             Check(
-                descriptor.Contains("\"descriptorVersion\":5", StringComparison.Ordinal)
-                && descriptor.Contains("\"generatorVersion\":\"5.0.0\"", StringComparison.Ordinal)
+                descriptor.Contains("\"descriptorVersion\":6", StringComparison.Ordinal)
+                && descriptor.Contains("\"generatorVersion\":\"6.0.0\"", StringComparison.Ordinal)
                 && descriptor.Contains("\"encoding\":\"msgpack\"", StringComparison.Ordinal)
                 && manifest.Contains("\"msgpack\"", StringComparison.Ordinal),
-                "185E-6: controlled descriptor/manifest evidence records v5 typed MessagePack");
+                "185E-6: controlled descriptor/manifest evidence records current typed MessagePack");
         }
 
         private static void VerifyFullDemoParity()

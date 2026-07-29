@@ -37,6 +37,8 @@ FOXRUN616 | FoxRun | Error | Typed MessagePack requires a supported bounded recu
 FOXRUN617 | FoxRun | Error | Explicit MessagePack cannot use Protobuf-only field-number metadata.
 FOXRUN618 | FoxRun | Error | Explicit MessagePack subscribe topics cannot mix ordinary and stream members or contain multiple streams.
 FOXRUN619 | FoxRun | Error | Explicit multi-member MessagePack directions require one normalized schedule tuple.
+FOXRUN620 | FoxRun | Error | FoxRun transport Provider selection invalid.
+FOXRUN621 | FoxRun | Error | FoxRun directional transport selection invalid.
 
 ### Removed Rules
 

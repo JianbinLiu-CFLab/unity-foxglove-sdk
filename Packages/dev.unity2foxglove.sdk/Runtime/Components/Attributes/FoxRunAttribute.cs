@@ -59,6 +59,19 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEndpoint Targets { get; set; }
 
         /// <summary>
+        /// Optional stable publish Provider IDs. Omission inherits the
+        /// Manager's frozen publish selection. An explicit array must contain
+        /// one or more unique IDs; lowering canonicalizes their order.
+        /// </summary>
+        public string[] PublishTransportIds { get; set; }
+
+        /// <summary>
+        /// Optional stable Subscribe Provider ID. Omission inherits the
+        /// Manager's frozen single-source selection.
+        /// </summary>
+        public string SubscribeTransportId { get; set; }
+
+        /// <summary>
         /// Foxglove encoding for every Foxglove direction selected by this
         /// declaration. Omission inherits each directional profile.
         /// </summary>

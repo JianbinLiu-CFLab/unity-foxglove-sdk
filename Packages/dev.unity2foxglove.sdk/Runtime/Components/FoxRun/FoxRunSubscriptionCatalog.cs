@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Builds the data-only catalog consumed by the FoxRun Publish panel.</summary>
     public static class FoxRunSubscriptionCatalog
     {
-        public const int Version = 1;
+        public const int Version = 2;
 
         /// <summary>
         /// Builds a catalog response without client identifiers, tokens, or queue state.
@@ -34,11 +34,74 @@ namespace Unity.FoxgloveSDK.Components
                 subscriptionsEnabled,
                 publishDefault,
                 subscriptionDefault,
-                FoxRunEndpoint.Foxglove,
+                FoxgloveWebSocketTransport.Id,
                 subscriptionRateLimitHz,
                 requestedTopic,
                 includeDescriptor);
 
+        /// <summary>
+        /// Builds a catalog for one configured default subscription Provider.
+        /// Contracts that resolve to any other Provider are not advertised to
+        /// Foxglove clients and never fall back to WebSocket.
+        /// </summary>
+        public static JObject BuildResponse(
+            FoxRunSchemaManifestInfo manifest,
+            bool subscriptionsEnabled,
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault,
+            string defaultSubscribeTransportId,
+            int subscriptionRateLimitHz,
+            string requestedTopic,
+            bool includeDescriptor)
+        {
+            publishDefault =
+                FoxRunEncodingResolver.ValidateProfileDefault(publishDefault);
+            subscriptionDefault =
+                FoxRunEncodingResolver.ValidateProfileDefault(
+                    subscriptionDefault);
+            var defaultProvider = new FoxRunTransportId(
+                defaultSubscribeTransportId);
+
+            var contracts = new JArray();
+            var response = new JObject
+            {
+                ["version"] = Version,
+                ["subscriptionsEnabled"] = subscriptionsEnabled,
+                ["subscriptionRateLimitHz"] =
+                    Math.Max(1, subscriptionRateLimitHz),
+                ["contracts"] = contracts
+            };
+            if (!subscriptionsEnabled || manifest == null)
+                return response;
+
+            foreach (var entry in EnumerateContracts(
+                         manifest,
+                         publishDefault,
+                         subscriptionDefault,
+                         defaultProvider)
+                     .Where(entry => string.IsNullOrEmpty(requestedTopic)
+                                     || string.Equals(
+                                         entry.Contract.Topic,
+                                         requestedTopic,
+                                         StringComparison.Ordinal))
+                     .OrderBy(
+                         entry => entry.Contract.Topic,
+                         StringComparer.Ordinal)
+                     .ThenBy(
+                         entry => entry.Contract.DeclaringType,
+                         StringComparer.Ordinal))
+            {
+                AddContract(
+                    contracts,
+                    entry,
+                    requestedTopic,
+                    includeDescriptor);
+            }
+
+            return response;
+        }
+
+        [Obsolete("Use the transport-ID overload.")]
         public static JObject BuildResponse(
             FoxRunSchemaManifestInfo manifest,
             bool subscriptionsEnabled,
@@ -49,72 +112,86 @@ namespace Unity.FoxgloveSDK.Components
             string requestedTopic,
             bool includeDescriptor)
         {
-            publishDefault = FoxRunEncodingResolver.ValidateProfileDefault(publishDefault);
-            subscriptionDefault = FoxRunEncodingResolver.ValidateProfileDefault(subscriptionDefault);
             defaultProvider = FoxRunEndpointResolver.ValidateProfileSource(defaultProvider);
+            var providerId = defaultProvider == FoxRunEndpoint.Foxglove
+                ? FoxgloveWebSocketTransport.Id
+                : "unity2foxglove.legacy-non-websocket";
+            return BuildResponse(
+                manifest,
+                subscriptionsEnabled,
+                publishDefault,
+                subscriptionDefault,
+                providerId,
+                subscriptionRateLimitHz,
+                requestedTopic,
+                includeDescriptor);
+        }
 
-            var contracts = new JArray();
-            var response = new JObject
+        private static void AddContract(
+            JArray contracts,
+            CatalogContract entry,
+            string requestedTopic,
+            bool includeDescriptor)
+        {
+            var contract = entry.Contract;
+            var hasDetail = !string.IsNullOrEmpty(requestedTopic);
+            var descriptor = contract.ProtobufDescriptorSet;
+            var objectValue = new JObject
             {
-                ["version"] = Version,
-                ["subscriptionsEnabled"] = subscriptionsEnabled,
-                ["subscriptionRateLimitHz"] = Math.Max(1, subscriptionRateLimitHz),
-                ["contracts"] = contracts
-            };
-            if (!subscriptionsEnabled || manifest == null)
-                return response;
-
-            foreach (var entry in EnumerateContracts(manifest, publishDefault, subscriptionDefault, defaultProvider)
-                         .Where(entry => string.IsNullOrEmpty(requestedTopic)
-                                         || string.Equals(entry.Contract.Topic, requestedTopic, StringComparison.Ordinal))
-                         .OrderBy(entry => entry.Contract.Topic, StringComparer.Ordinal)
-                         .ThenBy(entry => entry.Contract.DeclaringType, StringComparer.Ordinal))
-            {
-                var contract = entry.Contract;
-                var hasDetail = !string.IsNullOrEmpty(requestedTopic);
-                var descriptor = contract.ProtobufDescriptorSet;
-                var objectValue = new JObject
-                {
-                    ["declaringType"] = contract.DeclaringType,
-                    ["topic"] = contract.Topic,
-                    ["flow"] = contract.Flow,
-                    ["encoding"] = FoxRunEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
-                    ["schemaName"] = contract.WireSchemaName,
-                    ["wireSchemaName"] = contract.WireSchemaName,
-                    ["logicalSchemaName"] = string.IsNullOrWhiteSpace(contract.LogicalSchemaName)
+                ["declaringType"] = contract.DeclaringType,
+                ["topic"] = contract.Topic,
+                ["flow"] = contract.Flow,
+                ["encoding"] =
+                    FoxRunEncodingResolver.ToProtocolEncoding(
+                        entry.EffectiveEncoding),
+                ["schemaName"] = contract.WireSchemaName,
+                ["wireSchemaName"] = contract.WireSchemaName,
+                ["logicalSchemaName"] =
+                    string.IsNullOrWhiteSpace(contract.LogicalSchemaName)
                         ? contract.DeclaringType
                         : contract.LogicalSchemaName,
-                    ["subscribeAvailable"] = contract.SubscribeAvailable,
-                    ["unavailableDiagnosticId"] = contract.SubscribeUnavailableDiagnosticId,
-                    ["unavailableReason"] = contract.SubscribeUnavailableReason,
-                    ["hz"] = contract.Hz,
-                    ["isStream"] = entry.IsStream,
-                    ["writableFieldCount"] = contract.Fields?.Count ?? 0,
-                    ["protobufDescriptorAvailable"] = descriptor.Length > 0,
-                    ["protobufDescriptorDigest"] = descriptor.Length > 0 ? ComputeSha256Hex(descriptor) : string.Empty
-                };
-                if (hasDetail)
-                    objectValue["fields"] = BuildFields(contract.Fields);
+                ["subscribeAvailable"] = contract.SubscribeAvailable,
+                ["publishTransportIds"] =
+                    contract.PublishTransportIds == null
+                        ? JValue.CreateNull()
+                        : new JArray(contract.PublishTransportIds),
+                ["subscribeTransportId"] =
+                    contract.SubscribeTransportId == null
+                        ? JValue.CreateNull()
+                        : new JValue(contract.SubscribeTransportId),
+                ["unavailableDiagnosticId"] =
+                    contract.SubscribeUnavailableDiagnosticId,
+                ["unavailableReason"] =
+                    contract.SubscribeUnavailableReason,
+                ["hz"] = contract.Hz,
+                ["isStream"] = entry.IsStream,
+                ["writableFieldCount"] = contract.Fields?.Count ?? 0,
+                ["protobufDescriptorAvailable"] = descriptor.Length > 0,
+                ["protobufDescriptorDigest"] =
+                    descriptor.Length > 0
+                        ? ComputeSha256Hex(descriptor)
+                        : string.Empty
+            };
+            if (hasDetail)
+                objectValue["fields"] = BuildFields(contract.Fields);
 
-                if (includeDescriptor
-                    && hasDetail
-                    && entry.EffectiveEncoding == FoxRunEncoding.Protobuf
-                    && descriptor.Length > 0)
-                {
-                    objectValue["protobufDescriptorBase64"] = Convert.ToBase64String(descriptor);
-                }
-
-                contracts.Add(objectValue);
+            if (includeDescriptor
+                && hasDetail
+                && entry.EffectiveEncoding == FoxRunEncoding.Protobuf
+                && descriptor.Length > 0)
+            {
+                objectValue["protobufDescriptorBase64"] =
+                    Convert.ToBase64String(descriptor);
             }
 
-            return response;
+            contracts.Add(objectValue);
         }
 
         private static IEnumerable<CatalogContract> EnumerateContracts(
             FoxRunSchemaManifestInfo manifest,
             FoxRunEncoding publishDefault,
             FoxRunEncoding subscriptionDefault,
-            FoxRunEndpoint defaultProvider)
+            FoxRunTransportId defaultProvider)
         {
             foreach (var type in manifest.Types ?? Array.Empty<FoxRunSchemaTypeInfo>())
             {
@@ -155,7 +232,7 @@ namespace Unity.FoxgloveSDK.Components
             IReadOnlyList<FoxRunSchemaContractInfo> contracts,
             FoxRunFlow mode,
             FoxRunEncoding declaredEncoding,
-            FoxRunEndpoint defaultProvider,
+            FoxRunTransportId defaultProvider,
             out bool isStream)
         {
             isStream = false;
@@ -177,26 +254,38 @@ namespace Unity.FoxgloveSDK.Components
                 || !BindingIdentityMatchesContracts(contracts, bindings))
                 return false;
 
+            if (manifest.ManifestVersion >= 4)
+            {
+                var selectedIds = contracts
+                    .Select(candidate =>
+                        string.IsNullOrWhiteSpace(
+                            candidate.SubscribeTransportId)
+                            ? defaultProvider.Value
+                            : candidate.SubscribeTransportId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (selectedIds.Length != 1
+                    || !string.Equals(
+                        selectedIds[0],
+                        FoxgloveWebSocketTransport.Id,
+                        StringComparison.Ordinal)
+                    || bindings.Any(binding => !binding.SupportsWebSocket))
+                    return false;
+
+                isStream = bindings.Any(binding => binding.IsStream);
+                return true;
+            }
+
             foreach (var binding in bindings)
             {
-                var resolution = FoxRunEndpointResolver.Resolve(
-                    mode,
-                    binding.DeclaredSource,
-                    hasExplicitSource: binding.DeclaredSource != 0,
-                    declaredTargets: 0,
-                    hasExplicitTargets: false,
-                    declaredEncoding,
-                    hasExplicitEncoding: declaredEncoding != 0,
-                    defaultProvider,
-                    defaultTargets: FoxRunEndpoint.Foxglove,
-                    publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                    subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
-                if (!resolution.Success
-                    || resolution.Topology.Source != FoxRunEndpoint.Foxglove
+                var resolvesToWebSocket =
+                    binding.DeclaredSource == FoxRunEndpoint.Foxglove
+                    || (binding.DeclaredSource == 0
+                        && defaultProvider
+                           == FoxgloveWebSocketTransport.TransportId);
+                if (!resolvesToWebSocket
                     || !binding.SupportsWebSocket)
-                {
                     return false;
-                }
             }
             isStream = bindings.Any(binding => binding.IsStream);
             return true;
@@ -404,6 +493,12 @@ namespace Unity.FoxgloveSDK.Components
                 ["wireSchemaName"] = TypeSchema("string"),
                 ["logicalSchemaName"] = TypeSchema("string"),
                 ["subscribeAvailable"] = TypeSchema("boolean"),
+                ["publishTransportIds"] = new JObject
+                {
+                    ["type"] = "array",
+                    ["items"] = TypeSchema("string")
+                },
+                ["subscribeTransportId"] = TypeSchema("string"),
                 ["unavailableDiagnosticId"] = TypeSchema("string"),
                 ["unavailableReason"] = TypeSchema("string"),
                 ["hz"] = TypeSchema("number"),

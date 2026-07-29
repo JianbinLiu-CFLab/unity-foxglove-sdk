@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string ManifestJsonFileName = "foxrun.manifest.json";
         public const string ManifestHashFileName = "foxrun.manifest.hash";
         public const string ManifestReportFileName = "foxrun.manifest.report.json";
-        public const int CurrentManifestVersion = 3;
+        public const int CurrentManifestVersion = 4;
         private const int ReplaceAttempts = 3;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 

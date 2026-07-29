@@ -173,6 +173,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int encoding = 0;
                 int source = 0;
                 int targets = 0;
+                string[] publishTransportIds = null;
+                string subscribeTransportId = null;
                 int qosProfile = 0;
                 int qosReliability = 0;
                 int qosDurability = 0;
@@ -222,6 +224,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             presence |= FoxRunNamedArgumentPresence.Targets;
                             if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
                             break;
+                        case "PublishTransportIds":
+                            presence |= FoxRunNamedArgumentPresence.PublishTransportIds;
+                            publishTransportIds = ReadStringArrayConstant(named.Value);
+                            break;
+                        case "SubscribeTransportId":
+                            presence |= FoxRunNamedArgumentPresence.SubscribeTransportId;
+                            subscribeTransportId = named.Value.Value as string;
+                            break;
                         case "QoS":
                             presence |= FoxRunNamedArgumentPresence.QoS;
                             if (TryReadIntConstant(named.Value, out var qos)) qosProfile = qos;
@@ -264,7 +274,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     qosReliability: qosReliability,
                     qosDurability: qosDurability,
                     qosHistory: qosHistory,
-                    qosDepth: qosDepth));
+                    qosDepth: qosDepth,
+                    publishTransportIds: publishTransportIds,
+                    subscribeTransportId: subscribeTransportId));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -285,6 +297,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var policy = 1;
                 var encoding = 0;
                 var targets = 0;
+                string[] publishTransportIds = null;
                 var qosProfile = 0;
                 var qosReliability = 0;
                 var qosDurability = 0;
@@ -324,6 +337,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         case "Targets":
                             presence |= FoxRunNamedArgumentPresence.Targets;
                             if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
+                            break;
+                        case "PublishTransportIds":
+                            presence |= FoxRunNamedArgumentPresence.PublishTransportIds;
+                            publishTransportIds = ReadStringArrayConstant(named.Value);
                             break;
                         case "QoS":
                             presence |= FoxRunNamedArgumentPresence.QoS;
@@ -382,7 +399,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     qosReliability: qosReliability,
                     qosDurability: qosDurability,
                     qosHistory: qosHistory,
-                    qosDepth: qosDepth));
+                    qosDepth: qosDepth,
+                    publishTransportIds: publishTransportIds));
             }
             if (topics.Count == 0) return null;
 
@@ -835,6 +853,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 return false;
             }
+        }
+
+        private static string[] ReadStringArrayConstant(TypedConstant constant)
+        {
+            if (constant.IsNull)
+                return null;
+            if (constant.Kind != TypedConstantKind.Array)
+                return Array.Empty<string>();
+
+            var values = new string[constant.Values.Length];
+            for (var index = 0; index < values.Length; index++)
+                values[index] = constant.Values[index].Value as string;
+            return values;
         }
 
         /// <summary>

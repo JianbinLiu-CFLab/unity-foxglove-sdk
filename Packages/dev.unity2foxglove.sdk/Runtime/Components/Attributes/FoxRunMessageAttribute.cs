@@ -37,6 +37,13 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEndpoint Targets { get; set; }
 
         /// <summary>
+        /// Stable transport Provider IDs used for aggregate publishing.
+        /// Omission inherits the frozen publish profile; an explicit array
+        /// replaces it. IDs are canonicalized with ordinal ordering.
+        /// </summary>
+        public string[] PublishTransportIds { get; set; }
+
+        /// <summary>
         /// Foxglove encoding when the effective targets include Foxglove.
         /// Omission inherits the frozen Publish Profile.
         /// </summary>

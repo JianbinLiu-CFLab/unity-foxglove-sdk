@@ -33,7 +33,9 @@ namespace Unity.FoxgloveSDK.Editor
         Reliability = 1L << 11,
         Durability = 1L << 12,
         History = 1L << 13,
-        Depth = 1L << 14
+        Depth = 1L << 14,
+        PublishTransportIds = 1L << 15,
+        SubscribeTransportId = 1L << 16
     }
 
     /// <summary>
@@ -398,6 +400,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string Encoding;
         public readonly string Source;
         public readonly string Targets;
+        public readonly IReadOnlyList<string> PublishTransportIds;
+        public readonly string SubscribeTransportId;
         public readonly string QosProfile;
         public readonly string QosReliability;
         public readonly string QosDurability;
@@ -486,7 +490,9 @@ namespace Unity.FoxgloveSDK.Editor
             bool isStream = false,
             IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
             FoxRunNormalizedScheduleTuple normalizedSchedule = null,
-            FoxRunProtobufMetadata protobufMetadata = null)
+            FoxRunProtobufMetadata protobufMetadata = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
             : this(
                 ns,
                 className,
@@ -529,7 +535,9 @@ namespace Unity.FoxgloveSDK.Editor
                 isStream,
                 encodingVariants,
                 normalizedSchedule,
-                protobufMetadata)
+                protobufMetadata,
+                publishTransportIds,
+                subscribeTransportId)
         {
         }
 
@@ -575,7 +583,9 @@ namespace Unity.FoxgloveSDK.Editor
             bool isStream = false,
             IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
             FoxRunNormalizedScheduleTuple normalizedSchedule = null,
-            FoxRunProtobufMetadata protobufMetadata = null)
+            FoxRunProtobufMetadata protobufMetadata = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
             : this(
                 ns,
                 className,
@@ -619,7 +629,9 @@ namespace Unity.FoxgloveSDK.Editor
                 isStream,
                 encodingVariants,
                 normalizedSchedule,
-                protobufMetadata)
+                protobufMetadata,
+                publishTransportIds,
+                subscribeTransportId)
         {
         }
 
@@ -666,7 +678,9 @@ namespace Unity.FoxgloveSDK.Editor
             bool isStream = false,
             IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
             FoxRunNormalizedScheduleTuple normalizedSchedule = null,
-            FoxRunProtobufMetadata protobufMetadata = null)
+            FoxRunProtobufMetadata protobufMetadata = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -686,6 +700,8 @@ namespace Unity.FoxgloveSDK.Editor
             Encoding = encoding ?? string.Empty;
             Source = source ?? string.Empty;
             Targets = targets ?? string.Empty;
+            PublishTransportIds = CanonicalTransportIds(publishTransportIds);
+            SubscribeTransportId = subscribeTransportId;
             QosProfile = qosProfile ?? string.Empty;
             QosReliability = qosReliability ?? string.Empty;
             QosDurability = qosDurability ?? string.Empty;
@@ -731,7 +747,9 @@ namespace Unity.FoxgloveSDK.Editor
                     qosDurability,
                     qosHistory,
                     qosDepth,
-                    protobufFieldNumber);
+                    protobufFieldNumber,
+                    publishTransportIds,
+                    subscribeTransportId);
             DeclaredHz = hz;
             HasExplicitHz = HasNamedArgument(FoxRunNamedArgumentPresence.Hz);
             HasNonFiniteHz = IsNonFinite(hz);
@@ -907,7 +925,9 @@ namespace Unity.FoxgloveSDK.Editor
                 IsStream,
                 values.AsReadOnly(),
                 NormalizedSchedule,
-                ProtobufMetadata);
+                ProtobufMetadata,
+                PublishTransportIds,
+                SubscribeTransportId);
         }
 
         private static IReadOnlyList<FoxRunEncodingVariantAvailability> DefaultEncodingVariants(
@@ -1167,6 +1187,8 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.History, "History");
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Depth, "Depth");
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.ProtobufFieldNumber, "ProtobufFieldNumber");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.PublishTransportIds, "PublishTransportIds");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.SubscribeTransportId, "SubscribeTransportId");
             return string.Join(",", names);
         }
 
@@ -1195,7 +1217,9 @@ namespace Unity.FoxgloveSDK.Editor
             string qosDurability,
             string qosHistory,
             int qosDepth,
-            int protobufFieldNumber)
+            int protobufFieldNumber,
+            IReadOnlyList<string> publishTransportIds,
+            string subscribeTransportId)
         {
             var presence = FoxRunNamedArgumentPresence.None;
             if (hz > 0f || IsNonFinite(hz)) presence |= FoxRunNamedArgumentPresence.Hz;
@@ -1220,7 +1244,22 @@ namespace Unity.FoxgloveSDK.Editor
                 presence |= FoxRunNamedArgumentPresence.History;
             if (qosDepth != 0) presence |= FoxRunNamedArgumentPresence.Depth;
             if (protobufFieldNumber != 0) presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
+            if (publishTransportIds != null)
+                presence |= FoxRunNamedArgumentPresence.PublishTransportIds;
+            if (subscribeTransportId != null)
+                presence |= FoxRunNamedArgumentPresence.SubscribeTransportId;
             return presence;
+        }
+
+        private static IReadOnlyList<string> CanonicalTransportIds(
+            IReadOnlyList<string> values)
+        {
+            if (values == null)
+                return null;
+
+            var copy = values.Select(value => value ?? string.Empty).ToArray();
+            Array.Sort(copy, StringComparer.Ordinal);
+            return Array.AsReadOnly(copy);
         }
 
         private static FoxRunConditionMemberKind NormalizeConditionMemberKind(

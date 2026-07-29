@@ -248,7 +248,8 @@ namespace Unity.FoxgloveSDK.Editor
                 type.Namespace,
                 type.ClassName,
                 type.Members.Select(member => member.ToTopicMember()).ToList(),
-                emitRos2NativePartial);
+                emitRos2NativePartial,
+                type);
         }
 
         // Public API forwarding wrappers — the implementations live in sub-emitters
@@ -268,7 +269,12 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
         {
-            return EmitClassCore(ns, className, members, emitRos2NativePartial: true);
+            return EmitClassCore(
+                ns,
+                className,
+                members,
+                emitRos2NativePartial: true,
+                generationType: null);
         }
 
         internal static IReadOnlyList<string> GeneratedMethodNames(FoxRunGenerationType type)
@@ -284,7 +290,8 @@ namespace Unity.FoxgloveSDK.Editor
             string ns,
             string className,
             IReadOnlyList<TopicMember> members,
-            bool emitRos2NativePartial)
+            bool emitRos2NativePartial,
+            FoxRunGenerationType generationType)
         {
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));
@@ -465,6 +472,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             var publishMethods = TriggerEmitter.BuildPublishMembers(publishMembers, topics);
             TriggerEmitter.EmitPublishMethods(sb, publishMethods, pad);
+
+            TransportMemberAccessEmitter.Emit(sb, generationType, pad);
 
             if (topics.Count > 0)
                 PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);

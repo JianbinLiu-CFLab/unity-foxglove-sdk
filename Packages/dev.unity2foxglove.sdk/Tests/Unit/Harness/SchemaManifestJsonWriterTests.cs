@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
         [Fact]
         [Trait("Phase", "185-A")]
-        public void CurrentFoxRunDescriptorMajorVersionIsReportedAsFive()
+        public void CurrentFoxRunDescriptorMajorVersionIsReportedAsSix()
         {
             var section = new Unity2FoxgloveFoxRunSummarySection(
                 true,
@@ -54,8 +54,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             var json = Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(section);
 
-            Assert.Contains("\"generatorMajorVersion\":5", json, StringComparison.Ordinal);
-            Assert.Equal(5, FoxRunGenerationDescriptorConstants.DescriptorVersion);
+            Assert.Contains("\"generatorMajorVersion\":6", json, StringComparison.Ordinal);
+            Assert.Equal(6, FoxRunGenerationDescriptorConstants.DescriptorVersion);
         }
 
         private static Unity2FoxgloveSchemaManifest EmptyManifest()

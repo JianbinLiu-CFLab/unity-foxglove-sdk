@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void CanonicalManifestExposesSeparateSubscriptionBindingSection()
         {
-            Assert.Equal(3, FoxrunManifestWriter.CurrentManifestVersion);
+            Assert.Equal(4, FoxrunManifestWriter.CurrentManifestVersion);
             Assert.NotNull(typeof(FoxRunManifestSections).GetProperty("Subscriptions"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("Source"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesWebSocketCodec"));
@@ -167,20 +167,34 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var manifest = FoxRunManifestBuilder.Build(
                 new[] { json, native },
                 manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+            var legacyV3 = FoxRunManifestBuilder.Build(
+                new[] { json, native },
+                manifestVersion: 3);
             var jsonOnlyV1 = FoxRunManifestBuilder.Build(new[] { json }, manifestVersion: 1);
             var contract = Assert.Single(Assert.Single(manifest.Sections.FoxRun.Types).Contracts);
+            var legacyContract = Assert.Single(
+                Assert.Single(legacyV3.Sections.FoxRun.Types).Contracts);
 
-            Assert.Equal(3, manifest.ManifestVersion);
+            Assert.Equal(4, manifest.ManifestVersion);
             Assert.Equal(1, manifest.Generator.MajorVersion);
             Assert.Equal("json", contract.Encoding);
-            Assert.Equal("3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207", contract.ContractHash);
-            Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", contract.BindingHash);
+            Assert.True(contract.IncludesTransportSelection);
+            Assert.Equal(
+                "3a171385ef84247fd8fc3fd37a49619155bec770691804c04d879f7e70cf5207",
+                legacyContract.ContractHash);
+            Assert.Equal(
+                "dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52",
+                legacyContract.BindingHash);
+            Assert.NotEqual(legacyContract.ContractHash, contract.ContractHash);
+            Assert.NotEqual(legacyContract.BindingHash, contract.BindingHash);
             Assert.Single(manifest.Sections.Subscriptions.Bindings);
             Assert.True(FoxRunManifestHasher.IsLowercaseSha256Hex(manifest.Sections.Subscriptions.ManifestHash));
             Assert.Equal("262502c3999d4140c8b809fc0110ea5ea2fa4898702a117743140e672502fcef", jsonOnlyV1.Sections.FoxRun.ManifestHash);
 
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
             Assert.Contains("\"subscriptions\"", canonical, StringComparison.Ordinal);
+            Assert.Contains("\"publishTransportIds\":null", canonical, StringComparison.Ordinal);
+            Assert.Contains("\"subscribeTransportId\":null", canonical, StringComparison.Ordinal);
             Assert.Contains("\"declaredSource\":\"ros2-native\"", canonical, StringComparison.Ordinal);
             Assert.DoesNotContain("\"encoding\":\"cdr\"", canonical, StringComparison.Ordinal);
             Assert.DoesNotContain("\"encoding\":\"ros2\"", canonical, StringComparison.Ordinal);
@@ -240,7 +254,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxRunSchemaInfoWriter.GenerateSource(manifest);
 
-            Assert.Contains("public const int ManifestVersion = 3;", source, StringComparison.Ordinal);
+            Assert.Contains("public const int ManifestVersion = 4;", source, StringComparison.Ordinal);
             Assert.Contains("public const int SubscriptionBindingCount = 1;", source, StringComparison.Ordinal);
             Assert.Contains("public const int CustomNativeContractCount = 0;", source, StringComparison.Ordinal);
             Assert.Contains("public const string SubscriptionManifestHash =", source, StringComparison.Ordinal);

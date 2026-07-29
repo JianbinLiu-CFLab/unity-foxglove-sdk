@@ -170,6 +170,8 @@ namespace Unity.FoxgloveSDK.Editor
                         source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
                         qosReliability: a.QosReliability, qosDurability: a.QosDurability,
                         qosHistory: a.QosHistory, qosDepth: a.QosDepth,
+                        publishTransportIds: a.PublishTransportIds,
+                        subscribeTransportId: a.SubscribeTransportId,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -188,6 +190,7 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
                         targets: aggregateMessage.Targets,
+                        publishTransportIds: aggregateMessage.PublishTransportIds,
                         qosProfile: aggregateMessage.QosProfile,
                         qosReliability: aggregateMessage.QosReliability,
                         qosDurability: aggregateMessage.QosDurability,
@@ -214,6 +217,8 @@ namespace Unity.FoxgloveSDK.Editor
                         source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
                         qosReliability: a.QosReliability, qosDurability: a.QosDurability,
                         qosHistory: a.QosHistory, qosDepth: a.QosDepth,
+                        publishTransportIds: a.PublishTransportIds,
+                        subscribeTransportId: a.SubscribeTransportId,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -232,6 +237,7 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
                         targets: aggregateMessage.Targets,
+                        publishTransportIds: aggregateMessage.PublishTransportIds,
                         qosProfile: aggregateMessage.QosProfile,
                         qosReliability: aggregateMessage.QosReliability,
                         qosDurability: aggregateMessage.QosDurability,

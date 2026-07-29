@@ -238,7 +238,20 @@ namespace Unity.FoxgloveSDK.Editor
                     inner,
                     contract.SubscribeUnavailableDiagnosticId,
                     ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.SubscribeUnavailableReason, "");
+                AppendIndentedStringLiteralLine(sb, inner, contract.SubscribeUnavailableReason, ",");
+                WriteStringArrayOrNull(
+                    sb,
+                    contract.PublishTransportIds,
+                    indentLevel + 2,
+                    trailingComma: true);
+                if (contract.SubscribeTransportId == null)
+                    sb.AppendLine(inner + "    null");
+                else
+                    AppendIndentedStringLiteralLine(
+                        sb,
+                        inner,
+                        contract.SubscribeTransportId,
+                        "");
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
@@ -726,6 +739,26 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(innerIndent).Append("    ");
             AppendStringLiteral(sb, value);
             sb.AppendLine(suffix);
+        }
+
+        private static void WriteStringArrayOrNull(
+            StringBuilder sb,
+            IReadOnlyList<string> values,
+            int indentLevel,
+            bool trailingComma)
+        {
+            var indent = Indent(indentLevel);
+            if (values == null)
+            {
+                sb.AppendLine(indent + "null" + (trailingComma ? "," : string.Empty));
+                return;
+            }
+
+            sb.AppendLine(indent + "new string[]");
+            sb.AppendLine(indent + "{");
+            foreach (var value in values)
+                AppendIndentedStringLiteralLine(sb, indent, value, ",");
+            sb.AppendLine(indent + "}" + (trailingComma ? "," : string.Empty));
         }
 
         private static void AppendStringLiteral(StringBuilder sb, string value)

@@ -486,8 +486,11 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnEnable()
         {
-            BeginFoxRunPublishSessionIfNeeded();
-            BeginFoxRunSubscriptionSessionIfNeeded();
+            if (BeginFoxRunTransportSessionIfNeeded())
+            {
+                BeginFoxRunPublishSessionIfNeeded();
+                BeginFoxRunSubscriptionSessionIfNeeded();
+            }
 
             if (_startOnEnable)
             {

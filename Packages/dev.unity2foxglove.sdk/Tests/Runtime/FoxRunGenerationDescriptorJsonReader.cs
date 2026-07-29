@@ -20,38 +20,41 @@ namespace Unity.FoxgloveSDK.Tests
             var descriptorVersion = IntValue(root, "descriptorVersion");
             var generatorVersion = StringValue(root, "generatorVersion");
             ValidateVersionPair(descriptorVersion, generatorVersion);
-            var strictV5 = descriptorVersion == FoxRunGenerationDescriptorConstants.DescriptorVersion;
+            var modernV5 = descriptorVersion >= 5;
+            var strictV6 =
+                descriptorVersion
+                == FoxRunGenerationDescriptorConstants.DescriptorVersion;
             var types = new List<FoxRunGenerationType>();
-            foreach (var typeToken in ArrayValue(root, "types", required: strictV5))
+            foreach (var typeToken in ArrayValue(root, "types", required: modernV5))
             {
                 var type = typeToken as JObject
                     ?? throw new InvalidOperationException("FoxRun generation descriptor 'types' entries must be JSON objects.");
                 var ns = StringValue(type, "namespace");
                 var className = StringValue(type, "className");
                 var members = new List<FoxRunGenerationMember>();
-                foreach (var memberToken in ArrayValue(type, "members", required: strictV5))
+                foreach (var memberToken in ArrayValue(type, "members", required: modernV5))
                 {
                     var member = memberToken as JObject
                         ?? throw new InvalidOperationException("FoxRun generation descriptor 'members' entries must be JSON objects.");
                     var mode = ModeValue(member);
                     var encoding = StringValue(member, "encoding");
-                    var typeShape = strictV5
+                    var typeShape = modernV5
                         ? TypeShapeValue(RequiredProperty(member, "typeShape"), "typeShape")
                         : null;
-                    var encodingVariants = strictV5
+                    var encodingVariants = modernV5
                         ? EncodingVariantsValue(RequiredProperty(member, "encodingVariants"))
                         : LegacyEncodingVariants(encoding, mode);
-                    if (strictV5
+                    if (modernV5
                         && typeShape == null
                         && ContainsMessagePackVariant(encodingVariants))
                     {
                         throw new InvalidOperationException(
                             "FoxRun generation descriptor v5 requires a non-null typeShape when a MessagePack variant is present.");
                     }
-                    var protobufMetadata = strictV5
+                    var protobufMetadata = modernV5
                         ? ProtobufMetadataValue(RequiredProperty(member, "protobuf"))
                         : null;
-                    var normalizedSchedule = strictV5
+                    var normalizedSchedule = modernV5
                         ? NormalizedScheduleValue(RequiredProperty(member, "normalizedSchedule"))
                         : null;
                     members.Add(new FoxRunGenerationMember(
@@ -78,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
                         jsonFieldName: StringValue(member, "jsonFieldName"),
                         mode: mode,
                         encoding: encoding,
-                        protobufFieldNumber: strictV5
+                        protobufFieldNumber: modernV5
                             ? protobufMetadata?.FieldNumber ?? 0
                             : IntValue(member, "protobufFieldNumber"),
                         typeShape: typeShape,
@@ -97,7 +100,17 @@ namespace Unity.FoxgloveSDK.Tests
                         isStream: BoolValue(member, "isStream"),
                         encodingVariants: encodingVariants,
                         normalizedSchedule: normalizedSchedule,
-                        protobufMetadata: protobufMetadata));
+                        protobufMetadata: protobufMetadata,
+                        publishTransportIds: strictV6
+                            ? NullableStringArrayValue(
+                                member,
+                                "publishTransportIds")
+                            : null,
+                        subscribeTransportId: strictV6
+                            ? NullableStringValue(
+                                member,
+                                "subscribeTransportId")
+                            : null));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }
@@ -112,6 +125,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             if (descriptorVersion == 4
                 && string.Equals(generatorVersion, "4.0.0", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (descriptorVersion == 5
+                && string.Equals(
+                    generatorVersion,
+                    "5.0.0",
+                    StringComparison.Ordinal))
             {
                 return;
             }
@@ -146,6 +168,51 @@ namespace Unity.FoxgloveSDK.Tests
             return token as JArray
                    ?? throw new InvalidOperationException(
                        "FoxRun generation descriptor '" + name + "' must be a JSON array.");
+        }
+
+        private static IReadOnlyList<string> NullableStringArrayValue(
+            JObject obj,
+            string name)
+        {
+            var token = RequiredProperty(obj, name);
+            if (token.Type == JTokenType.Null)
+                return null;
+            if (!(token is JArray array))
+            {
+                throw new InvalidOperationException(
+                    "FoxRun generation descriptor '"
+                    + name
+                    + "' must be an array or null.");
+            }
+
+            var values = new List<string>(array.Count);
+            foreach (var item in array)
+            {
+                if (item.Type != JTokenType.String)
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun generation descriptor '"
+                        + name
+                        + "' entries must be strings.");
+                }
+                values.Add(item.Value<string>() ?? string.Empty);
+            }
+            return values.AsReadOnly();
+        }
+
+        private static string NullableStringValue(JObject obj, string name)
+        {
+            var token = RequiredProperty(obj, name);
+            if (token.Type == JTokenType.Null)
+                return null;
+            if (token.Type != JTokenType.String)
+            {
+                throw new InvalidOperationException(
+                    "FoxRun generation descriptor '"
+                    + name
+                    + "' must be a string or null.");
+            }
+            return token.Value<string>();
         }
 
         private static JToken RequiredProperty(JObject obj, string name)

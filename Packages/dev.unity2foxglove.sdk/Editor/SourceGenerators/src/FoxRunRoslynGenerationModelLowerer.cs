@@ -55,7 +55,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     qosDurability: FoxRunGenerationMember.DeclaredQosDurabilityToText(member.QosDurability),
                     qosHistory: FoxRunGenerationMember.DeclaredQosHistoryToText(member.QosHistory),
                     qosDepth: member.QosDepth,
-                    isStream: member.IsStream))
+                    isStream: member.IsStream,
+                    publishTransportIds: member.PublishTransportIds,
+                    subscribeTransportId: member.SubscribeTransportId))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -80,6 +82,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Encoding;
         public readonly int Source;
         public readonly int Targets;
+        public readonly IReadOnlyList<string> PublishTransportIds;
+        public readonly string SubscribeTransportId;
         public readonly int QosProfile;
         public readonly int QosReliability;
         public readonly int QosDurability;
@@ -140,7 +144,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int qosDurability = 0,
             int qosHistory = 0,
             int qosDepth = 0,
-            bool isStream = false)
+            bool isStream = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -161,6 +167,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Encoding = encoding;
             Source = source;
             Targets = targets;
+            PublishTransportIds = publishTransportIds == null
+                ? null
+                : Array.AsReadOnly(publishTransportIds.ToArray());
+            SubscribeTransportId = subscribeTransportId;
             QosProfile = qosProfile;
             QosReliability = qosReliability;
             QosDurability = qosDurability;
@@ -229,7 +239,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int qosReliability = 0,
             int qosDurability = 0,
             int qosHistory = 0,
-            int qosDepth = 0)
+            int qosDepth = 0,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
             : this(
                 ns,
                 className,
@@ -267,7 +279,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 qosReliability,
                 qosDurability,
                 qosHistory,
-                qosDepth)
+                qosDepth,
+                false,
+                publishTransportIds,
+                subscribeTransportId)
         {
         }
     }

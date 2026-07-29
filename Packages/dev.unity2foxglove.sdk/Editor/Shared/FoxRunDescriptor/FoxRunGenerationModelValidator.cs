@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Editor
         private const string MessagePackProtobufFieldNumberDiagnosticId = "FOXRUN617";
         private const string MessagePackInboundTopologyDiagnosticId = "FOXRUN618";
         private const string MessagePackScheduleDiagnosticId = "FOXRUN619";
+        private const string InvalidTransportSelectionDiagnosticId = "FOXRUN620";
+        private const string InvalidDirectionalTransportDiagnosticId = "FOXRUN621";
         private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
         private const string InvalidStreamDeclarationDiagnosticId = "FOXRUN215";
         private const FoxRunNamedArgumentPresence DirectionalQosPresenceMask =
@@ -40,7 +42,9 @@ namespace Unity.FoxgloveSDK.Editor
             | FoxRunNamedArgumentPresence.Reliability
             | FoxRunNamedArgumentPresence.Durability
             | FoxRunNamedArgumentPresence.History
-            | FoxRunNamedArgumentPresence.Depth;
+            | FoxRunNamedArgumentPresence.Depth
+            | FoxRunNamedArgumentPresence.PublishTransportIds
+            | FoxRunNamedArgumentPresence.SubscribeTransportId;
 
         private static readonly string[] UnityNativeContainerPrefixes =
         {
@@ -168,6 +172,12 @@ namespace Unity.FoxgloveSDK.Editor
             var hasExplicitEncoding = member.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding);
             var hasExplicitSource = member.HasNamedArgument(FoxRunNamedArgumentPresence.Source);
             var hasExplicitTargets = member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets);
+            var hasExplicitPublishTransports =
+                member.HasNamedArgument(
+                    FoxRunNamedArgumentPresence.PublishTransportIds);
+            var hasExplicitSubscribeTransport =
+                member.HasNamedArgument(
+                    FoxRunNamedArgumentPresence.SubscribeTransportId);
             var hasExplicitQos = HasExplicitQos(member);
 
             if (!IsKnownDeclaredEncoding(member.Encoding, hasExplicitEncoding))
@@ -192,6 +202,12 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             AppendDirectionalEndpointDiagnostics(member, target, diagnostics);
+            AppendTransportSelectionDiagnostics(
+                member,
+                target,
+                hasExplicitPublishTransports,
+                hasExplicitSubscribeTransport,
+                diagnostics);
             AppendQosDiagnostics(member, target, hasExplicitQos, diagnostics);
 
             if (IsNativeCustomBidirectionalOutputContract(member)
@@ -391,6 +407,107 @@ namespace Unity.FoxgloveSDK.Editor
                     || (member.IsArray && member.CanonicalType == "uint8")))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN010", target, member.MemberName, "Binary/blob values are not supported in the FoxRun contract path."));
         }
+
+        private static void AppendTransportSelectionDiagnostics(
+            FoxRunGenerationMember member,
+            string target,
+            bool hasExplicitPublishTransports,
+            bool hasExplicitSubscribeTransport,
+            List<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            var publishes = member.Mode == 1 || member.Mode == 3;
+            var subscribes = member.Mode == 2 || member.Mode == 3;
+            if (!publishes && hasExplicitPublishTransports)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidDirectionalTransportDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Subscribe-only FoxRun declarations cannot set PublishTransportIds."));
+            }
+            if (!subscribes && hasExplicitSubscribeTransport)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidDirectionalTransportDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Publish-only FoxRun declarations cannot set SubscribeTransportId."));
+            }
+
+            if (hasExplicitPublishTransports)
+            {
+                var values = member.PublishTransportIds;
+                if (values == null || values.Count == 0)
+                {
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        InvalidTransportSelectionDiagnosticId,
+                        target,
+                        member.MemberName,
+                        "Explicit PublishTransportIds must contain one or more unique stable Provider IDs."));
+                }
+                else
+                {
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var value in values)
+                    {
+                        if (!IsValidTransportId(value) || !seen.Add(value))
+                        {
+                            diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                                InvalidTransportSelectionDiagnosticId,
+                                target,
+                                member.MemberName,
+                                "PublishTransportIds contains an invalid or duplicate stable Provider ID."));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (hasExplicitSubscribeTransport
+                && !IsValidTransportId(member.SubscribeTransportId))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidTransportSelectionDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "SubscribeTransportId must be one stable Provider ID."));
+            }
+        }
+
+        private static bool IsValidTransportId(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length > 128)
+                return false;
+            var segmentCount = 1;
+            var segmentStart = 0;
+            for (var index = 0; index <= value.Length; index++)
+            {
+                if (index != value.Length && value[index] != '.')
+                    continue;
+                var length = index - segmentStart;
+                if (length == 0)
+                    return false;
+                if (!IsLowerAlphaNumeric(value[segmentStart])
+                    || !IsLowerAlphaNumeric(value[index - 1]))
+                {
+                    return false;
+                }
+                for (var character = segmentStart; character < index; character++)
+                {
+                    var current = value[character];
+                    if (!IsLowerAlphaNumeric(current) && current != '-')
+                        return false;
+                }
+                if (index != value.Length)
+                    segmentCount++;
+                segmentStart = index + 1;
+            }
+            return segmentCount >= 2;
+        }
+
+        private static bool IsLowerAlphaNumeric(char value)
+            => value >= 'a' && value <= 'z'
+               || value >= '0' && value <= '9';
 
         private static bool HasValidNativeCapability(FoxRunGenerationMember member)
         {
@@ -949,6 +1066,13 @@ namespace Unity.FoxgloveSDK.Editor
                 if (member.Mode != first.Mode
                     || !string.Equals(member.Source, first.Source, StringComparison.Ordinal)
                     || !string.Equals(member.Targets, first.Targets, StringComparison.Ordinal)
+                    || !TransportIdsEqual(
+                        member.PublishTransportIds,
+                        first.PublishTransportIds)
+                    || !string.Equals(
+                        member.SubscribeTransportId,
+                        first.SubscribeTransportId,
+                        StringComparison.Ordinal)
                     || !string.Equals(member.QosProfile, first.QosProfile, StringComparison.Ordinal)
                     || !string.Equals(member.QosReliability, first.QosReliability, StringComparison.Ordinal)
                     || !string.Equals(member.QosDurability, first.QosDurability, StringComparison.Ordinal)
@@ -961,6 +1085,22 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return false;
+        }
+
+        private static bool TransportIdsEqual(
+            IReadOnlyList<string> left,
+            IReadOnlyList<string> right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null || left.Count != right.Count)
+                return false;
+            for (var index = 0; index < left.Count; index++)
+            {
+                if (!string.Equals(left[index], right[index], StringComparison.Ordinal))
+                    return false;
+            }
+            return true;
         }
 
         private static bool IsInvalidConditionName(string name)

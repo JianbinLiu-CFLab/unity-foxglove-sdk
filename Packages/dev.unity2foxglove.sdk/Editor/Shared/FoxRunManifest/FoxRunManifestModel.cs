@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -33,6 +34,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string JsonFieldName { get; }
         public string Source { get; }
         public string Targets { get; }
+        public IReadOnlyList<string> PublishTransportIds { get; }
+        public string SubscribeTransportId { get; }
         public string QosProfile { get; }
         public string QosReliability { get; }
         public string QosDurability { get; }
@@ -81,7 +84,9 @@ namespace Unity.FoxgloveSDK.Editor
             bool isStream = false,
             IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
             FoxRunNormalizedScheduleTuple normalizedSchedule = null,
-            FoxRunProtobufMetadata protobufMetadata = null)
+            FoxRunProtobufMetadata protobufMetadata = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -108,6 +113,8 @@ namespace Unity.FoxgloveSDK.Editor
             JsonFieldName = jsonFieldName ?? string.Empty;
             Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
             Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
+            PublishTransportIds = CanonicalTransportIds(publishTransportIds);
+            SubscribeTransportId = subscribeTransportId;
             QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;
             QosReliability = qosReliability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
             QosDurability = qosDurability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
@@ -196,7 +203,9 @@ namespace Unity.FoxgloveSDK.Editor
                 member.IsStream,
                 member.EncodingVariants,
                 member.NormalizedSchedule,
-                member.ProtobufMetadata);
+                member.ProtobufMetadata,
+                member.PublishTransportIds,
+                member.SubscribeTransportId);
         }
 
         private static IReadOnlyList<FoxRunEncodingVariantAvailability> DefaultEncodingVariants(
@@ -275,6 +284,16 @@ namespace Unity.FoxgloveSDK.Editor
                 return 3;
             }
             return -1;
+        }
+
+        private static IReadOnlyList<string> CanonicalTransportIds(
+            IReadOnlyList<string> values)
+        {
+            if (values == null)
+                return null;
+            var copy = values.Select(value => value ?? string.Empty).ToArray();
+            Array.Sort(copy, StringComparer.Ordinal);
+            return Array.AsReadOnly(copy);
         }
     }
 
@@ -523,6 +542,9 @@ namespace Unity.FoxgloveSDK.Editor
         public string WireSchemaName => SchemaName;
         public string LogicalSchemaName { get; }
         public string Encoding { get; }
+        public bool IncludesTransportSelection { get; }
+        public IReadOnlyList<string> PublishTransportIds { get; }
+        public string SubscribeTransportId { get; }
         public string ContractHash { get; }
         public string BindingHash { get; }
         public string PolicyHash { get; }
@@ -567,13 +589,21 @@ namespace Unity.FoxgloveSDK.Editor
             string publishUnavailableDiagnosticId = null,
             string publishUnavailableReason = null,
             string subscribeUnavailableDiagnosticId = null,
-            string subscribeUnavailableReason = null)
+            string subscribeUnavailableReason = null,
+            bool includesTransportSelection = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             LogicalSchemaName = logicalSchemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
+            IncludesTransportSelection = includesTransportSelection;
+            PublishTransportIds = publishTransportIds == null
+                ? null
+                : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+            SubscribeTransportId = subscribeTransportId;
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
             PolicyHash = policyHash ?? string.Empty;

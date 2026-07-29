@@ -133,6 +133,22 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
             CompareSemantic(key, "source", left.Source, right.Source, semantic);
             CompareSemantic(key, "targets", left.Targets, right.Targets, semantic);
+            CompareSemantic(
+                key,
+                "publishTransportIds",
+                left.PublishTransportIds == null
+                    ? "<inherit>"
+                    : string.Join(",", left.PublishTransportIds),
+                right.PublishTransportIds == null
+                    ? "<inherit>"
+                    : string.Join(",", right.PublishTransportIds),
+                semantic);
+            CompareSemantic(
+                key,
+                "subscribeTransportId",
+                left.SubscribeTransportId ?? "<inherit>",
+                right.SubscribeTransportId ?? "<inherit>",
+                semantic);
             CompareSemantic(key, "qosProfile", left.QosProfile, right.QosProfile, semantic);
             CompareSemantic(key, "qosReliability", left.QosReliability, right.QosReliability, semantic);
             CompareSemantic(key, "qosDurability", left.QosDurability, right.QosDurability, semantic);

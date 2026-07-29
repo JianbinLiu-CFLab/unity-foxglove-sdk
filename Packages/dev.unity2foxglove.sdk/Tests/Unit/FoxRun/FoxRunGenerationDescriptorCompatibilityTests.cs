@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit/FoxRun
-// Purpose: Locks strict v5 descriptor provenance and the one supported v4 read path.
+// Purpose: Locks strict v6 descriptor provenance and the supported v4/v5 read paths.
 
 using System;
 using System.IO;
@@ -20,10 +20,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class FoxRunGenerationDescriptorCompatibilityTests
     {
         [Fact]
-        public void CurrentWriterUsesTheLockedV5PairAndSharedMessagePackSpelling()
+        public void CurrentWriterUsesTheLockedV6PairAndSharedMessagePackSpelling()
         {
-            Assert.Equal(5, FoxRunGenerationDescriptorConstants.DescriptorVersion);
-            Assert.Equal("5.0.0", FoxRunGenerationDescriptorConstants.GeneratorVersion);
+            Assert.Equal(6, FoxRunGenerationDescriptorConstants.DescriptorVersion);
+            Assert.Equal("6.0.0", FoxRunGenerationDescriptorConstants.GeneratorVersion);
 
             var field = typeof(FoxRunGenerationDescriptorConstants).GetField("MessagePackEncoding");
             Assert.NotNull(field);
@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void DescriptorCarriesRequiredV5ShapeAvailabilityAndScheduleFields()
+        public void DescriptorCarriesRequiredV6ShapeAvailabilityScheduleAndTransportFields()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
             {
@@ -51,10 +51,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Contains("\"normalizedSchedule\":", json, StringComparison.Ordinal);
             Assert.Contains("\"publishUnavailableDiagnosticId\":", json, StringComparison.Ordinal);
             Assert.Contains("\"subscribeUnavailableDiagnosticId\":", json, StringComparison.Ordinal);
+            Assert.Contains("\"publishTransportIds\":null", json, StringComparison.Ordinal);
+            Assert.Contains("\"subscribeTransportId\":null", json, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void StrictV5RejectsNullTypeShapeWhenMessagePackVariantIsPresent()
+        public void StrictV6RejectsNullTypeShapeWhenMessagePackVariantIsPresent()
         {
             var root = JObject.Parse(CurrentDescriptorJson());
             var member = (JObject)root["types"]![0]!["members"]![0]!;
@@ -68,7 +70,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void StrictV5RoundTripPreservesRecursiveShapeAvailabilityAndSchedule()
+        public void StrictV6RoundTripPreservesRecursiveShapeAvailabilityScheduleAndTransportSelection()
         {
             var typeShape = FoxRunTypeShape.Object(
                 "Demo.State",
@@ -137,7 +139,13 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     conditionMemberKind: FoxRunConditionMemberKind.Property,
                     encodingVariants: variants,
                     normalizedSchedule: schedule,
-                    protobufMetadata: protobufMetadata)
+                    protobufMetadata: protobufMetadata,
+                    publishTransportIds: new[]
+                    {
+                        "unity2foxglove.zeta",
+                        "foxglove.websocket"
+                    },
+                    subscribeTransportId: "unity2foxglove.alpha")
             });
 
             var read = FoxRunGenerationDescriptorJsonReader.Read(
@@ -161,6 +169,29 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal("FOXRUN618", variant.SubscribeUnavailableDiagnosticId);
             Assert.Equal(string.Empty, variant.UnavailableDiagnosticId);
             Assert.Equal(FoxRunConditionMemberKind.Property, member.NormalizedSchedule.ConditionMemberKind);
+            Assert.Equal(
+                new[] { "foxglove.websocket", "unity2foxglove.zeta" },
+                member.PublishTransportIds);
+            Assert.Equal("unity2foxglove.alpha", member.SubscribeTransportId);
+        }
+
+        [Fact]
+        public void FrozenV5FixtureReadsWithoutInventingTransportSelection()
+        {
+            var root = JObject.Parse(CurrentDescriptorJson());
+            root["descriptorVersion"] = 5;
+            root["generatorVersion"] = "5.0.0";
+            var member = (JObject)root["types"]![0]!["members"]![0]!;
+            member.Property("publishTransportIds")!.Remove();
+            member.Property("subscribeTransportId")!.Remove();
+
+            var model = FoxRunGenerationDescriptorJsonReader.Read(root.ToString());
+            var read = Assert.Single(Assert.Single(model.Types).Members);
+
+            Assert.Equal(5, model.DescriptorVersion);
+            Assert.Equal("5.0.0", model.GeneratorVersion);
+            Assert.Null(read.PublishTransportIds);
+            Assert.Null(read.SubscribeTransportId);
         }
 
         [Fact]
@@ -205,7 +236,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [InlineData("typeShape")]
         [InlineData("encodingVariants")]
         [InlineData("normalizedSchedule")]
-        public void V5MissingRequiredMemberSemanticsFailsClosed(string propertyName)
+        public void V6MissingRequiredMemberSemanticsFailsClosed(string propertyName)
         {
             var root = JObject.Parse(CurrentDescriptorJson());
             ((JObject)root["types"]![0]!["members"]![0]!).Property(propertyName)!.Remove();
@@ -263,7 +294,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [InlineData("publishUnavailableReason")]
         [InlineData("subscribeUnavailableDiagnosticId")]
         [InlineData("subscribeUnavailableReason")]
-        public void V5MissingDirectionSpecificAvailabilityFailsClosed(string propertyName)
+        public void V6MissingDirectionSpecificAvailabilityFailsClosed(string propertyName)
         {
             var root = JObject.Parse(CurrentDescriptorJson());
             var variant = (JObject)root["types"]![0]!["members"]![0]!["encodingVariants"]![0]!;
@@ -278,7 +309,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [Theory]
         [InlineData(4, "5.0.0")]
         [InlineData(5, "4.0.0")]
-        [InlineData(6, "6.0.0")]
+        [InlineData(5, "6.0.0")]
+        [InlineData(6, "5.0.0")]
+        [InlineData(7, "7.0.0")]
         public void CrossPairedAndFutureDescriptorVersionsFailClosed(
             int descriptorVersion,
             string generatorVersion)
@@ -289,6 +322,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Throws<InvalidOperationException>(
                 () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
+        }
+
+        [Theory]
+        [InlineData("publishTransportIds")]
+        [InlineData("subscribeTransportId")]
+        public void V6MissingTransportSelectionFailsClosed(string propertyName)
+        {
+            var root = JObject.Parse(CurrentDescriptorJson());
+            ((JObject)root["types"]![0]!["members"]![0]!)
+                .Property(propertyName)!
+                .Remove();
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
+
+            Assert.Contains(propertyName, error.Message, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -75,7 +75,6 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveTransactionalInputSource");
             if (hasTransactionalOwnedInput)
                 interfaces.Add("IFoxgloveTransactionalOwnedInputSource");
-
             sb.Append($"{pad}partial class {className}");
             if (interfaces.Count > 0)
                 sb.Append(" : " + string.Join(", ", interfaces));

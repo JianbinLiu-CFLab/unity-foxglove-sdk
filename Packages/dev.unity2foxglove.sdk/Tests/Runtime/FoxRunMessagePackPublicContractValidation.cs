@@ -27,10 +27,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             var constants = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs");
             Check(
-                constants.Contains("public const int DescriptorVersion = 5;", StringComparison.Ordinal)
-                && constants.Contains("public const string GeneratorVersion = \"5.0.0\";", StringComparison.Ordinal)
+                constants.Contains("public const int DescriptorVersion = 6;", StringComparison.Ordinal)
+                && constants.Contains("public const string GeneratorVersion = \"6.0.0\";", StringComparison.Ordinal)
                 && constants.Contains("public const string MessagePackEncoding = \"msgpack\";", StringComparison.Ordinal),
-                "185A-2: descriptor v5 and generator 5.0.0 share the msgpack wire label");
+                "185A-2: current descriptor/generator pair retains the msgpack wire label");
 
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             Check(
@@ -48,10 +48,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var compatibility = Read("Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunGenerationDescriptorCompatibilityTests.cs");
             Check(
-                compatibility.Contains("StrictV5RoundTripPreservesRecursiveShapeAvailabilityAndSchedule", StringComparison.Ordinal)
+                compatibility.Contains("StrictV6RoundTripPreservesRecursiveShapeAvailabilityScheduleAndTransportSelection", StringComparison.Ordinal)
                 && compatibility.Contains("FrozenV4FixtureReadsWithoutInventingMessagePack", StringComparison.Ordinal)
+                && compatibility.Contains("FrozenV5FixtureReadsWithoutInventingTransportSelection", StringComparison.Ordinal)
                 && compatibility.Contains("CrossPairedAndFutureDescriptorVersionsFailClosed", StringComparison.Ordinal),
-                "185A-5: descriptor v5 is strict while the explicit v4 read fixture remains covered");
+                "185A-5: current descriptor is strict while explicit v4/v5 read fixtures remain covered");
 
             VerifyPublicDocumentation();
             VerifyDependencyBoundary();

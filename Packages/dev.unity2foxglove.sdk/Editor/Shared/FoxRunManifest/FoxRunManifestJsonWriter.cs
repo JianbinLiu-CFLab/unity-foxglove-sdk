@@ -91,7 +91,10 @@ namespace Unity.FoxgloveSDK.Editor
             string publishUnavailableDiagnosticId = "",
             string publishUnavailableReason = "",
             string subscribeUnavailableDiagnosticId = "",
-            string subscribeUnavailableReason = "")
+            string subscribeUnavailableReason = "",
+            bool includesTransportSelection = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -107,6 +110,14 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
             sb.Append(',');
+            if (includesTransportSelection)
+            {
+                WriteTransportSelection(
+                    sb,
+                    publishTransportIds,
+                    subscribeTransportId);
+                sb.Append(',');
+            }
             WriteAvailability(
                 sb,
                 publishAvailable,
@@ -135,7 +146,10 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             string schemaName,
             string encoding,
-            string flow = "")
+            string flow = "",
+            bool includesTransportSelection = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -150,6 +164,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
+            if (includesTransportSelection)
+            {
+                sb.Append(',');
+                WriteTransportSelection(
+                    sb,
+                    publishTransportIds,
+                    subscribeTransportId);
+            }
             if (!string.IsNullOrWhiteSpace(flow))
             {
                 sb.Append(',');
@@ -408,6 +430,14 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "encoding");
             AppendString(sb, contract.Encoding);
             sb.Append(',');
+            if (contract.IncludesTransportSelection)
+            {
+                WriteTransportSelection(
+                    sb,
+                    contract.PublishTransportIds,
+                    contract.SubscribeTransportId);
+                sb.Append(',');
+            }
             AppendPropertyName(sb, "availability");
             WriteAvailability(
                 sb,
@@ -768,6 +798,24 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendString(sb, values[i]);
             }
             sb.Append(']');
+        }
+
+        private static void WriteTransportSelection(
+            StringBuilder sb,
+            IReadOnlyList<string> publishTransportIds,
+            string subscribeTransportId)
+        {
+            AppendPropertyName(sb, "publishTransportIds");
+            if (publishTransportIds == null)
+                sb.Append("null");
+            else
+                WriteStringArray(sb, publishTransportIds);
+            sb.Append(',');
+            AppendPropertyName(sb, "subscribeTransportId");
+            if (subscribeTransportId == null)
+                sb.Append("null");
+            else
+                AppendString(sb, subscribeTransportId);
         }
 
         private static void AppendPropertyName(StringBuilder sb, string value)

@@ -1306,7 +1306,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             };
             var contracts = new[]
             {
-                SubscriptionContract("/phase179/json", "json", jsonFields),
+                SubscriptionContract(
+                    "/phase179/json",
+                    "json",
+                    jsonFields,
+                    FoxgloveWebSocketTransport.Id),
                 SubscriptionContract("/phase179/dual", "json", dualFields),
                 SubscriptionContract("/phase179/dual", "protobuf", dualFields)
             };
@@ -1379,7 +1383,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         private static FoxRunSchemaContractInfo SubscriptionContract(
             string topic,
             string encoding,
-            IReadOnlyList<FoxRunSchemaFieldInfo> fields)
+            IReadOnlyList<FoxRunSchemaFieldInfo> fields,
+            string subscribeTransportId = null)
             => new(
                 "Demo.Input",
                 topic,
@@ -1395,7 +1400,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 flow: "Subscribe",
                 protobufDescriptorSet: string.Equals(encoding, "protobuf", StringComparison.Ordinal)
                     ? new byte[] { 1, 2, 3 }
-                    : null);
+                    : null,
+                subscribeTransportId: subscribeTransportId);
 
         private static FoxRunSchemaSubscriptionBindingInfo WebSocketBinding(
             string declaringType,

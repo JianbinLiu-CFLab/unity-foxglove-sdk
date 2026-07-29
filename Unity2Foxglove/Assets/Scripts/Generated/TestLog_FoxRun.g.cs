@@ -1286,6 +1286,26 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         value = decoded;
         return true;
     }
+    private int __FoxRunRead_conditionalHealth_1b7afa3a17b0de32() => __foxRunCapture_0_0;
+
+    private UnityEngine.Vector3 __FoxRunRead_conditionalPosition_01616045dfac5407() => __foxRunCapture_1_0;
+
+    private float __FoxRunRead_health_1734d9e2c405d964() => __foxRunCapture_2_0;
+
+    private UnityEngine.Vector3 __FoxRunRead_pos_ddac629d9a0c5f01() => __foxRunCapture_3_0;
+
+    private UnityEngine.Vector3 __FoxRunRead_position2_50fea1f57c6209ab() => __foxRunCapture_4_0;
+
+    private int __FoxRunRead_messagePackAppliedSequence_889fabacea4e7ebd() => __foxRunCapture_5_0;
+
+    private int __FoxRunRead_messagePackAppliedValue_acc39afc93468645() => __foxRunCapture_5_1;
+
+    private int __FoxRunRead_messagePackSequence_9437506f82fc0a03() => __foxRunCapture_6_0;
+    private void __FoxRunWrite_messagePackSequence_9437506f82fc0a03(int value) => this._messagePackSequence = value;
+
+    private int __FoxRunRead_messagePackValue_0902285150d622e3() => __foxRunCapture_6_1;
+    private void __FoxRunWrite_messagePackValue_0902285150d622e3(int value) => this._messagePackValue = value;
+
 
     private bool __hasLast_4;
     private double __lastPublishSec_4;

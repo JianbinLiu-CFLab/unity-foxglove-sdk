@@ -745,6 +745,7 @@ namespace Unity.FoxgloveSDK.Components
             => FoxRunPublishSessionChanged += _observedPublishSessions.Add;
 
         private void ReleaseFoxRunRos2BridgeRuntimeDemand() { }
+        private void EndFoxRunTransportSession() { }
 
         private static bool TryResolveRos2BridgeTopic(
             string topic,

@@ -309,6 +309,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor InvalidTransportSelection = new DiagnosticDescriptor(
+            "FOXRUN620", "FoxRun transport Provider selection invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidDirectionalTransport = new DiagnosticDescriptor(
+            "FOXRUN621", "FoxRun directional transport selection invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         #endregion
 
         public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
@@ -414,6 +424,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN617": return MessagePackProtobufFieldNumber;
                 case "FOXRUN618": return MessagePackInboundTopology;
                 case "FOXRUN619": return MessagePackSchedule;
+                case "FOXRUN620": return InvalidTransportSelection;
+                case "FOXRUN621": return InvalidDirectionalTransport;
                 case "FOXRUN402": return CustomNativeBidirectionalContract;
                 case "FOXRUN204": return InvalidSource;
                 case "FOXRUN207": return Ros2MessageIdentity;
@@ -454,7 +466,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                || id == "FOXRUN616"
                || id == "FOXRUN617"
                || id == "FOXRUN618"
-               || id == "FOXRUN619";
+               || id == "FOXRUN619"
+               || id == "FOXRUN620"
+               || id == "FOXRUN621";
 
         public static DiagnosticDescriptor Member(string id)
         {

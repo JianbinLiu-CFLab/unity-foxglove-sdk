@@ -23,6 +23,13 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.Space();
             FoxgloveManagerInspectorLayout.Subheader("FoxRun Publish Profile");
+            DrawProperty(
+                "_foxRunPublishTransportIds",
+                "Publish Transport IDs");
+            DrawProperty(
+                "_foxRunSubscribeTransportId",
+                "Subscribe Transport ID");
+            DrawFoxRunTransportProviderExtensions();
             var targets = FoxRunPublishTargetPolicy.FromPublishDestinations(
                 GetBool("_foxgloveOutputEnabled"),
                 GetBool("_ros2NativeEnabled"),
@@ -98,6 +105,20 @@ namespace Unity.FoxgloveSDK.Editor
 
             FoxgloveManagerInspectorLayout.Subheader("Assets");
             DrawProperty("_assetRoots");
+        }
+
+        private void DrawFoxRunTransportProviderExtensions()
+        {
+            var manager = target as FoxgloveManager;
+            if (manager == null)
+                return;
+
+            foreach (var drawer in
+                     FoxRunTransportProviderDrawerRegistry.Capture())
+            {
+                drawer.EnsureProvider(manager);
+                drawer.Draw(manager, serializedObject);
+            }
         }
 
     }
