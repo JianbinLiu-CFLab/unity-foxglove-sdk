@@ -249,7 +249,112 @@ namespace Unity.FoxgloveSDK.Editor
                 type.ClassName,
                 type.Members.Select(member => member.ToTopicMember()).ToList(),
                 emitRos2NativePartial,
+                emitRos2NativePartial,
                 type);
+        }
+
+        /// <summary>
+        /// Emits only the transport-neutral core partial. Optional Provider
+        /// analyzers own their separate partial files.
+        /// </summary>
+        public static string EmitCoreClass(
+            FoxRunGenerationType type,
+            bool emitRos2TriggerReferences)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            return EmitClassCore(
+                type.Namespace,
+                type.ClassName,
+                type.Members.Select(member => member.ToTopicMember()).ToList(),
+                emitRos2TriggerReferences,
+                appendRos2NativePartial: false,
+                generationType: type);
+        }
+
+        /// <summary>Emits the R2FU-owned typed ROS2 partial only.</summary>
+        public static string EmitRos2NativeContribution(FoxRunGenerationType type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            var members = type.Members
+                .Select(member => member.ToTopicMember())
+                .ToList();
+            var inputMembers = members
+                .Where(member => member.Mode == FlowSubscribe
+                                 || member.Mode == FlowPublishAndSubscribe)
+                .OrderBy(member => member.Topic, StringComparer.Ordinal)
+                .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
+            var nativeInputMembers = inputMembers
+                .Where(member => member.GeneratesRos2NativeRegistration
+                                 && member.Ros2MessageShape != null
+                                 && !string.Equals(
+                                     member.Source,
+                                     FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                                     StringComparison.Ordinal))
+                .ToList();
+            var customNativeInputMembers = inputMembers
+                .Where(IsCustomNativeMember)
+                .ToList();
+            var topicMap = members
+                .Where(member => member.Mode != FlowSubscribe)
+                .GroupBy(member => member.Topic, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToList(),
+                    StringComparer.Ordinal);
+            var topics = topicMap.Keys
+                .OrderBy(topic => topic, StringComparer.Ordinal)
+                .ToList();
+            var customNativePublishMembers = topicMap
+                .Where(pair => pair.Value.Count == 1
+                               && pair.Value[0].Mode != FlowSubscribe
+                               && IsCustomNativeMember(pair.Value[0]))
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => pair.Value[0])
+                .ToList();
+            var customNativeMapperMembers = members
+                .Where(member => customNativeInputMembers.Contains(member)
+                                 || customNativePublishMembers.Contains(member))
+                .OrderBy(member => member.Topic, StringComparer.Ordinal)
+                .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
+
+            var sb = new StringBuilder();
+            Ros2InputDispatchEmitter.EmitConditionalPartial(
+                sb,
+                type.Namespace,
+                type.ClassName,
+                nativeInputMembers,
+                topics);
+            Ros2CustomDtoMapperEmitter.EmitConditionalPartial(
+                sb,
+                type.Namespace,
+                type.ClassName,
+                customNativeMapperMembers,
+                customNativeInputMembers,
+                topics);
+            Ros2CustomPublishEmitter.EmitConditionalPartial(
+                sb,
+                type.Namespace,
+                type.ClassName,
+                customNativePublishMembers,
+                customNativeMapperMembers);
+            return sb.ToString();
+        }
+
+        public static string Ros2NativeGeneratedSourceName(
+            string ns,
+            string className)
+        {
+            var identity = string.IsNullOrEmpty(ns)
+                ? className
+                : ns + "." + className;
+            return IdentifierUtils.SanitizeFileStem(identity)
+                   + "_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs";
         }
 
         // Public API forwarding wrappers — the implementations live in sub-emitters
@@ -274,6 +379,7 @@ namespace Unity.FoxgloveSDK.Editor
                 className,
                 members,
                 emitRos2NativePartial: true,
+                appendRos2NativePartial: true,
                 generationType: null);
         }
 
@@ -291,6 +397,7 @@ namespace Unity.FoxgloveSDK.Editor
             string className,
             IReadOnlyList<TopicMember> members,
             bool emitRos2NativePartial,
+            bool appendRos2NativePartial,
             FoxRunGenerationType generationType)
         {
             if (members == null || members.Count == 0)
@@ -481,9 +588,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}}}");
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");
 
-            if (emitRos2NativePartial)
+            if (appendRos2NativePartial)
             {
-                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers, topics);
+                Ros2InputDispatchEmitter.EmitConditionalPartial(
+                    sb,
+                    ns,
+                    className,
+                    nativeInputMembers,
+                    topics);
                 Ros2CustomDtoMapperEmitter.EmitConditionalPartial(
                     sb,
                     ns,

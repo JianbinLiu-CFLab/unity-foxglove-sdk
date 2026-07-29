@@ -480,7 +480,9 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunGenerationType type,
             bool emitRos2NativePartial)
         {
-            var core = FoxgloveSourceEmitter.EmitClass(type, emitRos2NativePartial);
+            var core = FoxgloveSourceEmitter.EmitCoreClass(
+                type,
+                emitRos2NativePartial);
 
             // Wrap with a Player-only guard so Editor compilation uses the Roslyn
             // generated in-memory source and Player builds use the physical file.

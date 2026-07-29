@@ -282,9 +282,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && router.Contains(
                       "topology.Topology.Source != FoxRunEndpoint.Foxglove",
                       StringComparison.Ordinal)
-                  && catalog.Contains("!binding.SupportsWebSocket", StringComparison.Ordinal)
                   && catalog.Contains(
-                      "resolution.Topology.Source != FoxRunEndpoint.Foxglove",
+                      "selectedIds.Length != 1",
+                      StringComparison.Ordinal)
+                  && catalog.Contains(
+                      "FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && catalog.Contains(
+                      "bindings.Any(binding => !binding.SupportsWebSocket)",
                       StringComparison.Ordinal)
                   && !catalog.Contains("\"cdr\"", StringComparison.OrdinalIgnoreCase),
                 "byte router and subscription catalog exclude effective native contracts and never advertise cdr");
@@ -474,13 +479,9 @@ namespace Unity.FoxgloveSDK.Tests
                 nativeRoot + "FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
             var lifecycleGate = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            var provider = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "FoxRun/FoxRunRos2TransportProvider.cs");
 
-            var bootstrap = PhaseValidationSourceHelpers.SourceMethod(
-                hub,
-                "private static void Bootstrap()");
-            var ensureCreated = PhaseValidationSourceHelpers.SourceMethod(
-                hub,
-                "internal static bool EnsureCreated()");
             var update = PhaseValidationSourceHelpers.SourceMethod(hub, "private void Update()");
             var applySessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
                 hub,
@@ -526,9 +527,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(bootstrapGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal),
                 "native subscription bootstrap remains closed while the native reload window would immediately shut its new host down");
 
-            Check(OccursBefore(bootstrap, "CanBootstrapBridge", "EnsureCreated()")
-                  && OccursBefore(ensureCreated, "CanBootstrapBridge", "new GameObject"),
-                "native subscription host creation remains behind the shared bootstrap gate");
+            Check(provider.Contains(
+                      "GetOrAddOwnedHub<FoxRunRos2SubscriptionHub>()",
+                      StringComparison.Ordinal)
+                  && provider.Contains(
+                      "RegisterFoxRunTransportProvider(this)",
+                      StringComparison.Ordinal)
+                  && !hub.Contains(
+                      "RuntimeInitializeOnLoadMethod",
+                      StringComparison.Ordinal)
+                  && !hub.Contains("HideAndDontSave", StringComparison.Ordinal),
+                "native subscription host is Manager-local Provider-owned without a global bootstrap object");
 
             var lifecycleWindow = update.IndexOf(
                 "IsShuttingDownForBridge(gameObject.scene)",

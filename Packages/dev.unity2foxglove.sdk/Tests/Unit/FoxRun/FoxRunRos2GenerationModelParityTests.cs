@@ -673,7 +673,9 @@ namespace Demo
                 },
                 GeneratorReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness.FoxRunAnalyzerTestComposition
+                    .LegacyCombined());
             var result = driver.RunGenerators(compilation).GetRunResult();
             Assert.DoesNotContain(
                 result.Diagnostics,

@@ -31,6 +31,9 @@ namespace UnityEngine
         public DefaultExecutionOrderAttribute(int order) { }
     }
 
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class DisallowMultipleComponentAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class SerializeField : Attribute { }
 
@@ -59,7 +62,7 @@ namespace UnityEngine
     {
         public GameObject(string objectName) { name = objectName; }
         public UnityEngine.SceneManagement.Scene scene { get; set; }
-        public T AddComponent<T>() where T : new() => new T();
+        public T AddComponent<T>() => default;
     }
 
     public class MonoBehaviour : Object
@@ -150,6 +153,14 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }
         public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
         public event Action<FoxRunSubscriptionSessionPolicy> FoxRunSubscriptionSessionChanged;
+
+        public FoxRunTransportRegistrationResult RegisterFoxRunTransportProvider(
+            IFoxRunTransportProvider provider)
+            => FoxRunTransportRegistrationResult.Added;
+
+        public bool UnregisterFoxRunTransportProvider(
+            IFoxRunTransportProvider provider)
+            => true;
 
         public FoxRunEncoding ResolveFoxRunEncoding(
             FoxRunEncoding declaredEncoding,

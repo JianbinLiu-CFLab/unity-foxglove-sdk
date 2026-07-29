@@ -2949,12 +2949,7 @@ namespace Demo
         private bool AcceptExplicitJson() => true;
     }
 }";
-            var result = RunGenerator(source);
-            var generated = result.GeneratedTrees
-                .Select(tree => tree.GetText().ToString())
-                .Single(text => text.Contains(
-                    "partial class Phase184Acceptance",
-                    StringComparison.Ordinal));
+            var result = RunGeneratorWithR2fu(source);
             var allGenerated = string.Join(
                 Environment.NewLine,
                 result.GeneratedTrees.Select(tree => tree.GetText().ToString()));
@@ -2963,7 +2958,7 @@ namespace Demo
                 result.Diagnostics,
                 diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-            var output = RunGeneratorAndUpdateCompilation(source);
+            var output = RunGeneratorAndUpdateCompilationWithR2fu(source);
             var compilationErrors = output.GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .ToArray();
@@ -2971,7 +2966,7 @@ namespace Demo
                 compilationErrors.Length == 0,
                 string.Join(Environment.NewLine, compilationErrors.Select(error => error.ToString()))
                 + Environment.NewLine
-                + generated);
+                + allGenerated);
 #endif
             foreach (var topic in new[]
                      {
@@ -2986,11 +2981,19 @@ namespace Demo
                          "/foxrun/phase184/zenoh/origin",
                      })
             {
-                Assert.Contains(topic, generated, StringComparison.Ordinal);
+                Assert.Contains(topic, allGenerated, StringComparison.Ordinal);
             }
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
             Assert.Contains("RegisterStream<", allGenerated, StringComparison.Ordinal);
+#else
+            Assert.DoesNotContain("RegisterStream<", allGenerated, StringComparison.Ordinal);
+#endif
             Assert.Contains("_inputStream", allGenerated, StringComparison.Ordinal);
-            Assert.Contains("() => AcceptExplicitJson()", generated, StringComparison.Ordinal);
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            Assert.Contains("() => AcceptExplicitJson()", allGenerated, StringComparison.Ordinal);
+#else
+            Assert.Contains("AcceptExplicitJson()", allGenerated, StringComparison.Ordinal);
+#endif
 
             var acceptanceSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase184FoxRunProfileAcceptance.cs");
@@ -4376,6 +4379,17 @@ namespace Demo
             return driver.GetRunResult();
         }
 
+        private static GeneratorDriverRunResult RunGeneratorWithR2fu(
+            params string[] sources)
+        {
+            var compilation = CreateCompilation(sources);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.CoreAndR2fu());
+            driver = driver.RunGenerators(compilation);
+            return driver.GetRunResult();
+        }
+
         private static string GeneratedDescriptor(GeneratorDriverRunResult result)
             => result.Results
                 .Single()
@@ -4430,6 +4444,20 @@ namespace Demo
             var compilation = CreateCompilation(source);
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
             driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
+            return outputCompilation;
+        }
+
+        private static Compilation RunGeneratorAndUpdateCompilationWithR2fu(
+            string source)
+        {
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.CoreAndR2fu());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var outputCompilation,
+                out _);
             return outputCompilation;
         }
 

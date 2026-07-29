@@ -25,6 +25,22 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     [Generator]
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator
     {
+#if !FOXRUN_R2FU_ANALYZER
+        private readonly bool _emitLegacyCombinedRos2Partial;
+
+        public FoxgloveLogSourceGenerator()
+            : this(emitLegacyCombinedRos2Partial: false)
+        {
+        }
+
+        internal FoxgloveLogSourceGenerator(
+            bool emitLegacyCombinedRos2Partial)
+        {
+            _emitLegacyCombinedRos2Partial =
+                emitLegacyCombinedRos2Partial;
+        }
+#endif
+
         private const string AttrShortName = "FoxRun";
         private const string AttrAttributeName = "FoxRunAttribute";
         private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
@@ -58,12 +74,26 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 transform: static (ctx, ct) => ExtractMember(ctx, ct))
                 .Where(static m => m != null);
 
+#if FOXRUN_R2FU_ANALYZER
             var nativeCompilationEvidence = context.CompilationProvider.Select(
                 static (compilation, _) => NativeCompilationEvidence.FromCompilation(compilation));
+            context.RegisterSourceOutput(
+                members.Collect().Combine(nativeCompilationEvidence),
+                static (spc, input) =>
+                    GenerateR2fu(spc, input.Left, input.Right));
+#else
+            var nativeCompilationEvidence = context.CompilationProvider.Select(
+                static (compilation, _) => NativeCompilationEvidence.FromCompilation(compilation));
+            var emitLegacyCombinedRos2Partial =
+                _emitLegacyCombinedRos2Partial;
 
             context.RegisterSourceOutput(
                 members.Collect().Combine(nativeCompilationEvidence),
-                static (spc, input) => Generate(spc, input.Left, input.Right));
+                (spc, input) => Generate(
+                    spc,
+                    input.Left,
+                    input.Right,
+                    emitLegacyCombinedRos2Partial));
 
             var services = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: static (node, _) => IsServiceCandidate(node),
@@ -73,6 +103,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             context.RegisterSourceOutput(
                 services.Collect(),
                 static (spc, items) => GenerateServices(spc, items));
+#endif
         }
 
         /// <summary>
@@ -872,10 +903,86 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// Entry point for source output: reports diagnostics, groups members by
         /// enclosing class, and emits one generated partial class per valid group.
         /// </summary>
-        private static void Generate(
+#if FOXRUN_R2FU_ANALYZER
+        private static void GenerateR2fu(
             SourceProductionContext spc,
             ImmutableArray<MemberData> items,
             NativeCompilationEvidence nativeCompilationEvidence)
+        {
+            var roslynMembers = new List<FoxRunRoslynGenerationMember>();
+            var firstMemberByClass =
+                new Dictionary<(string Ns, string ClassName), MemberData>();
+            var unavailableNativeTypes =
+                new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in items)
+            {
+                if (item == null || item.DiagnosticLocation != null)
+                    continue;
+                item.AppendRoslynMembers(roslynMembers);
+                var hasNativeShape =
+                    (item.Ros2MessageShape != null
+                     && item.Ros2MessageShape.ImplementsRos2Message
+                     && item.Ros2MessageShape.HasPublicParameterlessConstructor
+                     && item.Ros2MessageShape.Diagnostics.Count == 0)
+                    || (item.Ros2CustomDtoShape != null
+                        && item.Ros2CustomDtoShape.IsSupported
+                        && item.Ros2CustomDtoShape.HasPublicParameterlessConstructor
+                        && item.Ros2CustomDtoShape.Diagnostics.Count == 0);
+                if ((!nativeCompilationEvidence.HasNativeAssemblyReference
+                     || (item.IsStream
+                         && !nativeCompilationEvidence.HasStreamRegistrarSeam))
+                    && hasNativeShape
+                    && item.Topics.Any(topic =>
+                        topic.Source == 0 || topic.Source == 2))
+                {
+                    unavailableNativeTypes.Add(
+                        string.IsNullOrEmpty(item.Ns)
+                            ? item.ClassName
+                            : item.Ns + "." + item.ClassName);
+                }
+                var key = (item.Ns, item.ClassName);
+                if (!firstMemberByClass.ContainsKey(key))
+                    firstMemberByClass.Add(key, item);
+            }
+
+            if (roslynMembers.Count == 0)
+                return;
+
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(roslynMembers);
+            var invalidDeclaringTypes = new HashSet<string>(
+                FoxRunGenerationModelValidator.Validate(model)
+                    .Where(diagnostic => diagnostic.Severity == "Error")
+                    .Select(DiagnosticDeclaringType),
+                StringComparer.Ordinal);
+            foreach (var type in model.Types)
+            {
+                if (invalidDeclaringTypes.Contains(type.DeclaringType)
+                    || unavailableNativeTypes.Contains(type.DeclaringType)
+                    || !firstMemberByClass.TryGetValue(
+                        (type.Namespace, type.ClassName),
+                        out var first)
+                    || !first.IsPartial)
+                {
+                    continue;
+                }
+
+                var source =
+                    FoxgloveSourceEmitter.EmitRos2NativeContribution(type);
+                if (string.IsNullOrWhiteSpace(source))
+                    continue;
+                spc.AddSource(
+                    FoxgloveSourceEmitter.Ros2NativeGeneratedSourceName(
+                        type.Namespace,
+                        type.ClassName),
+                    source);
+            }
+        }
+#else
+        private static void Generate(
+            SourceProductionContext spc,
+            ImmutableArray<MemberData> items,
+            NativeCompilationEvidence nativeCompilationEvidence,
+            bool emitLegacyCombinedRos2Partial)
         {
             var roslynMemberCapacity = 0;
             foreach (var item in items)
@@ -998,13 +1105,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 EmitClass(
                     spc,
                     type,
-                    emitRos2NativePartial: !missingNativeReferenceTypes.Contains(type.DeclaringType));
+                    emitRos2NativePartial:
+                        !missingNativeReferenceTypes.Contains(type.DeclaringType),
+                    emitLegacyCombinedRos2Partial);
             }
 
             var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(
                 new FoxRunGenerationModel(emittedTypes, model.DescriptorVersion, model.GeneratorVersion));
             spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", FoxRunDescriptorCarrierEmitter.DescriptorCarrierSource(descriptor));
         }
+#endif
 
         private readonly struct NativeCompilationEvidence
         {
@@ -1436,11 +1546,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static void EmitClass(
             SourceProductionContext spc,
             FoxRunGenerationType type,
-            bool emitRos2NativePartial)
+            bool emitRos2NativePartial,
+            bool emitLegacyCombinedRos2Partial)
         {
             var ns = type.Namespace;
             var className = type.ClassName;
-            var source = FoxgloveSourceEmitter.EmitClass(type, emitRos2NativePartial);
+            var source = emitLegacyCombinedRos2Partial
+                ? FoxgloveSourceEmitter.EmitClass(
+                    type,
+                    emitRos2NativePartial)
+                : FoxgloveSourceEmitter.EmitCoreClass(
+                    type,
+                    emitRos2NativePartial);
             spc.AddSource(FoxgloveSourceEmitter.GeneratedSourceName(ns, className), source);
         }
 

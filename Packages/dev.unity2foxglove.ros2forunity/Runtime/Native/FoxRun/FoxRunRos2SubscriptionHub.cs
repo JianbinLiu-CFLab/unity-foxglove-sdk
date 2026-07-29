@@ -625,10 +625,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     [AddComponentMenu("")]
     internal sealed class FoxRunRos2SubscriptionHub : MonoBehaviour
     {
-        private const string HubObjectName = "[FoxRun ROS2 Subscription Hub]";
-        private const string RetryObjectName = "[FoxRun ROS2 Subscription Bootstrap Retry]";
         private const string NodeName = "unity2foxglove_foxrun_subscriptions";
-        private const float ManagerSearchIntervalSeconds = 2f;
         private const float ScanIntervalSeconds = 0.5f;
         private const int MaximumContracts = 4096;
         private const int MaxNodeCreateAttempts = 4;
@@ -639,9 +636,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new ProfilerMarker("Unity2Foxglove.FoxRunRos2Subscription.Scan");
         private static readonly ProfilerMarker DrainMarker =
             new ProfilerMarker("Unity2Foxglove.FoxRunRos2Subscription.Drain");
-        private static FoxRunRos2SubscriptionHub _instance;
-        private static FoxRunRos2SubscriptionBootstrapRetry _retry;
-
         private readonly List<HostedBinding> _bindings = new List<HostedBinding>();
         private readonly List<HostedBinding> _stale = new List<HostedBinding>();
         private readonly List<SourceCandidate> _sources = new List<SourceCandidate>();
@@ -664,10 +658,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private Ros2ForUnityFoxRunNodeOwner _nodeOwner;
         private FoxRunRos2HostCleanupQueue _hostCleanupQueue;
         private int _hostThreadId;
-        private float _managerSearchCooldown;
         private float _scanCooldown;
         private bool _stopping;
-        private bool _duplicate;
+        private bool _providerSessionActive;
 
         internal static bool TryGetAcceptanceSnapshot(
             MonoBehaviour source,
@@ -675,8 +668,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             out FoxRunRos2SubscriptionAcceptanceSnapshot snapshot)
         {
             snapshot = default;
-            var instance = _instance;
-            if (instance == null
+            if (!TryFindOwnedHub(source, out var instance)
                 || source == null
                 || string.IsNullOrEmpty(topic)
                 || instance._stopping)
@@ -701,10 +693,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static FoxRunRos2SubscriptionDiagnosticSnapshot[] GetDiagnosticSnapshots()
         {
-            var instance = _instance;
-            return instance == null || instance._stopping
-                ? Array.Empty<FoxRunRos2SubscriptionDiagnosticSnapshot>()
-                : instance._diagnostics.GetSnapshots();
+            var instances = FindObjectsByType<FoxRunRos2SubscriptionHub>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            var snapshots = new List<FoxRunRos2SubscriptionDiagnosticSnapshot>();
+            for (var i = 0; i < instances.Length; i++)
+            {
+                var instance = instances[i];
+                if (instance == null || instance._stopping)
+                    continue;
+                snapshots.AddRange(instance._diagnostics.GetSnapshots());
+            }
+            return snapshots.ToArray();
         }
 
         internal static FoxRunRos2AcceptanceArmStatus ArmAcceptanceAttempt(
@@ -760,8 +760,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             out IFoxRunRos2HostBinding binding)
         {
             binding = null;
-            var instance = _instance;
-            if (instance == null
+            if (!TryFindOwnedHub(source, out var instance)
                 || source == null
                 || string.IsNullOrEmpty(topic)
                 || instance._stopping)
@@ -780,76 +779,61 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return false;
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics()
+        private static bool TryFindOwnedHub(
+            MonoBehaviour source,
+            out FoxRunRos2SubscriptionHub hub)
         {
-            _instance = null;
-            _retry = null;
-        }
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void Bootstrap()
-        {
-            if (Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge
-                && EnsureCreated())
-                return;
-            EnsureManagedRetry();
-        }
-
-        private static void EnsureManagedRetry()
-        {
-            if (_instance != null || _retry != null)
-                return;
-            var existing = FindFirstObjectByType<FoxRunRos2SubscriptionBootstrapRetry>();
-            if (existing != null)
-            {
-                _retry = existing;
-                return;
-            }
-            var go = new GameObject(RetryObjectName) { hideFlags = HideFlags.HideAndDontSave };
-            DontDestroyOnLoad(go);
-            _retry = go.AddComponent<FoxRunRos2SubscriptionBootstrapRetry>();
-        }
-
-        internal static bool EnsureCreated()
-        {
-            if (_instance != null)
-                return true;
-            if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)
+            hub = null;
+            if (source == null)
                 return false;
-            var existing = FindFirstObjectByType<FoxRunRos2SubscriptionHub>();
-            if (existing != null)
+            var instances = FindObjectsByType<FoxRunRos2SubscriptionHub>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            var sourceScene = source.gameObject.scene;
+            for (var i = 0; i < instances.Length; i++)
             {
-                _instance = existing;
+                var candidate = instances[i];
+                if (candidate == null
+                    || candidate._stopping
+                    || !candidate._providerSessionActive
+                    || candidate.gameObject.scene.handle != sourceScene.handle)
+                {
+                    continue;
+                }
+                hub = candidate;
                 return true;
             }
-            var go = new GameObject(HubObjectName) { hideFlags = HideFlags.HideAndDontSave };
-            DontDestroyOnLoad(go);
-            _instance = go.AddComponent<FoxRunRos2SubscriptionHub>();
-            return true;
+            return false;
+        }
+
+        internal void BindProviderOwner(FoxgloveManager manager)
+            => SetManager(manager);
+
+        internal void SetProviderSessionActive(bool active)
+        {
+            if (_providerSessionActive == active)
+                return;
+            _providerSessionActive = active;
+            if (!active)
+            {
+                _activeSession.Deactivate();
+                StopBindingsAndNode();
+            }
+            else if (_policy != null && _policy.SubscriptionsEnabled)
+            {
+                _activeSession.Activate(CheckedGeneration(_policy.SessionGeneration));
+            }
+            _scanCooldown = 0f;
         }
 
         private void Awake()
         {
             EnsureHostCleanupQueue();
-            if (_instance != null && _instance != this)
-            {
-                _duplicate = true;
-                _stopping = true;
-                Destroy(this);
-                return;
-            }
-            _instance = this;
         }
 
         private void OnEnable()
         {
             EnsureHostCleanupQueue();
-            if (_duplicate)
-            {
-                _stopping = true;
-                return;
-            }
             _stopping = false;
             _activeSession.Deactivate();
             Application.quitting += OnApplicationQuitting;
@@ -865,6 +849,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (!_providerSessionActive || _manager == null)
+            {
+                StopBindingsAndNode();
+                return;
+            }
+
             // A hierarchy or scene notification deliberately marks the shared
             // gate dirty before its next refresh. Do not turn that recoverable
             // window into a permanent host shutdown: refreshing the bootstrap
@@ -876,9 +866,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            ResolveManager();
-            if (_manager == null)
-                return;
             var active = _manager.ActiveFoxRunSubscriptionSessionPolicy;
             if (!ReferenceEquals(active, _policy))
                 ApplySessionPolicy(active);
@@ -929,17 +916,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _scanCooldown = 0f;
         }
 
-        private void ResolveManager()
-        {
-            if (_manager != null)
-                return;
-            _managerSearchCooldown -= Time.deltaTime;
-            if (_managerSearchCooldown > 0f)
-                return;
-            _managerSearchCooldown = ManagerSearchIntervalSeconds;
-            SetManager(FindFirstObjectByType<FoxgloveManager>());
-        }
-
         private void SetManager(FoxgloveManager manager)
         {
             if (ReferenceEquals(_manager, manager))
@@ -970,7 +946,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _activeSession.Deactivate();
             StopBindingsAndNode();
             _policy = policy;
-            if (_policy != null && _policy.SubscriptionsEnabled)
+            if (_providerSessionActive
+                && _policy != null
+                && _policy.SubscriptionsEnabled)
                 _activeSession.Activate(CheckedGeneration(_policy.SessionGeneration));
             _scanCooldown = 0f;
             _nodeRetry.RecordSuccess();
@@ -1730,9 +1708,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static void StopForNativeRuntimeShutdown()
         {
-            var instance = _instance;
-            if (instance != null)
+            var instances = FindObjectsByType<FoxRunRos2SubscriptionHub>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            for (var i = 0; i < instances.Length; i++)
+            {
+                var instance = instances[i];
+                if (instance == null)
+                    continue;
                 instance.BeginShutdown();
+            }
         }
 
         private void WarnHostOnce(string key, string message)
@@ -1755,8 +1740,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             BeginShutdown();
             Application.quitting -= OnApplicationQuitting;
-            if (_instance == this)
-                _instance = null;
         }
 
         private sealed class CollectingRegistrar : IFoxRunRos2SubscriptionRegistrar
@@ -1912,29 +1895,5 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
     }
 
-    [AddComponentMenu("")]
-    internal sealed class FoxRunRos2SubscriptionBootstrapRetry : MonoBehaviour
-    {
-        private readonly FoxRunRos2BootstrapRetryState _state = new FoxRunRos2BootstrapRetryState();
-
-        private void Update()
-        {
-            var shuttingDown = Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene);
-            if (!_state.ShouldCreateHost(
-                    Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge,
-                    shuttingDown))
-                return;
-            if (FoxRunRos2SubscriptionHub.EnsureCreated())
-                Destroy(gameObject);
-            else
-                _state.RecordCreateFailed();
-        }
-
-        private void OnDestroy()
-        {
-            // Static retry state is reset on the next subsystem registration;
-            // EnsureManagedRetry can also rediscover a live retry object.
-        }
-    }
 }
 #endif

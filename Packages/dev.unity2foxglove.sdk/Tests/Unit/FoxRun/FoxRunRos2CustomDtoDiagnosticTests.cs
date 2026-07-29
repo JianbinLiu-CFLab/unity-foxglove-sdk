@@ -321,7 +321,9 @@ namespace Demo
 
         private static GeneratorDriverRunResult RunGenerator(string source)
         {
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness.FoxRunAnalyzerTestComposition
+                    .LegacyCombined());
             driver = driver.RunGenerators(CreateCompilation(source));
             return driver.GetRunResult();
         }

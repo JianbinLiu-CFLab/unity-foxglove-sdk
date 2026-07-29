@@ -30,12 +30,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     [AddComponentMenu("")]
     internal sealed class FoxRunRos2CustomPublisherHub : MonoBehaviour
     {
-        private const string HubObjectName = "[FoxRun ROS2 Custom Publisher Hub]";
         private const float ScanIntervalSeconds = 0.5f;
-        private const float ManagerSearchIntervalSeconds = 0.5f;
         private const int MaximumBindings = 4096;
 
-        private static FoxRunRos2CustomPublisherHub _instance;
         private readonly List<IFoxRunRos2CustomPublisherHostedBinding> _bindings =
             new List<IFoxRunRos2CustomPublisherHostedBinding>();
         private readonly List<IFoxRunRos2CustomPublisherHostedBinding> _stale =
@@ -47,49 +44,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new FoxRunRos2CustomPublisherSessionTracker();
         private FoxgloveManager _manager;
         private float _scanCooldown;
-        private float _managerSearchCooldown;
         private bool _stopping;
-        private bool _duplicate;
+        private bool _providerSessionActive;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics()
+        internal void BindProviderOwner(FoxgloveManager manager)
+            => SetManager(manager);
+
+        internal void SetProviderSessionActive(bool active)
         {
-            _instance = null;
-        }
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void Bootstrap()
-        {
-            if (_instance != null)
+            if (_providerSessionActive == active)
                 return;
-            var existing = FindFirstObjectByType<FoxRunRos2CustomPublisherHub>();
-            if (existing != null)
-            {
-                _instance = existing;
-                return;
-            }
-
-            var go = new GameObject(HubObjectName) { hideFlags = HideFlags.HideAndDontSave };
-            DontDestroyOnLoad(go);
-            _instance = go.AddComponent<FoxRunRos2CustomPublisherHub>();
-        }
-
-        private void Awake()
-        {
-            if (_instance != null && _instance != this)
-            {
-                _duplicate = true;
-                _stopping = true;
-                Destroy(this);
-                return;
-            }
-            _instance = this;
+            _providerSessionActive = active;
+            if (!active)
+                StopBindings();
+            _scanCooldown = 0f;
         }
 
         private void OnEnable()
         {
-            if (!_duplicate)
-                _stopping = false;
+            _stopping = false;
         }
 
         private void Update()
@@ -100,11 +73,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            ResolveManager();
+            if (!_providerSessionActive || _manager == null)
+            {
+                StopBindings();
+                return;
+            }
+
             ApplyPublishSessionPolicy(
-                _manager == null
-                    ? null
-                    : _manager.ActiveFoxRunPublishSessionPolicy);
+                _manager.ActiveFoxRunPublishSessionPolicy);
 
             // Output policy is independent from the captured subscription
             // session. A Publish custom endpoint must stay available while
@@ -144,18 +120,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             ScanAndReconcile(bus, inheritedQos, defaultSource, defaultTargets);
         }
 
-        private void ResolveManager()
-        {
-            if (_manager != null)
-                return;
-
-            _managerSearchCooldown -= Time.deltaTime;
-            if (_managerSearchCooldown > 0f)
-                return;
-            _managerSearchCooldown = ManagerSearchIntervalSeconds;
-            SetManager(FindFirstObjectByType<FoxgloveManager>());
-        }
-
         private void SetManager(FoxgloveManager manager)
         {
             if (ReferenceEquals(_manager, manager))
@@ -175,8 +139,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 ApplyPublishSessionPolicy(null);
             }
-
-            _managerSearchCooldown = 0f;
         }
 
         private void OnPublishSessionChanged(FoxRunPublishSessionPolicy policy)
@@ -613,12 +575,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static void StopForNativeRuntimeShutdown()
         {
-            var instance = _instance;
-            if (instance == null)
-                return;
-            instance._stopping = true;
-            instance.SetManager(null);
-            instance.StopBindings();
+            var instances = FindObjectsByType<FoxRunRos2CustomPublisherHub>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            for (var i = 0; i < instances.Length; i++)
+            {
+                var instance = instances[i];
+                if (instance == null)
+                    continue;
+                instance._stopping = true;
+                instance.SetManager(null);
+                instance.StopBindings();
+            }
         }
 
         private static int CompareBehaviours(MonoBehaviour left, MonoBehaviour right)
@@ -650,8 +618,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _stopping = true;
             SetManager(null);
             StopBindings();
-            if (_instance == this)
-                _instance = null;
         }
 
         private sealed class CollectingRegistrar : IFoxRunRos2CustomPublisherRegistrar
