@@ -2106,7 +2106,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
                 4096,
                 120,
-                20);
+                20,
+                64 * 1024);
             var inherited = Contract("inherit", "inherit");
             Assert.True(FoxRunRos2ContractActivation.TryResolve(
                 inherited,
@@ -2153,7 +2154,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 4096,
                 120,
-                20);
+                20,
+                64 * 1024);
             Assert.False(FoxRunRos2ContractActivation.TryResolve(
                 inherited,
                 disabled,
@@ -2191,7 +2193,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 4096,
                 120,
-                20);
+                20,
+                64 * 1024);
 
             var custom = CustomContract(
                 Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
@@ -2234,7 +2237,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Unity.FoxgloveSDK.Components.FoxRunResolvedQos.Default,
                 4096,
                 120,
-                20);
+                20,
+                64 * 1024);
             var policyField = typeof(FoxRunRos2SubscriptionHub).GetField(
                 "_policy",
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -2335,7 +2339,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Unity.FoxgloveSDK.Components.FoxRunResolvedQos.SensorData,
                 8192,
                 120,
-                60);
+                60,
+                64 * 1024);
 
             Assert.True(FoxRunRos2ContractActivation.TryResolve(
                 Contract("ros2-native", "reliable"),

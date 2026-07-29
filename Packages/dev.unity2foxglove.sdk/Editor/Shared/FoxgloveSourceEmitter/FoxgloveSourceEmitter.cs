@@ -310,6 +310,12 @@ namespace Unity.FoxgloveSDK.Editor
                                      FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                                      StringComparison.Ordinal))
                 .ToList();
+            var legacyWebSocketInputMembers = webSocketInputMembers
+                .Where(member => !string.Equals(
+                    member.Encoding,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal))
+                .ToList();
             var nativeInputMembers = inputMembers
                 .Where(member => member.GeneratesRos2NativeRegistration
                                  && member.Ros2MessageShape != null
@@ -375,6 +381,12 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList();
             var hasPolicy = publishMembers.Any(m => m.Policy != PolicyFixedRate);
             var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.OnlyIf));
+            var hasTransactionalInput =
+                MessagePackInputDispatchEmitter.HasTransactionalInput(
+                    webSocketInputMembers);
+            var hasTransactionalOwnedInput =
+                MessagePackInputDispatchEmitter.HasTransactionalOwnedInput(
+                    webSocketInputMembers);
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
 
@@ -387,7 +399,9 @@ namespace Unity.FoxgloveSDK.Editor
                 hasConditions,
                 nativeBusMembers.Count > 0,
                 webSocketInputMembers.Count > 0,
-                webSocketInputMembers.Any(member => member.IsStream),
+                legacyWebSocketInputMembers.Any(member => member.IsStream),
+                hasTransactionalInput,
+                hasTransactionalOwnedInput,
                 pad);
             if (topics.Count > 0)
             {
@@ -425,11 +439,24 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
-            InputDispatchEmitter.EmitInput(sb, ns, className, webSocketInputMembers, topics, pad);
+            InputDispatchEmitter.EmitInput(
+                sb,
+                ns,
+                className,
+                legacyWebSocketInputMembers,
+                topics,
+                pad,
+                hasTransactionalInput);
+            MessagePackInputDispatchEmitter.EmitInput(
+                sb,
+                webSocketInputMembers,
+                topics,
+                pad);
             var applyMethods = TriggerEmitter.BuildApplyMembers(inputMembers);
             TriggerEmitter.EmitApplyMethods(
                 sb,
                 applyMethods,
+                legacyWebSocketInputMembers,
                 webSocketInputMembers,
                 nativeInputMembers,
                 customNativeInputMembers,

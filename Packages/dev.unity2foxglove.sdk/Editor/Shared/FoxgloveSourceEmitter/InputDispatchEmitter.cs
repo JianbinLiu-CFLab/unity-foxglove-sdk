@@ -17,9 +17,11 @@ namespace Unity.FoxgloveSDK.Editor
             string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
-            string pad)
+            string pad,
+            bool hasTransactionalInput = false)
         {
-            if (members == null || members.Count == 0)
+            if ((members == null || members.Count == 0)
+                && !hasTransactionalInput)
                 return;
 
             var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
@@ -68,7 +70,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
-            EmitInputFlush(sb, members, publishTopics, pad);
+            EmitInputFlush(
+                sb,
+                members,
+                publishTopics,
+                pad,
+                hasTransactionalInput);
             EmitOwnedInputClear(sb, members, pad);
             ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
@@ -206,7 +213,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
-            string pad)
+            string pad,
+            bool hasTransactionalInput)
         {
             sb.AppendLine();
             sb.AppendLine($"{pad}    int IFoxgloveInputSource.FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)");
@@ -216,6 +224,11 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (!members[i].IsStream)
                     EmitInputFlushMember(sb, members[i], i, pad);
+            }
+            if (hasTransactionalInput)
+            {
+                sb.AppendLine(
+                    $"{pad}        applied += __FoxRunFlushMessagePackTransactions(nowSeconds, inheritedSubscribeRateHz);");
             }
             sb.AppendLine($"{pad}        return applied;");
             sb.AppendLine($"{pad}    }}");
@@ -436,6 +449,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return "FoxRunEncoding.Protobuf";
             if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, System.StringComparison.Ordinal))
                 return "FoxRunEncoding.JSON";
+            if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.MessagePackEncoding, System.StringComparison.Ordinal))
+                return "FoxRunEncoding.MessagePack";
             return "(FoxRunEncoding)0";
         }
 

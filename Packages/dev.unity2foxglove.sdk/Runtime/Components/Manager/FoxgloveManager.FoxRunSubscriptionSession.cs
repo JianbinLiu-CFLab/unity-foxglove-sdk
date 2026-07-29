@@ -39,7 +39,8 @@ namespace Unity.FoxgloveSDK.Components
                 DefaultFoxRunNativeSubscribeQos,
                 FoxRunRos2NativeCopyBudgetBytes,
                 ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic,
-                ConfiguredFoxRunDefaultSubscribeRateHz);
+                ConfiguredFoxRunDefaultSubscribeRateHz,
+                FoxRunSubscriptionMaxPayloadBytes);
             NotifyFoxRunSubscriptionSessionChanged(policy);
         }
 

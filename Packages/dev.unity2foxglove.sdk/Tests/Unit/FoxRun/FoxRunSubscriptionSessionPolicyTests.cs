@@ -44,8 +44,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var properties = typeof(FoxRunSubscriptionSessionPolicy)
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public);
-            Assert.Equal(8, properties.Length);
+            Assert.Equal(10, properties.Length);
             Assert.All(properties, property => Assert.False(property.CanWrite));
+            Assert.Equal(64 * 1024, policy.MaxPayloadBytes);
+            Assert.Equal(34, policy.MessagePackReadLimits.MaxDepth);
+            Assert.Equal(
+                16_384,
+                policy.MessagePackReadLimits.MaxContainerItems);
         }
 
         [Fact]

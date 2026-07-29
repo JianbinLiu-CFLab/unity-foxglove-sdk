@@ -193,7 +193,8 @@ namespace Unity.FoxgloveSDK.Editor
         internal static void EmitApplyMethods(
             StringBuilder sb,
             IReadOnlyList<ApplyMember> applyMembers,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> webSocketInputMembers,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> legacyWebSocketInputMembers,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> transactionalInputMembers,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> packagedNativeInputMembers,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> customNativeInputMembers,
             string pad,
@@ -205,7 +206,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var member = apply.Member;
                 var methodName = apply.MethodName;
 
-                var webSocketIndex = IndexOfMember(webSocketInputMembers, member);
+                var webSocketIndex = IndexOfMember(
+                    legacyWebSocketInputMembers,
+                    member);
+                var hasMessagePackTransaction =
+                    MessagePackInputDispatchEmitter.TryGetTransactionIndex(
+                        transactionalInputMembers,
+                        member,
+                        out var messagePackTransactionIndex);
                 var hasPackagedNative = emitRos2NativePartial
                                         && IndexOfMember(packagedNativeInputMembers, member) >= 0;
                 var hasCustomNative = emitRos2NativePartial
@@ -224,6 +232,13 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}            __foxRunInputHasPending_{webSocketIndex} = false;");
                         sb.AppendLine($"{pad}            __foxRunInputHasApplied_{webSocketIndex} = false;");
                     }
+                    if (hasMessagePackTransaction)
+                    {
+                        sb.AppendLine(
+                            $"{pad}            global::System.Threading.Interlocked.Exchange(ref __foxRunMessagePackPending_{messagePackTransactionIndex}, null);");
+                        sb.AppendLine(
+                            $"{pad}            __foxRunMessagePackApplied_{messagePackTransactionIndex} = null;");
+                    }
                     sb.AppendLine($"{pad}            return false;");
                     sb.AppendLine($"{pad}        }}");
                 }
@@ -231,6 +246,11 @@ namespace Unity.FoxgloveSDK.Editor
                 if (webSocketIndex >= 0)
                     sb.AppendLine(
                         $"{pad}        applied |= __FoxRunApplyInput_{webSocketIndex}(0d, 0f);");
+                if (hasMessagePackTransaction)
+                {
+                    sb.AppendLine(
+                        $"{pad}        applied |= __FoxRunApplyMessagePackTransaction_{messagePackTransactionIndex}(0d, 0f);");
+                }
 
                 if (hasPackagedNative || hasCustomNative)
                 {

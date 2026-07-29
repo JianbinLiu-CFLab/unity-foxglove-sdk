@@ -123,7 +123,6 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
             _router.DefaultPublishTargets = _manager.ActiveFoxRunPublishTargets;
             ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);
         }
@@ -155,6 +154,7 @@ namespace Unity.FoxgloveSDK.Components
             _subscriptionsEnabled = policy.SubscriptionsEnabled;
             _router.DefaultSubscriptionSource = policy.DefaultSource;
             _router.DefaultSubscriptionEncoding = policy.FoxgloveEncoding;
+            _router.MaxPayloadBytes = policy.MaxPayloadBytes;
             _router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;
             _inheritedSubscribeRateHz = policy.DefaultSubscribeRateHz;
         }

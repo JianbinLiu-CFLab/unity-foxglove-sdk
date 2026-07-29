@@ -12,10 +12,40 @@ using System.Threading;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
+    /// Opaque generated-code token for one bounded stream input reservation.
+    /// User code cannot manufacture a valid token.
+    /// </summary>
+    public readonly struct FoxRunStreamInputReservation
+    {
+        internal FoxRunStreamInputReservation(object owner, long identity)
+        {
+            Owner = owner;
+            Identity = identity;
+        }
+
+        internal object Owner { get; }
+        internal long Identity { get; }
+    }
+
+    /// <summary>
+    /// Narrow generated-code infrastructure for reserving decode work before
+    /// materializing an owned stream sample.
+    /// </summary>
+    public interface IFoxRunStreamInputIngress<T>
+    {
+        bool TryReserveInput(out FoxRunStreamInputReservation reservation);
+        void CancelInput(FoxRunStreamInputReservation reservation);
+        bool CommitOwnedInput(
+            FoxRunStreamInputReservation reservation,
+            T value,
+            Action<T> disposer);
+    }
+
+    /// <summary>
     /// Bounded, non-blocking producer queue with main-thread drain and explicit
     /// exactly-once ownership transfer.
     /// </summary>
-    public sealed class FoxRunStream<T> : IDisposable
+    public sealed class FoxRunStream<T> : IDisposable, IFoxRunStreamInputIngress<T>
     {
         private const int MaximumDisposalDiagnosticCharacters = 512;
         private readonly object _gate = new object();
@@ -25,6 +55,8 @@ namespace Unity.FoxgloveSDK.Components
         private long _lastAdmissionTimestamp;
         private bool _hasAdmissionTimestamp;
         private bool _disposed;
+        private long _nextReservationIdentity;
+        private long _activeReservationIdentity;
 
         private long _received;
         private long _admitted;
@@ -125,6 +157,119 @@ namespace Unity.FoxgloveSDK.Components
                 SaturatingIncrement(ref _admitted);
                 return true;
             }
+        }
+
+        bool IFoxRunStreamInputIngress<T>.TryReserveInput(
+            out FoxRunStreamInputReservation reservation)
+        {
+            reservation = default;
+            SaturatingIncrement(ref _received);
+            var now = _getTimestamp();
+            lock (_gate)
+            {
+                if (_disposed || _activeReservationIdentity != 0)
+                    return false;
+
+                if (_hasAdmissionTimestamp
+                    && now - _lastAdmissionTimestamp < _minimumAdmissionTicks)
+                {
+                    SaturatingIncrement(ref _rateDropped);
+                    return false;
+                }
+
+                var identity = _nextReservationIdentity == long.MaxValue
+                    ? 1L
+                    : _nextReservationIdentity + 1L;
+                if (identity == 0)
+                    identity = 1L;
+                _nextReservationIdentity = identity;
+                _activeReservationIdentity = identity;
+                _lastAdmissionTimestamp = now;
+                _hasAdmissionTimestamp = true;
+                SaturatingIncrement(ref _admitted);
+                reservation = new FoxRunStreamInputReservation(this, identity);
+                return true;
+            }
+        }
+
+        void IFoxRunStreamInputIngress<T>.CancelInput(
+            FoxRunStreamInputReservation reservation)
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(reservation.Owner, this)
+                    && reservation.Identity != 0
+                    && _activeReservationIdentity == reservation.Identity)
+                {
+                    _activeReservationIdentity = 0;
+                }
+            }
+        }
+
+        bool IFoxRunStreamInputIngress<T>.CommitOwnedInput(
+            FoxRunStreamInputReservation reservation,
+            T value,
+            Action<T> disposer)
+        {
+            if (disposer == null)
+                throw new ArgumentNullException(nameof(disposer));
+
+            DirectOwnedSample owned;
+            try
+            {
+                owned = new DirectOwnedSample(value, disposer);
+            }
+            catch
+            {
+                DisposeValue(value, disposer);
+                throw;
+            }
+
+            OwnedSample displaced = null;
+            var accepted = false;
+            try
+            {
+                lock (_gate)
+                {
+                    var valid = ReferenceEquals(reservation.Owner, this)
+                                && reservation.Identity != 0
+                                && _activeReservationIdentity == reservation.Identity;
+                    if (valid)
+                        _activeReservationIdentity = 0;
+
+                    if (!valid || _disposed)
+                    {
+                        displaced = owned;
+                    }
+                    else if (_queue.Count >= Options.Capacity
+                             && Options.Overflow == FoxRunStreamOverflowPolicy.DropNewest)
+                    {
+                        SaturatingIncrement(ref _droppedNewest);
+                        displaced = owned;
+                    }
+                    else
+                    {
+                        if (_queue.Count >= Options.Capacity)
+                        {
+                            displaced = _queue.Dequeue();
+                            SaturatingIncrement(ref _droppedOldest);
+                        }
+                        _queue.Enqueue(owned);
+                        accepted = true;
+                        UpdateHighWater(_queue.Count);
+                    }
+                }
+            }
+            catch
+            {
+                DisposeOwned(displaced);
+                if (!accepted && !ReferenceEquals(displaced, owned))
+                    DisposeOwned(owned);
+                throw;
+            }
+
+            DisposeOwned(displaced);
+            return accepted;
         }
 
         /// <summary>
@@ -369,6 +514,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (_disposed)
                     return;
                 _disposed = true;
+                _activeReservationIdentity = 0;
                 detached = _queue;
                 _queue = replacement;
                 SaturatingAdd(ref _cleared, detached.Count);

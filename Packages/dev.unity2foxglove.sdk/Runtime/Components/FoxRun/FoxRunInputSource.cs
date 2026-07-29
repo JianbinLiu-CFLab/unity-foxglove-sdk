@@ -170,6 +170,23 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Generated topic-level input contract used by codecs that must validate
+    /// a complete payload before changing any pending member state.
+    /// Transaction indices are independent from legacy member topic indices.
+    /// </summary>
+    public interface IFoxgloveTransactionalInputSource
+    {
+        int FoxgloveInput_TransactionCount { get; }
+        FoxgloveInputTopicInfo FoxgloveInput_GetTransaction(int transactionIndex);
+        bool FoxgloveInput_TryStageTransaction(
+            int transactionIndex,
+            byte[] payload,
+            Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackReadLimits limits,
+            out string error);
+        void FoxgloveInput_ClearTransaction(int transactionIndex);
+    }
+
+    /// <summary>
     /// Optional generated contract for input sources that retain owned queued
     /// samples and must release them when their router registration ends.
     /// </summary>
@@ -177,5 +194,18 @@ namespace Unity.FoxgloveSDK.Components
     {
         bool FoxgloveInput_TryAcquireOwned(int topicIndex, out string error);
         void FoxgloveInput_ClearOwned(int topicIndex);
+    }
+
+    /// <summary>
+    /// Separate generated ownership surface for transactional stream topics.
+    /// Transaction indices must never be passed to
+    /// <see cref="IFoxgloveOwnedInputSource"/>.
+    /// </summary>
+    public interface IFoxgloveTransactionalOwnedInputSource
+    {
+        bool FoxgloveInput_TryAcquireTransactionalOwned(
+            int transactionIndex,
+            out string error);
+        void FoxgloveInput_ClearTransactionalOwned(int transactionIndex);
     }
 }

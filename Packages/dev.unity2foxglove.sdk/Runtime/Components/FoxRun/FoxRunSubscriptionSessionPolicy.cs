@@ -5,6 +5,7 @@
 // Purpose: Immutable FoxRun subscription-session policy and lifecycle state.
 
 using System;
+using Unity.FoxgloveSDK.Schemas.MsgPack;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -23,7 +24,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunResolvedQos defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
-            int defaultSubscribeRateHz)
+            int defaultSubscribeRateHz,
+            int maxPayloadBytes)
         {
             SessionGeneration = sessionGeneration;
             SubscriptionsEnabled = subscriptionsEnabled;
@@ -33,6 +35,8 @@ namespace Unity.FoxgloveSDK.Components
             NativeCopyBudgetBytes = nativeCopyBudgetBytes;
             TransportAdmissionRateLimitHz = transportAdmissionRateLimitHz;
             DefaultSubscribeRateHz = defaultSubscribeRateHz;
+            MaxPayloadBytes = maxPayloadBytes;
+            MessagePackReadLimits = FoxgloveMsgPackReadLimits.ForPayloadBytes(maxPayloadBytes);
         }
 
         /// <summary>Monotonic identifier for the captured subscription session.</summary>
@@ -65,6 +69,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public int DefaultSubscribeRateHz { get; }
 
+        /// <summary>Frozen inbound byte cap for every registration in this session.</summary>
+        public int MaxPayloadBytes { get; }
+
+        /// <summary>Frozen bounded MessagePack reader limits derived from the byte cap.</summary>
+        public FoxgloveMsgPackReadLimits MessagePackReadLimits { get; }
+
         internal static FoxRunSubscriptionSessionPolicy Disabled(ulong generation)
             => new(
                 generation,
@@ -74,7 +84,8 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunResolvedQos.Default,
                 FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes,
                 1,
-                1);
+                1,
+                64 * 1024);
     }
 
     /// <summary>
@@ -95,7 +106,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunResolvedQos defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
-            int defaultSubscribeRateHz)
+            int defaultSubscribeRateHz,
+            int maxPayloadBytes = 64 * 1024)
         {
             if (Current.SubscriptionsEnabled)
                 return Current;
@@ -116,7 +128,8 @@ namespace Unity.FoxgloveSDK.Components
                 defaultRos2Qos,
                 FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes),
                 Math.Max(1, transportAdmissionRateLimitHz),
-                Math.Max(1, defaultSubscribeRateHz));
+                Math.Max(1, defaultSubscribeRateHz),
+                Math.Max(1, maxPayloadBytes));
             return Current;
         }
 

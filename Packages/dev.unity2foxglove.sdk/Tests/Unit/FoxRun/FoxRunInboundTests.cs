@@ -1163,7 +1163,7 @@ namespace Demo
         }
 
         [Fact]
-        public void InputHubSeparatesFrozenEncodingAndRateFromLivePayloadPolicy()
+        public void InputHubAppliesEncodingRateAndPayloadFromFrozenSessionPolicy()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
@@ -1172,7 +1172,7 @@ namespace Demo
                 source,
                 "private void ApplySubscriptionSessionPolicy(FoxRunSubscriptionSessionPolicy policy)");
 
-            Assert.Contains(
+            Assert.DoesNotContain(
                 "_router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;",
                 managerPolicy,
                 StringComparison.Ordinal);
@@ -1182,6 +1182,10 @@ namespace Demo
                 StringComparison.Ordinal);
             Assert.Contains(
                 "_router.DefaultSubscriptionEncoding = policy.FoxgloveEncoding;",
+                sessionPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_router.MaxPayloadBytes = policy.MaxPayloadBytes;",
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
