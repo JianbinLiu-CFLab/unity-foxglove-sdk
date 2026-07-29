@@ -5,6 +5,7 @@
 // Purpose: Foxglove MsgPack writer coverage.
 
 using System;
+using System.Text;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
@@ -123,8 +124,32 @@ namespace Unity.FoxgloveSDK.UnitTests
             var writeString = TestSources.Slice(source, "public void WriteString", "public void WriteBinary");
 
             Assert.Contains("ArrayPool<byte>.Shared.Rent", writeString, StringComparison.Ordinal);
-            Assert.Contains("Encoding.UTF8.GetByteCount(value)", writeString, StringComparison.Ordinal);
-            Assert.DoesNotContain("Encoding.UTF8.GetBytes(value)", writeString, StringComparison.Ordinal);
+            Assert.Contains("new UTF8Encoding(false, true)", source, StringComparison.Ordinal);
+            Assert.Contains("StrictUtf8.GetByteCount(value)", writeString, StringComparison.Ordinal);
+            Assert.Contains("StrictUtf8.GetBytes(value", writeString, StringComparison.Ordinal);
+            Assert.DoesNotContain("Encoding.UTF8", writeString, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void WriterRejectsLoneHighSurrogateBeforeRetainingHeaderOrPayload()
+        {
+            AssertInvalidStringDoesNotRetainBytes("\ud800");
+        }
+
+        [Fact]
+        public void WriterRejectsLoneLowSurrogateBeforeRetainingHeaderOrPayload()
+        {
+            AssertInvalidStringDoesNotRetainBytes("\udc00");
+        }
+
+        private static void AssertInvalidStringDoesNotRetainBytes(string invalid)
+        {
+            using var writer = new FoxgloveMsgPackWriter();
+
+            Assert.Throws<EncoderFallbackException>(() => writer.WriteString(invalid));
+
+            Assert.Equal(0, writer.Length);
+            Assert.Empty(writer.ToArray());
         }
     }
 }

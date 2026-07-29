@@ -23,6 +23,44 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunAggregationEmitterTests
     {
         [Fact]
+        [Trait("Phase", "185-B")]
+        public void AggregateMessagePackEmitsOneDirectStableMapBuilderWithoutJsonFallback()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "MessagePackTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "MessagePackTelemetry", "_zeta", "field", "System.Double",
+                        true, false, "", "/phase185/aggregate", 10f, "Demo.MessagePackTelemetry",
+                        0, 0f, "UnitTest", 1, "",
+                        isAggregateMember: true,
+                        jsonFieldName: "zeta",
+                        encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        typeShape: FoxRunTypeShape.Canonical("float64")),
+                    new FoxRunGenerationMember(
+                        "Demo", "MessagePackTelemetry", "_alpha", "field", "System.Int32",
+                        true, false, "", "/phase185/aggregate", 10f, "Demo.MessagePackTelemetry",
+                        0, 0f, "UnitTest", 0, "",
+                        isAggregateMember: true,
+                        jsonFieldName: "alpha",
+                        encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        typeShape: FoxRunTypeShape.Canonical("int32"))
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("__BuildFoxRunMessagePack_0", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveMsgPackWriter", source, StringComparison.Ordinal);
+            Assert.True(
+                source.IndexOf("WriteString(\"alpha\")", StringComparison.Ordinal)
+                < source.IndexOf("WriteString(\"zeta\")", StringComparison.Ordinal));
+            Assert.DoesNotContain("__BuildFoxRunJson_0", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("JsonConvert", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void AggregateMemberEmitsExplicitJsonBytesWithoutDictionaryPayload()
         {
             var type = new FoxRunGenerationType(

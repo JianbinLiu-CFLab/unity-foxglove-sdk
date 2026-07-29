@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
     /// </summary>
     public sealed class FoxgloveMsgPackWriter : IDisposable
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
         private readonly MemoryStream _stream;
 
         public FoxgloveMsgPackWriter()
@@ -161,7 +162,7 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
                 return;
             }
 
-            var byteCount = Encoding.UTF8.GetByteCount(value);
+            var byteCount = StrictUtf8.GetByteCount(value);
             WriteStringHeader(byteCount);
             if (byteCount == 0)
                 return;
@@ -169,7 +170,7 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
             var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
             try
             {
-                var written = Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
+                var written = StrictUtf8.GetBytes(value, 0, value.Length, buffer, 0);
                 _stream.Write(buffer, 0, written);
             }
             finally

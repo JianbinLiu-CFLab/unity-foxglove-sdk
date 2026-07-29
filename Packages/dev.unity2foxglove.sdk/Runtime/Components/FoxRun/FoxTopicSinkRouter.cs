@@ -354,35 +354,97 @@ namespace Unity.FoxgloveSDK.Components
         /// does not stop the remaining sinks.
         /// </summary>
         public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
+            => PublishCore(
+                contract,
+                contract,
+                timestampNs,
+                payload,
+                origin,
+                compatibleOnly: false);
+
+        /// <summary>
+        /// Deliver one serialized payload only to additive byte sinks. Target
+        /// transport sinks are excluded because their typed/transport-specific
+        /// path is owned by <see cref="PublishTarget"/>.
+        /// </summary>
+        public void PublishCompatible(
+            FoxTopicContract contract,
+            FoxRunEncoding wireEncoding,
+            ulong timestampNs,
+            byte[] payload,
+            string origin)
+            => PublishCore(
+                contract,
+                ResolveWireContract(contract, wireEncoding),
+                timestampNs,
+                payload,
+                origin,
+                compatibleOnly: true);
+
+        private void PublishCore(
+            FoxTopicContract registeredContract,
+            FoxTopicContract wireContract,
+            ulong timestampNs,
+            byte[] payload,
+            string origin,
+            bool compatibleOnly)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
-            if (contract == null)
-                throw new ArgumentNullException(nameof(contract));
-            if (contract.Visibility == FoxTopicVisibility.LocalOnly)
+            if (registeredContract == null)
+                throw new ArgumentNullException(nameof(registeredContract));
+            if (wireContract == null)
+                throw new ArgumentNullException(nameof(wireContract));
+            if (registeredContract.Visibility == FoxTopicVisibility.LocalOnly)
                 return;
             if (_sinks.Count == 0)
                 return;
-            if (!_contracts.TryGetValue(contract.Topic, out var registeredContract)
-                || !ContractsMatch(registeredContract, contract))
+            if (!_contracts.TryGetValue(
+                    registeredContract.Topic,
+                    out var registered)
+                || !ContractsMatch(registered, registeredContract))
                 return;
-            _contractTargets.TryGetValue(contract.Topic, out var targets);
+            _contractTargets.TryGetValue(registeredContract.Topic, out var targets);
 
             payload ??= Array.Empty<byte>();
             for (var i = 0; i < _sinks.Count; i++)
             {
                 var sink = _sinks[i];
+                if (compatibleOnly && sink is IFoxTopicTargetSink)
+                    continue;
                 if (!SelectsSink(targets, sink))
                     continue;
                 try
                 {
-                    sink.Publish(contract, timestampNs, payload, origin);
+                    sink.Publish(wireContract, timestampNs, payload, origin);
                 }
                 catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
                 {
-                    ReportFault(sink, contract.Topic, "publish", ex);
+                    ReportFault(sink, registeredContract.Topic, "publish", ex);
                 }
             }
+        }
+
+        private static FoxTopicContract ResolveWireContract(
+            FoxTopicContract logicalContract,
+            FoxRunEncoding wireEncoding)
+        {
+            if (logicalContract == null)
+                throw new ArgumentNullException(nameof(logicalContract));
+
+            var protocolEncoding =
+                FoxRunEncodingResolver.ToProtocolEncoding(wireEncoding);
+            var schemaName = wireEncoding == FoxRunEncoding.MessagePack
+                ? string.Empty
+                : logicalContract.SchemaName;
+            return new FoxTopicContract(
+                logicalContract.Topic,
+                schemaName,
+                protocolEncoding,
+                logicalContract.CanonicalType,
+                logicalContract.StableFingerprint,
+                logicalContract.Visibility,
+                logicalContract.WriterPolicy);
         }
 
         public FoxTopicSinkPublishResult PublishTarget(

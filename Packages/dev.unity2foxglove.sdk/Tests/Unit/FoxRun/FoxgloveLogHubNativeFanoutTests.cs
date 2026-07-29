@@ -748,6 +748,83 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-B")]
+        public void MessagePackLiveRecordingAndSinkTargetsShareOneCapturedByteArray()
+        {
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                RegisterTargetAwareMessagePackContract();
+                var fixture = new TargetAwareHubFixture(
+                    FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native,
+                    encoding: FoxRunEncoding.MessagePack);
+                var payload = new byte[] { 0x81, 0xa1, 0x76, 0x01 };
+                var sink = new MessagePackRecordingSink();
+                var rawNative = new MessagePackTargetSink();
+                fixture.AddSink(sink);
+                fixture.AddSink(rawNative);
+                fixture.Source.CapturedPayloadBytes = payload;
+                fixture.Source.RecordingReady = true;
+
+                Assert.True(fixture.Trigger());
+
+                var live = Assert.Single(
+                    fixture.Source.Sink(FoxRunEndpoint.Foxglove).Deliveries);
+                var native = Assert.Single(
+                    fixture.Source.Sink(FoxRunEndpoint.Ros2Native).Deliveries);
+                Assert.Same(payload, live.Sample);
+                Assert.Equal(
+                    fixture.Source.Value,
+                    Assert.IsType<CapturedValue>(native.Sample).Value);
+                Assert.False(native.Sample is byte[]);
+                Assert.Same(payload, fixture.Source.RecordedSample);
+                Assert.Same(payload, Assert.Single(sink.Published).Payload);
+                Assert.Equal(0, rawNative.PublishCalls);
+                Assert.Equal(1, fixture.Source.BeginCaptureCount);
+                Assert.Equal(1, fixture.Source.EndCaptureCount);
+                Assert.Equal(1, fixture.Source.RecordCount);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        private static void RegisterTargetAwareMessagePackContract()
+        {
+            var declaringType = typeof(TargetAwareSource).FullName;
+            var topic = "/phase184/hub-target-aware";
+            var contract = new FoxRunSchemaContractInfo(
+                declaringType,
+                topic,
+                string.Empty,
+                "msgpack",
+                "msgpack",
+                "msgpack",
+                "phase185-target-aware",
+                "Trigger",
+                10f,
+                0f,
+                Array.Empty<FoxRunSchemaFieldInfo>(),
+                flow: "Publish",
+                publishAvailable: true);
+            FoxRunSchemaInfoRegistry.RegisterGenerated(
+                new FoxRunSchemaManifestInfo(
+                    5,
+                    "Unity2Foxglove",
+                    "FoxRun",
+                    1,
+                    "phase185-target-aware",
+                    "phase185-target-aware",
+                    new[]
+                    {
+                        new FoxRunSchemaTypeInfo(
+                            declaringType,
+                            new[] { contract })
+                    }));
+        }
+
+        [Fact]
         public void OrdinaryObserverMutationCannotChangeEarlierRecordingSnapshot()
         {
             var fixture = new TargetAwareHubFixture(
@@ -1137,7 +1214,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             public TargetAwareHubFixture(
                 FoxRunEndpoint targets,
-                FoxRunPolicy policy = FoxRunPolicy.Trigger)
+                FoxRunPolicy policy = FoxRunPolicy.Trigger,
+                FoxRunEncoding encoding = FoxRunEncoding.JSON)
             {
                 Assert.NotNull(SetManagerMethod);
                 Assert.NotNull(TriggerMethod);
@@ -1150,14 +1228,17 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     IsRunning = true,
                     NowNs = TimestampNs,
                     ActiveFoxRunPublishTargets = FoxRunEndpoint.Foxglove,
-                    ActiveFoxRunPublishEncoding = FoxRunEncoding.JSON,
+                    ActiveFoxRunPublishEncoding = encoding,
                     ActiveFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove,
                     ActiveFoxRunSubscriptionEncoding = FoxRunEncoding.JSON,
                     DefaultFoxRunNativePublishQos = FoxRunResolvedQos.Default,
                     ActiveFoxRunBridgePublishQos = FoxRunResolvedQos.Default
                 };
                 SetManagerMethod.Invoke(_hub, new object[] { manager });
-                Source = new TargetAwareSource(targets, policy: policy);
+                Source = new TargetAwareSource(
+                    targets,
+                    policy: policy,
+                    encoding: encoding);
                 Assert.True((bool)AddSourceMethod.Invoke(_hub, new object[] { Source }));
             }
 
@@ -1191,6 +1272,9 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             public void RemoveSource(TargetAwareSource source)
                 => RemoveSourceMethod.Invoke(_hub, new object[] { source });
+
+            public void AddSink(IFoxTopicSink sink)
+                => _hub.TopicSinkRouter.AddSink(sink);
 
             public bool Tick(double nowSeconds)
             {
@@ -1355,12 +1439,14 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             IFoxglovePublishCaptureSource,
             IFoxglovePublishTargetSource,
             IFoxgloveTopicObserverSource,
+            IFoxgloveTopicSinkSource,
             IFoxglovePublishRecordingSource,
             IFoxgloveLogPolicySource,
             IFoxgloveTopicContractSource
         {
             private readonly FoxgloveLogTopicInfo _topic;
             private readonly FoxTopicWriterPolicy _writerPolicy;
+            private readonly FoxRunEncoding _encoding;
             private readonly Dictionary<FoxRunEndpoint, RecordingTargetSink> _sinks =
                 new Dictionary<FoxRunEndpoint, RecordingTargetSink>
                 {
@@ -1369,6 +1455,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     [FoxRunEndpoint.Ros2Bridge] = new RecordingTargetSink()
                 };
             private object _currentCapture;
+            private byte[] _currentMessagePack;
 
             public TargetAwareSource(
                 FoxRunEndpoint targets,
@@ -1378,7 +1465,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 bool hasExplicitTargets = true,
                 bool hasExplicitQos = false,
                 FoxTopicWriterPolicy writerPolicy =
-                    FoxTopicWriterPolicy.SingleWriter)
+                    FoxTopicWriterPolicy.SingleWriter,
+                FoxRunEncoding encoding = FoxRunEncoding.JSON)
             {
                 _topic = new FoxgloveLogTopicInfo(
                     topic,
@@ -1390,7 +1478,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     hasExplicitSource: false,
                     declaredTargets: targets,
                     hasExplicitTargets: hasExplicitTargets,
-                    declaredEncoding: FoxRunEncoding.JSON,
+                    declaredEncoding: encoding,
                     hasExplicitEncoding:
                         (targets & FoxRunEndpoint.Foxglove) != 0,
                     qosProfile: hasExplicitQos
@@ -1408,6 +1496,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     hasExplicitHz: false);
                 FoxgloveLog_Origin = origin;
                 _writerPolicy = writerPolicy;
+                _encoding = encoding;
             }
 
             public int FoxgloveLog_TopicCount => 1;
@@ -1418,6 +1507,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public int ObserverPublishes { get; private set; }
             public int MarkPublishedCount { get; private set; }
             public int Value { get; set; }
+            public byte[] CapturedPayloadBytes { get; set; }
             public bool ThrowOnBeginCapture { get; set; }
             public Exception EndCaptureException { get; set; }
             public bool ObserverDemand { get; set; }
@@ -1440,8 +1530,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 return new FoxTopicContract(
                     _topic.Topic,
                     "phase184.TargetAware",
-                    "json",
-                    "phase184.TargetAware",
+                    _encoding == FoxRunEncoding.MessagePack
+                        ? "msgpack"
+                        : "json",
+                    _encoding == FoxRunEncoding.MessagePack
+                        ? ""
+                        : "phase184.TargetAware",
                     "phase184-target-aware-v1",
                     FoxTopicVisibility.Exported,
                     _writerPolicy);
@@ -1468,8 +1562,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 if (ThrowOnBeginCapture)
                     throw new InvalidOperationException("capture getter failed");
                 _currentCapture = new CapturedValue(Value);
+                _currentMessagePack = _encoding == FoxRunEncoding.MessagePack
+                    ? CapturedPayloadBytes
+                    : null;
                 LastCapture = _currentCapture;
-                return true;
+                return _encoding != FoxRunEncoding.MessagePack
+                    || _currentMessagePack != null;
             }
 
             public void FoxgloveLog_EndCapture(int topicIndex)
@@ -1477,6 +1575,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 Assert.Equal(0, topicIndex);
                 EndCaptureCount++;
                 _currentCapture = null;
+                _currentMessagePack = null;
                 if (EndCaptureException != null)
                     throw EndCaptureException;
             }
@@ -1508,7 +1607,28 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             {
                 Assert.Equal(0, topicIndex);
                 PublishOrder.Add(target);
-                return _sinks[target].Publish(_currentCapture, nowNs, out reason);
+                var sample = _encoding == FoxRunEncoding.MessagePack
+                             && target == FoxRunEndpoint.Foxglove
+                    ? (object)_currentMessagePack
+                    : _currentCapture;
+                var published = _sinks[target].Publish(
+                    sample,
+                    nowNs,
+                    out reason);
+                // A running Foxglove session records the exact byte[] inside
+                // its primary publish call. IFoxglovePublishRecordingSource
+                // is used only when there is no Foxglove live target.
+                if (published
+                    && RecordingReady
+                    && _encoding == FoxRunEncoding.MessagePack
+                    && target == FoxRunEndpoint.Foxglove)
+                {
+                    RecordCount++;
+                    RecordedSample = _currentMessagePack;
+                    RecordedTimestampNs = nowNs;
+                }
+
+                return published;
             }
 
             public bool FoxgloveLog_HasObservers(
@@ -1537,6 +1657,27 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 }
             }
 
+            public void FoxgloveLog_PublishToSinks(
+                int topicIndex,
+                FoxTopicSinkRouter router,
+                ulong nowNs)
+            {
+                Assert.Equal(0, topicIndex);
+                Assert.NotNull(router);
+                if (_encoding != FoxRunEncoding.MessagePack
+                    || _currentMessagePack == null)
+                {
+                    return;
+                }
+
+                router.PublishCompatible(
+                    FoxgloveLog_GetContract(topicIndex),
+                    FoxRunEncoding.MessagePack,
+                    nowNs,
+                    _currentMessagePack,
+                    FoxgloveLog_Origin);
+            }
+
             public bool FoxgloveLog_IsRecordingReady(
                 int topicIndex,
                 FoxRunResolvedPublishContract contract,
@@ -1557,10 +1698,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             {
                 Assert.Equal(0, topicIndex);
                 RecordCount++;
-                RecordedSample = _currentCapture;
+                RecordedSample = _encoding == FoxRunEncoding.MessagePack
+                    ? (object)_currentMessagePack
+                    : _currentCapture;
                 RecordedTimestampNs = nowNs;
-                RecordedValue =
-                    Assert.IsType<CapturedValue>(_currentCapture).Value;
+                if (_currentCapture is CapturedValue captured)
+                    RecordedValue = captured.Value;
                 reason = string.Empty;
                 return true;
             }
@@ -1579,6 +1722,89 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             private bool _hasLastPublishedValue;
             private int _lastPublishedValue;
+        }
+
+        private sealed class MessagePackRecordingSink : IFoxTopicSink
+        {
+            public string Name => "phase185-msgpack-observer";
+
+            public FoxTopicSinkCapabilities Capabilities =>
+                FoxTopicSinkCapabilities.Test;
+
+            public List<(FoxTopicContract Contract, ulong TimestampNs, byte[] Payload)>
+                Published { get; } =
+                    new List<(FoxTopicContract, ulong, byte[])>();
+
+            public void Register(FoxTopicContract contract)
+            {
+            }
+
+            public void Publish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin)
+                => Published.Add((contract, timestampNs, payload));
+
+            public void Flush()
+            {
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class MessagePackTargetSink :
+            IFoxTopicSink,
+            IFoxTopicTargetSink
+        {
+            public string Name => "phase185-raw-native";
+            public FoxTopicSinkCapabilities Capabilities =>
+                FoxTopicSinkCapabilities.External;
+            public FoxRunEndpoint Target => FoxRunEndpoint.Ros2Native;
+            public int PublishCalls { get; private set; }
+
+            public void Register(FoxTopicContract contract)
+            {
+            }
+
+            public bool IsReady(
+                FoxTopicContract contract,
+                out string reason)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            public bool TryPublish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin,
+                out string reason)
+            {
+                PublishCalls++;
+                reason = string.Empty;
+                return true;
+            }
+
+            public void Publish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin)
+            {
+                PublishCalls++;
+            }
+
+            public void Flush()
+            {
+            }
+
+            public void Dispose()
+            {
+            }
         }
 
         private sealed class CapturedValue

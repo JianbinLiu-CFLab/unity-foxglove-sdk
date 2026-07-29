@@ -453,6 +453,15 @@ namespace Unity.FoxgloveSDK.Core
             return true;
         }
 
+        /// <summary>Publish raw bytes only to a previously hidden MCAP channel.</summary>
+        internal bool PublishRecordingOnly(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_session == null || ReplayEnabled || !_session.HasRecordingDemand(channelId))
+                return false;
+            _session.Publish(channelId, payload, logTimeNs);
+            return true;
+        }
+
         /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>
         public void RegisterSchemaChannel(
             uint channelId,

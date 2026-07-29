@@ -32,6 +32,8 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[topicIndex]];
                 sb.AppendLine($"{pad}    private bool __foxRunCaptureActive_{topicIndex};");
+                if (TopicMetadataEmitter.IsInherited(fields))
+                    sb.AppendLine($"{pad}    private FoxRunEncoding __foxRunCaptureEncoding_{topicIndex};");
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                 {
                     sb.AppendLine($"{pad}    private ulong __foxRunSequence_{topicIndex};");
@@ -73,6 +75,19 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                    __foxRunCapture_{topicIndex}_{fieldIndex} = {TypeExprEmitter.MemberAccess(fields[fieldIndex].MemberName)};");
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                     sb.AppendLine($"{pad}                    __foxRunCaptureSequence_{topicIndex} = ++__foxRunSequence_{topicIndex};");
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}                    var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
+                    sb.AppendLine($"{pad}                    __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
+                }
+                else if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                    sb.AppendLine($"{pad}                    {{");
+                    sb.AppendLine($"{pad}                        var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
+                    sb.AppendLine($"{pad}                        __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
+                    sb.AppendLine($"{pad}                    }}");
+                }
                 sb.AppendLine($"{pad}                    __foxRunCaptureActive_{topicIndex} = true;");
                 sb.AppendLine($"{pad}                    return true;");
                 sb.AppendLine($"{pad}                }}");
@@ -82,6 +97,10 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                    __foxRunCapture_{topicIndex}_{fieldIndex} = default;");
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                     sb.AppendLine($"{pad}                    __foxRunCaptureSequence_{topicIndex} = 0;");
+                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    sb.AppendLine($"{pad}                    __foxRunLastMessagePack_{topicIndex} = null;");
+                if (TopicMetadataEmitter.IsInherited(fields))
+                    sb.AppendLine($"{pad}                    __foxRunCaptureEncoding_{topicIndex} = (FoxRunEncoding)0;");
                 sb.AppendLine($"{pad}                    __foxRunCaptureActive_{topicIndex} = false;");
                 sb.AppendLine($"{pad}                    throw;");
                 sb.AppendLine($"{pad}                }}");
@@ -103,8 +122,13 @@ namespace Unity.FoxgloveSDK.Editor
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                     sb.AppendLine($"{pad}                __foxRunCaptureSequence_{topicIndex} = 0;");
                 sb.AppendLine($"{pad}                __foxRunCaptureActive_{topicIndex} = false;");
-                if (IsAggregateTopic(fields))
+                if (IsAggregateTopic(fields)
+                    && !MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
                     sb.AppendLine($"{pad}                __foxRunLastJson_{topicIndex} = null;");
+                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    sb.AppendLine($"{pad}                __foxRunLastMessagePack_{topicIndex} = null;");
+                if (TopicMetadataEmitter.IsInherited(fields))
+                    sb.AppendLine($"{pad}                __foxRunCaptureEncoding_{topicIndex} = (FoxRunEncoding)0;");
                 sb.AppendLine($"{pad}                break;");
             }
             sb.AppendLine($"{pad}        }}");
@@ -223,6 +247,18 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine($"{pad}        reason = string.Empty;");
             sb.AppendLine($"{pad}        if (resolved == null || !resolved.Selects(target)) {{ reason = \"Target was not selected.\"; return false; }}");
+            if (topics.Any(topic => TopicMetadataEmitter.IsInherited(topicMap[topic])))
+            {
+                sb.AppendLine($"{pad}        switch (topicIndex)");
+                sb.AppendLine($"{pad}        {{");
+                for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+                {
+                    if (!TopicMetadataEmitter.IsInherited(topicMap[topics[topicIndex]]))
+                        continue;
+                    sb.AppendLine($"{pad}            case {topicIndex}: __foxRunCaptureEncoding_{topicIndex} = resolved.FoxgloveEncoding; break;");
+                }
+                sb.AppendLine($"{pad}        }}");
+            }
             sb.AppendLine($"{pad}        if (mgr == null) {{ reason = \"Foxglove Manager is unavailable.\"; return false; }}");
             sb.AppendLine($"{pad}        if (mgr.SuppressLivePublishersForReplay) {{ reason = \"Replay is suppressing live publishers.\"; return false; }}");
             sb.AppendLine($"{pad}        if (target == FoxRunEndpoint.Foxglove)");
@@ -371,12 +407,38 @@ namespace Unity.FoxgloveSDK.Editor
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
+                var topic = StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex]);
+                if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    sb.AppendLine($"{pad}            case {topicIndex}:");
+                    sb.AppendLine($"{pad}                __foxRunCaptureEncoding_{topicIndex} = resolved.FoxgloveEncoding;");
+                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                    sb.AppendLine($"{pad}                    return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    if (TryGetRos2CdrSchema(fields, out var inheritedSchema))
+                    {
+                        var inheritedSchemaContent =
+                            fields.Count == 1 && IsSupportedCustomCdr(fields[0])
+                                ? "__foxRunRos2Schema_" + topicIndex
+                                : "string.Empty";
+                        sb.AppendLine($"{pad}                return mgr.TryPrepareFoxRunRos2Recording(\"{topic}\", \"{StringLiteralEmitter.CSharpStringLiteral(inheritedSchema)}\", {inheritedSchemaContent}, out _, out reason);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                return false;");
+                    }
+                    continue;
+                }
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    continue;
+                }
                 if (!TryGetRos2CdrSchema(fields, out var schema))
                     continue;
                 var schemaContent = fields.Count == 1 && IsSupportedCustomCdr(fields[0])
                     ? "__foxRunRos2Schema_" + topicIndex
                     : "string.Empty";
-                sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunRos2Recording(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", {schemaContent}, out _, out reason);");
+                sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunRos2Recording(\"{topic}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", {schemaContent}, out _, out reason);");
             }
             sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
@@ -392,20 +454,52 @@ namespace Unity.FoxgloveSDK.Editor
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
+                var topic = StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex]);
+                if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    sb.AppendLine($"{pad}            case {topicIndex}:");
+                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                    sb.AppendLine($"{pad}                    return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
+                    {
+                        var inheritedSchema = StringLiteralEmitter.CSharpStringLiteral(
+                            Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]));
+                        sb.AppendLine($"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var __recordCdr_{topicIndex}, out reason)) return false;");
+                        sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{inheritedSchema}\", __foxRunRos2Schema_{topicIndex}, __recordCdr_{topicIndex}, nowNs, out reason);");
+                    }
+                    else if (TryGetBundledCdrMember(fields, out var inheritedPackaged))
+                    {
+                        var inheritedSchema = StringLiteralEmitter.CSharpStringLiteral(
+                            inheritedPackaged.SchemaName);
+                        sb.AppendLine($"{pad}                if (!global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TrySerialize(\"{inheritedSchema}\", (global::Google.Protobuf.IMessage)(object)__foxRunCapture_{topicIndex}_0, out var __recordCdr_{topicIndex})) {{ reason = \"Bundled ROS 2 CDR serializer rejected the sample.\"; return false; }}");
+                        sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{inheritedSchema}\", string.Empty, __recordCdr_{topicIndex}, nowNs, out reason);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                return false;");
+                    }
+                    continue;
+                }
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}            case {topicIndex}:");
+                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    continue;
+                }
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                 {
                     var schema = StringLiteralEmitter.CSharpStringLiteral(
                         Ros2CustomDtoMapperEmitter.CanonicalEnvelopeType(fields[0]));
                     sb.AppendLine($"{pad}            case {topicIndex}:");
                     sb.AppendLine($"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var __recordCdr_{topicIndex}, out reason)) return false;");
-                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{schema}\", __foxRunRos2Schema_{topicIndex}, __recordCdr_{topicIndex}, nowNs, out reason);");
+                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{schema}\", __foxRunRos2Schema_{topicIndex}, __recordCdr_{topicIndex}, nowNs, out reason);");
                 }
                 else if (TryGetBundledCdrMember(fields, out var packaged))
                 {
                     var schema = StringLiteralEmitter.CSharpStringLiteral(packaged.SchemaName);
                     sb.AppendLine($"{pad}            case {topicIndex}:");
                     sb.AppendLine($"{pad}                if (!global::Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TrySerialize(\"{schema}\", (global::Google.Protobuf.IMessage)(object)__foxRunCapture_{topicIndex}_0, out var __recordCdr_{topicIndex})) {{ reason = \"Bundled ROS 2 CDR serializer rejected the sample.\"; return false; }}");
-                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{StringLiteralEmitter.CSharpStringLiteral(topics[topicIndex])}\", \"{schema}\", string.Empty, __recordCdr_{topicIndex}, nowNs, out reason);");
+                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunRos2Recording(\"{topic}\", \"{schema}\", string.Empty, __recordCdr_{topicIndex}, nowNs, out reason);");
                 }
             }
             sb.AppendLine($"{pad}            default: return false;");
@@ -488,9 +582,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var protobufSchema = StringLiteralEmitter.CSharpStringLiteral(
                     FoxRunProtobufContractBuilder.ResolveMessageFullName(rawSchema, declaringType, topics[i]));
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                var encoding = TopicMetadataEmitter.EffectiveEncoding(fields);
                 var protobuf = string.Equals(
-                    TopicMetadataEmitter.EffectiveEncoding(fields),
+                    encoding,
                     FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    System.StringComparison.Ordinal);
+                var messagePack = string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
                     System.StringComparison.Ordinal);
                 var inherited = TopicMetadataEmitter.IsInherited(fields);
                 if (IsAggregateTopic(fields))
@@ -499,8 +598,13 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}            case {i}:");
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
+                        sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
+                        sb.AppendLine($"{pad}                }}");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                {{");
                         sb.AppendLine($"{pad}                    var __payload_{i} = __BuildFoxRunJson_{i}();");
@@ -511,6 +615,10 @@ namespace Unity.FoxgloveSDK.Editor
                     else if (protobuf)
                     {
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                    }
+                    else if (messagePack)
+                    {
+                        sb.AppendLine($"{pad}                mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __foxRunLastMessagePack_{i}, nowNs);");
                     }
                     else
                     {
@@ -525,13 +633,20 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}            case {i}:");
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
+                        sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
+                        sb.AppendLine($"{pad}                }}");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields, i)}, nowNs);");
                     }
                     else if (protobuf)
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                    else if (messagePack)
+                        sb.AppendLine($"{pad}                mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __foxRunLastMessagePack_{i}, nowNs);");
                     else
                         sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields, i)}, nowNs);");
                     sb.AppendLine($"{pad}                break;");
@@ -599,6 +714,11 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(
                         $"{pad}            case {i}: return bus.HasObservers<{GlobalTypeName(customMember.TypeName)}>(\"{topic}\");");
                 }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine(
+                        $"{pad}            case {i}: return bus.HasObservers<byte[]>(\"{topic}\");");
+                }
                 else if (IsAggregateTopic(fields))
                 {
                     sb.AppendLine(
@@ -634,6 +754,13 @@ namespace Unity.FoxgloveSDK.Editor
                         $"{pad}                var __foxRunObserverPayload_{i} = __foxRunCapture_{i}_0;");
                     sb.AppendLine(
                         $"{pad}                bus.PublishToObservers<{dtoType}>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, __foxRunCaptureSequence_{i});");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine(
+                        $"{pad}                var __foxRunObserverPayload_{i} = __foxRunLastMessagePack_{i};");
+                    sb.AppendLine(
+                        $"{pad}                bus.PublishToObservers<byte[]>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
                 }
                 else if (IsAggregateTopic(fields))
                 {
@@ -675,6 +802,11 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                var __foxRunNativePayload_{i} = __foxRunCapture_{i}_0;");
                     sb.AppendLine($"{pad}                bus.Publish<{dtoType}>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunNativePayload_{i}, __foxRunOrigin);");
                 }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}                var __payload_{i} = __foxRunLastMessagePack_{i};");
+                    sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload_{i}, __foxRunOrigin);");
+                }
                 else if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
@@ -712,7 +844,33 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 sb.AppendLine($"{pad}            case {i}:");
-                if (IsAggregateTopic(fields))
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}                router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
+                    sb.AppendLine($"{pad}                break;");
+                    continue;
+                }
+                if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                    sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
+                    sb.AppendLine($"{pad}                else");
+                    sb.AppendLine($"{pad}                {{");
+                    if (IsAggregateTopic(fields))
+                    {
+                        EnsurePureAggregateTopic(fields, topics[i]);
+                        sb.AppendLine($"{pad}                    var __sink_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                    var __sink_{i} = __BuildFoxRunJson_{i}();");
+                    }
+                    sb.AppendLine($"{pad}                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, __sink_{i}, __foxRunOrigin);");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine($"{pad}                break;");
+                    continue;
+                }
+                else if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
                     sb.AppendLine($"{pad}                var __sink_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
@@ -869,6 +1027,8 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                    continue;
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);

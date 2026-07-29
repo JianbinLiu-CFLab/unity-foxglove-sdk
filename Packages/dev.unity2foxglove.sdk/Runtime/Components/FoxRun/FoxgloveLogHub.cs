@@ -934,6 +934,12 @@ namespace Unity.FoxgloveSDK.Components
                             ex);
                     }
                 }
+
+                // Additive byte sinks synchronously consume the same frozen
+                // payload after transports, MCAP, and ordinary observers, but
+                // before EndCapture releases the generated payload cache.
+                if (captureStarted)
+                    PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);
             }
             catch (Exception ex)
             {

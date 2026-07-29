@@ -462,6 +462,53 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "185-B")]
+        public void MessagePackSinkFanoutBorrowsOneArrayAndRetainersMustCopyPastCapture()
+        {
+            var router = new FoxTopicSinkRouter();
+            var healthy = new RecordingSink("healthy", new List<string>());
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(new ThrowingSink("failing"));
+            router.AddSink(healthy);
+            router.AddSink(native);
+            var contract = new FoxTopicContract(
+                "/phase185/msgpack",
+                "Demo.MessagePack",
+                "msgpack",
+                "",
+                "phase185-msgpack-v1",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+            router.Register(contract);
+            var borrowed = new byte[] { 0x81, 0xa1, 0x76, 0x01 };
+
+            router.PublishCompatible(
+                contract,
+                FoxRunEncoding.MessagePack,
+                185UL,
+                borrowed,
+                "phase185-source");
+
+            var received = Assert.Single(healthy.Published).Payload;
+            var wireContract = Assert.Single(healthy.PublishedContracts);
+            Assert.Same(borrowed, received);
+            Assert.Equal("/phase185/msgpack", wireContract.Topic);
+            Assert.Equal("msgpack", wireContract.Encoding);
+            Assert.Equal(string.Empty, wireContract.SchemaName);
+            Assert.Equal(contract.CanonicalType, wireContract.CanonicalType);
+            Assert.Equal(contract.StableFingerprint, wireContract.StableFingerprint);
+            Assert.Equal(0, native.PublishCalls);
+            var retainedCopy = (byte[])received.Clone();
+            borrowed[3] = 0x02;
+            Assert.Equal(0x02, received[3]);
+            Assert.Equal(0x01, retainedCopy[3]);
+        }
+
+        [Fact]
         public void RemovedSinkStopsReceivingPayloads()
         {
             var router = new FoxTopicSinkRouter();
@@ -640,6 +687,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public string Name { get; }
             public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
             public List<FoxTopicContract> Registered { get; } = new List<FoxTopicContract>();
+            public List<FoxTopicContract> PublishedContracts { get; } =
+                new List<FoxTopicContract>();
             public List<(string Topic, ulong TimestampNs, byte[] Payload, string Origin)> Published { get; } = new();
             public bool Disposed { get; private set; }
 
@@ -648,6 +697,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
             {
                 _order.Add(Name);
+                PublishedContracts.Add(contract);
                 Published.Add((contract.Topic, timestampNs, payload, origin));
             }
 

@@ -139,9 +139,21 @@ namespace Unity.FoxgloveSDK.Editor
                     throw new InvalidOperationException("FoxRun topic members must share one declared wire encoding.");
             }
 
-            return string.Equals(declared, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
-                ? FoxRunGenerationDescriptorConstants.ProtobufEncoding
-                : FoxRunGenerationDescriptorConstants.JsonEncoding;
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
+            }
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
+            }
+            return FoxRunGenerationDescriptorConstants.JsonEncoding;
         }
 
         internal static bool IsInherited(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
@@ -169,6 +181,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return "FoxRunEncoding.Protobuf";
             if (string.Equals(value, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal))
                 return "FoxRunEncoding.JSON";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.MessagePackEncoding, StringComparison.Ordinal))
+                return "FoxRunEncoding.MessagePack";
             return "(FoxRunEncoding)0";
         }
 

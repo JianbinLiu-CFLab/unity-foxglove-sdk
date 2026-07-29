@@ -12,6 +12,83 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunMultiTargetFanoutTests
     {
         [Fact]
+        public void ByteFanoutCapturesAndBuildsOnceSharesReferenceAndIsolatesFailure()
+        {
+            var captures = 0;
+            var payload = new byte[] { 0x81, 0xa1, 0x76, 0x01 };
+            var delivered = new List<byte[]>();
+
+            var result = FoxRunPublishFanout.Dispatch(
+                Resolved(
+                    FoxRunEndpoint.Foxglove
+                    | FoxRunEndpoint.Ros2Native
+                    | FoxRunEndpoint.Ros2Bridge),
+                timestampNs: 185UL,
+                capture: () =>
+                {
+                    captures++;
+                    return payload;
+                },
+                isReady: _ => true,
+                publish: (target, bytes, _) =>
+                {
+                    delivered.Add(bytes);
+                    return target != FoxRunEndpoint.Ros2Native;
+                });
+
+            Assert.Equal(1, captures);
+            Assert.Equal(3, delivered.Count);
+            Assert.All(delivered, bytes => Assert.Same(payload, bytes));
+            Assert.Equal(FoxRunPublishTargetStatus.Degraded, result.Status);
+            Assert.Equal(FoxRunEndpoint.Ros2Native, result.FailedTargets);
+            Assert.Equal(
+                FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
+                result.SucceededTargets);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-B")]
+        public void GeneratedMessagePackFanoutKeepsOneCacheAndNeverFeedsBytesToRos2()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "MessagePackFanout",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "MessagePackFanout", "_value", "field", "System.Int32",
+                        true, false, "", "/phase185/fanout", 10f, "Demo.Value",
+                        (int)FoxRunPolicy.FixedRate, 0f, "UnitTest", 0, "",
+                        mode: (int)FoxRunFlow.Publish,
+                        encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        typeShape: FoxRunTypeShape.Canonical("int32"),
+                        namedArgumentPresence:
+                            FoxRunNamedArgumentPresence.Encoding
+                            | FoxRunNamedArgumentPresence.Targets,
+                        targets:
+                            FoxRunGenerationDescriptorConstants.FoxgloveTarget
+                            + ","
+                            + FoxRunGenerationDescriptorConstants.Ros2NativeTarget
+                            + ","
+                            + FoxRunGenerationDescriptorConstants.Ros2BridgeTarget)
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Equal(1, Count(source, "private byte[] __foxRunLastMessagePack_0;"));
+            Assert.Contains("__BuildFoxRunMessagePack_0", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunLastMessagePack_0 = null;", source, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "router.PublishTarget(target, __contract, nowNs, __foxRunLastMessagePack_0",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "TryPublishFoxRunRos2BridgeCdr(\"/phase185/fanout\", \"\", \"Demo.Value\", __foxRunLastMessagePack_0",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ExplicitTargetsReplaceTheFrozenProfileWithoutFallback()
         {
             var info = Topic(

@@ -402,6 +402,11 @@ namespace Unity.FoxgloveSDK.Editor
                     nativeBusMembers,
                     pad);
                 PublishDispatchEmitter.EmitPublish(sb, ns, className, topics, topicMap, pad);
+                MessagePackPublishDispatchEmitter.EmitFieldsAndBuilders(
+                    sb,
+                    topics,
+                    topicMap,
+                    pad);
                 Ros2CustomCdrEmitter.EmitBuilders(
                     sb,
                     ns,
