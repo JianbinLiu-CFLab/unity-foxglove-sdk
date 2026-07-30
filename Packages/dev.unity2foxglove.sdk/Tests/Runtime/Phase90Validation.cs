@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Schemas;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -118,7 +119,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase90FakeTransport();
             using var session = new FoxgloveSession("phase90-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             var serverInfo = JObject.Parse(transport.LastSentText);

@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void MessagePackLiveRecordingAndSinksConsumeTheCaptureCacheButRos2DoesNot()
+        public void MessagePackWebSocketAndSinksConsumeOneNeutralCaptureCache()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(
                 "_count",
@@ -110,33 +110,27 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 mode: (int)FoxRunFlow.Publish,
                 encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
                 typeShape: FoxRunTypeShape.Canonical("int32"),
-                targets: FoxRunGenerationDescriptorConstants.FoxgloveTarget
-                         + ","
-                         + FoxRunGenerationDescriptorConstants.Ros2NativeTarget
-                         + ","
-                         + FoxRunGenerationDescriptorConstants.Ros2BridgeTarget);
+                publishTransportIds: new[]
+                {
+                    FoxgloveWebSocketTransport.Id,
+                    "unity2foxglove.r2fu",
+                    "unity2foxglove.ros2bridge"
+                });
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
 
             Assert.Contains("PublishFoxRunMessagePackBytes(", source, StringComparison.Ordinal);
-            Assert.Contains("TryPublishFoxRunMessagePackRecording(", source, StringComparison.Ordinal);
             Assert.Contains(
                 "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0",
                 source,
                 StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "FoxRun_PublishRos2Native_0(__foxRunLastMessagePack_0",
-                source,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "FoxRun_PublishRos2Bridge_0(__foxRunLastMessagePack_0",
-                source,
-                StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxRun_PublishRos2", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("PublishRos2BridgeCdr", source, StringComparison.Ordinal);
             Assert.Contains("msgpack", source, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void InheritedMessagePackRecordingOnlyFreezesResolvedEncodingBeforeCapture()
+        public void InheritedMessagePackFreezesWebSocketEncodingBeforeCaptureAndSinkFanout()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(
                 "_count",
@@ -158,34 +152,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 source,
                 "bool IFoxglovePublishCaptureSource.FoxgloveLog_BeginCapture",
                 "void IFoxglovePublishCaptureSource.FoxgloveLog_EndCapture");
-            var recordingReady = Slice(
+            var encodingSetter = Slice(
                 source,
-                "bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady",
-                "bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured");
-            var recordCaptured = Slice(
-                source,
-                "bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured",
-                "void IFoxgloveLogSource.FoxgloveLog_Publish");
-
+                "void IFoxRunWebSocketCaptureSource.FoxgloveLog_SetWebSocketEncoding",
+                "[Preserve]");
             Assert.Contains(
-                "__foxRunCaptureEncoding_0 = resolved.FoxgloveEncoding;",
-                recordingReady,
+                "__foxRunCaptureEncoding_0 = encoding;",
+                encodingSetter,
                 StringComparison.Ordinal);
             Assert.Contains(
                 "if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)",
                 beginCapture,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "TryPrepareFoxRunMessagePackRecording",
-                recordingReady,
-                StringComparison.Ordinal);
-            Assert.Contains(
                 "if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)",
-                recordCaptured,
+                source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "TryPublishFoxRunMessagePackRecording",
-                recordCaptured,
+                "router.PublishCompatible",
+                source,
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish)",

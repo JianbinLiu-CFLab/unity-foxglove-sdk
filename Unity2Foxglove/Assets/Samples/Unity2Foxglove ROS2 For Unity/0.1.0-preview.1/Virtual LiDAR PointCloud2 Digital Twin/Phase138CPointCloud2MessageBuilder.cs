@@ -24,7 +24,7 @@ public static class Phase138CPointCloud2MessageBuilder
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     /// <summary>Build a PointCloud2 message from a prepared native PointCloud2 frame.</summary>
-    public static sensor_msgs.msg.PointCloud2 Build(PointCloud2NativeFrame frame, bool copyDataBeforePublish)
+    public static sensor_msgs.msg.PointCloud2 Build(PackedPointCloudFrame frame, bool copyDataBeforePublish)
     {
         if (frame == null)
             throw new ArgumentNullException(nameof(frame));

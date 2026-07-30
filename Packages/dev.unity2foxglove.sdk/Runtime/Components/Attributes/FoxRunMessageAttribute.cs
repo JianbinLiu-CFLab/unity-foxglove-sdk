@@ -31,12 +31,6 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
 
         /// <summary>
-        /// Publish targets. Omission inherits the frozen Publish Profile.
-        /// An explicit non-empty flags set replaces the profile target set.
-        /// </summary>
-        public FoxRunEndpoint Targets { get; set; }
-
-        /// <summary>
         /// Stable transport Provider IDs used for aggregate publishing.
         /// Omission inherits the frozen publish profile; an explicit array
         /// replaces it. IDs are canonicalized with ordinal ordering.
@@ -49,20 +43,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxRunEncoding Encoding { get; set; }
 
-        /// <summary>
-        /// Optional portable ROS 2 QoS base profile. Omission inherits each
-        /// selected ROS 2 publish direction's frozen profile.
-        /// </summary>
-        public FoxRunQosProfile QoS { get; set; }
+        /// <summary>Optional transport-neutral reliability intent.</summary>
+        public FoxRunDeliveryReliability Reliability { get; set; }
 
-        /// <summary>Optional ROS 2 reliability override.</summary>
-        public FoxRunQosReliability Reliability { get; set; }
+        /// <summary>Optional transport-neutral durability intent.</summary>
+        public FoxRunDeliveryDurability Durability { get; set; }
 
-        /// <summary>Optional ROS 2 durability override.</summary>
-        public FoxRunQosDurability Durability { get; set; }
-
-        /// <summary>Optional ROS 2 history override.</summary>
-        public FoxRunQosHistory History { get; set; }
+        /// <summary>Optional transport-neutral history intent.</summary>
+        public FoxRunDeliveryHistory History { get; set; }
 
         /// <summary>Optional positive Keep Last depth.</summary>
         public int Depth { get; set; }

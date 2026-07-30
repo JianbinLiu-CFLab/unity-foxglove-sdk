@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/SourceGenerators
-// Purpose: Roslyn source-generator data carriers for FoxRun and FoxService emission.
+// Purpose: Provider-neutral compiler data carriers for FoxRun and FoxService.
 
 using System;
 using System.Collections.Generic;
@@ -13,9 +13,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 {
     internal sealed class ServiceDiagnostic
     {
-        public ServiceDiagnostic(string id, Location location, string target)
+        public ServiceDiagnostic(
+            string id,
+            Location location,
+            string target)
         {
-            Id = id;
+            Id = id ?? string.Empty;
             Location = location ?? Location.None;
             Target = target ?? string.Empty;
         }
@@ -60,7 +63,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             HasRequest = hasRequest;
             HasResponse = hasResponse;
             Location = location ?? Location.None;
-            Diagnostics = diagnostics ?? Array.Empty<ServiceDiagnostic>();
+            Diagnostics =
+                diagnostics ?? Array.Empty<ServiceDiagnostic>();
         }
 
         public string Ns { get; }
@@ -81,8 +85,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public ServiceDiagnostic[] Diagnostics { get; }
 
         public FoxServiceSourceEmitter.ServiceMethod ToEmitterMethod()
-        {
-            return new FoxServiceSourceEmitter.ServiceMethod(
+            => new FoxServiceSourceEmitter.ServiceMethod(
                 MethodName,
                 ServiceName,
                 ServiceType,
@@ -95,23 +98,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ResponseTypeName,
                 HasRequest,
                 HasResponse);
-        }
     }
 
-    /// <summary>
-    /// Internal record produced by <c>ExtractMember</c>. Carries namespace, class
-    /// name, member identity, topic entries, partial status, and optional
-    /// diagnostic location for error reporting.
-    /// </summary>
     internal sealed class MemberData
     {
-        /// <summary>Containing namespace (empty for global).</summary>
         public readonly string Ns;
-        /// <summary>Containing class name.</summary>
         public readonly string ClassName;
-        /// <summary>Field or property name.</summary>
         public readonly string MemberName;
-        /// <summary>Field or property type as fully-qualified string.</summary>
         public readonly string MemberType;
         public readonly string EmissionTypeName;
         public readonly string MemberKind;
@@ -119,191 +112,196 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly bool IsArray;
         public readonly string ElementTypeName;
         public readonly FoxRunTypeShape TypeShape;
-        public readonly FoxRunRos2MessageShape Ros2MessageShape;
-        public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
-        public readonly FoxRunRos2ContractKind Ros2ContractKind;
         public readonly int RawMemberOrder;
         public readonly Location MemberLocation;
-        /// <summary>Whether the containing class is declared <c>partial</c>.</summary>
         public readonly bool IsPartial;
-        /// <summary>Extracted topic entries from <c>[FoxRun]</c> attributes.</summary>
         public readonly TopicEntry[] Topics;
-        /// <summary>Non-null when this represents a diagnostic-only placeholder.</summary>
         public readonly Location DiagnosticLocation;
         public readonly string DiagnosticId;
         public readonly IReadOnlyList<string> DeclaredMemberNames;
         public readonly bool IsStream;
 
-        /// <summary>
-        /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
-        /// </summary>
-        public static MemberData ForDiagnostic(Location location, string diagnosticId = "FOXRUN004") =>
-            new MemberData("", "", false, "", "", "", "", false, false, "", 0, Location.None, Array.Empty<TopicEntry>(), location, diagnosticId);
+        public static MemberData ForDiagnostic(
+            Location location,
+            string diagnosticId = "FOXRUN004")
+            => new MemberData(
+                string.Empty,
+                string.Empty,
+                false,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                false,
+                false,
+                string.Empty,
+                0,
+                Location.None,
+                Array.Empty<TopicEntry>(),
+                location,
+                diagnosticId,
+                null,
+                null,
+                false);
 
-        /// <summary>
-        /// Creates a valid member-data record with no diagnostic.
-        /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunTypeShape typeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, typeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames, isStream)
+        public MemberData(
+            string ns,
+            string className,
+            bool partial,
+            string memberName,
+            string memberKind,
+            string memberType,
+            string emissionTypeName,
+            bool isValueType,
+            bool isArray,
+            string elementTypeName,
+            int rawMemberOrder,
+            Location memberLocation,
+            TopicEntry[] topics,
+            FoxRunTypeShape typeShape = null,
+            IReadOnlyList<string> declaredMemberNames = null,
+            bool isStream = false)
+            : this(
+                ns,
+                className,
+                partial,
+                memberName,
+                memberKind,
+                memberType,
+                emissionTypeName,
+                isValueType,
+                isArray,
+                elementTypeName,
+                rawMemberOrder,
+                memberLocation,
+                topics,
+                null,
+                string.Empty,
+                typeShape,
+                declaredMemberNames,
+                isStream)
         {
         }
 
-        /// <summary>
-        /// Core constructor used by both the public constructor and
-        /// <c>ForDiagnostic</c>.
-        /// </summary>
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, diagnosticLocation, string.Empty, null)
+        private MemberData(
+            string ns,
+            string className,
+            bool partial,
+            string memberName,
+            string memberKind,
+            string memberType,
+            string emissionTypeName,
+            bool isValueType,
+            bool isArray,
+            string elementTypeName,
+            int rawMemberOrder,
+            Location memberLocation,
+            TopicEntry[] topics,
+            Location diagnosticLocation,
+            string diagnosticId,
+            FoxRunTypeShape typeShape,
+            IReadOnlyList<string> declaredMemberNames,
+            bool isStream)
         {
-        }
-
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunTypeShape typeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null, bool isStream = false)
-        {
-            Ns = ns;
-            ClassName = cn;
+            Ns = ns ?? string.Empty;
+            ClassName = className ?? string.Empty;
             IsPartial = partial;
-            MemberName = mn;
-            MemberKind = memberKind;
-            MemberType = mt;
-            EmissionTypeName = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(emissionTypeName);
+            MemberName = memberName ?? string.Empty;
+            MemberKind = memberKind ?? string.Empty;
+            MemberType = memberType ?? string.Empty;
+            EmissionTypeName =
+                FoxRunEmissionTypeNameFormatter
+                    .NormalizeCSharpTypeName(
+                        emissionTypeName);
             IsValueType = isValueType;
             IsArray = isArray;
-            ElementTypeName = elementTypeName;
+            ElementTypeName = elementTypeName ?? string.Empty;
             TypeShape = typeShape;
-            Ros2MessageShape = ros2MessageShape;
-            Ros2CustomDtoShape = ros2CustomDtoShape;
-            Ros2ContractKind = ResolveRos2ContractKind(
-                ros2ContractKind,
-                ros2MessageShape,
-                ros2CustomDtoShape);
             RawMemberOrder = rawMemberOrder;
-            MemberLocation = memberLocation;
-            Topics = t;
+            MemberLocation = memberLocation ?? Location.None;
+            Topics = topics ?? Array.Empty<TopicEntry>();
             DiagnosticLocation = diagnosticLocation;
-            DiagnosticId = string.IsNullOrEmpty(diagnosticId) ? "FOXRUN004" : diagnosticId;
+            DiagnosticId = string.IsNullOrEmpty(diagnosticId)
+                ? "FOXRUN004"
+                : diagnosticId;
             DeclaredMemberNames = declaredMemberNames == null
                 ? Array.Empty<string>()
-                : new List<string>(declaredMemberNames).AsReadOnly();
+                : new List<string>(declaredMemberNames)
+                    .AsReadOnly();
             IsStream = isStream;
         }
 
-        public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
+        public IReadOnlyList<FoxRunRoslynGenerationMember>
+            ToRoslynMembers()
         {
-            var members = new List<FoxRunRoslynGenerationMember>(Topics.Length);
-            AppendRoslynMembers(members);
-            return members;
+            var result = new List<
+                FoxRunRoslynGenerationMember>(Topics.Length);
+            AppendRoslynMembers(result);
+            return result;
         }
 
-        public void AppendRoslynMembers(List<FoxRunRoslynGenerationMember> members)
+        public void AppendRoslynMembers(
+            List<FoxRunRoslynGenerationMember> members)
         {
             if (members == null)
                 throw new ArgumentNullException(nameof(members));
-
             foreach (var topic in Topics)
-                members.Add(ToRoslynMember(topic));
-        }
-
-        private FoxRunRoslynGenerationMember ToRoslynMember(TopicEntry topic)
-        {
-            return new FoxRunRoslynGenerationMember(
-                Ns,
-                ClassName,
-                MemberName,
-                MemberKind,
-                MemberType,
-                EmissionTypeName,
-                IsValueType,
-                IsArray,
-                ElementTypeName,
-                topic.Topic,
-                topic.SchemaName,
-                topic.Hz,
-                topic.Policy,
-                topic.Tolerance,
-                RawMemberOrder,
-                string.Empty,
-                topic.OnlyIf,
-                topic.IsAggregateMember,
-                topic.JsonFieldName,
-                topic.Mode,
-                topic.Encoding,
-                topic.ProtobufFieldNumber,
-                TypeShape,
-                topic.Source,
-                topic.QosProfile,
-                TypeShape != null
-                    || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
-                        FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
-                            IsArray && !string.IsNullOrEmpty(ElementTypeName)
-                                ? ElementTypeName
-                                : EmissionTypeName)),
-                FoxRunRos2ContractCapability.IsNativeRegistrationCapable(
-                    Ros2MessageShape,
-                    Ros2CustomDtoShape),
-                Ros2MessageShape,
-                Ros2CustomDtoShape,
-                Ros2ContractKind,
-                topic.NamedArgumentPresence,
-                topic.ConditionMemberKind,
-                topic.Targets,
-                topic.QosReliability,
-                topic.QosDurability,
-                topic.QosHistory,
-                topic.QosDepth,
-                IsStream,
-                topic.PublishTransportIds,
-                topic.SubscribeTransportId);
-        }
-
-        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
-            FoxRunRos2ContractKind declared,
-            FoxRunRos2MessageShape packagedShape,
-            FoxRunRos2CustomDtoShape customShape)
-        {
-            if (declared != FoxRunRos2ContractKind.Unsupported)
-                return declared;
-
-            // This is a family classification, not a readiness predicate.
-            // Keeping those concerns separate preserves legacy packaged-message
-            // diagnostics and gives unsupported DTOs their custom diagnostics.
-            if (packagedShape != null)
             {
-                return FoxRunRos2ContractKind.PackagedRos2Message;
+                members.Add(
+                    new FoxRunRoslynGenerationMember(
+                        Ns,
+                        ClassName,
+                        MemberName,
+                        MemberKind,
+                        MemberType,
+                        EmissionTypeName,
+                        IsValueType,
+                        IsArray,
+                        ElementTypeName,
+                        topic.Topic,
+                        topic.SchemaName,
+                        topic.Hz,
+                        topic.Policy,
+                        topic.Tolerance,
+                        RawMemberOrder,
+                        string.Empty,
+                        topic.OnlyIf,
+                        topic.IsAggregateMember,
+                        topic.JsonFieldName,
+                        topic.Mode,
+                        topic.Encoding,
+                        topic.ProtobufFieldNumber,
+                        TypeShape,
+                        topic.GeneratesWebSocketCodec(
+                            topic.Mode),
+                        topic.NamedArgumentPresence,
+                        topic.ConditionMemberKind,
+                        IsStream,
+                        topic.PublishTransportIds,
+                        topic.SubscribeTransportId,
+                        topic.Reliability,
+                        topic.Durability,
+                        topic.History,
+                        topic.Depth));
             }
-
-            return customShape != null
-                ? FoxRunRos2ContractKind.CustomDto
-                : FoxRunRos2ContractKind.Unsupported;
         }
     }
 
-    /// <summary>
-    /// Immutable tuple representing one <c>[FoxRun]</c> attribute's topic, rate,
-    /// and optional schema name.
-    /// </summary>
     internal sealed class TopicEntry
     {
-        /// <summary>Topic string from the attribute's constructor argument.</summary>
         public readonly string Topic;
-        /// <summary>Optional schema name from the attribute's named argument.</summary>
         public readonly string SchemaName;
-        /// <summary>Optional update rate in Hz.</summary>
         public readonly float Hz;
-        /// <summary>Update policy enum value.</summary>
         public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
-        public readonly int Source;
-        public readonly int Targets;
         public readonly IReadOnlyList<string> PublishTransportIds;
         public readonly string SubscribeTransportId;
-        public readonly int QosProfile;
-        public readonly int QosReliability;
-        public readonly int QosDurability;
-        public readonly int QosHistory;
-        public readonly int QosDepth;
+        public readonly int Reliability;
+        public readonly int Durability;
+        public readonly int History;
+        public readonly int Depth;
         public readonly int ProtobufFieldNumber;
-        /// <summary>Change tolerance.</summary>
         public readonly float Tolerance;
         public readonly string OnlyIf;
         public readonly FoxRunConditionMemberKind ConditionMemberKind;
@@ -311,44 +309,54 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
 
-        /// <summary>
-        /// Creates a topic entry with the given topic, rate, and schema.
-        /// </summary>
-        public TopicEntry(string topic, float hz, string schema)
-            : this(topic, hz, schema, 1, 0f) { }
-
-        /// <summary>
-        /// Creates a topic entry with update policy.
-        /// </summary>
-        public TopicEntry(string topic, float hz, string schema,
-            int policy, float tolerance, string onlyIf = "",
-            bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0,
-            int source = 0, int qosProfile = 0,
-            FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0,
-            int qosReliability = 0,
-            int qosDurability = 0,
-            int qosHistory = 0,
-            int qosDepth = 0,
-            IReadOnlyList<string> publishTransportIds = null,
-            string subscribeTransportId = null)
+        public TopicEntry(
+            string topic,
+            float hz,
+            string schema)
+            : this(topic, hz, schema, 1, 0f)
         {
-            Topic = topic; Hz = hz; SchemaName = schema;
+        }
+
+        public TopicEntry(
+            string topic,
+            float hz,
+            string schema,
+            int policy,
+            float tolerance,
+            string onlyIf = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "",
+            int mode = 1,
+            int encoding = 0,
+            int protobufFieldNumber = 0,
+            FoxRunNamedArgumentPresence namedArgumentPresence =
+                FoxRunNamedArgumentPresence.None,
+            FoxRunConditionMemberKind conditionMemberKind =
+                FoxRunConditionMemberKind.None,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null,
+            int reliability = 0,
+            int durability = 0,
+            int history = 0,
+            int depth = 0)
+        {
+            Topic = topic ?? string.Empty;
+            Hz = hz;
+            SchemaName = schema ?? string.Empty;
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
-            Source = source;
-            Targets = targets;
             PublishTransportIds = publishTransportIds == null
                 ? null
-                : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+                : Array.AsReadOnly(
+                    new List<string>(
+                        publishTransportIds)
+                        .ToArray());
             SubscribeTransportId = subscribeTransportId;
-            QosProfile = qosProfile;
-            QosReliability = qosReliability;
-            QosDurability = qosDurability;
-            QosHistory = qosHistory;
-            QosDepth = qosDepth;
+            Reliability = reliability;
+            Durability = durability;
+            History = history;
+            Depth = depth;
             ProtobufFieldNumber = protobufFieldNumber;
             Tolerance = tolerance;
             OnlyIf = onlyIf ?? string.Empty;
@@ -356,6 +364,42 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             NamedArgumentPresence = namedArgumentPresence;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
+        }
+
+        public bool GeneratesWebSocketCodec(int mode)
+        {
+            var publish = mode == 1 || mode == 3;
+            var subscribe = mode == 2 || mode == 3;
+            var publishIds = PublishTransportIds;
+            var publishWebSocket = publish
+                && (publishIds == null
+                    || ContainsWebSocket(publishIds));
+            var subscribeWebSocket = subscribe
+                && (SubscribeTransportId == null
+                    || string.Equals(
+                        SubscribeTransportId,
+                        FoxRunGenerationDescriptorConstants
+                            .FoxgloveWebSocketTransportId,
+                        StringComparison.Ordinal));
+            return publishWebSocket || subscribeWebSocket;
+        }
+
+        private static bool ContainsWebSocket(
+            IReadOnlyList<string> values)
+        {
+            foreach (var value in values)
+            {
+                if (string.Equals(
+                        value,
+                        FoxRunGenerationDescriptorConstants
+                            .FoxgloveWebSocketTransportId,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

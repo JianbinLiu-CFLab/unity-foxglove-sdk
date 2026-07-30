@@ -2,89 +2,57 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Manager
+// Purpose: Provider-neutral publish controls and Provider editor extensions.
 
-using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Transport;
-using UnityEngine;
 using UnityEditor;
+using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
 {
-    public partial class FoxgloveManagerEditor : UnityEditor.Editor
+    public partial class FoxgloveManagerEditor
     {
         private void DrawPublishDataSection()
         {
             FoxgloveManagerInspectorLayout.Subheader("Publish Destinations");
-            DrawProperty("_foxgloveOutputEnabled", "Foxglove WebSocket");
-            DrawProperty("_ros2NativeEnabled", "ROS 2 Native (R2FU)");
-            DrawProperty("_ros2BridgeEnabled", "ROS 2 Bridge");
-
-            EditorGUILayout.Space();
-            FoxgloveManagerInspectorLayout.Subheader("FoxRun Publish Profile");
+            var destinations =
+                FindCachedProperty("_foxRunPublishTransportIds");
             DrawProperty(
                 "_foxRunPublishTransportIds",
-                "Publish Transport IDs");
-            DrawProperty(
-                "_foxRunSubscribeTransportId",
-                "Subscribe Transport ID");
-            DrawFoxRunTransportProviderExtensions();
-            var targets = FoxRunPublishTargetPolicy.FromPublishDestinations(
-                GetBool("_foxgloveOutputEnabled"),
-                GetBool("_ros2NativeEnabled"),
-                GetBool("_ros2BridgeEnabled"));
+                "Publish Destinations");
 
-            var includesFoxglove = FoxRunEndpointEditorModel.Includes(
-                targets,
-                FoxRunEndpoint.Foxglove);
-            var includesRos2Native = FoxRunEndpointEditorModel.Includes(
-                targets,
-                FoxRunEndpoint.Ros2Native);
-            var includesRos2Bridge = FoxRunEndpointEditorModel.Includes(
-                targets,
-                FoxRunEndpoint.Ros2Bridge);
-
-            if (includesFoxglove)
+            if (SerializedStringArrayContains(
+                    destinations,
+                    FoxgloveWebSocketTransport.Id))
             {
                 FoxRunEncodingEditorLabels.DrawFoxRunEncoding(
                     FindCachedProperty("_defaultFoxRunPublishEncoding"),
-                    "Foxglove Encoding");
-            }
-
-            if (includesRos2Native)
-            {
-                DrawFoxRunRos2Qos(
-                    FindCachedProperty("_defaultFoxRunNativePublishQos"),
-                    "ROS 2 Native QoS Profile");
-                EditorGUILayout.HelpBox(
-                    "FoxRun resolves the ROS 2 message type automatically from the generated contract.",
-                    MessageType.Info);
-            }
-
-            if (includesRos2Bridge)
-            {
-                EditorGUILayout.HelpBox(
-                    "FoxRun resolves the ROS 2 message type automatically and uses the shared ROS 2 Bridge connection and QoS settings below.",
-                    MessageType.Info);
+                    "WebSocket Encoding");
             }
 
             DrawFloatProperty(
                 "_defaultPublishRateHz",
                 "Default Publish Rate Hz",
-                "Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.");
+                "Default rate used by publishers that choose the Manager default. Use <= 0 to publish every eligible frame.");
+
             var manager = target as FoxgloveManager;
-            if (manager != null && manager.ActiveFoxRunPublishSessionPolicy.SessionActive)
+            if (manager != null
+                && manager.ActiveFoxRunPublishSessionPolicy.SessionActive)
             {
                 EditorGUILayout.HelpBox(
-                    "FoxRun Publish Profile changes apply after this Manager is disabled and re-enabled. Restarting one transport does not recapture the active profile.",
+                    "Publish profile changes apply after this Manager is disabled and re-enabled. The active session retains its captured Provider selection, encoding, and rate.",
                     MessageType.Info);
             }
 
-            FoxgloveManagerInspectorLayout.Subheader("Publisher Encoding");
-            DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Component Publisher Encoding");
-            DrawProperty("_allowPublisherOverride", "Allow Component Publisher Override");
+            FoxgloveManagerInspectorLayout.Subheader("Component Publishers");
+            DrawGlobalEncodingProperty(
+                "_defaultPublisherEncoding",
+                "WebSocket Encoding");
+            DrawProperty(
+                "_allowPublisherOverride",
+                "Allow Component Publisher Override");
             EditorGUILayout.HelpBox(
-                "Component publishers and generated FoxRun contracts use independent default encodings.",
+                "Component publishers and generated FoxRun contracts use independent WebSocket encoding defaults.",
                 MessageType.Info);
 
             FoxgloveManagerInspectorLayout.Subheader("Coordinate System");
@@ -111,5 +79,25 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static bool SerializedStringArrayContains(
+            SerializedProperty property,
+            string expected)
+        {
+            if (property == null || !property.isArray)
+                return false;
+
+            for (var i = 0; i < property.arraySize; i++)
+            {
+                if (string.Equals(
+                        property.GetArrayElementAtIndex(i).stringValue,
+                        expected,
+                        System.StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

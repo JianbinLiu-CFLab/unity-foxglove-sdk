@@ -4,6 +4,7 @@
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Editor",
+    "Unity2Foxglove.Ros2ForUnity",
     "Unity2Foxglove.Ros2ForUnity.Editor",
     "Unity2Foxglove.Ros2ForUnity.Native"
   ],

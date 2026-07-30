@@ -15,8 +15,8 @@
     <ItemGroup>
       <_MatrixCoreProviderRegistry Include="@(Compile)"
           Condition="'%(Compile.Filename)' == 'FoxRunTransportProviderRegistry'" />
-      <_MatrixR2fuProvider Include="@(Compile)"
-          Condition="'%(Compile.Filename)' == 'FoxRunRos2TransportProvider'" />
+      <_MatrixR2fuFacade Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'Unity2FoxgloveRos2ContextFactory'" />
       <_MatrixBridgeRuntime Include="@(Compile)"
           Condition="'%(Compile.Filename)' == 'Ros2BridgeRuntime'" />
       <_MatrixBridgeProvider Include="@(Compile)"
@@ -26,9 +26,9 @@
     </ItemGroup>
     <Error Condition="'@(_MatrixCoreProviderRegistry)' == ''"
            Text="Phase186 package matrix omitted the neutral SDK Provider registry." />
-    <Error Condition="'$(ExpectR2fu)' == 'true' and '@(_MatrixR2fuProvider)' == ''"
-           Text="Phase186 package matrix expected R2FU sources but compiled none." />
-    <Error Condition="'$(ExpectR2fu)' != 'true' and '@(_MatrixR2fuProvider)' != ''"
+    <Error Condition="'$(ExpectR2fu)' == 'true' and '@(_MatrixR2fuFacade)' == ''"
+           Text="Phase186 package matrix expected the R2FU facade but compiled none." />
+    <Error Condition="'$(ExpectR2fu)' != 'true' and '@(_MatrixR2fuFacade)' != ''"
            Text="Phase186 package matrix unexpectedly included R2FU sources." />
     <Error Condition="'$(ExpectBridge)' == 'true' and ('@(_MatrixBridgeRuntime)' == '' or '@(_MatrixBridgeProvider)' == '' or '@(_MatrixBridgeCdr)' == '')"
            Text="Phase186 package matrix expected Bridge runtime/provider/CDR sources but compiled an incomplete surface." />

@@ -14,7 +14,6 @@ namespace Unity.FoxgloveSDK.Components
     {
         Json = 0,
         Protobuf = 1,
-        Ros2 = 2,
         MsgPack = 3
     }
 
@@ -26,7 +25,6 @@ namespace Unity.FoxgloveSDK.Components
         UseManager = 0,
         Json = 1,
         Protobuf = 2,
-        Ros2 = 3,
         MsgPack = 4
     }
 
@@ -38,7 +36,6 @@ namespace Unity.FoxgloveSDK.Components
         Json = 0,
         Protobuf = 1,
         Unsupported = 2,
-        Ros2 = 3,
         MsgPack = 4
     }
 
@@ -90,7 +87,6 @@ namespace Unity.FoxgloveSDK.Components
                 publisherOverride,
                 supportsJson,
                 supportsProtobuf,
-                supportsRos2: false,
                 supportsMsgPack: false);
 
         /// <summary>
@@ -103,34 +99,13 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEncodingOverride publisherOverride,
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2)
-            => Resolve(
-                managerDefault,
-                allowPublisherOverride,
-                publisherOverride,
-                supportsJson,
-                supportsProtobuf,
-                supportsRos2,
-                supportsMsgPack: false);
-
-        /// <summary>
-        /// Resolves the effective wire encoding from manager defaults, publisher
-        /// overrides, and the publisher's supported serialization formats.
-        /// </summary>
-        public static PublisherEncodingResolution Resolve(
-            GlobalEncoding managerDefault,
-            bool allowPublisherOverride,
-            PublisherEncodingOverride publisherOverride,
-            bool supportsJson,
-            bool supportsProtobuf,
-            bool supportsRos2,
             bool supportsMsgPack)
         {
             var requested = ResolveRequested(managerDefault, allowPublisherOverride, publisherOverride);
-            if (Supports(requested, supportsJson, supportsProtobuf, supportsRos2, supportsMsgPack))
+            if (Supports(requested, supportsJson, supportsProtobuf, supportsMsgPack))
                 return new PublisherEncodingResolution(requested, requested, fellBack: false);
 
-            var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsRos2, supportsMsgPack);
+            var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsMsgPack);
 
             return new PublisherEncodingResolution(requested, fallback, fellBack: true);
         }
@@ -146,8 +121,6 @@ namespace Unity.FoxgloveSDK.Components
                     return "JSON";
                 case PublisherEffectiveEncoding.Protobuf:
                     return "Protobuf";
-                case PublisherEffectiveEncoding.Ros2:
-                    return "ROS2";
                 case PublisherEffectiveEncoding.MsgPack:
                     return "MsgPack";
                 default:
@@ -166,8 +139,6 @@ namespace Unity.FoxgloveSDK.Components
                     return "json";
                 case PublisherEffectiveEncoding.Protobuf:
                     return "protobuf";
-                case PublisherEffectiveEncoding.Ros2:
-                    return "cdr";
                 case PublisherEffectiveEncoding.MsgPack:
                     return "msgpack";
                 default:
@@ -186,8 +157,6 @@ namespace Unity.FoxgloveSDK.Components
                     return "jsonschema";
                 case PublisherEffectiveEncoding.Protobuf:
                     return "protobuf";
-                case PublisherEffectiveEncoding.Ros2:
-                    return "ros2msg";
                 case PublisherEffectiveEncoding.MsgPack:
                     return "";
                 default:
@@ -206,8 +175,6 @@ namespace Unity.FoxgloveSDK.Components
                     return PublisherEffectiveEncoding.Json;
                 if (publisherOverride == PublisherEncodingOverride.Protobuf)
                     return PublisherEffectiveEncoding.Protobuf;
-                if (publisherOverride == PublisherEncodingOverride.Ros2)
-                    return PublisherEffectiveEncoding.Ros2;
                 if (publisherOverride == PublisherEncodingOverride.MsgPack)
                     return PublisherEffectiveEncoding.MsgPack;
             }
@@ -216,8 +183,6 @@ namespace Unity.FoxgloveSDK.Components
             {
                 case GlobalEncoding.Protobuf:
                     return PublisherEffectiveEncoding.Protobuf;
-                case GlobalEncoding.Ros2:
-                    return PublisherEffectiveEncoding.Ros2;
                 case GlobalEncoding.MsgPack:
                     return PublisherEffectiveEncoding.MsgPack;
                 case GlobalEncoding.Json:
@@ -230,7 +195,6 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEffectiveEncoding requested,
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2,
             bool supportsMsgPack)
         {
             switch (requested)
@@ -239,8 +203,6 @@ namespace Unity.FoxgloveSDK.Components
                     return supportsJson;
                 case PublisherEffectiveEncoding.Protobuf:
                     return supportsProtobuf;
-                case PublisherEffectiveEncoding.Ros2:
-                    return supportsRos2;
                 case PublisherEffectiveEncoding.MsgPack:
                     return supportsMsgPack;
                 default:
@@ -251,7 +213,6 @@ namespace Unity.FoxgloveSDK.Components
         private static PublisherEffectiveEncoding FirstSupported(
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2,
             bool supportsMsgPack)
         {
             if (supportsProtobuf) return PublisherEffectiveEncoding.Protobuf;
@@ -259,9 +220,6 @@ namespace Unity.FoxgloveSDK.Components
             // that opt into compact custom-client raw channels.
             if (supportsMsgPack) return PublisherEffectiveEncoding.MsgPack;
             if (supportsJson) return PublisherEffectiveEncoding.Json;
-            // ROS2 CDR is transport-specific, so it is only used after generic
-            // Foxglove encodings are exhausted.
-            if (supportsRos2) return PublisherEffectiveEncoding.Ros2;
             return PublisherEffectiveEncoding.Unsupported;
         }
     }

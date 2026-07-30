@@ -41,9 +41,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             bool hasExplicitQosHistory,
             int qosDepth,
             bool hasExplicitQosDepth,
-            FoxRunEndpoint declaredSource = 0,
+            FoxRunRos2RouteEndpoint declaredSource = 0,
             bool hasExplicitSource = false,
-            FoxRunEndpoint declaredTargets = 0,
+            FoxRunRos2RouteEndpoint declaredTargets = 0,
             bool hasExplicitTargets = false)
         {
             Id = id ?? string.Empty;
@@ -96,9 +96,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public bool HasExplicitQosHistory { get; }
         public int QosDepth { get; }
         public bool HasExplicitQosDepth { get; }
-        public FoxRunEndpoint DeclaredSource { get; }
+        public FoxRunRos2RouteEndpoint DeclaredSource { get; }
         public bool HasExplicitSource { get; }
-        public FoxRunEndpoint DeclaredTargets { get; }
+        public FoxRunRos2RouteEndpoint DeclaredTargets { get; }
         public bool HasExplicitTargets { get; }
         public bool HasExplicitQos
             => HasExplicitQosProfile
@@ -121,22 +121,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 HasExplicitQosDepth,
                 inherited);
 
-        public FoxRunEndpointResolution ResolveTopology(
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets)
-            => FoxRunEndpointResolver.Resolve(
+        public FoxRunRos2RouteResolution ResolveTopology(
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets)
+            => FoxRunRos2RouteResolver.Resolve(
                 Mode,
                 DeclaredSource,
                 HasExplicitSource,
                 DeclaredTargets,
                 HasExplicitTargets,
-                declaredEncoding: 0,
-                hasExplicitEncoding: false,
                 defaultSource,
                 defaultTargets,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf,
-                HasExplicitQos);
+                hasExplicitWebSocketEncoding: false,
+                hasExplicitQos: HasExplicitQos);
 
         /// <summary>True only for a generated custom PublishAndSubscribe contract.</summary>
         public bool IsPublishAndSubscribe => Mode == FoxRunFlow.PublishAndSubscribe;

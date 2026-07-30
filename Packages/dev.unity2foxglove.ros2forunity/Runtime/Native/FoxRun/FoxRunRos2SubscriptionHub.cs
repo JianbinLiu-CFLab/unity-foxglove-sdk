@@ -470,6 +470,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             => Resolve(
                    contract,
                    policy,
+                   FoxRunResolvedQos.Default,
                    out qos,
                    out _,
                    out diagnostic)
@@ -481,12 +482,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             out FoxRunResolvedQos qos,
             out FoxRunRos2RegistrationError error,
             out string diagnostic)
-            => Resolve(contract, policy, out qos, out error, out diagnostic)
+            => Resolve(
+                   contract,
+                   policy,
+                   FoxRunResolvedQos.Default,
+                   out qos,
+                   out error,
+                   out diagnostic)
                == FoxRunRos2ContractActivationDisposition.Active;
 
         internal static FoxRunRos2ContractActivationDisposition Resolve(
             FoxRunRos2GeneratedContract contract,
             FoxRunSubscriptionSessionPolicy policy,
+            FoxRunResolvedQos inheritedQos,
             out FoxRunResolvedQos qos,
             out FoxRunRos2RegistrationError error,
             out string diagnostic)
@@ -515,7 +523,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return FoxRunRos2ContractActivationDisposition.Rejected;
             }
             if (contract.Source != 0
-                && !Enum.IsDefined(typeof(FoxRunEndpoint), contract.Source))
+                && !Enum.IsDefined(
+                    typeof(FoxRunRos2RouteEndpoint),
+                    contract.Source))
             {
                 diagnostic = "Generated ROS2 contract has an invalid Source declaration.";
                 return FoxRunRos2ContractActivationDisposition.Rejected;
@@ -549,25 +559,29 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return FoxRunRos2ContractActivationDisposition.Rejected;
             }
 
-            var topology = FoxRunEndpointResolver.Resolve(
+            var topology = FoxRunRos2RouteResolver.Resolve(
                 contract.Mode,
                 contract.Source,
                 hasExplicitSource: contract.Source != 0,
                 declaredTargets: 0,
                 hasExplicitTargets: false,
-                contract.DeclaredSubscriptionEncoding,
-                hasExplicitEncoding: contract.DeclaredSubscriptionEncoding != 0,
-                defaultSource: policy.DefaultSource,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: policy.FoxgloveEncoding);
+                defaultSource:
+                    FoxRunRos2RouteResolver
+                        .FromSubscribeProvider(
+                            policy.DefaultProvider),
+                defaultTargets:
+                    FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitWebSocketEncoding:
+                    contract.DeclaredSubscriptionEncoding
+                    != 0);
             if (!topology.Success)
             {
                 error = FoxRunRos2RegistrationError.RegistrationRejected;
                 diagnostic = topology.DiagnosticMessage;
                 return FoxRunRos2ContractActivationDisposition.Rejected;
             }
-            if (topology.Topology.Source != FoxRunEndpoint.Ros2Native)
+            if (topology.Route.Source
+                != FoxRunRos2RouteEndpoint.R2fu)
             {
                 error = FoxRunRos2RegistrationError.None;
                 diagnostic = "The captured provider is not native ROS2.";
@@ -580,7 +594,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return FoxRunRos2ContractActivationDisposition.Rejected;
             }
 
-            var qosResolution = contract.ResolveQos(policy.DefaultRos2Qos);
+            var qosResolution =
+                contract.ResolveQos(inheritedQos);
             if (!qosResolution.Success)
             {
                 error = FoxRunRos2RegistrationError.UnsupportedQos;
@@ -651,6 +666,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new FoxRunRos2ActiveSessionState();
 
         private FoxgloveManager _manager;
+        private FoxRunRos2TransportProvider _provider;
         private FoxRunSubscriptionSessionPolicy _policy;
         private FoxRunRos2RuntimeDiagnosticContext _runtimeDiagnosticContext =
             FoxRunRos2RuntimeDiagnosticContext.Unknown;
@@ -806,8 +822,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return false;
         }
 
-        internal void BindProviderOwner(FoxgloveManager manager)
-            => SetManager(manager);
+        internal void BindProviderOwner(
+            FoxgloveManager manager,
+            FoxRunRos2TransportProvider provider)
+        {
+            _provider = provider;
+            SetManager(manager);
+        }
 
         internal void SetProviderSessionActive(bool active)
         {
@@ -1155,6 +1176,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var activation = FoxRunRos2ContractActivation.Resolve(
                 contract,
                 _policy,
+                _provider?.ActiveSubscribeQos
+                ?? FoxRunResolvedQos.Default,
                 out var qos,
                 out var activationError,
                 out var activationDiagnostic);
@@ -1223,7 +1246,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     contract,
                     generation,
                     _activeSession.ReadGeneration,
-                    _policy.NativeCopyBudgetBytes,
+                    _provider?.ActiveNativeCopyBudgetBytes
+                    ?? FoxRunRos2NativeCopyBudgetPolicy
+                        .DefaultBytes,
                     copy,
                     dispose,
                     apply,
@@ -1314,6 +1339,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var activation = FoxRunRos2ContractActivation.Resolve(
                 contract,
                 _policy,
+                _provider?.ActiveSubscribeQos
+                ?? FoxRunResolvedQos.Default,
                 out var qos,
                 out var activationError,
                 out var activationDiagnostic);
@@ -1381,7 +1408,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     contract,
                     generation,
                     _activeSession.ReadGeneration,
-                    _policy.NativeCopyBudgetBytes,
+                    _provider?.ActiveNativeCopyBudgetBytes
+                    ?? FoxRunRos2NativeCopyBudgetPolicy
+                        .DefaultBytes,
                     tryAdmitInput,
                     materializeOwned,
                     transferOwned,

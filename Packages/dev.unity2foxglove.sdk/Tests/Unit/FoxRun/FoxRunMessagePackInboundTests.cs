@@ -620,9 +620,9 @@ namespace Demo
                 canonicalType: "int32",
                 encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
                 typeShape: FoxRunTypeShape.Canonical("int32"),
-                source: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                subscribeTransportId: FoxgloveWebSocketTransport.Id,
                 namedArgumentPresence:
-                    FoxRunNamedArgumentPresence.Source
+                    FoxRunNamedArgumentPresence.SubscribeTransportId
                     | FoxRunNamedArgumentPresence.Encoding);
 
             var generated = FoxgloveSourceEmitter.EmitClass(
@@ -666,8 +666,8 @@ namespace Demo
                     FoxRunGenerationDescriptorConstants.InheritEncoding,
                 typeShape:
                     FoxRunTypeShape.Canonical("unity.vector3.float32"),
-                source:
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource);
+                subscribeTransportId:
+                    FoxgloveWebSocketTransport.Id);
 
             var generated = FoxgloveSourceEmitter.EmitClass(
                 "Demo",

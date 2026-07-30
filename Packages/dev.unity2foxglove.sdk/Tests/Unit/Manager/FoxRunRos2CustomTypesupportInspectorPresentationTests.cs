@@ -6,8 +6,8 @@
 
 using System;
 using System.Linq;
-using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Editor;
+using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Manager

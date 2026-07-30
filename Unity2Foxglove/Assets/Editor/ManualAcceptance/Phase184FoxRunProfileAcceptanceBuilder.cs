@@ -14,10 +14,15 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Unity2Foxglove.ManualAcceptance;
+using Unity2Foxglove.Ros2Bridge;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
 
 namespace Unity2Foxglove
 {
@@ -252,15 +257,9 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         var serialized = new SerializedObject(manager);
         SetBoolean(serialized, "_startOnEnable", true);
         SetBoolean(serialized, "_foxgloveOutputEnabled", foxglove);
-        SetBoolean(serialized, "_ros2NativeEnabled", native);
-        SetBoolean(serialized, "_ros2BridgeEnabled", bridge);
-        SetBoolean(serialized, "_ros2BridgeAutoConnect", bridge);
         SetBoolean(serialized, "_enableFoxRunInbound", true);
         SetString(serialized, "_host", "127.0.0.1");
         SetInteger(serialized, "_port", foxglovePort);
-        SetString(serialized, "_ros2BridgeHost", "127.0.0.1");
-        SetInteger(serialized, "_ros2BridgePort", bridgePort);
-        SetInteger(serialized, "_ros2BridgeSendTimeoutMs", 30000);
         SetInteger(serialized, "_foxRunInboundMaxMessagesPerSecondPerTopic", 1000);
         SetInteger(serialized, "_foxRunDefaultSubscribeRateHz", 60);
         SetFloat(serialized, "_defaultPublishRateHz", 60f);
@@ -270,19 +269,60 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
             (int)FoxRunEncoding.Protobuf);
         SetEnum(
             serialized,
-            "_defaultFoxRunSubscriptionSource",
-            (int)(native ? FoxRunEndpoint.Ros2Native : FoxRunEndpoint.Foxglove));
-        SetEnum(
-            serialized,
             "_defaultFoxRunSubscriptionEncoding",
             (int)FoxRunEncoding.Protobuf);
         serialized.ApplyModifiedPropertiesWithoutUndo();
 
         manager.EnableFoxRunInbound = true;
         manager.DefaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
-        manager.DefaultFoxRunSubscriptionSource =
-            native ? FoxRunEndpoint.Ros2Native : FoxRunEndpoint.Foxglove;
         manager.DefaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf;
+
+        var publishTransportIds = new List<string>();
+        if (foxglove)
+            publishTransportIds.Add(FoxgloveWebSocketTransport.Id);
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (native)
+        {
+            if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
+                manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
+            publishTransportIds.Add(
+                FoxRunRos2TransportProvider.IdValue);
+        }
+#else
+        if (native)
+        {
+            throw new InvalidOperationException(
+                "Phase184 native cases require an active ROS2 For Unity runtime package.");
+        }
+#endif
+        if (bridge)
+        {
+            var provider =
+                manager.GetComponent<Ros2BridgeTransportProvider>();
+            if (provider == null)
+            {
+                provider =
+                    manager.gameObject
+                        .AddComponent<Ros2BridgeTransportProvider>();
+            }
+            var providerSerialized = new SerializedObject(provider);
+            SetBoolean(providerSerialized, "_available", true);
+            SetBoolean(providerSerialized, "_autoConnect", true);
+            SetString(providerSerialized, "_host", "127.0.0.1");
+            SetInteger(providerSerialized, "_port", bridgePort);
+            SetInteger(providerSerialized, "_sendTimeoutMs", 30000);
+            providerSerialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(provider);
+            publishTransportIds.Add(
+                Ros2BridgeTransportProvider.ProviderId);
+        }
+
+        manager.ConfigureFoxRunTransports(
+            publishTransportIds,
+            subscriptionsEnabled: true,
+            native
+                ? FoxRunRos2TransportProvider.IdValue
+                : FoxgloveWebSocketTransport.Id);
         EditorUtility.SetDirty(manager);
     }
 

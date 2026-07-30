@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
-// Purpose: PointCloud2 motion compensation request and source-frame suppression helpers.
+// Purpose: PackedPointCloud motion compensation request and source-frame suppression helpers.
 
 using System;
 using System.Threading;
@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Components
             return new PointCloudMotionCompensationSettings(
                 _enableMotionCompensation,
                 _motionCompensationOutputPolicy,
-                _deskewedPointCloud2NativeTopic,
+                _deskewedPackedPointCloudTopic,
                 _motionCompensationReferenceTime,
                 _motionCompensationSource);
         }
@@ -36,31 +36,31 @@ namespace Unity.FoxgloveSDK.Components
             if (!settings.EmitDeskewedOutput || !publishNativeFrame)
                 return null;
 
-            if (settings.IsLikelySlamReplacementTopic(PointCloud2NativeTopic))
+            if (settings.IsLikelySlamReplacementTopic(PackedPointCloudTopic))
             {
                 WarnMotionCompensation(
                     "ReplaceOutput is publishing deskewed visualization data on a likely SLAM topic; FAST-LIO2/LIVO2 should subscribe to raw output instead.");
             }
 
             return new PointCloudMotionCompensationRequest(
-                settings.ResolveDeskewedTopic(PointCloud2NativeTopic),
+                settings.ResolveDeskewedTopic(PackedPointCloudTopic),
                 settings.ReferenceTime,
                 PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame,
                 _motionPoseHistory.Snapshot());
         }
 
-        private bool ShouldQueueDeskewedPointCloud2Frame(ulong unixNs)
+        private bool ShouldQueueDeskewedPackedPointCloudFrame(ulong unixNs)
         {
-            var rateHz = _deskewedPointCloud2NativeMaxPublishRateHz;
+            var rateHz = _deskewedPackedPointCloudMaxPublishRateHz;
             if (rateHz <= 0f)
                 return true;
 
-            var intervalNs = ResolveDeskewedPointCloud2NativePublishIntervalNs(rateHz);
+            var intervalNs = ResolveDeskewedPackedPointCloudPublishIntervalNs(rateHz);
             var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
 
-            if (_lastDeskewedPointCloud2NativePublishUnixNs != 0UL
-                && timestampNs >= _lastDeskewedPointCloud2NativePublishUnixNs
-                && timestampNs - _lastDeskewedPointCloud2NativePublishUnixNs < intervalNs)
+            if (_lastDeskewedPackedPointCloudPublishUnixNs != 0UL
+                && timestampNs >= _lastDeskewedPackedPointCloudPublishUnixNs
+                && timestampNs - _lastDeskewedPackedPointCloudPublishUnixNs < intervalNs)
             {
                 _diagnostics.RecordDeskewRateSkip(_logPerformanceDiagnostics);
                 return false;
@@ -68,29 +68,29 @@ namespace Unity.FoxgloveSDK.Components
 
             // A backward clock jump, usually from replay seek or sensor clock reset,
             // intentionally resets the deskewed visualization cadence baseline.
-            _lastDeskewedPointCloud2NativePublishUnixNs = timestampNs;
+            _lastDeskewedPackedPointCloudPublishUnixNs = timestampNs;
             return true;
         }
 
-        private ulong ResolveDeskewedPointCloud2NativePublishIntervalNs(float rateHz)
+        private ulong ResolveDeskewedPackedPointCloudPublishIntervalNs(float rateHz)
         {
-            if (!rateHz.Equals(_cachedDeskewedPointCloud2NativeMaxPublishRateHz))
+            if (!rateHz.Equals(_cachedDeskewedPackedPointCloudMaxPublishRateHz))
             {
-                _cachedDeskewedPointCloud2NativeMaxPublishRateHz = rateHz;
-                _cachedDeskewedPointCloud2NativePublishIntervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
+                _cachedDeskewedPackedPointCloudMaxPublishRateHz = rateHz;
+                _cachedDeskewedPackedPointCloudPublishIntervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
             }
 
-            return _cachedDeskewedPointCloud2NativePublishIntervalNs;
+            return _cachedDeskewedPackedPointCloudPublishIntervalNs;
         }
 
         private void WarnMotionCompensation(string reason)
         {
             if (_motionCompensationWarningCount < int.MaxValue)
                 _motionCompensationWarningCount++;
-            if (_motionCompensationWarningCount != 1 && _motionCompensationWarningCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
+            if (_motionCompensationWarningCount != 1 && _motionCompensationWarningCount % PackedPointCloudFailureWarningIntervalFrames != 0)
                 return;
 
-            Debug.LogWarning("[Foxglove] PointCloud2 motion compensation " + reason);
+            Debug.LogWarning("[Foxglove] PackedPointCloud motion compensation " + reason);
         }
 
     }

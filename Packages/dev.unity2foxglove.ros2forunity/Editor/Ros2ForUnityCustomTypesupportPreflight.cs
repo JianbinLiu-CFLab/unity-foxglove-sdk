@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
 {
@@ -37,7 +38,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         Ready = 14,
     }
 
-    internal sealed class Ros2ForUnityCustomTypesupportContract
+    public sealed class Ros2ForUnityCustomTypesupportContract
     {
         public Ros2ForUnityCustomTypesupportContract(string canonicalEnvelopeType, string directionalPolicy)
         {

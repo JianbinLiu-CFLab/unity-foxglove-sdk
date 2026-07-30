@@ -5,6 +5,7 @@
 // Purpose: Narrow neutral extension points for schemas, ordinary payloads, and MCAP.
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Components
@@ -145,6 +146,92 @@ namespace Unity.FoxgloveSDK.Components
         public int Failed { get; }
         public bool AnyAccepted => Accepted > 0;
         public bool AllAccepted => Matched > 0 && Accepted == Matched;
+    }
+
+    internal static class FoxRunOrdinaryTransportFanout
+    {
+        internal static FoxRunOrdinaryTransportFanoutResult Publish(
+            IReadOnlyList<IFoxRunTransportSession> sessions,
+            in FoxRunOrdinaryPayloadRequest request)
+        {
+            var matched = 0;
+            var accepted = 0;
+            var rejected = 0;
+            var unavailable = 0;
+            var failed = 0;
+            if (sessions == null)
+            {
+                return new FoxRunOrdinaryTransportFanoutResult(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
+            }
+
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                var session = sessions[index];
+                if (!(session is IFoxRunOrdinaryPayloadMapper mapper))
+                    continue;
+                matched++;
+                FoxRunTransportPublishResult result;
+                try
+                {
+                    if (!mapper.TryMap(
+                            in request,
+                            out var contribution,
+                            out var reason))
+                    {
+                        result =
+                            FoxRunTransportPublishResult.Rejected(reason);
+                    }
+                    else
+                    {
+                        var route = new FoxRunTransportPublishRoute(
+                            request.StablePublisherId,
+                            request.Topic,
+                            contribution.LogicalSchemaName,
+                            contribution.Payload,
+                            request.LogTimeNs,
+                            request.Sequence,
+                            request.DeliveryPolicy,
+                            contribution.MessageEncoding,
+                            contribution.SchemaEncoding);
+                        result = session.Publish(in route);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    result =
+                        FoxRunTransportPublishResult.Failed(
+                            exception.Message);
+                }
+
+                switch (result.State)
+                {
+                    case FoxRunTransportRouteResultState.Accepted:
+                        accepted++;
+                        break;
+                    case FoxRunTransportRouteResultState.Rejected:
+                        rejected++;
+                        break;
+                    case FoxRunTransportRouteResultState.Unavailable:
+                        unavailable++;
+                        break;
+                    case FoxRunTransportRouteResultState.Failed:
+                        failed++;
+                        break;
+                }
+            }
+
+            return new FoxRunOrdinaryTransportFanoutResult(
+                matched,
+                accepted,
+                rejected,
+                unavailable,
+                failed);
+        }
     }
 
     /// <summary>

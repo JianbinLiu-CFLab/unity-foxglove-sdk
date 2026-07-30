@@ -46,7 +46,6 @@ namespace Unity.FoxgloveSDK.Editor
             var subscriptions = new FoxRunManifestSubscriptionSection(
                 subscriptionHash,
                 subscriptionBindings);
-            var customNativeContracts = BuildCustomNativeContracts(source);
             var sections = new FoxRunManifestSections(section, subscriptions);
             var generator = new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion);
             var globalHash = FoxRunManifestHasher.Sha256Hex(
@@ -61,8 +60,7 @@ namespace Unity.FoxgloveSDK.Editor
                 PackageName,
                 generator,
                 sections,
-                globalHash,
-                customNativeContracts);
+                globalHash);
         }
 
         private static IReadOnlyList<FoxRunManifestType> BuildTypes(
@@ -70,17 +68,7 @@ namespace Unity.FoxgloveSDK.Editor
             int manifestVersion)
         {
             return members
-                .Where(member => member.GeneratesWebSocketCodec
-                                 // A custom DTO P&S contract has native input
-                                 // but still deliberately exposes its selected
-                                 // JSON/Protobuf/MessagePack contract as WebSocket output.
-                                 // Subscribe native contracts remain absent
-                                 // so this never creates a fallback input path.
-                                 && (!string.Equals(
-                                         member.Source,
-                                         FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                                         StringComparison.Ordinal)
-                                     || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
+                .Where(member => member.GeneratesWebSocketCodec)
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new FoxRunManifestType(
@@ -101,93 +89,19 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.Source,
-                    member.QosProfile,
+                    member.PublishTransportIds,
+                    member.SubscribeTransportId,
+                    member.Reliability,
+                    member.Durability,
+                    member.History,
+                    member.Depth,
                     member.GeneratesWebSocketCodec,
-                    member.GeneratesRos2NativeRegistration,
-                    ResolveNativeType(member),
-                    ResolvePackagedCanonicalRosType(member),
-                    ResolvePackagedCopyShapeIdentity(member),
-                    member.Ros2ContractKind,
-                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
-                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member),
-                    member.Targets,
-                    member.QosReliability,
-                    member.QosDurability,
-                    member.QosHistory,
-                    member.QosDepth,
                     member.IsStream))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
-        }
-
-        private static IReadOnlyList<FoxRunManifestCustomNativeContract> BuildCustomNativeContracts(
-            IReadOnlyList<FoxRunManifestMember> members)
-        {
-            return members
-                .Where(member => member.GeneratesRos2NativeRegistration
-                                 && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto)
-                .Select(member => new FoxRunManifestCustomNativeContract(
-                    DeclaringType(member),
-                    member.MemberName,
-                    member.Topic,
-                    FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.Source,
-                    member.QosProfile,
-                    true,
-                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
-                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member),
-                    member.Targets,
-                    member.QosReliability,
-                    member.QosDurability,
-                    member.QosHistory,
-                    member.QosDepth))
-                .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
-                .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
-                .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)
-                .ToList()
-                .AsReadOnly();
-        }
-
-        private static string ResolveNativeType(FoxRunManifestMember member)
-        {
-            if (!member.GeneratesRos2NativeRegistration)
-                return string.Empty;
-
-            return member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.FullyQualifiedTypeName ?? member.TypeName
-                : member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
-                    ? member.Ros2CustomDtoShape?.FullyQualifiedTypeName ?? member.TypeName
-                    : member.TypeName;
-        }
-
-        private static string ResolvePackagedCanonicalRosType(FoxRunManifestMember member)
-            => member.GeneratesRos2NativeRegistration
-               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.CanonicalRosType ?? string.Empty
-                : string.Empty;
-
-        private static string ResolvePackagedCopyShapeIdentity(FoxRunManifestMember member)
-            => member.GeneratesRos2NativeRegistration
-               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
-                : string.Empty;
-
-        private static string ResolveCustomEnvelopeIdentity(FoxRunManifestMember member)
-        {
-            if (!member.GeneratesRos2NativeRegistration
-                || member.Ros2ContractKind != FoxRunRos2ContractKind.CustomDto
-                || string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity))
-            {
-                return string.Empty;
-            }
-
-            return FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName(member.Ros2CustomDtoShape.PayloadIdentity);
         }
 
         private static IReadOnlyList<FoxRunManifestContract> BuildContracts(

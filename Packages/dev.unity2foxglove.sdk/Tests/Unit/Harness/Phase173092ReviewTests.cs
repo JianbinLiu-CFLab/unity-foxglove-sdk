@@ -69,10 +69,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void PointCloudNativeWorkerDiagnosticsReuseArgumentScratchArray()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
-            var method = TestSources.Slice(source, "private void LogPointCloud2NativeWorkerTiming", "private static double ElapsedPointCloud2NativeMilliseconds");
+            var method = TestSources.Slice(source, "private void LogPackedPointCloudWorkerTiming", "private static double ElapsedPackedPointCloudMilliseconds");
 
-            Assert.Contains("private readonly object[] _pointCloud2NativeWorkerTimingArgs = new object[24];", source, StringComparison.Ordinal);
-            Assert.Contains("var args = _pointCloud2NativeWorkerTimingArgs;", method, StringComparison.Ordinal);
+            Assert.Contains("private readonly object[] _packedPointCloudWorkerTimingArgs = new object[24];", source, StringComparison.Ordinal);
+            Assert.Contains("var args = _packedPointCloudWorkerTimingArgs;", method, StringComparison.Ordinal);
             Assert.DoesNotContain("new object[]", method, StringComparison.Ordinal);
         }
 

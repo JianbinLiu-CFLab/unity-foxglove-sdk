@@ -56,9 +56,9 @@ namespace Unity.FoxgloveSDK.Tests
                 + Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
             Check(publisher.Contains("_enableMotionCompensation", StringComparison.Ordinal),
                 "138U-1F: point cloud publisher stores default-off deskew flag");
-            Check(publisher.Contains("_deskewedPointCloud2NativeTopic", StringComparison.Ordinal),
+            Check(publisher.Contains("_deskewedPackedPointCloudTopic", StringComparison.Ordinal),
                 "138U-1G: point cloud publisher stores deskewed topic");
-            Check(publisher.Contains("_deskewedPointCloud2NativeMaxPublishRateHz = 2f", StringComparison.Ordinal)
+            Check(publisher.Contains("_deskewedPackedPointCloudMaxPublishRateHz = 2f", StringComparison.Ordinal)
                   && publisher.Contains("ShouldQueueDeskewedPointCloud2Frame", StringComparison.Ordinal),
                 "138U-1Ga: point cloud publisher rate-gates deskewed visualization before worker request construction");
             Check(publisher.Contains("PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame", StringComparison.Ordinal),
@@ -161,7 +161,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.Points[1].HasAcquisitionFrame == 0,
                 "138U-3E: deskewed output is marked as one reference-frame cloud");
 
-            var rawPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+            var rawPacked = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(
                 points,
                 points.Length,
                 emitAbsoluteTimeNs: false,
@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Math.Abs(BitConverter.ToSingle(rawPacked.Data, 26) - 1f) < 0.0001f,
                 "138U-3F: raw PointCloud2 packing selects acquisition-frame XYZ");
 
-            var referencePacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+            var referencePacked = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(
                 points,
                 points.Length,
                 emitAbsoluteTimeNs: false);
@@ -311,7 +311,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void NativeFrameAndBridgeTopicRouting()
         {
-            var frame = new PointCloud2NativeFrame(
+            var frame = new PackedPointCloudFrame(
                 1UL,
                 "os_lidar",
                 1U,
@@ -327,7 +327,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(frame.IsMotionCompensatedVisualization,
                 "138U-4B: native PointCloud2 frame marks visualization deskew output");
 
-            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
             Check(bridge.Contains("ResolveFrameTopic", StringComparison.Ordinal)
                   && bridge.Contains("frame.Topic", StringComparison.Ordinal),
                 "138U-4C: R2FU PointCloud2 bridge resolves per-frame topics");

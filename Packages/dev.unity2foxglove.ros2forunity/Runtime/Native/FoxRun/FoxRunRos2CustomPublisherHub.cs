@@ -43,12 +43,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunRos2CustomPublisherSessionTracker _publishSessionTracker =
             new FoxRunRos2CustomPublisherSessionTracker();
         private FoxgloveManager _manager;
+        private FoxRunRos2TransportProvider _provider;
         private float _scanCooldown;
         private bool _stopping;
         private bool _providerSessionActive;
 
-        internal void BindProviderOwner(FoxgloveManager manager)
-            => SetManager(manager);
+        internal void BindProviderOwner(
+            FoxgloveManager manager,
+            FoxRunRos2TransportProvider provider)
+        {
+            _provider = provider;
+            SetManager(manager);
+        }
 
         internal void SetProviderSessionActive(bool active)
         {
@@ -87,7 +93,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             // subscriptions or the legacy component-output switch are disabled.
             if (ShouldStopFoxRunPublishing(
                     _publishSessionTracker.AllowsPublishing,
-                    _manager == null || _manager.Ros2NativeEnabled,
+                    legacyComponentNativeOutputEnabled: true,
                     Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
                         gameObject.scene)))
             {
@@ -104,19 +110,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
 
             var publishSessionPolicy = _publishSessionTracker.Current;
-            var inheritedQos = publishSessionPolicy == null
-                ? FoxRunResolvedQos.Default
-                : publishSessionPolicy.NativeRos2Qos;
+            var inheritedQos =
+                _provider?.ActivePublishQos
+                ?? FoxRunResolvedQos.Default;
             var defaultTargets = publishSessionPolicy == null
-                ? FoxRunEndpoint.Ros2Native
-                : publishSessionPolicy.DefaultTargets;
+                ? FoxRunRos2RouteEndpoint.R2fu
+                : FoxRunRos2RouteResolver
+                    .FromPublishProviders(
+                        publishSessionPolicy
+                            .PublishTransportIds);
             var subscriptionPolicy = _manager == null
                 ? null
                 : _manager.ActiveFoxRunSubscriptionSessionPolicy;
             var defaultSource = subscriptionPolicy != null
                                 && subscriptionPolicy.SubscriptionsEnabled
-                ? subscriptionPolicy.DefaultSource
-                : FoxRunEndpoint.Foxglove;
+                ? FoxRunRos2RouteResolver
+                    .FromSubscribeProvider(
+                        subscriptionPolicy.DefaultProvider)
+                : FoxRunRos2RouteEndpoint.WebSocket;
             ScanAndReconcile(bus, inheritedQos, defaultSource, defaultTargets);
         }
 
@@ -156,8 +167,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void ScanAndReconcile(
             FoxTopicBus bus,
             FoxRunResolvedQos inheritedQos,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets)
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets)
         {
             _seen.Clear();
             _existing.Clear();
@@ -216,8 +227,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             MonoBehaviour source,
             FoxTopicBus bus,
             FoxRunResolvedQos inheritedQos,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets,
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets,
             FoxRunRos2CustomPublisherContract contract,
             Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> map,
             Action<TEnvelope> dispose)
@@ -552,9 +563,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static bool ShouldRegisterNativePublisher(
             FoxRunRos2CustomPublisherContract contract,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets,
-            out FoxRunEndpointResolution resolution)
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets,
+            out FoxRunRos2RouteResolution resolution)
         {
             if (contract == null)
             {
@@ -564,7 +575,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             resolution = contract.ResolveTopology(defaultSource, defaultTargets);
             return resolution.Success
-                   && (resolution.Topology.Targets & FoxRunEndpoint.Ros2Native) != 0;
+                   && (resolution.Route.Targets
+                       & FoxRunRos2RouteEndpoint.R2fu) != 0;
         }
 
         private void WarnOnce(string key, string message)
@@ -626,16 +638,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly MonoBehaviour _source;
             private readonly FoxTopicBus _bus;
             private readonly FoxRunResolvedQos _inheritedQos;
-            private readonly FoxRunEndpoint _defaultSource;
-            private readonly FoxRunEndpoint _defaultTargets;
+            private readonly FoxRunRos2RouteEndpoint _defaultSource;
+            private readonly FoxRunRos2RouteEndpoint _defaultTargets;
 
             internal CollectingRegistrar(
                 FoxRunRos2CustomPublisherHub hub,
                 MonoBehaviour source,
                 FoxTopicBus bus,
                 FoxRunResolvedQos inheritedQos,
-                FoxRunEndpoint defaultSource,
-                FoxRunEndpoint defaultTargets)
+                FoxRunRos2RouteEndpoint defaultSource,
+                FoxRunRos2RouteEndpoint defaultTargets)
             {
                 _hub = hub;
                 _source = source;

@@ -8,8 +8,7 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Selects the wire encoding used by Foxglove publish and subscribe
-    /// directions. ROS 2 transports use their generated message contract
-    /// instead of this setting.
+    /// directions on the built-in WebSocket transport.
     /// </summary>
     public enum FoxRunEncoding
     {

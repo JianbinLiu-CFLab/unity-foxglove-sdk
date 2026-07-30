@@ -4,7 +4,8 @@
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Proto.Generated",
-    "Unity2Foxglove.Ros2Bridge"
+    "Unity2Foxglove.Ros2Bridge",
+    "Unity2Foxglove.Ros2Bridge.Generated"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

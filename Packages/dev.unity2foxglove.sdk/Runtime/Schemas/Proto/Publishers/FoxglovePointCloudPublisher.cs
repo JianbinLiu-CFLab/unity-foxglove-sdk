@@ -28,13 +28,13 @@ namespace Unity.FoxgloveSDK.Components
         // completed point clouds in one Update creates visible Foxglove bursts
         // when Unity is unfocused or a client render stalls.
         private const int MaxCompletedDracoEncodeResults = 1;
-        private const int PointCloud2NativeFailureWarningIntervalFrames = 120;
-        // PointCloud2 Native frames are large enough that draining stale completed
+        private const int PackedPointCloudFailureWarningIntervalFrames = 120;
+        // PackedPointCloud Native frames are large enough that draining stale completed
         // results in a burst can hitch the main loop. Keep the latest completed
         // frame only; the pending side is already last-value-wins.
-        private const int MaxCompletedPointCloud2NativeResults = 1;
+        private const int MaxCompletedPackedPointCloudResults = 1;
         private const int DracoWorkerStopWaitMs = 5000;
-        private const int PointCloud2NativeWorkerStopWaitMs = 5000;
+        private const int PackedPointCloudWorkerStopWaitMs = 5000;
         private const float DefaultNativeDracoMaxPublishRateHz = 6f;
 
         [Header("Point Cloud Output")]
@@ -53,24 +53,24 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logPerformanceDiagnostics;
         [SerializeField] private bool _includeSyntheticIntensity;
 
-        [Tooltip("Publish a lightweight ROS2 TF anchor for PointCloud2 Native output when no scene, robot, or SLAM TF tree owns the point-cloud frame.")]
-        [SerializeField] private bool _publishPointCloud2NativeTfAnchor;
-        [Tooltip("Parent frame used when publishing the PointCloud2 Native TF anchor.")]
-        [SerializeField] private string _pointCloud2NativeTfParentFrame = "map";
-        [Tooltip("Child frame used when publishing the PointCloud2 Native TF anchor. Leave empty to follow Frame Id.")]
-        [SerializeField] private string _pointCloud2NativeTfChildFrame;
+        [Tooltip("Publish a lightweight frame anchor when no scene, robot, or SLAM tree owns the point-cloud frame.")]
+        [SerializeField] private bool _publishPackedPointCloudTfAnchor;
+        [Tooltip("Parent frame used when publishing the PackedPointCloud Native TF anchor.")]
+        [SerializeField] private string _packedPointCloudTfParentFrame = "map";
+        [Tooltip("Child frame used when publishing the PackedPointCloud Native TF anchor. Leave empty to follow Frame Id.")]
+        [SerializeField] private string _packedPointCloudTfChildFrame;
         [Tooltip("TF anchor translation in ROS coordinates.")]
-        [SerializeField] private Vector3 _pointCloud2NativeTfTranslation;
+        [SerializeField] private Vector3 _packedPointCloudTfTranslation;
         [Tooltip("TF anchor rotation in ROS roll/pitch/yaw degrees.")]
-        [SerializeField] private Vector3 _pointCloud2NativeTfRotationEuler;
+        [SerializeField] private Vector3 _packedPointCloudTfRotationEuler;
 
         [Header("Motion Compensation")]
-        [Tooltip("Emit an optional deskewed PointCloud2 visualization stream. Leave disabled for raw SLAM input.")]
+        [Tooltip("Emit an optional deskewed PackedPointCloud visualization stream. Leave disabled for raw SLAM input.")]
         [SerializeField] private bool _enableMotionCompensation;
         [SerializeField] private PointCloudMotionCompensationOutputPolicy _motionCompensationOutputPolicy = PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic;
-        [SerializeField] private string _deskewedPointCloud2NativeTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
-        [Tooltip("Optional cap for deskewed PointCloud2 visualization output. Set 0 to publish a deskewed frame for every eligible raw scan.")]
-        [SerializeField, Min(0f)] private float _deskewedPointCloud2NativeMaxPublishRateHz = 2f;
+        [SerializeField] private string _deskewedPackedPointCloudTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
+        [Tooltip("Optional cap for deskewed PackedPointCloud visualization output. Set 0 to publish a deskewed frame for every eligible raw scan.")]
+        [SerializeField, Min(0f)] private float _deskewedPackedPointCloudMaxPublishRateHz = 2f;
         [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanStart;
         [SerializeField] private PointCloudMotionCompensationSource _motionCompensationSource = PointCloudMotionCompensationSource.SensorTransform;
 
@@ -85,15 +85,15 @@ namespace Unity.FoxgloveSDK.Components
         private readonly PointCloudQoSReducer _qosReducer = new PointCloudQoSReducer(Debug.LogWarning);
         private readonly TransformPointCloudSource _transformPointCloudSource = new TransformPointCloudSource();
         private PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline;
-        private PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline;
+        private PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult> _packedPointCloudPipeline;
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private readonly SensorMotionPoseHistory _motionPoseHistory = new SensorMotionPoseHistory();
         private ulong _lastNativeDracoPublishUnixNs;
-        private ulong _lastDeskewedPointCloud2NativePublishUnixNs;
+        private ulong _lastDeskewedPackedPointCloudPublishUnixNs;
         private float _cachedNativeDracoMaxPublishRateHz = float.NaN;
         private ulong _cachedNativeDracoPublishIntervalNs;
-        private float _cachedDeskewedPointCloud2NativeMaxPublishRateHz = float.NaN;
-        private ulong _cachedDeskewedPointCloud2NativePublishIntervalNs;
+        private float _cachedDeskewedPackedPointCloudMaxPublishRateHz = float.NaN;
+        private ulong _cachedDeskewedPackedPointCloudPublishIntervalNs;
         private int _unityThreadId;
         private int _motionCompensationWarningCount;
 
@@ -103,21 +103,21 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
         /// <summary>True when VirtualLidar may use the low-allocation Draco queue.</summary>
         internal bool CanQueueVirtualLidarDracoFrame => _outputMode == PointCloudOutputMode.Draco;
-        /// <summary>True when VirtualLidar may use the low-allocation PointCloud2 Native queue.</summary>
-        internal bool CanQueueVirtualLidarPointCloud2NativeFrame => _outputMode == PointCloudOutputMode.PointCloud2Native;
+        /// <summary>True when VirtualLidar may use the low-allocation PackedPointCloud Native queue.</summary>
+        internal bool CanQueueVirtualLidarPackedPointCloudFrame => _outputMode == PointCloudOutputMode.PackedPointCloud;
         /// <summary>True when any VirtualLidar native queue is active for this mode.</summary>
-        internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPointCloud2NativeFrame;
+        internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPackedPointCloudFrame;
         /// <summary>True when VirtualLidar must compute acquisition-time point coordinates.</summary>
-        internal bool RequiresVirtualLidarAcquisitionFrame => CanQueueVirtualLidarPointCloud2NativeFrame || EnableMotionCompensatedPointCloud2;
+        internal bool RequiresVirtualLidarAcquisitionFrame => CanQueueVirtualLidarPackedPointCloudFrame || EnableMotionCompensatedPackedPointCloud;
         /// <summary>Whether the selected output mode supports JSON payloads.</summary>
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
 
         /// <summary>
-        /// Raised on the Unity main thread after the PointCloud2 native worker has
+        /// Raised on the Unity main thread after the PackedPointCloud native worker has
         /// prepared packed data. Optional DDS adapters can publish the frame without
         /// doing per-point work on the main thread.
         /// </summary>
-        public event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady;
+        public event Action<PackedPointCloudFrame> PackedPointCloudFrameReady;
 
         /// <summary>Whether the selected output mode supports protobuf payloads.</summary>
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
@@ -125,54 +125,54 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Current user-selected point-cloud output mode.</summary>
         public PointCloudOutputMode OutputMode => _outputMode;
 
-        /// <summary>True when this publisher is configured for standard PointCloud2 native output.</summary>
-        public bool IsPointCloud2NativeOutput => _outputMode == PointCloudOutputMode.PointCloud2Native;
+        /// <summary>True when this publisher is configured for standard PackedPointCloud native output.</summary>
+        public bool IsPackedPointCloudOutput => _outputMode == PointCloudOutputMode.PackedPointCloud;
 
         /// <summary>True when opt-in point-cloud performance diagnostics should emit detailed timing logs.</summary>
         public bool PerformanceDiagnosticsEnabled => _logPerformanceDiagnostics;
 
-        /// <summary>Resolved publisher topic for optional native ROS2 PointCloud2 adapters.</summary>
-        public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
+        /// <summary>Resolved publisher topic for optional point-cloud Providers.</summary>
+        public string PackedPointCloudTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
 
-        /// <summary>True when a deskewed visualization PointCloud2 stream is enabled.</summary>
-        public bool EnableMotionCompensatedPointCloud2 => IsPointCloud2NativeOutput && _enableMotionCompensation;
+        /// <summary>True when a deskewed visualization PackedPointCloud stream is enabled.</summary>
+        public bool EnableMotionCompensatedPackedPointCloud => IsPackedPointCloudOutput && _enableMotionCompensation;
 
-        /// <summary>Resolved deskewed visualization topic for optional native ROS2 PointCloud2 adapters.</summary>
-        public string MotionCompensatedPointCloud2Topic
+        /// <summary>Resolved deskewed visualization topic for optional Providers.</summary>
+        public string MotionCompensatedPackedPointCloudTopic
             => PointCloudMotionCompensationOptions.NormalizeTopic(
-                _deskewedPointCloud2NativeTopic,
+                _deskewedPackedPointCloudTopic,
                 PointCloudMotionCompensationOptions.DefaultDeskewedTopic);
 
         /// <summary>Resolved motion-compensation output policy.</summary>
         public PointCloudMotionCompensationOutputPolicy MotionCompensationOutputPolicy => _motionCompensationOutputPolicy;
 
-        /// <summary>Resolved frame id for optional native ROS2 PointCloud2 adapters.</summary>
+        /// <summary>Resolved frame id for optional point-cloud Providers.</summary>
         public string PointCloudFrameId => SanitizeNonEmptyFrameId(_frameId, "unity_world");
 
-        /// <summary>True when PointCloud2 Native output should also publish a TF anchor.</summary>
-        public bool PublishPointCloud2NativeTfAnchor => IsPointCloud2NativeOutput && _publishPointCloud2NativeTfAnchor;
+        /// <summary>True when PackedPointCloud Native output should also publish a TF anchor.</summary>
+        public bool PublishPackedPointCloudTfAnchor => IsPackedPointCloudOutput && _publishPackedPointCloudTfAnchor;
 
-        /// <summary>Resolved parent frame for the optional PointCloud2 Native TF anchor.</summary>
-        public string PointCloud2NativeTfParentFrame => SanitizeNonEmptyFrameId(_pointCloud2NativeTfParentFrame, "map");
+        /// <summary>Resolved parent frame for the optional PackedPointCloud Native TF anchor.</summary>
+        public string PackedPointCloudTfParentFrame => SanitizeNonEmptyFrameId(_packedPointCloudTfParentFrame, "map");
 
-        /// <summary>Resolved child frame for the optional PointCloud2 Native TF anchor.</summary>
-        public string PointCloud2NativeTfChildFrame => SanitizeNonEmptyFrameId(_pointCloud2NativeTfChildFrame, PointCloudFrameId);
+        /// <summary>Resolved child frame for the optional PackedPointCloud Native TF anchor.</summary>
+        public string PackedPointCloudTfChildFrame => SanitizeNonEmptyFrameId(_packedPointCloudTfChildFrame, PointCloudFrameId);
 
-        /// <summary>Translation for the optional PointCloud2 Native TF anchor.</summary>
-        public Vector3 PointCloud2NativeTfTranslation => _pointCloud2NativeTfTranslation;
+        /// <summary>Translation for the optional PackedPointCloud Native TF anchor.</summary>
+        public Vector3 PackedPointCloudTfTranslation => _packedPointCloudTfTranslation;
 
-        /// <summary>Rotation for the optional PointCloud2 Native TF anchor.</summary>
-        public Quaternion PointCloud2NativeTfRotation => PointCloud2NativeTfRotationRos;
+        /// <summary>Rotation for the optional PackedPointCloud Native TF anchor.</summary>
+        public Quaternion PackedPointCloudTfRotation => PackedPointCloudTfRotationRos;
 
-        /// <summary>Rotation for the optional PointCloud2 Native TF anchor from ROS roll/pitch/yaw degrees.</summary>
-        public Quaternion PointCloud2NativeTfRotationRos
+        /// <summary>Rotation for the optional PackedPointCloud Native TF anchor from ROS roll/pitch/yaw degrees.</summary>
+        public Quaternion PackedPointCloudTfRotationRos
         {
             get
             {
                 var q = RosTransformMath.RollPitchYawDegreesToQuaternion(
-                    _pointCloud2NativeTfRotationEuler.x,
-                    _pointCloud2NativeTfRotationEuler.y,
-                    _pointCloud2NativeTfRotationEuler.z);
+                    _packedPointCloudTfRotationEuler.x,
+                    _packedPointCloudTfRotationEuler.y,
+                    _packedPointCloudTfRotationEuler.z);
                 return new Quaternion(q.X, q.Y, q.Z, q.W);
             }
         }
@@ -205,14 +205,14 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             _lastNativeDracoPublishUnixNs = 0UL;
-            _lastDeskewedPointCloud2NativePublishUnixNs = 0UL;
+            _lastDeskewedPackedPointCloudPublishUnixNs = 0UL;
             _motionCompensationWarningCount = 0;
             _motionPoseHistory.Clear();
             _pendingFrameSlot.Take();
             _publishState.ResetSourceDriven();
             _publishState.ClearPreparedDemand();
             _dracoEncodePipeline?.Stop(clearCompleted: true);
-            _pointCloud2NativePipeline?.Stop(clearCompleted: true);
+            _packedPointCloudPipeline?.Stop(clearCompleted: true);
             base.OnDisable();
         }
 
@@ -220,13 +220,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             _dracoEncodePipeline?.Dispose();
             _dracoEncodePipeline = null;
-            _pointCloud2NativePipeline?.Dispose();
-            _pointCloud2NativePipeline = null;
+            _packedPointCloudPipeline?.Dispose();
+            _packedPointCloudPipeline = null;
         }
 
         protected virtual void FixedUpdate()
         {
-            if (!IsPointCloud2NativeOutput || !_enableMotionCompensation)
+            if (!IsPackedPointCloudOutput || !_enableMotionCompensation)
                 return;
 
             EnsureManagerAvailable();
@@ -280,7 +280,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null || frame == null) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishProvider = ShouldPrepareOrdinaryTransportPayload();
-            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            var publishNativeFrame = ShouldPreparePackedPointCloudFrame();
             if (!publishWebSocket && !publishProvider && !publishNativeFrame) return;
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs, out var packedLayout);
@@ -303,7 +303,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
 
         /// <summary>
-        /// Queues a source VirtualLidar snapshot into the PointCloud2 Native
+        /// Queues a source VirtualLidar snapshot into the PackedPointCloud Native
         /// worker when the selected mode is compatible.
         /// </summary>
 
@@ -317,20 +317,20 @@ namespace Unity.FoxgloveSDK.Components
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
                 () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
-            var pointCloud2NativeDrainStart = BeginPointCloud2NativeTiming();
-            _pointCloud2NativePipeline.Drain(
+            var packedPointCloudDrainStart = BeginPackedPointCloudTiming();
+            _packedPointCloudPipeline.Drain(
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
                 () =>
                 {
                     _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
-                    LogPointCloud2NativeTiming(pointCloud2NativeDrainStart, "pipelineDrain", PointCloud2NativeTopic, 0, 0);
+                    LogPackedPointCloudTiming(packedPointCloudDrainStart, "pipelineDrain", PackedPointCloudTopic, 0, 0);
                 });
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishProvider = ShouldPrepareOrdinaryTransportPayload();
-            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            var publishNativeFrame = ShouldPreparePackedPointCloudFrame();
             if (!publishWebSocket && !publishProvider && !publishNativeFrame) return;
 
             var unixNs = CurrentLogTimeNs;
@@ -400,9 +400,9 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            if (_outputMode == PointCloudOutputMode.PointCloud2Native)
+            if (_outputMode == PointCloudOutputMode.PackedPointCloud)
             {
-                PublishPointCloud2NativeFrame(frame, unixNs, packedLayout);
+                PublishPackedPointCloudFrame(frame, unixNs, packedLayout);
                 return;
             }
 
@@ -431,9 +431,9 @@ namespace Unity.FoxgloveSDK.Components
         private bool ShouldSuppressTransformFallback()
             => _publishState.ShouldSuppressTransformFallback(_suppressTransformFallbackAfterSourceFrames);
 
-        private bool ShouldPreparePointCloud2NativeFrame()
-            => _outputMode == PointCloudOutputMode.PointCloud2Native
-               && PointCloud2NativeFrameReady != null;
+        private bool ShouldPreparePackedPointCloudFrame()
+            => _outputMode == PointCloudOutputMode.PackedPointCloud
+               && PackedPointCloudFrameReady != null;
 
         private void EnsureEncodePipelines()
         {
@@ -457,24 +457,24 @@ namespace Unity.FoxgloveSDK.Components
                     DracoFailureWarningIntervalFrames);
             }
 
-            if (_pointCloud2NativePipeline == null)
+            if (_packedPointCloudPipeline == null)
             {
-                _pointCloud2NativePipeline = new PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult>(
-                    "Foxglove PointCloud2 Native Pack",
-                    MaxCompletedPointCloud2NativeResults,
-                    PointCloud2NativeWorkerStopWaitMs,
-                    PointCloudWorkerEncoders.EncodePointCloud2NativeRequest,
+                _packedPointCloudPipeline = new PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult>(
+                    "Foxglove PackedPointCloud Native Pack",
+                    MaxCompletedPackedPointCloudResults,
+                    PackedPointCloudWorkerStopWaitMs,
+                    PointCloudWorkerEncoders.EncodePackedPointCloudRequest,
                     result => result.Success,
-                    result => (string.IsNullOrWhiteSpace(result.Error) ? "Native PointCloud2 pack failed." : result.Error) + " PointCloud2Native mode publishes nothing.",
-                    message => "[Foxglove] PointCloud2 native mode disabled: " + message,
-                    PublishCompletedPointCloud2NativePayload,
+                    result => (string.IsNullOrWhiteSpace(result.Error) ? "Native PackedPointCloud pack failed." : result.Error) + " PackedPointCloud mode publishes nothing.",
+                    message => "[Foxglove] PackedPointCloud native mode disabled: " + message,
+                    PublishCompletedPackedPointCloudPayload,
                     Debug.LogWarning,
                     LogPointCloudDropDiagnostic,
-                    "[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.",
-                    "Unable to queue background PointCloud2 pack: ",
-                    dropped => $"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {dropped}.",
-                    "[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.",
-                    PointCloud2NativeFailureWarningIntervalFrames);
+                    "[Foxglove] PackedPointCloud native request replaced; stale pending payload dropped.",
+                    "Unable to queue background PackedPointCloud pack: ",
+                    dropped => $"[Foxglove] PackedPointCloud native payloads dropped before main-thread drain: {dropped}.",
+                    "[Foxglove] PackedPointCloud native worker is still stopping; native payload will be ignored when it returns.",
+                    PackedPointCloudFailureWarningIntervalFrames);
             }
         }
 

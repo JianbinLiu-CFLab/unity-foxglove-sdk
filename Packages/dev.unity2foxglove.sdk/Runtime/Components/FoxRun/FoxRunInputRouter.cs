@@ -49,10 +49,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
-        private FoxRunEndpoint _defaultSubscriptionSource =
-            FoxRunEndpoint.Foxglove;
-        private FoxRunEndpoint _defaultPublishTargets =
-            FoxRunEndpoint.Foxglove;
+        private string _defaultSubscribeTransportId =
+            FoxgloveWebSocketTransport.Id;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -63,35 +61,19 @@ namespace Unity.FoxgloveSDK.Components
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
 
-        /// <summary>Manager-resolved targets used to validate inherited full-duplex constraints.</summary>
-        public FoxRunEndpoint DefaultPublishTargets
+        /// <summary>Manager-resolved transport used when declarations inherit.</summary>
+        public string DefaultSubscribeTransportId
         {
             get
             {
                 lock (_gate)
-                    return _defaultPublishTargets;
+                    return _defaultSubscribeTransportId;
             }
             set
             {
-                value = FoxRunEndpointResolver.ValidateProfileTargets(value);
+                var id = new FoxRunTransportId(value);
                 lock (_gate)
-                    _defaultPublishTargets = value;
-            }
-        }
-
-        /// <summary>Manager-resolved source used only when later registrations omit Source.</summary>
-        public FoxRunEndpoint DefaultSubscriptionSource
-        {
-            get
-            {
-                lock (_gate)
-                    return _defaultSubscriptionSource;
-            }
-            set
-            {
-                value = FoxRunEndpointResolver.ValidateProfileSource(value);
-                lock (_gate)
-                    _defaultSubscriptionSource = value;
+                    _defaultSubscribeTransportId = id.Value;
             }
         }
 
@@ -121,6 +103,36 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             }
+        }
+
+        private static bool TryResolveWebSocketRegistration(
+            FoxgloveInputTopicInfo info,
+            string inheritedSubscribeTransportId,
+            FoxRunEncoding inheritedEncoding,
+            out FoxRunEncoding encoding)
+        {
+            encoding = (FoxRunEncoding)0;
+            if (!info.SupportsWebSocket)
+                return false;
+
+            var transportId = string.IsNullOrWhiteSpace(
+                info.SubscribeTransportId)
+                ? inheritedSubscribeTransportId
+                : info.SubscribeTransportId;
+            if (!string.Equals(
+                    transportId,
+                    FoxgloveWebSocketTransport.Id,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            encoding = info.HasExplicitEncoding
+                ? FoxRunEncodingResolver.ValidateProfileDefault(
+                    info.DeclaredEncoding)
+                : FoxRunEncodingResolver.ValidateProfileDefault(
+                    inheritedEncoding);
+            return true;
         }
 
         public void Register(
@@ -182,35 +194,17 @@ namespace Unity.FoxgloveSDK.Components
                             var info = topics[index];
                             if (string.IsNullOrWhiteSpace(info.Topic))
                                 continue;
-                            var topology = FoxRunEndpointResolver.Resolve(
-                                info.Mode,
-                                info.DeclaredSource,
-                                info.HasExplicitSource,
-                                info.DeclaredTargets,
-                                info.HasExplicitTargets,
-                                info.DeclaredEncoding,
-                                info.HasExplicitEncoding,
-                                _defaultSubscriptionSource,
-                                _defaultPublishTargets,
-                                publishDefaultEncoding: _defaultSubscriptionEncoding,
-                                subscribeDefaultEncoding: _defaultSubscriptionEncoding,
-                                info.HasExplicitQos);
-                            if (!topology.Success
-                                || topology.Topology.Source != FoxRunEndpoint.Foxglove
-                                || !info.SupportsWebSocket)
-                            {
-                                if (topology.DiagnosticCode == FoxRunEndpointDiagnosticCode.QosRequiresRos2
-                                    && string.IsNullOrEmpty(firstUnavailableDiagnostic))
-                                {
-                                    firstUnavailableDiagnostic = topology.DiagnosticMessage;
-                                }
+                            if (!TryResolveWebSocketRegistration(
+                                    info,
+                                    _defaultSubscribeTransportId,
+                                    _defaultSubscriptionEncoding,
+                                    out var resolvedEncoding))
                                 continue;
-                            }
                             if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
                                     source.GetType(),
                                     info.Topic,
                                     FoxRunFlow.Subscribe,
-                                    topology.Topology.SubscribeEncoding,
+                                    resolvedEncoding,
                                     out _,
                                     out var sessionDiagnostic))
                             {
@@ -218,8 +212,7 @@ namespace Unity.FoxgloveSDK.Components
                                     firstUnavailableDiagnostic = sessionDiagnostic;
                                 continue;
                             }
-                            if (topology.Topology.SubscribeEncoding
-                                == FoxRunEncoding.MessagePack)
+                            if (resolvedEncoding == FoxRunEncoding.MessagePack)
                             {
                                 requiredTransactionTopics.Add(info.Topic);
                                 continue;
@@ -251,24 +244,12 @@ namespace Unity.FoxgloveSDK.Components
                                     transactionalSource.FoxgloveInput_GetTransaction(index);
                                 if (string.IsNullOrWhiteSpace(info.Topic))
                                     continue;
-                                var topology = FoxRunEndpointResolver.Resolve(
-                                    info.Mode,
-                                    info.DeclaredSource,
-                                    info.HasExplicitSource,
-                                    info.DeclaredTargets,
-                                    info.HasExplicitTargets,
-                                    info.DeclaredEncoding,
-                                    info.HasExplicitEncoding,
-                                    _defaultSubscriptionSource,
-                                    _defaultPublishTargets,
-                                    publishDefaultEncoding: _defaultSubscriptionEncoding,
-                                    subscribeDefaultEncoding: _defaultSubscriptionEncoding,
-                                    info.HasExplicitQos);
-                                if (!topology.Success
-                                    || topology.Topology.Source
-                                    != FoxRunEndpoint.Foxglove
-                                    || !info.SupportsWebSocket
-                                    || topology.Topology.SubscribeEncoding
+                                if (!TryResolveWebSocketRegistration(
+                                        info,
+                                        _defaultSubscribeTransportId,
+                                        _defaultSubscriptionEncoding,
+                                        out var resolvedEncoding)
+                                    || resolvedEncoding
                                     != FoxRunEncoding.MessagePack)
                                 {
                                     continue;

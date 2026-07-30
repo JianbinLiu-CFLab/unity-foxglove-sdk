@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Shared/FoxgloveSourceEmitter
-// Purpose: Emit stable reflection-free accessors consumed by optional Providers.
+// Purpose: Emit stable reflection-free accessors consumed by Providers.
 
 using System;
 using System.Collections.Generic;
@@ -13,9 +13,10 @@ namespace Unity.FoxgloveSDK.Editor
 {
     internal static class TransportMemberAccessEmitter
     {
-        internal static IReadOnlyList<FoxRunGenerationMember> EligibleMembers(
-            FoxRunGenerationType type)
-            => (type?.Members ?? Array.Empty<FoxRunGenerationMember>())
+        internal static IReadOnlyList<FoxRunGenerationMember>
+            EligibleMembers(FoxRunGenerationType type)
+            => (type?.Members
+                ?? Array.Empty<FoxRunGenerationMember>())
                 .Where(member => member != null && !member.IsStream)
                 .ToArray();
 
@@ -35,13 +36,16 @@ namespace Unity.FoxgloveSDK.Editor
                 .Select(group => group.ToArray())
                 .ToArray();
 
-            foreach (var member in members)
+            for (var index = 0; index < members.Count; index++)
             {
+                var member = members[index];
                 var suffix = MethodSuffix(type, member);
-                var typeName = member.EmissionTypeName;
-                var access = TypeExprEmitter.MemberAccess(member.MemberName);
-                var canRead = member.Mode == 1 || member.Mode == 3;
-                var canWrite = member.Mode == 2 || member.Mode == 3;
+                var access =
+                    TypeExprEmitter.MemberAccess(member.MemberName);
+                var canRead =
+                    member.Mode == 1 || member.Mode == 3;
+                var canWrite =
+                    member.Mode == 2 || member.Mode == 3;
                 if (canRead)
                 {
                     var topicIndex = Array.FindIndex(
@@ -54,13 +58,15 @@ namespace Unity.FoxgloveSDK.Editor
                         publishTopics[topicIndex],
                         member);
                     sb.AppendLine(
-                        $"{pad}    private {typeName} __FoxRunRead_{suffix}() => __foxRunCapture_{topicIndex}_{fieldIndex};");
+                        $"{pad}    private {member.EmissionTypeName} __FoxRunRead_{suffix}() => __foxRunCapture_{topicIndex}_{fieldIndex};");
                 }
+
                 if (canWrite)
                 {
                     sb.AppendLine(
-                        $"{pad}    private void __FoxRunWrite_{suffix}({typeName} value) => {access} = value;");
+                        $"{pad}    private void __FoxRunWrite_{suffix}({member.EmissionTypeName} value) => {access} = value;");
                 }
+
                 sb.AppendLine();
             }
         }
@@ -84,6 +90,5 @@ namespace Unity.FoxgloveSDK.Editor
                + "_"
                + FoxRunGeneratedMemberIdentity.Fingerprint(
                    StableId(type, member));
-
     }
 }

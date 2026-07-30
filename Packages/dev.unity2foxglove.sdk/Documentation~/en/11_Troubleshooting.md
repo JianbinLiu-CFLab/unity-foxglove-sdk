@@ -43,23 +43,22 @@ Check:
 
 For point clouds:
 
-- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud` in JSON, Protobuf, or ROS2 mode.
-- Draco `Point Cloud Output Mode` publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode, or `foxglove_msgs/msg/CompressedPointCloud` with CDR payloads in ROS2 mode. Both use format = `draco`.
+- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud` in JSON or Protobuf mode.
+- Draco `Point Cloud Output Mode` publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode with format = `draco`.
+- Packed Provider Frame mode emits a transport-neutral frame only when a matching optional Provider is listening.
 - If you switched output modes while Foxglove was already connected, reconnect so the 3D panel sees the updated topic and schema.
 - If Draco mode is selected, click `Check Draco` in the Inspector and fix any native plugin warning before expecting points to appear.
 
 Draco mode uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible native plugin binaries mean Draco mode logs a warning and publishes nothing. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
 
-Draco native encode runs on a worker thread. Large frames can still block publish/update work through QoS preparation, frame cloning, result draining, or Raw/ROS2 packing; lower point budgets, enable performance diagnostics, or return to raw mode while diagnosing.
+Draco native encode runs on a worker thread. Large frames can still block publish/update work through sampling preparation, frame cloning, or result draining; lower point budgets, enable performance diagnostics, or return to raw mode while diagnosing.
 
-For ROS2 output:
+For ROS output:
 
-- ROS 2 schema channels use `schemaEncoding = ros2msg` and message encoding `cdr`.
-- The SDK registers the official Foxglove ROS 2 `.msg` schema catalog and can advertise or record those channel/schema records.
-- The Inspector `ROS2` encoding option is productized for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers.
-- H.264/H.265 camera modes and publishers outside that list fall back to their best supported encoding instead of producing invalid ROS2 topics.
-- If a `ros2msg` topic advertises correctly but Foxglove cannot decode data, verify that the payload starts with `00 01 00 00` and is valid XCDR1 little-endian data for that exact schema.
-- If you need dependency-free working publisher components on unsupported platforms, use the existing JSON or Protobuf publisher paths.
+- Confirm the relevant companion package is installed and its Provider component is active.
+- Use `dev.unity2foxglove.ros2bridge` for the localhost sidecar path or `dev.unity2foxglove.ros2forunity` for native R2FU.
+- Follow that package's own schema, QoS, runtime, and graph diagnostics.
+- If you need a dependency-free fallback, use the core JSON or Protobuf publisher path.
 
 ## 6. Camera Image Is Blank
 

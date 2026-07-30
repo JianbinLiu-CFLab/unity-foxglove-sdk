@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Shared/FoxRunManifest
-// Purpose: Host-independent DTOs for the FoxRun canonical manifest.
+// Purpose: Canonical Provider-neutral FoxRun manifest model.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -32,21 +33,16 @@ namespace Unity.FoxgloveSDK.Editor
         public bool IsAggregateMember { get; }
         public bool IsStream { get; }
         public string JsonFieldName { get; }
-        public string Source { get; }
-        public string Targets { get; }
         public IReadOnlyList<string> PublishTransportIds { get; }
         public string SubscribeTransportId { get; }
-        public string QosProfile { get; }
-        public string QosReliability { get; }
-        public string QosDurability { get; }
-        public string QosHistory { get; }
-        public int QosDepth { get; }
+        public string Reliability { get; }
+        public string Durability { get; }
+        public string History { get; }
+        public int Depth { get; }
         public bool GeneratesWebSocketCodec { get; }
-        public bool GeneratesRos2NativeRegistration { get; }
-        public FoxRunRos2MessageShape Ros2MessageShape { get; }
-        public FoxRunRos2ContractKind Ros2ContractKind { get; }
-        public FoxRunRos2CustomDtoShape Ros2CustomDtoShape { get; }
-        public IReadOnlyList<FoxRunEncodingVariantAvailability> EncodingVariants { get; }
+        public object ProviderData { get; }
+        public IReadOnlyList<FoxRunEncodingVariantAvailability>
+            EncodingVariants { get; }
         public FoxRunNormalizedScheduleTuple NormalizedSchedule { get; }
 
         public FoxRunManifestMember(
@@ -69,24 +65,19 @@ namespace Unity.FoxgloveSDK.Editor
             int encoding = 2,
             int protobufFieldNumber = 0,
             FoxRunTypeShape typeShape = null,
-            string source = FoxRunGenerationDescriptorConstants.InheritSource,
-            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
-            bool generatesRos2NativeRegistration = false,
-            FoxRunRos2MessageShape ros2MessageShape = null,
-            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
-            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
-            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0,
             bool isStream = false,
-            IReadOnlyList<FoxRunEncodingVariantAvailability> encodingVariants = null,
+            IReadOnlyList<FoxRunEncodingVariantAvailability>
+                encodingVariants = null,
             FoxRunNormalizedScheduleTuple normalizedSchedule = null,
             FoxRunProtobufMetadata protobufMetadata = null,
             IReadOnlyList<string> publishTransportIds = null,
-            string subscribeTransportId = null)
+            string subscribeTransportId = null,
+            string reliability = "inherit",
+            string durability = "inherit",
+            string history = "inherit",
+            int depth = 0,
+            object providerData = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -102,78 +93,56 @@ namespace Unity.FoxgloveSDK.Editor
             Policy = policy;
             Flow = flow;
             Encoding = encoding;
-            TypeShape = typeShape;
-            ProtobufMetadata = protobufMetadata
-                               ?? FoxRunProtobufMetadata.FromTypeShape(
-                                   typeShape,
-                                   protobufFieldNumber);
             Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
-            IsStream = isStream;
             JsonFieldName = jsonFieldName ?? string.Empty;
-            Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
-            Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            PublishTransportIds = CanonicalTransportIds(publishTransportIds);
-            SubscribeTransportId = subscribeTransportId;
-            QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;
-            QosReliability = qosReliability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
-            QosDurability = qosDurability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
-            QosHistory = qosHistory ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
-            QosDepth = qosDepth;
+            TypeShape = typeShape;
+            ProtobufMetadata =
+                protobufMetadata
+                ?? (protobufFieldNumber == 0
+                    ? null
+                    : FoxRunProtobufMetadata.FromTypeShape(
+                        typeShape,
+                        protobufFieldNumber));
             GeneratesWebSocketCodec = generatesWebSocketCodec;
-            GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
-            Ros2MessageShape = ros2MessageShape;
-            Ros2CustomDtoShape = ros2CustomDtoShape;
-            Ros2ContractKind = ResolveRos2ContractKind(
-                ros2ContractKind,
-                ros2MessageShape,
-                ros2CustomDtoShape);
-            EncodingVariants = new List<FoxRunEncodingVariantAvailability>(
-                encodingVariants ?? DefaultEncodingVariants(encoding, flow)).AsReadOnly();
-            NormalizedSchedule = normalizedSchedule ?? new FoxRunNormalizedScheduleTuple(
-                policy,
-                hz >= 0f,
-                hz,
-                tolerance,
-                string.Empty,
-                FoxRunConditionMemberKind.None);
+            IsStream = isStream;
+            EncodingVariants = new List<
+                    FoxRunEncodingVariantAvailability>(
+                    encodingVariants
+                    ?? DefaultEncodingVariants(
+                        encoding,
+                        flow))
+                .AsReadOnly();
+            NormalizedSchedule =
+                normalizedSchedule
+                ?? new FoxRunNormalizedScheduleTuple(
+                    policy,
+                    hz >= 0f,
+                    hz,
+                    tolerance,
+                    string.Empty,
+                    FoxRunConditionMemberKind.None);
+            PublishTransportIds = CanonicalTransportIds(
+                publishTransportIds);
+            SubscribeTransportId = subscribeTransportId;
+            Reliability = reliability ?? "inherit";
+            Durability = durability ?? "inherit";
+            History = history ?? "inherit";
+            Depth = depth;
+            ProviderData = providerData;
         }
 
-        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
-            FoxRunRos2ContractKind declared,
-            FoxRunRos2MessageShape packagedShape,
-            FoxRunRos2CustomDtoShape customShape)
-        {
-            if (declared != FoxRunRos2ContractKind.Unsupported)
-                return declared;
-
-            // The pre-181 constructor accepted a packaged message shape but
-            // had no contract-kind argument. Preserve that public call shape
-            // instead of silently erasing its canonical ROS metadata.
-            if (packagedShape != null)
-                return FoxRunRos2ContractKind.PackagedRos2Message;
-
-            return customShape != null
-                ? FoxRunRos2ContractKind.CustomDto
-                : FoxRunRos2ContractKind.Unsupported;
-        }
-
-        /// <summary>
-        /// Projects the host-neutral generation member into canonical manifest
-        /// input. Both Roslyn and reflection hosts use the same normalized
-        /// provider, capability, QoS, and native-copy-shape values here.
-        /// </summary>
-        public static FoxRunManifestMember FromGenerationMember(FoxRunGenerationMember member)
+        public static FoxRunManifestMember FromGenerationMember(
+            FoxRunGenerationMember member)
         {
             if (member == null)
                 throw new ArgumentNullException(nameof(member));
-
             return new FoxRunManifestMember(
                 member.Namespace,
                 member.ClassName,
                 member.MemberName,
                 member.MemberKind,
-                member.RawObservedTypeName,
+                member.EmissionTypeName,
                 member.IsValueType,
                 member.IsArray,
                 member.ElementTypeName,
@@ -185,49 +154,65 @@ namespace Unity.FoxgloveSDK.Editor
                 member.IsAggregateMember,
                 member.JsonFieldName,
                 member.Mode,
-                EncodingValue(member.Encoding),
-                0,
+                EncodingToValue(member.Encoding),
+                member.ProtobufMetadata?.FieldNumber ?? 0,
                 member.TypeShape,
-                member.Source,
-                member.QosProfile,
                 member.GeneratesWebSocketCodec,
-                member.GeneratesRos2NativeRegistration,
-                member.Ros2MessageShape,
-                member.Ros2CustomDtoShape,
-                member.Ros2ContractKind,
-                member.Targets,
-                member.QosReliability,
-                member.QosDurability,
-                member.QosHistory,
-                member.QosDepth,
                 member.IsStream,
                 member.EncodingVariants,
                 member.NormalizedSchedule,
                 member.ProtobufMetadata,
                 member.PublishTransportIds,
-                member.SubscribeTransportId);
+                member.SubscribeTransportId,
+                member.Reliability,
+                member.Durability,
+                member.History,
+                member.Depth,
+                member.ProviderData);
         }
 
-        private static IReadOnlyList<FoxRunEncodingVariantAvailability> DefaultEncodingVariants(
-            int encoding,
-            int flow)
+        private static int EncodingToValue(string encoding)
         {
-            var publish = flow == 1 || flow == 3;
-            var subscribe = flow == 2 || flow == 3;
+            switch (encoding)
+            {
+                case "protobuf": return 1;
+                case "json": return 2;
+                case "msgpack": return 3;
+                default: return 0;
+            }
+        }
+
+        private static IReadOnlyList<
+            FoxRunEncodingVariantAvailability>
+            DefaultEncodingVariants(
+                int encoding,
+                int flow)
+        {
+            var publish =
+                flow == (int)FoxRunFlow.Publish
+                || flow
+                == (int)FoxRunFlow.PublishAndSubscribe;
+            var subscribe =
+                flow == (int)FoxRunFlow.Subscribe
+                || flow
+                == (int)FoxRunFlow.PublishAndSubscribe;
             if (encoding == 0)
             {
                 return new[]
                 {
                     new FoxRunEncodingVariantAvailability(
-                        FoxRunGenerationDescriptorConstants.JsonEncoding,
+                        FoxRunGenerationDescriptorConstants
+                            .JsonEncoding,
                         publish,
                         subscribe),
                     new FoxRunEncodingVariantAvailability(
-                        FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                        FoxRunGenerationDescriptorConstants
+                            .ProtobufEncoding,
                         publish,
                         subscribe),
                     new FoxRunEncodingVariantAvailability(
-                        FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        FoxRunGenerationDescriptorConstants
+                            .MessagePackEncoding,
                         publish,
                         subscribe)
                 };
@@ -246,44 +231,18 @@ namespace Unity.FoxgloveSDK.Editor
         {
             switch (encoding)
             {
-                case 1: return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
-                case 2: return FoxRunGenerationDescriptorConstants.JsonEncoding;
-                case 3: return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
-                default: return string.Empty;
+                case 1:
+                    return FoxRunGenerationDescriptorConstants
+                        .ProtobufEncoding;
+                case 2:
+                    return FoxRunGenerationDescriptorConstants
+                        .JsonEncoding;
+                case 3:
+                    return FoxRunGenerationDescriptorConstants
+                        .MessagePackEncoding;
+                default:
+                    return string.Empty;
             }
-        }
-
-        private static int EncodingValue(string encoding)
-        {
-            if (string.Equals(
-                    encoding,
-                    FoxRunGenerationDescriptorConstants.InheritEncoding,
-                    StringComparison.Ordinal))
-            {
-                return 0;
-            }
-            if (string.Equals(
-                    encoding,
-                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
-                    StringComparison.Ordinal))
-            {
-                return 1;
-            }
-            if (string.Equals(
-                    encoding,
-                    FoxRunGenerationDescriptorConstants.JsonEncoding,
-                    StringComparison.Ordinal))
-            {
-                return 2;
-            }
-            if (string.Equals(
-                    encoding,
-                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
-                    StringComparison.Ordinal))
-            {
-                return 3;
-            }
-            return -1;
         }
 
         private static IReadOnlyList<string> CanonicalTransportIds(
@@ -291,8 +250,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (values == null)
                 return null;
-            var copy = values.Select(value => value ?? string.Empty).ToArray();
-            Array.Sort(copy, StringComparer.Ordinal);
+            var copy = values
+                .Select(value => value ?? string.Empty)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
             return Array.AsReadOnly(copy);
         }
     }
@@ -304,29 +265,23 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunManifestGenerator Generator { get; }
         public FoxRunManifestSections Sections { get; }
         public string GlobalManifestHash { get; }
-        /// <summary>
-        /// Generated-code metadata for supported custom native contracts.
-        /// This is intentionally outside the WebSocket manifest sections:
-        /// custom interface source/add-on coherence is authenticated by the
-        /// Phase181 interface digest rather than by a Foxglove wire hash.
-        /// </summary>
-        public IReadOnlyList<FoxRunManifestCustomNativeContract> CustomNativeContracts { get; }
 
         public FoxRunCanonicalManifest(
             int manifestVersion,
             string packageName,
             FoxRunManifestGenerator generator,
             FoxRunManifestSections sections,
-            string globalManifestHash,
-            IReadOnlyList<FoxRunManifestCustomNativeContract> customNativeContracts = null)
+            string globalManifestHash)
         {
             ManifestVersion = manifestVersion;
             Package = packageName ?? string.Empty;
-            Generator = generator ?? throw new ArgumentNullException(nameof(generator));
-            Sections = sections ?? throw new ArgumentNullException(nameof(sections));
+            Generator =
+                generator
+                ?? throw new ArgumentNullException(nameof(generator));
+            Sections =
+                sections
+                ?? throw new ArgumentNullException(nameof(sections));
             GlobalManifestHash = globalManifestHash ?? string.Empty;
-            CustomNativeContracts = new List<FoxRunManifestCustomNativeContract>(
-                customNativeContracts ?? Array.Empty<FoxRunManifestCustomNativeContract>()).AsReadOnly();
         }
     }
 
@@ -335,7 +290,9 @@ namespace Unity.FoxgloveSDK.Editor
         public string Name { get; }
         public int MajorVersion { get; }
 
-        public FoxRunManifestGenerator(string name, int majorVersion)
+        public FoxRunManifestGenerator(
+            string name,
+            int majorVersion)
         {
             Name = name ?? string.Empty;
             MajorVersion = majorVersion;
@@ -347,8 +304,14 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunManifestFoxRunSection FoxRun { get; }
         public FoxRunManifestSubscriptionSection Subscriptions { get; }
 
-        public FoxRunManifestSections(FoxRunManifestFoxRunSection foxRun)
-            : this(foxRun, new FoxRunManifestSubscriptionSection(string.Empty, Array.Empty<FoxRunManifestSubscriptionBinding>()))
+        public FoxRunManifestSections(
+            FoxRunManifestFoxRunSection foxRun)
+            : this(
+                foxRun,
+                new FoxRunManifestSubscriptionSection(
+                    string.Empty,
+                    Array.Empty<
+                        FoxRunManifestSubscriptionBinding>()))
         {
         }
 
@@ -356,23 +319,34 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunManifestFoxRunSection foxRun,
             FoxRunManifestSubscriptionSection subscriptions)
         {
-            FoxRun = foxRun ?? throw new ArgumentNullException(nameof(foxRun));
-            Subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
+            FoxRun =
+                foxRun
+                ?? throw new ArgumentNullException(nameof(foxRun));
+            Subscriptions =
+                subscriptions
+                ?? throw new ArgumentNullException(
+                    nameof(subscriptions));
         }
     }
 
     public sealed class FoxRunManifestSubscriptionSection
     {
         public string ManifestHash { get; }
-        public IReadOnlyList<FoxRunManifestSubscriptionBinding> Bindings { get; }
+        public IReadOnlyList<FoxRunManifestSubscriptionBinding>
+            Bindings { get; }
 
         public FoxRunManifestSubscriptionSection(
             string manifestHash,
-            IReadOnlyList<FoxRunManifestSubscriptionBinding> bindings)
+            IReadOnlyList<FoxRunManifestSubscriptionBinding>
+                bindings)
         {
             ManifestHash = manifestHash ?? string.Empty;
-            Bindings = new List<FoxRunManifestSubscriptionBinding>(
-                bindings ?? Array.Empty<FoxRunManifestSubscriptionBinding>()).AsReadOnly();
+            Bindings = new List<
+                    FoxRunManifestSubscriptionBinding>(
+                    bindings
+                    ?? Array.Empty<
+                        FoxRunManifestSubscriptionBinding>())
+                .AsReadOnly();
         }
     }
 
@@ -382,126 +356,48 @@ namespace Unity.FoxgloveSDK.Editor
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public string DeclaredSource { get; }
-        public string DeclaredTargets { get; }
-        public string QosProfile { get; }
-        public string QosReliability { get; }
-        public string QosDurability { get; }
-        public string QosHistory { get; }
-        public int QosDepth { get; }
+        public IReadOnlyList<string> PublishTransportIds { get; }
+        public string SubscribeTransportId { get; }
+        public string Reliability { get; }
+        public string Durability { get; }
+        public string History { get; }
+        public int Depth { get; }
         public bool SupportsWebSocket { get; }
-        public bool SupportsRos2Native { get; }
         public bool IsStream { get; }
-        public string NativeType { get; }
-        public string CanonicalRosType { get; }
-        public string CopyShapeIdentity { get; }
-        public FoxRunRos2ContractKind Ros2ContractKind { get; }
-        public string CustomDtoIdentity { get; }
-        public string CustomPayloadIdentity { get; }
-        public string CustomEnvelopeIdentity { get; }
 
         public FoxRunManifestSubscriptionBinding(
             string declaringType,
             string memberName,
             string topic,
             string flow,
-            string declaredSource,
-            string qosProfile,
+            IReadOnlyList<string> publishTransportIds,
+            string subscribeTransportId,
+            string reliability,
+            string durability,
+            string history,
+            int depth,
             bool supportsWebSocket,
-            bool supportsRos2Native,
-            string nativeType,
-            string canonicalRosType,
-            string copyShapeIdentity,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
-            string customDtoIdentity = "",
-            string customPayloadIdentity = "",
-            string customEnvelopeIdentity = "",
-            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
-            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0,
-            bool isStream = false)
+            bool isStream)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredSource = declaredSource ?? string.Empty;
-            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            QosProfile = qosProfile ?? string.Empty;
-            QosReliability = qosReliability ?? string.Empty;
-            QosDurability = qosDurability ?? string.Empty;
-            QosHistory = qosHistory ?? string.Empty;
-            QosDepth = qosDepth;
+            PublishTransportIds = publishTransportIds == null
+                ? null
+                : Array.AsReadOnly(
+                    publishTransportIds
+                        .OrderBy(
+                            value => value,
+                            StringComparer.Ordinal)
+                        .ToArray());
+            SubscribeTransportId = subscribeTransportId;
+            Reliability = reliability ?? "inherit";
+            Durability = durability ?? "inherit";
+            History = history ?? "inherit";
+            Depth = depth;
             SupportsWebSocket = supportsWebSocket;
-            SupportsRos2Native = supportsRos2Native;
             IsStream = isStream;
-            NativeType = nativeType ?? string.Empty;
-            CanonicalRosType = canonicalRosType ?? string.Empty;
-            CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
-            Ros2ContractKind = ros2ContractKind;
-            CustomDtoIdentity = customDtoIdentity ?? string.Empty;
-            CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
-            CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
-        }
-    }
-
-    /// <summary>
-    /// Direction-neutral manifest metadata for a supported custom DTO that has
-    /// a generated ROS2 native registration. This is intentionally not named a
-    /// subscription binding because Publish custom contracts are included.
-    /// </summary>
-    public sealed class FoxRunManifestCustomNativeContract
-    {
-        public string DeclaringType { get; }
-        public string MemberName { get; }
-        public string Topic { get; }
-        public string Flow { get; }
-        public string DeclaredSource { get; }
-        public string DeclaredTargets { get; }
-        public string QosProfile { get; }
-        public string QosReliability { get; }
-        public string QosDurability { get; }
-        public string QosHistory { get; }
-        public int QosDepth { get; }
-        public bool SupportsRos2Native { get; }
-        public string CustomDtoIdentity { get; }
-        public string CustomPayloadIdentity { get; }
-        public string CustomEnvelopeIdentity { get; }
-
-        public FoxRunManifestCustomNativeContract(
-            string declaringType,
-            string memberName,
-            string topic,
-            string flow,
-            string declaredSource,
-            string qosProfile,
-            bool supportsRos2Native,
-            string customDtoIdentity,
-            string customPayloadIdentity,
-            string customEnvelopeIdentity,
-            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
-            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
-            int qosDepth = 0)
-        {
-            DeclaringType = declaringType ?? string.Empty;
-            MemberName = memberName ?? string.Empty;
-            Topic = topic ?? string.Empty;
-            Flow = flow ?? string.Empty;
-            DeclaredSource = declaredSource ?? string.Empty;
-            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            QosProfile = qosProfile ?? string.Empty;
-            QosReliability = qosReliability ?? string.Empty;
-            QosDurability = qosDurability ?? string.Empty;
-            QosHistory = qosHistory ?? string.Empty;
-            QosDepth = qosDepth;
-            SupportsRos2Native = supportsRos2Native;
-            CustomDtoIdentity = customDtoIdentity ?? string.Empty;
-            CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
-            CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
         }
     }
 
@@ -510,15 +406,15 @@ namespace Unity.FoxgloveSDK.Editor
         public string ManifestHash { get; }
         public IReadOnlyList<FoxRunManifestType> Types { get; }
 
-        public FoxRunManifestFoxRunSection(string manifestHash, IReadOnlyList<FoxRunManifestType> types)
+        public FoxRunManifestFoxRunSection(
+            string manifestHash,
+            IReadOnlyList<FoxRunManifestType> types)
         {
             ManifestHash = manifestHash ?? string.Empty;
-            Types = Copy(types);
-        }
-
-        private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
-        {
-            return new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
+            Types = new List<FoxRunManifestType>(
+                    types
+                    ?? Array.Empty<FoxRunManifestType>())
+                .AsReadOnly();
         }
     }
 
@@ -527,10 +423,15 @@ namespace Unity.FoxgloveSDK.Editor
         public string DeclaringType { get; }
         public IReadOnlyList<FoxRunManifestContract> Contracts { get; }
 
-        public FoxRunManifestType(string declaringType, IReadOnlyList<FoxRunManifestContract> contracts)
+        public FoxRunManifestType(
+            string declaringType,
+            IReadOnlyList<FoxRunManifestContract> contracts)
         {
             DeclaringType = declaringType ?? string.Empty;
-            Contracts = new List<FoxRunManifestContract>(contracts ?? Array.Empty<FoxRunManifestContract>()).AsReadOnly();
+            Contracts = new List<FoxRunManifestContract>(
+                    contracts
+                    ?? Array.Empty<FoxRunManifestContract>())
+                .AsReadOnly();
         }
     }
 
@@ -602,28 +503,48 @@ namespace Unity.FoxgloveSDK.Editor
             IncludesTransportSelection = includesTransportSelection;
             PublishTransportIds = publishTransportIds == null
                 ? null
-                : Array.AsReadOnly(new List<string>(publishTransportIds).ToArray());
+                : Array.AsReadOnly(
+                    publishTransportIds
+                        .OrderBy(
+                            value => value,
+                            StringComparer.Ordinal)
+                        .ToArray());
             SubscribeTransportId = subscribeTransportId;
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
             PolicyHash = policyHash ?? string.Empty;
-            Flow = string.IsNullOrWhiteSpace(flow) ? "Publish" : flow;
-            Fields = new List<FoxRunManifestField>(fields ?? Array.Empty<FoxRunManifestField>()).AsReadOnly();
-            Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            Flow = string.IsNullOrWhiteSpace(flow)
+                ? "Publish"
+                : flow;
+            Fields = new List<FoxRunManifestField>(
+                    fields
+                    ?? Array.Empty<FoxRunManifestField>())
+                .AsReadOnly();
+            Policy =
+                policy
+                ?? throw new ArgumentNullException(nameof(policy));
             PublishAvailable = publishAvailable;
             SubscribeAvailable = subscribeAvailable;
             PublishUnavailableDiagnosticId = publishAvailable
                 ? string.Empty
-                : publishUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+                : publishUnavailableDiagnosticId
+                  ?? unavailableDiagnosticId
+                  ?? string.Empty;
             PublishUnavailableReason = publishAvailable
                 ? string.Empty
-                : publishUnavailableReason ?? unavailableReason ?? string.Empty;
+                : publishUnavailableReason
+                  ?? unavailableReason
+                  ?? string.Empty;
             SubscribeUnavailableDiagnosticId = subscribeAvailable
                 ? string.Empty
-                : subscribeUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+                : subscribeUnavailableDiagnosticId
+                  ?? unavailableDiagnosticId
+                  ?? string.Empty;
             SubscribeUnavailableReason = subscribeAvailable
                 ? string.Empty
-                : subscribeUnavailableReason ?? unavailableReason ?? string.Empty;
+                : subscribeUnavailableReason
+                  ?? unavailableReason
+                  ?? string.Empty;
         }
 
         private static string SharedUnavailableValue(
@@ -633,14 +554,19 @@ namespace Unity.FoxgloveSDK.Editor
             string subscribeValue)
         {
             if (publishAvailable)
-                return subscribeAvailable ? string.Empty : subscribeValue;
+                return subscribeAvailable
+                    ? string.Empty
+                    : subscribeValue;
             if (subscribeAvailable)
                 return publishValue;
             if (string.IsNullOrEmpty(publishValue))
                 return subscribeValue;
             if (string.IsNullOrEmpty(subscribeValue))
                 return publishValue;
-            return string.Equals(publishValue, subscribeValue, StringComparison.Ordinal)
+            return string.Equals(
+                publishValue,
+                subscribeValue,
+                StringComparison.Ordinal)
                 ? publishValue
                 : string.Empty;
         }
@@ -680,12 +606,13 @@ namespace Unity.FoxgloveSDK.Editor
             Array = array;
             Aggregate = aggregate;
             TypeShape = typeShape;
-            ProtobufMetadata = protobufMetadata
-                               ?? (protobufFieldNumber == 0
-                                   ? null
-                                   : FoxRunProtobufMetadata.FromTypeShape(
-                                       typeShape,
-                                       protobufFieldNumber));
+            ProtobufMetadata =
+                protobufMetadata
+                ?? (protobufFieldNumber == 0
+                    ? null
+                    : FoxRunProtobufMetadata.FromTypeShape(
+                        typeShape,
+                        protobufFieldNumber));
             NormalizedSchedule = normalizedSchedule;
         }
     }

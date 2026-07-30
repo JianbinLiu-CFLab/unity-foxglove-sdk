@@ -28,6 +28,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static readonly FoxRunTransportId StableId =
             new FoxRunTransportId(IdValue);
 
+        [SerializeField]
+        private FoxRunRos2QosProfileSettings _publishQos =
+            new FoxRunRos2QosProfileSettings();
+        [SerializeField]
+        private FoxRunRos2QosProfileSettings _subscribeQos =
+            new FoxRunRos2QosProfileSettings();
+        [SerializeField, Min(
+            FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        private int _nativeCopyBudgetBytes =
+            FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes;
+
         private FoxgloveManager _manager;
         private FoxRunRos2CustomPublisherHub _publisherHub;
         private FoxRunRos2SubscriptionHub _subscriptionHub;
@@ -39,6 +50,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public FoxRunTransportCapabilities Capabilities =>
             FoxRunTransportCapabilities.Publish
             | FoxRunTransportCapabilities.Subscribe;
+
+        internal FoxRunResolvedQos ActivePublishQos
+        {
+            get;
+            private set;
+        } = FoxRunResolvedQos.Default;
+
+        internal FoxRunResolvedQos ActiveSubscribeQos
+        {
+            get;
+            private set;
+        } = FoxRunResolvedQos.Default;
+
+        internal int ActiveNativeCopyBudgetBytes
+        {
+            get;
+            private set;
+        } = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes;
 
         public FoxRunTransportLifecycleState LifecycleState
         {
@@ -77,7 +106,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
 
-            Activate(generation);
+            try
+            {
+                Activate(generation);
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(
+                    exception))
+            {
+                reason =
+                    "R2FU Provider configuration is invalid: "
+                    + exception.Message;
+                return false;
+            }
             session = new Session(this, generation);
             reason = string.Empty;
             return true;
@@ -107,8 +148,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 GetOrAddOwnedHub<FoxRunRos2CustomPublisherHub>();
             _subscriptionHub ??=
                 GetOrAddOwnedHub<FoxRunRos2SubscriptionHub>();
-            _publisherHub.BindProviderOwner(_manager);
-            _subscriptionHub.BindProviderOwner(_manager);
+            _publisherHub.BindProviderOwner(_manager, this);
+            _subscriptionHub.BindProviderOwner(_manager, this);
 
             if (Interlocked.Exchange(ref _registered, 1) == 0)
                 _manager.RegisterFoxRunTransportProvider(this);
@@ -126,6 +167,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Activate(ulong generation)
         {
+            _publishQos ??=
+                new FoxRunRos2QosProfileSettings();
+            _subscribeQos ??=
+                new FoxRunRos2QosProfileSettings();
+            ActivePublishQos = _publishQos.Resolve();
+            ActiveSubscribeQos = _subscribeQos.Resolve();
+            ActiveNativeCopyBudgetBytes =
+                FoxRunRos2NativeCopyBudgetPolicy
+                    .NormalizeSerializedBytes(
+                        _nativeCopyBudgetBytes);
             Interlocked.Exchange(ref _activeGeneration, checked((long)generation));
             _publisherHub.SetProviderSessionActive(true);
             _subscriptionHub.SetProviderSessionActive(true);
@@ -151,8 +202,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Interlocked.Exchange(ref _activeGeneration, -1);
             _publisherHub?.SetProviderSessionActive(false);
             _subscriptionHub?.SetProviderSessionActive(false);
-            _publisherHub?.BindProviderOwner(null);
-            _subscriptionHub?.BindProviderOwner(null);
+            _publisherHub?.BindProviderOwner(null, null);
+            _subscriptionHub?.BindProviderOwner(null, null);
 
             var manager = _manager;
             _manager = null;

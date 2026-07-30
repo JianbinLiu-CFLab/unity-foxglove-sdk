@@ -39,13 +39,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void SamplesDocumentHasSingleNumberFiveHeading()
+        public void SamplesDocumentKeepsBridgeOutOfCoreAndSequentialHeadings()
         {
             var doc = TestSources.Text("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
 
-            Assert.DoesNotContain("## 5. Repository Demo Project", doc, StringComparison.Ordinal);
-            Assert.Contains("## 5. ROS2 Bridge Sample", doc, StringComparison.Ordinal);
-            Assert.Contains("## 6. Repository Demo Project", doc, StringComparison.Ordinal);
+            Assert.DoesNotContain("## 5. ROS2 Bridge Sample", doc, StringComparison.Ordinal);
+            Assert.Contains("## 5. Repository Demo Project", doc, StringComparison.Ordinal);
+            Assert.Contains("## 6. Sample Promotion Rule", doc, StringComparison.Ordinal);
         }
 
         [Fact]

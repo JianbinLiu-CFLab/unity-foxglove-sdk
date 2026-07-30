@@ -126,7 +126,7 @@ namespace Unity.FoxgloveSDK.Tests
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPackedBytes"",\s*0\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(lidar,\s*""_maxRaycastCommandsPerFixedUpdate"",\s*\d+\)")
                    && (source.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
-                       || source.Contains("PointCloudOutputMode.PointCloud2Native", StringComparison.Ordinal));
+                       || source.Contains("PointCloudOutputMode.PackedPointCloud", StringComparison.Ordinal));
         }
 
         private static void VerifyVirtualLidarIgnoresDemoVehicleSelfHits()

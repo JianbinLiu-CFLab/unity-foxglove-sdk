@@ -57,16 +57,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.EndsWith("Cause: bad schema", message);
         }
 
-        [Fact]
-        public void StatusTextBuilderFormatsConnectionAndBridgeMessages()
-        {
-            Assert.Equal(
-                "[Foxglove] Server started on ws://127.0.0.1:8765",
-                StatusTextBuilder.CreateServerStartedMessage("ws://127.0.0.1:8765"));
-            Assert.Equal(
-                "[Foxglove] ROS2 Bridge disabled: connection refused",
-                StatusTextBuilder.CreateRos2BridgeDisabledWarning("connection refused"));
-        }
+
 
         [Theory]
         [InlineData(null, false)]

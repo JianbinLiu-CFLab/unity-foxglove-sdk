@@ -36,12 +36,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string Ros2Namespace = "ROS2";
         private const string Ros2UnityComponentSuffix = "Unity" + "Component";
         private const string Ros2ForUnitySuffix = "ForUnity";
-        private const string Ros2NativeEnabledSerializedProperty =
-            "_ros2NativeEnabled";
+        private const string R2fuProviderId =
+            "unity2foxglove.r2fu";
+        private const string PublishTransportIdsSerializedProperty =
+            "_foxRunPublishTransportIds";
         private const string FoxRunInboundEnabledSerializedProperty =
             "_enableFoxRunInbound";
-        private const string FoxRunEndpointSerializedProperty =
-            "_defaultFoxRunSubscriptionSource";
+        private const string SubscribeTransportIdSerializedProperty =
+            "_foxRunSubscribeTransportId";
         private const string FoxRunRos2SubscriptionHubTypeName =
             "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub";
         private const string FoxRunRos2CustomPublisherHubTypeName =
@@ -309,10 +311,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             var hasDemand = false;
             var loadedScene = FoxRunLoadedSceneContractProbe.CaptureLoadedScenes();
-            var hasExplicitNativeContract =
-                loadedScene.HasExplicitNativeSubscriptionContract;
-            var hasExplicitNativePublishContract =
-                loadedScene.HasExplicitNativePublishContract;
+            var hasExplicitProviderContract =
+                loadedScene.HasExplicitPublishTransport(R2fuProviderId)
+                || loadedScene.HasExplicitSubscribeTransport(R2fuProviderId);
             foreach (var behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
             {
                 if (behaviour == null)
@@ -327,66 +328,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     continue;
 
                 var serialized = new SerializedObject(behaviour);
-                var ros2NativeEnabled = serialized.FindProperty(Ros2NativeEnabledSerializedProperty);
                 var subscriptionsEnabled = serialized.FindProperty(FoxRunInboundEnabledSerializedProperty);
-                var defaultProvider = serialized.FindProperty(FoxRunEndpointSerializedProperty);
-                if (ros2NativeEnabled != null
-                    && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean
-                    && subscriptionsEnabled != null
-                    && subscriptionsEnabled.propertyType == SerializedPropertyType.Boolean
-                    && defaultProvider != null
-                    && defaultProvider.propertyType == SerializedPropertyType.Enum)
+                var publishIds = serialized.FindProperty(
+                    PublishTransportIdsSerializedProperty);
+                var subscribeId = serialized.FindProperty(
+                    SubscribeTransportIdSerializedProperty);
+                var selectedForPublish =
+                    SerializedArrayContains(publishIds, R2fuProviderId);
+                var selectedForSubscribe =
+                    subscriptionsEnabled != null
+                    && subscriptionsEnabled.propertyType
+                    == SerializedPropertyType.Boolean
+                    && subscriptionsEnabled.boolValue
+                    && subscribeId != null
+                    && subscribeId.propertyType
+                    == SerializedPropertyType.String
+                    && string.Equals(
+                        subscribeId.stringValue,
+                        R2fuProviderId,
+                        StringComparison.Ordinal);
+                if (selectedForPublish
+                    || selectedForSubscribe
+                    || hasExplicitProviderContract)
                 {
-                    var provider = defaultProvider.intValue == (int)FoxRunEndpoint.Ros2Native
-                        ? FoxRunEndpoint.Ros2Native
-                        : FoxRunEndpoint.Foxglove;
-                    var effectivePublishTargets = ros2NativeEnabled.boolValue
-                        ? FoxRunEndpoint.Ros2Native
-                        : FoxRunEndpoint.Foxglove;
-                    if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
-                            nativeOutputEnabled: ros2NativeEnabled.boolValue,
-                            defaultPublishTargets: effectivePublishTargets,
-                            hasExplicitNativePublishContract:
-                                hasExplicitNativePublishContract,
-                            subscriptionsEnabled: subscriptionsEnabled.boolValue,
-                            defaultSubscriptionSource: provider,
-                            hasExplicitNativeContract: hasExplicitNativeContract))
-                    {
-                        hasDemand = true;
-                        break;
-                    }
-                    continue;
-                }
-
-                try
-                {
-                    var output = ReadBoolProperty(type, behaviour, "Ros2NativeEnabled");
-                    var subscriptions = ReadBoolProperty(type, behaviour, "EnableFoxRunInbound");
-                    var provider = ReadSourceProperty(
-                        type,
-                        behaviour,
-                        "DefaultFoxRunSubscriptionSource");
-                    var publishTargets = ReadEndpointProperty(
-                        type,
-                        behaviour,
-                        "DefaultFoxRunPublishTargets",
-                        FoxRunEndpoint.Foxglove);
-                    if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
-                            nativeOutputEnabled: output,
-                            defaultPublishTargets: publishTargets,
-                            hasExplicitNativePublishContract:
-                                hasExplicitNativePublishContract,
-                            subscriptionsEnabled: subscriptions,
-                            defaultSubscriptionSource: provider,
-                            hasExplicitNativeContract: hasExplicitNativeContract))
-                    {
-                        hasDemand = true;
-                        break;
-                    }
-                }
-                catch (Exception)
-                {
-                    // Ignore editor reflection races while Unity is entering Play Mode.
+                    hasDemand = true;
+                    break;
                 }
             }
 
@@ -395,42 +361,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             return hasDemand;
         }
 
-        private static bool ReadBoolProperty(Type type, object instance, string propertyName)
+        private static bool SerializedArrayContains(
+            SerializedProperty property,
+            string expected)
         {
-            var property = type.GetProperty(
-                propertyName,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            return property != null
-                   && property.PropertyType == typeof(bool)
-                   && (bool)property.GetValue(instance, null);
-        }
-
-        private static FoxRunEndpoint ReadSourceProperty(
-            Type type,
-            object instance,
-            string propertyName)
-            => ReadEndpointProperty(
-                type,
-                instance,
-                propertyName,
-                FoxRunEndpoint.Foxglove) == FoxRunEndpoint.Ros2Native
-                ? FoxRunEndpoint.Ros2Native
-                : FoxRunEndpoint.Foxglove;
-
-        private static FoxRunEndpoint ReadEndpointProperty(
-            Type type,
-            object instance,
-            string propertyName,
-            FoxRunEndpoint fallback)
-        {
-            var property = type.GetProperty(
-                propertyName,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            return property != null
-                   && property.PropertyType == typeof(FoxRunEndpoint)
-                   && property.GetValue(instance, null) is FoxRunEndpoint endpoint
-                ? endpoint
-                : fallback;
+            if (property == null || !property.isArray)
+                return false;
+            for (var index = 0; index < property.arraySize; index++)
+            {
+                var element = property.GetArrayElementAtIndex(index);
+                if (element != null
+                    && element.propertyType == SerializedPropertyType.String
+                    && string.Equals(
+                        element.stringValue,
+                        expected,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static void InvalidateNativeDemandCache()

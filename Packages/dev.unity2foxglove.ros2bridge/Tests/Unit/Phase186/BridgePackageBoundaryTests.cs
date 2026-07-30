@@ -71,6 +71,47 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
         }
 
         [Fact]
+        public void BridgeAnalyzerIgnoresDefaultTransportMembers()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9);
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{
+    public partial class DefaultPublisher
+    {
+        [FoxRun(""/phase186/default"")]
+        private int _value;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "phase186_bridge_default_transport",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                PlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                FoxRunAnalyzerTestComposition.CoreAndBridge(),
+                parseOptions: parseOptions);
+            driver = driver.RunGenerators(compilation);
+            var run = driver.GetRunResult();
+
+            Assert.All(
+                run.Results,
+                result => Assert.Null(result.Exception));
+            Assert.Empty(run.Diagnostics.Where(
+                diagnostic =>
+                    diagnostic.Severity == DiagnosticSeverity.Error));
+            Assert.DoesNotContain(
+                run.Results.SelectMany(
+                    result => result.GeneratedSources),
+                item => item.HintName.Contains(
+                    "ros2bridge",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void CoreAndBridgeAnalyzersEmitDistinctPartials()
         {
             var parseOptions = new CSharpParseOptions(
@@ -116,6 +157,10 @@ namespace Demo
             Assert.Contains(
                 "Demo_Publisher_FoxRun.g.cs",
                 generated.Keys);
+            Assert.Contains(
+                "__foxRunCaptureSequence_0",
+                generated["Demo_Publisher_FoxRun.g.cs"],
+                StringComparison.Ordinal);
             var bridgeHint =
                 "Demo_Publisher_unity2foxglove_ros2bridge_typed_cdr_FoxRun.g.cs";
             Assert.Contains(bridgeHint, generated.Keys);

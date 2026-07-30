@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Ros2ForUnity.Editor
-// Purpose: Data Transport presentation for manifest-resolved FoxRun custom ROS2 typesupport.
+// Purpose: Data Transport presentation for R2FU-projected FoxRun custom ROS2 typesupport.
 
 #if UNITY_EDITOR
 using System;
@@ -29,20 +29,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static string _zenohRouterSettingsError;
 
         /// <summary>
-        /// Late-bound from the ROS-free Manager Inspector. Contracts are a
-        /// generated core metadata snapshot; no Unity object or ROS2 endpoint
-        /// is accessed by the preflight path.
+        /// Draws an R2FU-local projection over one validated neutral
+        /// declaration snapshot. No ROS-specific shape is retained by the
+        /// core SDK.
         /// </summary>
         public static void DrawCustomTypesupportPreflight(
-            IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> customNativeContracts)
+            IReadOnlyList<
+                Ros2ForUnityCustomTypesupportContract> contracts)
         {
+            contracts ??=
+                Array.Empty<
+                    Ros2ForUnityCustomTypesupportContract>();
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             var runtimeStatus = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
             var runtime = runtimeStatus?.SelectedRuntime;
             var activeAddOns = Ros2ForUnityCustomTypesupportSelectionTransaction.GetActiveAddOnPackageIds(projectDirectory);
             var activeAddOn = activeAddOns.Count == 1 ? activeAddOns[0] : string.Empty;
-            var source = Ros2ForUnityCustomTypesupportDiscovery.Discover(projectDirectory, activeAddOn).Source;
-            var contracts = BuildCustomContracts(customNativeContracts, source.RosPackageName);
+            var source = Ros2ForUnityCustomTypesupportDiscovery
+                .Discover(projectDirectory, activeAddOn)
+                .Source;
+            contracts = QualifyContracts(
+                contracts,
+                source.RosPackageName);
             var selection = runtime == null
                 ? null
                 : Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(projectDirectory);
@@ -76,34 +84,51 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             DrawAddOnSelection(projectDirectory, runtime, result);
         }
 
-        private static IReadOnlyList<Ros2ForUnityCustomTypesupportContract> BuildCustomContracts(
-            IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> customNativeContracts,
-            string rosPackageName)
+        private static IReadOnlyList<
+            Ros2ForUnityCustomTypesupportContract>
+            QualifyContracts(
+                IReadOnlyList<
+                    Ros2ForUnityCustomTypesupportContract> contracts,
+                string rosPackageName)
         {
-            if (customNativeContracts == null)
-                return Array.Empty<Ros2ForUnityCustomTypesupportContract>();
+            return contracts
+                .Where(contract => contract != null)
+                .Select(contract =>
+                {
+                    var envelope =
+                        contract.CanonicalEnvelopeType;
+                    if (!string.IsNullOrWhiteSpace(
+                            rosPackageName)
+                        && !envelope.Contains(
+                            "/",
+                            StringComparison.Ordinal))
+                    {
+                        envelope =
+                            rosPackageName
+                            + "/msg/"
+                            + envelope;
+                    }
 
-            return customNativeContracts
-                .Where(contract => contract != null
-                                   && contract.SupportsRos2Native
-                                   && !string.IsNullOrWhiteSpace(contract.CustomEnvelopeIdentity))
-                .Select(contract => new Ros2ForUnityCustomTypesupportContract(
-                    string.IsNullOrWhiteSpace(rosPackageName)
-                        ? contract.CustomEnvelopeIdentity
-                        : rosPackageName + "/msg/" + contract.CustomEnvelopeIdentity,
-                    Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(
-                        contract.Flow,
-                        contract.QosProfile,
-                        contract.QosReliability,
-                        contract.QosDurability,
-                        contract.QosHistory,
-                        contract.QosDepth)))
+                    return new
+                        Ros2ForUnityCustomTypesupportContract(
+                            envelope,
+                            contract.DirectionalPolicy);
+                })
                 .GroupBy(
-                    contract => contract.CanonicalEnvelopeType + "\u001f" + contract.DirectionalPolicy,
+                    contract =>
+                        contract.CanonicalEnvelopeType
+                        + "\u001f"
+                        + contract.DirectionalPolicy,
                     StringComparer.Ordinal)
                 .Select(group => group.First())
-                .OrderBy(contract => contract.CanonicalEnvelopeType, StringComparer.Ordinal)
-                .ThenBy(contract => contract.DirectionalPolicy, StringComparer.Ordinal)
+                .OrderBy(
+                    contract =>
+                        contract.CanonicalEnvelopeType,
+                    StringComparer.Ordinal)
+                .ThenBy(
+                    contract =>
+                        contract.DirectionalPolicy,
+                    StringComparer.Ordinal)
                 .ToArray();
         }
 

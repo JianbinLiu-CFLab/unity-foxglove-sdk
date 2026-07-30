@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Publishers
-// Purpose: Dedicated Inspector for point-cloud publisher output and QoS controls.
+// Purpose: Dedicated Inspector for point-cloud publisher output controls.
 
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Util;
@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             "Raw",
             "Draco",
-            "PointCloud2 Native"
+            "Packed Provider Frame"
         };
 
         private DracoPointCloudNativeCheckResult _dracoCheck =
@@ -34,15 +34,15 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _publishOnEnable;
         private SerializedProperty _warnIfManagerMissing;
         private SerializedProperty _frameId;
-        private SerializedProperty _publishPointCloud2NativeTfAnchor;
-        private SerializedProperty _pointCloud2NativeTfParentFrame;
-        private SerializedProperty _pointCloud2NativeTfChildFrame;
-        private SerializedProperty _pointCloud2NativeTfTranslation;
-        private SerializedProperty _pointCloud2NativeTfRotationEuler;
+        private SerializedProperty _publishPackedPointCloudTfAnchor;
+        private SerializedProperty _packedPointCloudTfParentFrame;
+        private SerializedProperty _packedPointCloudTfChildFrame;
+        private SerializedProperty _packedPointCloudTfTranslation;
+        private SerializedProperty _packedPointCloudTfRotationEuler;
         private SerializedProperty _enableMotionCompensation;
         private SerializedProperty _motionCompensationOutputPolicy;
-        private SerializedProperty _deskewedPointCloud2NativeTopic;
-        private SerializedProperty _deskewedPointCloud2NativeMaxPublishRateHz;
+        private SerializedProperty _deskewedPackedPointCloudTopic;
+        private SerializedProperty _deskewedPackedPointCloudMaxPublishRateHz;
         private SerializedProperty _motionCompensationReferenceTime;
         private SerializedProperty _motionCompensationSource;
         private SerializedProperty _samplingMode;
@@ -56,8 +56,6 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _publishRateSource;
         private SerializedProperty _publishRateHz;
         private SerializedProperty _encodingOverride;
-        private SerializedProperty _bridgeOutput;
-        private SerializedProperty _bridgeTopicOverride;
 
         private void OnEnable()
         {
@@ -68,15 +66,15 @@ namespace Unity.FoxgloveSDK.Editor
             _publishOnEnable = serializedObject.FindProperty("_publishOnEnable");
             _warnIfManagerMissing = serializedObject.FindProperty("_warnIfManagerMissing");
             _frameId = serializedObject.FindProperty("_frameId");
-            _publishPointCloud2NativeTfAnchor = serializedObject.FindProperty("_publishPointCloud2NativeTfAnchor");
-            _pointCloud2NativeTfParentFrame = serializedObject.FindProperty("_pointCloud2NativeTfParentFrame");
-            _pointCloud2NativeTfChildFrame = serializedObject.FindProperty("_pointCloud2NativeTfChildFrame");
-            _pointCloud2NativeTfTranslation = serializedObject.FindProperty("_pointCloud2NativeTfTranslation");
-            _pointCloud2NativeTfRotationEuler = serializedObject.FindProperty("_pointCloud2NativeTfRotationEuler");
+            _publishPackedPointCloudTfAnchor = serializedObject.FindProperty("_publishPackedPointCloudTfAnchor");
+            _packedPointCloudTfParentFrame = serializedObject.FindProperty("_packedPointCloudTfParentFrame");
+            _packedPointCloudTfChildFrame = serializedObject.FindProperty("_packedPointCloudTfChildFrame");
+            _packedPointCloudTfTranslation = serializedObject.FindProperty("_packedPointCloudTfTranslation");
+            _packedPointCloudTfRotationEuler = serializedObject.FindProperty("_packedPointCloudTfRotationEuler");
             _enableMotionCompensation = serializedObject.FindProperty("_enableMotionCompensation");
             _motionCompensationOutputPolicy = serializedObject.FindProperty("_motionCompensationOutputPolicy");
-            _deskewedPointCloud2NativeTopic = serializedObject.FindProperty("_deskewedPointCloud2NativeTopic");
-            _deskewedPointCloud2NativeMaxPublishRateHz = serializedObject.FindProperty("_deskewedPointCloud2NativeMaxPublishRateHz");
+            _deskewedPackedPointCloudTopic = serializedObject.FindProperty("_deskewedPackedPointCloudTopic");
+            _deskewedPackedPointCloudMaxPublishRateHz = serializedObject.FindProperty("_deskewedPackedPointCloudMaxPublishRateHz");
             _motionCompensationReferenceTime = serializedObject.FindProperty("_motionCompensationReferenceTime");
             _motionCompensationSource = serializedObject.FindProperty("_motionCompensationSource");
             _samplingMode = serializedObject.FindProperty("_samplingMode");
@@ -90,8 +88,6 @@ namespace Unity.FoxgloveSDK.Editor
             _publishRateSource = serializedObject.FindProperty("_publishRateSource");
             _publishRateHz = serializedObject.FindProperty("_publishRateHz");
             _encodingOverride = serializedObject.FindProperty("_encodingOverride");
-            _bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
-            _bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
         }
 
         /// <summary>
@@ -105,7 +101,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawScriptField();
             DrawOutputModeSection(_outputMode, _topic);
             DrawGeneralSection();
-            if (GetMode(_outputMode) == PointCloudOutputMode.PointCloud2Native)
+            if (GetMode(_outputMode) == PointCloudOutputMode.PackedPointCloud)
             {
                 DrawMotionCompensationSection();
             }
@@ -119,10 +115,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
-            DrawRos2BridgeSection();
-            if (GetMode(_outputMode) == PointCloudOutputMode.PointCloud2Native)
+            if (GetMode(_outputMode) == PointCloudOutputMode.PackedPointCloud)
             {
-                DrawPointCloud2NativeTfAnchorSection();
+                DrawPackedPointCloudTfAnchorSection();
             }
 
             serializedObject.ApplyModifiedProperties();
@@ -161,16 +156,16 @@ namespace Unity.FoxgloveSDK.Editor
                     "Raw mode publishes foxglove.PointCloud and supports JSON or protobuf without external dependencies.",
                     MessageType.Info);
             }
-            else if (mode == PointCloudOutputMode.PointCloud2Native)
+            else if (mode == PointCloudOutputMode.PackedPointCloud)
             {
                 EditorGUILayout.HelpBox(
-                    "PointCloud2 Native mode publishes standard sensor_msgs/msg/PointCloud2 as ROS2 CDR for SLAM consumers. Virtual LiDAR source frames use a native snapshot path and background CDR packing.",
+                    "Packed Provider Frame mode prepares bounded point metadata and bytes for an installed transport Provider. It does not select a wire protocol in the core SDK.",
                     MessageType.Info);
             }
             else
             {
                 EditorGUILayout.HelpBox(
-                    "Draco mode publishes foxglove.CompressedPointCloud with format = \"draco\". It supports Protobuf and ROS2 using the bundled Windows native plugin.",
+                    "Draco mode publishes foxglove.CompressedPointCloud with format = \"draco\" using the bundled native plugin.",
                     MessageType.Info);
             }
         }
@@ -185,22 +180,22 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty(_frameId, "Frame Id");
         }
 
-        private void DrawPointCloud2NativeTfAnchorSection()
+        private void DrawPackedPointCloudTfAnchorSection()
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Optional TF Anchor", EditorStyles.boldLabel);
-            DrawProperty(_publishPointCloud2NativeTfAnchor, "Publish PointCloud2 TF Anchor");
+            DrawProperty(_publishPackedPointCloudTfAnchor, "Publish PackedPointCloud TF Anchor");
 
-            if (_publishPointCloud2NativeTfAnchor != null && _publishPointCloud2NativeTfAnchor.boolValue)
+            if (_publishPackedPointCloudTfAnchor != null && _publishPackedPointCloudTfAnchor.boolValue)
             {
-                DrawProperty(_pointCloud2NativeTfParentFrame, "TF Parent Frame");
-                DrawProperty(_pointCloud2NativeTfChildFrame, "TF Child Frame");
-                DrawProperty(_pointCloud2NativeTfTranslation, "TF Translation");
-                DrawProperty(_pointCloud2NativeTfRotationEuler, "TF Rotation Euler");
+                DrawProperty(_packedPointCloudTfParentFrame, "TF Parent Frame");
+                DrawProperty(_packedPointCloudTfChildFrame, "TF Child Frame");
+                DrawProperty(_packedPointCloudTfTranslation, "TF Translation");
+                DrawProperty(_packedPointCloudTfRotationEuler, "TF Rotation Euler");
             }
 
             EditorGUILayout.HelpBox(
-                "Off by default. Enable only as an RViz fallback when no other /tf source connects the fixed frame to this PointCloud2 Frame Id.",
+                "Off by default. Enable only as an RViz fallback when no other /tf source connects the fixed frame to this PackedPointCloud Frame Id.",
                 MessageType.Info);
         }
 
@@ -212,14 +207,14 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(_enableMotionCompensation == null || !_enableMotionCompensation.boolValue))
             {
                 DrawProperty(_motionCompensationOutputPolicy, "Output Policy");
-                DrawProperty(_deskewedPointCloud2NativeTopic, "Deskewed Topic");
-                DrawProperty(_deskewedPointCloud2NativeMaxPublishRateHz, "Deskewed Max Rate Hz");
+                DrawProperty(_deskewedPackedPointCloudTopic, "Deskewed Topic");
+                DrawProperty(_deskewedPackedPointCloudMaxPublishRateHz, "Deskewed Max Rate Hz");
                 DrawProperty(_motionCompensationReferenceTime, "Reference Time");
                 DrawProperty(_motionCompensationSource, "Motion Source");
             }
 
             EditorGUILayout.HelpBox(
-                "Deskew is a visualization/output transform. Keep raw rolling PointCloud2 as the input for SLAM front ends such as FAST-LIO2 or LIVO2 that deskew from IMU and per-point time.",
+                "Deskew is a visualization/output transform. Keep raw rolling PackedPointCloud as the input for SLAM front ends such as FAST-LIO2 or LIVO2 that deskew from IMU and per-point time.",
                 MessageType.Warning);
         }
 
@@ -308,24 +303,10 @@ namespace Unity.FoxgloveSDK.Editor
                 PublisherEncodingEditorLabels.DrawPublisherOverride(_encodingOverride, "Encoding Override");
         }
 
-        private void DrawRos2BridgeSection()
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            if (_bridgeOutput != null)
-                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(_bridgeOutput, "Bridge Output");
-            if (_bridgeTopicOverride != null)
-                EditorGUILayout.PropertyField(_bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
-            EditorGUILayout.HelpBox(
-                "Raw, Draco, and PointCloud2 Native point clouds can mirror their ROS2 CDR payloads to the optional local bridge after the same source-frame timing step.",
-                MessageType.Info);
-        }
-
         private void DrawResolvedSummaries()
         {
             var publisher = (FoxglovePublisherBase)target;
             var resolution = publisher.EncodingResolution;
-            var bridgeResolution = publisher.BridgeOutputResolution;
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
@@ -338,9 +319,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
-                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
-                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
-                EditorGUILayout.TextField("Effective Bridge QoS", FoxRunRos2SubscriptionInspectorPresentation.Summary(publisher.EffectiveRos2BridgeQos));
             }
 
             if (publisher.ConfiguredManager != null
@@ -364,12 +342,6 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Warning);
             }
 
-            if (bridgeResolution.FellBack)
-            {
-                EditorGUILayout.HelpBox(
-                    "Requested ROS2 Bridge output, but this point-cloud mode cannot mirror a ROS2 payload.",
-                    MessageType.Warning);
-            }
         }
 
         private static void DrawPointCloudOutputMode(SerializedProperty outputMode)

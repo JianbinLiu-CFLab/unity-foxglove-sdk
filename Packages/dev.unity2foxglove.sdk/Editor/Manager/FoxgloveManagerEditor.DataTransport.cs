@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Manager
-// Purpose: Data Transport placement and persisted nested Inspector foldouts.
+// Purpose: Provider-neutral data transport placement.
 
 using UnityEditor;
 
@@ -23,14 +23,7 @@ namespace Unity.FoxgloveSDK.Editor
                 ref _dataTransportSubscribeExpanded,
                 DrawSubscribeDataSection);
 
-            if (HasR2fuNativeRuntimeDemand())
-            {
-                DrawDataTransportSubsection(
-                    "ROS 2 Native Runtime (R2FU) — Shared",
-                    "DataTransportNativeRuntime",
-                    ref _dataTransportNativeRuntimeExpanded,
-                    DrawR2fuRuntimeSection);
-            }
+            DrawFoxRunTransportProviderExtensions();
         }
 
         private static void DrawDataTransportSubsection(
@@ -44,7 +37,9 @@ namespace Unity.FoxgloveSDK.Editor
                     InspectorFoldoutKey(sessionStateName),
                     ref expanded,
                     EditorStyles.foldoutHeader))
+            {
                 return;
+            }
 
             EditorGUI.indentLevel++;
             try

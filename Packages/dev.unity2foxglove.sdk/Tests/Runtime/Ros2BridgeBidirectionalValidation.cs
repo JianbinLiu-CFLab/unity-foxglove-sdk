@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ProtocolFixture =
             "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json";
         private const string PreMoveFixture =
-            "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_bridge_and_mcap_vectors.json";
+            "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Phase186/Fixtures/pre_move_bridge_and_mcap_vectors.json";
         private const string InventoryFixture =
             "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_sdk_ros_inventory.json";
         private const string Provenance =
@@ -112,7 +112,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(
                 (bool?)mcap["typedFactory"]?["available"] == true
                 && (string)mcap["packageAbsent"]?["decodedKind"] == "Unsupported"
-                && (string)mcap["typedFailure"]?["decodedKind"] == "Ros2CdrDiagnostic",
+                && (string)mcap["typedFailure"]?["decodedKind"] == "Provider"
+                && (string)mcap["typedFailure"]?["decoderId"]
+                    == "unity2foxglove.ros2bridge/cdr-diagnostic",
                 "186-A5: typed ROS MCAP factory, absence, and diagnostic fallback behavior are frozen");
 
             var inventory = LoadJson(InventoryFixture);

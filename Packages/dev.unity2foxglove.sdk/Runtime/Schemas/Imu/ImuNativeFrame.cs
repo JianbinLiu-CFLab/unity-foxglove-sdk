@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Imu
-// Purpose: Schema-neutral IMU handoff payload for optional ROS2 native DDS publishers.
+// Purpose: Schema-neutral IMU handoff payload for optional transport Providers.
 
 using System.Numerics;
 
@@ -10,7 +10,7 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 {
     /// <summary>
     /// Prepared IMU sample handoff that carries ROS-compatible values without ROS or
-    /// R2FU dependencies.
+    /// optional-package dependencies.
     /// </summary>
     public sealed class ImuNativeFrame
     {

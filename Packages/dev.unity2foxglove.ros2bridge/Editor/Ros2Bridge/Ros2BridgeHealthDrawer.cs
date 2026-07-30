@@ -36,7 +36,10 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         internal void Draw(SerializedObject serializedObject)
         {
-            FoxgloveManagerInspectorLayout.Subheader("ROS2 Bridge Health");
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "ROS2 Bridge Health",
+                EditorStyles.boldLabel);
 
             DrawRos2PathControls();
 
@@ -89,9 +92,9 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         private void StartHealthCheck(SerializedObject serializedObject)
         {
             CancelHealthCheck();
-            var host = ReadString(serializedObject, "_ros2BridgeHost", "127.0.0.1");
-            var port = ReadInt(serializedObject, "_ros2BridgePort", 8767);
-            var timeout = ReadInt(serializedObject, "_ros2BridgeSendTimeoutMs", 1000);
+            var host = ReadString(serializedObject, "_host", "127.0.0.1");
+            var port = ReadInt(serializedObject, "_port", 8767);
+            var timeout = ReadInt(serializedObject, "_sendTimeoutMs", 1000);
             var ros2 = Ros2BridgeEditorPrefs.Ros2ExecutablePath;
             var pathSource = string.IsNullOrWhiteSpace(ros2)
                 ? Ros2BridgeRos2PathSource.Path

@@ -481,7 +481,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("\"1\"", StringComparison.Ordinal),
                 "162-F1: Zenoh PointCloud2 echo subscribes with sensor-data QoS");
 
-            var bridge = ReadRepoText(AdapterPackage + "/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var bridge = ReadRepoText(AdapterPackage + "/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
             Check(bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal),
                 "162-F2: native PointCloud2 bridge publishes with sensor-data QoS");
             Check(bridge.Contains("ZenohBackpressurePublishSlowThresholdMs", StringComparison.Ordinal)
@@ -504,13 +504,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "162-F4: PointCloud2 TF anchor follows the source transform instead of publishing a stale static pose");
 
             var scene = ReadRepoText("Unity2Foxglove/Assets/Scenes/Phase138_Foxglove_MCAP_Smoke.unity");
-            Check(scene.Contains("_publishPointCloud2NativeTfAnchor: 1", StringComparison.Ordinal)
-                  && scene.Contains("_pointCloud2NativeTfParentFrame: map", StringComparison.Ordinal)
+            Check(scene.Contains("_publishPackedPointCloudTfAnchor: 1", StringComparison.Ordinal)
+                  && scene.Contains("_packedPointCloudTfParentFrame: map", StringComparison.Ordinal)
                   && scene.Contains("_frameId: os_lidar", StringComparison.Ordinal),
                 "162-F5: Phase138 smoke scene enables map-to-lidar TF for RViz fixed-frame acceptance");
 
             var localPlaySetup = ReadRepoText("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs");
-            Check(localPlaySetup.Contains("SetField(publisher, \"_publishPointCloud2NativeTfAnchor\", true", StringComparison.Ordinal)
+            Check(localPlaySetup.Contains("SetField(publisher, \"_publishPackedPointCloudTfAnchor\", true", StringComparison.Ordinal)
                   && localPlaySetup.Contains("SetField(publisher, \"_frameId\", \"os_lidar\"", StringComparison.Ordinal),
                 "162-F6: local Lyrical Zenoh play setup enables TF anchor for moving RViz acceptance");
             Check(localPlaySetup.Contains("PlayRequestedKey", StringComparison.Ordinal)

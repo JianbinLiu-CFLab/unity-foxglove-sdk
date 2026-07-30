@@ -104,66 +104,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.False(state.HasPendingSidecar);
         }
 
-        [Fact]
-        public void WarningDebounceStateOwnsWarningFieldsWithoutMovingSerializedFields()
-        {
-            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var channels = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
-            var clientEvents = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
-            var publishing = TestSources.ManagerPublishingSources();
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var status = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Status.cs");
-            var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
-            var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs.meta");
 
-            Assert.DoesNotContain("private bool _warnedNotRunning", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string _lastInvalidPublishTopicWarningKey", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string _lastInvalidRos2SchemaWarningKey", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string _lastRos2BridgePublishWarningKey", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private long _lastRos2BridgePublishWarningTicks", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private readonly object _ros2BridgePublishWarningGate", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private long _lastClientEventOverflowWarningTicks", clientEvents, StringComparison.Ordinal);
-            Assert.Contains("private readonly WarningDebounceState _warningDebounceState = new WarningDebounceState();", manager, StringComparison.Ordinal);
 
-            Assert.Contains("_warningDebounceState.WarnedNotRunning", channels, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.WarnedNotRunning", publishing, StringComparison.Ordinal);
-            Assert.Contains("ref _warningDebounceState.LastClientEventOverflowWarningTicks", clientEvents, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.LastInvalidPublishTopicWarningKey", publishing, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.LastInvalidRos2SchemaWarningKey", publishing, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.Ros2BridgePublishWarningGate", publishing, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.ResetNotRunning()", server, StringComparison.Ordinal);
-            Assert.Contains("_warningDebounceState.WarnedNotRunning", status, StringComparison.Ordinal);
 
-            Assert.Contains("internal sealed class WarningDebounceState", state, StringComparison.Ordinal);
-            Assert.Contains("internal readonly object Ros2BridgePublishWarningGate", state, StringComparison.Ordinal);
-            Assert.Contains("internal long LastClientEventOverflowWarningTicks", state, StringComparison.Ordinal);
-            Assert.DoesNotContain("[SerializeField]", state, StringComparison.Ordinal);
-            Assert.Contains("MonoImporter:", stateMeta, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void WarningDebounceStateCanResetNotRunningState()
-        {
-            var state = new WarningDebounceState
-            {
-                WarnedNotRunning = true,
-                LastInvalidPublishTopicWarningKey = "topic",
-                LastInvalidRos2SchemaWarningKey = "schema",
-                LastRos2BridgePublishWarningKey = "bridge",
-                LastRos2BridgePublishWarningTicks = 42,
-                LastClientEventOverflowWarningTicks = 24
-            };
-
-            state.ResetNotRunning();
-
-            Assert.False(state.WarnedNotRunning);
-            Assert.Equal("topic", state.LastInvalidPublishTopicWarningKey);
-            Assert.Equal("schema", state.LastInvalidRos2SchemaWarningKey);
-            Assert.Equal("bridge", state.LastRos2BridgePublishWarningKey);
-            Assert.Equal(42, state.LastRos2BridgePublishWarningTicks);
-            Assert.Equal(24, state.LastClientEventOverflowWarningTicks);
-            Assert.NotNull(state.Ros2BridgePublishWarningGate);
-        }
 
         [Fact]
         public void ReplayRuntimeStateOwnsReplayCachesWithoutMovingSerializedFields()
@@ -331,71 +274,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("burstFrames=1", first, StringComparison.Ordinal);
         }
 
-        [Fact]
-        public void ConnectionRuntimeStateOwnsConnectionCountersWithoutMovingSerializedFields()
-        {
-            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var channels = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
-            var publishing = TestSources.ManagerPublishingSources();
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs");
-            var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs.meta");
 
-            Assert.Contains("[SerializeField] private FoxgloveTransportMode _transportMode", manager, StringComparison.Ordinal);
-            Assert.Contains("[SerializeField] private bool _foxgloveOutputEnabled", manager, StringComparison.Ordinal);
-            Assert.Contains("[SerializeField] private bool _ros2BridgeEnabled", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string _ros2BridgeSetupError", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private ulong _ros2BridgeSequence", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private bool _lastFoxgloveOutputEnabled", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private bool _lastRos2BridgeEnabled", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private bool _outputModeWatchInitialized", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private int _nextChannelId", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("private ulong _channelSessionGeneration", channels, StringComparison.Ordinal);
-            Assert.Contains("private readonly ConnectionRuntimeState _connectionState = new ConnectionRuntimeState(FirstAutoChannelId);", manager, StringComparison.Ordinal);
 
-            Assert.Contains("_connectionState.ChannelSessionGeneration", channels, StringComparison.Ordinal);
-            Assert.Contains("_connectionState.AdvanceChannelSessionGeneration();", channels, StringComparison.Ordinal);
-            Assert.Contains("_connectionState.NextChannelId", publishing, StringComparison.Ordinal);
-            Assert.Contains("_connectionState.NextRos2BridgeSequence()", publishing, StringComparison.Ordinal);
-            Assert.Contains("_connectionState.ResetChannelIds(FirstAutoChannelId);", server, StringComparison.Ordinal);
-            Assert.Contains("_connectionState.OutputModeWatchInitialized", manager, StringComparison.Ordinal);
 
-            Assert.Contains("internal sealed class ConnectionRuntimeState", state, StringComparison.Ordinal);
-            Assert.Contains("internal ConnectionRuntimeState(int firstAutoChannelId)", state, StringComparison.Ordinal);
-            Assert.Contains("internal string Ros2BridgeSetupError = string.Empty;", state, StringComparison.Ordinal);
-            Assert.Contains("internal ulong Ros2BridgeSequence;", state, StringComparison.Ordinal);
-            Assert.Contains("internal int NextChannelId;", state, StringComparison.Ordinal);
-            Assert.Contains("internal ulong ChannelSessionGeneration;", state, StringComparison.Ordinal);
-            Assert.Contains("internal void ResetChannelIds(int firstAutoChannelId)", state, StringComparison.Ordinal);
-            Assert.Contains("internal ulong NextRos2BridgeSequence()", state, StringComparison.Ordinal);
-            Assert.DoesNotContain("[SerializeField]", state, StringComparison.Ordinal);
-            Assert.Contains("MonoImporter:", stateMeta, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void ConnectionRuntimeStateCanAdvanceAndResetChannelIds()
-        {
-            var state = new ConnectionRuntimeState(7);
-
-            Assert.Equal(7, state.NextChannelId);
-            Assert.Equal(0UL, state.ChannelSessionGeneration);
-
-            state.NextChannelId = 12;
-            state.ChannelSessionGeneration = ulong.MaxValue;
-            state.AdvanceChannelSessionGeneration();
-
-            Assert.Equal(1UL, state.ChannelSessionGeneration);
-
-            state.Ros2BridgeSetupError = "bridge failed";
-            Assert.Equal(1UL, state.NextRos2BridgeSequence());
-            Assert.Equal(2UL, state.NextRos2BridgeSequence());
-
-            state.ResetChannelIds(7);
-
-            Assert.Equal(7, state.NextChannelId);
-            Assert.Equal(1UL, state.ChannelSessionGeneration);
-            Assert.Equal("bridge failed", state.Ros2BridgeSetupError);
-            Assert.Equal(2UL, state.Ros2BridgeSequence);
-        }
     }
 }

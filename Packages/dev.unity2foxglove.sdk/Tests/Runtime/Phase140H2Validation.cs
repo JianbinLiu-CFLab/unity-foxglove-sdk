@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualImuCoalescesToLatestWebSocketSamples();
             VirtualImuDropDiagnosticsAreNonWarningAndThrottled();
             ManagerExposesOptInFrameStallDiagnostics();
-            PointCloud2NativeDiagnosticsExposeRawDeskewAndR2fuTiming();
+            PackedPointCloudDiagnosticsExposeRawDeskewAndR2fuTiming();
             LidarAndPointCloudWorkerDiagnosticsExposeSubStageTiming();
             TransportAndBaseSchedulersRemainOutOfScope();
             ValidationRegistryExposesPhase140H2();
@@ -193,26 +193,26 @@ namespace Unity.FoxgloveSDK.Tests
                 "140H2-5F: frame stall diagnostics can include manager Update sub-stage timings");
         }
 
-        private static void PointCloud2NativeDiagnosticsExposeRawDeskewAndR2fuTiming()
+        private static void PackedPointCloudDiagnosticsExposeRawDeskewAndR2fuTiming()
         {
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
-            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
-            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
-            Check(diagnostics.Contains("BeginPointCloud2NativeTiming", StringComparison.Ordinal)
-                  && diagnostics.Contains("LogPointCloud2NativeTiming", StringComparison.Ordinal)
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
+            Check(diagnostics.Contains("BeginPackedPointCloudTiming", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogPackedPointCloudTiming", StringComparison.Ordinal)
                   && diagnostics.Contains("[Foxglove] PointCloud2 native timing:", StringComparison.Ordinal)
                   && publisher.Contains("public bool PerformanceDiagnosticsEnabled", StringComparison.Ordinal)
                   && editor.Contains("serializedObject.FindProperty(\"_logPerformanceDiagnostics\")", StringComparison.Ordinal)
                   && editor.Contains("Log Performance Diagnostics", StringComparison.Ordinal),
                 "140H2-5G: point-cloud publisher exposes opt-in PointCloud2 native timing diagnostics");
-            Check(MethodContains(publisher, "protected virtual void Update()", "var pointCloud2NativeDrainStart = BeginPointCloud2NativeTiming();")
-                  && MethodContains(publisher, "protected virtual void Update()", "LogPointCloud2NativeTiming(pointCloud2NativeDrainStart, \"pipelineDrain\""),
+            Check(MethodContains(publisher, "protected virtual void Update()", "var packedPointCloudDrainStart = BeginPackedPointCloudTiming();")
+                  && MethodContains(publisher, "protected virtual void Update()", "LogPackedPointCloudTiming(packedPointCloudDrainStart, \"pipelineDrain\""),
                 "140H2-5H: PointCloud2 native pipeline drain timing is recorded around main-thread result processing");
-            Check(MethodContains(nativePublisher, "private void PublishCompletedPointCloud2NativePayload", "\"rawNativeFrameReady\"")
-                  && MethodContains(nativePublisher, "private void PublishCompletedPointCloud2NativePayload", "\"deskewedNativeFrameReady\"")
-                  && MethodContains(nativePublisher, "private void PublishPointCloud2NativeFrameReady", "LogPointCloud2NativeTiming"),
+            Check(MethodContains(nativePublisher, "private void PublishCompletedPackedPointCloudPayload", "\"rawNativeFrameReady\"")
+                  && MethodContains(nativePublisher, "private void PublishCompletedPackedPointCloudPayload", "\"deskewedNativeFrameReady\"")
+                  && MethodContains(nativePublisher, "private void PublishPackedPointCloudFrameReady", "LogPackedPointCloudTiming"),
                 "140H2-5I: raw and deskewed PointCloud2 native handoffs record separate timing stages");
             Check(nativePublisher.Contains("Debug.LogException(ex)", StringComparison.Ordinal)
                   && !nativePublisher.Contains("PointCloud2 native frame subscriber failed: \" + ex.Message", StringComparison.Ordinal),
@@ -223,8 +223,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("stageBuildMessageMs", StringComparison.Ordinal)
                   && bridge.Contains("stagePublishMs", StringComparison.Ordinal)
                   && bridge.Contains("stageTotalMs", StringComparison.Ordinal)
-                  && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2MessageBuilder.Build(frame)")
-                  && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "publisher.Publish"),
+                  && MethodContains(bridge, "private void OnPackedPointCloudFrameReady", "Ros2ForUnityPointCloud2MessageBuilder.Build(frame)")
+                  && MethodContains(bridge, "private void OnPackedPointCloudFrameReady", "publisher.Publish"),
                 "140H2-5J: R2FU PointCloud2 native bridge publish path records sub-stage timings");
         }
 
@@ -236,10 +236,10 @@ namespace Unity.FoxgloveSDK.Tests
             var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
             var encoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
             var motionPublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
-            var nativeFrame = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+            var nativeFrame = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudFrame.cs");
             var packedBuilder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
             Check(MethodContains(lidar, "private void FixedUpdate()", "BeginLidarFixedUpdateTiming()")
                   && MethodContains(lidar, "private void FixedUpdate()", "LogLidarFixedUpdateTiming")
@@ -275,23 +275,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && encoders.Contains("deskewPackStart", StringComparison.Ordinal)
                   && encoders.Contains("DiagnosticStart(request.LogPerformanceDiagnostics)", StringComparison.Ordinal),
                 "140H2-5N: PointCloud2 native worker measures raw pack, payload, motion, and deskew stages");
-            Check(nativePublisher.Contains("LogPointCloud2NativeWorkerTiming(result)", StringComparison.Ordinal)
+            Check(nativePublisher.Contains("LogPackedPointCloudWorkerTiming(result)", StringComparison.Ordinal)
                   && diagnostics.Contains("[Foxglove] PointCloud2 native worker timing:", StringComparison.Ordinal)
                   && diagnostics.Contains("rawPackMs", StringComparison.Ordinal)
                   && diagnostics.Contains("motionCompensationMs", StringComparison.Ordinal)
                   && diagnostics.Contains("deskewPackMs", StringComparison.Ordinal),
                 "140H2-5O: point-cloud publisher logs worker sub-stage timings when diagnostics are enabled");
-            Check(publisher.Contains("MaxCompletedPointCloud2NativeResults = 1", StringComparison.Ordinal)
+            Check(publisher.Contains("MaxCompletedPackedPointCloudResults = 1", StringComparison.Ordinal)
                   && publisher.Contains("latest completed", StringComparison.Ordinal),
                 "140H2-5Q: PointCloud2 native completed queue keeps latest result only to avoid main-thread drain bursts");
             Check(!MethodContains(motionPublisher, "private PointCloudMotionCompensationRequest TryCreateMotionCompensationRequest", "TryGetPointTimeRange(")
                   && encoders.Contains("TryCompensateVirtualLidarInto", StringComparison.Ordinal),
                 "140H2-5R: PointCloud2 native scan-boundary queueing leaves point time-range scans to the worker");
-            Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "BuildScanReferenceDeskewedPointCloud2Frame")
-                  && !MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "compensatedScratch"),
+            Check(MethodContains(encoders, "public static PackedPointCloudResult EncodePackedPointCloudRequest", "BuildScanReferenceDeskewedPointCloud2Frame")
+                  && !MethodContains(encoders, "private static PackedPointCloudFrame BuildScanReferenceDeskewedPointCloud2Frame", "compensatedScratch"),
                 "140H2-5S: PointCloud2 native scan-reference deskew packs directly without a second point snapshot");
-            Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "preserveSourcePointCount: true")
-                  && MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "preserveSourcePointCount: true")
+            Check(MethodContains(encoders, "public static PackedPointCloudResult EncodePackedPointCloudRequest", "preserveSourcePointCount: true")
+                  && MethodContains(encoders, "private static PackedPointCloudFrame BuildScanReferenceDeskewedPointCloud2Frame", "preserveSourcePointCount: true")
                   && encoders.Contains("validCount: packed.ValidPointCount", StringComparison.Ordinal)
                   && nativeFrame.Contains("validCount = -1", StringComparison.Ordinal),
                 "140H2-5T: PointCloud2 native raw and deskew keep stable source-width buffers with separate valid-count metadata");

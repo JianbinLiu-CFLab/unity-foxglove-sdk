@@ -432,14 +432,27 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     FoxRunResolvedQos.Default,
                     out _));
 
+            string runtimeDiagnostic = null;
             Assert.True(SpinWait.SpinUntil(
-                () => transport.RequestCount >= 1,
+                () =>
+                {
+                    var value = runtime.GetStatsSnapshot().LastError;
+                    if (string.IsNullOrEmpty(value))
+                        return false;
+                    runtimeDiagnostic = value;
+                    return true;
+                },
                 TimeSpan.FromSeconds(3)));
-            Thread.Sleep(250);
+            Assert.True(SpinWait.SpinUntil(
+                () => transport.RequestCount >= 2,
+                TimeSpan.FromSeconds(3)));
+            var requestTimes = transport.RequestTimesSnapshot;
 
-            Assert.InRange(transport.RequestCount, 1, 4);
+            Assert.True(
+                requestTimes[1] - requestTimes[0] >= 75,
+                "Preparation retries bypassed the configured reconnect backoff.");
             Assert.InRange(
-                runtime.GetStatsSnapshot().LastError.Length,
+                runtimeDiagnostic.Length,
                 1,
                 Ros2BridgeRuntime.MaxRuntimeDiagnosticChars);
         }
@@ -827,6 +840,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             }
 
             public List<byte[]> Requests { get; } = new List<byte[]>();
+            public List<long> RequestTimes { get; } = new List<long>();
             public List<Ros2BridgeFrame> SentFrames { get; } = new List<Ros2BridgeFrame>();
             public List<string> Events { get; } = new List<string>();
             public ManualResetEventSlim ResponseGate { get; set; }
@@ -853,6 +867,14 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                         return SentFrames.Count;
                 }
             }
+            public long[] RequestTimesSnapshot
+            {
+                get
+                {
+                    lock (Requests)
+                        return RequestTimes.ToArray();
+                }
+            }
             public string[] EventSnapshot
             {
                 get
@@ -871,7 +893,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             public byte[] ExchangePublisherPreparation(byte[] request, int timeoutMs)
             {
                 lock (Requests)
+                {
                     Requests.Add(request);
+                    RequestTimes.Add(Environment.TickCount64);
+                }
                 lock (Events)
                     Events.Add("prepare");
                 if (PreparationFailure != null)

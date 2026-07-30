@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
-// Purpose: Builds owned-row raw RGB image DTOs for ROS2 DDS publication.
+// Purpose: Builds owned-row raw RGB image DTOs for optional Providers.
 
 using System;
 using Unity.FoxgloveSDK.Schemas.Camera;

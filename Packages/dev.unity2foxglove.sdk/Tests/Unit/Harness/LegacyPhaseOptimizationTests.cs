@@ -62,8 +62,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("case '\\t':", generator, StringComparison.Ordinal);
             Assert.Contains("case '\\b':", generator, StringComparison.Ordinal);
             Assert.Contains("ToString(\"x4\", CultureInfo.InvariantCulture)", generator, StringComparison.Ordinal);
-            Assert.Contains("emittedTypes", generator, StringComparison.Ordinal);
-            Assert.Contains("FoxRunGenerationModel(emittedTypes", generator, StringComparison.Ordinal);
+            Assert.Contains("var emitted =", generator, StringComparison.Ordinal);
+            Assert.Contains("emitted,", generator, StringComparison.Ordinal);
             Assert.Contains("WriteSourceFileIfChanged", codegen, StringComparison.Ordinal);
             Assert.DoesNotContain("File.WriteAllBytes(absolutePath, sourceBytes)", codegen, StringComparison.Ordinal);
             Assert.Contains("WriteTextIfChanged", build, StringComparison.Ordinal);

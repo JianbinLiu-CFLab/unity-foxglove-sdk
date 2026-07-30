@@ -864,7 +864,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "_stream",
                 "std_msgs/msg/String",
                 FoxRunFlow.Subscribe,
-                FoxRunEndpoint.Ros2Native,
+                FoxRunRos2RouteEndpoint.R2fu,
                 FoxRunQosProfile.Default,
                 hasExplicitQosProfile: true,
                 qosReliability: default,

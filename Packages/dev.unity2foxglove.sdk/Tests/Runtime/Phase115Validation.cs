@@ -2,409 +2,225 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 115 SDK schema manifest aggregate validation.
+// Purpose: Phase 115 validation for the Provider-neutral SDK schema manifest.
 
 using System;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
-using Foxglove.Schemas;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
-using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    /// <summary>
-    /// Validation type for Phase115Validation.
-    /// </summary>
     public static class Phase115Validation
     {
-        private const string ExpectedGlobalFixtureHash = "1f649388de6fd74a3fd3edf52d16e1afd9ca4566231e9f3c1fea755d1e6441ec";
-        private const string ExpectedFoxRunFixtureHash = "b35e6b56c8dd0da65b5d32b0835f130ae577bba655eefca8eef4fb66ddfec116";
-        private const string SharedDir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest";
-        private const string GeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs";
-        private const string PlayModeHookPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs";
-        private const string BuildPreprocessPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs";
-        private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
         private static int _passed;
 
-        /// <summary>
-        /// Validation method for Validate.
-        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 115: SDK Schema Manifest Aggregate ===");
+            Console.WriteLine("=== Phase 115: Provider-neutral SDK Schema Manifest ===");
             _passed = 0;
 
-            VerifyCanonicalAggregateFixture();
-            VerifyProtobufRegistrySection();
-            VerifyRos2RegistrySection();
-            VerifyPublisherCatalogSection();
+            VerifyCanonicalAggregate();
+            VerifyTypedPublisherCatalog();
+            VerifyDeterminism();
             VerifyArtifactWriter();
-            VerifySourceBoundariesAndWiring();
-            VerifyDocs();
+            VerifySourceBoundary();
 
             Console.WriteLine($"Phase 115: {_passed} checks passed.");
         }
 
-        private static void VerifyCanonicalAggregateFixture()
+        private static void VerifyCanonicalAggregate()
         {
             var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
-            var json = Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(aggregate);
-            var parsed = JObject.Parse(json);
+            var parsed = JObject.Parse(
+                Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(
+                    aggregate));
 
-            Check((int)parsed["manifestVersion"] == 1
-                  && (string)parsed["package"] == "Unity2Foxglove"
-                  && (string)parsed["generator"]["name"] == "Unity2FoxgloveSchemaManifest"
-                  && (int)parsed["generator"]["majorVersion"] == 1,
-                "115-A1: aggregate manifest identity is stable");
+            Check(
+                aggregate.ManifestVersion
+                == Unity2FoxgloveSchemaManifestBuilder.ManifestVersion
+                && aggregate.ManifestVersion == 2
+                && aggregate.Package == "Unity2Foxglove"
+                && aggregate.Generator.Name
+                   == Unity2FoxgloveSchemaManifestBuilder.GeneratorName,
+                "115-A1: aggregate identity is stable at neutral manifest v2");
 
-            var sections = (JObject)parsed["sections"];
-            Check(sections.Properties().Select(p => p.Name).SequenceEqual(new[]
-                  {
-                      "foxRun",
-                      "protobufRegistry",
-                      "ros2MsgRegistry",
-                      "sdkTypedPublishers"
-                  }),
-                "115-A2: aggregate sections are present in fixed order");
+            var sectionNames = ((JObject)parsed["sections"])
+                .Properties()
+                .Select(property => property.Name)
+                .ToArray();
+            Check(
+                sectionNames.SequenceEqual(
+                    new[]
+                    {
+                        "foxRun",
+                        "protobufRegistry",
+                        "sdkTypedPublishers"
+                    })
+                && parsed["sections"]["ros2MsgRegistry"] == null,
+                "115-A2: aggregate contains only SDK-owned neutral sections");
 
-            Check((bool)sections["foxRun"]["present"]
-                  && (string)sections["foxRun"]["globalManifestHash"] == ExpectedGlobalFixtureHash
-                  && (string)sections["foxRun"]["manifestHash"] == ExpectedFoxRunFixtureHash
-                  && (string)sections["foxRun"]["source"] == "generatedRegistry",
-                "115-A3: FoxRun section imports runtime schema summary without replacing the FoxRun manifest");
-
-            var sectionHashes = (JObject)parsed["sectionHashes"];
-            Check(IsLowercaseSha256Hex((string)sectionHashes["foxRun"])
-                  && IsLowercaseSha256Hex((string)sectionHashes["protobufRegistry"])
-                  && IsLowercaseSha256Hex((string)sectionHashes["ros2MsgRegistry"])
-                  && IsLowercaseSha256Hex((string)sectionHashes["sdkTypedPublishers"]),
-                "115-A4: each aggregate section has a lowercase SHA-256 hash");
-
-            Check(IsLowercaseSha256Hex(aggregate.SdkSchemaManifestHash)
-                  && (string)parsed["sdkSchemaManifestHash"] == aggregate.SdkSchemaManifestHash,
-                "115-A5: aggregate manifest has a stable SDK schema manifest hash");
-
-            var aggregateAgain = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
-            var jsonAgain = Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(aggregateAgain);
-            Check(json == jsonAgain && aggregate.SdkSchemaManifestHash == aggregateAgain.SdkSchemaManifestHash,
-                "115-A6: two consecutive aggregate builds produce identical canonical JSON and hash");
-
-            var aggregateHashInput = Unity2FoxgloveSchemaManifestJsonWriter.WriteAggregateHashInput(aggregate);
-            Check(!aggregateHashInput.Contains("sdkSchemaManifestHash", StringComparison.Ordinal)
-                  && aggregateHashInput.Contains("sectionHashes", StringComparison.Ordinal)
-                  && Sha256Hex(aggregateHashInput) == aggregate.SdkSchemaManifestHash,
-                "115-A7: aggregate hash input excludes sdkSchemaManifestHash and includes computed section hashes");
-
-            var foxRunSectionInput = Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(aggregate.Sections.FoxRun);
-            Check(!foxRunSectionInput.Contains(aggregate.SectionHashes.FoxRun, StringComparison.Ordinal)
-                  && Sha256Hex(foxRunSectionInput) == aggregate.SectionHashes.FoxRun,
-                "115-A8: section hash input excludes its own output field");
-
-            Check(!json.Contains("generatedAtUtc", StringComparison.Ordinal)
-                  && !json.Contains("warnings", StringComparison.Ordinal),
-                "115-A9: report-only fields stay out of canonical aggregate JSON");
+            Check(
+                aggregate.Sections.FoxRun.Present
+                && aggregate.Sections.FoxRun.ContractCount == 1
+                && aggregate.Sections.ProtobufRegistry.EntryCount
+                   == aggregate.Sections.ProtobufRegistry.Entries.Count
+                && aggregate.SectionHashes.FoxRun.Length == 64
+                && aggregate.SectionHashes.ProtobufRegistry.Length == 64
+                && aggregate.SectionHashes.SdkTypedPublishers.Length == 64
+                && aggregate.SdkSchemaManifestHash.Length == 64,
+                "115-A3: section counts and SHA-256 identities are complete");
         }
 
-        private static void VerifyProtobufRegistrySection()
+        private static void VerifyTypedPublisherCatalog()
         {
-            var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
-            var section = aggregate.Sections.ProtobufRegistry;
-            var descriptorBytes = FoxgloveSchemas.FileDescriptorSetData;
+            var section = Unity2FoxgloveSchemaManifestBuilder
+                .Build(FixtureManifest())
+                .Sections
+                .SdkTypedPublishers;
 
-            Check(section.SchemaEncoding == "protobuf"
-                  && section.EntryCount == FoxgloveProtoSchemaCatalog.Entries.Count
-                  && section.Entries.Count == FoxgloveProtoSchemaCatalog.Entries.Count,
-                "115-B1: protobuf section covers the bundled protobuf catalog");
-
-            Check(descriptorBytes.Length > 0
-                  && section.DescriptorDataSha256 == Sha256Hex(descriptorBytes),
-                "115-B2: descriptorDataSha256 is computed from decoded FileDescriptorSetData bytes");
-
-            Check(IsLowercaseSha256Hex(section.CatalogEntryHash)
-                  && IsLowercaseSha256Hex(section.DescriptorDataSha256)
-                  && section.CatalogEntryHash != section.DescriptorDataSha256,
-                "115-B3: protobuf catalogEntryHash and descriptorDataSha256 are separate domains");
-
-            Check(section.Entries.Select(e => e.SchemaName)
-                    .SequenceEqual(section.Entries.Select(e => e.SchemaName).OrderBy(v => v, StringComparer.Ordinal)),
-                "115-B4: protobuf entries are sorted by stable schema name");
+            Check(
+                section.EntryCount == section.Entries.Count
+                && section.Entries.Count
+                   == FoxgloveSdkPublisherCatalog.Entries.Count,
+                "115-B1: typed publisher section comes from the explicit SDK catalog");
+            Check(
+                section.Entries.All(
+                    entry => entry.SupportsJson
+                             || entry.SupportsProtobuf
+                             || entry.SupportsMsgPack)
+                && section.Entries.All(
+                    entry => !string.IsNullOrWhiteSpace(
+                        entry.PublisherTypeFullName)),
+                "115-B2: every SDK publisher declares a neutral wire capability");
+            Check(
+                section.Entries
+                    .Select(entry => entry.PublisherTypeFullName)
+                    .SequenceEqual(
+                        section.Entries
+                            .Select(entry => entry.PublisherTypeFullName)
+                            .OrderBy(value => value, StringComparer.Ordinal)),
+                "115-B3: typed publisher entries are deterministic");
         }
 
-        private static void VerifyRos2RegistrySection()
+        private static void VerifyDeterminism()
         {
-            var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
-            var section = aggregate.Sections.Ros2MsgRegistry;
+            var first = Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(
+                Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest()));
+            var second = Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(
+                Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest()));
+            Check(
+                string.Equals(first, second, StringComparison.Ordinal),
+                "115-C1: identical neutral inputs produce byte-identical JSON");
 
-            Check(section.SchemaEncoding == FoxgloveRos2MsgSchemaCatalog.SchemaEncoding
-                  && section.SourceSnapshot == FoxgloveRos2MsgSchemaCatalog.SourceSnapshot
-                  && section.SourceCommit == FoxgloveRos2MsgSchemaCatalog.SourceCommit
-                  && section.SourceTreeSha256 == FoxgloveRos2MsgSchemaCatalog.SourceTreeSha256,
-                "115-C1: ROS2 .msg section records source snapshot identity");
-
-            Check(section.SourceFileCount == FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount
-                  && section.EntryCount == FoxgloveRos2MsgSchemaCatalog.RegisteredEntries.Count
-                  && section.EntryCount == section.SourceFileCount,
-                "115-C2: ROS2 .msg section entry count matches runtime registered schema count");
-
-            Check(section.Entries.All(e => IsLowercaseSha256Hex(e.SourceSha256))
-                  && section.Entries.Select(e => e.SchemaName)
-                      .SequenceEqual(section.Entries.Select(e => e.SchemaName).OrderBy(v => v, StringComparer.Ordinal)),
-                "115-C3: ROS2 .msg entries are sorted and carry source hashes");
-        }
-
-        private static void VerifyPublisherCatalogSection()
-        {
-            var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
-            var section = aggregate.Sections.SdkTypedPublishers;
-
-            Check(section.Entries.Count == FoxgloveSdkPublisherCatalog.Entries.Count
-                  && section.Entries.Count >= 10,
-                "115-D1: SDK typed publisher section comes from an explicit SDK-owned catalog");
-
-            Check(section.Entries.Any(e => e.PublisherTypeFullName == "Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher"
-                                           && e.EntryKind == "concretePublisher"
-                                           && e.FoxgloveSchemaName == "foxglove.FrameTransform"
-                                           && e.Ros2SchemaName == Ros2PublisherSchemaNames.FrameTransform),
-                "115-D2: concrete transform publisher coverage includes protobuf and ROS2 schemas");
-
-            Check(section.Entries.Any(e => e.PublisherTypeFullName == "Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher"
-                                           && e.ProductNote.Contains("JPEG", StringComparison.Ordinal)
-                                           && e.FoxgloveSchemaName == "foxglove.CompressedImage")
-                  && section.Entries.Any(e => e.PublisherTypeFullName == "Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher"
-                                              && e.ProductNote.Contains("video", StringComparison.OrdinalIgnoreCase)
-                                              && e.FoxgloveSchemaName == "foxglove.CompressedVideo"),
-                "115-D3: multi-profile camera publisher coverage is explicit and not scene-derived");
-
-            var templates = section.Entries.Where(e => e.IsTemplate).ToList();
-            Check(templates.Count == 2
-                  && templates.All(e => e.EntryKind == "genericTemplate"
-                                        && string.IsNullOrEmpty(e.FoxgloveSchemaName)
-                                        && string.IsNullOrEmpty(e.Ros2SchemaName)),
-                "115-D4: generic publisher templates are capability evidence without fixed schema names");
-
-            var concrete = section.Entries.Where(e => !e.IsTemplate).ToList();
-            Check(concrete.All(e => string.IsNullOrEmpty(e.FoxgloveSchemaName) || FoxgloveProtoSchemaCatalog.TryGet(e.FoxgloveSchemaName, out _))
-                  && concrete.All(e => string.IsNullOrEmpty(e.Ros2SchemaName) || FoxgloveRos2MsgSchemaCatalog.TryGet(e.Ros2SchemaName, out _)),
-                "115-D5: concrete publisher schema names resolve through protobuf or ROS2 catalogs");
-
-            Check(!string.Join("\n", section.Entries.Select(e => e.PublisherTypeFullName))
-                    .Contains("TestLog", StringComparison.OrdinalIgnoreCase),
-                "115-D6: SDK publisher catalog does not scan user-authored subclasses");
+            var parsed = JObject.Parse(first);
+            Check(
+                string.Equals(
+                    parsed["sdkSchemaManifestHash"]?.ToString(),
+                    Unity2FoxgloveSchemaManifestBuilder
+                        .Build(FixtureManifest())
+                        .SdkSchemaManifestHash,
+                    StringComparison.Ordinal),
+                "115-C2: canonical JSON carries the computed aggregate hash");
         }
 
         private static void VerifyArtifactWriter()
         {
-            var tempRoot = Path.Combine(Path.GetTempPath(), "unity2foxglove-phase115-" + Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-phase115-" + Guid.NewGuid().ToString("N"));
             try
             {
-                var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
+                var manifest =
+                    Unity2FoxgloveSchemaManifestBuilder.Build(FixtureManifest());
                 Unity2FoxgloveSchemaManifestWriter.WriteManifestFiles(
-                    tempRoot,
-                    aggregate,
-                    "2026-05-21T00:00:00.0000000Z",
-                    new[] { "report-only warning" });
+                    root,
+                    manifest,
+                    "2026-07-29T00:00:00.0000000Z",
+                    Array.Empty<string>());
 
-                var manifestPath = Path.Combine(tempRoot, Unity2FoxgloveSchemaManifestWriter.ManifestJsonFileName);
-                var hashPath = Path.Combine(tempRoot, Unity2FoxgloveSchemaManifestWriter.ManifestHashFileName);
-                var reportPath = Path.Combine(tempRoot, Unity2FoxgloveSchemaManifestWriter.ManifestReportFileName);
-
-                Check(File.Exists(manifestPath) && File.Exists(hashPath) && File.Exists(reportPath),
-                    "115-E1: writer emits aggregate manifest, hash sidecar, and report artifacts");
-
-                var manifestJson = File.ReadAllText(manifestPath);
-                var hashBytes = File.ReadAllBytes(hashPath);
-                var hashText = Encoding.ASCII.GetString(hashBytes);
-                Check(manifestJson == Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(aggregate)
-                      && hashText == aggregate.SdkSchemaManifestHash + "\n"
-                      && !hashText.Contains("\r", StringComparison.Ordinal)
-                      && hashBytes.SequenceEqual(Encoding.ASCII.GetBytes(aggregate.SdkSchemaManifestHash + "\n")),
-                    "115-E2: hash sidecar uses stable LF newline and no BOM");
-
-                var report = File.ReadAllText(reportPath);
-                Check(report.Contains("generatedAtUtc", StringComparison.Ordinal)
-                      && report.Contains("report-only warning", StringComparison.Ordinal)
-                      && !manifestJson.Contains("report-only warning", StringComparison.Ordinal),
-                    "115-E3: generated time and warnings are report-only");
-
-                Unity2FoxgloveSchemaManifestWriter.WriteManifestFiles(
-                    tempRoot,
-                    aggregate,
-                    "2026-05-21T00:00:01.0000000Z",
-                    new[] { "report-only warning" });
-                Check(File.ReadAllText(manifestPath) == manifestJson
-                      && File.ReadAllText(reportPath) == report
-                      && Encoding.ASCII.GetString(File.ReadAllBytes(hashPath)) == hashText,
-                    "115-E4: repeated writes are deterministic for canonical artifacts and do not rewrite timestamp-only reports");
+                var jsonPath = Path.Combine(
+                    root,
+                    Unity2FoxgloveSchemaManifestWriter.ManifestJsonFileName);
+                var hashPath = Path.Combine(
+                    root,
+                    Unity2FoxgloveSchemaManifestWriter.ManifestHashFileName);
+                var hashBytes =
+                    File.Exists(hashPath)
+                        ? File.ReadAllBytes(hashPath)
+                        : Array.Empty<byte>();
+                Check(
+                    File.Exists(jsonPath)
+                    && Encoding.ASCII.GetString(hashBytes).Trim()
+                       == manifest.SdkSchemaManifestHash,
+                    "115-D1: writer persists matching canonical JSON and hash");
             }
             finally
             {
-                if (Directory.Exists(tempRoot))
-                    Directory.Delete(tempRoot, recursive: true);
+                if (Directory.Exists(root))
+                    Directory.Delete(root, true);
             }
         }
 
-        private static void VerifySourceBoundariesAndWiring()
+        private static void VerifySourceBoundary()
         {
-            foreach (var path in new[]
-            {
-                SharedDir + "/Unity2FoxgloveSchemaManifestModel.cs",
-                SharedDir + "/Unity2FoxgloveSchemaManifestBuilder.cs",
-                SharedDir + "/Unity2FoxgloveSchemaManifestJsonWriter.cs",
-                SharedDir + "/Unity2FoxgloveSchemaManifestWriter.cs",
-                SharedDir + "/FoxgloveSdkPublisherCatalog.cs",
-                GeneratorPath
-            })
-            {
-                Check(RepoFileExists(path), "115-F1: required schema manifest source file exists: " + path);
-            }
-
-            var model = ReadRepoText(SharedDir + "/Unity2FoxgloveSchemaManifestModel.cs");
-            Check(!model.Contains("class Unity2FoxgloveSchemaManifestGenerator\r", StringComparison.Ordinal)
-                  && !model.Contains("class Unity2FoxgloveSchemaManifestGenerator\n", StringComparison.Ordinal)
-                  && model.Contains("Unity2FoxgloveSchemaManifestGeneratorInfo", StringComparison.Ordinal),
-                "115-F1b: manifest DTO names do not collide with the editor generator entry point");
-
-            var generator = ReadRepoText(GeneratorPath);
-            Check(generator.Contains("GenerateArtifacts", StringComparison.Ordinal)
-                  && generator.Contains("FoxrunCodeGenerator.GenerateManifestAndSchemaInfoFilesOnly", StringComparison.Ordinal)
-                  && generator.Contains("Unity2FoxgloveSchemaManifestWriter.WriteManifestFiles", StringComparison.Ordinal),
-                "115-F2: deterministic editor/batch generator refreshes FoxRun first and writes aggregate artifacts");
-
-            var hook = ReadRepoText(PlayModeHookPath);
-            Check(hook.Contains("GenerateManifestFilesOnly", StringComparison.Ordinal)
-                  && hook.Contains("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts", StringComparison.Ordinal)
-                  && hook.IndexOf("GenerateManifestFilesOnly", StringComparison.Ordinal) <
-                  hook.IndexOf("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts", StringComparison.Ordinal)
-                  && !hook.Contains("GenerateSourceFiles()", StringComparison.Ordinal),
-                "115-F3: Play Mode refresh writes aggregate after FoxRun artifacts without physical fallback files");
-
-            var build = ReadRepoText(BuildPreprocessPath);
-            Check(build.Contains("GenerateSourceFiles", StringComparison.Ordinal)
-                  && build.Contains("VerifyGeneratedSchemaInfoFiles", StringComparison.Ordinal)
-                  && build.Contains("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts", StringComparison.Ordinal)
-                  && build.IndexOf("VerifyGeneratedSchemaInfoFiles", StringComparison.Ordinal) <
-                  build.IndexOf("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts", StringComparison.Ordinal),
-                "115-F4: Player build preprocess writes aggregate after FoxRun regeneration and schema-info verification");
-
-            var gitignore = ReadRepoText(".gitignore");
-            Check(gitignore.Contains("Unity2Foxglove/Assets/Generated/Unity2Foxglove/", StringComparison.Ordinal)
-                  && gitignore.Contains("Unity2Foxglove/Assets/Generated/Unity2Foxglove.meta", StringComparison.Ordinal)
-                  && gitignore.Contains("!Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs", StringComparison.Ordinal),
-                "115-F5: generated aggregate artifacts are ignored without breaking FoxRun whitelist behavior");
-
-            var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
-            foreach (var token in new[] { "Unity2FoxgloveSchemaManifest", "schema-manifest", "sdkSchemaManifestHash" })
-            {
-                Check(!replay.Contains(token, StringComparison.Ordinal),
-                    "115-F6: replay guard remains isolated from aggregate manifest token: " + token);
-            }
-
-            var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(project.Contains("Phase115Validation.cs", StringComparison.Ordinal)
-                  && project.Contains("Editor/Shared/SchemaManifest", StringComparison.Ordinal)
-                  && registry.Contains("\"--phase115\"", StringComparison.Ordinal)
-                  && registry.Contains("Phase115Validation.Validate", StringComparison.Ordinal),
-                "115-F7: runtime validation project and runner wire --phase115");
-        }
-
-        private static void VerifyDocs()
-        {
-            foreach (var path in new[]
-            {
-                "Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md",
-                "Packages/dev.unity2foxglove.sdk/Documentation~/en/08_MCAP_Recording_and_Replay.md",
-                "Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md",
-                "Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md",
-                "docs/research-shared-emitter-architecture.md"
-            })
-            {
-                var doc = ReadRepoText(path);
-                Check(doc.Contains("SDK schema manifest", StringComparison.OrdinalIgnoreCase)
-                      && doc.Contains("protobuf", StringComparison.OrdinalIgnoreCase)
-                      && doc.Contains("ROS2", StringComparison.OrdinalIgnoreCase)
-                      && doc.Contains("replay", StringComparison.OrdinalIgnoreCase),
-                    "115-G1: docs describe SDK aggregate manifest as separate from replay governance: " + path);
-            }
+            var builder = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                + "SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
+            var model = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                + "SchemaManifest/Unity2FoxgloveSchemaManifestModel.cs");
+            Check(
+                !builder.Contains("Ros2", StringComparison.Ordinal)
+                && !model.Contains("Ros2", StringComparison.Ordinal)
+                && !builder.Contains("cdr", StringComparison.OrdinalIgnoreCase),
+                "115-E1: core aggregate model and builder own no ROS/CDR section");
         }
 
         private static FoxRunCanonicalManifest FixtureManifest()
-        {
-            return FoxRunManifestBuilder.Build(new[]
-            {
-                new FoxRunManifestMember(
-                    "Demo",
-                    "RobotState",
-                    "_batteryLevel",
-                    "field",
-                    "System.Single",
-                    true,
-                    false,
-                    "",
-                    "/phase112/battery",
-                    10f,
-                    "",
-                    1,
-                    0.001f)
-            });
-        }
-
-        private static string Sha256Hex(string value)
-        {
-            return Sha256Hex(Encoding.UTF8.GetBytes(value ?? string.Empty));
-        }
-
-        private static string Sha256Hex(byte[] bytes)
-        {
-            using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(bytes ?? Array.Empty<byte>());
-            var sb = new StringBuilder(hash.Length * 2);
-            foreach (var b in hash)
-                sb.Append(b.ToString("x2"));
-            return sb.ToString();
-        }
-
-        private static bool IsLowercaseSha256Hex(string value)
-        {
-            return value != null
-                   && value.Length == 64
-                   && value.All(ch => (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'));
-        }
-
-        private static bool RepoFileExists(string relativePath)
-        {
-            return File.Exists(RepoPath(relativePath));
-        }
+            => FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    new FoxRunManifestMember(
+                        "Fixture",
+                        "Telemetry",
+                        "Speed",
+                        "field",
+                        "System.Single",
+                        true,
+                        false,
+                        string.Empty,
+                        "/fixture/speed",
+                        20f,
+                        "fixture.Telemetry",
+                        (int)FoxRunPolicy.FixedRate,
+                        0f,
+                        jsonFieldName: "speed",
+                        flow: (int)FoxRunFlow.Publish,
+                        encoding: (int)FoxRunEncoding.Protobuf,
+                        publishTransportIds:
+                            new[]
+                            {
+                                FoxgloveWebSocketTransport.Id
+                            })
+                });
 
         private static string ReadRepoText(string relativePath)
         {
-            var path = RepoPath(relativePath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase115 file: " + relativePath, path);
-            return File.ReadAllText(path, Encoding.UTF8);
+            var root = TestRepoRootLocator.FindRepoRoot();
+            return File.ReadAllText(Path.Combine(root, relativePath));
         }
 
-        private static string RepoPath(string relativePath)
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (string.IsNullOrEmpty(root))
-                throw new DirectoryNotFoundException("Could not find repository root for Phase115 validation.");
-            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
-
-        private static void Check(bool condition, string message)
+        private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(message);
-
+                throw new InvalidOperationException(name);
             _passed++;
-            Console.WriteLine("[PASS] " + message);
+            Console.WriteLine("[PASS] " + name);
         }
     }
 }

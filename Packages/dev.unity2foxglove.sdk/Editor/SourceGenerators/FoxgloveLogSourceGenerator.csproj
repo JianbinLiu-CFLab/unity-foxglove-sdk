@@ -18,7 +18,7 @@
     <Compile Include="..\Shared\FoxServiceSchema\**\*.cs" LinkBase="Shared\FoxServiceSchema" />
     <Compile Include="..\Shared\FoxServiceDtoValidation\**\*.cs" LinkBase="Shared\FoxServiceDtoValidation" />
     <Compile Include="..\Shared\FoxRunDescriptor\**\*.cs"
-             Exclude="..\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs;..\Shared\FoxRunDescriptor\FoxRunRos2InterfaceDigest.cs;..\Shared\FoxRunDescriptor\FoxRunRos2InterfaceJsonWriter.cs;..\Shared\FoxRunDescriptor\FoxRunRos2InterfaceLock.cs;..\Shared\FoxRunDescriptor\FoxRunTransportEmitterContributionRegistry.cs"
+             Exclude="..\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs;..\Shared\FoxRunDescriptor\FoxRunTransportEmitterContributionRegistry.cs"
              LinkBase="Shared\FoxRunDescriptor" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />

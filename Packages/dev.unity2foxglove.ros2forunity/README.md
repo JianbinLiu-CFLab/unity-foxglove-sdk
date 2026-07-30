@@ -4,6 +4,9 @@ This package is the optional ROS2 For Unity boundary for Unity2Foxglove.
 
 It provides facade/API boundaries, documentation, attribution records, and a source-only `ROS2 For Unity External Adapter` sample. ROS2 For Unity runtime binaries are not bundled here.
 
+Projects upgrading from the former SDK-owned ROS endpoint and QoS API should
+follow the [Phase186A breaking upgrade guide](Documentation~/Phase186A-Breaking-Upgrade.md).
+
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
 The current Windows x64 runtime work uses explicit candidate runtime packages. Humble, Jazzy, and Lyrical are packaged as separate candidates, and exactly one runtime package should be active in a Unity project manifest at a time. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
@@ -14,7 +17,9 @@ Use the core package when you want normal Unity-to-Foxglove workflows:
 Packages/dev.unity2foxglove.sdk
 ```
 
-The core SDK supports Foxglove WebSocket streaming, MCAP recording, replay, FoxRun, and the existing optional sidecar ROS2 bridge without depending on this package.
+The core SDK supports Foxglove WebSocket streaming, MCAP recording, replay,
+and transport-neutral FoxRun. Install the standalone
+`dev.unity2foxglove.ros2bridge` package for the sidecar Bridge Provider.
 
 This optional package is reserved for users who later want Unity to participate as a ROS2 node through RobotecAI ROS2 For Unity while keeping the core SDK lightweight and ROS-free by default.
 
@@ -130,7 +135,7 @@ window, or a matching `ROS_DOMAIN_ID` alone are never interoperability proof.
 
 Custom asmdefs need references to `Unity.FoxgloveSDK`,
 `Unity2Foxglove.Ros2ForUnity.Native`, and the selected runtime/message
-assemblies. `FOXRUN212` means `Native generation requires the optional Native
+assemblies. `FOXR2F007` means `R2FU generation requires the optional Native
 assembly reference`; add the Native reference and let Unity recompile instead
 of changing the contract to a WebSocket encoding.
 

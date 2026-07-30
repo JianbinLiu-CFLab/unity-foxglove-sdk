@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
                 BuildSortedSdkTypedPublisherEntries,
                 LazyThreadSafetyMode.PublicationOnly);
 
-        public const int ManifestVersion = 1;
+        public const int ManifestVersion = 2;
         public const string PackageName = "Unity2Foxglove";
         public const string GeneratorName = "Unity2FoxgloveSchemaManifest";
         public const int GeneratorMajorVersion = 1;
@@ -30,13 +30,11 @@ namespace Unity.FoxgloveSDK.Editor
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 BuildFoxRunSection(foxRunManifest),
                 BuildProtobufRegistrySection(),
-                BuildRos2MsgRegistrySection(),
                 BuildSdkTypedPublishersSection());
 
             var sectionHashes = new Unity2FoxgloveSchemaManifestSectionHashes(
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(sections.FoxRun)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteProtobufRegistrySectionHashInput(sections.ProtobufRegistry)),
-                FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteRos2MsgRegistrySectionHashInput(sections.Ros2MsgRegistry)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteSdkTypedPublishersSectionHashInput(sections.SdkTypedPublishers)));
 
             var manifestWithoutHash = new Unity2FoxgloveSchemaManifest(
@@ -77,13 +75,11 @@ namespace Unity.FoxgloveSDK.Editor
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 foxRun,
                 BuildProtobufRegistrySection(),
-                BuildRos2MsgRegistrySection(),
                 BuildSdkTypedPublishersSection());
 
             var sectionHashes = new Unity2FoxgloveSchemaManifestSectionHashes(
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(sections.FoxRun)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteProtobufRegistrySectionHashInput(sections.ProtobufRegistry)),
-                FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteRos2MsgRegistrySectionHashInput(sections.Ros2MsgRegistry)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteSdkTypedPublishersSectionHashInput(sections.SdkTypedPublishers)));
 
             var manifestWithoutHash = new Unity2FoxgloveSchemaManifest(
@@ -171,19 +167,6 @@ namespace Unity.FoxgloveSDK.Editor
                 entries);
         }
 
-        private static Unity2FoxgloveRos2MsgRegistrySection BuildRos2MsgRegistrySection()
-        {
-            var entries = Array.AsReadOnly(Array.Empty<Unity2FoxgloveRos2MsgRegistryEntry>());
-            return new Unity2FoxgloveRos2MsgRegistrySection(
-                "",
-                "",
-                "",
-                "",
-                0,
-                0,
-                entries);
-        }
-
         private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()
         {
             var entries = GetSortedSdkTypedPublisherEntries();
@@ -216,7 +199,6 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(entry => entry.PublisherTypeFullName, StringComparer.Ordinal)
                 .ThenBy(entry => entry.EntryKind, StringComparer.Ordinal)
                 .ThenBy(entry => entry.FoxgloveSchemaName, StringComparer.Ordinal)
-                .ThenBy(entry => entry.Ros2SchemaName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
 
@@ -230,7 +212,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (entry.IsTemplate)
                 {
-                    if (!string.IsNullOrEmpty(entry.FoxgloveSchemaName) || !string.IsNullOrEmpty(entry.Ros2SchemaName))
+                    if (!string.IsNullOrEmpty(entry.FoxgloveSchemaName))
                         throw new InvalidOperationException("Generic publisher template entries must not carry fixed schema names: " + entry.PublisherTypeFullName);
                     continue;
                 }
@@ -246,14 +228,6 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     throw new InvalidOperationException(
                         "SDK publisher catalog entry declares Foxglove encoding support without a Foxglove schema name: " +
-                        entry.PublisherTypeFullName);
-                }
-
-
-                if (entry.SupportsRos2 && string.IsNullOrEmpty(entry.Ros2SchemaName))
-                {
-                    throw new InvalidOperationException(
-                        "SDK publisher catalog entry declares ROS2 support without a ROS2 schema name: " +
                         entry.PublisherTypeFullName);
                 }
             }

@@ -324,56 +324,28 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "flow");
             AppendString(sb, binding.Flow);
             sb.Append(',');
-            AppendPropertyName(sb, "declaredSource");
-            AppendString(sb, binding.DeclaredSource);
+            WriteTransportSelection(
+                sb,
+                binding.PublishTransportIds,
+                binding.SubscribeTransportId);
             sb.Append(',');
-            AppendPropertyName(sb, "declaredTargets");
-            AppendString(sb, binding.DeclaredTargets);
+            AppendPropertyName(sb, "reliability");
+            AppendString(sb, binding.Reliability);
             sb.Append(',');
-            AppendPropertyName(sb, "qosProfile");
-            AppendString(sb, binding.QosProfile);
+            AppendPropertyName(sb, "durability");
+            AppendString(sb, binding.Durability);
             sb.Append(',');
-            AppendPropertyName(sb, "qosReliability");
-            AppendString(sb, binding.QosReliability);
+            AppendPropertyName(sb, "history");
+            AppendString(sb, binding.History);
             sb.Append(',');
-            AppendPropertyName(sb, "qosDurability");
-            AppendString(sb, binding.QosDurability);
-            sb.Append(',');
-            AppendPropertyName(sb, "qosHistory");
-            AppendString(sb, binding.QosHistory);
-            sb.Append(',');
-            AppendPropertyName(sb, "qosDepth");
-            sb.Append(binding.QosDepth.ToString(CultureInfo.InvariantCulture));
+            AppendPropertyName(sb, "depth");
+            sb.Append(binding.Depth.ToString(CultureInfo.InvariantCulture));
             sb.Append(',');
             AppendPropertyName(sb, "supportsWebSocket");
             sb.Append(binding.SupportsWebSocket ? "true" : "false");
             sb.Append(',');
-            AppendPropertyName(sb, "supportsRos2Native");
-            sb.Append(binding.SupportsRos2Native ? "true" : "false");
-            sb.Append(',');
             AppendPropertyName(sb, "isStream");
             sb.Append(binding.IsStream ? "true" : "false");
-            sb.Append(',');
-            AppendPropertyName(sb, "nativeType");
-            AppendString(sb, binding.NativeType);
-            sb.Append(',');
-            AppendPropertyName(sb, "canonicalRosType");
-            AppendString(sb, binding.CanonicalRosType);
-            sb.Append(',');
-            AppendPropertyName(sb, "copyShapeIdentity");
-            AppendString(sb, binding.CopyShapeIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "ros2ContractKind");
-            AppendString(sb, binding.Ros2ContractKind.ToString());
-            sb.Append(',');
-            AppendPropertyName(sb, "customDtoIdentity");
-            AppendString(sb, binding.CustomDtoIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "customPayloadIdentity");
-            AppendString(sb, binding.CustomPayloadIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "customEnvelopeIdentity");
-            AppendString(sb, binding.CustomEnvelopeIdentity);
             sb.Append('}');
         }
 

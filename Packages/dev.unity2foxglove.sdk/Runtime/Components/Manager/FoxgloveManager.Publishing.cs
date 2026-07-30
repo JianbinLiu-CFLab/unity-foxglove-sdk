@@ -25,19 +25,9 @@ namespace Unity.FoxgloveSDK.Components
         private const string ProtobufEncoding = "protobuf";
 
         /// <summary>
-        /// Foxglove message encoding label for ROS 2 CDR payloads.
-        /// </summary>
-        private const string CdrEncoding = "cdr";
-
-        /// <summary>
         /// Foxglove message encoding label for MessagePack payloads.
         /// </summary>
         private const string MsgPackEncoding = "msgpack";
-
-        /// <summary>
-        /// Foxglove schema encoding label for ROS 2 .msg schemas.
-        /// </summary>
-        private const string Ros2MsgSchemaEncoding = "ros2msg";
 
         /// <summary>
         /// Empty schema name used for schemaless manual JSON channels.
@@ -52,7 +42,6 @@ namespace Unity.FoxgloveSDK.Components
 #if UNITY_2020_3_OR_NEWER
         private static readonly ProfilerMarker PublishJsonMarker = new ProfilerMarker("FoxgloveManager.PublishJson");
         private static readonly ProfilerMarker PublishProtoMarker = new ProfilerMarker("FoxgloveManager.PublishProto");
-        private static readonly ProfilerMarker PublishRos2Marker = new ProfilerMarker("FoxgloveManager.PublishRos2");
         private static readonly ProfilerMarker PublishMsgPackMarker = new ProfilerMarker("FoxgloveManager.PublishMsgPack");
 #endif
 
@@ -76,38 +65,6 @@ namespace Unity.FoxgloveSDK.Components
 
             id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
-            _connectionState.NextChannelId++;
-            _channelCache[key] = id;
-            return id;
-        }
-
-        /// <summary>
-        /// Gets or registers a ROS 2 .msg schema-bound CDR channel.
-        /// </summary>
-        /// <param name="topic">Topic name, for example "/tf".</param>
-        /// <param name="schemaName">ROS 2 interface name, for example "foxglove_msgs/msg/FrameTransform".</param>
-        /// <returns>The channel identifier associated with the topic, schema, cdr, and ros2msg.</returns>
-        public uint GetOrRegisterRos2MsgSchemaChannel(string topic, string schemaName)
-        {
-            if (!IsValidPublishTopic(topic))
-                throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
-
-            if (string.IsNullOrWhiteSpace(schemaName))
-                throw new System.InvalidOperationException("ROS2 schema channels require a schema name.");
-
-            var key = (topic, schemaName, CdrEncoding, Ros2MsgSchemaEncoding);
-            if (_channelCache.TryGetValue(key, out var id))
-            {
-                return id;
-            }
-
-            id = (uint)_connectionState.NextChannelId;
-            _runtime.RegisterSchemaChannel(
-                id,
-                topic,
-                schemaName,
-                CdrEncoding,
-                Ros2MsgSchemaEncoding);
             _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
@@ -144,34 +101,6 @@ namespace Unity.FoxgloveSDK.Components
             channelId = string.IsNullOrEmpty(schemaName)
                 ? GetOrRegisterChannel(topic, messageEncoding)
                 : GetOrRegisterSchemaChannel(topic, schemaName, messageEncoding);
-
-            return !requireDemand || _runtime.HasChannelDemand(channelId);
-        }
-
-        /// <summary>
-        /// Register or reuse a ROS 2 CDR channel before a publisher prepares payload data.
-        /// </summary>
-        /// <param name="topic">Topic to advertise and potentially publish to.</param>
-        /// <param name="schemaName">ROS 2 interface schema name.</param>
-        /// <param name="channelId">Resolved channel identifier when preparation succeeds.</param>
-        /// <param name="requireDemand">When true, return false unless a subscriber or MCAP recorder needs data.</param>
-        /// <returns>True when payload preparation should continue.</returns>
-        public bool TryPrepareRos2Publish(
-            string topic,
-            string schemaName,
-            out uint channelId,
-            bool requireDemand = true)
-        {
-            channelId = 0;
-
-            if (SuppressLivePublishersForReplay)
-                return false;
-
-            if (!IsRunning)
-                return false;
-
-            if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId, "prepare ROS2 publish"))
-                return false;
 
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
@@ -403,63 +332,6 @@ namespace Unity.FoxgloveSDK.Components
 #endif
         }
 
-        /// <summary>
-        /// Publishes a ROS 2 CDR payload on a ROS 2 .msg schema channel.
-        /// </summary>
-        /// <param name="topic">Topic to publish to.</param>
-        /// <param name="schemaName">ROS 2 interface schema name advertised to Foxglove.</param>
-        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
-        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
-        public void PublishRos2Cdr(string topic, string schemaName, byte[] payload, ulong logTimeNs)
-            => PublishRos2(topic, schemaName, payload, logTimeNs);
-
-        /// <summary>
-        /// Publishes a ROS 2 payload on a ROS 2 .msg schema channel using the user-facing ROS2 product path.
-        /// </summary>
-        /// <param name="topic">Topic to publish to.</param>
-        /// <param name="schemaName">ROS 2 interface schema name advertised to Foxglove.</param>
-        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
-        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
-        public void PublishRos2(string topic, string schemaName, byte[] payload, ulong logTimeNs)
-        {
-#if UNITY_2020_3_OR_NEWER
-            PublishRos2Marker.Begin();
-            try
-            {
-#endif
-            if (SuppressLivePublishersForReplay)
-            {
-                return;
-            }
-
-            if (!IsRunning)
-            {
-                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
-                {
-                    Debug.LogWarning("[Foxglove] PublishRos2 called but server is not running.");
-                    _warningDebounceState.WarnedNotRunning = true;
-                }
-
-                return;
-            }
-
-            if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId, "publish ROS2"))
-                return;
-
-            _runtime.Publish(
-                channelId,
-                payload ?? System.Array.Empty<byte>(),
-                logTimeNs);
-            RecordPublishCadence(topic, CdrEncoding);
-#if UNITY_2020_3_OR_NEWER
-            }
-            finally
-            {
-                PublishRos2Marker.End();
-            }
-#endif
-        }
-
         private static bool IsValidPublishTopic(string topic)
             => TopicNameNormalizer.IsValidPublishTopic(topic);
 
@@ -476,44 +348,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return false;
-        }
-
-        private bool TryGetOrRegisterRos2MsgSchemaChannel(
-            string topic,
-            string schemaName,
-            out uint channelId,
-            string operation)
-        {
-            channelId = 0;
-            if (!TryValidatePublishTopic(topic, operation))
-                return false;
-
-            if (!TryValidateRos2SchemaName(schemaName, operation))
-                return false;
-
-            channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
-            return true;
-        }
-
-        private bool TryValidateRos2SchemaName(string schemaName, string operation)
-        {
-            if (string.IsNullOrWhiteSpace(schemaName))
-            {
-                WarnInvalidRos2Schema(operation, "ROS2 schema channels require a schema name.");
-                return false;
-            }
-
-            return true;
-        }
-
-        private void WarnInvalidRos2Schema(string operation, string reason)
-        {
-            var key = operation + ":" + reason;
-            if (_warningDebounceState.LastInvalidRos2SchemaWarningKey == key)
-                return;
-
-            _warningDebounceState.LastInvalidRos2SchemaWarningKey = key;
-            Debug.LogWarning($"[Foxglove] Cannot {operation}: {reason}");
         }
 
         /// <summary>

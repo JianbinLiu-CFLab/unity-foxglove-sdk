@@ -231,12 +231,16 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase175c", "Phase 175C: FoxRun Manager wire policy and migration", Phase175CValidation.Validate, includeInDefault: false),
             Ci("--phase176", "Phase 176: FoxRun Subscribe Data and Publish panel", Phase176Validation.Validate, includeInDefault: false,
                 evidence: ValidationEvidence.Structural),
-            Ci("--phase179", "FoxRun native ROS2 subscription boundary", FoxRunRos2NativeSubscriptionValidation.Validate, includeInDefault: true,
+#if UNITY2FOXGLOVE_R2FU_VALIDATION
+            Ci("--phase179", "FoxRun R2FU subscription Provider boundary", FoxRunRos2NativeSubscriptionValidation.Validate, includeInDefault: true,
                 evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural),
+#endif
             Ci("--phase180", "Data Transport Inspector information architecture", DataTransportInspectorValidation.Validate, includeInDefault: true,
                 evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural),
-            Ci("--phase181", "FoxRun custom ROS2 interface interop release gate", FoxRunCustomRos2InterfaceValidation.Validate, includeInDefault: true,
+#if UNITY2FOXGLOVE_R2FU_VALIDATION
+            Ci("--phase181", "FoxRun custom R2FU interface interop release gate", FoxRunCustomRos2InterfaceValidation.Validate, includeInDefault: true,
                 evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural),
+#endif
             Ci("--phase182", "FoxRun publish and inbound wire hardening", FoxRunWireHardeningValidation.Validate, includeInDefault: true,
                 evidence: ValidationEvidence.Structural),
             Ci("--phase183a", "FoxRun declaration and full-duplex update policy", FoxRunDeclarationModelValidation.Validate, includeInDefault: true,

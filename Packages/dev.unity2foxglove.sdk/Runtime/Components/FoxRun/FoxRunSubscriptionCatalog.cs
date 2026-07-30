@@ -101,32 +101,6 @@ namespace Unity.FoxgloveSDK.Components
             return response;
         }
 
-        [Obsolete("Use the transport-ID overload.")]
-        public static JObject BuildResponse(
-            FoxRunSchemaManifestInfo manifest,
-            bool subscriptionsEnabled,
-            FoxRunEncoding publishDefault,
-            FoxRunEncoding subscriptionDefault,
-            FoxRunEndpoint defaultProvider,
-            int subscriptionRateLimitHz,
-            string requestedTopic,
-            bool includeDescriptor)
-        {
-            defaultProvider = FoxRunEndpointResolver.ValidateProfileSource(defaultProvider);
-            var providerId = defaultProvider == FoxRunEndpoint.Foxglove
-                ? FoxgloveWebSocketTransport.Id
-                : "unity2foxglove.legacy-non-websocket";
-            return BuildResponse(
-                manifest,
-                subscriptionsEnabled,
-                publishDefault,
-                subscriptionDefault,
-                providerId,
-                subscriptionRateLimitHz,
-                requestedTopic,
-                includeDescriptor);
-        }
-
         private static void AddContract(
             JArray contracts,
             CatalogContract entry,
@@ -278,14 +252,19 @@ namespace Unity.FoxgloveSDK.Components
 
             foreach (var binding in bindings)
             {
-                var resolvesToWebSocket =
-                    binding.DeclaredSource == FoxRunEndpoint.Foxglove
-                    || (binding.DeclaredSource == 0
-                        && defaultProvider
-                           == FoxgloveWebSocketTransport.TransportId);
-                if (!resolvesToWebSocket
+                var selectedProvider =
+                    string.IsNullOrWhiteSpace(
+                        binding.SubscribeTransportId)
+                        ? defaultProvider.Value
+                        : binding.SubscribeTransportId;
+                if (!string.Equals(
+                        selectedProvider,
+                        FoxgloveWebSocketTransport.Id,
+                        StringComparison.Ordinal)
                     || !binding.SupportsWebSocket)
+                {
                     return false;
+                }
             }
             isStream = bindings.Any(binding => binding.IsStream);
             return true;

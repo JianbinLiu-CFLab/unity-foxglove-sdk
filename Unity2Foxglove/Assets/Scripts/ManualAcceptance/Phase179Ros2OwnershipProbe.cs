@@ -10,6 +10,10 @@ using System.Text;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
+
 /// <summary>
 /// Proves that generated FoxRun ROS2 input applies an owned message copy on the
 /// main thread. This component never creates a ROS2 node or subscription and
@@ -41,20 +45,17 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [Tooltip("Immutable FoxRun subscription-session snapshot captured when the assigned Manager starts or ends a session.")]
     [SerializeField] private bool capturedSessionEnabled;
     [SerializeField] private ulong capturedSessionGeneration;
-    [SerializeField] private FoxRunEndpoint capturedDefaultSubscriptionSource =
-        FoxRunEndpoint.Foxglove;
+    [SerializeField] private string capturedDefaultSubscribeTransportId =
+        FoxgloveWebSocketTransport.Id;
     [SerializeField] private FoxRunEncoding capturedFoxgloveEncoding =
         FoxRunEncoding.Protobuf;
-    [SerializeField] private FoxRunQosProfile capturedQosProfile =
-        FoxRunQosProfile.Default;
-    [SerializeField] private FoxRunQosReliability capturedQosReliability =
-        FoxRunQosReliability.Reliable;
-    [SerializeField] private FoxRunQosDurability capturedQosDurability =
-        FoxRunQosDurability.Volatile;
-    [SerializeField] private FoxRunQosHistory capturedQosHistory =
-        FoxRunQosHistory.KeepLast;
-    [SerializeField] private int capturedQosDepth = 10;
-    [SerializeField] private int capturedNativeCopyBudgetBytes = 4 * 1024 * 1024;
+    [SerializeField] private FoxRunDeliveryReliability capturedDeliveryReliability =
+        FoxRunDeliveryReliability.ProviderDefault;
+    [SerializeField] private FoxRunDeliveryDurability capturedDeliveryDurability =
+        FoxRunDeliveryDurability.ProviderDefault;
+    [SerializeField] private FoxRunDeliveryHistory capturedDeliveryHistory =
+        FoxRunDeliveryHistory.ProviderDefault;
+    [SerializeField] private int capturedDeliveryDepth;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     // The generated host owns this current message. It is intentionally not
@@ -63,8 +64,8 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [FoxRun(
         Topic,
         Mode = FoxRunFlow.Subscribe,
-        Source = FoxRunEndpoint.Ros2Native,
-        QoS = FoxRunQosProfile.Default)]
+        SubscribeTransportId =
+            FoxRunRos2TransportProvider.IdValue)]
     private std_msgs.msg.String inputString;
 #else
     [Header("Native Input Availability")]
@@ -222,14 +223,12 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
 
         capturedSessionEnabled = policy.SubscriptionsEnabled;
         capturedSessionGeneration = policy.SessionGeneration;
-        capturedDefaultSubscriptionSource = policy.DefaultSource;
-        capturedFoxgloveEncoding = policy.FoxgloveEncoding;
-        capturedQosProfile = policy.DefaultRos2Qos.Profile;
-        capturedQosReliability = policy.DefaultRos2Qos.Reliability;
-        capturedQosDurability = policy.DefaultRos2Qos.Durability;
-        capturedQosHistory = policy.DefaultRos2Qos.History;
-        capturedQosDepth = policy.DefaultRos2Qos.Depth;
-        capturedNativeCopyBudgetBytes = policy.NativeCopyBudgetBytes;
+        capturedDefaultSubscribeTransportId = policy.DefaultProvider.Value;
+        capturedFoxgloveEncoding = policy.WebSocketEncoding;
+        capturedDeliveryReliability = policy.DefaultDeliveryPolicy.Reliability;
+        capturedDeliveryDurability = policy.DefaultDeliveryPolicy.Durability;
+        capturedDeliveryHistory = policy.DefaultDeliveryPolicy.History;
+        capturedDeliveryDepth = policy.DefaultDeliveryPolicy.Depth;
     }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY

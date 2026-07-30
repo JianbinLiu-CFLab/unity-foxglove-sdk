@@ -28,9 +28,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void PointCloud2NativeFrameRecycleIsInterlocked()
+        public void PackedPointCloudFrameRecycleIsInterlocked()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudFrame.cs");
             var method = TestSources.ExtractMethod(source, "internal void RecycleData()");
 
             Assert.Contains("using System.Threading;", source, StringComparison.Ordinal);

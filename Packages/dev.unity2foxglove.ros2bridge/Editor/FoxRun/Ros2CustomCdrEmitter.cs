@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Editor;
@@ -16,6 +17,21 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
     {
         private const string RosPackageName =
             "unity2foxglove_foxrun_interfaces_v1";
+        private const string BridgeProviderId =
+            "unity2foxglove.ros2bridge";
+
+#if FOXRUN_BRIDGE_ANALYZER
+        internal static string GeneratedSourceName(
+            string ns,
+            string className)
+        {
+            var identity = string.IsNullOrEmpty(ns)
+                ? className
+                : ns + "." + className;
+            return IdentifierUtils.SanitizeFileStem(identity)
+                   + "_unity2foxglove_ros2bridge_typed_cdr_FoxRun.g.cs";
+        }
+#endif
 
         internal static string EmitBridgeContribution(
             FoxRunGenerationType type)
@@ -78,10 +94,11 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     continue;
 
                 var member = fields[0];
+                var projectedShape = ProjectShape(member.TypeShape);
                 var registry = new ShapeRegistry(topicIndex);
-                var root = registry.Get(member.Ros2CustomDtoShape);
+                var root = registry.Get(projectedShape);
                 var schemaContent = BuildSchemaContent(
-                    member.Ros2CustomDtoShape,
+                    projectedShape,
                     RosPackageName);
                 sb.AppendLine();
                 sb.AppendLine($"{pad}    private const string __foxRunRos2Schema_{topicIndex} = \"{CSharpStringLiteral(schemaContent)}\";");
@@ -144,7 +161,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         private static void EmitMember(
             StringBuilder sb,
             string pad,
-            FoxRunRos2CustomDtoMemberShape member,
+            BridgeDtoMemberShape member,
             ShapeRegistry registry,
             int ordinal)
         {
@@ -158,17 +175,17 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             }
             switch (member.Kind)
             {
-                case FoxRunRos2CustomDtoMemberKind.NestedDto:
+                case BridgeDtoMemberKind.NestedDto:
                     var nested = registry.Get(member.NestedShape);
                     sb.AppendLine($"{pad}{nested.Method}(writer, __hasSource ? {access} : null);");
                     break;
-                case FoxRunRos2CustomDtoMemberKind.Sequence:
+                case BridgeDtoMemberKind.Sequence:
                     EmitSequence(sb, pad, member, access, registry, ordinal);
                     break;
-                case FoxRunRos2CustomDtoMemberKind.String:
+                case BridgeDtoMemberKind.String:
                     sb.AppendLine($"{pad}writer.WriteString(__hasSource ? {access} : null);");
                     break;
-                case FoxRunRos2CustomDtoMemberKind.Enum:
+                case BridgeDtoMemberKind.Enum:
                     var enumExpression = TryUnwrapNullable(
                         member.FullyQualifiedTypeName,
                         out var nullableEnumType)
@@ -188,7 +205,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                         member.RosType,
                         enumExpression);
                     break;
-                case FoxRunRos2CustomDtoMemberKind.Scalar:
+                case BridgeDtoMemberKind.Scalar:
                     var scalar = IsNullable(member.FullyQualifiedTypeName)
                         ? "__hasSource ? " + access + ".GetValueOrDefault() : default"
                         : "__hasSource ? " + access + " : default";
@@ -210,14 +227,14 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         private static void EmitSequence(
             StringBuilder sb,
             string pad,
-            FoxRunRos2CustomDtoMemberShape member,
+            BridgeDtoMemberShape member,
             string access,
             ShapeRegistry registry,
             int ordinal)
         {
             var variable = "__sequence_" + ordinal;
             sb.AppendLine($"{pad}var {variable} = __hasSource ? {access} : null;");
-            var countExpression = member.SequenceRepresentation == FoxRunRos2CustomDtoSequenceRepresentation.List
+            var countExpression = member.SequenceRepresentation == BridgeSequenceRepresentation.List
                 ? variable + " == null ? 0 : " + variable + ".Count"
                 : variable + " == null ? 0 : " + variable + ".Length";
             var count = "__sequenceCount_" + ordinal;
@@ -266,13 +283,15 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         private static bool IsSupportedCustom(FoxRunGenerationMember member)
             => member != null
-               && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
-               && member.Ros2CustomDtoShape != null
-               && member.Ros2CustomDtoShape.IsSupported
-               && member.Ros2CustomDtoShape.Diagnostics.Count == 0;
+               && member.Mode != 2
+               && member.PublishTransportIds != null
+               && member.PublishTransportIds.Contains(
+                   BridgeProviderId,
+                   StringComparer.Ordinal)
+               && ProjectShape(member.TypeShape) != null;
 
         private static string BuildSchemaContent(
-            FoxRunRos2CustomDtoShape root,
+            BridgeDtoShape root,
             string packageName)
         {
             var registry = new ShapeRegistry(-1);
@@ -291,7 +310,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                              .OrderBy(value => value.RosFieldName, StringComparer.Ordinal)
                              .ThenBy(value => value.Name, StringComparer.Ordinal))
                 {
-                    var rosType = member.Kind == FoxRunRos2CustomDtoMemberKind.NestedDto
+                    var rosType = member.Kind == BridgeDtoMemberKind.NestedDto
                         ? member.NestedShape.PayloadIdentity
                         : member.RosType;
                     builder.Append(rosType).Append(' ').Append(member.RosFieldName).Append('\n');
@@ -306,6 +325,370 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             builder.Append("================================================================================\n");
             builder.Append("MSG: builtin_interfaces/Time\n");
             builder.Append("int32 sec\nuint32 nanosec\n");
+            return builder.ToString();
+        }
+
+        private static BridgeDtoShape ProjectShape(FoxRunTypeShape shape)
+        {
+            if (shape == null
+                || shape.Kind != FoxRunTypeShapeKind.Object
+                || !shape.CanConstruct)
+            {
+                return null;
+            }
+
+            var members = new List<BridgeDtoMemberShape>();
+            var rosNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in shape.Fields
+                         .OrderBy(value => value.MemberName, StringComparer.Ordinal))
+            {
+                if (field == null || !field.CanAssign)
+                    return null;
+
+                var rosName = ToRosFieldName(field.MemberName);
+                if (string.IsNullOrEmpty(rosName)
+                    || rosName.StartsWith("foxrun_", StringComparison.Ordinal)
+                    || !rosNames.Add(rosName))
+                {
+                    return null;
+                }
+
+                var member = ProjectMember(field, rosName);
+                if (member == null)
+                    return null;
+                members.Add(member);
+            }
+
+            var canonicalIdentity = BuildCanonicalIdentity(
+                shape.TypeName,
+                members);
+            return new BridgeDtoShape(
+                shape.TypeName,
+                canonicalIdentity,
+                BuildPayloadIdentity(
+                    shape.TypeName,
+                    canonicalIdentity),
+                members);
+        }
+
+        private static BridgeDtoMemberShape ProjectMember(
+            FoxRunTypeField field,
+            string rosName)
+        {
+            var shape = field.TypeShape;
+            if (shape == null)
+                return null;
+
+            if (shape.Kind == FoxRunTypeShapeKind.Collection)
+            {
+                var element = shape.ElementShape;
+                if (element == null
+                    || element.Kind == FoxRunTypeShapeKind.Collection
+                    || element.Nullable)
+                {
+                    return null;
+                }
+
+                var nested = element.Kind == FoxRunTypeShapeKind.Object
+                    ? ProjectShape(element)
+                    : null;
+                var elementRosType = RosType(element, nested);
+                var elementTypeName = ClrTypeName(element);
+                if (string.IsNullOrEmpty(elementRosType)
+                    || string.IsNullOrEmpty(elementTypeName))
+                {
+                    return null;
+                }
+
+                var representation =
+                    shape.CollectionKind == FoxRunCollectionKind.List
+                        ? BridgeSequenceRepresentation.List
+                        : BridgeSequenceRepresentation.Array;
+                if (shape.CollectionKind != FoxRunCollectionKind.Array
+                    && shape.CollectionKind != FoxRunCollectionKind.List
+                    && shape.CollectionKind != FoxRunCollectionKind.Binary)
+                {
+                    return null;
+                }
+
+                var collectionTypeName =
+                    representation == BridgeSequenceRepresentation.List
+                        ? "System.Collections.Generic.List<"
+                          + elementTypeName
+                          + ">"
+                        : elementTypeName + "[]";
+                return new BridgeDtoMemberShape(
+                    field.MemberName,
+                    rosName,
+                    BridgeDtoMemberKind.Sequence,
+                    collectionTypeName,
+                    elementRosType + "[]",
+                    elementTypeName,
+                    nested,
+                    hasPresence: true,
+                    representation);
+            }
+
+            if (shape.Kind == FoxRunTypeShapeKind.Object)
+            {
+                var nested = ProjectShape(shape);
+                return nested == null
+                    ? null
+                    : new BridgeDtoMemberShape(
+                        field.MemberName,
+                        rosName,
+                        BridgeDtoMemberKind.NestedDto,
+                        shape.TypeName,
+                        nested.PayloadIdentity,
+                        string.Empty,
+                        nested,
+                        hasPresence: true,
+                        BridgeSequenceRepresentation.None);
+            }
+
+            if (shape.Kind == FoxRunTypeShapeKind.Enum)
+            {
+                return new BridgeDtoMemberShape(
+                    field.MemberName,
+                    rosName,
+                    BridgeDtoMemberKind.Enum,
+                    NullableTypeName(shape.TypeName, shape.Nullable),
+                    "int32",
+                    string.Empty,
+                    null,
+                    shape.Nullable || field.IsNullable,
+                    BridgeSequenceRepresentation.None);
+            }
+
+            if (shape.Kind != FoxRunTypeShapeKind.Canonical)
+                return null;
+
+            var rosType = RosType(shape, null);
+            var clrType = ClrTypeName(shape.WithNullable(false));
+            if (string.IsNullOrEmpty(rosType)
+                || string.IsNullOrEmpty(clrType))
+            {
+                return null;
+            }
+
+            var isString = string.Equals(
+                shape.CanonicalType,
+                "string",
+                StringComparison.Ordinal);
+            return new BridgeDtoMemberShape(
+                field.MemberName,
+                rosName,
+                isString
+                    ? BridgeDtoMemberKind.String
+                    : BridgeDtoMemberKind.Scalar,
+                NullableTypeName(
+                    clrType,
+                    !isString && (shape.Nullable || field.IsNullable)),
+                rosType,
+                string.Empty,
+                null,
+                isString || shape.Nullable || field.IsNullable,
+                BridgeSequenceRepresentation.None);
+        }
+
+        private static string RosType(
+            FoxRunTypeShape shape,
+            BridgeDtoShape nested)
+        {
+            if (shape == null)
+                return string.Empty;
+            if (shape.Kind == FoxRunTypeShapeKind.Object)
+                return nested?.PayloadIdentity ?? string.Empty;
+            if (shape.Kind == FoxRunTypeShapeKind.Enum)
+                return "int32";
+            if (shape.Kind != FoxRunTypeShapeKind.Canonical)
+                return string.Empty;
+
+            switch (shape.CanonicalType)
+            {
+                case "bool":
+                case "uint8":
+                case "int8":
+                case "int16":
+                case "uint16":
+                case "int32":
+                case "uint32":
+                case "int64":
+                case "uint64":
+                case "float32":
+                case "float64":
+                case "string":
+                    return shape.CanonicalType;
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private static string ClrTypeName(FoxRunTypeShape shape)
+        {
+            if (shape == null)
+                return string.Empty;
+            if (shape.Kind == FoxRunTypeShapeKind.Object
+                || shape.Kind == FoxRunTypeShapeKind.Enum)
+            {
+                return NullableTypeName(
+                    shape.TypeName,
+                    shape.Nullable
+                    && shape.Kind == FoxRunTypeShapeKind.Enum);
+            }
+            if (shape.Kind != FoxRunTypeShapeKind.Canonical)
+                return string.Empty;
+
+            string typeName;
+            switch (shape.CanonicalType)
+            {
+                case "bool": typeName = "System.Boolean"; break;
+                case "uint8": typeName = "System.Byte"; break;
+                case "int8": typeName = "System.SByte"; break;
+                case "int16": typeName = "System.Int16"; break;
+                case "uint16": typeName = "System.UInt16"; break;
+                case "int32": typeName = "System.Int32"; break;
+                case "uint32": typeName = "System.UInt32"; break;
+                case "int64": typeName = "System.Int64"; break;
+                case "uint64": typeName = "System.UInt64"; break;
+                case "float32": typeName = "System.Single"; break;
+                case "float64": typeName = "System.Double"; break;
+                case "string": return "System.String";
+                default: return string.Empty;
+            }
+            return NullableTypeName(typeName, shape.Nullable);
+        }
+
+        private static string NullableTypeName(
+            string typeName,
+            bool nullable)
+            => nullable
+                ? "System.Nullable<" + typeName + ">"
+                : typeName ?? string.Empty;
+
+        private static string BuildCanonicalIdentity(
+            string typeName,
+            IEnumerable<BridgeDtoMemberShape> members)
+        {
+            var builder = new StringBuilder();
+            AppendLengthFramed(builder, typeName);
+            foreach (var member in members)
+            {
+                AppendLengthFramed(builder, member.Name);
+                AppendLengthFramed(builder, member.RosFieldName);
+                AppendLengthFramed(builder, member.Kind.ToString());
+                AppendLengthFramed(builder, member.FullyQualifiedTypeName);
+                AppendLengthFramed(builder, member.RosType);
+                AppendLengthFramed(builder, member.SequenceElementTypeName);
+                AppendLengthFramed(builder, member.NestedShapeIdentity);
+                AppendLengthFramed(
+                    builder,
+                    member.HasPresence ? "1" : "0");
+                AppendLengthFramed(
+                    builder,
+                    member.SequenceRepresentation.ToString());
+            }
+            return builder.ToString();
+        }
+
+        private static string BuildPayloadIdentity(
+            string typeName,
+            string canonicalIdentity)
+        {
+            var simpleName = typeName ?? string.Empty;
+            var dot = simpleName.LastIndexOf('.');
+            if (dot >= 0)
+                simpleName = simpleName.Substring(dot + 1);
+            var pascal = ToPascalIdentifier(simpleName);
+            if (string.IsNullOrEmpty(pascal))
+                pascal = "FoxRunPayload";
+            return pascal + Fnv1a64Hex(
+                (typeName ?? string.Empty).ToUpperInvariant()
+                + "|"
+                + (canonicalIdentity ?? string.Empty));
+        }
+
+        private static string Fnv1a64Hex(string value)
+        {
+            const ulong offset = 14695981039346656037UL;
+            const ulong prime = 1099511628211UL;
+            var hash = offset;
+            foreach (var character in value ?? string.Empty)
+            {
+                hash ^= character;
+                hash *= prime;
+            }
+            return hash
+                .ToString("X16", CultureInfo.InvariantCulture)
+                .Substring(0, 12);
+        }
+
+        private static void AppendLengthFramed(
+            StringBuilder builder,
+            string value)
+        {
+            value ??= string.Empty;
+            builder.Append(
+                value.Length.ToString(CultureInfo.InvariantCulture));
+            builder.Append(':').Append(value).Append('|');
+        }
+
+        private static string ToRosFieldName(string value)
+        {
+            value ??= string.Empty;
+            var builder = new StringBuilder(value.Length + 8);
+            for (var index = 0; index < value.Length; index++)
+            {
+                var current = value[index];
+                if (char.IsLetterOrDigit(current))
+                {
+                    var previous = index > 0 ? value[index - 1] : '\0';
+                    var next = index + 1 < value.Length
+                        ? value[index + 1]
+                        : '\0';
+                    var needsSeparator = index > 0
+                        && char.IsUpper(current)
+                        && (char.IsLower(previous)
+                            || char.IsDigit(previous)
+                            || (char.IsUpper(previous)
+                                && char.IsLower(next)));
+                    if (needsSeparator
+                        && builder.Length > 0
+                        && builder[builder.Length - 1] != '_')
+                    {
+                        builder.Append('_');
+                    }
+                    builder.Append(char.ToLowerInvariant(current));
+                }
+                else if (builder.Length > 0
+                         && builder[builder.Length - 1] != '_')
+                {
+                    builder.Append('_');
+                }
+            }
+            return builder.ToString().Trim('_');
+        }
+
+        private static string ToPascalIdentifier(string value)
+        {
+            value ??= string.Empty;
+            var builder = new StringBuilder(value.Length);
+            var capitalize = true;
+            foreach (var character in value)
+            {
+                if (!char.IsLetterOrDigit(character))
+                {
+                    capitalize = true;
+                    continue;
+                }
+                if (builder.Length == 0 && char.IsDigit(character))
+                    builder.Append('N');
+                builder.Append(
+                    capitalize
+                        ? char.ToUpperInvariant(character)
+                        : character);
+                capitalize = false;
+            }
             return builder.ToString();
         }
 
@@ -470,6 +853,89 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             return escaped.ToString();
         }
 
+        private enum BridgeDtoMemberKind
+        {
+            Scalar = 0,
+            Enum = 1,
+            String = 2,
+            NestedDto = 3,
+            Sequence = 4
+        }
+
+        private enum BridgeSequenceRepresentation
+        {
+            None = 0,
+            Array = 1,
+            List = 2
+        }
+
+        private sealed class BridgeDtoMemberShape
+        {
+            internal BridgeDtoMemberShape(
+                string name,
+                string rosFieldName,
+                BridgeDtoMemberKind kind,
+                string fullyQualifiedTypeName,
+                string rosType,
+                string sequenceElementTypeName,
+                BridgeDtoShape nestedShape,
+                bool hasPresence,
+                BridgeSequenceRepresentation sequenceRepresentation)
+            {
+                Name = name ?? string.Empty;
+                RosFieldName = rosFieldName ?? string.Empty;
+                PresenceFieldName = hasPresence
+                    ? "foxrun_has_" + RosFieldName
+                    : string.Empty;
+                Kind = kind;
+                FullyQualifiedTypeName =
+                    fullyQualifiedTypeName ?? string.Empty;
+                RosType = rosType ?? string.Empty;
+                SequenceElementTypeName =
+                    sequenceElementTypeName ?? string.Empty;
+                NestedShape = nestedShape;
+                NestedShapeIdentity =
+                    nestedShape?.CanonicalIdentity ?? string.Empty;
+                HasPresence = hasPresence;
+                SequenceRepresentation = sequenceRepresentation;
+            }
+
+            internal string Name { get; }
+            internal string RosFieldName { get; }
+            internal string PresenceFieldName { get; }
+            internal BridgeDtoMemberKind Kind { get; }
+            internal string FullyQualifiedTypeName { get; }
+            internal string RosType { get; }
+            internal string SequenceElementTypeName { get; }
+            internal string NestedShapeIdentity { get; }
+            internal BridgeDtoShape NestedShape { get; }
+            internal bool HasPresence { get; }
+            internal BridgeSequenceRepresentation
+                SequenceRepresentation { get; }
+        }
+
+        private sealed class BridgeDtoShape
+        {
+            internal BridgeDtoShape(
+                string fullyQualifiedTypeName,
+                string canonicalIdentity,
+                string payloadIdentity,
+                IReadOnlyList<BridgeDtoMemberShape> members)
+            {
+                FullyQualifiedTypeName =
+                    fullyQualifiedTypeName ?? string.Empty;
+                CanonicalIdentity = canonicalIdentity ?? string.Empty;
+                PayloadIdentity = payloadIdentity ?? string.Empty;
+                Members = members
+                          ?? Array.Empty<BridgeDtoMemberShape>();
+            }
+
+            internal string FullyQualifiedTypeName { get; }
+            internal string CanonicalIdentity { get; }
+            internal string PayloadIdentity { get; }
+            internal IReadOnlyList<BridgeDtoMemberShape> Members { get; }
+        }
+
         private sealed class ShapeRegistry
         {
             private readonly List<ShapeEntry> _entries = new List<ShapeEntry>();
@@ -483,7 +949,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             internal int Count => _entries.Count;
             internal ShapeEntry this[int index] => _entries[index];
 
-            internal ShapeEntry Get(FoxRunRos2CustomDtoShape shape)
+            internal ShapeEntry Get(BridgeDtoShape shape)
             {
                 if (shape == null)
                     throw new InvalidOperationException("Custom ROS 2 CDR shape is missing.");
@@ -516,13 +982,13 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         private sealed class ShapeEntry
         {
-            internal ShapeEntry(FoxRunRos2CustomDtoShape shape, string method)
+            internal ShapeEntry(BridgeDtoShape shape, string method)
             {
                 Shape = shape;
                 Method = method;
             }
 
-            internal FoxRunRos2CustomDtoShape Shape { get; }
+            internal BridgeDtoShape Shape { get; }
             internal string Method { get; }
         }
     }

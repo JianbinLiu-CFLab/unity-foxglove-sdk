@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Camera
-// Purpose: Core-SDK camera frame DTO for optional native ROS2 adapters.
+// Purpose: Core-SDK compressed camera DTO for optional transport Providers.
 
 using System;
 

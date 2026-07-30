@@ -131,8 +131,6 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "isArray", left.IsArray ? "true" : "false", right.IsArray ? "true" : "false", semantic);
             CompareSemantic(key, "elementTypeName", left.ElementTypeName, right.ElementTypeName, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
-            CompareSemantic(key, "source", left.Source, right.Source, semantic);
-            CompareSemantic(key, "targets", left.Targets, right.Targets, semantic);
             CompareSemantic(
                 key,
                 "publishTransportIds",
@@ -149,16 +147,11 @@ namespace Unity.FoxgloveSDK.Editor
                 left.SubscribeTransportId ?? "<inherit>",
                 right.SubscribeTransportId ?? "<inherit>",
                 semantic);
-            CompareSemantic(key, "qosProfile", left.QosProfile, right.QosProfile, semantic);
-            CompareSemantic(key, "qosReliability", left.QosReliability, right.QosReliability, semantic);
-            CompareSemantic(key, "qosDurability", left.QosDurability, right.QosDurability, semantic);
-            CompareSemantic(key, "qosHistory", left.QosHistory, right.QosHistory, semantic);
-            CompareSemantic(key, "qosDepth", left.QosDepth, right.QosDepth, semantic);
+            CompareSemantic(key, "reliability", left.Reliability, right.Reliability, semantic);
+            CompareSemantic(key, "durability", left.Durability, right.Durability, semantic);
+            CompareSemantic(key, "history", left.History, right.History, semantic);
+            CompareSemantic(key, "depth", left.Depth, right.Depth, semantic);
             CompareSemantic(key, "generatesWebSocketCodec", left.GeneratesWebSocketCodec ? "true" : "false", right.GeneratesWebSocketCodec ? "true" : "false", semantic);
-            CompareSemantic(key, "generatesRos2NativeRegistration", left.GeneratesRos2NativeRegistration ? "true" : "false", right.GeneratesRos2NativeRegistration ? "true" : "false", semantic);
-            CompareSemantic(key, "ros2ContractKind", left.Ros2ContractKind.ToString(), right.Ros2ContractKind.ToString(), semantic);
-            CompareRos2MessageShape(key, left.Ros2MessageShape, right.Ros2MessageShape, semantic);
-            CompareRos2CustomDtoShape(key, left.Ros2CustomDtoShape, right.Ros2CustomDtoShape, semantic);
             CompareProtobufMetadata(key, left.ProtobufMetadata, right.ProtobufMetadata, semantic);
             CompareTypeShape(key, "typeShape", left.TypeShape, right.TypeShape, semantic);
             CompareEncodingVariants(key, left.EncodingVariants, right.EncodingVariants, semantic);
@@ -483,103 +476,6 @@ namespace Unity.FoxgloveSDK.Editor
                     rightField.TypeMetadata,
                     semantic);
             }
-        }
-
-        private static void CompareRos2MessageShape(
-            string key,
-            FoxRunRos2MessageShape left,
-            FoxRunRos2MessageShape right,
-            List<string> semantic)
-        {
-            if (ReferenceEquals(left, right))
-                return;
-            if (left == null || right == null)
-            {
-                CompareSemantic(key, "ros2MessageShape", left == null ? "null" : "present", right == null ? "null" : "present", semantic);
-                return;
-            }
-
-            CompareSemantic(key, "ros2MessageShape.fullyQualifiedTypeName", left.FullyQualifiedTypeName, right.FullyQualifiedTypeName, semantic);
-            CompareSemantic(key, "ros2MessageShape.canonicalRosType", left.CanonicalRosType, right.CanonicalRosType, semantic);
-            CompareSemantic(key, "ros2MessageShape.hasPublicParameterlessConstructor", left.HasPublicParameterlessConstructor ? "true" : "false", right.HasPublicParameterlessConstructor ? "true" : "false", semantic);
-            CompareSemantic(key, "ros2MessageShape.implementsRos2Message", left.ImplementsRos2Message ? "true" : "false", right.ImplementsRos2Message ? "true" : "false", semantic);
-            CompareSemantic(key, "ros2MessageShape.copyShapeIdentity", left.CopyShapeIdentity, right.CopyShapeIdentity, semantic);
-            CompareSemantic(key, "ros2MessageShape.memberCount", left.Members.Count.ToString(), right.Members.Count.ToString(), semantic);
-            var memberCount = Math.Min(left.Members.Count, right.Members.Count);
-            for (var i = 0; i < memberCount; i++)
-            {
-                var leftMember = left.Members[i];
-                var rightMember = right.Members[i];
-                var prefix = "ros2MessageShape.members[" + i + "].";
-                CompareSemantic(key, prefix + "name", leftMember.Name, rightMember.Name, semantic);
-                CompareSemantic(key, prefix + "kind", leftMember.Kind.ToString(), rightMember.Kind.ToString(), semantic);
-                CompareSemantic(key, prefix + "fullyQualifiedTypeName", leftMember.FullyQualifiedTypeName, rightMember.FullyQualifiedTypeName, semantic);
-                CompareSemantic(key, prefix + "sequenceElementTypeName", leftMember.SequenceElementTypeName, rightMember.SequenceElementTypeName, semantic);
-                CompareSemantic(key, prefix + "nestedShapeIdentity", leftMember.NestedShapeIdentity, rightMember.NestedShapeIdentity, semantic);
-                CompareSemantic(key, prefix + "canRead", leftMember.CanRead ? "true" : "false", rightMember.CanRead ? "true" : "false", semantic);
-                CompareSemantic(key, prefix + "canWrite", leftMember.CanWrite ? "true" : "false", rightMember.CanWrite ? "true" : "false", semantic);
-                CompareSemantic(key, prefix + "sequenceRepresentation", leftMember.SequenceRepresentation.ToString(), rightMember.SequenceRepresentation.ToString(), semantic);
-                CompareSemantic(key, prefix + "fixedSize", leftMember.FixedSize.ToString(), rightMember.FixedSize.ToString(), semantic);
-                CompareRos2MessageShape(
-                    key + "." + prefix + "nestedShape",
-                    leftMember.NestedShape,
-                    rightMember.NestedShape,
-                    semantic);
-            }
-            CompareSemantic(key, "ros2MessageShape.diagnosticCount", left.Diagnostics.Count.ToString(), right.Diagnostics.Count.ToString(), semantic);
-            var diagnosticCount = Math.Min(left.Diagnostics.Count, right.Diagnostics.Count);
-            for (var i = 0; i < diagnosticCount; i++)
-                CompareSemantic(key, "ros2MessageShape.diagnostics[" + i + "]", left.Diagnostics[i], right.Diagnostics[i], semantic);
-        }
-
-        private static void CompareRos2CustomDtoShape(
-            string key,
-            FoxRunRos2CustomDtoShape left,
-            FoxRunRos2CustomDtoShape right,
-            List<string> semantic)
-        {
-            if (ReferenceEquals(left, right))
-                return;
-            if (left == null || right == null)
-            {
-                CompareSemantic(key, "ros2CustomDtoShape", left == null ? "null" : "present", right == null ? "null" : "present", semantic);
-                return;
-            }
-
-            CompareSemantic(key, "ros2CustomDtoShape.fullyQualifiedTypeName", left.FullyQualifiedTypeName, right.FullyQualifiedTypeName, semantic);
-            CompareSemantic(key, "ros2CustomDtoShape.canonicalIdentity", left.CanonicalIdentity, right.CanonicalIdentity, semantic);
-            CompareSemantic(key, "ros2CustomDtoShape.payloadIdentity", left.PayloadIdentity, right.PayloadIdentity, semantic);
-            CompareSemantic(key, "ros2CustomDtoShape.hasPublicParameterlessConstructor", left.HasPublicParameterlessConstructor ? "true" : "false", right.HasPublicParameterlessConstructor ? "true" : "false", semantic);
-            CompareSemantic(key, "ros2CustomDtoShape.isSupported", left.IsSupported ? "true" : "false", right.IsSupported ? "true" : "false", semantic);
-            CompareSemantic(key, "ros2CustomDtoShape.memberCount", left.Members.Count.ToString(), right.Members.Count.ToString(), semantic);
-            var memberCount = Math.Min(left.Members.Count, right.Members.Count);
-            for (var i = 0; i < memberCount; i++)
-            {
-                var leftMember = left.Members[i];
-                var rightMember = right.Members[i];
-                var prefix = "ros2CustomDtoShape.members[" + i + "].";
-                CompareSemantic(key, prefix + "name", leftMember.Name, rightMember.Name, semantic);
-                CompareSemantic(key, prefix + "rosFieldName", leftMember.RosFieldName, rightMember.RosFieldName, semantic);
-                CompareSemantic(key, prefix + "presenceFieldName", leftMember.PresenceFieldName, rightMember.PresenceFieldName, semantic);
-                CompareSemantic(key, prefix + "kind", leftMember.Kind.ToString(), rightMember.Kind.ToString(), semantic);
-                CompareSemantic(key, prefix + "fullyQualifiedTypeName", leftMember.FullyQualifiedTypeName, rightMember.FullyQualifiedTypeName, semantic);
-                CompareSemantic(key, prefix + "rosType", leftMember.RosType, rightMember.RosType, semantic);
-                CompareSemantic(key, prefix + "sequenceElementTypeName", leftMember.SequenceElementTypeName, rightMember.SequenceElementTypeName, semantic);
-                CompareSemantic(key, prefix + "nestedShapeIdentity", leftMember.NestedShapeIdentity, rightMember.NestedShapeIdentity, semantic);
-                CompareSemantic(key, prefix + "hasPresence", leftMember.HasPresence ? "true" : "false", rightMember.HasPresence ? "true" : "false", semantic);
-                CompareSemantic(key, prefix + "canRead", leftMember.CanRead ? "true" : "false", rightMember.CanRead ? "true" : "false", semantic);
-                CompareSemantic(key, prefix + "canWrite", leftMember.CanWrite ? "true" : "false", rightMember.CanWrite ? "true" : "false", semantic);
-                CompareSemantic(key, prefix + "sequenceRepresentation", leftMember.SequenceRepresentation.ToString(), rightMember.SequenceRepresentation.ToString(), semantic);
-                CompareRos2CustomDtoShape(
-                    key + "." + prefix + "nestedShape",
-                    leftMember.NestedShape,
-                    rightMember.NestedShape,
-                    semantic);
-            }
-            CompareSemantic(key, "ros2CustomDtoShape.diagnosticCount", left.Diagnostics.Count.ToString(), right.Diagnostics.Count.ToString(), semantic);
-            var diagnosticCount = Math.Min(left.Diagnostics.Count, right.Diagnostics.Count);
-            for (var i = 0; i < diagnosticCount; i++)
-                CompareSemantic(key, "ros2CustomDtoShape.diagnostics[" + i + "]", left.Diagnostics[i], right.Diagnostics[i], semantic);
         }
 
         private static void CompareSemantic(string key, string field, string left, string right, List<string> diffs)

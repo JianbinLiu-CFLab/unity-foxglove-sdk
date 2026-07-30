@@ -2205,21 +2205,27 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _outputMode: 0
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
+  _maxCaptureRateHz: 10
+  _cameraHealthMode: 2
   _useAsyncJpeg: 1
   _maxJpegEncodeQueue: 2
   _maxCompletedJpegQueue: 2
   _maxCompletedJpegPublishesPerFrame: 1
   _maxPixelsPerFrame: 0
+  _requireIdleJpegPipeline: 1
+  _pipelineCooldownThresholdMs: 50
+  _pipelineCooldownMs: 1000
+  _mainLoopCaptureCooldownThresholdMs: 100
+  _mainLoopStableFramesBeforeCapture: 2
   _logCameraDiagnostics: 0
   _cameraDiagnosticsIntervalSeconds: 2
+  _cameraSlowStageThresholdMs: 50
   _ffmpegPath:
   _videoBitrateKbps: 4000
   _videoKeyframeInterval: 30
@@ -2235,8 +2241,6 @@ MonoBehaviour:
   _logBackpressureSkips: 0
   _sensorUnitProfile: {fileID: 0}
   _useSharedSensorClock: 1
-  _publishStandardRos2CompressedImage: 0
-  _publishStandardRos2RawImage: 0
   _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!20 &224768376
 Camera:
@@ -2468,8 +2472,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _parentFrameId: os_sensor
   _childFrameId: os_imu
   _useLocalTransform: 1
@@ -4999,8 +5001,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _parentFrameId: map
   _childFrameId: base_link
   _useLocalTransform: 0
@@ -5130,6 +5130,20 @@ MonoBehaviour:
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
   _frameStallDiagnosticsEnabled: 0
   _frameStallDiagnosticsThresholdMs: 200
+  _frameStallStageTimingDiagnosticsEnabled: 0
+  _foxRunPolicySerializationVersion: 1
+  _coordinateTransportPolicySerializationVersion: 1
+  _defaultFoxRunPublishEncoding: 1
+  _foxRunPublishTransportIds:
+  - foxglove.websocket
+  _foxRunSubscribeTransportId: foxglove.websocket
+  _defaultFoxRunEncoding: 1
+  _defaultFoxRunSubscriptionEncoding: 1
+  _enableFoxRunInbound: 1
+  _allowRemoteFoxRunInboundWithSharedToken: 0
+  _foxRunInboundMaxPayloadBytes: 65536
+  _foxRunInboundMaxMessagesPerSecondPerTopic: 60
+  _foxRunDefaultSubscribeRateHz: 10
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
@@ -5138,25 +5152,13 @@ MonoBehaviour:
   _transportMode: 0
   _transportModeBeforeOutputDisabled: 0
   _foxgloveOutputEnabled: 1
-  _ros2NativeEnabled: 0
+  _profilingEnabled: 0
   _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
-  _ros2BridgeEnabled: 0
-  _ros2BridgeHost: 127.0.0.1
-  _ros2BridgePort: 8767
-  _ros2BridgeAutoConnect: 1
-  _defaultRos2BridgeOutputEnabled: 0
-  _allowPublisherRos2BridgeOverride: 1
-  _ros2BridgeNamespace:
-  _ros2BridgeQosPreset: 0
-  _ros2BridgeCustomReliability: 0
-  _ros2BridgeCustomDurability: 0
-  _ros2BridgeCustomDepth: 10
-  _ros2BridgeQueueCapacity: 1024
-  _ros2BridgeReconnectIntervalMs: 1000
-  _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 1
+  _outputCoordinateMode: 1
+  _inputCoordinateMode: 1
   _assetRoots: []
   _enablePlaybackControl: 0
   _playbackStartOffsetSeconds: 0
@@ -5174,6 +5176,7 @@ MonoBehaviour:
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
+  _remoteMcapFileServerToken:
   _enableReplayCursorBridge: 0
   _replayCursorBridgeHost: 127.0.0.1
   _replayCursorBridgePort: 8892
@@ -9053,8 +9056,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _parentFrameId: os_sensor
   _childFrameId: os_lidar
   _useLocalTransform: 1
@@ -18990,8 +18991,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _outputMode: 1
   _frameId: os_lidar
   _pointSources: []
@@ -19004,14 +19003,15 @@ MonoBehaviour:
   _logQosDrops: 0
   _logPerformanceDiagnostics: 0
   _includeSyntheticIntensity: 0
-  _publishPointCloud2NativeTfAnchor: 1
-  _pointCloud2NativeTfParentFrame: map
-  _pointCloud2NativeTfChildFrame:
-  _pointCloud2NativeTfTranslation: {x: 0, y: 0, z: 0}
-  _pointCloud2NativeTfRotationEuler: {x: 0, y: 0, z: 0}
+  _publishPackedPointCloudTfAnchor: 1
+  _packedPointCloudTfParentFrame: map
+  _packedPointCloudTfChildFrame:
+  _packedPointCloudTfTranslation: {x: 0, y: 0, z: 0}
+  _packedPointCloudTfRotationEuler: {x: 0, y: 0, z: 0}
   _enableMotionCompensation: 0
   _motionCompensationOutputPolicy: 1
-  _deskewedPointCloud2NativeTopic: /unity/point_cloud2_deskewed
+  _deskewedPackedPointCloudTopic: /unity/point_cloud2_deskewed
+  _deskewedPackedPointCloudMaxPublishRateHz: 2
   _motionCompensationReferenceTime: 0
   _motionCompensationSource: 0
   _nativeDracoMaxPublishRateHz: 6
@@ -19035,8 +19035,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _parentFrameId: base_link
   _childFrameId: os_sensor
   _useLocalTransform: 1
@@ -20906,8 +20904,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _sourceCamera: {fileID: 1707216050}
   _imagePublisher: {fileID: 1707216049}
   _sensorUnitProfile: {fileID: 1586363025}
@@ -20942,21 +20938,27 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride:
   _outputMode: 0
   _frameId: os_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
+  _maxCaptureRateHz: 10
+  _cameraHealthMode: 2
   _useAsyncJpeg: 1
   _maxJpegEncodeQueue: 2
   _maxCompletedJpegQueue: 2
   _maxCompletedJpegPublishesPerFrame: 1
   _maxPixelsPerFrame: 0
+  _requireIdleJpegPipeline: 1
+  _pipelineCooldownThresholdMs: 50
+  _pipelineCooldownMs: 1000
+  _mainLoopCaptureCooldownThresholdMs: 100
+  _mainLoopStableFramesBeforeCapture: 2
   _logCameraDiagnostics: 0
   _cameraDiagnosticsIntervalSeconds: 2
+  _cameraSlowStageThresholdMs: 50
   _ffmpegPath:
   _videoBitrateKbps: 4000
   _videoKeyframeInterval: 30
@@ -20972,8 +20974,6 @@ MonoBehaviour:
   _logBackpressureSkips: 0
   _sensorUnitProfile: {fileID: 1586363025}
   _useSharedSensorClock: 1
-  _publishStandardRos2CompressedImage: 0
-  _publishStandardRos2RawImage: 0
   _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!20 &1707216050
 Camera:

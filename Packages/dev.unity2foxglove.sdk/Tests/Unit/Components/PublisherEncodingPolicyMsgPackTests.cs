@@ -20,20 +20,24 @@ namespace Unity.FoxgloveSDK.UnitTests
         {
             Assert.Equal(0, (int)GlobalEncoding.Json);
             Assert.Equal(1, (int)GlobalEncoding.Protobuf);
-            Assert.Equal(2, (int)GlobalEncoding.Ros2);
             Assert.Equal(3, (int)GlobalEncoding.MsgPack);
+            Assert.DoesNotContain("Ros2", System.Enum.GetNames(typeof(GlobalEncoding)));
 
             Assert.Equal(0, (int)PublisherEncodingOverride.UseManager);
             Assert.Equal(1, (int)PublisherEncodingOverride.Json);
             Assert.Equal(2, (int)PublisherEncodingOverride.Protobuf);
-            Assert.Equal(3, (int)PublisherEncodingOverride.Ros2);
             Assert.Equal(4, (int)PublisherEncodingOverride.MsgPack);
+            Assert.DoesNotContain(
+                "Ros2",
+                System.Enum.GetNames(typeof(PublisherEncodingOverride)));
 
             Assert.Equal(0, (int)PublisherEffectiveEncoding.Json);
             Assert.Equal(1, (int)PublisherEffectiveEncoding.Protobuf);
             Assert.Equal(2, (int)PublisherEffectiveEncoding.Unsupported);
-            Assert.Equal(3, (int)PublisherEffectiveEncoding.Ros2);
             Assert.Equal(4, (int)PublisherEffectiveEncoding.MsgPack);
+            Assert.DoesNotContain(
+                "Ros2",
+                System.Enum.GetNames(typeof(PublisherEffectiveEncoding)));
         }
 
         [Fact]
@@ -45,7 +49,6 @@ namespace Unity.FoxgloveSDK.UnitTests
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true,
                 supportsMsgPack: true);
 
             Assert.Equal(PublisherEffectiveEncoding.MsgPack, managerDefault.Requested);
@@ -58,7 +61,6 @@ namespace Unity.FoxgloveSDK.UnitTests
                 PublisherEncodingOverride.MsgPack,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: false,
                 supportsMsgPack: true);
 
             Assert.Equal(PublisherEffectiveEncoding.MsgPack, publisherOverride.Requested);
@@ -70,21 +72,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void MsgPackFallsBackBeforeJsonWhenUnsupported()
         {
             var resolution = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+                GlobalEncoding.Protobuf,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.UseManager,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: false,
                 supportsMsgPack: true);
 
-            Assert.Equal(PublisherEffectiveEncoding.Ros2, resolution.Requested);
+            Assert.Equal(PublisherEffectiveEncoding.Protobuf, resolution.Requested);
             Assert.Equal(PublisherEffectiveEncoding.MsgPack, resolution.Effective);
             Assert.True(resolution.FellBack);
         }
 
         [Fact]
-        public void JsonFallbackPrecedesRos2WhenManagerDefaultIsUnsupported()
+        public void JsonIsUsedWhenItIsTheOnlySupportedFallback()
         {
             var resolution = PublisherEncodingPolicy.Resolve(
                 GlobalEncoding.Protobuf,
@@ -92,7 +93,6 @@ namespace Unity.FoxgloveSDK.UnitTests
                 PublisherEncodingOverride.UseManager,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: true,
                 supportsMsgPack: false);
 
             Assert.Equal(PublisherEffectiveEncoding.Protobuf, resolution.Requested);

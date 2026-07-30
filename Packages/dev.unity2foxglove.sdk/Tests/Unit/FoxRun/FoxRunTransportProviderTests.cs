@@ -210,6 +210,72 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void OrdinaryFanoutContinuesAcrossThreeProvidersWhenMiddleProviderFails()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var registry = new FoxRunTransportProviderRegistry();
+            var alpha = new OrdinaryProvider(
+                "unity2foxglove.alpha",
+                calls,
+                failPublish: false);
+            var bravo = new OrdinaryProvider(
+                "unity2foxglove.bravo",
+                calls,
+                failPublish: true);
+            var charlie = new OrdinaryProvider(
+                "unity2foxglove.charlie",
+                calls,
+                failPublish: false);
+            registry.Register(charlie);
+            registry.Register(bravo);
+            registry.Register(alpha);
+            var selection = new FoxRunTransportSelection(
+                new[]
+                {
+                    charlie.Id.Value,
+                    alpha.Id.Value,
+                    bravo.Id.Value
+                },
+                subscriptionsEnabled: false,
+                subscribeTransportId: null);
+
+            Assert.True(registry.TryCaptureSession(
+                selection,
+                generation: 186,
+                out var snapshot,
+                out _));
+            var request = new FoxRunOrdinaryPayloadRequest(
+                "ordinary-fixture",
+                "/phase186/fanout",
+                "Demo.Value",
+                value: 42,
+                logTimeNs: 186,
+                sequence: 1,
+                FoxRunDeliveryPolicy.ProviderDefault);
+
+            var result = FoxRunOrdinaryTransportFanout.Publish(
+                snapshot.PublishTransports,
+                in request);
+
+            Assert.Equal(
+                new[]
+                {
+                    "unity2foxglove.alpha",
+                    "unity2foxglove.bravo",
+                    "unity2foxglove.charlie"
+                },
+                calls);
+            Assert.Equal(3, result.Matched);
+            Assert.Equal(2, result.Accepted);
+            Assert.Equal(0, result.Rejected);
+            Assert.Equal(0, result.Unavailable);
+            Assert.Equal(1, result.Failed);
+            Assert.True(result.AnyAccepted);
+            Assert.False(result.AllAccepted);
+            snapshot.Dispose();
+        }
+
+        [Fact]
         public void RetirementCapacityIsPreReservedAndTimeoutConversionAllocatesNothing()
         {
             var owner = FoxRunTransportRetirementOwner.CreateForTests(capacity: 2);
@@ -500,9 +566,7 @@ namespace Unity.FoxgloveSDK.Tests
             var fingerprint =
                 FoxRunGeneratedMemberIdentity.Fingerprint(stableId);
 
-            var source = FoxgloveSourceEmitter.EmitClass(
-                type,
-                emitRos2NativePartial: false);
+            var source = FoxgloveSourceEmitter.EmitClass(type);
 
             Assert.Contains("__FoxRunRead_value_" + fingerprint, source);
             Assert.Contains("__FoxRunWrite_value_" + fingerprint, source);
@@ -622,6 +686,100 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 output.AppendLine(
                     "namespace Demo { partial class Source { private const int ProviderMarker = 1; } }");
+            }
+        }
+
+        private sealed class OrdinaryProvider :
+            IFoxRunTransportProvider
+        {
+            private readonly System.Collections.Generic.IList<string> _calls;
+            private readonly bool _failPublish;
+
+            internal OrdinaryProvider(
+                string id,
+                System.Collections.Generic.IList<string> calls,
+                bool failPublish)
+            {
+                Id = new FoxRunTransportId(id);
+                _calls = calls;
+                _failPublish = failPublish;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities =>
+                FoxRunTransportCapabilities.Publish;
+            public FoxRunTransportLifecycleState LifecycleState =>
+                FoxRunTransportLifecycleState.Available;
+
+            public bool TryCaptureSession(
+                ulong generation,
+                out IFoxRunTransportSession session,
+                out string reason)
+            {
+                session = new OrdinarySession(
+                    Id,
+                    generation,
+                    _calls,
+                    _failPublish);
+                reason = string.Empty;
+                return true;
+            }
+        }
+
+        private sealed class OrdinarySession :
+            IFoxRunTransportSession,
+            IFoxRunOrdinaryPayloadMapper
+        {
+            private readonly System.Collections.Generic.IList<string> _calls;
+            private readonly bool _failPublish;
+
+            internal OrdinarySession(
+                FoxRunTransportId id,
+                ulong generation,
+                System.Collections.Generic.IList<string> calls,
+                bool failPublish)
+            {
+                Id = id;
+                Generation = generation;
+                _calls = calls;
+                _failPublish = failPublish;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities =>
+                FoxRunTransportCapabilities.Publish;
+            public ulong Generation { get; }
+            public string StableMapperId => Id.Value + ".ordinary";
+
+            public bool TryMap(
+                in FoxRunOrdinaryPayloadRequest request,
+                out FoxRunOrdinaryPayloadContribution contribution,
+                out string reason)
+            {
+                contribution = new FoxRunOrdinaryPayloadContribution(
+                    request.LogicalSchemaName,
+                    new byte[] { 1 },
+                    "fixture",
+                    "fixture");
+                reason = string.Empty;
+                return true;
+            }
+
+            public FoxRunTransportPublishResult Publish(
+                in FoxRunTransportPublishRoute route)
+            {
+                _calls.Add(Id.Value);
+                if (_failPublish)
+                    throw new InvalidOperationException("fixture failure");
+                return FoxRunTransportPublishResult.Accepted();
+            }
+
+            public FoxRunTransportSubscribeResult Subscribe(
+                in FoxRunTransportSubscribeRoute route)
+                => FoxRunTransportSubscribeResult.Rejected("not used");
+
+            public void Dispose()
+            {
             }
         }
 

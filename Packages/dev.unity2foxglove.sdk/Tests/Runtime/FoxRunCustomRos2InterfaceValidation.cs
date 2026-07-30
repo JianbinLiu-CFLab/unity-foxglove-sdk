@@ -8,6 +8,7 @@ using System;
 using System.Linq;
 using System.Text.Json;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -18,19 +19,21 @@ namespace Unity.FoxgloveSDK.Tests
     internal static class FoxRunCustomRos2InterfaceValidation
     {
         private const string CustomShapePath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunRos2CustomDtoShape.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2CustomDtoShape.cs";
         private const string CustomIdentityPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunRos2CustomIdentity.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2CustomIdentity.cs";
         private const string CustomNamingPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunRos2CustomNamingPolicy.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2CustomNamingPolicy.cs";
         private const string ReflectionBuilderPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs";
         private const string RoslynBuilderPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunRoslynRos2CustomDtoShapeBuilder.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/FoxRunRoslynRos2CustomDtoShapeBuilder.cs";
         private const string ValidatorPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/FoxRunGenerationModelValidator.cs";
         private const string EmitterPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs";
+        private const string R2fuAnalyzerPipelinePath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/FoxRunR2fuAnalyzerPipeline.cs";
         private const string ManifestBuilderPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestBuilder.cs";
         private const string ManifestModelPath =
@@ -40,17 +43,17 @@ namespace Unity.FoxgloveSDK.Tests
         private const string DescriptorWriterPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorJsonWriter.cs";
         private const string InterfaceIdentityPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2InterfaceIdentity.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/FoxRunRos2InterfaceIdentity.cs";
         private const string InterfaceRendererPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2InterfacePackageRenderer.cs";
         private const string InterfaceWriterPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageWriter.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2InterfacePackageWriter.cs";
         private const string InterfacePreflightPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackagePreflight.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2InterfacePackagePreflight.cs";
         private const string InterfaceCommandPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageCommand.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2InterfacePackageCommand.cs";
         private const string SourceGeneratorProjectPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/FoxRunR2fuSourceGenerator.csproj";
         private const string StaticInterfacePackageJsonPath =
             "Packages/dev.unity2foxglove.foxrun.ros2.interfaces/package.json";
         private const string StaticInterfaceLockPath =
@@ -63,6 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md";
         private const string ShippedLedgerPath =
             "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md";
+        private const string R2fuDiagnosticsPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/FoxRunR2fuDiagnostics.cs";
+        private const string R2fuUnshippedLedgerPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md";
         private const string TypesupportSelectionPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs";
         private const string RuntimeSelectionPath =
@@ -78,7 +85,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string TypesupportInspectorPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/FoxRunRos2CustomTypesupportInspector.cs";
         private const string ManagerR2fuRuntimeInspectorPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs";
         private const string FoxRunCodeGeneratorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs";
         private const string CustomTransportHostPath =
@@ -92,15 +99,15 @@ namespace Unity.FoxgloveSDK.Tests
         private const string CustomOutboundPolicyPath =
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomOutboundMappingPolicy.cs";
         private const string CustomOutboundBudgetPolicyPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2CustomOutboundBudgetPolicy.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomOutboundBudgetPolicy.cs";
         private const string CustomMapperEmitterPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomDtoMapperEmitter.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2CustomDtoMapperEmitter.cs";
         private const string CustomPublishEmitterPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomPublishEmitter.cs";
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2CustomPublishEmitter.cs";
         private const string FoxgloveLogHubPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs";
-        private const string LegacyR2fuTopicSinkPath =
-            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs";
+        private const string R2fuTransportProviderPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs";
         private const string AcceptanceSamplePath =
             "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/Phase181FoxRunCustomRos2Interface.cs";
         private const string ImportedAcceptanceSamplePath =
@@ -149,6 +156,8 @@ namespace Unity.FoxgloveSDK.Tests
             var roslynBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(RoslynBuilderPath);
             var validator = PhaseValidationSourceHelpers.ReadRequiredRepoText(ValidatorPath);
             var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(EmitterPath);
+            var r2fuAnalyzerPipeline =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuAnalyzerPipelinePath);
             var manifestBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestBuilderPath);
             var manifestModel = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestModelPath);
             var manifestJsonWriter = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestJsonWriterPath);
@@ -165,6 +174,8 @@ namespace Unity.FoxgloveSDK.Tests
             var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(DiagnosticsPath);
             var unshippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(UnshippedLedgerPath);
             var shippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(ShippedLedgerPath);
+            var r2fuDiagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuDiagnosticsPath);
+            var r2fuUnshippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuUnshippedLedgerPath);
             var typesupportSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportSelectionPath);
             var runtimeSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeSelectionPath);
             var defineInstaller = PhaseValidationSourceHelpers.ReadRequiredRepoText(DefineInstallerPath);
@@ -184,7 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
             var customMapperEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomMapperEmitterPath);
             var customPublishEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublishEmitterPath);
             var foxgloveLogHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxgloveLogHubPath);
-            var legacyR2fuTopicSink = PhaseValidationSourceHelpers.ReadRequiredRepoText(LegacyR2fuTopicSinkPath);
+            var r2fuTransportProvider = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuTransportProviderPath);
             var acceptanceSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSamplePath);
             var importedAcceptanceSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(ImportedAcceptanceSamplePath);
             var acceptanceSampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSampleReadmePath);
@@ -206,8 +217,17 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyDistinctRosFreeDtoModel(customShape, reflectionBuilder, roslynBuilder);
             VerifyStableIdentityAndNaming(customIdentity, customNaming);
             VerifyDirectionalProviderPolicy();
-            VerifyNoImplicitWebSocketInputFallback(validator, emitter, manifestBuilder);
-            VerifyDiagnosticRanges(diagnostics, unshippedLedger, shippedLedger);
+            VerifyNoImplicitWebSocketInputFallback(
+                validator,
+                emitter,
+                r2fuAnalyzerPipeline,
+                manifestBuilder);
+            VerifyDiagnosticRanges(
+                diagnostics,
+                unshippedLedger,
+                shippedLedger,
+                r2fuDiagnostics,
+                r2fuUnshippedLedger);
             VerifyStaticSourcePackageBoundary(
                 interfaceIdentity,
                 interfaceRenderer,
@@ -246,7 +266,7 @@ namespace Unity.FoxgloveSDK.Tests
                 customMapperEmitter,
                 customPublishEmitter,
                 foxgloveLogHub,
-                legacyR2fuTopicSink);
+                r2fuTransportProvider);
             VerifyAcceptanceSurface(
                 acceptanceSample,
                 importedAcceptanceSample,
@@ -290,9 +310,10 @@ namespace Unity.FoxgloveSDK.Tests
             var customSources = string.Concat(customShape, reflectionBuilder, roslynBuilder);
             Check(!customSources.Contains("using ROS2", StringComparison.Ordinal)
                   && !customSources.Contains("ROS2.", StringComparison.Ordinal)
-                  && !customSources.Contains("Ros2ForUnity", StringComparison.Ordinal)
-                  && !customSources.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal),
-                "181A-2: custom DTO schema builders remain ROS-free core code");
+                  && customShape.Contains("FOXR2F009", StringComparison.Ordinal)
+                  && customShape.Contains("FOXR2F010", StringComparison.Ordinal)
+                  && customShape.Contains("FOXR2F011", StringComparison.Ordinal),
+                "181A-2: R2FU owns custom DTO schema builders without a ROS runtime type dependency");
 
             Check(reflectionBuilder.Contains("OrderBy(member => member.Name", StringComparison.Ordinal)
                   && roslynBuilder.Contains("OrderBy(member => member.Name", StringComparison.Ordinal)
@@ -318,105 +339,126 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDirectionalProviderPolicy()
         {
-            var customBidirectional = FoxRunEndpointResolver.Resolve(
+            var customBidirectional = FoxRunRos2RouteResolver.Resolve(
                 FoxRunFlow.PublishAndSubscribe,
-                FoxRunEndpoint.Ros2Native,
+                FoxRunRos2RouteEndpoint.R2fu,
                 hasExplicitSource: true,
-                declaredTargets: FoxRunEndpoint.Foxglove,
+                declaredTargets: FoxRunRos2RouteEndpoint.WebSocket,
                 hasExplicitTargets: true,
-                FoxRunEncoding.JSON,
-                hasExplicitEncoding: true,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
-            var inheritedCustomBidirectional = FoxRunEndpointResolver.Resolve(
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitWebSocketEncoding: true);
+            var inheritedCustomBidirectional = FoxRunRos2RouteResolver.Resolve(
                 FoxRunFlow.PublishAndSubscribe,
                 declaredSource: 0,
                 hasExplicitSource: false,
                 declaredTargets: 0,
                 hasExplicitTargets: false,
-                (FoxRunEncoding)0,
-                hasExplicitEncoding: false,
-                defaultSource: FoxRunEndpoint.Ros2Native,
-                defaultTargets: FoxRunEndpoint.Ros2Native,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.JSON);
-            var nativeSubscribeJson = FoxRunEndpointResolver.Resolve(
+                defaultSource: FoxRunRos2RouteEndpoint.R2fu,
+                defaultTargets: FoxRunRos2RouteEndpoint.R2fu);
+            var nativeSubscribeJson = FoxRunRos2RouteResolver.Resolve(
                 FoxRunFlow.Subscribe,
-                FoxRunEndpoint.Ros2Native,
+                FoxRunRos2RouteEndpoint.R2fu,
                 hasExplicitSource: true,
                 declaredTargets: 0,
                 hasExplicitTargets: false,
-                FoxRunEncoding.JSON,
-                hasExplicitEncoding: true,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
-            var publishWithSource = FoxRunEndpointResolver.Resolve(
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitWebSocketEncoding: true);
+            var publishWithSource = FoxRunRos2RouteResolver.Resolve(
                 FoxRunFlow.Publish,
-                FoxRunEndpoint.Ros2Native,
+                FoxRunRos2RouteEndpoint.R2fu,
                 hasExplicitSource: true,
-                declaredTargets: FoxRunEndpoint.Ros2Native,
+                declaredTargets: FoxRunRos2RouteEndpoint.R2fu,
                 hasExplicitTargets: true,
-                declaredEncoding: 0,
-                hasExplicitEncoding: false,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket);
 
             Check(customBidirectional.Success
-                  && customBidirectional.Topology.Source == FoxRunEndpoint.Ros2Native
-                  && customBidirectional.Topology.Targets == FoxRunEndpoint.Foxglove
-                  && customBidirectional.Topology.PublishEncoding == FoxRunEncoding.JSON
+                  && customBidirectional.Route.Source == FoxRunRos2RouteEndpoint.R2fu
+                  && customBidirectional.Route.Targets == FoxRunRos2RouteEndpoint.WebSocket
                   && inheritedCustomBidirectional.Success
-                  && inheritedCustomBidirectional.Topology.Source == FoxRunEndpoint.Ros2Native
-                  && inheritedCustomBidirectional.Topology.Targets == FoxRunEndpoint.Ros2Native
-                  && inheritedCustomBidirectional.Topology.PublishEncoding == 0
-                  && inheritedCustomBidirectional.Topology.SubscribeEncoding == 0
+                  && inheritedCustomBidirectional.Route.Source == FoxRunRos2RouteEndpoint.R2fu
+                  && inheritedCustomBidirectional.Route.Targets == FoxRunRos2RouteEndpoint.R2fu
                   && nativeSubscribeJson.DiagnosticCode
-                     == FoxRunEndpointDiagnosticCode.EncodingRequiresFoxglove
+                     == FoxRunRos2RouteDiagnosticCode.EncodingRequiresWebSocket
                   && publishWithSource.DiagnosticCode
-                     == FoxRunEndpointDiagnosticCode.SourceNotAllowed,
-                "181A-6: directional Source, Targets, and Foxglove Encoding resolve independently and contradictions fail closed");
+                     == FoxRunRos2RouteDiagnosticCode.SourceNotAllowed,
+                "181A-6: R2FU projects neutral Provider IDs into directional routes and rejects contradictory WebSocket encoding or source declarations");
         }
 
         private static void VerifyNoImplicitWebSocketInputFallback(
             string validator,
             string emitter,
+            string r2fuAnalyzerPipeline,
             string manifestBuilder)
         {
-            Check(validator.Contains("CustomNativeBidirectionalContractDiagnosticId", StringComparison.Ordinal)
-                  && validator.Contains("never falls back to WebSocket input", StringComparison.Ordinal)
-                  && validator.Contains("IsNativeCustomBidirectionalOutputContract(member)", StringComparison.Ordinal)
-                  && validator.Contains("InvalidDirectionalEndpointDiagnosticId", StringComparison.Ordinal)
+            Check(validator.Contains("InvalidDirectionalTransportId", StringComparison.Ordinal)
+                  && validator.Contains("CanEncodingReachWebSocket(member)", StringComparison.Ordinal)
+                  && validator.Contains(
+                      "FoxRun Encoding applies only to the foxglove.websocket Provider.",
+                      StringComparison.Ordinal)
+                  && !validator.Contains("CustomNativeBidirectionalContractDiagnosticId", StringComparison.Ordinal)
                   && !validator.Contains("NativeSubscribeDiagnosticId", StringComparison.Ordinal)
                   && !validator.Contains("NativeEncodingDiagnosticId", StringComparison.Ordinal)
                   && !validator.Contains("NativeSourcePublishDiagnosticId", StringComparison.Ordinal),
-                "181A-7: validator retires legacy direction diagnostics while custom native P&S keeps a no-fallback diagnostic path");
+                "181A-7: neutral validation rejects WebSocket-only encoding on Provider-only routes without restoring legacy ROS diagnostics");
 
             Check(emitter.Contains("webSocketInputMembers", StringComparison.Ordinal)
-                  && emitter.Contains("!string.Equals(", StringComparison.Ordinal)
-                  && emitter.Contains("Ros2NativeSource", StringComparison.Ordinal)
-                  && manifestBuilder.Contains("Subscribe native contracts remain absent", StringComparison.Ordinal)
-                  && manifestBuilder.Contains("ResolvePackagedCanonicalRosType", StringComparison.Ordinal)
-                  && manifestBuilder.Contains("ResolvePackagedCopyShapeIdentity", StringComparison.Ordinal)
+                  && emitter.Contains(
+                      ".Where(member => member.GeneratesWebSocketCodec)",
+                      StringComparison.Ordinal)
+                  && !emitter.Contains("Ros2InputDispatchEmitter", StringComparison.Ordinal)
+                  && r2fuAnalyzerPipeline.Contains(
+                      "private const string ProviderId = \"unity2foxglove.r2fu\"",
+                      StringComparison.Ordinal)
+                  && r2fuAnalyzerPipeline.Contains("SelectedForSubscribe", StringComparison.Ordinal)
+                  && r2fuAnalyzerPipeline.Contains("SelectedForPublish", StringComparison.Ordinal)
+                  && r2fuAnalyzerPipeline.Contains(
+                      "Ros2InputDispatchEmitter.EmitConditionalPartial",
+                      StringComparison.Ordinal)
+                  && manifestBuilder.Contains(
+                      ".Where(member => member.GeneratesWebSocketCodec)",
+                      StringComparison.Ordinal)
+                  && manifestBuilder.Contains("member.PublishTransportIds", StringComparison.Ordinal)
+                  && manifestBuilder.Contains("member.SubscribeTransportId", StringComparison.Ordinal)
                   && manifestBuilder.Contains(
                       "member.Flow == (int)FoxRunFlow.PublishAndSubscribe",
                       StringComparison.Ordinal),
-                "181A-8: generated WebSocket input excludes native contracts while custom P&S retains WebSocket output metadata without input fallback");
+                "181A-8: the R2FU analyzer emits only selected Provider partials while core manifests retain neutral routing and WebSocket codec eligibility");
         }
 
         private static void VerifyDiagnosticRanges(
             string diagnostics,
             string unshippedLedger,
-            string shippedLedger)
+            string shippedLedger,
+            string r2fuDiagnostics,
+            string r2fuUnshippedLedger)
         {
-            var expectedIds = new[] { "FOXRUN402", "FOXRUN606", "FOXRUN607", "FOXRUN608", "FOXRUN612" };
-            Check(expectedIds.All(id => diagnostics.Contains("\"" + id + "\"", StringComparison.Ordinal))
-                  && expectedIds.All(id => unshippedLedger.Contains(id + " | FoxRun |", StringComparison.Ordinal))
+            var expectedIds = new[]
+            {
+                "FOXR2F008",
+                "FOXR2F009",
+                "FOXR2F010",
+                "FOXR2F011",
+                "FOXR2F012",
+                "FOXR2F013",
+            };
+            Check(expectedIds.All(id =>
+                      r2fuDiagnostics.Contains("\"" + id + "\"", StringComparison.Ordinal))
+                  && expectedIds.All(id =>
+                      r2fuUnshippedLedger.Contains(
+                          id + " | FoxRun.R2FU |",
+                          StringComparison.Ordinal))
+                  && !r2fuUnshippedLedger.Contains("FOXRUN", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN402\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN606\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN607\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN608\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN612\"", StringComparison.Ordinal)
+                  && unshippedLedger.Contains(
+                      "FOXRUN204, FOXRUN207-FOXRUN212, FOXRUN402, FOXRUN606-FOXRUN608, and FOXRUN611-FOXRUN615 are retired before release with the removed closed transport model and remain permanently reserved.",
+                      StringComparison.Ordinal)
                   && !diagnostics.Contains("\"FOXRUN205\"", StringComparison.Ordinal)
                   && !diagnostics.Contains("\"FOXRUN206\"", StringComparison.Ordinal)
                   && !diagnostics.Contains("\"FOXRUN214\"", StringComparison.Ordinal)
@@ -426,7 +468,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !diagnostics.Contains("\"FOXRUN036\"", StringComparison.Ordinal)
                   && shippedLedger.Contains("FOXRUN036 | FoxRun |", StringComparison.Ordinal)
                   && unshippedLedger.Contains("FOXRUN036 | FoxRun | Error | Retired;", StringComparison.Ordinal),
-                "181A-9: active custom/directional diagnostics remain while legacy native direction IDs and FOXRUN036 stay reserved");
+                "181A-9: R2FU owns active custom/directional diagnostics while legacy core IDs and FOXRUN036 stay reserved");
         }
 
         private static void VerifyStaticSourcePackageBoundary(
@@ -476,16 +518,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && interfacePreflight.Contains("RevisionRequired", StringComparison.Ordinal)
                   && interfacePreflight.Contains("intentionally does not share", StringComparison.Ordinal)
                   && !interfacePreflight.Contains("using ROS2", StringComparison.Ordinal)
-                  && !interfacePreflight.Contains("Ros2ForUnity", StringComparison.Ordinal),
-                "181B-4: source preflight has independent typed states and performs no RMW or native loading");
+                  && !interfacePreflight.Contains("DllImport", StringComparison.Ordinal)
+                  && !interfacePreflight.Contains("Assembly.Load", StringComparison.Ordinal)
+                  && !interfacePreflight.Contains("Ros2ForUnityRuntimeSelection", StringComparison.Ordinal)
+                  && !interfacePreflight.Contains("RMW_IMPLEMENTATION", StringComparison.Ordinal),
+                "181B-4: R2FU source preflight has independent typed states and performs no RMW or native loading");
 
             Check(interfaceCommand.Contains("--check", StringComparison.Ordinal)
                   && interfaceCommand.Contains("--generate", StringComparison.Ordinal)
                   && interfaceCommand.Contains("--next-revision", StringComparison.Ordinal)
                   && interfaceCommand.Contains("ExecuteFromCommandLine", StringComparison.Ordinal)
-                  && interfaceCommand.Contains("CollectReflectionGenerationModelForRos2InterfacePackage", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("CollectReflectionGenerationModelForTransportProviders", StringComparison.Ordinal)
                   && interfaceCommand.Contains("EditorApplication.Exit", StringComparison.Ordinal),
-                "181B-5: explicit Editor and batch command never lets Play Mode or source generation mutate the package");
+                "181B-5: explicit R2FU Editor and batch command never lets Play Mode or source generation mutate the package");
 
             var staticRosPackageName = ReadRequiredJsonString(staticLock, "rosPackageName");
             Check(staticPackageJson.Contains("\"name\": \"dev.unity2foxglove.foxrun.ros2.interfaces\"", StringComparison.Ordinal)
@@ -495,15 +540,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && staticCmake.Contains("rosidl_generate_interfaces", StringComparison.Ordinal),
                 "181B-6: tracked static UPM package CMake identity follows the lock-selected portable ROS package revision");
 
-            Check(manifestBuilder.Contains("ResolveCustomEnvelopeIdentity", StringComparison.Ordinal)
-                  && manifestModel.Contains("CustomEnvelopeIdentity", StringComparison.Ordinal)
-                  && manifestJsonWriter.Contains("customEnvelopeIdentity", StringComparison.Ordinal)
-                  && descriptorWriter.Contains("ros2CustomEnvelopeMessageName", StringComparison.Ordinal),
-                "181B-7: manifest and descriptor evidence carry custom DTO capability plus the expected envelope identity");
+            Check(interfaceRenderer.Contains(
+                      "FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName",
+                      StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("shape.CanonicalIdentity", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("shape.PayloadIdentity", StringComparison.Ordinal)
+                  && manifestModel.Contains("PublishTransportIds", StringComparison.Ordinal)
+                  && manifestModel.Contains("SubscribeTransportId", StringComparison.Ordinal)
+                  && manifestJsonWriter.Contains("publishTransportIds", StringComparison.Ordinal)
+                  && manifestJsonWriter.Contains("subscribeTransportId", StringComparison.Ordinal)
+                  && descriptorWriter.Contains("publishTransportIds", StringComparison.Ordinal)
+                  && descriptorWriter.Contains("subscribeTransportId", StringComparison.Ordinal),
+                "181B-7: R2FU owns DTO envelope identity while core manifest and descriptor evidence carry neutral Provider selection");
 
-            Check(sourceGeneratorProject.Contains("FoxRunRos2InterfaceDigest.cs", StringComparison.Ordinal)
-                  && sourceGeneratorProject.Contains("FoxRunRos2InterfaceLock.cs", StringComparison.Ordinal)
-                  && sourceGeneratorProject.Contains("FoxRunRos2InterfaceJsonWriter.cs", StringComparison.Ordinal)
+            Check(!sourceGeneratorProject.Contains("FoxRunRos2InterfaceDigest.cs", StringComparison.Ordinal)
+                  && !sourceGeneratorProject.Contains("FoxRunRos2InterfaceLock.cs", StringComparison.Ordinal)
+                  && !sourceGeneratorProject.Contains("FoxRunRos2InterfaceJsonWriter.cs", StringComparison.Ordinal)
                   && !descriptorWriter.Contains("using Unity.FoxgloveSDK.Components;", StringComparison.Ordinal),
                 "181B-8: static-package editor helpers stay out of the analyzer compile surface");
         }
@@ -527,7 +579,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && entries[0].IncludeInDefault
                   && entries[0].Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)
                   && defaultEntries.Length == 1
-                  && string.Equals(entries[0].Name, "FoxRun custom ROS2 interface interop release gate", StringComparison.Ordinal),
+                  && string.Equals(entries[0].Name, "FoxRun custom R2FU interface interop release gate", StringComparison.Ordinal),
                 "181F-9: Phase181 updates its one registry entry to the default behavior and structural release gate");
         }
 
@@ -577,7 +629,7 @@ namespace Unity.FoxgloveSDK.Tests
             string customMapperEmitter,
             string customPublishEmitter,
             string foxgloveLogHub,
-            string legacyR2fuTopicSink)
+            string r2fuTransportProvider)
         {
             Check(customTransportHost.Contains("TryAcquireSubscriptionBackend", StringComparison.Ordinal)
                   && customTransportHost.Contains("TryAcquirePublisherBackend", StringComparison.Ordinal)
@@ -651,11 +703,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && customPublishEmitter.Contains("__FoxRunRos2CustomMapDtoToEnvelope", StringComparison.Ordinal),
                 "181D-5: outbound mapping uses its fixed 4 MiB cap, timestamp bounds, and exact-once generated disposal");
 
-            Check(foxgloveLogHub.Contains("TryResolvePublishRoutes", StringComparison.Ordinal)
-                  && foxgloveLogHub.Contains("publishLive || publishBus", StringComparison.Ordinal)
-                  && foxgloveLogHub.Contains("busSource.FoxgloveLog_PublishToBus", StringComparison.Ordinal)
-                  && !legacyR2fuTopicSink.Contains("FoxRunRos2Custom", StringComparison.Ordinal),
-                "181D-6: WebSocket and typed-bus routes fan out independently while the legacy byte/CDR sink remains separate");
+            Check(foxgloveLogHub.Contains("SelectsWebSocket(info)", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains("IFoxgloveTopicBusSource", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains("busSource", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains(".FoxgloveLog_PublishToBus(", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains("IFoxgloveTopicSinkSource", StringComparison.Ordinal)
+                  && r2fuTransportProvider.Contains("FoxRunRos2CustomPublisherHub", StringComparison.Ordinal)
+                  && r2fuTransportProvider.Contains("FoxRunRos2SubscriptionHub", StringComparison.Ordinal)
+                  && r2fuTransportProvider.Contains(
+                      "not untyped byte payloads",
+                      StringComparison.Ordinal),
+                "181D-6: core fans out WebSocket, typed-bus, and neutral sink routes while R2FU owns generated typed ROS2 bindings");
         }
 
         private static void VerifyTypesupportPreflightPresentation(
@@ -699,57 +757,63 @@ namespace Unity.FoxgloveSDK.Tests
                   && !inspector.Contains("Client.Resolve", StringComparison.Ordinal)
                   && !inspector.Contains("packages-lock.json", StringComparison.Ordinal)
                   && managerR2fuRuntimeInspector.Contains(
-                      "Unity2Foxglove.Ros2ForUnity.Editor.FoxRunRos2CustomTypesupportInspector, Unity2Foxglove.Ros2ForUnity.Editor",
+                      "IFoxRunTransportProviderDrawer",
                       StringComparison.Ordinal)
-                  && managerR2fuRuntimeInspector.Contains("DrawOptionalR2fuCustomTypesupportInspector", StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxRunTransportProviderDrawerRegistry.Register",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxRunRos2CustomTypesupportInspector",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      ".DrawCustomTypesupportPreflight(",
+                      StringComparison.Ordinal)
                   && interfaceCommand.Contains("ValidateFromMenu", StringComparison.Ordinal)
                    && interfaceCommand.Contains("OpenSourcePackageFromMenu", StringComparison.Ordinal),
-                "181E-2: Data Transport reaches one optional custom-interface inspector through an auditable reflection seam");
+                "181E-2: the R2FU Provider drawer directly owns one custom-interface inspector without a core reflection seam");
 
-            var runtimeDemandStart = managerR2fuRuntimeInspector.IndexOf(
-                "private bool HasR2fuNativeRuntimeDemand()",
-                StringComparison.Ordinal);
-            var runtimeDemandEnd = managerR2fuRuntimeInspector.IndexOf(
-                "private bool HasR2fuNativeSubscriptionDemand()",
-                StringComparison.Ordinal);
-            var runtimeDemandBody = runtimeDemandStart >= 0 && runtimeDemandEnd > runtimeDemandStart
-                ? managerR2fuRuntimeInspector.Substring(runtimeDemandStart, runtimeDemandEnd - runtimeDemandStart)
-                : string.Empty;
-            Check(runtimeDemandBody.Contains(
-                      "FoxRunCustomNativeContractDemandPolicy.HasDemand(",
+            Check(managerR2fuRuntimeInspector.Contains(
+                      "CollectReflectionGenerationModelForTransportProviders",
                       StringComparison.Ordinal)
-                  && runtimeDemandBody.Contains("GetDefaultPublishTargets()", StringComparison.Ordinal)
-                  && runtimeDemandBody.Contains("GetDefaultSubscriptionSource()", StringComparison.Ordinal),
-                "181E-3: resolved custom native publish and subscribe directions independently create shared R2FU Runtime demand");
-
-            var runtimeSectionStart = managerR2fuRuntimeInspector.IndexOf(
-                "private void DrawR2fuRuntimeSection()",
-                StringComparison.Ordinal);
-            var runtimeSectionEnd = managerR2fuRuntimeInspector.IndexOf(
-                "private void DrawOptionalR2fuRuntimeSelector()",
-                StringComparison.Ordinal);
-            var runtimeSectionBody = runtimeSectionStart >= 0 && runtimeSectionEnd > runtimeSectionStart
-                ? managerR2fuRuntimeInspector.Substring(runtimeSectionStart, runtimeSectionEnd - runtimeSectionStart)
-                : string.Empty;
-            Check(runtimeSectionBody.Contains(
-                      "HasR2fuNativeSubscriptionDemand(loadedScene)",
+                  && managerR2fuRuntimeInspector.Contains(
+                      "member.GeneratesRos2NativeRegistration",
                       StringComparison.Ordinal)
-                  && runtimeSectionBody.Contains(
-                      "FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(",
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxRunRos2ContractKind.CustomDto",
                       StringComparison.Ordinal)
-                  && runtimeSectionBody.Contains(
-                      "GetDefaultPublishTargets() & FoxRunEndpoint.Ros2Native",
+                  && managerR2fuRuntimeInspector.Contains(
+                      "member.Ros2CustomDtoShape",
                       StringComparison.Ordinal)
-                  && runtimeSectionBody.Contains(
-                      "loadedScene.HasExplicitNativePublishContract",
+                  && managerR2fuRuntimeInspector.Contains(
+                      ".PayloadIdentity",
                       StringComparison.Ordinal)
-                  && runtimeSectionBody.Contains(
-                      "FoxRunCustomNativeContractDemandPolicy.HasDemand(",
-                      StringComparison.Ordinal)
-                  && runtimeSectionBody.Contains(
-                      "DrawOptionalR2fuCustomTypesupportInspector(customContracts);",
+                  && managerR2fuRuntimeInspector.Contains(
+                      "DirectionalPolicyLabel(member)",
                       StringComparison.Ordinal),
-                "181E-4: shared Runtime direction text uses loaded-scene profile and explicit native demand and conditionally renders the scene-filtered custom preflight");
+                "181E-3: the R2FU drawer derives custom typesupport demand from the current Provider generation model and directional policy");
+
+            Check(managerR2fuRuntimeInspector.Contains(
+                      "manager.GetComponent<",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxRunRos2TransportProvider>()",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "Undo.AddComponent<",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "PrefabUtility",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "RecordPrefabInstancePropertyModifications",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "EditorSceneManager.MarkSceneDirty",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "if (provider == null)",
+                      StringComparison.Ordinal),
+                "181E-4: the Provider drawer owns ordinary component creation and renders preflight only for its attached R2FU Provider");
         }
 
         private static void VerifyEditModeCustomContractSnapshot(
@@ -757,51 +821,51 @@ namespace Unity.FoxgloveSDK.Tests
             string managerR2fuRuntimeInspector)
         {
             var snapshotStart = foxRunCodeGenerator.IndexOf(
-                "internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()",
+                "CollectReflectionGenerationModelForTransportProviders()",
                 StringComparison.Ordinal);
             var snapshotEnd = snapshotStart >= 0
-                ? foxRunCodeGenerator.IndexOf("        public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()", snapshotStart, StringComparison.Ordinal)
+                ? foxRunCodeGenerator.IndexOf(
+                    "public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()",
+                    snapshotStart,
+                    StringComparison.Ordinal)
                 : -1;
             var snapshotBody = snapshotStart >= 0 && snapshotEnd > snapshotStart
                 ? foxRunCodeGenerator.Substring(snapshotStart, snapshotEnd - snapshotStart)
                 : string.Empty;
-            Check(snapshotBody.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true)", StringComparison.Ordinal)
-                  && snapshotBody.Contains("FoxRunManifestBuilder.Build", StringComparison.Ordinal)
-                  && snapshotBody.Contains("manifest.CustomNativeContracts", StringComparison.Ordinal)
-                  && snapshotBody.Contains(".Select(ToSchemaCustomNativeContractInfo)", StringComparison.Ordinal)
-                  && snapshotBody.Contains("private static FoxRunSchemaCustomNativeContractInfo ToSchemaCustomNativeContractInfo(", StringComparison.Ordinal)
+            Check(snapshotBody.Contains("ScanFoxRunMembers(", StringComparison.Ordinal)
+                  && snapshotBody.Contains("ignoreReflectionTypeLoadExceptions: true", StringComparison.Ordinal)
+                  && snapshotBody.Contains("LowerReflectionMembers(", StringComparison.Ordinal)
+                  && snapshotBody.Contains("ValidateGenerationModel(", StringComparison.Ordinal)
                   && !snapshotBody.Contains("WriteManifestFiles", StringComparison.Ordinal)
-                  && !snapshotBody.Contains("WriteSchemaInfoFiles", StringComparison.Ordinal),
-                "181F-17: Edit Mode preflight derives custom contracts from the current reflection snapshot without rewriting generated schema evidence");
+                  && !snapshotBody.Contains("WriteSchemaInfoFiles", StringComparison.Ordinal)
+                  && !snapshotBody.Contains("WriteDescriptorFile", StringComparison.Ordinal),
+                "181F-17: core exposes a validated neutral reflection snapshot without rewriting generated evidence");
 
-            var sourcePackageModelStart = foxRunCodeGenerator.IndexOf(
-                "internal static FoxRunGenerationModel CollectReflectionGenerationModelForRos2InterfacePackage()",
-                StringComparison.Ordinal);
-            var sourcePackageModelEnd = sourcePackageModelStart >= 0
-                ? foxRunCodeGenerator.IndexOf(
-                    "internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()",
-                    sourcePackageModelStart,
-                    StringComparison.Ordinal)
-                : -1;
-            var sourcePackageModelBody = sourcePackageModelStart >= 0 && sourcePackageModelEnd > sourcePackageModelStart
-                ? foxRunCodeGenerator.Substring(sourcePackageModelStart, sourcePackageModelEnd - sourcePackageModelStart)
-                : string.Empty;
-            Check(sourcePackageModelBody.Contains("ValidateGenerationModel(model, logWarnings: false);", StringComparison.Ordinal)
+            Check(snapshotBody.Contains("logWarnings: false", StringComparison.Ordinal)
                   && foxRunCodeGenerator.Contains(
                       "private static void ValidateGenerationModel(FoxRunGenerationModel model, bool logWarnings = true)",
                       StringComparison.Ordinal),
-                "181F-19: source-package validation preserves blocking diagnostics without replaying suppressible advisory warnings into the Unity Console");
+                "181F-19: Provider snapshot validation preserves blocking diagnostics without replaying advisory warnings into the Unity Console");
 
             Check(managerR2fuRuntimeInspector.Contains(
-                      "private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> GetCurrentCustomNativeContractsForInspector()",
+                      "CollectCustomTypesupportContracts()",
                       StringComparison.Ordinal)
                   && managerR2fuRuntimeInspector.Contains(
-                      "FoxrunCodeGenerator.CollectCustomNativeContractsForInspector()",
+                      "CollectReflectionGenerationModelForTransportProviders()",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      ".Select(FoxRunR2fuTopicMember.Create)",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxRunRos2ContractKind.CustomDto",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "BuildEnvelopeMessageName(",
                       StringComparison.Ordinal)
                   && !managerR2fuRuntimeInspector.Contains(
                       "GetGeneratedCustomNativeContracts()",
                       StringComparison.Ordinal),
-                "181F-18: custom preflight reads the current contract snapshot instead of caching an empty stale generated-schema list");
+                "181F-18: R2FU preflight projects current custom contracts from the neutral snapshot instead of stale generated-schema state");
         }
 
         private static void VerifyAcceptanceSurface(
@@ -817,7 +881,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sample.Contains("FoxRunFlow.Publish", StringComparison.Ordinal)
                   && sample.Contains("FoxRunFlow.Subscribe", StringComparison.Ordinal)
                   && sample.Contains("FoxRunFlow.PublishAndSubscribe", StringComparison.Ordinal)
-                  && sample.Contains("Source = FoxRunEndpoint.Ros2Native", StringComparison.Ordinal)
+                  && sample.Contains("PublishTransportIds = new[]", StringComparison.Ordinal)
+                  && sample.Contains("SubscribeTransportId =", StringComparison.Ordinal)
+                  && sample.Contains("FoxRunRos2TransportProvider.IdValue", StringComparison.Ordinal)
+                  && sample.Contains("FoxgloveWebSocketTransport.Id", StringComparison.Ordinal)
                   && sample.Contains("Encoding = FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && sample.Contains("byte[]", StringComparison.Ordinal)
                   && sample.Contains("List<long>", StringComparison.Ordinal)

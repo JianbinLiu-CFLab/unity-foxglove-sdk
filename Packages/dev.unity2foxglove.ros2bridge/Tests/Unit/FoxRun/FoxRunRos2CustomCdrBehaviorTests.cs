@@ -202,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             source.AppendLine("using System.Collections.Generic;");
             source.AppendLine("namespace Phase181");
             source.AppendLine("{");
-            source.AppendLine("    public enum StateKind : ushort { Unknown = 0 }");
+            source.AppendLine("    public enum StateKind { Unknown = 0 }");
             source.AppendLine("    public sealed class NestedState");
             source.AppendLine("    {");
             source.AppendLine("        public bool Enabled;");
@@ -283,63 +283,82 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static FoxRunGenerationMember CreateCustomMember()
         {
-            var nested = new FoxRunRos2CustomDtoShape(
+            var nested = FoxRunTypeShape.Object(
                 "Phase181.NestedState",
-                "phase181/NestedState",
-                "Phase181NestedState3281D0E21244",
-                hasPublicParameterlessConstructor: true,
-                isSupported: true,
-                members: new[]
+                new[]
                 {
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Label", "label", FoxRunRos2CustomDtoMemberKind.String,
-                        "System.String", "string", "", "", true, true, true),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Enabled", "enabled", FoxRunRos2CustomDtoMemberKind.Scalar,
-                        "System.Boolean", "bool", "", "", false, true, true),
+                    new FoxRunTypeField(
+                        "label",
+                        "Label",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "enabled",
+                        "Enabled",
+                        FoxRunTypeShape.Canonical("bool")),
                 },
-                diagnostics: Array.Empty<string>());
-            var state = new FoxRunRos2CustomDtoShape(
+                canConstruct: true);
+            var state = FoxRunTypeShape.Object(
                 "Phase181.State",
-                "phase181/State",
-                "Phase181State48D288ED82F1",
-                hasPublicParameterlessConstructor: true,
-                isSupported: true,
-                members: new[]
+                new[]
                 {
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Values", "values", FoxRunRos2CustomDtoMemberKind.Sequence,
-                        "System.Collections.Generic.List<System.Int64>", "int64[]", "System.Int64", "",
-                        true, true, true, FoxRunRos2CustomDtoSequenceRepresentation.List),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "OptionalText", "optional_text", FoxRunRos2CustomDtoMemberKind.String,
-                        "System.String", "string", "", "", true, true, true),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Nested", "nested", FoxRunRos2CustomDtoMemberKind.NestedDto,
-                        "Phase181.NestedState", "Phase181NestedState3281D0E21244", "", nested.CanonicalIdentity,
-                        true, true, true, nestedShape: nested),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Count", "count", FoxRunRos2CustomDtoMemberKind.Scalar,
-                        "System.Int32", "int32", "", "", false, true, true),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Labels", "labels", FoxRunRos2CustomDtoMemberKind.Sequence,
-                        "System.Collections.Generic.List<System.String>", "string[]", "System.String", "",
-                        true, true, true, FoxRunRos2CustomDtoSequenceRepresentation.List),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Kind", "kind", FoxRunRos2CustomDtoMemberKind.Enum,
-                        "Phase181.StateKind", "uint16", "", "", false, true, true),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Bytes", "bytes", FoxRunRos2CustomDtoMemberKind.Sequence,
-                        "System.Byte[]", "uint8[]", "System.Byte", "",
-                        true, true, true, FoxRunRos2CustomDtoSequenceRepresentation.Array),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Message", "message", FoxRunRos2CustomDtoMemberKind.String,
-                        "System.String", "string", "", "", true, true, true),
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "OptionalCount", "optional_count", FoxRunRos2CustomDtoMemberKind.Scalar,
-                        "System.Nullable<System.Int32>", "int32", "", "", true, true, true),
+                    new FoxRunTypeField(
+                        "values",
+                        "Values",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.List,
+                            FoxRunTypeShape.Canonical("int64"))),
+                    new FoxRunTypeField(
+                        "optionalText",
+                        "OptionalText",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "nested",
+                        "Nested",
+                        nested.WithNullable()),
+                    new FoxRunTypeField(
+                        "count",
+                        "Count",
+                        FoxRunTypeShape.Canonical("int32")),
+                    new FoxRunTypeField(
+                        "labels",
+                        "Labels",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.List,
+                            FoxRunTypeShape.Canonical("string"))),
+                    new FoxRunTypeField(
+                        "kind",
+                        "Kind",
+                        FoxRunTypeShape.Enum(
+                            "Phase181.StateKind",
+                            new[]
+                            {
+                                new FoxRunEnumValue("Unknown", 0),
+                            })),
+                    new FoxRunTypeField(
+                        "bytes",
+                        "Bytes",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.Binary,
+                            FoxRunTypeShape.Canonical("uint8"))),
+                    new FoxRunTypeField(
+                        "message",
+                        "Message",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "optionalCount",
+                        "OptionalCount",
+                        FoxRunTypeShape.Canonical(
+                            "int32",
+                            nullable: true),
+                        isNullable: true),
                 },
-                diagnostics: Array.Empty<string>());
+                canConstruct: true);
             return new FoxRunGenerationMember(
                 "Phase181",
                 "GeneratedCdrProbe",
@@ -359,13 +378,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 conditionalSymbols: string.Empty,
                 mode: (int)FoxRunFlow.Publish,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                source: string.Empty,
-                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
+                typeShape: state,
                 generatesWebSocketCodec: false,
-                generatesRos2NativeRegistration: true,
-                ros2MessageShape: null,
-                ros2CustomDtoShape: state,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+                publishTransportIds: new[]
+                {
+                    "unity2foxglove.ros2bridge",
+                });
         }
 
         private static OracleResult BuildOracle(
@@ -445,7 +463,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             RecordPresence(writer, presenceOffsets, "bytes", byteCountOverride.HasValue || values.Bytes != null);
 
             writer.WriteInt32(values.Count);
-            writer.WriteUInt16(values.Kind);
+            writer.WriteInt32(values.Kind);
 
             writer.WriteSequenceLength(values.Labels == null ? 0 : values.Labels.Count);
             if (values.Labels != null)

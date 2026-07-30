@@ -82,106 +82,11 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox(
                     "No generated FoxRun topic metadata is registered in this domain.",
                     MessageType.Info);
-                // A Ros2Native-only contract deliberately has no Foxglove
-                // WebSocket codec summary, but must remain inspectable.
-                DrawFoxRunNativeUnityContracts(manager);
                 return;
             }
 
             DrawFoxRunTopicGroup("Publish Topics", summaries, "Publish");
             DrawFoxRunTopicGroup("Subscribe Topics", summaries, "Subscribe");
-            DrawFoxRunNativeUnityContracts(manager);
-        }
-
-        private static void DrawFoxRunNativeUnityContracts(FoxgloveManager manager)
-        {
-            var manifest = FoxRunSchemaInfoRegistry.Current;
-            var bindings = manifest?.SubscriptionBindings;
-            if (bindings == null || bindings.Count == 0)
-                return;
-
-            var defaultProvider = manager == null
-                ? FoxRunEndpoint.Foxglove
-                : manager.ActiveFoxRunSubscriptionSource;
-            var nativeBindings = new System.Collections.Generic.List<FoxRunSchemaSubscriptionBindingInfo>();
-            for (var i = 0; i < bindings.Count; i++)
-            {
-                var binding = bindings[i];
-                if (binding == null
-                    || !string.Equals(binding.Flow, "Subscribe", System.StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (binding.DeclaredSource == FoxRunEndpoint.Ros2Native
-                    || (defaultProvider == FoxRunEndpoint.Ros2Native
-                        && binding.SupportsRos2Native))
-                {
-                    nativeBindings.Add(binding);
-                }
-            }
-
-            if (nativeBindings.Count == 0)
-                return;
-
-            EditorGUILayout.Space();
-            FoxgloveManagerInspectorLayout.Subheader("ROS2 Native Unity Contracts");
-            EditorGUILayout.HelpBox(
-                "These are Unity ROS2 Native input contracts. They are intentionally not Foxglove subscription-catalog entries; live binding state appears under Subscribe Data diagnostics.",
-                MessageType.Info);
-
-            foreach (var binding in nativeBindings)
-                DrawFoxRunNativeUnityContract(binding, defaultProvider);
-        }
-
-        private static void DrawFoxRunNativeUnityContract(
-            FoxRunSchemaSubscriptionBindingInfo binding,
-            FoxRunEndpoint defaultProvider)
-        {
-            var resolution = FoxRunEndpointResolver.Resolve(
-                FoxRunFlow.Subscribe,
-                binding.DeclaredSource,
-                hasExplicitSource: binding.DeclaredSource != 0,
-                declaredTargets: 0,
-                hasExplicitTargets: false,
-                declaredEncoding: 0,
-                hasExplicitEncoding: false,
-                defaultSource: defaultProvider,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
-            var status = resolution.Success
-                         && resolution.Topology.Source == FoxRunEndpoint.Ros2Native
-                         && binding.SupportsRos2Native
-                ? "Native subscription eligible"
-                : string.IsNullOrWhiteSpace(resolution.DiagnosticMessage)
-                    ? "Native subscription unavailable"
-                    : resolution.DiagnosticMessage;
-
-            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    EditorGUILayout.SelectableLabel(binding.Topic, EditorStyles.textField);
-                    if (GUILayout.Button("Copy Topic", GUILayout.Width(82)))
-                        EditorGUIUtility.systemCopyBuffer = binding.Topic ?? string.Empty;
-                }
-
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.TextField("CLR Type", binding.NativeType ?? binding.DeclaringType ?? string.Empty);
-                    EditorGUILayout.TextField("Canonical ROS Type", binding.CanonicalRosType ?? string.Empty);
-                    EditorGUILayout.TextField(
-                        "QoS",
-                        FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
-                            binding.QosProfile,
-                            binding.QosReliability,
-                            binding.QosDurability,
-                            binding.QosHistory,
-                            binding.QosDepth));
-                    EditorGUILayout.TextField("Status", status);
-                }
-            }
         }
 
         private static void DrawFoxRunTopicGroup(

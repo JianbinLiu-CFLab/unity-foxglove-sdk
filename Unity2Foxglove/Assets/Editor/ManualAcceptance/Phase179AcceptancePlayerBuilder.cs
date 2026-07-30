@@ -15,6 +15,10 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
+
 /// <summary>
 /// Owns only the reproducible Phase179 acceptance scene and Player build.
 /// It deliberately reads the resolved runtime package directly rather than
@@ -356,17 +360,19 @@ public static class Phase179AcceptancePlayerBuilder
     {
         var serialized = new SerializedObject(manager);
         SetBoolean(serialized, "_foxgloveOutputEnabled", false);
-        SetBoolean(serialized, "_ros2NativeEnabled", false);
         SetBoolean(serialized, "_enableFoxRunInbound", true);
-        SetEnumByName(
-            serialized,
-            "_defaultFoxRunSubscriptionSource",
-            nameof(FoxRunEndpoint.Ros2Native));
         serialized.ApplyModifiedPropertiesWithoutUndo();
-        // The public setter also advances the serialized policy version. Without
-        // it, a later OnAfterDeserialize migration would deliberately reset the
-        // raw field above to the legacy WebSocket default.
-        manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
+            manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
+        manager.ConfigureFoxRunTransports(
+            Array.Empty<string>(),
+            subscriptionsEnabled: true,
+            FoxRunRos2TransportProvider.IdValue);
+#else
+        throw new InvalidOperationException(
+            "Phase179 requires an active ROS2 For Unity runtime package.");
+#endif
         EditorUtility.SetDirty(manager);
     }
 
@@ -397,30 +403,6 @@ public static class Phase179AcceptancePlayerBuilder
         if (property == null || property.propertyType != SerializedPropertyType.Boolean)
             throw new InvalidOperationException("FoxgloveManager boolean property was not found: " + propertyPath);
         return property.boolValue;
-    }
-
-    private static string GetEnumName(SerializedObject serialized, string propertyPath)
-    {
-        var property = serialized.FindProperty(propertyPath);
-        if (property == null || property.propertyType != SerializedPropertyType.Enum)
-            throw new InvalidOperationException("FoxgloveManager enum property was not found: " + propertyPath);
-        return property.enumValueIndex >= 0 && property.enumValueIndex < property.enumNames.Length
-            ? property.enumNames[property.enumValueIndex]
-            : string.Empty;
-    }
-
-    private static void SetEnumByName(SerializedObject serialized, string propertyPath, string valueName)
-    {
-        var property = serialized.FindProperty(propertyPath);
-        if (property == null)
-            throw new InvalidOperationException("FoxgloveManager serialized property was not found: " + propertyPath);
-        if (property.propertyType != SerializedPropertyType.Enum)
-            throw new InvalidOperationException("FoxgloveManager serialized property is not an enum: " + propertyPath);
-        var enumIndex = Array.IndexOf(property.enumNames, valueName);
-        if (enumIndex < 0)
-            throw new InvalidOperationException(
-                "FoxgloveManager enum value was not found for " + propertyPath + ": " + valueName);
-        property.enumValueIndex = enumIndex;
     }
 
     private static void ValidateAcceptanceScene()
@@ -459,13 +441,10 @@ public static class Phase179AcceptancePlayerBuilder
             var receiver = receivers[0];
             var managerSerialized = new SerializedObject(manager);
             if (GetBoolean(managerSerialized, "_foxgloveOutputEnabled")
-                || GetBoolean(managerSerialized, "_ros2NativeEnabled")
-                || !GetBoolean(managerSerialized, "_enableFoxRunInbound")
-                || GetEnumName(managerSerialized, "_defaultFoxRunSubscriptionSource")
-                    != nameof(FoxRunEndpoint.Ros2Native))
+                || !GetBoolean(managerSerialized, "_enableFoxRunInbound"))
             {
                 throw new InvalidOperationException(
-                    "The Phase179 acceptance Manager must keep output disabled and native FoxRun subscriptions enabled.");
+                    "The Phase179 acceptance Manager must keep WebSocket output disabled and FoxRun subscriptions enabled.");
             }
 
             var receiverSerialized = new SerializedObject(receiver);

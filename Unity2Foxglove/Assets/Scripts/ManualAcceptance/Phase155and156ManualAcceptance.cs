@@ -9,7 +9,10 @@ using System.Collections;
 using System.Text;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
-using Unity2Foxglove.Ros2ForUnity;
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
 
 /// <summary>
 /// Manual Unity/Foxglove acceptance probe for Phase155 and Phase156 together.
@@ -24,10 +27,8 @@ using Unity2Foxglove.Ros2ForUnity;
 /// 4. In Unity Console, confirm the local Phase155 sink observed both topics.
 /// 5. Optional Phase156 shell validation: add
 ///    <see cref="Phase155and156Ros2UnavailableSinkBootstrap"/> to the same
-///    scene and confirm it fails closed with a clear ROS2 unavailable or
-///    unsupported mapping message. A real ROS2 data-path validation should use
-///    project-specific provider components that implement the provider
-///    interfaces at the bottom of this file.
+///    scene and confirm it reports either the same-GameObject R2FU Provider
+///    lifecycle or a clear fail-closed unavailable message.
 /// </remarks>
 [DisallowMultipleComponent]
 [AddComponentMenu("Foxglove/Manual Acceptance/Phase155 and 156")]
@@ -267,112 +268,72 @@ public sealed partial class Phase155and156ManualAcceptance : MonoBehaviour
 }
 
 /// <summary>
-/// Optional Phase156 shell acceptance bootstrap. It proves the ROS2 sink can be
-/// attached from the optional package boundary without making the core SDK know
-/// about ROS2 types. By default it fails closed because no concrete generated ROS2
-/// mapping is supplied.
+/// Optional Phase156 Provider acceptance probe. It verifies that the R2FU
+/// package contributes its transport through a same-GameObject Provider
+/// without restoring the retired ROS-specific topic-sink compatibility API.
 /// </summary>
 [DisallowMultipleComponent]
-[AddComponentMenu("Foxglove/Manual Acceptance/Phase156 ROS2 Sink Shell")]
+[AddComponentMenu("Foxglove/Manual Acceptance/Phase156 R2FU Provider")]
 public sealed class Phase155and156Ros2UnavailableSinkBootstrap : MonoBehaviour
 {
-    [Header("Sink")]
-    [Tooltip("ROS2 node name used by the Phase156 outbound sink shell.")]
-    [SerializeField] private string nodeName = "unity2foxglove_foxrun";
-
-    [Header("Optional Providers")]
-    [Tooltip("Optional component implementing IPhase155and156Ros2ContextProvider. Leave empty to use the unavailable context and verify fail-closed behavior.")]
-    [SerializeField] private MonoBehaviour contextProvider;
-    [Tooltip("Optional component implementing IPhase155and156Ros2PublisherFactoryProvider. Leave empty to use a fail-closed factory with no mappings.")]
-    [SerializeField] private MonoBehaviour publisherFactoryProvider;
+    [Header("Manager")]
+    [Tooltip("Manager whose same-GameObject R2FU Provider is inspected.")]
+    [SerializeField] private FoxgloveManager manager;
 
     [Header("Observed State")]
-    [Tooltip("Last bootstrap status written by this component.")]
+    [Tooltip("Last Provider status written by this component.")]
     [SerializeField] private string lastBootstrapStatus;
-
-    private Ros2TopicSinkBootstrap bootstrap;
 
     private void OnEnable()
     {
-        bootstrap = new Ros2TopicSinkBootstrap(nodeName, CreatePublisherFactory, CreateContext, Debug.LogWarning);
-        TryAttach();
+        if (manager == null)
+            manager = UnityEngine.Object.FindFirstObjectByType<FoxgloveManager>();
+        InspectProvider();
     }
 
     private void Update()
     {
-        if (bootstrap != null && !bootstrap.IsAttached)
-            TryAttach();
+        InspectProvider();
     }
 
-    private void OnDisable()
+    private void InspectProvider()
     {
-        bootstrap?.Dispose();
-        bootstrap = null;
-    }
-
-    private void TryAttach()
-    {
-        if (bootstrap == null)
+        if (manager == null)
+        {
+            SetStatus(
+                "Phase156 cannot inspect the R2FU Provider because no FoxgloveManager is assigned.");
             return;
-
-        if (bootstrap.TryAttach())
-        {
-            lastBootstrapStatus = "Phase156 ROS2 sink shell attached to FoxgloveLogHub.TopicSinkRouter.";
-            Debug.Log("[Phase155/156] " + lastBootstrapStatus);
         }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        var provider = manager.GetComponent<FoxRunRos2TransportProvider>();
+        if (provider == null)
+        {
+            SetStatus(
+                "Phase156 fail-closed: add the R2FU Provider from the Manager Transport Providers panel.");
+            return;
+        }
+
+        SetStatus(
+            "Phase156 R2FU Provider state="
+            + provider.LifecycleState
+            + "; id="
+            + provider.Id.Value
+            + ".");
+#else
+        SetStatus(
+            "Phase156 fail-closed: no active ROS2 For Unity runtime package.");
+#endif
     }
 
-    private IUnity2FoxgloveRos2Context CreateContext()
+    private void SetStatus(string status)
     {
-        if (contextProvider is IPhase155and156Ros2ContextProvider provider)
-        {
-            lastBootstrapStatus = "Using custom Phase156 ROS2 context provider.";
-            Debug.Log("[Phase155/156] " + lastBootstrapStatus);
-            return provider.CreatePhase155and156Context();
-        }
-
-        lastBootstrapStatus = "Using unavailable ROS2 context. Phase156 should fail closed unless a real provider is assigned.";
+        if (string.Equals(
+                lastBootstrapStatus,
+                status,
+                StringComparison.Ordinal))
+            return;
+        lastBootstrapStatus = status;
         Debug.Log("[Phase155/156] " + lastBootstrapStatus);
-        return Unity2FoxgloveRos2UnavailableContext.Instance;
     }
-
-    private IRos2TopicPublisherFactory CreatePublisherFactory()
-    {
-        if (publisherFactoryProvider is IPhase155and156Ros2PublisherFactoryProvider provider)
-        {
-            lastBootstrapStatus = "Using custom Phase156 ROS2 publisher factory provider.";
-            Debug.Log("[Phase155/156] " + lastBootstrapStatus);
-            return provider.CreatePhase155and156PublisherFactory();
-        }
-
-        lastBootstrapStatus = "Using fail-closed Phase156 ROS2 publisher factory with no concrete mappings.";
-        Debug.Log("[Phase155/156] " + lastBootstrapStatus);
-        return new NoMappingsPublisherFactory();
-    }
-
-    private sealed class NoMappingsPublisherFactory : IRos2TopicPublisherFactory
-    {
-        public bool TryCreate(
-            FoxTopicContract contract,
-            IUnity2FoxgloveRos2Node node,
-            out IRos2TopicPublisher publisher,
-            out string reason)
-        {
-            publisher = null;
-            reason = "manual acceptance shell has no concrete generated ROS2 message mapping provider";
-            return false;
-        }
-    }
-}
-
-/// <summary>Provider seam for projects that want Phase156 to use a real ROS2 context.</summary>
-public interface IPhase155and156Ros2ContextProvider
-{
-    IUnity2FoxgloveRos2Context CreatePhase155and156Context();
-}
-
-/// <summary>Provider seam for projects that want Phase156 to publish real ROS2 messages.</summary>
-public interface IPhase155and156Ros2PublisherFactoryProvider
-{
-    IRos2TopicPublisherFactory CreatePhase155and156PublisherFactory();
 }

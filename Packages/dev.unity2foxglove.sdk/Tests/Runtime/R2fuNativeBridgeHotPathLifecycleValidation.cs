@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly string[] BridgeFiles =
         {
             "Ros2ForUnityTransformNativeBridge.cs",
-            "Ros2ForUnityPointCloud2NativeBridge.cs",
+            "Ros2ForUnityPackedPointCloudBridge.cs",
             "Ros2ForUnityImuNativeBridge.cs",
             "Ros2ForUnityCameraNativeBridge.cs",
         };
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
                 if (bridge.Contains("Transform", StringComparison.Ordinal))
                     hotSource += "\n" + RequiredMethod(source, "private void OnFrameTransformReady", bridge);
                 else if (bridge.Contains("PointCloud2", StringComparison.Ordinal))
-                    hotSource += "\n" + RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", bridge);
+                    hotSource += "\n" + RequiredMethod(source, "private void OnPackedPointCloudFrameReady", bridge);
                 else if (bridge.Contains("Imu", StringComparison.Ordinal))
                     hotSource += "\n" + RequiredMethod(source, "private void OnFrameReady", bridge);
 
@@ -159,12 +159,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloud2PublishersPrewarmOutsideFrameCallback()
         {
-            var source = ReadRepoText(NativeDir + "/Ros2ForUnityPointCloud2NativeBridge.cs");
-            var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var registerBody = RequiredMethod(source, "private void RegisterPublisherBinding", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var callbackBody = RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var source = ReadRepoText(NativeDir + "/Ros2ForUnityPackedPointCloudBridge.cs");
+            var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var registerBody = RequiredMethod(source, "private void RegisterPublisherBinding", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var callbackBody = RequiredMethod(source, "private void OnPackedPointCloudFrameReady", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPackedPointCloudBridge.cs");
 
             Check(refreshBody.Contains("RegisterPublisherBinding(publisher)", StringComparison.Ordinal)
                   && registerBody.Contains("PrewarmPublishers(_ros2Unity)", StringComparison.Ordinal),
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var bridge in new[]
                      {
                          "Ros2ForUnityTransformNativeBridge.cs",
-                         "Ros2ForUnityPointCloud2NativeBridge.cs",
+                         "Ros2ForUnityPackedPointCloudBridge.cs",
                          "Ros2ForUnityImuNativeBridge.cs",
                      })
             {

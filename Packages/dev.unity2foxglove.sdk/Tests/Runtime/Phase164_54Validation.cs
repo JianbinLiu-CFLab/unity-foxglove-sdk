@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(lidar.Contains("RequiresNativeAcquisitionFrame()", StringComparison.Ordinal)
                   && lidar.Contains("_pointCloudPublisher.RequiresVirtualLidarAcquisitionFrame", StringComparison.Ordinal)
                   && publisher.Contains("internal bool RequiresVirtualLidarAcquisitionFrame", StringComparison.Ordinal)
-                  && publisher.Contains("CanQueueVirtualLidarPointCloud2NativeFrame || EnableMotionCompensatedPointCloud2", StringComparison.Ordinal),
+                  && publisher.Contains("CanQueueVirtualLidarPackedPointCloudFrame || EnableMotionCompensatedPointCloud2", StringComparison.Ordinal),
                 "164-54A-3: LiDAR acquisition-frame demand is gated by PointCloud2 Native or deskew output");
         }
 

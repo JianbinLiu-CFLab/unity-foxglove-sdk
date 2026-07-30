@@ -85,17 +85,9 @@ namespace Unity.FoxgloveSDK.Tests
                             ? protobufMetadata?.FieldNumber ?? 0
                             : IntValue(member, "protobufFieldNumber"),
                         typeShape: typeShape,
-                        source: StringValue(member, "source"),
-                        qosProfile: StringValue(member, "qosProfile"),
-                        targets: StringValue(member, "targets"),
-                        qosReliability: StringValue(member, "qosReliability"),
-                        qosDurability: StringValue(member, "qosDurability"),
-                        qosHistory: StringValue(member, "qosHistory"),
-                        qosDepth: IntValue(member, "qosDepth"),
                         generatesWebSocketCodec: BoolValue(member, "generatesWebSocketCodec"),
-                        generatesRos2NativeRegistration: BoolValue(member, "generatesRos2NativeRegistration"),
-                        ros2MessageShape: Ros2MessageShapeValue(member),
-                        namedArgumentPresence: ExplicitArgumentsValue(member),
+                        namedArgumentPresence:
+                            ExplicitArgumentsValue(member, strictV6),
                         conditionMemberKind: ConditionMemberKindValue(member),
                         isStream: BoolValue(member, "isStream"),
                         encodingVariants: encodingVariants,
@@ -105,12 +97,24 @@ namespace Unity.FoxgloveSDK.Tests
                             ? NullableStringArrayValue(
                                 member,
                                 "publishTransportIds")
-                            : null,
+                            : LegacyPublishTransportIds(member, mode),
                         subscribeTransportId: strictV6
                             ? NullableStringValue(
                                 member,
                                 "subscribeTransportId")
-                            : null));
+                            : LegacySubscribeTransportId(member, mode),
+                        reliability: strictV6
+                            ? StringValue(member, "reliability")
+                            : StringValue(member, "qosReliability"),
+                        durability: strictV6
+                            ? StringValue(member, "durability")
+                            : StringValue(member, "qosDurability"),
+                        history: strictV6
+                            ? StringValue(member, "history")
+                            : StringValue(member, "qosHistory"),
+                        depth: strictV6
+                            ? IntValue(member, "depth")
+                            : IntValue(member, "qosDepth")));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }
@@ -602,54 +606,60 @@ namespace Unity.FoxgloveSDK.Tests
             return token.Value<float>();
         }
 
-        private static FoxRunRos2MessageShape Ros2MessageShapeValue(JObject member)
+        private static IReadOnlyList<string> LegacyPublishTransportIds(
+            JObject member,
+            int mode)
         {
-            if (!(member["ros2MessageShape"] is JObject shape))
-                return null;
-
-            var members = new List<FoxRunRos2MessageMemberShape>();
-            foreach (var memberToken in shape["members"] as JArray ?? new JArray())
+            if (mode != (int)FoxRunFlow.Publish
+                && mode != (int)FoxRunFlow.PublishAndSubscribe)
             {
-                var shapeMember = memberToken as JObject
-                    ?? throw new InvalidOperationException("FoxRun ROS2 message-shape members must be JSON objects.");
-                if (!Enum.TryParse(StringValue(shapeMember, "kind"), out FoxRunRos2MessageMemberKind kind))
-                    throw new InvalidOperationException("Unknown FoxRun ROS2 message member kind: " + StringValue(shapeMember, "kind"));
-                if (!Enum.TryParse(StringValue(shapeMember, "sequenceRepresentation"), out FoxRunRos2SequenceRepresentation representation))
-                    throw new InvalidOperationException("Unknown FoxRun ROS2 sequence representation: " + StringValue(shapeMember, "sequenceRepresentation"));
-                members.Add(new FoxRunRos2MessageMemberShape(
-                    StringValue(shapeMember, "name"),
-                    kind,
-                    StringValue(shapeMember, "fullyQualifiedTypeName"),
-                    StringValue(shapeMember, "sequenceElementTypeName"),
-                    StringValue(shapeMember, "nestedShapeIdentity"),
-                    BoolValue(shapeMember, "canRead"),
-                    BoolValue(shapeMember, "canWrite"),
-                    representation,
-                    IntValue(shapeMember, "fixedSize"),
-                    Ros2MessageShapeValue(shapeMember, "nestedShape")));
+                return null;
             }
 
-            var diagnostics = new List<string>();
-            foreach (var diagnostic in shape["diagnostics"] as JArray ?? new JArray())
-                diagnostics.Add(diagnostic.Value<string>() ?? string.Empty);
-
-            return new FoxRunRos2MessageShape(
-                StringValue(shape, "fullyQualifiedTypeName"),
-                StringValue(shape, "canonicalRosType"),
-                BoolValue(shape, "hasPublicParameterlessConstructor"),
-                BoolValue(shape, "implementsRos2Message"),
-                StringValue(shape, "copyShapeIdentity"),
-                members,
-                diagnostics);
-        }
-
-        private static FoxRunRos2MessageShape Ros2MessageShapeValue(JObject parent, string propertyName)
-        {
-            if (!(parent[propertyName] is JObject shape))
+            var targets = StringValue(member, "targets");
+            if (string.IsNullOrWhiteSpace(targets))
                 return null;
 
-            var wrapper = new JObject { ["ros2MessageShape"] = shape };
-            return Ros2MessageShapeValue(wrapper);
+            var result = new List<string>();
+            foreach (var value in targets.Split(','))
+            {
+                var mapped = LegacyTransportId(value.Trim());
+                if (mapped != null && !result.Contains(mapped))
+                    result.Add(mapped);
+            }
+            return result.AsReadOnly();
+        }
+
+        private static string LegacySubscribeTransportId(
+            JObject member,
+            int mode)
+        {
+            if (mode != (int)FoxRunFlow.Subscribe
+                && mode != (int)FoxRunFlow.PublishAndSubscribe)
+            {
+                return null;
+            }
+
+            return LegacyTransportId(StringValue(member, "source"));
+        }
+
+        private static string LegacyTransportId(string value)
+        {
+            switch (value)
+            {
+                case "":
+                case "inherit":
+                    return null;
+                case "Foxglove":
+                    return FoxgloveWebSocketTransport.Id;
+                case "Ros2Native":
+                    return "unity2foxglove.r2fu";
+                case "Ros2Bridge":
+                    return "unity2foxglove.ros2bridge";
+                default:
+                    throw new InvalidOperationException(
+                        "Unknown legacy FoxRun transport: " + value);
+            }
         }
 
         private static int PolicyValue(JObject member)
@@ -678,7 +688,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        private static FoxRunNamedArgumentPresence? ExplicitArgumentsValue(JObject member)
+        private static FoxRunNamedArgumentPresence? ExplicitArgumentsValue(
+            JObject member,
+            bool strictV6)
         {
             if (!member.TryGetValue("explicitArguments", out var token))
                 return null;
@@ -687,9 +699,21 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var name in (token.Value<string>() ?? string.Empty)
                          .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                if (!Enum.TryParse(name, ignoreCase: false, out FoxRunNamedArgumentPresence value)
+                if (!Enum.TryParse(
+                        name,
+                        ignoreCase: false,
+                        out FoxRunNamedArgumentPresence value)
                     || value == FoxRunNamedArgumentPresence.None)
+                {
+                    if (!strictV6
+                        && (name == "Source"
+                            || name == "Targets"
+                            || name == "QoS"))
+                    {
+                        continue;
+                    }
                     throw new InvalidOperationException("Unknown FoxRun explicit argument: " + name);
+                }
                 result |= value;
             }
 

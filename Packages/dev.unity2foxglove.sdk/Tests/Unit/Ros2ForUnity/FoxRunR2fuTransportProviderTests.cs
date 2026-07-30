@@ -116,14 +116,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Ros2ForUnity
             var project = File.ReadAllText(Path.Combine(
                 generatorRoot,
                 "FoxRunR2fuSourceGenerator.csproj"));
-            var generator = File.ReadAllText(Path.Combine(
-                root,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Editor",
-                "SourceGenerators",
+            var sharedScanner = File.ReadAllText(Path.Combine(
+                generatorRoot,
                 "src",
+                "Shared",
                 "FoxgloveLogSourceGenerator.cs"));
+            var providerPipeline = File.ReadAllText(Path.Combine(
+                generatorRoot,
+                "src",
+                "FoxRunR2fuAnalyzerPipeline.cs"));
+            var releaseLedger = File.ReadAllText(Path.Combine(
+                generatorRoot,
+                "AnalyzerReleases.Unshipped.md"));
             var contribution = File.ReadAllText(Path.Combine(
                 root,
                 "Packages",
@@ -139,16 +143,42 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Ros2ForUnity
                 "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll");
 
             Assert.Contains("FOXRUN_R2FU_ANALYZER", project, StringComparison.Ordinal);
+            Assert.Contains("FOXRUN_PROVIDER_ANALYZER", project, StringComparison.Ordinal);
             Assert.Contains(
                 "<AssemblyName>Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator</AssemblyName>",
                 project,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("Ros2Bridge", project, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Google.Protobuf", project, StringComparison.Ordinal);
+            Assert.DoesNotContain("src\\Legacy", project, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("src\\Shared\\FoxgloveLogSourceGenerator.cs", project, StringComparison.Ordinal);
+            Assert.Contains("src\\FoxRunR2fuAnalyzerPipeline.cs", project, StringComparison.Ordinal);
             Assert.True(File.Exists(analyzer), analyzer);
             Assert.True(File.Exists(analyzer + ".meta"), analyzer + ".meta");
-            Assert.Contains("#if FOXRUN_R2FU_ANALYZER", generator, StringComparison.Ordinal);
-            Assert.Contains("GenerateR2fu", generator, StringComparison.Ordinal);
-            Assert.Contains("EmitRos2NativeContribution", contribution, StringComparison.Ordinal);
+            Assert.Contains("#if FOXRUN_PROVIDER_ANALYZER", sharedScanner, StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunProviderAnalyzer.Register(context, members)",
+                sharedScanner,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunR2fuAnalyzerEmitter.Emit",
+                providerPipeline,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs",
+                providerPipeline,
+                StringComparison.Ordinal);
+            Assert.All(
+                Enumerable.Range(1, 16),
+                number => Assert.Contains(
+                    "FOXR2F" + number.ToString("000"),
+                    releaseLedger,
+                    StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                "FOXRUN",
+                releaseLedger,
+                StringComparison.Ordinal);
+            Assert.Contains("FoxRunR2fuSourceEmitter.Emit", contribution, StringComparison.Ordinal);
             Assert.Contains("HintNameSuffix => \"typed-ros2\"", contribution, StringComparison.Ordinal);
         }
 
@@ -171,20 +201,35 @@ namespace vendor_msgs.msg
 }
 namespace Demo
 {
+    public sealed class State
+    {
+        public int Value { get; set; }
+    }
+
     public partial class Receiver
     {
         [FoxRun(""/phase186/r2fu"",
             Mode = FoxRunFlow.Subscribe,
-            Source = FoxRunEndpoint.Ros2Native,
+            SubscribeTransportId = ""unity2foxglove.r2fu"",
             SchemaName = ""vendor_msgs/msg/Command"")]
         private vendor_msgs.msg.Command _incoming;
+
+        [FoxRun(""/phase186/r2fu/custom"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            PublishTransportIds = new[] { ""unity2foxglove.r2fu"" },
+            SubscribeTransportId = ""unity2foxglove.r2fu"")]
+        private State _state;
     }
 }";
             var references = ((string)AppContext.GetData(
                     "TRUSTED_PLATFORM_ASSEMBLIES"))
                 .Split(Path.PathSeparator)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Concat(new[] { typeof(FoxRunAttribute).Assembly.Location })
+                .Concat(new[]
+                {
+                    typeof(FoxRunAttribute).Assembly.Location,
+                    typeof(FoxRunRos2TransportProvider).Assembly.Location
+                })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(path => MetadataReference.CreateFromFile(path))
                 .ToArray();
@@ -222,6 +267,20 @@ namespace Demo
                 generated[
                     "Demo_Receiver_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs"],
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "IFoxRunRos2CustomSubscriptionSource",
+                generated[
+                    "Demo_Receiver_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs"],
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "IFoxRunRos2CustomPublisherSource",
+                generated[
+                    "Demo_Receiver_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs"],
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "IFoxRunRos2CustomSubscriptionSource",
+                generated["Demo_Receiver_FoxRun.g.cs"],
+                StringComparison.Ordinal);
             Assert.Equal(
                 generated.Count,
                 run.Results
@@ -229,6 +288,153 @@ namespace Demo
                     .Select(item => item.HintName)
                     .Distinct(StringComparer.Ordinal)
                     .Count());
+        }
+
+        [Fact]
+        public void R2fuAnalyzerPreservesNeutralDeliveryPolicyEnumValues()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols:
+                    new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY" });
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+namespace vendor_msgs.msg
+{
+    public sealed class Command : ROS2.Message
+    {
+        public Command() { }
+        public int Value;
+    }
+}
+namespace Demo
+{
+    public partial class Receiver
+    {
+        [FoxRun(""/phase186/r2fu/qos"",
+            Mode = FoxRunFlow.Subscribe,
+            SubscribeTransportId = ""unity2foxglove.r2fu"",
+            Reliability = FoxRunDeliveryReliability.Reliable,
+            Durability = FoxRunDeliveryDurability.TransientLocal,
+            History = FoxRunDeliveryHistory.KeepLast,
+            Depth = 7)]
+        private vendor_msgs.msg.Command _incoming;
+    }
+}";
+            var references = ((string)AppContext.GetData(
+                    "TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Concat(new[]
+                {
+                    typeof(FoxRunAttribute).Assembly.Location,
+                    typeof(FoxRunRos2TransportProvider).Assembly.Location
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToArray();
+            var compilation = CSharpCompilation.Create(
+                "phase186_r2fu_neutral_qos",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                references,
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.R2fuOnly(),
+                parseOptions: parseOptions);
+            var run = driver.RunGenerators(compilation).GetRunResult();
+            var errors = run.Diagnostics
+                .Where(diagnostic =>
+                    diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.Empty(errors);
+            var generated = Assert.Single(
+                    run.Results.SelectMany(result => result.GeneratedSources))
+                .SourceText
+                .ToString();
+            Assert.Contains(
+                "FoxRunQosReliability.Reliable",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunQosDurability.TransientLocal",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunQosHistory.KeepLast",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "                7,",
+                generated,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void R2fuAnalyzerReportsProviderOwnedShapeDiagnostics()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols:
+                    new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY" });
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+namespace invalid_msgs.msg
+{
+    public sealed class Recursive : ROS2.Message
+    {
+        public Recursive() { }
+        public Recursive Next;
+    }
+}
+namespace Demo
+{
+    public partial class Receiver
+    {
+        [FoxRun(""/phase186/r2fu/invalid"",
+            Mode = FoxRunFlow.Subscribe,
+            SubscribeTransportId = ""unity2foxglove.r2fu"")]
+        private invalid_msgs.msg.Recursive _incoming;
+    }
+}";
+            var references = ((string)AppContext.GetData(
+                    "TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Concat(new[]
+                {
+                    typeof(FoxRunAttribute).Assembly.Location,
+                    typeof(FoxRunRos2TransportProvider).Assembly.Location
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToArray();
+            var compilation = CSharpCompilation.Create(
+                "phase186_r2fu_diagnostic_ownership",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                references,
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.R2fuOnly(),
+                parseOptions: parseOptions);
+            var run = driver.RunGenerators(compilation).GetRunResult();
+            var diagnostics = run.Diagnostics
+                .Where(diagnostic =>
+                    diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.Contains(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXR2F006");
+            Assert.DoesNotContain(
+                diagnostics,
+                diagnostic => diagnostic.Id.StartsWith(
+                    "FOXRUN",
+                    StringComparison.Ordinal));
         }
 
         private static string FindRepositoryRoot()

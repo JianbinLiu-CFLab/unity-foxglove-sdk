@@ -195,16 +195,19 @@ namespace Unity.FoxgloveSDK.Editor
                     $"{pad}            case {index}: return new FoxgloveInputTopicInfo(" +
                     $"\"{StringLiteralEmitter.CSharpStringLiteral(topics[index].Topic)}\", " +
                     $"{WireEncodingLiteral(member.Encoding)}, {mode}, " +
-                    $"{InputDispatchEmitter.SourceLiteral(member.Source)}, " +
-                    $"hasExplicitSource: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Source))}, " +
+                    $"publishTransportIds: {TopicMetadataEmitter.TransportIdsLiteral(member.PublishTransportIds)}, " +
+                    $"subscribeTransportId: {TopicMetadataEmitter.NullableStringLiteral(member.SubscribeTransportId)}, " +
                     $"hasExplicitEncoding: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Encoding))}, " +
-                    $"supportsWebSocket: true, supportsRos2Native: false, " +
+                    $"supportsWebSocket: true, " +
+                    $"deliveryPolicy: new FoxRunDeliveryPolicy(" +
+                    $"{TopicMetadataEmitter.ReliabilityLiteral(member.Reliability)}, " +
+                    $"{TopicMetadataEmitter.DurabilityLiteral(member.Durability)}, " +
+                    $"{TopicMetadataEmitter.HistoryLiteral(member.History)}, " +
+                    $"{member.Depth}), " +
+                    $"hasExplicitDeliveryPolicy: {BoolLiteral(InputDispatchEmitter.HasExplicitDeliveryPolicy(member))}, " +
                     $"policy: {TopicMetadataEmitter.PolicyLiteral(member.Policy)}, " +
                     $"hz: {TypeExprEmitter.FloatLiteral(member.Hz)}, " +
                     $"hasExplicitHz: {BoolLiteral(member.HasExplicitHz)}, " +
-                    $"declaredTargets: {InputDispatchEmitter.TargetsLiteral(member.Targets)}, " +
-                    $"hasExplicitTargets: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Targets))}, " +
-                    $"hasExplicitQos: {BoolLiteral(InputDispatchEmitter.HasExplicitQos(member))}, " +
                     $"isStream: {BoolLiteral(topics[index].IsStream)});");
             }
             sb.AppendLine(

@@ -119,16 +119,16 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
-    /// Captures one background PointCloud2 pack request plus the publish routes
-    /// that should receive its completed CDR payload.
+    /// Captures one background PackedPointCloud pack request plus the publish routes
+    /// that should receive its completed packed payload.
     /// </summary>
-    internal sealed class PointCloud2NativeRequest : IPointCloudWorkerRequest
+    internal sealed class PackedPointCloudRequest : IPointCloudWorkerRequest
     {
         private VirtualLidarPointData[] _lidarPoints;
         private int _lidarPointCount;
 
-        /// <summary>Create a PointCloud2 Native packing request from a VirtualLidar snapshot.</summary>
-        public PointCloud2NativeRequest(
+        /// <summary>Create a PackedPointCloud Native packing request from a VirtualLidar snapshot.</summary>
+        public PackedPointCloudRequest(
             VirtualLidarPointData[] lidarPoints,
             int lidarPointCount,
             ulong unixNs,
@@ -156,7 +156,7 @@ namespace Unity.FoxgloveSDK.Components
             MotionCompensation = motionCompensation;
         }
 
-        /// <summary>Native LiDAR points cloned for worker-side PointCloud2 packing.</summary>
+        /// <summary>Native LiDAR points cloned for worker-side PackedPointCloud packing.</summary>
         public VirtualLidarPointData[] LidarPoints => _lidarPoints;
 
         /// <summary>Number of native LiDAR point slots to pack.</summary>
@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Frame timestamp in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
 
-        /// <summary>Frame id written into PointCloud2 metadata.</summary>
+        /// <summary>Frame id written into PackedPointCloud metadata.</summary>
         public string FrameId { get; }
 
         /// <summary>True when relative point time should also be emitted as absolute nanoseconds.</summary>
@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Components
 
     /// <summary>
     /// Completed background Draco encode result, including prepared websocket and
-    /// ROS2 bridge payload bytes for main-thread publish.
+    /// optional Provider payload data for main-thread publish.
     /// </summary>
     internal sealed class DracoEncodeResult : IPointCloudWorkerResult<DracoEncodeRequest>
     {
@@ -259,11 +259,11 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
-    /// Fine-grained PointCloud2 Native encode diagnostics for stall investigation.
+    /// Fine-grained PackedPointCloud Native encode diagnostics for stall investigation.
     /// Captures per-stage pack timings, packed-buffer pool behavior, and GC
     /// collection deltas observed across one worker encode.
     /// </summary>
-    internal struct PointCloud2NativeEncodeDiagnostics
+    internal struct PackedPointCloudEncodeDiagnostics
     {
         /// <summary>Raw pack valid-count scan milliseconds.</summary>
         public double RawCountValidMs;
@@ -312,17 +312,17 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
-    /// Completed background PointCloud2 pack result with prepared CDR bytes for
+    /// Completed background PackedPointCloud pack result with prepared bytes for
     /// main-thread publish.
     /// </summary>
-    internal sealed class PointCloud2NativeResult : IPointCloudWorkerResult<PointCloud2NativeRequest>
+    internal sealed class PackedPointCloudResult : IPointCloudWorkerResult<PackedPointCloudRequest>
     {
-        /// <summary>Create a completed PointCloud2 Native worker result.</summary>
-        public PointCloud2NativeResult(
-            PointCloud2NativeRequest request,
+        /// <summary>Create a completed PackedPointCloud Native worker result.</summary>
+        public PackedPointCloudResult(
+            PackedPointCloudRequest request,
             bool success,
-            PointCloud2NativeFrame nativeFrame,
-            PointCloud2NativeFrame motionCompensatedNativeFrame,
+            PackedPointCloudFrame nativeFrame,
+            PackedPointCloudFrame motionCompensatedNativeFrame,
             string error,
             int validCount,
             int payloadBytes,
@@ -331,7 +331,7 @@ namespace Unity.FoxgloveSDK.Components
             double rawPayloadBuildMs,
             double motionCompensationMs,
             double deskewPackMs,
-            PointCloud2NativeEncodeDiagnostics encodeDiagnostics = default)
+            PackedPointCloudEncodeDiagnostics encodeDiagnostics = default)
         {
             Request = request;
             Success = success;
@@ -349,16 +349,16 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>Original worker request.</summary>
-        public PointCloud2NativeRequest Request { get; }
+        public PackedPointCloudRequest Request { get; }
 
         /// <summary>True when packing and optional deskew frame construction succeeded.</summary>
         public bool Success { get; }
 
-        /// <summary>Raw PointCloud2 Native frame handoff for optional DDS adapters.</summary>
-        public PointCloud2NativeFrame NativeFrame { get; }
+        /// <summary>Raw PackedPointCloud Native frame handoff for optional DDS adapters.</summary>
+        public PackedPointCloudFrame NativeFrame { get; }
 
-        /// <summary>Deskewed visualization PointCloud2 Native frame handoff, when requested.</summary>
-        public PointCloud2NativeFrame MotionCompensatedNativeFrame { get; }
+        /// <summary>Deskewed visualization PackedPointCloud Native frame handoff, when requested.</summary>
+        public PackedPointCloudFrame MotionCompensatedNativeFrame { get; }
 
         /// <summary>Failure reason when <see cref="Success"/> is false or deskew construction was skipped.</summary>
         public string Error { get; }
@@ -372,20 +372,20 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Milliseconds spent on worker-side packing and optional deskew construction.</summary>
         public double EncodeMs { get; }
 
-        /// <summary>Milliseconds spent compacting the raw VirtualLidar snapshot into PointCloud2 storage.</summary>
+        /// <summary>Milliseconds spent compacting the raw VirtualLidar snapshot into PackedPointCloud storage.</summary>
         public double RawPackMs { get; }
 
-        /// <summary>Milliseconds spent building raw ROS2 CDR payload bytes for websocket or bridge output.</summary>
+        /// <summary>Milliseconds spent building raw packed payload bytes for output.</summary>
         public double RawPayloadBuildMs { get; }
 
-        /// <summary>Milliseconds spent computing motion compensation before deskewed PointCloud2 packing.</summary>
+        /// <summary>Milliseconds spent computing motion compensation before deskewed PackedPointCloud packing.</summary>
         public double MotionCompensationMs { get; }
 
-        /// <summary>Milliseconds spent packing the deskewed visualization PointCloud2 frame.</summary>
+        /// <summary>Milliseconds spent packing the deskewed visualization PackedPointCloud frame.</summary>
         public double DeskewPackMs { get; }
 
         /// <summary>Fine-grained pack/pool/GC diagnostics captured across this encode.</summary>
-        public PointCloud2NativeEncodeDiagnostics EncodeDiagnostics { get; }
+        public PackedPointCloudEncodeDiagnostics EncodeDiagnostics { get; }
 
         public void RecycleResultPayloads()
         {

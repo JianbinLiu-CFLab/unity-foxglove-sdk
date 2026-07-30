@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Components
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
                 RegisterFoxRunSubscriptionCatalogService();
-                _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
+                _runtime.Start(_serverName, _host, _port);
                 StartRemoteMcapFileServerIfNeeded();
                 StartReplayCursorEndpointIfNeeded();
                 if (!PublishPendingRecordingSidecar())

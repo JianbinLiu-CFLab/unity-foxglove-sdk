@@ -4,6 +4,7 @@
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Proto.Generated",
+    "Unity.FoxgloveSDK.Sensors",
     "Unity2Foxglove.Ros2Bridge"
   ],
   "includePlatforms": [],

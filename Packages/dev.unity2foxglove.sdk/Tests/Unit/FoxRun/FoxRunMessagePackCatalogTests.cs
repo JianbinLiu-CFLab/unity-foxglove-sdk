@@ -142,13 +142,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "_command",
                         "/phase185/duplex-catalog",
                         "PublishAndSubscribe",
-                        FoxRunEndpoint.Foxglove,
-                        FoxRunQosProfile.Default,
-                        supportsWebSocket: true,
-                        supportsRos2Native: false,
-                        nativeType: string.Empty,
-                        canonicalRosType: string.Empty,
-                        copyShapeIdentity: string.Empty)
+                        publishTransportIds: new[]
+                        {
+                            FoxgloveWebSocketTransport.Id
+                        },
+                        subscribeTransportId:
+                            FoxgloveWebSocketTransport.Id,
+                        reliability: "inherit",
+                        durability: "inherit",
+                        history: "inherit",
+                        depth: 0,
+                        supportsWebSocket: true)
                 });
         }
 

@@ -88,7 +88,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 throw new ArgumentException("ROS 2 bridge topic contains invalid ROS 2 characters.", nameof(topic));
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new ArgumentException("ROS 2 bridge schemaName must be non-empty.", nameof(schemaName));
-            if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
+            if (!Ros2MessageTypeIdentity.IsValidCanonicalMessageType(schemaName))
                 throw new ArgumentException(
                     "ROS 2 bridge schemaName must be an exact canonical package/msg/Message identity.",
                     nameof(schemaName));

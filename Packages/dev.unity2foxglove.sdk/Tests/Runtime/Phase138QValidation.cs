@@ -214,17 +214,17 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(helper.Contains("internal sealed class DracoEncodeRequest", StringComparison.Ordinal)
                   && helper.Contains("internal sealed class DracoEncodeResult", StringComparison.Ordinal)
-                  && helper.Contains("internal sealed class PointCloud2NativeRequest", StringComparison.Ordinal)
-                  && helper.Contains("internal sealed class PointCloud2NativeResult", StringComparison.Ordinal),
+                  && helper.Contains("internal sealed class PackedPointCloudRequest", StringComparison.Ordinal)
+                  && helper.Contains("internal sealed class PackedPointCloudResult", StringComparison.Ordinal),
                 "138Q-4A: point-cloud worker payload records live outside the publisher");
             Check(pointcloud.Contains("DracoEncodeRequest(", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloud2NativeRequest(", StringComparison.Ordinal)
+                  && pointcloud.Contains("PackedPointCloudRequest(", StringComparison.Ordinal)
                   && pointcloud.Contains("DracoEncodeResult", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloud2NativeResult", StringComparison.Ordinal)
+                  && pointcloud.Contains("PackedPointCloudResult", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class DracoEncodeRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class DracoEncodeResult", StringComparison.Ordinal)
-                  && !pointcloud.Contains("private sealed class PointCloud2NativeRequest", StringComparison.Ordinal)
-                  && !pointcloud.Contains("private sealed class PointCloud2NativeResult", StringComparison.Ordinal),
+                  && !pointcloud.Contains("private sealed class PackedPointCloudRequest", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private sealed class PackedPointCloudResult", StringComparison.Ordinal),
                 "138Q-4B: FoxglovePointCloudPublisher uses external worker payload records");
         }
 
@@ -431,14 +431,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(helper.Contains("internal static class PointCloudWorkerEncoders", StringComparison.Ordinal)
                   && helper.Contains("EncodeDracoRequest(", StringComparison.Ordinal)
-                  && helper.Contains("EncodePointCloud2NativeRequest(", StringComparison.Ordinal)
-                  && helper.Contains("BuildPointCloud2NativePayload(", StringComparison.Ordinal),
+                  && helper.Contains("EncodePackedPointCloudRequest(", StringComparison.Ordinal)
+                  && helper.Contains("BuildPackedPointCloudPayload(", StringComparison.Ordinal),
                 "138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
             Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static DracoEncodeResult EncodeDracoRequest", StringComparison.Ordinal)
-                  && !pointcloud.Contains("private static PointCloud2NativeResult EncodePointCloud2NativeRequest", StringComparison.Ordinal)
-                  && !pointcloud.Contains("private static byte[] BuildPointCloud2NativePayload", StringComparison.Ordinal),
+                  && !pointcloud.Contains("private static PackedPointCloudResult EncodePackedPointCloudRequest", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private static byte[] BuildPackedPointCloudPayload", StringComparison.Ordinal),
                 "138Q-6B: FoxglovePointCloudPublisher delegates worker encode/build details");
         }
 
@@ -461,13 +461,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && pointcloudPipeline.Contains("_pipeline.Drain(", StringComparison.Ordinal)
                   && pointcloudPipeline.Contains("_pipeline.Stop(", StringComparison.Ordinal)
                   && pointcloud.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult> _packedPointCloudPipeline", StringComparison.Ordinal)
                   && pointcloud.Contains("_dracoEncodePipeline.Queue(", StringComparison.Ordinal)
-                  && pointcloud.Contains("_pointCloud2NativePipeline.Queue(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_packedPointCloudPipeline.Queue(", StringComparison.Ordinal)
                   && !pointcloud.Contains("RunDracoEncodeWorker", StringComparison.Ordinal)
-                  && !pointcloud.Contains("RunPointCloud2NativeWorker", StringComparison.Ordinal)
+                  && !pointcloud.Contains("RunPackedPointCloudWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
-                  && !pointcloud.Contains("BackgroundWorkerLifecycle _pointCloud2NativeWorker", StringComparison.Ordinal),
+                  && !pointcloud.Contains("BackgroundWorkerLifecycle _packedPointCloudWorker", StringComparison.Ordinal),
                 "138Q-7B: FoxglovePointCloudPublisher delegates repeated worker lifecycle code");
         }
 
@@ -480,14 +480,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("RecordPrepared(", StringComparison.Ordinal)
                   && diagnostics.Contains("RecordDrop(", StringComparison.Ordinal)
                   && diagnostics.Contains("RecordEncodeResult(", StringComparison.Ordinal)
-                  && diagnostics.Contains("RecordPointCloud2NativeResult(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordPackedPointCloudResult(", StringComparison.Ordinal)
                   && diagnostics.Contains("LogIfReady(", StringComparison.Ordinal),
                 "138Q-9A: point-cloud publish diagnostics live in a focused helper");
             Check(pointcloud.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.RecordPrepared(", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.RecordDrop(", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.RecordEncodeResult(", StringComparison.Ordinal)
-                  && pointcloud.Contains("_diagnostics.RecordPointCloud2NativeResult(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.RecordPackedPointCloudResult(", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.LogIfReady(", StringComparison.Ordinal)
                   && !pointcloud.Contains("_diagnosticFrames", StringComparison.Ordinal)
                   && !pointcloud.Contains("_diagnosticDrops", StringComparison.Ordinal)

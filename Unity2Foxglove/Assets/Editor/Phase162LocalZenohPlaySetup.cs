@@ -7,6 +7,7 @@ using Unity.FoxgloveSDK.Samples.LidarMaze;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 public static class Phase162LocalZenohPlaySetup
 {
@@ -80,20 +81,25 @@ public static class Phase162LocalZenohPlaySetup
             throw new InvalidOperationException("Could not find FoxgloveManager in " + ScenePath);
 
         SetField(manager, "_foxgloveOutputEnabled", false, "configure FoxgloveManager output mode");
-        SetField(manager, "_ros2NativeEnabled", true, "configure FoxgloveManager output mode");
         SetField(manager, "_defaultPublisherEncoding", GlobalEncoding.Protobuf, "configure FoxgloveManager publisher encoding");
+        if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
+            manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
+        manager.ConfigureFoxRunTransports(
+            new[] { FoxRunRos2TransportProvider.IdValue },
+            subscriptionsEnabled: false,
+            subscribeTransportId: string.Empty);
 
         var publisher = UnityEngine.Object.FindFirstObjectByType<FoxglovePointCloudPublisher>();
         if (publisher == null)
             throw new InvalidOperationException("Could not find FoxglovePointCloudPublisher in " + ScenePath);
 
-        SetField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native, "configure PointCloud2 Native output");
+        SetField(publisher, "_outputMode", PointCloudOutputMode.PackedPointCloud, "configure PointCloud2 Native output");
         SetField(publisher, "_topic", "/unity/point_cloud2", "configure raw PointCloud2 topic");
         SetField(publisher, "_frameId", "os_lidar", "configure PointCloud2 frame id");
-        SetField(publisher, "_publishPointCloud2NativeTfAnchor", true, "configure PointCloud2 TF anchor");
+        SetField(publisher, "_publishPackedPointCloudTfAnchor", true, "configure PointCloud2 TF anchor");
         SetField(publisher, "_enableMotionCompensation", true, "configure point cloud deskew");
         SetField(publisher, "_motionCompensationOutputPolicy", PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic, "configure point cloud deskew output policy");
-        SetField(publisher, "_deskewedPointCloud2NativeTopic", "/unity/point_cloud2_deskewed", "configure deskewed PointCloud2 topic");
+        SetField(publisher, "_deskewedPackedPointCloudTopic", "/unity/point_cloud2_deskewed", "configure deskewed PointCloud2 topic");
         SetField(publisher, "_motionCompensationReferenceTime", PointCloudMotionCompensationReferenceTime.ScanStart, "configure deskew reference time");
         SetField(publisher, "_motionCompensationSource", PointCloudMotionCompensationSource.SensorTransform, "configure deskew motion source");
 

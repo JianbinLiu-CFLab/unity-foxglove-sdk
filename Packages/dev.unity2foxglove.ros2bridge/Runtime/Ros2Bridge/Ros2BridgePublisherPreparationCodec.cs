@@ -266,7 +266,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 throw new ArgumentException("Publisher preparation topic is invalid.", nameof(topic));
             }
-            if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
+            if (!Ros2MessageTypeIdentity.IsValidCanonicalMessageType(schemaName))
                 throw new ArgumentException("Publisher preparation schemaName is invalid.", nameof(schemaName));
             if (!Ros2BridgeFrame.IsValidResolvedQos(qos))
                 throw new ArgumentException("Publisher preparation QoS is invalid.", nameof(qos));

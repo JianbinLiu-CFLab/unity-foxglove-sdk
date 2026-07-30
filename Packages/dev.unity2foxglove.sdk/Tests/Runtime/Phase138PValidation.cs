@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
             VideoSidecarStderrReadersAreBounded();
             WorkerTimeoutPathsUseGenerations();
             CameraReadbackAndWorkerSignalsHaveExplicitLifecycleBoundaries();
-            PointCloud2NativeTfRotationConventionIsExplicit();
+            PackedPointCloudTfRotationConventionIsExplicit();
 
             Console.WriteLine($"Phase 138P: {_passed} checks passed.");
         }
@@ -168,7 +168,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new VirtualLidarPointData { X = 4f, Y = 5f, Z = 6f, Intensity = 0.75f, Reflectivity = 0.5f, Ring = 8, TimeOffsetSeconds = 0.075f, IsValid = 1 }
             };
 
-            var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
+            var packed = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
             Check(packed.Data.Length == 60, "138P-8A: native PointCloud2 packing keeps only valid rows");
             Check(ReadSingle(packed.Data, 22) == 0.05f, "138P-8B: first valid row stores seconds offset");
             Check(ReadUInt32(packed.Data, 26) == ExpectedNanoseconds(0.05f), "138P-8C: absolute t field is derived from seconds");
@@ -379,7 +379,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("_worker.InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
                   && pointcloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline", StringComparison.Ordinal)
                   && pointcloud.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal),
+                  && pointcloud.Contains("PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult> _packedPointCloudPipeline", StringComparison.Ordinal),
                 "138P-15B: pointcloud workers timeout/restart are generation-guarded");
 
             var lifecycle = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
@@ -390,9 +390,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("StartOrReuseLocked(out startWorker)", StringComparison.Ordinal)
                   && pipeline.Contains("InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
                   && !pointcloud.Contains("_dracoEncodeWorkerGeneration", StringComparison.Ordinal)
-                  && !pointcloud.Contains("_pointCloud2NativeWorkerGeneration", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_packedPointCloudWorkerGeneration", StringComparison.Ordinal)
                   && !pointcloud.Contains("_dracoEncodeWorkerRunning", StringComparison.Ordinal)
-                  && !pointcloud.Contains("_pointCloud2NativeWorkerRunning", StringComparison.Ordinal),
+                  && !pointcloud.Contains("_packedPointCloudWorkerRunning", StringComparison.Ordinal),
                 "138P-15E: pointcloud worker lifecycle state is centralized in a small helper");
         }
 
@@ -428,15 +428,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "138P-15D: camera JPEG worker signal is owned by one worker generation");
         }
 
-        private static void PointCloud2NativeTfRotationConventionIsExplicit()
+        private static void PackedPointCloudTfRotationConventionIsExplicit()
         {
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
 
             Check(publisher.Contains("TF anchor rotation in ROS roll/pitch/yaw degrees", StringComparison.Ordinal)
-                  && publisher.Contains("PointCloud2NativeTfRotationRos", StringComparison.Ordinal),
+                  && publisher.Contains("PackedPointCloudTfRotationRos", StringComparison.Ordinal),
                 "138P-16A: PointCloud2 native TF anchor rotation has an explicit ROS convention");
-            Check(bridge.Contains("PointCloud2NativeTfRotationRos", StringComparison.Ordinal),
+            Check(bridge.Contains("PackedPointCloudTfRotationRos", StringComparison.Ordinal),
                 "138P-16B: R2FU PointCloud2 bridge publishes the explicit ROS TF anchor rotation");
         }
 

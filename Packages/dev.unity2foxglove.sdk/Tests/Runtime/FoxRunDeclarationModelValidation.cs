@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase183-A behavior and structural evidence for the FoxRun declaration reset.
+// Purpose: Phase 183A validation migrated to the open Provider declaration model.
 
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -18,220 +18,223 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine("\n--- FoxRun Declaration Model Tests ---");
+            Console.WriteLine();
+            Console.WriteLine("=== Phase 183A: Provider declaration and duplex policy ===");
             _passed = 0;
 
-            VerifyFreshDeclarationDefaults();
-            VerifyDirectionAwareUpdatePolicies();
-            VerifyFrozenSubscriptionFrequencies();
-            VerifyLatestWinsInputRouting();
-            VerifyGeneratedFullDuplexStructure();
-            VerifyLegacySurfaceAndCoreBoundary();
-            VerifyRegistryEntry();
+            VerifyPublicDeclarationSurface();
+            VerifyTransportIdentity();
+            VerifyDirectionalSessionFreeze();
+            VerifyDeliveryPolicy();
+            VerifyDescriptorAndGeneratorBoundary();
 
-            Console.WriteLine("FoxRun declaration model: " + _passed + " checks passed.\n");
+            Console.WriteLine($"Phase 183A: {_passed} checks passed.");
         }
 
-        private static void VerifyFreshDeclarationDefaults()
+        private static void VerifyPublicDeclarationSurface()
         {
-            var field = new FoxRunAttribute("/phase183/default");
-            var aggregate = new FoxRunMessageAttribute("/phase183/aggregate");
-
-            Check(field.Mode == FoxRunFlow.Publish
-                  && field.Policy == FoxRunPolicy.FixedRate
-                  && field.Hz < 0f
-                  && aggregate.Policy == FoxRunPolicy.FixedRate
-                  && aggregate.Hz < 0f,
-                "Behavior 183A-1: field and aggregate declarations use Publish/FixedRate with an explicit unspecified-rate sentinel");
-            Check(Enum.GetValues(typeof(FoxRunFlow)).Cast<int>().SequenceEqual(new[] { 1, 2, 3 })
-                  && Enum.GetValues(typeof(FoxRunPolicy)).Cast<int>().SequenceEqual(new[] { 1, 2, 4 }),
-                "Behavior 183A-2: all three flows and three policies use fresh non-zero values while retired value 3 stays invalid");
-        }
-
-        private static void VerifyDirectionAwareUpdatePolicies()
-        {
-            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.FixedRate, 1d, true, false, 0d, 0d)
-                  && FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.FixedRate, true, true, false, 1d, 0d, 0d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.FixedRate, false, true, false, 2d, 1d, 0d),
-                "Behavior 183A-3: FixedRate crosses each boundary only when the caller has a current eligible value");
-            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, 1d, false, false, 0d, 0d)
-                  && FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, true, 2d, 1d, 0d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 2d, 1d, 0d),
-                "Behavior 183A-4: Change accepts first or changed values and suppresses fresh duplicates");
-            Check(FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 3d, 1d, 2d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, false, true, false, 4d, 1d, 2d),
-                "Behavior 183A-5: Change with Hz requires a newly received duplicate and never invents a stale heartbeat");
-            Check(!FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Trigger, 1d, false, true, 0d, 0d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d),
-                "Behavior 183A-6: Trigger blocks automatic publication and application");
-        }
-
-        private static void VerifyFrozenSubscriptionFrequencies()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-            var policy = state.BeginIfNeeded(
-                FoxRunEndpoint.Foxglove,
-                FoxRunEncoding.Protobuf,
-                FoxRunResolvedQos.Default,
-                4 * 1024 * 1024,
-                transportAdmissionRateLimitHz: 120,
-                defaultSubscribeRateHz: 30);
-            var frozen = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
-                FoxRunEncoding.JSON,
-                FoxRunResolvedQos.SensorData,
-                1,
-                transportAdmissionRateLimitHz: 1,
-                defaultSubscribeRateHz: 1);
-
-            Check(policy.TransportAdmissionRateLimitHz == 120
-                  && policy.DefaultSubscribeRateHz == 30
-                  && ReferenceEquals(policy, frozen),
-                "Behavior 183A-7: maximum and default subscription rates are distinct and frozen for one session");
-        }
-
-        private static void VerifyLatestWinsInputRouting()
-        {
-            var source = new LatestWinsInputSource();
-            var router = new FoxRunInputRouter(maxPayloadBytes: 16, maxMessagesPerSecondPerTopic: 60);
-            router.Register(source);
-
-            var first = router.Dispatch("/phase183/latest", new byte[] { 1 }, "json", 1d);
-            var second = router.Dispatch("/phase183/latest", new byte[] { 2 }, "json", 1.01d);
-            var applied = router.Flush(2d, inheritedSubscribeRateHz: 30);
-
-            Check(first.Status == FoxRunInputDispatchStatus.Staged
-                  && second.Status == FoxRunInputDispatchStatus.Staged
-                  && applied == 1
-                  && source.AppliedValue == 2
-                  && router.Flush(3d, inheritedSubscribeRateHz: 30) == 0,
-                "Behavior 183A-8: accepted input is bounded latest-wins and a later flush cannot replay stale state");
-        }
-
-        private static void VerifyGeneratedFullDuplexStructure()
-        {
-            var input = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
-            var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
-            var native = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
-            var trigger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TriggerEmitter.cs");
-
-            Check(input.Contains("member.HasExplicitHz", StringComparison.Ordinal)
-                  && input.Contains("inheritedSubscribeRateHz", StringComparison.Ordinal)
-                  && trigger.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
-                  && input.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal),
-                "Structural 183A-9: generated WebSocket input inherits or overrides subscription rate, exposes Trigger apply, and marks remote-echo suppression");
-            Check(publish.Contains("fields.Any(field => field.Mode == 3)", StringComparison.Ordinal)
-                  && publish.Contains("__FoxRunMarkRemoteApplied_", StringComparison.Ordinal)
-                  && publish.Contains("__foxRunRemoteOwned_", StringComparison.Ordinal)
-                  && native.Contains("member.HasExplicitHz", StringComparison.Ordinal)
-                  && native.Contains("member.Hz", StringComparison.Ordinal),
-                "Structural 183A-10: PublishAndSubscribe generates both independently scheduled directions with one-shot echo suppression");
-        }
-
-        private static void VerifyLegacySurfaceAndCoreBoundary()
-        {
-            var assembly = typeof(FoxRunAttribute).Assembly;
-            var declaredProperties = typeof(FoxRunAttribute)
-                .GetProperties()
+            var memberProperties = typeof(FoxRunAttribute)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
                 .Where(property => property.DeclaringType == typeof(FoxRunAttribute))
                 .Select(property => property.Name)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
-            var expectedProperties = new[]
+            Check(
+                memberProperties.Contains(nameof(FoxRunAttribute.PublishTransportIds))
+                && memberProperties.Contains(nameof(FoxRunAttribute.SubscribeTransportId))
+                && memberProperties.Contains(nameof(FoxRunAttribute.Reliability))
+                && memberProperties.Contains(nameof(FoxRunAttribute.Durability))
+                && memberProperties.Contains(nameof(FoxRunAttribute.History))
+                && memberProperties.Contains(nameof(FoxRunAttribute.Depth)),
+                "183A-A1: member declarations expose open directional Provider IDs and neutral delivery axes");
+
+            Check(
+                !memberProperties.Contains("Source")
+                && !memberProperties.Contains("Targets")
+                && !memberProperties.Contains("QoS"),
+                "183A-A2: closed endpoint and Provider-specific profile aliases are absent");
+
+            var aggregateProperties = typeof(FoxRunMessageAttribute)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.DeclaringType == typeof(FoxRunMessageAttribute))
+                .Select(property => property.Name)
+                .ToArray();
+            Check(
+                aggregateProperties.Contains(nameof(FoxRunMessageAttribute.PublishTransportIds))
+                && !aggregateProperties.Contains("Targets"),
+                "183A-A3: aggregate declarations use the same open publish Provider selection");
+        }
+
+        private static void VerifyTransportIdentity()
+        {
+            var websocket = new FoxRunTransportId(
+                FoxgloveWebSocketTransport.Id);
+            Check(
+                websocket == FoxgloveWebSocketTransport.TransportId
+                && websocket.Value == "foxglove.websocket",
+                "183A-B1: the built-in WebSocket Provider has a stable identity");
+            Check(
+                FoxRunTransportId.TryCreate(
+                    "example.transport",
+                    out var custom)
+                && custom.Value == "example.transport",
+                "183A-B2: new Providers do not require a core enum change");
+            Check(
+                !FoxRunTransportId.TryCreate("Everything", out _)
+                && !FoxRunTransportId.TryCreate("ros2_native", out _)
+                && !FoxRunTransportId.TryCreate(" example.transport", out _),
+                "183A-B3: IDs use strict reverse-domain grammar");
+        }
+
+        private static void VerifyDirectionalSessionFreeze()
+        {
+            var publishState = new FoxRunPublishSessionState();
+            var initialPublish = publishState.BeginIfNeeded(
+                new[]
+                {
+                    new FoxRunTransportId("z.provider"),
+                    FoxgloveWebSocketTransport.TransportId,
+                    new FoxRunTransportId("a.provider")
+                },
+                FoxRunEncoding.MessagePack,
+                30f,
+                FoxRunDeliveryPolicy.ProviderDefault);
+            var repeatedPublish = publishState.BeginIfNeeded(
+                new[] { new FoxRunTransportId("other.provider") },
+                FoxRunEncoding.JSON,
+                5f,
+                FoxRunDeliveryPolicy.ProviderDefault);
+            Check(
+                ReferenceEquals(initialPublish, repeatedPublish)
+                && initialPublish.SessionGeneration == 1
+                && initialPublish.PublishTransportIds
+                    .Select(id => id.Value)
+                    .SequenceEqual(
+                        new[]
+                        {
+                            "a.provider",
+                            "foxglove.websocket",
+                            "z.provider"
+                        })
+                && initialPublish.WebSocketEncoding
+                   == FoxRunEncoding.MessagePack,
+                "183A-C1: publish selection is canonical and frozen for one session");
+
+            publishState.End();
+            var nextPublish = publishState.BeginIfNeeded(
+                new[] { FoxgloveWebSocketTransport.TransportId },
+                FoxRunEncoding.Protobuf,
+                float.NaN,
+                FoxRunDeliveryPolicy.ProviderDefault);
+            Check(
+                nextPublish.SessionGeneration == 2
+                && nextPublish.DefaultPublishRateHz == 10f,
+                "183A-C2: a new publish session recaptures and normalizes policy");
+
+            var subscriptionState = new FoxRunSubscriptionSessionState();
+            var initialSubscribe = subscriptionState.BeginIfNeeded(
+                new FoxRunTransportId("example.source"),
+                FoxRunEncoding.JSON,
+                FoxRunDeliveryPolicy.ProviderDefault,
+                0,
+                -1,
+                0);
+            var repeatedSubscribe = subscriptionState.BeginIfNeeded(
+                FoxgloveWebSocketTransport.TransportId,
+                FoxRunEncoding.Protobuf,
+                FoxRunDeliveryPolicy.ProviderDefault,
+                100,
+                100,
+                1024);
+            Check(
+                ReferenceEquals(initialSubscribe, repeatedSubscribe)
+                && initialSubscribe.DefaultProvider.Value
+                   == "example.source"
+                && initialSubscribe.TransportAdmissionRateLimitHz == 1
+                && initialSubscribe.DefaultSubscribeRateHz == 1
+                && initialSubscribe.MaxPayloadBytes == 1,
+                "183A-C3: subscribe source and bounds are frozen and fail-safe");
+        }
+
+        private static void VerifyDeliveryPolicy()
+        {
+            var policy = new FoxRunDeliveryPolicy(
+                FoxRunDeliveryReliability.BestEffort,
+                FoxRunDeliveryDurability.Volatile,
+                FoxRunDeliveryHistory.KeepLast,
+                5);
+            Check(
+                policy.Reliability
+                   == FoxRunDeliveryReliability.BestEffort
+                && policy.History == FoxRunDeliveryHistory.KeepLast
+                && policy.Depth == 5,
+                "183A-D1: neutral delivery policy preserves explicit intent");
+            Check(
+                Throws<ArgumentException>(
+                    () => new FoxRunDeliveryPolicy(
+                        FoxRunDeliveryReliability.Reliable,
+                        FoxRunDeliveryDurability.Volatile,
+                        FoxRunDeliveryHistory.KeepAll,
+                        1))
+                && Throws<ArgumentException>(
+                    () => new FoxRunDeliveryPolicy(
+                        FoxRunDeliveryReliability.Reliable,
+                        FoxRunDeliveryDurability.Volatile,
+                        FoxRunDeliveryHistory.KeepLast,
+                        0)),
+                "183A-D2: invalid history/depth combinations fail closed");
+        }
+
+        private static void VerifyDescriptorAndGeneratorBoundary()
+        {
+            var root = TestRepoRootLocator.FindRepoRoot();
+            var descriptor = File.ReadAllText(
+                Path.Combine(
+                    root,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                    + "FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs"));
+            var model = File.ReadAllText(
+                Path.Combine(
+                    root,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                    + "FoxRunDescriptor/FoxRunGenerationModel.cs"));
+            var generator = File.ReadAllText(
+                Path.Combine(
+                    root,
+                    "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/"
+                    + "src/FoxgloveLogSourceGenerator.cs"));
+            Check(
+                descriptor.Contains("DescriptorVersion = 6", StringComparison.Ordinal)
+                && model.Contains("PublishTransportIds", StringComparison.Ordinal)
+                && model.Contains("SubscribeTransportId", StringComparison.Ordinal),
+                "183A-E1: descriptor v6 carries direction-specific Provider IDs");
+            Check(
+                !generator.Contains("Ros2Native", StringComparison.Ordinal)
+                && !generator.Contains("Ros2Bridge", StringComparison.Ordinal)
+                && !generator.Contains("U2R2", StringComparison.Ordinal),
+                "183A-E2: the core generator contains only neutral emission");
+        }
+
+        private static bool Throws<T>(Action action)
+            where T : Exception
+        {
+            try
             {
-                "Depth",
-                "Durability",
-                "Encoding",
-                "History",
-                "Hz",
-                "Mode",
-                "OnlyIf",
-                "Policy",
-                "ProtobufFieldNumber",
-                "QoS",
-                "Reliability",
-                "SchemaName",
-                "Source",
-                "Targets",
-                "Tolerance",
-                "Topic",
-            };
-            Check(declaredProperties.SequenceEqual(expectedProperties, StringComparer.Ordinal)
-                  && typeof(FoxRunAttribute).GetProperty("Mode")?.PropertyType == typeof(FoxRunFlow)
-                  && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy)
-                  && typeof(FoxRunAttribute).GetProperty("Source")?.PropertyType == typeof(FoxRunEndpoint)
-                  && typeof(FoxRunAttribute).GetProperty("Targets")?.PropertyType == typeof(FoxRunEndpoint)
-                  && typeof(FoxRunAttribute).GetProperty("Encoding")?.PropertyType == typeof(FoxRunEncoding)
-                  && typeof(FoxRunAttribute).GetProperty("QoS")?.PropertyType == typeof(FoxRunQosProfile)
-                  && typeof(FoxRunAttribute).GetProperty("Reliability")?.PropertyType == typeof(FoxRunQosReliability)
-                  && typeof(FoxRunAttribute).GetProperty("Durability")?.PropertyType == typeof(FoxRunQosDurability)
-                  && typeof(FoxRunAttribute).GetProperty("History")?.PropertyType == typeof(FoxRunQosHistory)
-                  && typeof(FoxRunAttribute).GetProperty("Depth")?.PropertyType == typeof(int),
-                "Structural 183A-11: the public attribute surface exposes only the fresh declaration and portable ROS 2 QoS model");
-            Check(!assembly.GetReferencedAssemblies().Any(reference =>
-                    reference.Name.IndexOf("Ros2ForUnity", StringComparison.OrdinalIgnoreCase) >= 0
-                    || reference.Name.Equals("ros2cs_common", StringComparison.OrdinalIgnoreCase)),
-                "Structural 183A-12: the core declaration and policy assembly remains ROS-free");
-        }
-
-        private static void VerifyRegistryEntry()
-        {
-            Check(PhaseValidationRegistry.All.Any(item =>
-                    item.Flag == "--phase183a"
-                    && item.Name == "FoxRun declaration and full-duplex update policy"
-                    && item.Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)),
-                "Structural 183A-13: registry classifies behavior and source-shape evidence without overstating either");
-        }
-
-        private static string ReadRepoText(string relativePath)
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root.");
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        }
-
-        private static void Check(bool condition, string label)
-        {
-            if (!condition)
-                throw new InvalidOperationException("[FAIL] " + label);
-            Console.WriteLine("[PASS] " + label);
-            _passed++;
-        }
-
-        private sealed class LatestWinsInputSource : IFoxgloveInputSource
-        {
-            private bool _hasPending;
-            private int _pendingValue;
-
-            public int AppliedValue { get; private set; }
-            public int FoxgloveInput_TopicCount => 1;
-
-            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index)
-                => new(
-                    "/phase183/latest",
-                    FoxRunEncoding.JSON,
-                    FoxRunFlow.Subscribe,
-                    FoxRunEndpoint.Foxglove,
-                    supportsWebSocket: true,
-                    supportsRos2Native: false);
-
-            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
+                action();
+                return false;
+            }
+            catch (T)
             {
-                _pendingValue = payload[0];
-                _hasPending = true;
-                error = string.Empty;
                 return true;
             }
+        }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
-            {
-                if (!_hasPending)
-                    return 0;
-                AppliedValue = _pendingValue;
-                _hasPending = false;
-                return 1;
-            }
+        private static void Check(bool condition, string name)
+        {
+            if (!condition)
+                throw new InvalidOperationException(name);
+            _passed++;
+            Console.WriteLine("[PASS] " + name);
         }
     }
 }

@@ -46,19 +46,6 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunFlow Mode { get; set; } = FoxRunFlow.Publish;
 
         /// <summary>
-        /// Subscribe source. Omission inherits the frozen Subscribe Profile.
-        /// Exactly one endpoint is legal; ROS 2 Bridge subscribe is reserved.
-        /// </summary>
-        public FoxRunEndpoint Source { get; set; }
-
-        /// <summary>
-        /// Publish targets. Omission inherits the frozen Publish Profile.
-        /// An explicit non-empty flags set replaces, rather than extends, the
-        /// profile target set.
-        /// </summary>
-        public FoxRunEndpoint Targets { get; set; }
-
-        /// <summary>
         /// Optional stable publish Provider IDs. Omission inherits the
         /// Manager's frozen publish selection. An explicit array must contain
         /// one or more unique IDs; lowering canonicalizes their order.
@@ -77,20 +64,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxRunEncoding Encoding { get; set; }
 
-        /// <summary>
-        /// Optional portable ROS 2 QoS base profile. Omission inherits each
-        /// selected ROS 2 direction's frozen profile.
-        /// </summary>
-        public FoxRunQosProfile QoS { get; set; }
+        /// <summary>Optional transport-neutral reliability intent.</summary>
+        public FoxRunDeliveryReliability Reliability { get; set; }
 
-        /// <summary>Optional ROS 2 reliability override.</summary>
-        public FoxRunQosReliability Reliability { get; set; }
+        /// <summary>Optional transport-neutral durability intent.</summary>
+        public FoxRunDeliveryDurability Durability { get; set; }
 
-        /// <summary>Optional ROS 2 durability override.</summary>
-        public FoxRunQosDurability Durability { get; set; }
-
-        /// <summary>Optional ROS 2 history override.</summary>
-        public FoxRunQosHistory History { get; set; }
+        /// <summary>Optional transport-neutral history intent.</summary>
+        public FoxRunDeliveryHistory History { get; set; }
 
         /// <summary>
         /// Optional positive Keep Last depth. It is invalid when the resolved

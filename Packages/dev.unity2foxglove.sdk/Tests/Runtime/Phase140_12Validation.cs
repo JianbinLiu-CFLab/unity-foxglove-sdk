@@ -86,7 +86,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             try
             {
-                _ = new PointCloud2NativeFrame(
+                _ = new PackedPointCloudFrame(
                     0UL,
                     "map",
                     1U,
@@ -120,9 +120,9 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 new VirtualLidarPointData { IsValid = 1 }
             };
-            var first = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
-            var second = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
-            var timed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: true);
+            var first = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
+            var second = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
+            var timed = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: true);
 
             Check(ReferenceEquals(first.Fields, second.Fields)
                   && first.Fields is not PointCloudPackedField[]

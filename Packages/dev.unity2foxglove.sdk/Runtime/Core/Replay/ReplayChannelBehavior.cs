@@ -42,9 +42,6 @@ namespace Unity.FoxgloveSDK.Core
             if (string.Equals(messageEncoding, "json", StringComparison.OrdinalIgnoreCase))
                 return ReplayChannelBehavior.Unclassified;
 
-            if (IsCdrEncoding(messageEncoding))
-                return ReplayChannelBehavior.NonPose;
-
             if (IsDefaultProtobufCompatible(messageEncoding))
             {
                 var topicBehavior = ClassifyLegacyPoseTopic(topic);
@@ -114,10 +111,6 @@ namespace Unity.FoxgloveSDK.Core
         private static bool IsDefaultProtobufCompatible(string messageEncoding)
             => string.IsNullOrEmpty(messageEncoding)
                || string.Equals(messageEncoding, "protobuf", StringComparison.OrdinalIgnoreCase);
-
-        private static bool IsCdrEncoding(string messageEncoding)
-            => string.Equals(messageEncoding, "cdr", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(messageEncoding, "ros2msg", StringComparison.OrdinalIgnoreCase);
 
         private static bool HasSchemaSuffix(string schemaName, string suffix)
         {

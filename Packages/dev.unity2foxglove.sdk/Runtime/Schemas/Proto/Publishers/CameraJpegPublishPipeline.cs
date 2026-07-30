@@ -170,7 +170,6 @@ namespace Unity.FoxgloveSDK.Components
             double readbackLatencyMs,
             int jpegQuality,
             string frameId,
-            bool useStandardSensorCompressedImage,
             int maxEncodedBytes,
             Action onEncodeQueueDrop)
         {
@@ -189,7 +188,6 @@ namespace Unity.FoxgloveSDK.Components
                 publishWebSocket,
                 publishProvider,
                 publishNativeFrame,
-                useStandardSensorCompressedImage,
                 webSocketEncoding,
                 Math.Max(0, maxEncodedBytes),
                 _captureGeneration(),

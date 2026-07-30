@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,6 +73,54 @@ TARGETS = {
         REPO_ROOT / "build/SourceGenerators/Ros2Bridge/validator/Release/netstandard2.0",
     ),
 }
+
+PROVIDER_DEPENDENCIES = {
+    "Microsoft.CodeAnalysis.Analyzers",
+    "Microsoft.CodeAnalysis.CSharp",
+}
+PACKAGE_ROOTS = {
+    name: target.project.parents[2].resolve()
+    for name, target in TARGETS.items()
+}
+DIAGNOSTIC_PREFIXES = {
+    "core": ("FOXRUN", 0, 699),
+    "r2fu": ("FOXR2F", 0, 199),
+    "ros2bridge": ("FOXBRG", 0, 199),
+}
+HINT_CONTRACTS = {
+    "core": (
+        REPO_ROOT
+        / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs",
+        "_FoxRun.g.cs",
+    ),
+    "r2fu": (
+        REPO_ROOT
+        / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/FoxRunR2fuAnalyzerPipeline.cs",
+        "_unity2foxglove_r2fu_typed_ros2_FoxRun.g.cs",
+    ),
+    "ros2bridge": (
+        REPO_ROOT
+        / "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs",
+        "_unity2foxglove_ros2bridge_typed_cdr_FoxRun.g.cs",
+    ),
+}
+PHYSICAL_HINT_CONTRACTS = {
+    "r2fu": (
+        REPO_ROOT
+        / "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuEmitterContribution.cs",
+        'HintNameSuffix => "typed-ros2"',
+    ),
+    "ros2bridge": (
+        REPO_ROOT
+        / "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/FoxRunBridgeEmitterContribution.cs",
+        'HintNameSuffix => "typed-cdr"',
+    ),
+}
+COMPOSITION_TEST = (
+    REPO_ROOT
+    / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Ros2ForUnity/"
+      "FoxRunAnalyzerCompositionContractTests.cs"
+)
 
 
 def sha256(path: Path) -> str:
@@ -132,6 +182,293 @@ def validate_unity_plugin_protobuf_match(analyzer_dependency: Path) -> bool:
         )
         return False
 
+    return True
+
+
+def _project_sources(project: Path) -> list[Path]:
+    """Resolve every explicit Compile item in one controlled analyzer project."""
+    root = ET.parse(project).getroot()
+    sources: list[Path] = []
+    for node in root.findall(".//Compile"):
+        for include in node.attrib.get("Include", "").split(";"):
+            include = include.strip()
+            if include:
+                normalized = include.replace("\\", "/")
+                if "*" in normalized or "?" in normalized:
+                    sources.extend(
+                        path.resolve()
+                        for path in project.parent.glob(
+                            normalized
+                        )
+                        if path.is_file()
+                    )
+                else:
+                    sources.append(
+                        (project.parent / include).resolve()
+                    )
+    return sources
+
+
+def _ledger_ids(project: Path) -> set[str]:
+    """Return diagnostic IDs declared by both shipped and unshipped ledgers."""
+    result: set[str] = set()
+    for ledger in project.parent.glob("AnalyzerReleases.*.md"):
+        result.update(
+            re.findall(
+                r"\b(?:FOXRUN|FOXR2F|FOXBRG)\d{3}\b",
+                ledger.read_text(encoding="utf-8"),
+            )
+        )
+    return result
+
+
+def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
+    """Return Provider-owned descriptor IDs created by compiled diagnostic sources."""
+    ids: set[str] = set()
+    pattern = re.compile(rf'\b({re.escape(prefix)}\d{{3}})\b')
+    for source in sources:
+        if "Diagnostic" not in source.name or not source.exists():
+            continue
+        ids.update(pattern.findall(source.read_text(encoding="utf-8")))
+    return ids
+
+
+def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
+    """Validate independent packaging, ledgers, IDs, hint parity, and set coverage."""
+    failures: list[str] = []
+    assembly_names: dict[str, str] = {}
+    ledger_owners: dict[str, str] = {}
+    hint_tokens: dict[str, str] = {}
+
+    for name in target_names:
+        if name not in TARGETS:
+            failures.append(f"unknown analyzer target: {name}")
+            continue
+        target = TARGETS[name]
+        if not target.project.exists():
+            failures.append(f"{name}: project missing: {target.project}")
+            continue
+
+        project_xml = ET.parse(target.project).getroot()
+        assembly_node = project_xml.find(".//AssemblyName")
+        assembly_name = (
+            assembly_node.text.strip()
+            if assembly_node is not None and assembly_node.text
+            else target.project.stem
+        )
+        if assembly_name in assembly_names:
+            failures.append(
+                f"{name}: duplicate analyzer assembly name {assembly_name} "
+                f"also owned by {assembly_names[assembly_name]}"
+            )
+        assembly_names[assembly_name] = name
+
+        for artifact in target.checked_in_artifacts.values():
+            if artifact.suffix.lower() != ".dll":
+                continue
+            meta = Path(str(artifact) + ".meta")
+            if not meta.exists():
+                failures.append(
+                    f"{name}: analyzer .meta missing: "
+                    f"{meta.relative_to(REPO_ROOT)}"
+                )
+
+        sources = _project_sources(target.project)
+        missing_sources = [
+            source for source in sources if not source.exists()
+        ]
+        for source in missing_sources:
+            failures.append(
+                f"{name}: compiled source missing: {source}"
+            )
+
+        if name != "core":
+            dependencies = {
+                node.attrib.get("Include", "")
+                for node in project_xml.findall(
+                    ".//PackageReference"
+                )
+            }
+            if dependencies != PROVIDER_DEPENDENCIES:
+                failures.append(
+                    f"{name}: dependencies must be Roslyn-only; "
+                    f"found {sorted(dependencies)}"
+                )
+            if project_xml.findall(".//ProjectReference"):
+                failures.append(
+                    f"{name}: ProjectReference is forbidden"
+                )
+            if project_xml.findall(".//Reference"):
+                failures.append(
+                    f"{name}: assembly Reference is forbidden"
+                )
+            package_root = PACKAGE_ROOTS[name]
+            for node in project_xml.findall(".//Compile"):
+                includes = node.attrib.get("Include", "").split(";")
+                for include in includes:
+                    include = include.strip()
+                    if not include:
+                        continue
+                    if "*" in include:
+                        failures.append(
+                            f"{name}: wildcard Compile item is forbidden: "
+                            f"{include}"
+                        )
+                        continue
+                    source = (
+                        target.project.parent / include
+                    ).resolve()
+                    if not source.is_relative_to(package_root):
+                        failures.append(
+                            f"{name}: non-owned compiled source: "
+                            f"{include}"
+                        )
+
+        prefix, minimum, maximum = DIAGNOSTIC_PREFIXES[name]
+        ledgers = _ledger_ids(target.project)
+        for diagnostic_id in ledgers:
+            match = re.fullmatch(
+                rf"{re.escape(prefix)}(\d{{3}})",
+                diagnostic_id,
+            )
+            if not match:
+                failures.append(
+                    f"{name}: out-of-namespace ledger ID "
+                    f"{diagnostic_id}"
+                )
+                continue
+            number = int(match.group(1))
+            if not minimum <= number <= maximum:
+                failures.append(
+                    f"{name}: out-of-range ledger ID "
+                    f"{diagnostic_id}"
+                )
+            previous = ledger_owners.get(diagnostic_id)
+            if previous is not None and previous != name:
+                failures.append(
+                    f"{name}: diagnostic ID {diagnostic_id} "
+                    f"duplicates {previous}"
+                )
+            ledger_owners[diagnostic_id] = name
+
+        if name != "core":
+            source_ids = _provider_descriptor_ids(
+                sources,
+                prefix,
+            )
+            undeclared = source_ids - ledgers
+            if undeclared:
+                failures.append(
+                    f"{name}: diagnostic IDs missing from release "
+                    f"ledger: {sorted(undeclared)}"
+                )
+
+        hint_source, hint_token = HINT_CONTRACTS[name]
+        if not hint_source.exists() or hint_token not in (
+            hint_source.read_text(encoding="utf-8")
+            if hint_source.exists()
+            else ""
+        ):
+            failures.append(
+                f"{name}: analyzer hint contract missing "
+                f"{hint_token}"
+            )
+        if hint_token in hint_tokens:
+            failures.append(
+                f"{name}: hint namespace duplicates "
+                f"{hint_tokens[hint_token]}"
+            )
+        hint_tokens[hint_token] = name
+
+        if name in PHYSICAL_HINT_CONTRACTS:
+            physical_source, physical_token = (
+                PHYSICAL_HINT_CONTRACTS[name]
+            )
+            physical_text = (
+                physical_source.read_text(encoding="utf-8")
+                if physical_source.exists()
+                else ""
+            )
+            if physical_token not in physical_text:
+                failures.append(
+                    f"{name}: physical hint contract missing "
+                    f"{physical_token}"
+                )
+            normalized = (
+                physical_token.split('"')[1]
+                .replace("-", "_")
+            )
+            if normalized not in hint_token:
+                failures.append(
+                    f"{name}: Roslyn/physical hint mismatch: "
+                    f"{physical_token} vs {hint_token}"
+                )
+
+    if set(target_names) == set(TARGETS):
+        composition_text = (
+            COMPOSITION_TEST.read_text(encoding="utf-8")
+            if COMPOSITION_TEST.exists()
+            else ""
+        )
+        for token in (
+            "CoreOnly()",
+            "R2fuOnly()",
+            "BridgeOnly()",
+            "AllProviders()",
+            "PhysicalAndRoslynProviderEmittersStayEquivalent",
+        ):
+            if token not in composition_text:
+                failures.append(
+                    "all: analyzer composition/parity test "
+                    f"does not expose {token}"
+                )
+
+    if failures:
+        for failure in failures:
+            print(
+                f"[FAIL] Analyzer contract: {failure}",
+                file=sys.stderr,
+            )
+        return False
+
+    print(
+        "[PASS] Analyzer packaging, dependencies, ledgers, IDs, "
+        "hint parity, and composition-set contracts are locked."
+    )
+    return True
+
+
+def run_analyzer_composition_tests() -> bool:
+    """Execute the four analyzer sets plus physical/Roslyn parity fixture."""
+    command = [
+        "dotnet",
+        "test",
+        str(
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.sdk/Tests/Unit/"
+              "FoxgloveSdk.UnitTests.csproj"
+        ),
+        "--no-restore",
+        "-p:IncludeRos2ForUnityNative=true",
+        "-p:IncludeRos2Bridge=true",
+        "--filter",
+        "FullyQualifiedName~FoxRunAnalyzerCompositionContractTests",
+        "--verbosity",
+        "minimal",
+    ]
+    try:
+        subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            "[FAIL] Analyzer composition/parity tests failed "
+            f"with exit code {exc.returncode}.",
+            file=sys.stderr,
+        )
+        return False
     return True
 
 
@@ -211,9 +548,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the checked-in source generator DLL.")
     parser.add_argument(
         "--target",
-        choices=tuple(TARGETS),
-        default="core",
-        help="Controlled analyzer package to build and validate.",
+        choices=("all", *tuple(TARGETS)),
+        default="all",
+        help="Controlled analyzer package(s) to build and validate.",
     )
     parser.add_argument(
         "--update",
@@ -233,17 +570,35 @@ def main() -> int:
         help="Additional MSBuild property argument to pass to dotnet build, such as -p:BaseOutputPath=...",
     )
     args = parser.parse_args()
-    build_output_dir = (
-        args.build_output_dir
-        if args.build_output_dir is not None
-        else TARGETS[args.target].build_output_dir
+    selected_names = (
+        tuple(TARGETS)
+        if args.target == "all"
+        else (args.target,)
     )
-    return validate_or_update(
-        args.update,
-        build_output_dir,
-        args.msbuild_prop,
-        args.target,
-    )
+    if not validate_analyzer_contracts(selected_names):
+        return 1
+
+    for name in selected_names:
+        build_output_dir = (
+            args.build_output_dir / name
+            if args.build_output_dir is not None
+            and args.target == "all"
+            else args.build_output_dir
+            if args.build_output_dir is not None
+            else TARGETS[name].build_output_dir
+        )
+        result = validate_or_update(
+            args.update,
+            build_output_dir,
+            args.msbuild_prop,
+            name,
+        )
+        if result != 0:
+            return result
+
+    if args.target == "all" and not run_analyzer_composition_tests():
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

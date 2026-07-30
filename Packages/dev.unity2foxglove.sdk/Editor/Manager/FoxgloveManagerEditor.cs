@@ -26,8 +26,6 @@ namespace Unity.FoxgloveSDK.Editor
         private bool _dataTransportExpanded;
         private bool _dataTransportPublishExpanded;
         private bool _dataTransportSubscribeExpanded;
-        private bool _dataTransportNativeRuntimeExpanded;
-        private bool _dataTransportRos2BridgeExpanded;
         private bool _mcapExpanded;
         private bool _foxServicesExpanded;
         private bool _schemaEvidenceAdvancedExpanded;
@@ -59,15 +57,9 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _enableRecordingProperty;
         private SerializedProperty _enableReplayProperty;
         private SerializedProperty _foxgloveOutputEnabledProperty;
-        private SerializedProperty _ros2NativeEnabledProperty;
-        private SerializedProperty _ros2BridgeEnabledProperty;
         private SerializedProperty _enableFoxRunInboundProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
-        private SerializedProperty _defaultFoxRunNativePublishQosProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
-        private SerializedProperty _defaultFoxRunSubscriptionSourceProperty;
-        private SerializedProperty _defaultFoxRunNativeSubscribeQosProperty;
-        private SerializedProperty _foxRunRos2NativeCopyBudgetBytesProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
         private SerializedProperty _certificatePfxPathProperty;
         private SerializedProperty _certificatePasswordProperty;
@@ -110,7 +102,6 @@ namespace Unity.FoxgloveSDK.Editor
         static FoxgloveManagerEditor()
         {
             AssemblyReloadEvents.beforeAssemblyReload += StopEditorRootCaDistributor;
-            AssemblyReloadEvents.beforeAssemblyReload += ResetOptionalR2fuRuntimeSelectorCache;
             EditorApplication.quitting += StopEditorRootCaDistributor;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }
@@ -130,7 +121,6 @@ namespace Unity.FoxgloveSDK.Editor
             _cachedServiceHub = null;
             _cachedServiceSnapshotFrame = -1;
             _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
-            ResetLoadedSceneContractsForInspectorDraw();
             ClearTransportClientLabelCache();
         }
 
@@ -145,15 +135,9 @@ namespace Unity.FoxgloveSDK.Editor
             _enableRecordingProperty = serializedObject.FindProperty("_enableRecording");
             _enableReplayProperty = serializedObject.FindProperty("_enableReplay");
             _foxgloveOutputEnabledProperty = serializedObject.FindProperty("_foxgloveOutputEnabled");
-            _ros2NativeEnabledProperty = serializedObject.FindProperty("_ros2NativeEnabled");
-            _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
-            _defaultFoxRunNativePublishQosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishQos");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
-            _defaultFoxRunSubscriptionSourceProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionSource");
-            _defaultFoxRunNativeSubscribeQosProperty = serializedObject.FindProperty("_defaultFoxRunNativeSubscribeQos");
-            _foxRunRos2NativeCopyBudgetBytesProperty = serializedObject.FindProperty("_foxRunRos2NativeCopyBudgetBytes");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
             _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
             _certificatePasswordProperty = serializedObject.FindProperty("_certificatePassword");
@@ -181,7 +165,6 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            ResetLoadedSceneContractsForInspectorDraw();
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
             RefreshTransportStatsForRepaint();
 
@@ -285,29 +268,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void LoadInspectorFoldoutState()
         {
-            if (SessionState.GetInt(InspectorFoldoutKey("DataTransportFoldoutMigrationVersion"), 0) < 1)
-            {
-                var publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
-                var subscribeDataExpanded = SessionState.GetBool(InspectorFoldoutKey("SubscribeData"), false);
-                var r2fuRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("R2fuRuntime"), false);
-                var ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
-
-                SessionState.SetBool(
-                    InspectorFoldoutKey("DataTransport"),
-                    publishDataExpanded || subscribeDataExpanded || r2fuRuntimeExpanded || ros2BridgeExpanded);
-                SessionState.SetBool(InspectorFoldoutKey("DataTransportPublish"), publishDataExpanded);
-                SessionState.SetBool(InspectorFoldoutKey("DataTransportSubscribe"), subscribeDataExpanded);
-                SessionState.SetBool(InspectorFoldoutKey("DataTransportNativeRuntime"), r2fuRuntimeExpanded);
-                SessionState.SetBool(InspectorFoldoutKey("DataTransportRos2Bridge"), ros2BridgeExpanded);
-                SessionState.SetInt(InspectorFoldoutKey("DataTransportFoldoutMigrationVersion"), 1);
-            }
-
             _connectionSecurityExpanded = SessionState.GetBool(InspectorFoldoutKey("ConnectionSecurity"), false);
             _dataTransportExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransport"), false);
             _dataTransportPublishExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportPublish"), false);
             _dataTransportSubscribeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportSubscribe"), false);
-            _dataTransportNativeRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportNativeRuntime"), false);
-            _dataTransportRos2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportRos2Bridge"), false);
             _mcapExpanded = SessionState.GetBool(InspectorFoldoutKey("Mcap"), false);
             _foxServicesExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxServices"), false);
             _schemaEvidenceAdvancedExpanded = SessionState.GetBool(InspectorFoldoutKey("SchemaEvidenceAdvanced"), false);
@@ -322,6 +286,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             FoxgloveManagerInspectorLayout.Subheader("Server");
             DrawProperty("_serverName");
+            DrawProperty("_foxgloveOutputEnabled", "Enable Foxglove WebSocket");
             using (new EditorGUI.DisabledScope(!GetBool("_foxgloveOutputEnabled")))
                 DrawTransportModeProperty();
             DrawProperty("_host");
@@ -386,15 +351,9 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_enableRecording": return _enableRecordingProperty;
                 case "_enableReplay": return _enableReplayProperty;
                 case "_foxgloveOutputEnabled": return _foxgloveOutputEnabledProperty;
-                case "_ros2NativeEnabled": return _ros2NativeEnabledProperty;
-                case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
-                case "_defaultFoxRunNativePublishQos": return _defaultFoxRunNativePublishQosProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;
-                case "_defaultFoxRunSubscriptionSource": return _defaultFoxRunSubscriptionSourceProperty;
-                case "_defaultFoxRunNativeSubscribeQos": return _defaultFoxRunNativeSubscribeQosProperty;
-                case "_foxRunRos2NativeCopyBudgetBytes": return _foxRunRos2NativeCopyBudgetBytesProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
                 case "_certificatePfxPath": return _certificatePfxPathProperty;
                 case "_certificatePassword": return _certificatePasswordProperty;

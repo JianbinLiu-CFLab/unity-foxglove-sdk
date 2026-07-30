@@ -251,133 +251,28 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static IReadOnlyList<FoxRunManifestMember> CollectManifestMembers()
         {
-            return ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: false).ManifestMembers;
+            return ScanFoxRunMembers(
+                ignoreReflectionTypeLoadExceptions: false).ManifestMembers;
         }
 
         /// <summary>
-        /// Collects the same reflection-lowered model used by the manifest and
-        /// descriptor paths without writing generated source or package files.
-        /// The explicit Phase181 interface command is the only caller that
-        /// consumes this model for a static source-package transaction.
+        /// Captures the validated neutral reflection model used by installed
+        /// transport-provider Editor extensions. Provider packages project
+        /// their own wire-specific shapes from this immutable declaration
+        /// snapshot; the SDK does not retain those shapes.
         /// </summary>
-        internal static FoxRunGenerationModel CollectReflectionGenerationModelForRos2InterfacePackage()
+        public static FoxRunGenerationModel
+            CollectReflectionGenerationModelForTransportProviders()
         {
-            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var model = LowerReflectionMembers(scan.ReflectionMembers);
-            // The source-package command must reject invalid wire contracts, but
-            // Roslyn remains the authority for suppressible source diagnostics.
-            // Replaying advisory diagnostics through reflection would bypass a
-            // source-level #pragma and make a successful validation look failed.
-            ValidateGenerationModel(model, logWarnings: false);
+            var scan = ScanFoxRunMembers(
+                ignoreReflectionTypeLoadExceptions: true);
+            var model = LowerReflectionMembers(
+                scan.ReflectionMembers);
+            ValidateGenerationModel(
+                model,
+                logWarnings: false);
             return model;
         }
-
-        /// <summary>
-        /// Returns the current custom native contract snapshot for Edit Mode
-        /// preflight presentation without rewriting generated schema evidence.
-        /// </summary>
-        internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()
-        {
-            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var manifest = FoxRunManifestBuilder.Build(
-                scan.ManifestMembers,
-                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
-            return manifest.CustomNativeContracts
-                .Select(ToSchemaCustomNativeContractInfo)
-                .ToArray();
-        }
-
-        private static FoxRunSchemaCustomNativeContractInfo ToSchemaCustomNativeContractInfo(
-            FoxRunManifestCustomNativeContract contract)
-        {
-            if (contract == null)
-                throw new ArgumentNullException(nameof(contract));
-
-            return new FoxRunSchemaCustomNativeContractInfo(
-                contract.DeclaringType,
-                contract.MemberName,
-                contract.Topic,
-                contract.Flow,
-                ToSource(contract.DeclaredSource),
-                ToQosProfile(contract.QosProfile),
-                contract.SupportsRos2Native,
-                contract.CustomDtoIdentity,
-                contract.CustomPayloadIdentity,
-                contract.CustomEnvelopeIdentity,
-                ToTargets(contract.DeclaredTargets),
-                ToQosReliability(contract.QosReliability),
-                ToQosDurability(contract.QosDurability),
-                ToQosHistory(contract.QosHistory),
-                contract.QosDepth);
-        }
-
-        private static FoxRunEndpoint ToSource(string provider)
-        {
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
-                return FoxRunEndpoint.Ros2Native;
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
-                return FoxRunEndpoint.Foxglove;
-            return (FoxRunEndpoint)0;
-        }
-
-        private static FoxRunEndpoint ToTargets(string targets)
-        {
-            if (string.Equals(targets, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
-                return 0;
-
-            var result = (FoxRunEndpoint)0;
-            foreach (var target in (targets ?? string.Empty).Split(','))
-            {
-                if (string.Equals(target, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
-                    result |= FoxRunEndpoint.Foxglove;
-                else if (string.Equals(target, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
-                    result |= FoxRunEndpoint.Ros2Native;
-                else if (string.Equals(target, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
-                    result |= FoxRunEndpoint.Ros2Bridge;
-                else
-                    return 0;
-            }
-
-            return result;
-        }
-
-        private static FoxRunQosProfile ToQosProfile(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
-                return FoxRunQosProfile.Default;
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
-                return FoxRunQosProfile.SensorData;
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
-                return FoxRunQosProfile.SystemDefault;
-            return 0;
-        }
-
-        private static FoxRunQosReliability ToQosReliability(string value)
-            => string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal)
-                ? FoxRunQosReliability.Reliable
-                : string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal)
-                    ? FoxRunQosReliability.BestEffort
-                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
-                        ? FoxRunQosReliability.SystemDefault
-                        : 0;
-
-        private static FoxRunQosDurability ToQosDurability(string value)
-            => string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal)
-                ? FoxRunQosDurability.Volatile
-                : string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal)
-                    ? FoxRunQosDurability.TransientLocal
-                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
-                        ? FoxRunQosDurability.SystemDefault
-                        : 0;
-
-        private static FoxRunQosHistory ToQosHistory(string value)
-            => string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal)
-                ? FoxRunQosHistory.KeepLast
-                : string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal)
-                    ? FoxRunQosHistory.KeepAll
-                    : string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
-                        ? FoxRunQosHistory.SystemDefault
-                        : 0;
 
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
         {
@@ -474,15 +369,8 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         public static string EmitSourceFile(FoxRunGenerationType type)
-            => EmitSourceFile(type, ShouldEmitRos2NativePartial(type));
-
-        internal static string EmitSourceFile(
-            FoxRunGenerationType type,
-            bool emitRos2NativePartial)
         {
-            var core = FoxgloveSourceEmitter.EmitCoreClass(
-                type,
-                emitRos2NativePartial);
+            var core = FoxgloveSourceEmitter.EmitCoreClass(type);
 
             // Wrap with a Player-only guard so Editor compilation uses the Roslyn
             // generated in-memory source and Player builds use the physical file.
@@ -496,43 +384,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(core);
             sb.AppendLine("#endif");
             return sb.ToString();
-        }
-
-        private static bool ShouldEmitRos2NativePartial(FoxRunGenerationType type)
-        {
-            if (type == null || !type.Members.Any(member => member.GeneratesRos2NativeRegistration))
-                return true;
-
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-            const string nativeAssemblyName = "Unity2Foxglove.Ros2ForUnity.Native";
-            var sourceContract = Type.GetType(
-                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionSource, " + nativeAssemblyName,
-                throwOnError: false);
-            var registrarContract = Type.GetType(
-                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionRegistrar, " + nativeAssemblyName,
-                throwOnError: false);
-            if (sourceContract == null || registrarContract == null
-                || !sourceContract.IsPublic || !sourceContract.IsInterface
-                || !registrarContract.IsPublic || !registrarContract.IsInterface)
-                return false;
-
-            Type declaringType = null;
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                declaringType = assembly.GetType(type.DeclaringType, throwOnError: false);
-                if (declaringType != null)
-                    break;
-            }
-            if (declaringType == null)
-                return false;
-
-            return declaringType.Assembly.GetReferencedAssemblies().Any(
-                reference => string.Equals(reference.Name, nativeAssemblyName, StringComparison.Ordinal));
-#else
-            // The conditional partial is inert without the optional define, so
-            // retaining it preserves deterministic physical/Roslyn source parity.
-            return true;
-#endif
         }
 
         public static string EmitServiceSourceFile(

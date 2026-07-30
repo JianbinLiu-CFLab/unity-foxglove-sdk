@@ -93,10 +93,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "89B-3: supported encodings are mode-gated by the output profile");
             Check(source.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
                   && source.Contains("PublishDracoFrame(frame, unixNs)")
-                  && source.Contains("if (_outputMode == PointCloudOutputMode.PointCloud2Native)")
-                  && source.Contains("PublishPointCloud2NativeFrame(frame, unixNs, packedLayout)")
+                  && source.Contains("if (_outputMode == PointCloudOutputMode.PackedPointCloud)")
+                  && source.Contains("PublishPackedPointCloudFrame(frame, unixNs, packedLayout)")
                   && source.Contains("PublishRawFrame(frame, unixNs, packedLayout)"),
-                "89B-4: PublishPreparedFrame branches raw, Draco, and PointCloud2Native inside the unified publisher");
+                "89B-4: PublishPreparedFrame branches raw, Draco, and PackedPointCloud inside the unified publisher");
             var worker = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             Check(publisherSource.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
                   && worker.Contains("DracoPointCloudNativeEncoder")

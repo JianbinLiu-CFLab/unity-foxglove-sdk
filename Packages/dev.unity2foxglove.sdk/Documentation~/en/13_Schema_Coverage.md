@@ -1,20 +1,31 @@
 ## 1. Purpose
 
-Use this page to understand how Unity2Foxglove validates official Foxglove schema coverage, and where generic schema parity differs from dedicated Unity publisher UX.
+Use this page to understand how the core Unity2Foxglove SDK validates official
+Foxglove schemas, and where generic schema parity differs from dedicated Unity
+publisher UX.
 
-Unity2Foxglove includes the bundled official Foxglove protobuf schema snapshot generated under `Runtime/Schemas/Proto`.
+The core package bundles the official Foxglove protobuf snapshot under
+`Runtime/Schemas/Proto`. ROS message catalogs, CDR codecs, and ROS transport
+adapters belong to opt-in companion packages:
 
-Unity2Foxglove also includes a generated official Foxglove ROS 2 `.msg` schema catalog under `Runtime/Schemas/Ros2Msg`.
+- `dev.unity2foxglove.ros2bridge` for the localhost sidecar Provider;
+- `dev.unity2foxglove.ros2forunity` for the native R2FU Provider.
 
-The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` records this protobuf registry, the ROS2 `.msg` registry, FoxRun evidence, and the SDK typed publisher catalog in one deterministic artifact. It is schema coverage evidence, not replay governance: replay mismatch checks continue to use only the FoxRun `globalManifestHash` recorded in MCAP metadata.
+The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/`
+records the core protobuf registry, FoxRun evidence, and typed publisher catalog
+in one deterministic artifact. It is schema-coverage evidence, not replay
+governance: replay mismatch checks continue to use only the FoxRun
+`globalManifestHash` recorded in MCAP metadata.
 
-Schema Evidence settings let projects decide how much identity enforcement to use. `Off` skips identity checks, `Warn` reports mismatches while continuing, and `Strict` blocks replay on confirmed FoxRun hash mismatch and requires complete recording evidence. Recording sidecars use a sibling `.schema` directory beside the `.mcap` file and copy both `FoxRun/` and `Unity2Foxglove/` evidence groups so the MCAP can be audited later without depending on the current `Assets/Generated` contents.
+Schema Evidence settings let projects decide how much identity enforcement to
+use. `Off` skips identity checks, `Warn` reports mismatches while continuing,
+and `Strict` blocks replay on confirmed FoxRun hash mismatch and requires
+complete recording evidence.
 
-The Inspector replay preflight reads the selected recording sidecar and compares its recorded FoxRun `globalManifestHash` with the current generated FoxRun hash before Play Mode, so users can see match, mismatch, or missing-evidence status without starting replay.
+## 2. Core Coverage Definition
 
-## 2. Coverage Definition
-
-In this package, full official schema coverage means every bundled `foxglove.*` protobuf message is:
+In the core package, full official schema coverage means every bundled
+`foxglove.*` protobuf message is:
 
 - present in the explicit schema catalog;
 - registered with protobuf descriptor bytes;
@@ -22,62 +33,42 @@ In this package, full official schema coverage means every bundled `foxglove.*` 
 - publishable through a protobuf Foxglove channel;
 - recordable to MCAP with protobuf schema and channel metadata.
 
-The current bundled snapshot contains 46 official `foxglove.*` messages. Tests derive the expected count from the protobuf registry/descriptor metadata and require the explicit catalog to match it.
+Tests derive the expected count from the protobuf registry and descriptor
+metadata and require the explicit catalog to match it.
 
-## 3. ROS 2 .msg Schema Coverage
+## 3. Generic Parity and Dedicated Components
 
-The ROS 2 `.msg` catalog registers official Foxglove ROS 2 interface names such as `foxglove_msgs/msg/PointCloud` with `schemaEncoding = ros2msg`.
+Generic protobuf support is the parity layer. It proves that bundled official
+schemas can travel through the SDK schema, publish, and MCAP paths.
 
-The bundled catalog is generated from the local `third-party/foxglove-sdk/schemas/ros2` snapshot. The current snapshot contains 41 root `.msg` files. Each generated entry embeds merged `.msg` text, including dependency sections such as `MSG: geometry_msgs/Pose` and `MSG: foxglove_msgs/PackedElementField` where needed.
+Dedicated Unity components are the UX layer. They provide Inspector fields,
+lifecycle integration, and Unity-specific convenience for common workflows.
+Current polished paths include:
 
-The runtime can advertise ROS 2 schema channels with `messageEncoding = cdr` and `schemaEncoding = ros2msg`, and MCAP records preserve the same schema/channel metadata. The Inspector label for this path is `ROS2`.
+- `foxglove.FrameTransform`;
+- `foxglove.SceneUpdate`;
+- `foxglove.CompressedImage`;
+- `foxglove.PointCloud`;
+- `foxglove.CompressedPointCloud`;
+- `foxglove.LaserScan`;
+- `foxglove.CameraCalibration`;
+- `foxglove.Log`.
 
-The SDK includes a minimal XCDR1 little-endian writer for smoke payloads under `Runtime/Schemas/Ros2Msg/Cdr`. Payloads include the ROS 2 serialized-payload encapsulation header `00 01 00 00`. The validated smoke builders cover:
+Other schemas can still be used through generic protobuf channels and generated
+protobuf message classes.
 
-- `foxglove_msgs/msg/FrameTransform`
-- `foxglove_msgs/msg/CompressedImage`
-- `foxglove_msgs/msg/CameraCalibration`
-- `foxglove_msgs/msg/LaserScan`
-- `foxglove_msgs/msg/PointCloud`
-- `foxglove_msgs/msg/CompressedPointCloud`
-- `foxglove_msgs/msg/SceneUpdate`
+Publisher Encoding defaults to Protobuf for new `FoxgloveManager` components.
+Publishers that support several core encodings can select JSON, Protobuf, or
+MessagePack through the Manager or a component override. A Provider-only
+payload mode, such as packed point-cloud handoff, does not silently fall back
+to a WebSocket encoding.
 
-Phase 93 adds low-level full ROS 2 CDR payload parity for all 41 root ROS 2 `.msg` schemas in the bundled snapshot. The generated `Ros2CdrSerializerRegistry` can create deterministic smoke samples and serialize each generated protobuf CLR message type to XCDR1 bytes for schema, WebSocket, MCAP, and replay validation. This is a low-level validation surface for custom integrations and regression tests; it does not turn every schema into a polished Unity Inspector component.
+For `foxglove.CompressedImage`, the JSON path stores JPEG data as base64 text
+because JSON has no binary field. The protobuf path stores the same JPEG
+payload as raw bytes in the official `bytes data` field, so it is the preferred
+core path for camera streaming.
 
-Phase 94 adds an experimental localhost ROS 2 bridge spike. It proves that three representative schemas (`FrameTransform`, `LaserScan`, and `PointCloud`) can leave Unity2Foxglove as Phase 93 CDR payloads, enter a C++ `rclcpp::GenericPublisher` sidecar, and appear in a real ROS 2 graph. This bridge is optional, localhost-only, and intentionally separate from the normal Foxglove WebSocket path.
-
-Phase 95 productizes the Unity-side ROS2 Bridge mirror path for the seven validated publisher workflows. The bridge is still optional, disabled by default, and localhost sidecar based; it adds Manager and publisher Inspector controls, a bounded background send queue, and simple queued/sent/dropped/failed status without changing normal WebSocket publishing.
-
-Phase 96 adds bridge-only topic profiles and ROS 2 QoS presets. The Manager can apply a bridge namespace such as `/robot1`, publishers can set an absolute bridge topic override such as `/lidar/front`, and the `U2R2` header carries preset QoS metadata for the sidecar's `rclcpp::GenericPublisher`. These settings affect only the optional ROS2 Bridge mirror path; WebSocket topics, MCAP records, replay topics, and point-cloud sampling QoS are unchanged.
-
-The SDK also provides a productized `ROS2` publisher option for the validated Unity publisher workflows listed below. This is still a Foxglove WebSocket and MCAP path, not a ROS 2 node, DDS transport, or rosbag2 writer.
-
-## 4. Generic Parity vs Dedicated Components
-
-Generic protobuf support is the parity layer. It proves that all bundled official schemas can travel through the SDK's schema, publish, and MCAP paths.
-
-Dedicated Unity components are the UX layer. They provide Inspector fields, lifecycle integration, and Unity-specific convenience for common workflows. Phase 44 does not add one custom `MonoBehaviour` for every schema.
-
-Current dedicated or polished Unity paths include:
-
-- `foxglove.FrameTransform` / `foxglove_msgs/msg/FrameTransform`
-- `foxglove.SceneUpdate` / `foxglove_msgs/msg/SceneUpdate` for the built-in scene cube path
-- `foxglove.CompressedImage` / `foxglove_msgs/msg/CompressedImage` through the JPEG camera publisher
-- `foxglove.PointCloud` / `foxglove_msgs/msg/PointCloud` through `FoxglovePointCloudPublisher` raw mode
-- `foxglove.CompressedPointCloud` / `foxglove_msgs/msg/CompressedPointCloud` through `FoxglovePointCloudPublisher` Draco mode
-- `foxglove.LaserScan` / `foxglove_msgs/msg/LaserScan` through `FoxgloveLaserScanPublisher`
-- `foxglove.CameraCalibration` / `foxglove_msgs/msg/CameraCalibration` through `FoxgloveCameraCalibrationPublisher`
-- `foxglove.Log`
-
-Other schemas can still be used through generic protobuf channels and generated protobuf message classes.
-
-Publisher Encoding defaults to Protobuf for new `FoxgloveManager` components. Publishers that support multiple encodings use Protobuf unless the Manager or component override selects JSON or ROS2. JSON-only publishers fall back to JSON automatically, and publishers that do not support ROS2 fall back to their best supported encoding with an Inspector warning.
-
-For `foxglove.CompressedImage`, the JSON path stores JPEG data as base64 text because JSON has no binary field. The protobuf path stores the same JPEG payload as raw bytes in the official `bytes data` field, so it is the preferred path for camera streaming.
-
-ROS 2 `.msg` catalog entries beyond the dedicated list above are available for custom integrations through explicit `ros2msg` schema channels. Product publisher support should still be added schema by schema, with a matching Unity workflow and validation fixture.
-
-## 5. Smoke MCAP
+## 4. Smoke MCAP
 
 From the repository root:
 
@@ -91,43 +82,21 @@ The script writes:
 build/test_mcap/phase44_all_schemas_smoke.mcap
 ```
 
-Open that file in Foxglove Desktop and check the Problems panel. The smoke file is intended to validate protobuf schema parsing and MCAP metadata, not perfect panel rendering for every schema.
+Open that file in Foxglove Desktop and check the Problems panel. The fixture
+validates protobuf schema parsing and MCAP metadata, not perfect panel
+rendering for every schema.
 
-To generate a ROS 2 `.msg` + CDR smoke MCAP:
+ROS-specific schema and wire fixtures are maintained and validated by their
+owning companion package and repository tooling.
 
-```bash
-python Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py
-```
+## 5. Follow-Up Typed Publisher Candidates
 
-The script writes and strictly inspects:
+Potential future dedicated core publishers include:
 
-```text
-build/test_mcap/phase93_ros2_full_schema.mcap
-```
+- Odometry;
+- LocationFix;
+- RawImage;
+- RawAudio.
 
-This fixture validates all 41 ROS 2 `.msg` schema records, 41 `messageEncoding = cdr` channels, and one CDR-framed payload for every generated schema. To inspect an existing MCAP instead of generating the default fixture, pass its path as the positional argument:
-
-```bash
-python Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py build/test_mcap/phase93_ros2_full_schema.mcap
-```
-
-The seven smoke builders listed above remain the source-compatible hand-written builder set used by the productized publisher paths.
-
-To generate the productized ROS2 publisher smoke MCAP:
-
-```bash
-dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase92-ros2-product-mcap build/test_mcap/phase92_ros2_product_smoke.mcap
-```
-
-This fixture validates the seven user-facing publisher mappings from Inspector `ROS2` mode to `ros2msg` schemas and CDR payloads.
-
-## 6. Follow-Up Typed Publisher Candidates
-
-Potential future dedicated publishers include:
-
-- Odometry
-- LocationFix
-- RawImage
-- RawAudio
-
-These should be added when a real demo, dataset, or user workflow needs a polished Unity Inspector experience.
+Add them when a real demo, dataset, or user workflow needs a polished Unity
+Inspector experience.

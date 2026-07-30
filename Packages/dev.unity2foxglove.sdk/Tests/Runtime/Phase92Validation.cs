@@ -16,6 +16,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -97,67 +98,65 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check((int)GlobalEncoding.Json == 0
                   && (int)GlobalEncoding.Protobuf == 1
-                  && (int)GlobalEncoding.Ros2 == 2,
-                "92B-1: GlobalEncoding preserves serialized values and adds ROS2");
+                  && (int)GlobalEncoding.MsgPack == 3,
+                "92B-1: core encoding policy contains only Foxglove wire encodings");
             Check((int)PublisherEncodingOverride.UseManager == 0
                   && (int)PublisherEncodingOverride.Json == 1
                   && (int)PublisherEncodingOverride.Protobuf == 2
-                  && (int)PublisherEncodingOverride.Ros2 == 3,
-                "92B-2: PublisherEncodingOverride preserves serialized values and adds ROS2");
+                  && (int)PublisherEncodingOverride.MsgPack == 4,
+                "92B-2: per-publisher overrides contain only Foxglove wire encodings");
             Check((int)PublisherEffectiveEncoding.Json == 0
                   && (int)PublisherEffectiveEncoding.Protobuf == 1
                   && (int)PublisherEffectiveEncoding.Unsupported == 2
-                  && (int)PublisherEffectiveEncoding.Ros2 == 3,
-                "92B-3: PublisherEffectiveEncoding preserves old Unsupported value");
+                  && (int)PublisherEffectiveEncoding.MsgPack == 4,
+                "92B-3: effective encoding preserves Unsupported and MsgPack values");
 
-            Check(PublisherEncodingPolicy.ToDisplayEncoding(PublisherEffectiveEncoding.Ros2) == "ROS2"
-                  && PublisherEncodingPolicy.ToProtocolEncoding(PublisherEffectiveEncoding.Ros2) == "cdr"
-                  && PublisherEncodingPolicy.ToSchemaEncoding(PublisherEffectiveEncoding.Ros2) == "ros2msg",
-                "92B-4: ROS2 display/protocol/schema labels are split");
+            Check(Ros2BridgeMcapCodecs.MessageEncoding == "cdr"
+                  && Ros2BridgeMcapCodecs.SchemaEncoding == "ros2msg",
+                "92B-4: Bridge owns its CDR and schema labels");
 
-            var ros2Supported = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+            var msgPackSupported = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.MsgPack,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true);
-            Check(ros2Supported.Effective == PublisherEffectiveEncoding.Ros2 && !ros2Supported.FellBack,
-                "92B-5: global ROS2 resolves to ROS2 when supported");
+                supportsMsgPack: true);
+            Check(msgPackSupported.Effective == PublisherEffectiveEncoding.MsgPack && !msgPackSupported.FellBack,
+                "92B-5: global MessagePack resolves when supported");
 
-            var videoFallback = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+            var protobufFallback = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.MsgPack,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: false,
                 supportsProtobuf: true,
-                supportsRos2: false);
-            Check(videoFallback.Requested == PublisherEffectiveEncoding.Ros2
-                  && videoFallback.Effective == PublisherEffectiveEncoding.Protobuf
-                  && videoFallback.FellBack
-                  && videoFallback.RequestedLabel == "ROS2"
-                  && videoFallback.EffectiveLabel == "Protobuf",
-                "92B-6: unsupported ROS2 falls back to Protobuf with product labels");
+                supportsMsgPack: false);
+            Check(protobufFallback.Requested == PublisherEffectiveEncoding.MsgPack
+                  && protobufFallback.Effective == PublisherEffectiveEncoding.Protobuf
+                  && protobufFallback.FellBack,
+                "92B-6: unsupported MessagePack falls back to Protobuf");
 
             var jsonFallback = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+                GlobalEncoding.Protobuf,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: false);
+                supportsMsgPack: false);
             Check(jsonFallback.Effective == PublisherEffectiveEncoding.Json && jsonFallback.EffectiveLabel == "JSON",
-                "92B-7: unsupported ROS2 falls back to JSON when Protobuf is unavailable");
+                "92B-7: unsupported Protobuf falls back to JSON");
 
-            var overrideRos2 = PublisherEncodingPolicy.Resolve(
+            var overrideMsgPack = PublisherEncodingPolicy.Resolve(
                 GlobalEncoding.Protobuf,
                 allowPublisherOverride: true,
-                PublisherEncodingOverride.Ros2,
+                PublisherEncodingOverride.MsgPack,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true);
-            Check(overrideRos2.Requested == PublisherEffectiveEncoding.Ros2 && overrideRos2.Effective == PublisherEffectiveEncoding.Ros2,
-                "92B-8: per-publisher ROS2 override resolves");
+                supportsMsgPack: true);
+            Check(overrideMsgPack.Requested == PublisherEffectiveEncoding.MsgPack
+                  && overrideMsgPack.Effective == PublisherEffectiveEncoding.MsgPack,
+                "92B-8: per-publisher MessagePack override resolves");
         }
 
         private static void VerifyManagerProductPath()
@@ -227,14 +226,14 @@ namespace Unity.FoxgloveSDK.Tests
             var pointCloud = ReadPublisher("FoxglovePointCloudPublisher.cs")
                 + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Raw.cs")
                 + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Draco.cs")
-                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.PointCloud2Native.cs")
+                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.PackedPointCloud.cs")
                 + "\n" + ReadPublisher("PointCloudOutputMode.cs");
             var pointCloudWorkers = ReadPublisher("PointCloudWorkerEncoders.cs");
             Check(pointCloud.Contains("Ros2PublisherSchemaNames.PointCloud")
                   && pointCloud.Contains("Ros2PublisherSchemaNames.CompressedPointCloud")
                   && pointCloud.Contains("Ros2CdrPointCloudBuilder.Serialize")
                   && pointCloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
-                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest")
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest")
                   && pointCloudWorkers.Contains("Ros2CdrSensorPointCloud2Builder.Serialize")
                   && pointCloudWorkers.Contains("Ros2CdrCompressedPointCloudBuilder.Serialize")
                   && pointCloudWorkers.Contains("DracoPointCloudNativeEncoder.TryEncode")
@@ -281,7 +280,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase92FakeTransport();
             using var session = new FoxgloveSession("phase92-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             for (var i = 0; i < samples.Count; i++)

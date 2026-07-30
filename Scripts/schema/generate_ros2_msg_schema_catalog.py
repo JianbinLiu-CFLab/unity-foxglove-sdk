@@ -24,13 +24,14 @@ DEFAULT_INPUT = REPO_ROOT / "third-party" / "foxglove-sdk" / "schemas" / "ros2"
 DEFAULT_OUTPUT = (
     REPO_ROOT
     / "Packages"
-    / "dev.unity2foxglove.sdk"
+    / "dev.unity2foxglove.ros2bridge"
     / "Runtime"
     / "Schemas"
     / "Ros2Msg"
     / "FoxgloveRos2MsgSchemaCatalog.cs"
 )
 SCHEMA_ENCODING = "ros2msg"
+CSHARP_NAMESPACE = "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg"
 
 
 # Minimal ROS 2 common message definitions referenced by the official Foxglove
@@ -307,7 +308,7 @@ using System.Collections.Generic;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 
-namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
+namespace {CSHARP_NAMESPACE}
 {{
     /// <summary>One official Foxglove ROS 2 .msg schema catalog entry.</summary>
     public sealed class FoxgloveRos2MsgSchemaCatalogEntry

@@ -20,6 +20,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         private static readonly Lazy<IIncrementalGenerator> BridgeGenerator =
             new Lazy<IIncrementalGenerator>(LoadBridgeGenerator);
 
+        internal static ISourceGenerator[] CoreOnly()
+            => new[]
+            {
+                new FoxgloveLogSourceGenerator().AsSourceGenerator()
+            };
+
         internal static ISourceGenerator[] CoreAndR2fu()
             => new[]
             {
@@ -27,10 +33,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 R2fuGenerator.Value.AsSourceGenerator()
             };
 
+        internal static ISourceGenerator[] R2fuOnly()
+            => new[]
+            {
+                R2fuGenerator.Value.AsSourceGenerator()
+            };
+
         internal static ISourceGenerator[] CoreAndBridge()
             => new[]
             {
                 new FoxgloveLogSourceGenerator().AsSourceGenerator(),
+                BridgeGenerator.Value.AsSourceGenerator()
+            };
+
+        internal static ISourceGenerator[] BridgeOnly()
+            => new[]
+            {
                 BridgeGenerator.Value.AsSourceGenerator()
             };
 
@@ -43,12 +61,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             };
 
         internal static ISourceGenerator[] LegacyCombined()
-            => new[]
-            {
-                new FoxgloveLogSourceGenerator(
-                    emitLegacyCombinedRos2Partial: true)
-                    .AsSourceGenerator()
-            };
+            => CoreAndR2fu();
 
         private static IIncrementalGenerator LoadR2fuGenerator()
         {

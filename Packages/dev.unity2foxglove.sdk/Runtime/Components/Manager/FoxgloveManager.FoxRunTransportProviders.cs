@@ -256,84 +256,11 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
             in FoxRunOrdinaryPayloadRequest request)
         {
-            var matched = 0;
-            var accepted = 0;
-            var rejected = 0;
-            var unavailable = 0;
-            var failed = 0;
             var sessions =
                 _activeFoxRunTransportSession?.PublishTransports;
-            if (sessions == null)
-            {
-                return new FoxRunOrdinaryTransportFanoutResult(
-                    0,
-                    0,
-                    0,
-                    0,
-                    0);
-            }
-
-            for (var index = 0; index < sessions.Count; index++)
-            {
-                var session = sessions[index];
-                if (!(session is IFoxRunOrdinaryPayloadMapper mapper))
-                    continue;
-                matched++;
-                FoxRunTransportPublishResult result;
-                try
-                {
-                    if (!mapper.TryMap(
-                            in request,
-                            out var contribution,
-                            out var reason))
-                    {
-                        result =
-                            FoxRunTransportPublishResult.Rejected(reason);
-                    }
-                    else
-                    {
-                        var route = new FoxRunTransportPublishRoute(
-                            request.StablePublisherId,
-                            request.Topic,
-                            contribution.LogicalSchemaName,
-                            contribution.Payload,
-                            request.LogTimeNs,
-                            request.Sequence,
-                            request.DeliveryPolicy,
-                            contribution.MessageEncoding,
-                            contribution.SchemaEncoding);
-                        result = session.Publish(in route);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    result =
-                        FoxRunTransportPublishResult.Failed(exception.Message);
-                }
-
-                switch (result.State)
-                {
-                    case FoxRunTransportRouteResultState.Accepted:
-                        accepted++;
-                        break;
-                    case FoxRunTransportRouteResultState.Rejected:
-                        rejected++;
-                        break;
-                    case FoxRunTransportRouteResultState.Unavailable:
-                        unavailable++;
-                        break;
-                    case FoxRunTransportRouteResultState.Failed:
-                        failed++;
-                        break;
-                }
-            }
-
-            return new FoxRunOrdinaryTransportFanoutResult(
-                matched,
-                accepted,
-                rejected,
-                unavailable,
-                failed);
+            return FoxRunOrdinaryTransportFanout.Publish(
+                sessions,
+                in request);
         }
 
         /// <summary>Resolve one schema from a frozen Provider session.</summary>

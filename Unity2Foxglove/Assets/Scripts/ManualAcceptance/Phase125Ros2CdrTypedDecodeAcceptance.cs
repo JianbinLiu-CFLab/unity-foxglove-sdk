@@ -10,8 +10,9 @@ using System.IO;
 using System.Linq;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.IO;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -68,6 +69,7 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
         using (var loader = new McapDataLoader(path, McapSequentialReadLimits.UnlimitedForTests))
         {
             var init = loader.Initialize();
+            var decodeOptions = BridgeDecodeOptions();
             Debug.Log(LogPrefix + " summary channels=" + init.Channels.Count
                       + " schemas=" + init.Schemas.Count
                       + " messages=" + (init.HasTotalMessageCount ? init.TotalMessageCount.ToString() : "unknown")
@@ -83,10 +85,12 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
                 var decoded = loader.CreateDecodedIterator(new McapDataLoaderQuery
                 {
                     Topics = new List<string> { topic }
-                }).Single();
+                }, decodeOptions).Single();
 
                 var value = decoded.Payload.Value as IMessage;
-                var pass = decoded.Payload.Kind == McapDecodedPayloadKind.Ros2CdrTyped
+                var pass = decoded.Payload.Kind == McapDecodedPayloadKind.Provider
+                           && decoded.Payload.DecoderId
+                           == "unity2foxglove.ros2bridge/cdr-typed"
                            && value != null
                            && serializer.ClrType.IsInstanceOfType(value)
                            && decoded.Problems.Count == 0
@@ -108,9 +112,11 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
             var unknown = loader.CreateDecodedIterator(new McapDataLoaderQuery
             {
                 Topics = new List<string> { "/phase125/manual/unknown" }
-            }).Single();
-            var unknownDiagnostic = unknown.Payload.Value as McapRos2CdrDiagnosticPayload;
-            var unknownPass = unknown.Payload.Kind == McapDecodedPayloadKind.Ros2CdrDiagnostic
+            }, decodeOptions).Single();
+            var unknownDiagnostic = unknown.Payload.Value as Ros2CdrDiagnosticPayload;
+            var unknownPass = unknown.Payload.Kind == McapDecodedPayloadKind.Provider
+                              && unknown.Payload.DecoderId
+                              == "unity2foxglove.ros2bridge/cdr-diagnostic"
                               && unknownDiagnostic != null
                               && !unknownDiagnostic.SchemaKnown
                               && SameBytes(unknown.Raw.Data, unknown.Payload.RawData);
@@ -125,8 +131,8 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
             var malformed = loader.CreateDecodedIterator(new McapDataLoaderQuery
             {
                 Topics = new List<string> { "/phase125/manual/malformed" }
-            }).Single();
-            var malformedPass = (malformed.Payload.Kind == McapDecodedPayloadKind.Ros2CdrDiagnostic ||
+            }, decodeOptions).Single();
+            var malformedPass = (malformed.Payload.Kind == McapDecodedPayloadKind.Provider ||
                                  malformed.Payload.Kind == McapDecodedPayloadKind.Failed)
                                 && malformed.Problems.Count > 0
                                 && SameBytes(malformed.Raw.Data, malformed.Payload.RawData);
@@ -141,7 +147,7 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
             var throwPass = Throws(() =>
                 loader.CreateDecodedIterator(
                     new McapDataLoaderQuery { Topics = new List<string> { "/phase125/manual/malformed" } },
-                    new McapDecodeOptions { FailurePolicy = McapDecodeFailurePolicy.Throw }).ToList(),
+                    BridgeDecodeOptions(McapDecodeFailurePolicy.Throw)).ToList(),
                 out var throwException);
             Debug.Log(LogPrefix + " throwPolicy"
                       + " threw=" + throwPass
@@ -151,10 +157,10 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
             var fallbackFailed = loader.CreateDecodedIterator(new McapDataLoaderQuery
             {
                 Topics = new List<string> { "/phase125/manual/fallback_failed" }
-            }).Single();
+            }, decodeOptions).Single();
             var fallbackFailedPass = fallbackFailed.Payload.Kind == McapDecodedPayloadKind.Failed
                                      && fallbackFailed.Problems.Any(problem => problem.Code == "McapDecodeFailed")
-                                     && fallbackFailed.Problems.Any(problem => problem.Code == "McapRos2CdrDiagnosticFallbackFailed")
+                                     && fallbackFailed.Problems.Any(problem => problem.Code == "McapDecodeDiagnosticFallbackFailed")
                                      && SameBytes(fallbackFailed.Raw.Data, fallbackFailed.Payload.RawData);
             Debug.Log(LogPrefix + " fallbackFailed"
                       + " topic=" + fallbackFailed.Raw.Topic
@@ -178,6 +184,17 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
                       + " file=" + path);
         }
     }
+
+    private static McapDecodeOptions BridgeDecodeOptions(
+        McapDecodeFailurePolicy failurePolicy =
+            McapDecodeFailurePolicy.RawWithProblem)
+        => new McapDecodeOptions
+        {
+            DecoderFactories = Ros2BridgeMcapCodecs
+                .CreateFactories()
+                .ToList(),
+            FailurePolicy = failurePolicy
+        };
 
     private static string CreateFixture(string outputDirectory, string filePrefix)
     {

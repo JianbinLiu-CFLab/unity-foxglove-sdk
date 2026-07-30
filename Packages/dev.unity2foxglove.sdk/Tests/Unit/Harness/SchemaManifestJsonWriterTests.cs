@@ -63,15 +63,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 new Unity2FoxgloveFoxRunSummarySection(false, 0, 0, "", "", 0, 0, 0, ""),
                 new Unity2FoxgloveProtobufRegistrySection("protobuf", "", "", 0, Array.Empty<Unity2FoxgloveProtobufRegistryEntry>()),
-                new Unity2FoxgloveRos2MsgRegistrySection("ros2msg", "", "", "", 0, 0, Array.Empty<Unity2FoxgloveRos2MsgRegistryEntry>()),
                 new Unity2FoxgloveSdkTypedPublishersSection(0, Array.Empty<Unity2FoxgloveSdkTypedPublisherEntry>()));
 
             return new Unity2FoxgloveSchemaManifest(
-                1,
+                2,
                 "Unity2Foxglove",
                 new Unity2FoxgloveSchemaManifestGeneratorInfo("test", 1),
                 sections,
-                new Unity2FoxgloveSchemaManifestSectionHashes("", "", "", ""),
+                new Unity2FoxgloveSchemaManifestSectionHashes("", "", ""),
                 "hash");
         }
     }

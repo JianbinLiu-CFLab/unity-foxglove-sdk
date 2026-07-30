@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Components
             _encodeResults++;
         }
 
-        public void RecordPointCloud2NativeResult(bool enabled, PointCloud2NativeResult result)
+        public void RecordPackedPointCloudResult(bool enabled, PackedPointCloudResult result)
         {
             if (!enabled || result == null)
                 return;

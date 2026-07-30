@@ -37,13 +37,6 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
-        public static string WriteRos2MsgRegistrySectionHashInput(Unity2FoxgloveRos2MsgRegistrySection section)
-        {
-            var sb = new StringBuilder();
-            WriteRos2MsgRegistrySection(sb, section);
-            return sb.ToString();
-        }
-
         public static string WriteSdkTypedPublishersSectionHashInput(Unity2FoxgloveSdkTypedPublishersSection section)
         {
             var sb = new StringBuilder();
@@ -137,9 +130,6 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "protobufRegistry");
             WriteProtobufRegistrySection(sb, sections.ProtobufRegistry);
             sb.Append(',');
-            AppendPropertyName(sb, "ros2MsgRegistry");
-            WriteRos2MsgRegistrySection(sb, sections.Ros2MsgRegistry);
-            sb.Append(',');
             AppendPropertyName(sb, "sdkTypedPublishers");
             WriteSdkTypedPublishersSection(sb, sections.SdkTypedPublishers);
             sb.Append('}');
@@ -153,9 +143,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "protobufRegistry");
             AppendString(sb, hashes.ProtobufRegistry);
-            sb.Append(',');
-            AppendPropertyName(sb, "ros2MsgRegistry");
-            AppendString(sb, hashes.Ros2MsgRegistry);
             sb.Append(',');
             AppendPropertyName(sb, "sdkTypedPublishers");
             AppendString(sb, hashes.SdkTypedPublishers);
@@ -242,60 +229,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(']');
         }
 
-        private static void WriteRos2MsgRegistrySection(StringBuilder sb, Unity2FoxgloveRos2MsgRegistrySection section)
-        {
-            sb.Append('{');
-            AppendPropertyName(sb, "schemaEncoding");
-            AppendString(sb, section.SchemaEncoding);
-            sb.Append(',');
-            AppendPropertyName(sb, "sourceSnapshot");
-            AppendString(sb, section.SourceSnapshot);
-            sb.Append(',');
-            AppendPropertyName(sb, "sourceCommit");
-            AppendString(sb, section.SourceCommit);
-            sb.Append(',');
-            AppendPropertyName(sb, "sourceTreeSha256");
-            AppendString(sb, section.SourceTreeSha256);
-            sb.Append(',');
-            AppendPropertyName(sb, "sourceFileCount");
-            sb.Append(section.SourceFileCount.ToString(CultureInfo.InvariantCulture));
-            sb.Append(',');
-            AppendPropertyName(sb, "entryCount");
-            sb.Append(section.EntryCount.ToString(CultureInfo.InvariantCulture));
-            sb.Append(',');
-            AppendPropertyName(sb, "entries");
-            WriteRos2Entries(sb, section.Entries);
-            sb.Append('}');
-        }
-
-        private static void WriteRos2Entries(StringBuilder sb, IReadOnlyList<Unity2FoxgloveRos2MsgRegistryEntry> entries)
-        {
-            sb.Append('[');
-            for (var i = 0; i < entries.Count; i++)
-            {
-                if (i > 0)
-                    sb.Append(',');
-                var entry = entries[i];
-                sb.Append('{');
-                AppendPropertyName(sb, "schemaName");
-                AppendString(sb, entry.SchemaName);
-                sb.Append(',');
-                AppendPropertyName(sb, "sourceFile");
-                AppendString(sb, entry.SourceFile);
-                sb.Append(',');
-                AppendPropertyName(sb, "sourceSha256");
-                AppendString(sb, entry.SourceSha256);
-                sb.Append(',');
-                AppendPropertyName(sb, "category");
-                AppendString(sb, entry.Category);
-                sb.Append(',');
-                AppendPropertyName(sb, "hasDedicatedJsonOrProtobufPublisher");
-                AppendBool(sb, entry.HasDedicatedJsonOrProtobufPublisher);
-                sb.Append('}');
-            }
-            sb.Append(']');
-        }
-
         private static void WriteSdkTypedPublishersSection(StringBuilder sb, Unity2FoxgloveSdkTypedPublishersSection section)
         {
             sb.Append('{');
@@ -331,17 +264,11 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendPropertyName(sb, "foxgloveSchemaName");
                 AppendString(sb, entry.FoxgloveSchemaName);
                 sb.Append(',');
-                AppendPropertyName(sb, "ros2SchemaName");
-                AppendString(sb, entry.Ros2SchemaName);
-                sb.Append(',');
                 AppendPropertyName(sb, "supportsJson");
                 AppendBool(sb, entry.SupportsJson);
                 sb.Append(',');
                 AppendPropertyName(sb, "supportsProtobuf");
                 AppendBool(sb, entry.SupportsProtobuf);
-                sb.Append(',');
-                AppendPropertyName(sb, "supportsRos2");
-                AppendBool(sb, entry.SupportsRos2);
                 sb.Append(',');
                 AppendPropertyName(sb, "supportsMsgPack");
                 AppendBool(sb, entry.SupportsMsgPack);

@@ -41,17 +41,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Ros2BridgeSampleStatusFormatsOnlyChange()
+        public void Ros2BridgeProviderSampleStatusFormatsOnlyChange()
         {
             var controller = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
             var update = TestSources.Slice(controller, "private void Update()", "    private void UpdateStatusIfChanged");
 
-            Assert.Contains("private bool _lastRos2BridgeEnabled;", controller, StringComparison.Ordinal);
+            Assert.Contains("private bool _lastProviderEnabled;", controller, StringComparison.Ordinal);
             Assert.Contains("private bool _hasStatusSnapshot;", controller, StringComparison.Ordinal);
-            Assert.Contains("private void UpdateStatusIfChanged(Ros2BridgeStatsSnapshot stats, bool ros2BridgeEnabled)", controller, StringComparison.Ordinal);
-            Assert.Contains("UpdateStatusIfChanged(stats, _manager.Ros2BridgeEnabled);", update, StringComparison.Ordinal);
-            Assert.Contains("_status = $\"ROS2 Bridge", controller, StringComparison.Ordinal);
-            Assert.DoesNotContain("_status = $\"ROS2 Bridge", update, StringComparison.Ordinal);
+            Assert.Contains("private void UpdateStatusIfChanged(Ros2BridgeStatsSnapshot stats, bool providerEnabled)", controller, StringComparison.Ordinal);
+            Assert.Contains("UpdateStatusIfChanged(stats, _provider.isActiveAndEnabled);", update, StringComparison.Ordinal);
+            Assert.Contains("_status = $\"ROS2 Bridge Provider", controller, StringComparison.Ordinal);
+            Assert.DoesNotContain("_status = $\"ROS2 Bridge Provider", update, StringComparison.Ordinal);
         }
 
         [Fact]

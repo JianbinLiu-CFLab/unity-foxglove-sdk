@@ -15,13 +15,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => Assert.Throws<ArgumentNullException>(() => new FoxServiceAttribute(null));
 
         [Fact]
-        public void Ros2NativePolicyClearsCachedManagerOnSubsystemRegistration()
+        public void R2fuProviderKeepsManagerOwnershipInstanceLocal()
         {
             var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/Ros2NativeOutputPolicy.cs");
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
 
-            Assert.Contains("RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)", source);
-            Assert.Contains("private static void ResetStaticState()", source);
+            Assert.Contains("private FoxgloveManager _manager;", source);
+            Assert.DoesNotContain("static FoxgloveManager", source);
+            Assert.Contains("private void Detach()", source);
             Assert.Contains("_manager = null;", source);
         }
 

@@ -106,6 +106,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(setup.Contains("SessionState.GetBool(PlayRequestedKey, false)", StringComparison.Ordinal)
                   && setup.Contains("SessionState.SetBool(PlayRequestedKey, true)", StringComparison.Ordinal),
                 "163-26D-2: Phase162 Zenoh play setup is bounded by editor-session state");
+            Check(setup.Contains("GetComponent<FoxRunRos2TransportProvider>()", StringComparison.Ordinal)
+                  && setup.Contains("AddComponent<FoxRunRos2TransportProvider>()", StringComparison.Ordinal)
+                  && setup.Contains("ConfigureFoxRunTransports(", StringComparison.Ordinal)
+                  && setup.Contains("FoxRunRos2TransportProvider.IdValue", StringComparison.Ordinal)
+                  && !setup.Contains("\"_ros2NativeEnabled\"", StringComparison.Ordinal),
+                "163-26D-3: Phase162 Zenoh play setup enables R2FU through the Provider boundary");
         }
 
         private static void Ros2ForUnitySettingsAvoidMachineLocalPaths()

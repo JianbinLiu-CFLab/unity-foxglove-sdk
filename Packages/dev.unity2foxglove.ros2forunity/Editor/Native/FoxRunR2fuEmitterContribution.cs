@@ -37,7 +37,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
             in FoxRunTransportEmitterContext context,
             StringBuilder output)
             => output.Append(
-                FoxgloveSourceEmitter.EmitRos2NativeContribution(
+                FoxRunR2fuSourceEmitter.Emit(
                     context.Type));
     }
 }

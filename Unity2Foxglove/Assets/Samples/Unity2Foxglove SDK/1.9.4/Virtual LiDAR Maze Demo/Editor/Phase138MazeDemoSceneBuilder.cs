@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(publisher, "_nativeDracoMaxPublishRateHz", 6f);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Default demo path stays WebSocket/Protobuf-friendly. Switch this
-            // publisher to PointCloud2 Native manually when validating ROS2/SLAM.
+            // publisher to a packed Provider manually when validating an external SLAM path.
             SetField(publisher, "_outputMode", PointCloudOutputMode.Draco);
             SetField(publisher, "_topic", "/unity/point_cloud_draco");
             SetField(sensorUnit, "_pointCloudPublisher", publisher);
@@ -184,8 +184,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(sensorCamPub, "_manager", manager);
             SetField(sensorCamPub, "_sensorUnitProfile", sensorUnit);
             SetField(sensorCamPub, "_useSharedSensorClock", true);
-            SetField(sensorCamPub, "_publishStandardRos2CompressedImage", false);
-            SetField(sensorCamPub, "_publishStandardRos2RawImage", false);
             SetField(sensorCamPub, "_topic", "/unity/sensor/camera/image/compressed");
             SetField(sensorCamPub, "_frameId", "os_camera");
             SetField(sensorCamPub, "_width", 640);
@@ -226,8 +224,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(demoCameraPublisher, "_frameId", "unity_camera");
             SetField(demoCameraPublisher, "_width", 640);
             SetField(demoCameraPublisher, "_height", 480);
-            SetField(demoCameraPublisher, "_publishStandardRos2CompressedImage", false);
-            SetField(demoCameraPublisher, "_publishStandardRos2RawImage", false);
 
             foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, sensorCamPub, sensorCamInfoPub, replayAdapter, demoCameraPublisher })
                 EditorUtility.SetDirty(dirty);

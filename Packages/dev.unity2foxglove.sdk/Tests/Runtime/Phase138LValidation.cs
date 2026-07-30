@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             SensorPointCloud2BuilderWritesStandardPointCloud2();
             NativeVirtualLidarPackedDataSkipsInvalidRaysWithoutPointCloudFrame();
             NativeFrameHandoffValidatesLayout();
-            PointCloud2NativeModeUsesStandardSchemaAndNativeQueue();
+            PackedPointCloudModeUsesStandardSchemaAndNativeQueue();
             SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot();
             R2fuProductBridgeConsumesPreparedNativeFrames();
             ValidationRegistryWiresPhase138L();
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Tests
                     IsValid = 1
                 }
             };
-            var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
+            var packed = PackedPointCloudDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
             var expected = PointCloudPackedDataBuilder.Build(BuildFullStrideFrame());
 
             Check(packed.PointStride == 30U, "138L-2N: native PointCloud2 packed stride is full SLAM stride");
@@ -139,7 +139,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void NativeFrameHandoffValidatesLayout()
         {
             var packed = PointCloudPackedDataBuilder.Build(BuildFullStrideFrame());
-            var handoff = new PointCloud2NativeFrame(
+            var handoff = new PackedPointCloudFrame(
                 1_700_000_123_456_789_012UL,
                 "os_lidar",
                 height: 1U,
@@ -154,12 +154,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && handoff.RowStep == packed.PointStride * 2U
                   && handoff.Data.SequenceEqual(packed.Data)
                   && handoff.ValidCount == 2,
-                "138L-2R: schema-neutral PointCloud2NativeFrame carries layout and data for DDS handoff");
+                "138L-2R: schema-neutral PackedPointCloudFrame carries layout and data for DDS handoff");
 
             var rejected = false;
             try
             {
-                _ = new PointCloud2NativeFrame(
+                _ = new PackedPointCloudFrame(
                     1UL,
                     "bad",
                     height: 1U,
@@ -174,47 +174,47 @@ namespace Unity.FoxgloveSDK.Tests
                 rejected = true;
             }
 
-            Check(rejected, "138L-2S: PointCloud2NativeFrame rejects mismatched data length");
+            Check(rejected, "138L-2S: PackedPointCloudFrame rejects mismatched data length");
         }
 
-        private static void PointCloud2NativeModeUsesStandardSchemaAndNativeQueue()
+        private static void PackedPointCloudModeUsesStandardSchemaAndNativeQueue()
         {
             var mode = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var lidarFramePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
 
-            Check(mode.Contains("PointCloud2Native", StringComparison.Ordinal)
-                  && mode.Contains("PointCloud2NativeTopic", StringComparison.Ordinal)
-                  && mode.Contains("PointCloud2NativeSchema", StringComparison.Ordinal),
-                "138L-2T: PointCloud2Native is an explicit output profile, not an overload of Raw");
+            Check(mode.Contains("PackedPointCloud", StringComparison.Ordinal)
+                  && mode.Contains("PackedPointCloudTopic", StringComparison.Ordinal)
+                  && mode.Contains("PackedPointCloudSchema", StringComparison.Ordinal),
+                "138L-2T: PackedPointCloud is an explicit output profile, not an overload of Raw");
             var workerEncoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             Check(mode.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
-                  && publisher.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest", StringComparison.Ordinal)
-                  && publisher.Contains("PublishCompletedPointCloud2NativePayload", StringComparison.Ordinal)
-                  && workerEncoders.Contains("BuildPointCloud2NativePayload", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest", StringComparison.Ordinal)
+                  && publisher.Contains("PublishCompletedPackedPointCloudPayload", StringComparison.Ordinal)
+                  && workerEncoders.Contains("BuildPackedPointCloudPayload", StringComparison.Ordinal)
                   && workerEncoders.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
-                "138L-2U: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR through the worker encoder");
-            Check(publisher.Contains("CanQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal)
-                  && nativePublisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
-                "138L-2V: PointCloud2Native exposes a native VirtualLidar queue entry point");
+                "138L-2U: PackedPointCloud publishes standard sensor_msgs/msg/PointCloud2 CDR through the worker encoder");
+            Check(publisher.Contains("CanQueueVirtualLidarPackedPointCloudFrame", StringComparison.Ordinal)
+                  && nativePublisher.Contains("TryQueueVirtualLidarPackedPointCloudFrame", StringComparison.Ordinal),
+                "138L-2V: PackedPointCloud exposes a native VirtualLidar queue entry point");
             Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
                   && lidarFramePublisher.Contains("TryPublishNativePointCloud2Scan", StringComparison.Ordinal),
-                "138L-2W: VirtualLidar can bypass managed Points.Add for PointCloud2Native");
+                "138L-2W: VirtualLidar can bypass managed Points.Add for PackedPointCloud");
             Check(editor.Contains("PointCloud2 Native", StringComparison.Ordinal),
                 "138L-2X: Inspector labels the SLAM PointCloud2 mode explicitly");
-            Check(publisher.Contains("event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady", StringComparison.Ordinal)
-                  && publisher.Contains("PointCloud2NativeFrameReady != null", StringComparison.Ordinal),
-                "138L-2Y: PointCloud2Native can prepare frames for optional DDS subscribers without websocket demand");
+            Check(publisher.Contains("event Action<PackedPointCloudFrame> PackedPointCloudFrameReady", StringComparison.Ordinal)
+                  && publisher.Contains("PackedPointCloudFrameReady != null", StringComparison.Ordinal),
+                "138L-2Y: PackedPointCloud can prepare frames for optional DDS subscribers without websocket demand");
             var dracoQueueTakesNativeFrameDemand = Regex.IsMatch(
                 publisher,
                 @"QueueVirtualLidarDracoEncode\s*\([^)]*bool\s+publishNativeFrame",
                 RegexOptions.Singleline);
             var pointCloud2QueueTakesNativeFrameDemand = Regex.IsMatch(
                 nativePublisher,
-                @"QueueVirtualLidarPointCloud2Native\s*\([^)]*bool\s+publishNativeFrame",
+                @"QueueVirtualLidarPackedPointCloud\s*\([^)]*bool\s+publishNativeFrame",
                 RegexOptions.Singleline);
             Check(!dracoQueueTakesNativeFrameDemand && pointCloud2QueueTakesNativeFrameDemand,
                 "138L-2Yb: DDS native-frame demand stays on the PointCloud2 native queue, not the Draco queue");
@@ -222,7 +222,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && workerEncoders.Contains("preserveSourcePointCount: true", StringComparison.Ordinal)
                   && workerEncoders.Contains("preferPooledBufferRetention: true", StringComparison.Ordinal)
                   && workerEncoders.Contains("validCount: packed.ValidPointCount", StringComparison.Ordinal),
-                "138L-2Yc: PointCloud2Native worker keeps raw source-slot width stable while tracking valid points separately");
+                "138L-2Yc: PackedPointCloud worker keeps raw source-slot width stable while tracking valid points separately");
         }
 
         private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()
@@ -247,7 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void R2fuProductBridgeConsumesPreparedNativeFrames()
         {
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2MessageBuilder.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
@@ -255,12 +255,12 @@ namespace Unity.FoxgloveSDK.Tests
             var sampleReadme = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/README.md");
             var rvizLauncher = Read("Scripts/smoke/ros2/launch_phase138l_rviz2.py");
 
-            Check(publisher.Contains("public bool IsPointCloud2NativeOutput", StringComparison.Ordinal)
-                  && publisher.Contains("public string PointCloud2NativeTopic", StringComparison.Ordinal)
+            Check(publisher.Contains("public bool IsPackedPointCloudOutput", StringComparison.Ordinal)
+                  && publisher.Contains("public string PackedPointCloudTopic", StringComparison.Ordinal)
                   && publisher.Contains("public string PointCloudFrameId", StringComparison.Ordinal)
-                  && publisher.Contains("public bool PublishPointCloud2NativeTfAnchor", StringComparison.Ordinal)
-                  && publisher.Contains("public string PointCloud2NativeTfParentFrame", StringComparison.Ordinal)
-                  && publisher.Contains("public string PointCloud2NativeTfChildFrame", StringComparison.Ordinal),
+                  && publisher.Contains("public bool PublishPackedPointCloudTfAnchor", StringComparison.Ordinal)
+                  && publisher.Contains("public string PackedPointCloudTfParentFrame", StringComparison.Ordinal)
+                  && publisher.Contains("public string PackedPointCloudTfChildFrame", StringComparison.Ordinal),
                 "138L-5A: core publisher exposes read-only product state for optional R2FU DDS adapters");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
@@ -269,7 +269,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("FindObjectsByType<FoxglovePointCloudPublisher>", StringComparison.Ordinal)
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138L-5C: R2FU PointCloud2 bridge is an automatic product path gated by the Manager toggle");
-            Check(bridge.Contains("_source.PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
+            Check(bridge.Contains("_source.PackedPointCloudFrameReady += OnPackedPointCloudFrameReady", StringComparison.Ordinal)
                   && bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal)
                   && !bridge.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
                 "138L-5D: R2FU bridge consumes prepared native frames with sensor-data QoS and without requiring the Phase138 smoke component");
@@ -283,12 +283,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("PointCloud2 Native DDS ready", StringComparison.Ordinal)
                   && !publisher.Contains("tf2_msgs", StringComparison.Ordinal),
                 "138L-5Da: R2FU bridge publishes a dynamic product TF anchor while the core SDK stays ROS-free");
-            Check(builder.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal)
+            Check(builder.Contains("Build(PackedPointCloudFrame frame", StringComparison.Ordinal)
                   && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
                   && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),
-                "138L-5E: product message builder maps PointCloud2NativeFrame data without per-point packing");
-            Check(publisher.Contains("private bool _publishPointCloud2NativeTfAnchor;", StringComparison.Ordinal)
-                  && !publisher.Contains("EnsurePointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
+                "138L-5E: product message builder maps PackedPointCloudFrame data without per-point packing");
+            Check(publisher.Contains("private bool _publishPackedPointCloudTfAnchor;", StringComparison.Ordinal)
+                  && !publisher.Contains("EnsurePackedPointCloudTfAnchorInitialized", StringComparison.Ordinal)
                   && editor.Contains("Optional TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("Publish PointCloud2 TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("TF Parent Frame", StringComparison.Ordinal)

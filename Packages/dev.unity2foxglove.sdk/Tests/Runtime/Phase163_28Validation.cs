@@ -116,11 +116,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void NativeCallbackThreadAssumptionsRemainAuditable()
         {
             var imu = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            var pointCloud = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var pointCloud = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
 
             Check(ExtractMethod(imu, "Update").Contains("nativeFrameHandler.Invoke(nativeFrame)", StringComparison.Ordinal),
                 "163-28G-1: VirtualImu native frame handoff remains on the Update drain path");
-            Check(ExtractMethod(pointCloud, "PublishCompletedPointCloud2NativePayload").Contains("PublishPointCloud2NativeFrameReady", StringComparison.Ordinal),
+            Check(ExtractMethod(pointCloud, "PublishCompletedPackedPointCloudPayload").Contains("PublishPackedPointCloudFrameReady", StringComparison.Ordinal),
                 "163-28G-2: PointCloud2 native frame handoff remains explicit after worker payload completion");
         }
 
@@ -142,7 +142,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs",
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityImuNativeBridge.cs",
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraNativeBridge.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs"
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs"
             };
 
         private static string ExtractMethod(string source, string methodName)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
-// Purpose: Publishes standard ROS2 camera info for SLAM consumers.
+// Purpose: Publishes camera calibration data for visualization and Providers.
 
 using System;
 using Unity.FoxgloveSDK.Schemas;
@@ -14,9 +14,8 @@ using NumericVector3 = System.Numerics.Vector3;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Publishes standard ROS2 CameraInfo derived from a Unity Camera.
-    /// Optional R2FU adapters can consume the native frame event without the core SDK
-    /// referencing ROS2 generated message types.
+    /// Publishes camera calibration derived from a Unity Camera. Optional
+    /// Providers can consume the owned frame event without a core dependency.
     /// </summary>
     [AddComponentMenu("Foxglove/Publishers/Foxglove Camera Info Publisher")]
     public class FoxgloveCameraInfoPublisher : FoxglovePublisherBase
@@ -47,7 +46,7 @@ namespace Unity.FoxgloveSDK.Components
         public override bool SupportsJsonEncoding => false;
         public override bool SupportsProtobufEncoding => false;
 
-        /// <summary>Raised when a standard camera-info frame is ready for optional native ROS2 adapters.</summary>
+        /// <summary>Raised when a camera-info frame is ready for optional Providers.</summary>
         public event Action<SensorCameraInfoFrame> SensorCameraInfoReady;
 
         /// <summary>Resolved standard CameraInfo topic.</summary>

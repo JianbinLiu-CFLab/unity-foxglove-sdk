@@ -89,24 +89,24 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>Pack one PointCloud2 Native request into publish-ready raw and optional deskewed frames.</summary>
-        public static PointCloud2NativeResult EncodePointCloud2NativeRequest(PointCloud2NativeRequest request)
+        /// <summary>Pack one PackedPointCloud Native request into publish-ready raw and optional deskewed frames.</summary>
+        public static PackedPointCloudResult EncodePackedPointCloudRequest(PackedPointCloudRequest request)
         {
-            FoxgloveProfiler.Global.BeginSample("PointCloudWorker.EncodePointCloud2Native");
+            FoxgloveProfiler.Global.BeginSample("PointCloudWorker.EncodePackedPointCloud");
             try
             {
                 var encodeStart = Stopwatch.GetTimestamp();
                 var success = false;
                 var error = "";
-                PointCloud2NativeFrame nativeFrame = null;
-                PointCloud2NativeFrame motionCompensatedNativeFrame = null;
+                PackedPointCloudFrame nativeFrame = null;
+                PackedPointCloudFrame motionCompensatedNativeFrame = null;
                 var validCount = 0;
                 var payloadBytes = 0;
                 var rawPackMs = 0d;
                 var rawPayloadBuildMs = 0d;
                 var motionCompensationMs = 0d;
                 var deskewPackMs = 0d;
-                var encodeDiagnostics = default(PointCloud2NativeEncodeDiagnostics);
+                var encodeDiagnostics = default(PackedPointCloudEncodeDiagnostics);
                 var gcGen0Before = 0;
                 var gcGen1Before = 0;
                 var gcGen2Before = 0;
@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.Components
                 try
                 {
                     var rawPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                    var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                    var packed = PackedPointCloudDataBuilder.BuildVirtualLidarFullStridePooled(
                         request.LidarPoints,
                         request.LidarPointCount,
                         request.EmitAbsoluteTimeNs,
@@ -137,7 +137,7 @@ namespace Unity.FoxgloveSDK.Components
                     encodeDiagnostics.RawBufferLength = rawPackTimings.BufferLength;
                     encodeDiagnostics.RawBufferReused = rawPackTimings.BufferReused;
                     validCount = packed.ValidPointCount;
-                    nativeFrame = BuildPointCloud2NativeFrame(request, packed);
+                    nativeFrame = BuildPackedPointCloudFrame(request, packed);
 
                     payloadBytes = nativeFrame.Data.Length;
 
@@ -155,12 +155,12 @@ namespace Unity.FoxgloveSDK.Components
                                     out var compensationError))
                             {
                                 motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
-                                error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                                error = "Unable to build motion-compensated PackedPointCloud frame: " + compensationError;
                             }
                             else
                             {
                                 motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
-                                motionCompensatedNativeFrame = BuildScanReferenceDeskewedPointCloud2Frame(
+                                motionCompensatedNativeFrame = BuildScanReferenceDeskewedPackedPointCloudFrame(
                                     request,
                                     referenceUnixNs,
                                     out deskewPackMs,
@@ -181,13 +181,13 @@ namespace Unity.FoxgloveSDK.Components
                                     out var compensationError))
                             {
                                 motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
-                                error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                                error = "Unable to build motion-compensated PackedPointCloud frame: " + compensationError;
                             }
                             else
                             {
                                 motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
                                 var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                                var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                                var compensatedPacked = PackedPointCloudDataBuilder.BuildVirtualLidarFullStridePooled(
                                     compensatedScratch,
                                     compensatedPointCount,
                                     request.EmitAbsoluteTimeNs,
@@ -200,7 +200,7 @@ namespace Unity.FoxgloveSDK.Components
                                 encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
                                 encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
                                 encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
-                                motionCompensatedNativeFrame = BuildPointCloud2NativeFrame(
+                                motionCompensatedNativeFrame = BuildPackedPointCloudFrame(
                                     request,
                                     compensatedPacked,
                                     compensatedReferenceUnixNs,
@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 catch (Exception ex)
                 {
-                    error = "Unable to serialize native PointCloud2 payload off thread: " + ex.Message;
+                    error = "Unable to serialize native PackedPointCloud payload off thread: " + ex.Message;
                 }
                 finally
                 {
@@ -237,7 +237,7 @@ namespace Unity.FoxgloveSDK.Components
                         out encodeDiagnostics.PoolRetainedBytes);
                 }
 
-                return new PointCloud2NativeResult(
+                return new PackedPointCloudResult(
                     request,
                     success,
                     nativeFrame,
@@ -258,24 +258,24 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
-            PointCloud2NativeRequest request,
+        private static PackedPointCloudFrame BuildPackedPointCloudFrame(
+            PackedPointCloudRequest request,
             PointCloudPackedData packed)
-            => BuildPointCloud2NativeFrame(
+            => BuildPackedPointCloudFrame(
                 request,
                 packed,
                 request.UnixNs,
                 request.NativeTopic,
                 isMotionCompensatedVisualization: false);
 
-        private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame(
-            PointCloud2NativeRequest request,
+        private static PackedPointCloudFrame BuildScanReferenceDeskewedPackedPointCloudFrame(
+            PackedPointCloudRequest request,
             ulong referenceUnixNs,
             out double deskewPackMs,
-            ref PointCloud2NativeEncodeDiagnostics encodeDiagnostics)
+            ref PackedPointCloudEncodeDiagnostics encodeDiagnostics)
         {
             var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-            var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+            var compensatedPacked = PackedPointCloudDataBuilder.BuildVirtualLidarFullStridePooled(
                 request.LidarPoints,
                 request.LidarPointCount,
                 request.EmitAbsoluteTimeNs,
@@ -289,7 +289,7 @@ namespace Unity.FoxgloveSDK.Components
             encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
             encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
             encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
-            var frame = BuildPointCloud2NativeFrame(
+            var frame = BuildPackedPointCloudFrame(
                 request,
                 compensatedPacked,
                 referenceUnixNs,
@@ -299,14 +299,14 @@ namespace Unity.FoxgloveSDK.Components
             return frame;
         }
 
-        private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
-            PointCloud2NativeRequest request,
+        private static PackedPointCloudFrame BuildPackedPointCloudFrame(
+            PackedPointCloudRequest request,
             PointCloudPackedData packed,
             ulong unixNs,
             string topic,
             bool isMotionCompensatedVisualization)
         {
-            return new PointCloud2NativeFrame(
+            return new PackedPointCloudFrame(
                 unixNs,
                 request.FrameId,
                 height: 1U,

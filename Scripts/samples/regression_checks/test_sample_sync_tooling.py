@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -174,6 +175,33 @@ class SampleSyncToolingTests(unittest.TestCase):
         ]
 
         self.assertEqual([module.Drift("changed", Path("package_owned.cs"))], module.blocking_drift_after_apply(drift))
+
+    def test_ros2_sample_apply_refreshes_imported_file_timestamp(self) -> None:
+        """Applying drift must make Unity notice the newly copied sample content."""
+        module = load_module("sync_ros2_samples_timestamp_under_test", "Scripts/samples/sync_ros2_samples.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_root = root / "package"
+            imported_root = root / "imported"
+            package_root.mkdir()
+            imported_root.mkdir()
+            package_file = package_root / "sample.cs"
+            imported_file = imported_root / "sample.cs"
+            package_file.write_text("current\n", encoding="utf-8")
+            imported_file.write_text("stale\n", encoding="utf-8")
+            old_timestamp = 946684800
+            os.utime(package_file, (old_timestamp, old_timestamp))
+            os.utime(imported_file, (old_timestamp, old_timestamp))
+
+            module.apply_sync(
+                package_root,
+                imported_root,
+                [module.Drift("changed", Path("sample.cs"))],
+            )
+
+            self.assertEqual("current\n", imported_file.read_text(encoding="utf-8"))
+            self.assertGreater(imported_file.stat().st_mtime, package_file.stat().st_mtime)
 
 
 if __name__ == "__main__":

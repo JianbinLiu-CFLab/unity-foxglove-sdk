@@ -72,7 +72,7 @@ namespace Unity.FoxgloveSDK.Components
                     };
                 }
 
-                if (request.PublishProvider && !request.UseStandardSensorCompressedImage)
+                if (request.PublishProvider)
                 {
                     protobufMessage ??= CameraCompressedImageBuilder.Create(
                         request.CaptureUnixNs,
@@ -82,8 +82,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 SensorCompressedImageFrame sensorFrame = null;
-                if (request.PublishNativeFrame
-                    || (request.PublishProvider && request.UseStandardSensorCompressedImage))
+                if (request.PublishNativeFrame)
                     sensorFrame = new SensorCompressedImageFrame(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
 
                 return JpegEncodeResult.Completed(
@@ -123,7 +122,6 @@ namespace Unity.FoxgloveSDK.Components
             bool publishWebSocket,
             bool publishProvider,
             bool publishNativeFrame,
-            bool useStandardSensorCompressedImage,
             PublisherEffectiveEncoding webSocketEncoding,
             int maxEncodedBytes,
             int generation,
@@ -138,7 +136,6 @@ namespace Unity.FoxgloveSDK.Components
             PublishWebSocket = publishWebSocket;
             PublishProvider = publishProvider;
             PublishNativeFrame = publishNativeFrame;
-            UseStandardSensorCompressedImage = useStandardSensorCompressedImage;
             WebSocketEncoding = webSocketEncoding;
             MaxEncodedBytes = maxEncodedBytes;
             Generation = generation;
@@ -154,7 +151,6 @@ namespace Unity.FoxgloveSDK.Components
         public bool PublishWebSocket { get; }
         public bool PublishProvider { get; }
         public bool PublishNativeFrame { get; }
-        public bool UseStandardSensorCompressedImage { get; }
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
         public int MaxEncodedBytes { get; }
         public int Generation { get; }

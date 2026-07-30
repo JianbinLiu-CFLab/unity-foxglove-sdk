@@ -52,10 +52,10 @@ private DebugState _debugState;
 | 值 | 含义 |
 |---|---|
 | `Publish` | Unity 是数据源并发送当前值；这是默认模式。 |
-| `Subscribe` | 一个选定的外部端点是数据源；Unity 在主线程应用已接收的值。 |
+| `Subscribe` | 一个选定的外部 Provider 是数据源；Unity 在主线程应用已接收的值。 |
 | `PublishAndSubscribe` | 同时生成两个方向，主要用于调试和联调，不建议作为生产环境的默认权属模型。 |
 
-每个订阅声明只解析到一个 `Source`；发布可以扇出到一个或多个 `Targets`。
+每个订阅声明只解析到一个 Provider ID；发布可以扇出到零个或多个 Provider ID。
 
 ### Policy
 
@@ -86,7 +86,7 @@ private DebugState _debugState;
 在 **Foxglove Manager > Data Transport > Subscribe Data > Subscription Delivery** 中有两个相邻但职责不同的设置：
 
 - **Default Subscribe Rate Hz**：默认值为 10 Hz，仅供未显式设置正数 `Hz` 的订阅声明继承。
-- **Maximum Subscribe Rate Hz (per Topic)**：Foxglove WebSocket 与 ROS 2 Native 共用的硬准入上限。超额消息会尽量在 DTO 解码或原生深拷贝之前丢弃。
+- **Maximum Subscribe Rate Hz (per Topic)**：所有已选输入 Provider 共用的硬准入上限。超额消息会尽量在 DTO 解码或传输层复制之前丢弃。
 
 声明级 `Hz` 不能突破准入上限。通过准入的数据采用有界 latest-wins：Unity 来不及应用全部输入时，新值替换旧的待处理值。
 
@@ -103,7 +103,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
-        Source = FoxRunEndpoint.Foxglove,
+        SubscribeTransportId = FoxgloveWebSocketTransport.Id,
         Policy = Change, Hz = 30,
         Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
@@ -115,47 +115,43 @@ public partial class SpeedController : MonoBehaviour
 }
 ```
 
-输入目标必须可写。生成的 allowlist、负载大小限制、编码与 Source 检查、传输准入、有界 latest-wins 暂存和主线程应用都会继续生效。非 loopback 监听默认 fail-closed，只有 Manager 明确允许远程输入并配置认证策略后才开放。
+输入目标必须可写。生成的 allowlist、负载大小限制、编码与 Provider 检查、传输准入、有界 latest-wins 暂存和主线程应用都会继续生效。非 loopback 监听默认 fail-closed，只有 Manager 明确允许远程输入并配置认证策略后才开放。
 
-## 6. 方向端点与编码
+## 6. 方向 Provider 与编码
 
-省略 `Source`、`Targets` 或 `Encoding` 时，声明继承对应方向冻结的 Manager Profile；用户代码不应写数值零哨兵。全双工声明可以分别继承发布与订阅方向的 Foxglove 编码；显式 `Encoding` 则应用于该声明选中的所有 Foxglove 方向。
+省略 `PublishTransportIds`、`SubscribeTransportId` 或 `Encoding` 时，声明继承对应方向冻结的 Manager Profile。全双工声明可以分别继承发布与订阅方向的 Foxglove 编码；显式 `Encoding` 只应用于该声明选中的 Foxglove WebSocket 方向。
 
-`Source` 选择唯一输入源，核心 SDK 默认使用 `FoxRunEndpoint.Foxglove`。`FoxRunEndpoint.Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。一般 Foxglove 与 ROS2 Bridge 路径只需 `dev.unity2foxglove.sdk`。`FoxRunEndpoint.Ros2Bridge` 仅支持发布，必须使用手动运行的 localhost sidecar；它既不是订阅 Source，也不是远程网关。
-
-`Targets` 接受一个或多个端点标志，并替换而不是追加 Publish Profile 的默认值：
+`SubscribeTransportId` 选择唯一输入 Provider。`PublishTransportIds` 接受一个或多个稳定 Provider ID，并替换而不是追加 Publish Profile 的默认值：
 
 ```csharp
 [FoxRun("/robot/state",
-    Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native)]
+    PublishTransportIds = new[] { FoxgloveWebSocketTransport.Id })]
 private RobotState _state;
 ```
 
+核心 SDK 拥有 `foxglove.websocket`。可选传输包各自安装 Provider 组件、稳定 ID、Inspector 扩展、分析器和传输专用文档。Provider 缺失、重复、不可用或能力不匹配时都会 fail-closed，绝不会回退到其他路由。
+
 JSON、Protobuf 和 MessagePack 只描述 Foxglove 线格式。MessagePack 在 Foxglove WebSocket 方向支持 `Publish`、`Subscribe` 和 `PublishAndSubscribe`。实时通道使用 `message_encoding=msgpack` 且线 schema 字段为空；MCAP 在 schema id 为零、没有关联 Schema record 的通道上原样保存负载字节，同一记录中的其他 JSON/Protobuf 通道仍可拥有自己的 Schema record。
 
-MessagePack 的类型字段发现与编辑必须使用维护中的 **FoxRun Publish** 扩展；Foxglove 内置面板目前不会可视化或编辑 typed MessagePack。Native 与 Bridge 继续使用生成的 ROS 2 DTO/CDR 契约，绝不消费 MessagePack 字节；CDR 不是公开的 `Encoding` 选项。Source、Targets、编码、QoS、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
+MessagePack 的类型字段发现与编辑必须使用维护中的 **FoxRun Publish** 扩展；Foxglove 内置面板目前不会可视化或编辑 typed MessagePack。其他 Provider 使用自己的传输契约，不消费 MessagePack 字节。Provider 选择、编码、交付意图、复制预算、最大订阅频率和各方向默认频率都会在对应的已启用会话中冻结。
 
-## 7. 官方 ROS 2 QoS
+## 7. 传输中立的交付意图
 
-QoS 使用可移植的官方 ROS 2 词汇，不负责选择发行版或 RMW。只有声明最终包含 ROS 2 Native 或 Bridge 方向时才能设置 QoS；纯 Foxglove 声明不使用 ROS 2 QoS。
+FoxRun 只公开可移植的交付意图，不命名传输、运行时、发行版或中间件：
 
 ```csharp
 [FoxRun("/robot/state",
-    Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-    QoS = FoxRunQosProfile.Default,
-    Reliability = FoxRunQosReliability.BestEffort,
-    Durability = FoxRunQosDurability.TransientLocal,
-    History = FoxRunQosHistory.KeepLast,
+    Reliability = FoxRunDeliveryReliability.BestEffort,
+    Durability = FoxRunDeliveryDurability.TransientLocal,
+    History = FoxRunDeliveryHistory.KeepLast,
     Depth = 7)]
 private RobotState _state;
 ```
 
-基础 Profile 是 `Default`、`SensorData` 和 `SystemDefault`。可选覆盖项为
-`Reliable`/`BestEffort`、`Volatile`/`TransientLocal`、
-`KeepLast`/`KeepAll`，以及 Keep Last 的正数 `Depth`。`SystemDefault`
-与 `KeepAll` 会原样进入传输层，不会被静默改写；`KeepAll` 不能同时设置
-`Depth`。Native 与 Bridge 接收同一个已解析的可移植契约，再由所选 ROS 2
-传输执行官方映射。
+可靠性可选 `Reliable`、`BestEffort` 或 `SystemDefault`；持久性可选
+`Volatile`、`TransientLocal` 或 `SystemDefault`；历史可选 `KeepLast`、
+`KeepAll` 或 `SystemDefault`。`Depth` 必须为正数，且只对 Keep Last
+合法。每个已选 Provider 必须映射冻结的意图或拒绝会话；核心不会推断传输专用默认值。
 
 ## 8. Trigger 与全双工
 
@@ -180,12 +176,12 @@ private void OnEnable()
 
 ```csharp
 using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
 using static Unity.FoxgloveSDK.Components.FoxRunFlow;
 
 public partial class ControlSamples : MonoBehaviour
 {
-    [FoxRun("/control/samples", Mode = Subscribe, Source = Foxglove)]
+    [FoxRun("/control/samples", Mode = Subscribe,
+        SubscribeTransportId = FoxgloveWebSocketTransport.Id)]
     private FoxRunStream<ControlSample> _samples =
         new FoxRunStream<ControlSample>(
             new FoxRunStreamOptions(
@@ -202,9 +198,9 @@ public partial class ControlSamples : MonoBehaviour
 ```
 
 流声明必须是一个已初始化的非静态字段，并且只有一个 `Subscribe` 特性。
-`Source`、Foxglove `Encoding` 和 ROS 2 QoS 仍然合法；`Targets`、`Policy`、
-`Hz`、`Tolerance` 与 `OnlyIf` 不合法，因为流自己的准入和用户驱动消费取代
-了普通字段调度。
+`SubscribeTransportId`、Foxglove `Encoding` 和传输中立交付意图仍然合法；
+`PublishTransportIds`、`Policy`、`Hz`、`Tolerance` 与 `OnlyIf` 不合法，
+因为流自己的准入和用户驱动消费取代了普通字段调度。
 
 MessagePack 输入 topic 可以包含普通成员，或恰好一个 `FoxRunStream<T>`；普通成员与流混合、多个流都不可用。多成员的发布或订阅方向还必须解析为同一个规范化 `Policy`、显式/有效 `Hz`、`Tolerance` 和 `OnlyIf` 调度元组。
 
@@ -236,7 +232,7 @@ MCAP 以 `unity2foxglove.foxrun.schema` 元数据保存该证据，其中包含
 `globalManifestHash`。Replay 发现 schema mismatch 时会按 Manager 的 schema identity
 防护策略处理，不会静默应用不兼容的 FoxRun 数据。
 
-更广的 SDK schema manifest 还会编目 Protobuf 与已打包的 ROS2 覆盖面。该聚合清单与
+更广的 SDK schema manifest 还会编目 Protobuf 与已安装 Provider 的贡献。该聚合清单与
 Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 
 调试覆盖层（debug overlay）是非契约（non-contract）诊断，不包含在（not included）
@@ -247,7 +243,7 @@ Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 | 现象 | 检查项 |
 |---|---|
 | 看不到 topic | 类型是否为 `partial`、topic 是否以 `/` 开头、组件是否启用、是否已进入 Play Mode。 |
-| 订阅没有数据 | 是否启用订阅、Source 与编码是否匹配、传输准入诊断是否出现丢弃。 |
+| 订阅没有数据 | 是否启用订阅、Provider 与编码是否匹配、传输准入诊断是否出现丢弃。 |
 | 输入应用太慢 | 声明 `Hz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
 | 消息被丢弃 | **Maximum Subscribe Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
 | 流保留的样本少于发送量 | 检查流自己的有限 `MaxInputHz`、容量、overflow、`MaxBatch` 与 `Stats`；流始终有界。 |

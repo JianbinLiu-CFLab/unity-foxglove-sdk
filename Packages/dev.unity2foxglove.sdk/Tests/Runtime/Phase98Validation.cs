@@ -188,16 +188,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPackageSample()
         {
-            var packageJsonPath = RepoPath("Packages/dev.unity2foxglove.sdk/package.json");
-            Check(File.Exists(packageJsonPath), "98A-0: package manifest exists");
-            var packageJson = ParseJsonObject(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"),
+            var packageJsonPath = RepoPath("Packages/dev.unity2foxglove.ros2bridge/package.json");
+            Check(File.Exists(packageJsonPath), "98A-0: Bridge package manifest exists");
+            var packageJson = ParseJsonObject(ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json"),
                 "98A-0b: package manifest is valid JSON");
             var samples = packageJson["samples"]?.Children<JObject>().ToList() ?? new List<JObject>();
-            Check(samples.Count == 4, "98A-1: package manifest exposes four samples");
+            Check(samples.Count == 1, "98A-1: Bridge package manifest exposes one sample");
             Check(samples.Any(sample =>
                     sample["displayName"]?.ToString() == "ROS2 Bridge Sample"
                     && sample["path"]?.ToString() == "Samples~/Ros2BridgeSample"),
-                "98A-2: package manifest includes ROS2 Bridge Sample");
+                "98A-2: Bridge package manifest includes ROS2 Bridge Sample");
 
             foreach (var relativePath in SampleFiles())
                 Check(File.Exists(RepoPath(relativePath)), "98A-3: sample file exists " + relativePath);
@@ -205,14 +205,32 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var relativePath in SampleMetaFiles())
                 Check(File.Exists(RepoPath(relativePath)), "98A-4: sample meta file exists " + relativePath);
 
+            var sampleAsmdef = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef");
+            Check(sampleAsmdef.Contains(
+                      "\"Unity2Foxglove.Ros2Bridge.Generated\"",
+                      StringComparison.Ordinal),
+                "98A-4b: sample assembly references the Bridge assembly that owns the Provider");
+
             var scene = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity");
             var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            const string controllerMarker =
+                "m_EditorClassIdentifier: Assembly-CSharp::Ros2BridgeSampleController";
             Check(scene.StartsWith("%YAML", StringComparison.Ordinal),
                 "98A-5a: sample scene is serialized as readable Unity YAML");
-            Check(scene.Contains("_ros2BridgeEnabled: 1")
-                  && scene.Contains("_ros2BridgeNamespace: /unity2foxglove")
-                  && scene.Contains("_defaultRos2BridgeOutputEnabled: 1"),
-                "98A-5: sample scene enables bridge namespace and default output");
+            var controllerStart = scene.IndexOf(controllerMarker, StringComparison.Ordinal);
+            Check(controllerStart >= 0, "98A-5b: sample scene serializes its Bridge controller");
+            var controllerEnd = scene.IndexOf("--- !u!", controllerStart, StringComparison.Ordinal);
+            Check(controllerEnd > controllerStart, "98A-5c: Bridge controller block is bounded");
+            var controllerBlock = scene.Substring(controllerStart, controllerEnd - controllerStart);
+            Check(scene.Contains("guid: 6e1c973bf0174cf5ae0ec73f69d8a242", StringComparison.Ordinal)
+                  && scene.Contains("_foxRunPublishTransportIds:", StringComparison.Ordinal)
+                  && scene.Contains("- unity2foxglove.ros2bridge", StringComparison.Ordinal)
+                  && controllerBlock.Contains("_provider: {fileID:", StringComparison.Ordinal)
+                  && !controllerBlock.Contains("_manager: {fileID:", StringComparison.Ordinal)
+                  && !scene.Contains("_ros2BridgeEnabled:", StringComparison.Ordinal)
+                  && !scene.Contains("_ros2BridgeOutput:", StringComparison.Ordinal),
+                "98A-5: sample scene uses the Bridge Provider and neutral Manager selection");
             foreach (var topic in RequiredProductTopics.Concat(new[] { OptionalDracoTopic }))
                 Check(scene.Contains(topic.Topic.Replace(NamespacePrefix, string.Empty)),
                     "98A-6: sample scene contains publisher topic " + topic.Topic);
@@ -241,16 +259,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDocsAndLayout()
         {
             var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
-            var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/16_ROS2_Bridge_Sample.md");
+            var docs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/16_ROS2_Bridge_Sample.md");
             var samplesDoc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
 
             Check(sampleReadme.Contains("optional Manager Inspector **ROS2 Bridge Health**")
                   && docs.Contains("not a required publish step")
                   && docs.Contains("ros2 launch"),
                 "98B-1: docs document optional health diagnostics and sidecar launch");
-            Check(samplesDoc.Contains("ROS2 Bridge Sample")
-                  && (samplesDoc.Contains("three importable samples") || samplesDoc.Contains("three prepared samples")),
-                "98B-2: sample overview documents fourth sample");
+            Check(samplesDoc.Contains("dev.unity2foxglove.ros2bridge", StringComparison.Ordinal)
+                  && samplesDoc.Contains("companion package", StringComparison.OrdinalIgnoreCase),
+                "98B-2: core sample overview routes Bridge users to the companion package");
             Check(sampleReadme.Contains("direct Unity topics such as `/tf`")
                   && sampleReadme.Contains("mirrors it to ROS2 as `/unity2foxglove/tf`"),
                 "98B-3: sample README distinguishes direct Foxglove topics from ROS2 bridge topics");
@@ -384,12 +402,15 @@ namespace Unity.FoxgloveSDK.Tests
             var phase17 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase17Validation.cs");
             var validatePackage = ReadRepoText("Scripts/package/validate_unity_package.py");
 
-            Check(phase17.Contains("samples.Count == 4") && phase17.Contains("ROS2 Bridge Sample"),
-                "98F-1: Phase17 package validation accepts four samples");
+            Check(phase17.Contains("samples.Count == 3", StringComparison.Ordinal)
+                  && phase17.Contains("dev.unity2foxglove.ros2bridge", StringComparison.Ordinal)
+                  && phase17.Contains("bridgeSamples.Count == 1", StringComparison.Ordinal),
+                "98F-1: Phase17 validates the core and Bridge sample manifests separately");
             Check(validatePackage.Contains("EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)")
+                  && validatePackage.Contains("check_ros2_bridge_package", StringComparison.Ordinal)
                   && validatePackage.Contains("\"ROS2 Bridge Sample\"")
                   && validatePackage.Contains("Samples~/Ros2BridgeSample"),
-                "98F-2: release validation expects ROS2 Bridge Sample");
+                "98F-2: release validation checks the Bridge package sample separately");
         }
 
         private static void VerifyCliWiring()

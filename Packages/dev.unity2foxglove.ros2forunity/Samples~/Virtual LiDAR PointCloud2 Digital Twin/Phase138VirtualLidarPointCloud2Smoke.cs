@@ -12,6 +12,7 @@ using Unity.FoxgloveSDK.Schemas.PointCloud;
 using UnityEngine;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using ROS2;
+using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
 [DisallowMultipleComponent]
@@ -183,7 +184,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         if (_subscribed)
             return;
 
-        _pointCloudPublisher.PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady;
+        _pointCloudPublisher.PackedPointCloudFrameReady += OnPackedPointCloudFrameReady;
         _subscribed = true;
         _warnedMissingPublisher = false;
         _statusMessage = "Subscribed to PointCloud2 Native frames.";
@@ -195,12 +196,12 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
             return;
 
         if (_pointCloudPublisher != null)
-            _pointCloudPublisher.PointCloud2NativeFrameReady -= OnPointCloud2NativeFrameReady;
+            _pointCloudPublisher.PackedPointCloudFrameReady -= OnPackedPointCloudFrameReady;
 
         _subscribed = false;
     }
 
-    private void OnPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
+    private void OnPackedPointCloudFrameReady(PackedPointCloudFrame frame)
     {
         if (frame == null)
             return;

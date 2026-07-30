@@ -312,57 +312,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     StringComparison.Ordinal));
         }
 
-        [Fact]
-        [Trait("Phase", "185-A")]
-        public void CustomDtoNullableBoolFingerprintWritesValueAndPresenceSeparately()
-        {
-            var customShape = new FoxRunRos2CustomDtoShape(
-                "Demo.OptionalFlag",
-                "demo/OptionalFlag",
-                "DemoOptionalFlag",
-                hasPublicParameterlessConstructor: true,
-                isSupported: true,
-                members: new[]
-                {
-                    new FoxRunRos2CustomDtoMemberShape(
-                        "Flag",
-                        "flag",
-                        FoxRunRos2CustomDtoMemberKind.Scalar,
-                        "System.Nullable<System.Boolean>",
-                        "bool",
-                        string.Empty,
-                        string.Empty,
-                        hasPresence: true,
-                        canRead: true,
-                        canWrite: true)
-                },
-                diagnostics: Array.Empty<string>());
-            var member = new FoxgloveSourceEmitter.TopicMember(
-                "_state",
-                "Demo.OptionalFlag",
-                "/phase185/optional-flag",
-                10f,
-                "Demo.OptionalFlag",
-                (int)FoxRunPolicy.FixedRate,
-                0f,
-                mode: (int)FoxRunFlow.PublishAndSubscribe,
-                encoding: "json",
-                typeShape: null,
-                ros2CustomDtoShape: customShape,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
 
-            var source = FoxgloveSourceEmitter.EmitClass(
-                "Demo",
-                "OptionalFlagSource",
-                new[] { member });
-
-            Assert.Contains(", __value.Flag.Value);", source, StringComparison.Ordinal);
-            Assert.Single(
-                Regex.Matches(
-                        source,
-                        @"WriteBool\(__nested, \d+, __value\.Flag\.HasValue\);")
-                    .Cast<Match>());
-        }
 
         [Fact]
         [Trait("Phase", "185-A")]

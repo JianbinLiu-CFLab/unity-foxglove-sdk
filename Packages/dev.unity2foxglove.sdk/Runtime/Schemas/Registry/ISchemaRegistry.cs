@@ -122,13 +122,6 @@ namespace Unity.FoxgloveSDK.Schemas
         {
             if (string.IsNullOrEmpty(encoding))
                 return string.Empty;
-            if (string.Equals(encoding, JsonSchemaEncoding, StringComparison.Ordinal)
-                || string.Equals(encoding, "protobuf", StringComparison.Ordinal)
-                || string.Equals(encoding, "ros2msg", StringComparison.Ordinal))
-            {
-                return encoding;
-            }
-
             return encoding.ToLowerInvariant();
         }
 

@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("FoxRunRos2CopyContext", registrar, StringComparison.Ordinal);
             Assert.Contains("public sealed class FoxRunRos2GeneratedContract", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunFlow mode", contract, StringComparison.Ordinal);
-            Assert.Contains("FoxRunEndpoint source", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2RouteEndpoint source", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunQosProfile qosProfile", contract, StringComparison.Ordinal);
             Assert.Contains("bool hasExplicitQosProfile", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunQosReliability qosReliability", contract, StringComparison.Ordinal);
@@ -83,16 +83,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
-        public void SharedEmitterRemainsRosAssemblyFreeAndHasNoRuntimeGenericConstruction()
+        public void R2fuEmitterHasNoRuntimeGenericConstruction()
         {
             var root = FindRepoRoot();
             var emitter = File.ReadAllText(Path.Combine(
                 root,
                 "Packages",
-                "dev.unity2foxglove.sdk",
+                "dev.unity2foxglove.ros2forunity",
                 "Editor",
-                "Shared",
-                "FoxgloveSourceEmitter",
+                "Native",
+                "FoxRun",
                 "Ros2InputDispatchEmitter.cs"));
 
             Assert.DoesNotContain("using ROS2", emitter, StringComparison.Ordinal);

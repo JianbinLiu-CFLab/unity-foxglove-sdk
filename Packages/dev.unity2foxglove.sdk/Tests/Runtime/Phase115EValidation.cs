@@ -393,11 +393,6 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
                 var isArray = TryGetArrayElementType(memberType, out var elementType);
-                // Phase181 extends the semantic descriptor with the custom
-                // ROS2 DTO candidate.  This fixture contains no packaged
-                // ROS2 message types, so reflect the same candidate shape the
-                // Roslyn host now produces for ordinary FoxRun members.
-                var customDtoShape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(memberType);
                 members.Add(new FoxRunReflectionGenerationMember(
                     declaringType.Namespace ?? string.Empty,
                     declaringType.Name,
@@ -416,8 +411,6 @@ namespace Unity.FoxgloveSDK.Tests
                     rawMemberOrder: rawMemberOrder,
                     conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
                     typeShape: FoxRunReflectionTypeShapeBuilder.Build(memberType),
-                    ros2CustomDtoShape: customDtoShape,
-                    ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
                     namedArgumentPresence: presence));
             }
         }

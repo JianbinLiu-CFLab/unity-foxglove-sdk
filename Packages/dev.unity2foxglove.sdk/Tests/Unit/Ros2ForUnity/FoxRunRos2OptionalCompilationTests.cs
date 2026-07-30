@@ -317,7 +317,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Empty(predefined.CompilerErrors);
             Assert.Empty(customReferenced.CompilerErrors);
 
-            Assert.Contains(customMissing.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(
+                customMissing.GeneratorDiagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Empty(customMissing.CompilerErrors);
             Assert.DoesNotContain(
                 customMissing.GeneratedSource,
@@ -375,14 +377,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 {
                     typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunFlow),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunEndpoint),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosProfile),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2RouteEndpoint),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosProfile),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosReliability),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosReliability),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosDurability),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosDurability),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosHistory),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosHistory),
                     typeof(bool),
                     typeof(int),
                     typeof(bool),
@@ -482,8 +484,8 @@ namespace Demo
     {
         [Unity.FoxgloveSDK.Components.FoxRun(""/native/string"",
             Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-            Source = Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
-            QoS = Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData,
+            SubscribeTransportId = ""unity2foxglove.r2fu"",
+            Reliability = Unity.FoxgloveSDK.Components.FoxRunDeliveryReliability.BestEffort,
             SchemaName = ""std_msgs/msg/String"")]
         private std_msgs.msg.String _incoming;
     }
@@ -544,7 +546,22 @@ namespace Demo
                     "FoxRunRos2CopyBudget.cs",
                     "FoxRunRos2GeneratedContract.cs"
                 }
-                .Select(file => CSharpSyntaxTree.ParseText(Text(nativeRoot + file), parseOptions));
+                .Select(file => CSharpSyntaxTree.ParseText(
+                    Text(nativeRoot + file),
+                    parseOptions))
+                .Concat(new[]
+                {
+                    CSharpSyntaxTree.ParseText(
+                        Text(
+                            "Packages/dev.unity2foxglove.ros2forunity/"
+                            + "Runtime/FoxRunRos2Qos.cs"),
+                        parseOptions),
+                    CSharpSyntaxTree.ParseText(
+                        "namespace Unity2Foxglove.Ros2ForUnity.Native"
+                        + "{ public enum FoxRunRos2RouteEndpoint"
+                        + "{ WebSocket = 1, R2fu = 2 } }",
+                        parseOptions)
+                });
             var compilation = CSharpCompilation.Create(
                 "Unity2Foxglove.Ros2ForUnity.Native",
                 trees,
@@ -581,13 +598,8 @@ namespace Demo
                     "FoxRunPolicy.cs",
                     Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
                     "FoxRunEncoding.cs",
-                    "FoxRunEndpoint.cs",
-                    "FoxRunQosProfile.cs",
-                    "FoxRunQosReliability.cs",
-                    "FoxRunQosDurability.cs",
-                    "FoxRunQosHistory.cs",
-                    Path.Combine("..", "FoxRun", "FoxRunResolvedQos.cs"),
-                    Path.Combine("..", "FoxRun", "FoxRunRos2QosProfileResolver.cs")
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportId.cs"),
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportContracts.cs")
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(attributeRoot, file))));
             var compilation = CSharpCompilation.Create(

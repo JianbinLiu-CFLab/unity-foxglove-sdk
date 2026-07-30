@@ -38,10 +38,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 encoding:
                     FoxRunGenerationDescriptorConstants.MessagePackEncoding,
                 typeShape: FoxRunTypeShape.Canonical("int32"),
-                source:
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                subscribeTransportId:
+                    FoxgloveWebSocketTransport.Id,
                 namedArgumentPresence:
-                    FoxRunNamedArgumentPresence.Source
+                    FoxRunNamedArgumentPresence.SubscribeTransportId
                     | FoxRunNamedArgumentPresence.Encoding);
 
             var generated = FoxgloveSourceEmitter.EmitClass(

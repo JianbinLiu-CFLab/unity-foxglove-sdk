@@ -50,7 +50,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
             }
             finally
             {
-                packed.RecycleData();
+                packed.Dispose();
             }
         }
 
@@ -68,7 +68,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
             }
             finally
             {
-                packed.RecycleData();
+                packed.Dispose();
             }
         }
 

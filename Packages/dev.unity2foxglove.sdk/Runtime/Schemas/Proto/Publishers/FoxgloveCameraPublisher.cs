@@ -103,10 +103,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private MonoBehaviour _sensorUnitProfile;
         [Tooltip("Use the manager shared sensor clock so camera frames align with IMU/LiDAR timestamps.")]
         [SerializeField] private bool _useSharedSensorClock = true;
-        [Tooltip("Publish JPEG as the standard ROS2 compressed camera image schema when ROS2 encoding is selected.")]
-        [SerializeField] private bool _publishStandardRos2CompressedImage;
-        [Tooltip("Publish raw standard ROS2 Image frames when enabled and an optional R2FU/native ROS2 adapter subscribes to the raw image event.")]
-        [SerializeField] private bool _publishStandardRos2RawImage;
         [Tooltip("Default raw topic when no override profile topic is set.")]
         [SerializeField] private string _sensorCameraRawImageTopic = "/unity/sensor/camera/image";
 
@@ -130,18 +126,11 @@ namespace Unity.FoxgloveSDK.Components
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
         /// <summary>
         /// Raised after the JPEG path produces a standard compressed image frame.
-        /// Optional ROS2 adapters translate this core-SDK DTO into native ROS messages.
+        /// Optional Providers can translate this core-SDK DTO into their wire contract.
         /// </summary>
         public event Action<SensorCompressedImageFrame> SensorCompressedImageReady;
-        /// <summary>Raised after a ROS2 raw image frame is built from readback data.</summary>
+        /// <summary>Raised after a raw image frame is built from readback data.</summary>
         public event Action<SensorRawImageFrame> SensorRawImageReady;
-
-        /// <summary>Whether this component is configured for standard ROS2 compressed image output.</summary>
-        public bool IsStandardRos2CompressedImageOutput
-            => ActiveProfile.Mode == CameraOutputMode.Jpeg && _publishStandardRos2CompressedImage;
-        /// <summary>Whether this component is configured for standard ROS2 raw image output.</summary>
-        public bool IsStandardRos2RawImageOutput
-            => _publishStandardRos2RawImage;
 
         /// <summary>Resolved topic for the standard camera image stream.</summary>
         public string SensorCameraImageTopic => ResolveSensorCameraImageTopic();
@@ -436,12 +425,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool HasSensorCompressedImageDemand(CameraVideoOutputProfile profile)
             => CameraSensorProfileResolver.HasCompressedImageDemand(
-                profile.Mode == CameraOutputMode.Jpeg && _publishStandardRos2CompressedImage,
-                SensorCompressedImageReady != null);
+                profile.Mode == CameraOutputMode.Jpeg
+                && SensorCompressedImageReady != null);
 
         private bool HasSensorRawImageDemand()
             => CameraSensorProfileResolver.HasRawImageDemand(
-                IsStandardRos2RawImageOutput,
                 SensorRawImageReady != null);
 
         private ulong ResolveCameraCaptureUnixNs()
@@ -472,8 +460,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             CameraSensorProfileResolver.ApplyDefaults(
                 _sensorUnitProfile,
-                _publishStandardRos2CompressedImage,
-                _publishStandardRos2RawImage,
                 ActiveProfile.DefaultTopic,
                 _sensorCameraRawImageTopic,
                 ref _topic,

@@ -61,11 +61,14 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         {
             var state = new FoxRunPublishSessionState();
             var snapshot = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
+                new[]
+                {
+                    new FoxRunTransportId(
+                        FoxRunRos2TransportProvider.IdValue)
+                },
                 FoxRunEncoding.JSON,
                 10f,
-                FoxRunResolvedQos.SensorData,
-                FoxRunResolvedQos.Default);
+                FoxRunDeliveryPolicy.ProviderDefault);
             var tracker = new FoxRunRos2CustomPublisherSessionTracker();
 
             Assert.True(tracker.Observe(snapshot));

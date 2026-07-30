@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Emits the <c>FoxgloveLog_GetTopic</c> switch method and provides
     /// publish-mode literal translation for generated FoxRun partial classes.
     /// </summary>
-    internal static class TopicMetadataEmitter
+    public static class TopicMetadataEmitter
     {
         private static readonly object Sha256Gate = new();
         // Process-lifetime generator helper: keep one SHA256 instance to support
@@ -45,36 +45,44 @@ namespace Unity.FoxgloveSDK.Editor
                 var mode = topicModes[topics[i]];
                 var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
-                var endpoint = fields[0];
+                var declaration = fields[0];
+                var hasExplicitDelivery =
+                    HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Reliability)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Durability)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.History)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Depth);
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, declaredEncoding: {11}, hasExplicitEncoding: {12}, qosProfile: {13}, hasExplicitQosProfile: {14}, qosReliability: {15}, hasExplicitReliability: {16}, qosDurability: {17}, hasExplicitDurability: {18}, qosHistory: {19}, hasExplicitHistory: {20}, qosDepth: {21}, hasExplicitDepth: {22}, hasExplicitHz: {23});",
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, publishTransportIds: {7}, subscribeTransportId: {8}, declaredEncoding: {9}, hasExplicitEncoding: {10}, deliveryPolicy: new FoxRunDeliveryPolicy({11}, {12}, {13}, {14}), hasExplicitDeliveryPolicy: {15}, hasExplicitHz: {16});",
                     pad,
                     i,
                     topic,
                     hz,
                     PolicyLiteral(mode),
                     tolerance,
-                    endpoint.Mode,
-                    InputDispatchEmitter.SourceLiteral(endpoint.Source),
+                    declaration.Mode,
+                    TransportIdsLiteral(
+                        declaration.PublishTransportIds),
+                    NullableStringLiteral(
+                        declaration.SubscribeTransportId),
+                    EncodingLiteral(declaration.Encoding),
                     InputDispatchEmitter.BoolLiteral(
-                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Source)
-                        == FoxRunNamedArgumentPresence.Source),
-                    InputDispatchEmitter.TargetsLiteral(endpoint.Targets),
+                        HasExplicit(
+                            declaration,
+                            FoxRunNamedArgumentPresence.Encoding)),
+                    ReliabilityLiteral(declaration.Reliability),
+                    DurabilityLiteral(declaration.Durability),
+                    HistoryLiteral(declaration.History),
+                    declaration.Depth,
                     InputDispatchEmitter.BoolLiteral(
-                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
-                        == FoxRunNamedArgumentPresence.Targets),
-                    EncodingLiteral(endpoint.Encoding),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Encoding)),
-                    QosProfileLiteral(endpoint.QosProfile),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.QoS)),
-                    QosReliabilityLiteral(endpoint.QosReliability),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Reliability)),
-                    QosDurabilityLiteral(endpoint.QosDurability),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Durability)),
-                    QosHistoryLiteral(endpoint.QosHistory),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.History)),
-                    endpoint.QosDepth,
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Depth)),
+                        hasExplicitDelivery),
                     InputDispatchEmitter.BoolLiteral(hasExplicitHz)));
             }
             sb.AppendLine($"{pad}            default: return default;");
@@ -214,49 +222,62 @@ namespace Unity.FoxgloveSDK.Editor
             return "(FoxRunEncoding)0";
         }
 
-        private static string QosProfileLiteral(string value)
+        internal static string ReliabilityLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.Default";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SensorData";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SystemDefault";
-            return "(FoxRunQosProfile)0";
+            if (string.Equals(value, "reliable", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.Reliable";
+            if (string.Equals(value, "best-effort", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.BestEffort";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.SystemDefault";
+            return "FoxRunDeliveryReliability.ProviderDefault";
         }
 
-        private static string QosReliabilityLiteral(string value)
+        internal static string DurabilityLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal))
-                return "FoxRunQosReliability.Reliable";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal))
-                return "FoxRunQosReliability.BestEffort";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosReliability.SystemDefault";
-            return "(FoxRunQosReliability)0";
+            if (string.Equals(value, "volatile", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.Volatile";
+            if (string.Equals(value, "transient-local", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.TransientLocal";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.SystemDefault";
+            return "FoxRunDeliveryDurability.ProviderDefault";
         }
 
-        private static string QosDurabilityLiteral(string value)
+        internal static string HistoryLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal))
-                return "FoxRunQosDurability.Volatile";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal))
-                return "FoxRunQosDurability.TransientLocal";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosDurability.SystemDefault";
-            return "(FoxRunQosDurability)0";
+            if (string.Equals(value, "keep-last", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepLast";
+            if (string.Equals(value, "keep-all", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepAll";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.SystemDefault";
+            return "FoxRunDeliveryHistory.ProviderDefault";
         }
 
-        private static string QosHistoryLiteral(string value)
+        internal static string TransportIdsLiteral(
+            IReadOnlyList<string> values)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal))
-                return "FoxRunQosHistory.KeepLast";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal))
-                return "FoxRunQosHistory.KeepAll";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosHistory.SystemDefault";
-            return "(FoxRunQosHistory)0";
+            if (values == null)
+                return "null";
+            return "new string[] { "
+                   + string.Join(
+                       ", ",
+                       values.Select(
+                           value =>
+                               "\""
+                               + StringLiteralEmitter
+                                   .CSharpStringLiteral(value)
+                               + "\""))
+                   + " }";
         }
+
+        internal static string NullableStringLiteral(string value)
+            => value == null
+                ? "null"
+                : "\""
+                  + StringLiteralEmitter.CSharpStringLiteral(value)
+                  + "\"";
 
         internal static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
@@ -312,7 +333,7 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
-        internal static string Sha256Hex(string value)
+        public static string Sha256Hex(string value)
         {
             var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
             byte[] hash;

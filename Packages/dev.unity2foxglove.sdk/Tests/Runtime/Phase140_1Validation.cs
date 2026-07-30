@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyUnityThreadContractsAreExplicit()
         {
-            var ros2Policy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/Ros2NativeOutputPolicy.cs");
+            var ros2Policy = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2NativeOutputPolicy.cs");
             var sharedClock = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveSharedSensorClock.cs");
 
             Check(ros2Policy.Contains("Unity main thread", StringComparison.Ordinal)

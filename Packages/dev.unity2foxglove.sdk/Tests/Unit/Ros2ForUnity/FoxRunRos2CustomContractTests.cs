@@ -54,9 +54,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(contract.IsPublishAndSubscribe);
             Assert.Equal("/phase181/state", contract.Topic);
             Assert.Equal("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", contract.BaseRuntimePackageId);
-            Assert.Equal((FoxRunEndpoint)0, contract.DeclaredSource);
+            Assert.Equal((FoxRunRos2RouteEndpoint)0, contract.DeclaredSource);
             Assert.False(contract.HasExplicitSource);
-            Assert.Equal((FoxRunEndpoint)0, contract.DeclaredTargets);
+            Assert.Equal((FoxRunRos2RouteEndpoint)0, contract.DeclaredTargets);
             Assert.False(contract.HasExplicitTargets);
             Assert.True(contract.HasExplicitQos);
             var qos = contract.ResolveQos(FoxRunResolvedQos.SensorData);
@@ -74,15 +74,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             var shouldRegister = FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
                 contract,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Foxglove,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket,
                 out var resolution);
 
             Assert.False(shouldRegister);
             Assert.False(resolution.Success);
-            Assert.Equal(FoxRunEndpointDiagnosticCode.QosRequiresRos2, resolution.DiagnosticCode);
+            Assert.Equal(FoxRunRos2RouteDiagnosticCode.QosRequiresR2fu, resolution.DiagnosticCode);
             Assert.Equal(
-                "FoxRun QoS requires at least one resolved ROS 2 direction.",
+                "R2FU QoS requires an R2FU direction.",
                 resolution.DiagnosticMessage);
         }
 
@@ -97,21 +97,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 mode: FoxRunFlow.Publish,
                 qosProfile: FoxRunQosProfile.SensorData,
                 hasExplicitQosProfile: true,
-                declaredTargets: FoxRunEndpoint.Ros2Bridge,
+                declaredTargets: FoxRunRos2RouteEndpoint.WebSocket,
                 hasExplicitTargets: true);
 
             Assert.True(FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
                 inherited,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Ros2Native,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.R2fu,
                 out var nativeResolution));
             Assert.True(nativeResolution.Success);
             Assert.False(FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
                 bridgeOnly,
-                defaultSource: FoxRunEndpoint.Foxglove,
-                defaultTargets: FoxRunEndpoint.Ros2Native,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.R2fu,
                 out var bridgeResolution));
-            Assert.True(bridgeResolution.Success);
+            Assert.False(bridgeResolution.Success);
+            Assert.Equal(
+                FoxRunRos2RouteDiagnosticCode.QosRequiresR2fu,
+                bridgeResolution.DiagnosticCode);
         }
 
         [Fact]
@@ -213,7 +216,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             FoxRunFlow mode,
             FoxRunQosProfile qosProfile,
             bool hasExplicitQosProfile,
-            FoxRunEndpoint declaredTargets = 0,
+            FoxRunRos2RouteEndpoint declaredTargets = 0,
             bool hasExplicitTargets = false)
             => new(
                 "phase184.runtime-constraint",
@@ -310,7 +313,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     _contract.Topic,
                     10f,
                     FoxRunPolicy.Trigger,
-                    0f);
+                    0f,
+                    FoxRunFlow.Publish,
+                    new[]
+                    {
+                        FoxRunRos2TransportProvider.IdValue
+                    },
+                    subscribeTransportId: null,
+                    declaredEncoding: 0,
+                    hasExplicitEncoding: false,
+                    deliveryPolicy:
+                        FoxRunDeliveryPolicy.ProviderDefault,
+                    hasExplicitDeliveryPolicy: false);
 
             public FoxTopicContract FoxgloveLog_GetContract(int index)
                 => _contract;

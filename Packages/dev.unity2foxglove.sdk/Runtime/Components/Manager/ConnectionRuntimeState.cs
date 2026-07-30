@@ -13,10 +13,7 @@ namespace Unity.FoxgloveSDK.Components
             NextChannelId = firstAutoChannelId;
         }
 
-        internal string Ros2BridgeSetupError = string.Empty;
-        internal ulong Ros2BridgeSequence;
         internal bool LastFoxgloveOutputEnabled;
-        internal bool LastRos2BridgeEnabled;
         internal bool OutputModeWatchInitialized;
         internal int NextChannelId;
         internal ulong ChannelSessionGeneration;
@@ -36,13 +33,5 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        internal ulong NextRos2BridgeSequence()
-        {
-            unchecked
-            {
-                Ros2BridgeSequence++;
-                return Ros2BridgeSequence;
-            }
-        }
     }
 }

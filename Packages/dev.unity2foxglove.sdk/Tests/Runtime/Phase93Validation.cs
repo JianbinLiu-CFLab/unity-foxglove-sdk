@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -206,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
             var productTransport = new Phase93FakeTransport();
             using (var runtime = new FoxgloveRuntime(productTransport, new SystemClock(), registry))
             {
-                runtime.Start("phase93-product-boundary", "127.0.0.1", 9393, enableCdrClientPublish: false);
+                runtime.Start("phase93-product-boundary", "127.0.0.1", 9393);
                 productTransport.SimulateConnect(1);
             }
 
@@ -216,7 +217,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var transport = new Phase93FakeTransport();
             using var session = new FoxgloveSession("phase93-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             for (var i = 0; i < samples.Count; i++)

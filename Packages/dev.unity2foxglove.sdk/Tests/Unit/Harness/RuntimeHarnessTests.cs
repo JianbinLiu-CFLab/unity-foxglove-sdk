@@ -345,7 +345,13 @@ namespace Unity.FoxgloveSDK.UnitTests
                     "dotnet",
                     repoRoot,
                     HarnessBuildTimeoutMilliseconds,
-                    new[] { "build", project, "--nologo" });
+                    new[]
+                    {
+                        "build",
+                        project,
+                        "--nologo",
+                        "--no-restore"
+                    });
                 if (result.ExitCode != 0)
                     throw new InvalidOperationException(
                         "Failed to build runtime harness before CLI tests." + Environment.NewLine +

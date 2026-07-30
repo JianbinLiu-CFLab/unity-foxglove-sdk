@@ -85,7 +85,7 @@ If generated FoxRun runtime schema info is present, MCAP recording writes a meta
 
 Unity replay reads this metadata after the MCAP file is loaded and before playback starts. If the recorded `globalManifestHash` does not match the current runtime `globalManifestHash`, replay is blocked with a short-hash mismatch diagnostic. In explicit replay mode, a confirmed mismatch fails closed: the Manager aborts startup and does not restore live publishers as a fallback. Missing recorded metadata, missing current schema info, or malformed recorded metadata only produces a warning so older MCAP files remain usable.
 
-The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the FoxRun summary, protobuf registry, ROS2 `.msg` registry, and typed publisher catalog, but Unity replay does not use its aggregate hash, protobuf hash, or ROS2 hash as replay guard keys. Replay compatibility remains governed only by the FoxRun `globalManifestHash` recorded in MCAP metadata.
+The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the core FoxRun summary, protobuf registry, and typed publisher catalog, but Unity replay does not use its aggregate or protobuf hash as a replay guard key. Optional transport Providers own their additional schema evidence. Replay compatibility remains governed only by the FoxRun `globalManifestHash` recorded in MCAP metadata.
 
 ## 10. Schema Evidence Identity Modes
 

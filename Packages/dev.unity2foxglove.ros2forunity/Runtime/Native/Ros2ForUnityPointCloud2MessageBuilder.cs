@@ -23,7 +23,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static sensor_msgs.msg.PointField[] s_cachedFields;
 
-        public static sensor_msgs.msg.PointCloud2 Build(PointCloud2NativeFrame frame)
+        public static sensor_msgs.msg.PointCloud2 Build(PackedPointCloudFrame frame)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));

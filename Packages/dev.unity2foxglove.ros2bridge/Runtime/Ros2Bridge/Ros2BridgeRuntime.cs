@@ -95,7 +95,7 @@ namespace Unity2Foxglove.Ros2Bridge
         internal Ros2BridgePublisherReadiness PreparePublisher(
             string topic,
             string schemaName,
-            Components.FoxRunResolvedQos qos,
+            FoxRunResolvedQos qos,
             out string reason)
         {
             try
@@ -929,7 +929,7 @@ namespace Unity2Foxglove.Ros2Bridge
             internal PublisherPreparationKey(
                 string topic,
                 string schemaName,
-                Components.FoxRunResolvedQos qos)
+                FoxRunResolvedQos qos)
             {
                 Topic = topic;
                 SchemaName = schemaName;
@@ -938,7 +938,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
             internal string Topic { get; }
             internal string SchemaName { get; }
-            internal Components.FoxRunResolvedQos Qos { get; }
+            internal FoxRunResolvedQos Qos { get; }
 
             public bool Equals(PublisherPreparationKey other)
                 => string.Equals(Topic, other.Topic, StringComparison.Ordinal)

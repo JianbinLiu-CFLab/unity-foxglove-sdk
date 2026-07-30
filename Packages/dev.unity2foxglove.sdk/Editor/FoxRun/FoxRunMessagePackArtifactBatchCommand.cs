@@ -71,12 +71,81 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(configured))
                 throw new InvalidOperationException("PHASE185_EVIDENCE_ROOT is required.");
 
-            var repositoryRoot = Path.GetFullPath(FoxRunRos2InterfacePackageCommand.GetRepositoryRoot());
-            var buildRoot = Path.Combine(repositoryRoot, "build") + Path.DirectorySeparatorChar;
+            var repositoryRoot = FindRepositoryRoot();
             var fullPath = Path.GetFullPath(configured);
-            if (!fullPath.StartsWith(buildRoot, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Phase185 evidence must remain below the repository build directory.");
+            var buildRoot = ComparablePath(
+                    Path.Combine(repositoryRoot, "build"))
+                + Path.DirectorySeparatorChar;
+            var comparablePath = ComparablePath(fullPath);
+            if (!comparablePath.StartsWith(
+                    buildRoot,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Phase185 evidence must remain below the repository build directory. "
+                    + "buildRoot='" + buildRoot + "', "
+                    + "evidenceRoot='" + comparablePath + "'.");
+            }
+
             return fullPath;
+        }
+
+        private static string ComparablePath(string path)
+        {
+            var fullPath = Path.GetFullPath(path)
+                .TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar);
+            const string extendedUncPrefix = @"\\?\UNC\";
+            const string extendedPrefix = @"\\?\";
+            if (fullPath.StartsWith(
+                    extendedUncPrefix,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return @"\\" + fullPath.Substring(
+                    extendedUncPrefix.Length);
+            }
+
+            return fullPath.StartsWith(
+                    extendedPrefix,
+                    StringComparison.OrdinalIgnoreCase)
+                ? fullPath.Substring(extendedPrefix.Length)
+                : fullPath;
+        }
+
+        private static string FindRepositoryRoot()
+        {
+            var candidates = new[]
+            {
+                Environment.CurrentDirectory,
+                Application.dataPath
+            };
+            foreach (var candidate in candidates)
+            {
+                var directory = new DirectoryInfo(
+                    Path.GetFullPath(candidate));
+                while (directory != null)
+                {
+                    var gitMarker = Path.Combine(
+                        directory.FullName,
+                        ".git");
+                    if ((Directory.Exists(gitMarker)
+                         || File.Exists(gitMarker))
+                        && File.Exists(Path.Combine(
+                            directory.FullName,
+                            "Packages",
+                            "dev.unity2foxglove.sdk",
+                            "package.json")))
+                    {
+                        return directory.FullName;
+                    }
+
+                    directory = directory.Parent;
+                }
+            }
+
+            throw new DirectoryNotFoundException(
+                "Could not locate the Unity2Foxglove repository root.");
         }
     }
 }

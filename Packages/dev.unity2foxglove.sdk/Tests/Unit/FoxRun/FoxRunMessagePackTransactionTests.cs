@@ -152,7 +152,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var router = new FoxRunInputRouter(maxPayloadBytes: 4)
             {
                 DefaultSubscriptionEncoding = FoxRunEncoding.MessagePack,
-                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove
+                DefaultSubscribeTransportId =
+                    FoxgloveWebSocketTransport.Id
             };
             RegisterManifest(source, topic);
             try
@@ -242,9 +243,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     topic,
                     FoxRunEncoding.MessagePack,
                     FoxRunFlow.Subscribe,
-                    FoxRunEndpoint.Foxglove,
+                    publishTransportIds: null,
+                    subscribeTransportId:
+                        FoxgloveWebSocketTransport.Id,
+                    hasExplicitEncoding: true,
                     supportsWebSocket: true,
-                    supportsRos2Native: false);
+                    deliveryPolicy:
+                        FoxRunDeliveryPolicy.ProviderDefault,
+                    hasExplicitDeliveryPolicy: false);
             }
 
             internal int LegacyStageCount { get; private set; }

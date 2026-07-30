@@ -2,20 +2,19 @@
 
 This source-only sample demonstrates Phase181 custom FoxRun DTO transport for
 the selected ROS2 For Unity runtime and its matching static typesupport add-on.
-This is the optional ROS2 Native path. Normal Foxglove WebSocket and
-localhost-sidecar Bridge projects use `dev.unity2foxglove.sdk` alone; Bridge is
-publish-only and is not exercised by this sample.
+This is the optional ROS2 Native Provider path. Foxglove WebSocket needs only
+`dev.unity2foxglove.sdk`; the localhost sidecar Bridge instead uses the
+independent `dev.unity2foxglove.ros2bridge` package and is not exercised here.
 
 It contains three independent contracts:
 
-- **Native Publish** explicitly selects
-  `Targets = FoxRunEndpoint.Ros2Native` with official
-  `QoS = FoxRunQosProfile.Default`.
-- **Native Subscribe** explicitly selects
-  `Source = FoxRunEndpoint.Ros2Native` and applies a managed DTO on Unity's
-  main thread.
-- **Native PublishAndSubscribe** explicitly selects native ROS2 as its source
-  and Foxglove JSON as its output target.
+- **Native Publish** selects
+  `PublishTransportIds = new[] { FoxRunRos2TransportProvider.IdValue }`.
+- **Native Subscribe** selects
+  `SubscribeTransportId = FoxRunRos2TransportProvider.IdValue` and applies a
+  managed DTO on Unity's main thread.
+- **Native PublishAndSubscribe** selects the R2FU Provider for input and
+  `FoxgloveWebSocketTransport.Id` for JSON output.
 
 The full-duplex declaration is a diagnostic integration example. Prefer
 separate one-way declarations when production ownership must be unambiguous.
@@ -41,8 +40,9 @@ custom DTO contracts can register.
    Transport > ROS 2 Native Runtime (R2FU) — Shared** section.
 3. Import this sample and add `Phase181FoxRunCustomRos2Interface` to a scene
    with a `FoxgloveManager`.
-4. Enable native ROS2 output and/or FoxRun subscriptions according to the
-   direction being exercised.
+4. In the Manager, select `unity2foxglove.r2fu` for the required publish and/or
+   subscribe direction. The Inspector creates the hidden same-GameObject
+   Provider companion and enables subscriptions when requested.
 
 For Windows-local bring-up, use the matching distro's Phase181 peer helper
 after the Unity scene has reported its custom-interface READY marker. Linux and

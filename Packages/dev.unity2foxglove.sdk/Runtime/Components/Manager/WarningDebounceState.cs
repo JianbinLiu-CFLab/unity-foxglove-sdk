@@ -8,13 +8,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     internal sealed class WarningDebounceState
     {
-        internal readonly object Ros2BridgePublishWarningGate = new object();
-
         internal bool WarnedNotRunning;
         internal string LastInvalidPublishTopicWarningKey;
-        internal string LastInvalidRos2SchemaWarningKey;
-        internal string LastRos2BridgePublishWarningKey;
-        internal long LastRos2BridgePublishWarningTicks;
         internal long LastClientEventOverflowWarningTicks;
 
         internal void ResetNotRunning()

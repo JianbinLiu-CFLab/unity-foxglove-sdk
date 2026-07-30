@@ -12,7 +12,6 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -58,8 +57,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, HideInInspector] private FoxgloveTransportMode _transportModeBeforeOutputDisabled = FoxgloveTransportMode.WebSocket;
         [Tooltip("When unchecked, the WebSocket server is disabled (transport = None).")]
         [SerializeField] private bool _foxgloveOutputEnabled = true;
-        [Tooltip("Global policy flag for R2FU native DDS output. R2FU components query this at runtime. Default off; check to enable R2FU output.")]
-        [SerializeField] private bool _ros2NativeEnabled;
 
         [Header("Diagnostics")]
         [Tooltip("Enable optional Unity Profiler markers for SDK diagnostics. Leave disabled for normal runs.")]
@@ -73,31 +70,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private GlobalEncoding _defaultPublisherEncoding = GlobalEncoding.Protobuf;
         [Tooltip("When enabled, individual publishers can override the global default.")]
         [SerializeField] private bool _allowPublisherOverride = true;
-
-        [Tooltip("Enable the optional localhost ROS2 Bridge mirror output. Normal Foxglove WebSocket output is unchanged.")]
-        [SerializeField] private bool _ros2BridgeEnabled;
-        [SerializeField] private string _ros2BridgeHost = "127.0.0.1";
-        [SerializeField, Min(1)] private int _ros2BridgePort = 8767;
-        [SerializeField] private bool _ros2BridgeAutoConnect = true;
-        [SerializeField] private bool _defaultRos2BridgeOutputEnabled;
-        [SerializeField] private bool _allowPublisherRos2BridgeOverride = true;
-        [Tooltip("Optional ROS2 Bridge namespace prefix, for example /robot1. WebSocket topics are unchanged.")]
-        [SerializeField] private string _ros2BridgeNamespace = "";
-        private string _cachedRos2BridgeNamespace;
-        private bool _ros2BridgeNamespaceCacheValid;
-        [FormerlySerializedAs("_ros2BridgeQosPreset")]
-        [SerializeField, HideInInspector] private int _legacyRos2BridgeQosPreset;
-        [FormerlySerializedAs("_ros2BridgeCustomReliability")]
-        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomReliability;
-        [FormerlySerializedAs("_ros2BridgeCustomDurability")]
-        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomDurability;
-        [FormerlySerializedAs("_ros2BridgeCustomDepth")]
-        [SerializeField, HideInInspector] private int _legacyRos2BridgeCustomDepth = 10;
-        [SerializeField, HideInInspector] private int _ros2BridgeQosSerializationVersion;
-        [SerializeField] private FoxRunQosProfileSettings _ros2BridgeQos = new();
-        [SerializeField, Min(1)] private int _ros2BridgeQueueCapacity = 1024;
-        [SerializeField, Min(1)] private int _ros2BridgeReconnectIntervalMs = 1000;
-        [SerializeField, Min(1)] private int _ros2BridgeSendTimeoutMs = 1000;
 
         [SerializeField, HideInInspector] private CoordinateMode _coordinateMode = CoordinateMode.RightHand;
         [SerializeField] private CoordinateMode _outputCoordinateMode = CoordinateMode.RightHand;
@@ -314,87 +286,6 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Whether individual publishers can override the global encoding.</summary>
         public bool AllowPublisherOverride => _allowPublisherOverride;
 
-        /// <summary>Whether the optional ROS2 Bridge mirror output is enabled.</summary>
-        public bool Ros2BridgeEnabled => _ros2BridgeEnabled;
-
-        /// <summary>Global policy flag for R2FU native DDS output. R2FU components check this at runtime.</summary>
-        public bool Ros2NativeEnabled => _ros2NativeEnabled;
-
-        /// <summary>Manager-level default for publisher bridge output when the bridge master switch is enabled.</summary>
-        public bool DefaultRos2BridgeOutputEnabled => _defaultRos2BridgeOutputEnabled;
-
-        /// <summary>Whether individual publishers can override the manager ROS2 Bridge output default.</summary>
-        public bool AllowPublisherRos2BridgeOverride => _allowPublisherRos2BridgeOverride;
-
-        /// <summary>Optional manager-level namespace applied only to ROS2 Bridge output topics.</summary>
-        public string Ros2BridgeNamespace
-        {
-            get
-            {
-                if (!_ros2BridgeNamespaceCacheValid)
-                {
-                    _cachedRos2BridgeNamespace =
-                        NormalizeLegacyProviderNamespace(_ros2BridgeNamespace);
-                    _ros2BridgeNamespaceCacheValid = true;
-                }
-
-                return _cachedRos2BridgeNamespace;
-            }
-        }
-
-        private void InvalidateRos2BridgeNamespaceCache()
-        {
-            _ros2BridgeNamespaceCacheValid = false;
-        }
-
-        /// <summary>
-        /// Resolve the effective ROS2 Bridge QoS for the current publish
-        /// session. An active session returns its immutable captured value;
-        /// otherwise this returns the value configured for the next session.
-        /// </summary>
-        public FoxRunResolvedQos ResolveRos2BridgeQos()
-            => ActiveFoxRunBridgePublishQos;
-
-        /// <summary>
-        /// Resolve the configured ROS2 Bridge QoS that will be captured by the
-        /// next publish session.
-        /// </summary>
-        private FoxRunResolvedQos ResolveConfiguredRos2BridgeQos()
-        {
-            _ros2BridgeQos ??= new FoxRunQosProfileSettings();
-            return _ros2BridgeQos.Resolve();
-        }
-
-        /// <summary>Resolve an effective ROS2 Bridge topic without mutating the publisher's WebSocket topic.</summary>
-        public bool TryResolveRos2BridgeTopic(string publisherTopic, string overrideTopic, out string effectiveTopic, out string error)
-        {
-            var selected = string.IsNullOrWhiteSpace(overrideTopic)
-                ? publisherTopic
-                : overrideTopic;
-            if (string.IsNullOrWhiteSpace(selected))
-            {
-                effectiveTopic = string.Empty;
-                error = "Provider topic is required.";
-                return false;
-            }
-
-            selected = selected.Trim();
-            if (!selected.StartsWith("/", System.StringComparison.Ordinal))
-                selected = "/" + selected;
-            var prefix = NormalizeLegacyProviderNamespace(_ros2BridgeNamespace);
-            effectiveTopic = string.IsNullOrEmpty(prefix)
-                ? selected
-                : prefix + selected;
-            error = string.Empty;
-            return true;
-        }
-
-        /// <summary>Resolve an effective ROS2 Bridge topic, or an empty string when the profile is invalid.</summary>
-        public string ResolveRos2BridgeTopic(string publisherTopic, string overrideTopic)
-            => TryResolveRos2BridgeTopic(publisherTopic, overrideTopic, out var effectiveTopic, out _)
-                ? effectiveTopic
-                : string.Empty;
-
         /// <summary>
         /// True when replay is active and live publisher output should be suppressed to avoid duplicate topic advertisements.
         /// </summary>
@@ -451,7 +342,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var logger = new UnityLogger();
-            // Runtime services (recording, replay, ROS2 Bridge policy) should be available
+            // Runtime services remain available
             // even when Foxglove output is temporarily disabled.
             var transport = CreateTransport(logger);
             _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
@@ -459,12 +350,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnValidate()
         {
-            InvalidateRos2BridgeNamespaceCache();
             InvalidateResolvedReplayFilePathCache();
             _port = ManagerConfigValidator.ClampTcpPort(_port);
             _rootCaDistributorPort = ManagerConfigValidator.ClampTcpPort(_rootCaDistributorPort);
             _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
-            _ros2BridgePort = ManagerConfigValidator.ClampTcpPort(_ros2BridgePort);
             _remoteMcapFileServerPort = ManagerConfigValidator.ClampTcpPort(_remoteMcapFileServerPort);
             _replayCursorBridgePort = ManagerConfigValidator.ClampTcpPort(_replayCursorBridgePort);
             if (_enableRemoteMcapFileServer)
@@ -472,9 +361,6 @@ namespace Unity.FoxgloveSDK.Components
                 _replayAutoPlay = false;
             }
 
-            _ros2BridgeQueueCapacity = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeQueueCapacity);
-            _ros2BridgeReconnectIntervalMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeReconnectIntervalMs);
-            _ros2BridgeSendTimeoutMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeSendTimeoutMs);
             if (!_foxgloveOutputEnabled)
             {
                 if (_transportMode != FoxgloveTransportMode.None)
@@ -548,7 +434,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             FoxgloveManagerTeardownState.RunDisable(
                 EndFoxRunSubscriptionSession,
-                () => { },
+                EndFoxRunTransportSession,
                 () => StopServer(restoreLivePublishers: true),
                 EndFoxRunPublishSession,
                 () => _connectionState.OutputModeWatchInitialized = false,
@@ -563,7 +449,7 @@ namespace Unity.FoxgloveSDK.Components
             FoxgloveManagerTeardownState.RunDestroy(
                 EndFoxRunSubscriptionSession,
                 () => StopServer(restoreLivePublishers: true),
-                () => { },
+                EndFoxRunTransportSession,
                 () =>
                 {
                     try
@@ -632,13 +518,11 @@ namespace Unity.FoxgloveSDK.Components
         private void InitializeOutputModeWatchers()
         {
             _connectionState.LastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
-            _connectionState.LastRos2BridgeEnabled = _ros2BridgeEnabled;
             _connectionState.OutputModeWatchInitialized = true;
-            InvalidateRos2BridgeNamespaceCache();
         }
 
         /// <summary>
-        /// Applies live Output Mode toggles (WebSocket server + ROS2 bridge) without recreating the runtime.
+        /// Applies live WebSocket output changes without recreating the runtime.
         /// </summary>
         private void ApplyLiveOutputModeWatchers()
         {
@@ -661,22 +545,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _connectionState.LastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
-            _connectionState.LastRos2BridgeEnabled = _ros2BridgeEnabled;
-        }
-
-        private static string NormalizeLegacyProviderNamespace(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return string.Empty;
-            var normalized = value.Trim().Replace('\\', '/');
-            if (!normalized.StartsWith("/", System.StringComparison.Ordinal))
-                normalized = "/" + normalized;
-            while (normalized.Length > 1
-                   && normalized.EndsWith("/", System.StringComparison.Ordinal))
-            {
-                normalized = normalized.Substring(0, normalized.Length - 1);
-            }
-            return normalized == "/" ? string.Empty : normalized;
         }
 
     }

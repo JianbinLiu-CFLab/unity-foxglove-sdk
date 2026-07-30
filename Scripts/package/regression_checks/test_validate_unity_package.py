@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
@@ -341,6 +342,47 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
 
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
+
+    def test_provider_analyzers_use_owned_explicit_sources_and_roslyn_only_dependencies(self) -> None:
+        """Provider analyzers must not compile core trees or carry runtime codec dependencies."""
+        projects = (
+            ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/FoxRunR2fuSourceGenerator.csproj",
+            ROOT
+            / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/FoxRunBridgeSourceGenerator.csproj",
+        )
+        for project in projects:
+            package_root = project.parents[2].resolve()
+            root = ET.parse(project).getroot()
+            dependencies = {
+                node.attrib["Include"]
+                for node in root.findall(".//PackageReference")
+            }
+            self.assertEqual(
+                {
+                    "Microsoft.CodeAnalysis.Analyzers",
+                    "Microsoft.CodeAnalysis.CSharp",
+                },
+                dependencies,
+                project,
+            )
+            self.assertFalse(root.findall(".//ProjectReference"), project)
+            self.assertFalse(root.findall(".//Reference"), project)
+            for node in root.findall(".//Compile"):
+                for include in node.attrib.get("Include", "").split(";"):
+                    include = include.strip()
+                    if not include:
+                        continue
+                    self.assertNotIn("*", include, project)
+                    source = (project.parent / include).resolve()
+                    self.assertTrue(
+                        source.is_relative_to(package_root),
+                        f"{project}: non-owned source {include}",
+                    )
+
+    def test_validator_exposes_the_locked_provider_contract_gate(self) -> None:
+        """Freshness must include dependencies, ledgers, IDs, hint parity, and analyzer sets."""
+        self.assertTrue(self.validator.validate_analyzer_contracts(("core", "r2fu", "ros2bridge")))
 
     def test_missing_analyzer_dependency_is_reported_before_hash_comparison(self) -> None:
         """A source generator dependency must ship beside the analyzer DLL for Unity to load it."""

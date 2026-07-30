@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>MCAP Header record — identifies the profile and library that generated the file.</summary>
     public class McapHeader
     {
-        /// <summary>Profile identifier (e.g. <c>"x-foxglove-ros1"</c> or <c>"x-foxglove-ros2"</c>).</summary>
+        /// <summary>Application-defined profile identifier, or an empty string.</summary>
         public string Profile;
         /// <summary>Library identifier (e.g. <c>"unity2foxglove"</c>).</summary>
         public string Library;
@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.IO
         public ushort Id;
         /// <summary>Human-readable schema name.</summary>
         public string Name;
-        /// <summary>Encoding format (e.g. <c>"ros1msg"</c>, <c>"ros2msg"</c>, <c>"protobuf"</c>, <c>"json"</c>).</summary>
+        /// <summary>Schema encoding format, such as <c>"protobuf"</c> or <c>"json"</c>.</summary>
         public string Encoding;
         /// <summary>Raw schema definition data.</summary>
         public byte[] Data;
@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.IO
         public ushort SchemaId;
         /// <summary>Topic name (e.g. <c>"/odom"</c>).</summary>
         public string Topic;
-        /// <summary>Message encoding (e.g. <c>"ros1"</c>, <c>"cdr"</c>).</summary>
+        /// <summary>Message encoding, such as <c>"protobuf"</c>, <c>"json"</c>, or <c>"msgpack"</c>.</summary>
         public string MessageEncoding;
         /// <summary>User-provided key-value metadata.</summary>
         public Dictionary<string, string> Metadata = new();
@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>MCAP Metadata record — arbitrary named key-value data attached to the file.</summary>
     public class McapMetadata
     {
-        /// <summary>Metadata name (e.g. <c>"ros2 bag info"</c>).</summary>
+        /// <summary>Application-defined metadata name.</summary>
         public string Name;
         /// <summary>Metadata key-value pairs.</summary>
         public Dictionary<string, string> Metadata = new();

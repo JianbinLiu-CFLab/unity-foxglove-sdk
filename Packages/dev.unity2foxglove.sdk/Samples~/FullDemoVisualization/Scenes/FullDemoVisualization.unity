@@ -224,7 +224,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
   m_Name:
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
   m_RequiresOpaqueTextureOption: 2
@@ -267,7 +267,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 346350281}
   _topic: /unity/camera
@@ -276,29 +276,35 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
   _outputMode: 0
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
+  _maxCaptureRateHz: 10
+  _cameraHealthMode: 2
   _useAsyncJpeg: 1
   _maxJpegEncodeQueue: 2
   _maxCompletedJpegQueue: 2
   _maxCompletedJpegPublishesPerFrame: 1
   _maxPixelsPerFrame: 0
+  _requireIdleJpegPipeline: 1
+  _pipelineCooldownThresholdMs: 50
+  _pipelineCooldownMs: 1000
+  _mainLoopCaptureCooldownThresholdMs: 100
+  _mainLoopStableFramesBeforeCapture: 2
   _logCameraDiagnostics: 0
   _cameraDiagnosticsIntervalSeconds: 2
-  _ffmpegPath: 
+  _cameraSlowStageThresholdMs: 50
+  _ffmpegPath:
   _videoBitrateKbps: 4000
   _videoKeyframeInterval: 30
   _videoMaxOutputQueue: 4
   _logVideoDiagnostics: 0
   _logEncoderStderr: 0
-  _openH264HelperPath: 
-  _openH264DllPath: 
+  _openH264HelperPath:
+  _openH264DllPath:
   _openH264MaxInputQueue: 2
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
@@ -306,8 +312,6 @@ MonoBehaviour:
   _logBackpressureSkips: 0
   _sensorUnitProfile: {fileID: 0}
   _useSharedSensorClock: 1
-  _publishStandardRos2CompressedImage: 0
-  _publishStandardRos2RawImage: 0
   _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!1 &346350280
 GameObject:
@@ -338,13 +342,26 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _publishCadenceDiagnosticsEnabled: 0
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
   _frameStallDiagnosticsEnabled: 0
   _frameStallDiagnosticsThresholdMs: 200
+  _frameStallStageTimingDiagnosticsEnabled: 0
+  _foxRunPolicySerializationVersion: 1
+  _coordinateTransportPolicySerializationVersion: 1
+  _defaultFoxRunPublishEncoding: 1
+  _foxRunPublishTransportIds:
+  - foxglove.websocket
+  _foxRunSubscribeTransportId: foxglove.websocket
+  _defaultFoxRunEncoding: 1
+  _defaultFoxRunSubscriptionEncoding: 1
   _enableFoxRunInbound: 1
+  _allowRemoteFoxRunInboundWithSharedToken: 0
+  _foxRunInboundMaxPayloadBytes: 65536
+  _foxRunInboundMaxMessagesPerSecondPerTopic: 60
+  _foxRunDefaultSubscribeRateHz: 10
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
@@ -353,25 +370,13 @@ MonoBehaviour:
   _transportMode: 0
   _transportModeBeforeOutputDisabled: 0
   _foxgloveOutputEnabled: 1
-  _ros2NativeEnabled: 0
+  _profilingEnabled: 0
   _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
-  _ros2BridgeEnabled: 0
-  _ros2BridgeHost: 127.0.0.1
-  _ros2BridgePort: 8767
-  _ros2BridgeAutoConnect: 1
-  _defaultRos2BridgeOutputEnabled: 0
-  _allowPublisherRos2BridgeOverride: 1
-  _ros2BridgeNamespace: 
-  _ros2BridgeQosPreset: 0
-  _ros2BridgeCustomReliability: 0
-  _ros2BridgeCustomDurability: 0
-  _ros2BridgeCustomDepth: 10
-  _ros2BridgeQueueCapacity: 1024
-  _ros2BridgeReconnectIntervalMs: 1000
-  _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 1
+  _outputCoordinateMode: 1
+  _inputCoordinateMode: 1
   _assetRoots:
   - uriPrefix: asset://demo/
     localRoot: Assets
@@ -392,6 +397,7 @@ MonoBehaviour:
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
+  _remoteMcapFileServerToken:
   _enableReplayCursorBridge: 0
   _replayCursorBridgeHost: 127.0.0.1
   _replayCursorBridgePort: 8892
@@ -565,8 +571,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
   m_CustomShadowLayers: 0
@@ -611,7 +617,7 @@ MonoBehaviour:
   m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxRunTriggerTelemetrySmoke
   fixedCounter: 0
   triggerCounter: 0
@@ -660,8 +666,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_IsGlobal: 1
   priority: 0
   blendDistance: 0
@@ -710,7 +716,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 30efba2d25ad48cfb9769811e4e56e63, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
   _manager: {fileID: 346350281}
   _topic: /unity/point_cloud
@@ -719,8 +725,6 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
   _outputMode: 0
   _frameId: unity_world
   _pointSources: []
@@ -733,14 +737,15 @@ MonoBehaviour:
   _logQosDrops: 0
   _logPerformanceDiagnostics: 0
   _includeSyntheticIntensity: 0
-  _publishPointCloud2NativeTfAnchor: 0
-  _pointCloud2NativeTfParentFrame: map
-  _pointCloud2NativeTfChildFrame:
-  _pointCloud2NativeTfTranslation: {x: 0, y: 0, z: 0}
-  _pointCloud2NativeTfRotationEuler: {x: 0, y: 0, z: 0}
+  _publishPackedPointCloudTfAnchor: 0
+  _packedPointCloudTfParentFrame: map
+  _packedPointCloudTfChildFrame:
+  _packedPointCloudTfTranslation: {x: 0, y: 0, z: 0}
+  _packedPointCloudTfRotationEuler: {x: 0, y: 0, z: 0}
   _enableMotionCompensation: 0
   _motionCompensationOutputPolicy: 1
-  _deskewedPointCloud2NativeTopic: /unity/point_cloud2_deskewed
+  _deskewedPackedPointCloudTopic: /unity/point_cloud2_deskewed
+  _deskewedPackedPointCloudMaxPublishRateHz: 2
   _motionCompensationReferenceTime: 0
   _motionCompensationSource: 0
   _nativeDracoMaxPublishRateHz: 6
@@ -770,7 +775,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e3954bd01bbd432fa86691c319e4eef3, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::PointCloudSmokeSource
   _publisher: {fileID: 908391462}
   _pointCount: 1000
@@ -810,7 +815,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7aa8e0d2c19f48b0aaf3f4ee033fe112, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDebugOverlaySmoke
   _manager: {fileID: 0}
   _autoFindManager: 1
@@ -884,8 +889,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
+  _trackedCube: {fileID: 0}
   telemetryEnabled: 1
   isPaused: 0
   conditionalPosition: {x: 0, y: 0, z: 0}
@@ -917,7 +923,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 16e2bce8534e4cd4aff23ad3f6f3f429, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
   _mutateValues: 1
   _publishNullOptional: 0
@@ -984,7 +990,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 49c73532e06675941b2a1b734765dc2d, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSceneCubePublisher
   _manager: {fileID: 346350281}
   _topic: /scene
@@ -993,10 +999,8 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
-  _entityId: 
-  _frameId: 
+  _entityId:
+  _frameId:
   _size: {x: 1, y: 1, z: 1}
   _color: {r: 0.21568628, g: 0.21568628, b: 0.21568628, a: 1}
 --- !u!114 &2004464833
@@ -1009,7 +1013,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
   _manager: {fileID: 346350281}
   _topic: /tf
@@ -1018,10 +1022,8 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
   _parentFrameId: unity_world
-  _childFrameId: 
+  _childFrameId:
   _useLocalTransform: 0
   _useSharedSensorClock: 1
 --- !u!65 &2004464834
@@ -1127,13 +1129,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe56e0e2a70f9a949b4f5f57cafbab36, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::MouseDragCube
   _rotateSpeed: 3
   _panSpeed: 0.01
   _scaleSpeed: 0.5
-  _minScale: 0.2
-  _maxScale: 5
   _demo: {fileID: 0}
 --- !u!1 &2020679427
 GameObject:
@@ -1162,7 +1162,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b8019ef9d058808488f5dbfad2956afe, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveStatusSmoke
   manager: {fileID: 346350281}
   autoClearSeconds: 3

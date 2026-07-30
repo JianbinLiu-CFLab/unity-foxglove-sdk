@@ -104,7 +104,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("        public const int ContractCount = " + counts.ContractCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int FieldCount = " + counts.FieldCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int SubscriptionBindingCount = " + manifest.Sections.Subscriptions.Bindings.Count.ToString(CultureInfo.InvariantCulture) + ";");
-            sb.AppendLine("        public const int CustomNativeContractCount = " + manifest.CustomNativeContracts.Count.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaTypeInfo[] Types =");
             WriteTypesArray(sb, types, 3);
@@ -112,10 +111,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaSubscriptionBindingInfo[] SubscriptionBindings =");
             WriteSubscriptionBindingsArray(sb, manifest.Sections.Subscriptions.Bindings, 3);
-            sb.AppendLine(";");
-            sb.AppendLine();
-            sb.AppendLine("        public static readonly FoxRunSchemaCustomNativeContractInfo[] CustomNativeContracts =");
-            WriteCustomNativeContractsArray(sb, manifest.CustomNativeContracts, 3);
             sb.AppendLine(";");
             sb.AppendLine();
             sb.AppendLine("        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]");
@@ -131,8 +126,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("                    FoxRunManifestHash,");
             sb.AppendLine("                    Types,");
             sb.AppendLine("                    SubscriptionManifestHash,");
-            sb.AppendLine("                    SubscriptionBindings,");
-            sb.AppendLine("                    CustomNativeContracts));");
+            sb.AppendLine("                    SubscriptionBindings));");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -178,9 +172,6 @@ namespace Unity.FoxgloveSDK.Editor
                 result.AddError("ContractCount mismatch.");
             if (result.ExpectedFieldCount != result.ActualFieldCount)
                 result.AddError("FieldCount mismatch.");
-            if (manifest.CustomNativeContracts.Count != ExtractIntConstant(generatedSource, "CustomNativeContractCount"))
-                result.AddError("CustomNativeContractCount mismatch.");
-
             return result;
         }
 
@@ -273,148 +264,28 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Flow, ",");
-                sb.AppendLine(inner + "    " + SourceLiteral(binding.DeclaredSource) + ",");
-                sb.AppendLine(inner + "    " + QosProfileLiteral(binding.QosProfile) + ",");
+                WriteStringArrayOrNull(
+                    sb,
+                    binding.PublishTransportIds,
+                    indentLevel + 2,
+                    trailingComma: true);
+                if (binding.SubscribeTransportId == null)
+                    sb.AppendLine(inner + "    null,");
+                else
+                    AppendIndentedStringLiteralLine(
+                        sb,
+                        inner,
+                        binding.SubscribeTransportId,
+                        ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Reliability, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Durability, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.History, ",");
+                sb.AppendLine(inner + "    " + binding.Depth.ToString(CultureInfo.InvariantCulture) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.NativeType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CanonicalRosType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CopyShapeIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.Ros2ContractKind.ToString(), ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, ",");
-                sb.AppendLine(inner + "    " + TargetsLiteral(binding.DeclaredTargets) + ",");
-                sb.AppendLine(inner + "    " + QosReliabilityLiteral(binding.QosReliability) + ",");
-                sb.AppendLine(inner + "    " + QosDurabilityLiteral(binding.QosDurability) + ",");
-                sb.AppendLine(inner + "    " + QosHistoryLiteral(binding.QosHistory) + ",");
-                sb.AppendLine(inner + "    " + binding.QosDepth.ToString(CultureInfo.InvariantCulture) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.IsStream));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
-        }
-
-        private static void WriteCustomNativeContractsArray(
-            StringBuilder sb,
-            IReadOnlyList<FoxRunManifestCustomNativeContract> contracts,
-            int indentLevel)
-        {
-            var indent = Indent(indentLevel);
-            var inner = Indent(indentLevel + 1);
-            sb.AppendLine(indent + "new FoxRunSchemaCustomNativeContractInfo[]");
-            sb.AppendLine(indent + "{");
-            foreach (var contract in contracts)
-            {
-                sb.AppendLine(inner + "new FoxRunSchemaCustomNativeContractInfo(");
-                AppendIndentedStringLiteralLine(sb, inner, contract.DeclaringType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
-                sb.AppendLine(inner + "    " + SourceLiteral(contract.DeclaredSource) + ",");
-                sb.AppendLine(inner + "    " + QosProfileLiteral(contract.QosProfile) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomDtoIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, ",");
-                sb.AppendLine(inner + "    " + TargetsLiteral(contract.DeclaredTargets) + ",");
-                sb.AppendLine(inner + "    " + QosReliabilityLiteral(contract.QosReliability) + ",");
-                sb.AppendLine(inner + "    " + QosDurabilityLiteral(contract.QosDurability) + ",");
-                sb.AppendLine(inner + "    " + QosHistoryLiteral(contract.QosHistory) + ",");
-                sb.AppendLine(inner + "    " + contract.QosDepth.ToString(CultureInfo.InvariantCulture));
-                sb.AppendLine(inner + "),");
-            }
-            sb.Append(indent + "}");
-        }
-
-        private static string SourceLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
-                return "FoxRunEndpoint.Foxglove";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
-                return "FoxRunEndpoint.Ros2Native";
-            return "(FoxRunEndpoint)0";
-        }
-
-        private static string TargetsLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
-                return "(FoxRunEndpoint)0";
-
-            var parts = (value ?? string.Empty).Split(',');
-            var literals = new List<string>();
-            foreach (var part in parts)
-            {
-                if (string.Equals(part, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Foxglove");
-                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Ros2Native");
-                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Ros2Bridge");
-            }
-
-            return literals.Count == 0
-                ? "(FoxRunEndpoint)0"
-                : string.Join(" | ", literals);
-        }
-
-        private static string QosProfileLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.Default";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SensorData";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SystemDefault";
-            return "(FoxRunQosProfile)0";
-        }
-
-        private static string QosReliabilityLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosReliability.SystemDefault",
-                FoxRunGenerationDescriptorConstants.ReliableQosReliability,
-                "FoxRunQosReliability.Reliable",
-                FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
-                "FoxRunQosReliability.BestEffort",
-                "(FoxRunQosReliability)0");
-
-        private static string QosDurabilityLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosDurability.SystemDefault",
-                FoxRunGenerationDescriptorConstants.VolatileQosDurability,
-                "FoxRunQosDurability.Volatile",
-                FoxRunGenerationDescriptorConstants.TransientLocalQosDurability,
-                "FoxRunQosDurability.TransientLocal",
-                "(FoxRunQosDurability)0");
-
-        private static string QosHistoryLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosHistory.SystemDefault",
-                FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
-                "FoxRunQosHistory.KeepLast",
-                FoxRunGenerationDescriptorConstants.KeepAllQosHistory,
-                "FoxRunQosHistory.KeepAll",
-                "(FoxRunQosHistory)0");
-
-        private static string QosPolicyLiteral(
-            string value,
-            string systemDefaultLiteral,
-            string firstValue,
-            string firstLiteral,
-            string secondValue,
-            string secondLiteral,
-            string inheritLiteral)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return systemDefaultLiteral;
-            if (string.Equals(value, firstValue, StringComparison.Ordinal))
-                return firstLiteral;
-            if (string.Equals(value, secondValue, StringComparison.Ordinal))
-                return secondLiteral;
-            return inheritLiteral;
         }
 
         private static void WriteFieldsArray(

@@ -131,7 +131,6 @@ namespace Unity.FoxgloveSDK.Components
                 readbackLatencyMs,
                 _jpegQuality,
                 ResolveFrameId(),
-                _publishStandardRos2CompressedImage,
                 _maxEncodedBytes,
                 onEncodeQueueDrop: () => _diagnostics.RecordEncodeQueueDrop());
         }
@@ -222,13 +221,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishProvider)
             {
-                var providerValue = result.Request.UseStandardSensorCompressedImage
-                    ? (object)result.SensorFrame
-                    : result.ProtobufMessage;
-                var logicalSchemaName = result.Request.UseStandardSensorCompressedImage
-                    ? typeof(SensorCompressedImageFrame).FullName
-                    : Foxglove.CompressedImage.Descriptor.FullName;
-                PublishOrdinaryTransport(providerValue, logicalSchemaName, captureUnixNs);
+                PublishOrdinaryTransport(
+                    result.ProtobufMessage,
+                    Foxglove.CompressedImage.Descriptor.FullName,
+                    captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
@@ -291,21 +287,15 @@ namespace Unity.FoxgloveSDK.Components
 
             if (publishProvider)
             {
-                object providerValue;
-                string logicalSchemaName;
-                if (_publishStandardRos2CompressedImage)
-                {
-                    sensorFrame ??= new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg");
-                    providerValue = sensorFrame;
-                    logicalSchemaName = typeof(SensorCompressedImageFrame).FullName;
-                }
-                else
-                {
-                    protobufMessage ??= CameraCompressedImageBuilder.Create(unixNs, frameId, jpeg, "jpeg");
-                    providerValue = protobufMessage;
-                    logicalSchemaName = Foxglove.CompressedImage.Descriptor.FullName;
-                }
-                PublishOrdinaryTransport(providerValue, logicalSchemaName, unixNs);
+                protobufMessage ??= CameraCompressedImageBuilder.Create(
+                    unixNs,
+                    frameId,
+                    jpeg,
+                    "jpeg");
+                PublishOrdinaryTransport(
+                    protobufMessage,
+                    Foxglove.CompressedImage.Descriptor.FullName,
+                    unixNs);
                 _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }

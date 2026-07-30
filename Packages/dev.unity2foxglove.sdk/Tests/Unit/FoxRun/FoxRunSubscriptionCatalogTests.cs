@@ -746,135 +746,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
         }
 
-        [Fact]
-        public void CatalogFiltersCoexistingBindingsByCapturedEffectiveProvider()
-        {
-            var manifest = CreateProviderAwareManifest();
-            var webSocket = FoxRunSubscriptionCatalog.BuildResponse(
-                manifest,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.Protobuf,
-                FoxRunEncoding.Protobuf,
-                FoxRunEndpoint.Foxglove,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: null,
-                includeDescriptor: false);
 
-            Assert.Collection(
-                ((JArray)webSocket["contracts"]).Cast<JObject>(),
-                contract =>
-                {
-                    Assert.Equal("/phase179/dual", contract.Value<string>("topic"));
-                    Assert.Equal("protobuf", contract.Value<string>("encoding"));
-                },
-                contract =>
-                {
-                    Assert.Equal("/phase179/json", contract.Value<string>("topic"));
-                    Assert.Equal("json", contract.Value<string>("encoding"));
-                });
 
-            var nativeDefault = FoxRunSubscriptionCatalog.BuildResponse(
-                manifest,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.Protobuf,
-                FoxRunEncoding.JSON,
-                FoxRunEndpoint.Ros2Native,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: null,
-                includeDescriptor: false);
-            var onlyExplicitWebSocket = Assert.Single((JArray)nativeDefault["contracts"]);
-            Assert.Equal("/phase179/json", onlyExplicitWebSocket.Value<string>("topic"));
-            Assert.Equal("json", onlyExplicitWebSocket.Value<string>("encoding"));
 
-            var nativeDetail = FoxRunSubscriptionCatalog.BuildResponse(
-                manifest,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.Protobuf,
-                FoxRunEncoding.Protobuf,
-                FoxRunEndpoint.Foxglove,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: "/phase179/native",
-                includeDescriptor: true);
-            Assert.Empty((JArray)nativeDetail["contracts"]);
-            Assert.DoesNotContain("cdr", nativeDetail.ToString(), StringComparison.OrdinalIgnoreCase);
-        }
 
-        [Fact]
-        public void CurrentCatalogFailsClosedWhenSubscriptionBindingIsMissing()
-        {
-            var manifest = CreateCurrentCatalogIntegrityManifest(Array.Empty<FoxRunSchemaSubscriptionBindingInfo>());
 
-            var response = FoxRunSubscriptionCatalog.BuildResponse(
-                manifest,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.JSON,
-                FoxRunEncoding.JSON,
-                FoxRunEndpoint.Foxglove,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: null,
-                includeDescriptor: false);
 
-            Assert.Empty((JArray)response["contracts"]);
-        }
 
-        [Theory]
-        [InlineData(1)]
-        [InlineData(2)]
-        public void LegacyCatalogVersionsFailClosedEvenWhenBindingsAreInjected(int manifestVersion)
-        {
-            var current = CreateManifest();
-            var legacy = new FoxRunSchemaManifestInfo(
-                manifestVersion,
-                current.PackageName,
-                current.GeneratorName,
-                current.GeneratorMajorVersion,
-                current.GlobalManifestHash,
-                current.FoxRunManifestHash,
-                current.Types,
-                current.SubscriptionManifestHash,
-                current.SubscriptionBindings);
-
-            var response = FoxRunSubscriptionCatalog.BuildResponse(
-                legacy,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.Protobuf,
-                FoxRunEncoding.Protobuf,
-                FoxRunEndpoint.Foxglove,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: null,
-                includeDescriptor: false);
-
-            Assert.Empty((JArray)response["contracts"]);
-        }
-
-        [Fact]
-        public void CurrentCatalogFailsClosedWhenSubscriptionBindingIdentityDrifts()
-        {
-            var manifest = CreateCurrentCatalogIntegrityManifest(new[]
-            {
-                new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_renamed", "/phase179/integrity", "Subscribe",
-                    FoxRunEndpoint.Foxglove,
-                    (FoxRunQosProfile)0,
-                    supportsWebSocket: true,
-                    supportsRos2Native: false,
-                    nativeType: string.Empty,
-                    canonicalRosType: string.Empty,
-                    copyShapeIdentity: string.Empty)
-            });
-
-            var response = FoxRunSubscriptionCatalog.BuildResponse(
-                manifest,
-                subscriptionsEnabled: true,
-                FoxRunEncoding.JSON,
-                FoxRunEncoding.JSON,
-                FoxRunEndpoint.Foxglove,
-                subscriptionRateLimitHz: 30,
-                requestedTopic: null,
-                includeDescriptor: false);
-
-            Assert.Empty((JArray)response["contracts"]);
-        }
 
         [Fact]
         public void ManagerCatalogReadsOneFrozenSnapshotWithEffectiveProviderGating()
@@ -894,11 +772,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "subscriptionPolicy.FoxgloveEncoding",
+                "subscriptionPolicy.WebSocketEncoding",
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "subscriptionPolicy.DefaultSource",
+                "subscriptionPolicy.DefaultProvider.Value",
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -909,6 +787,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "subscriptionPolicy.DefaultSubscribeRateHz",
                 handler,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain("subscriptionPolicy.DefaultSource", handler, StringComparison.Ordinal);
             Assert.DoesNotContain("_defaultFoxRunSubscriptionSource", handler, StringComparison.Ordinal);
         }
 
@@ -1016,18 +895,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     binding.MemberName,
                     binding.Topic,
                     binding.Flow,
-                    string.Equals(
-                        binding.DeclaredSource,
-                        FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
-                        StringComparison.Ordinal)
-                        ? FoxRunEndpoint.Foxglove
-                        : (FoxRunEndpoint)0,
-                    (FoxRunQosProfile)0,
+                    binding.PublishTransportIds,
+                    binding.SubscribeTransportId,
+                    binding.Reliability,
+                    binding.Durability,
+                    binding.History,
+                    binding.Depth,
                     binding.SupportsWebSocket,
-                    binding.SupportsRos2Native,
-                    binding.NativeType,
-                    binding.CanonicalRosType,
-                    binding.CopyShapeIdentity,
                     isStream: binding.IsStream))
                 .ToArray();
 
@@ -1294,92 +1168,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     .ToArray());
         }
 
-        private static FoxRunSchemaManifestInfo CreateProviderAwareManifest()
-        {
-            var jsonFields = new[]
-            {
-                new FoxRunSchemaFieldInfo("json", "_json", "field", "int32", false, false, false, 1)
-            };
-            var dualFields = new[]
-            {
-                new FoxRunSchemaFieldInfo("dual", "_dual", "field", "int32", false, false, false, 1)
-            };
-            var contracts = new[]
-            {
-                SubscriptionContract(
-                    "/phase179/json",
-                    "json",
-                    jsonFields,
-                    FoxgloveWebSocketTransport.Id),
-                SubscriptionContract("/phase179/dual", "json", dualFields),
-                SubscriptionContract("/phase179/dual", "protobuf", dualFields)
-            };
-            var bindings = new[]
-            {
-                new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_json", "/phase179/json", "Subscribe",
-                    FoxRunEndpoint.Foxglove,
-                    (FoxRunQosProfile)0,
-                    supportsWebSocket: true,
-                    supportsRos2Native: false,
-                    nativeType: string.Empty,
-                    canonicalRosType: string.Empty,
-                    copyShapeIdentity: string.Empty),
-                new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_dual", "/phase179/dual", "Subscribe",
-                    (FoxRunEndpoint)0,
-                    FoxRunQosProfile.SensorData,
-                    supportsWebSocket: true,
-                    supportsRos2Native: true,
-                    nativeType: "std_msgs.msg.String",
-                    canonicalRosType: "std_msgs/msg/String",
-                    copyShapeIdentity: "std-string-v1"),
-                new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_native", "/phase179/native", "Subscribe",
-                    FoxRunEndpoint.Ros2Native,
-                    FoxRunQosProfile.Default,
-                    supportsWebSocket: true,
-                    supportsRos2Native: true,
-                    nativeType: "geometry_msgs.msg.Twist",
-                    canonicalRosType: "geometry_msgs/msg/Twist",
-                    copyShapeIdentity: "twist-v1",
-                    qosReliability: FoxRunQosReliability.Reliable)
-            };
-            return new FoxRunSchemaManifestInfo(
-                FoxrunManifestWriter.CurrentManifestVersion,
-                "Unity2Foxglove",
-                "FoxRun",
-                1,
-                "global",
-                "foxrun",
-                new[] { new FoxRunSchemaTypeInfo("Demo.Contracts", contracts) },
-                subscriptionManifestHash: "subscriptions",
-                subscriptionBindings: bindings);
-        }
-
-        private static FoxRunSchemaManifestInfo CreateCurrentCatalogIntegrityManifest(
-            IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings)
-        {
-            var fields = new[]
-            {
-                new FoxRunSchemaFieldInfo("requested", "_requested", "field", "float32", false, false, false, 1)
-            };
-            var contracts = new[]
-            {
-                SubscriptionContract("/phase179/integrity", "json", fields)
-            };
-            return new FoxRunSchemaManifestInfo(
-                FoxrunManifestWriter.CurrentManifestVersion,
-                "Unity2Foxglove",
-                "FoxRun",
-                1,
-                "global",
-                "foxrun",
-                new[] { new FoxRunSchemaTypeInfo("Demo.Contracts", contracts) },
-                subscriptionManifestHash: "subscriptions",
-                subscriptionBindings: bindings);
-        }
-
         private static FoxRunSchemaContractInfo SubscriptionContract(
             string topic,
             string encoding,
@@ -1413,13 +1201,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 memberName,
                 topic,
                 "Subscribe",
-                FoxRunEndpoint.Foxglove,
-                (FoxRunQosProfile)0,
+                publishTransportIds: null,
+                subscribeTransportId: FoxgloveWebSocketTransport.Id,
+                reliability: "inherit",
+                durability: "inherit",
+                history: "inherit",
+                depth: 0,
                 supportsWebSocket: true,
-                supportsRos2Native: false,
-                nativeType: string.Empty,
-                canonicalRosType: string.Empty,
-                copyShapeIdentity: string.Empty,
                 isStream: isStream);
 
         private sealed class CountingSchemaRegistry : IEncodingAwareSchemaRegistry

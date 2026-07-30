@@ -8,6 +8,7 @@
     <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
+    <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
     <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
@@ -28,13 +29,18 @@
 
   <ItemGroup>
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
+    <Compile Remove="Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
+    <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"
+             Condition="'$(IncludeRos2Bridge)' != 'true'" />
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportDiscovery.cs" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityEditorRestartRelay.cs" Link="Ros2ForUnityEditor/Ros2ForUnityEditorRestartRelay.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportDiscovery.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityEditorRestartRelay.cs" Link="Ros2ForUnityEditor/Ros2ForUnityEditorRestartRelay.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs" Link="Ros2BridgeEditor/Ros2CustomCdrEmitter.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>

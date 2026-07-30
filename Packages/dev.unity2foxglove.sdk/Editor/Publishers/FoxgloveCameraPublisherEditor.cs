@@ -25,7 +25,6 @@ namespace Unity.FoxgloveSDK.Editor
         private const string FfmpegRecoveryHint =
             "Use ... to browse to an existing executable, leave FFmpeg Path empty for system PATH, or open FFmpeg Help... for manual setup and licensing notes.";
         private const string OpenH264Attribution = "OpenH264 Video Codec provided by Cisco Systems, Inc.";
-        private bool _showRos2Outputs;
         private bool _showAdvancedJpeg;
         private bool _showDiagnostics;
 
@@ -67,9 +66,6 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _cameraSlowStageThresholdMs;
         private SerializedProperty _sensorUnitProfile;
         private SerializedProperty _useSharedSensorClock;
-        private SerializedProperty _publishStandardRos2CompressedImage;
-        private SerializedProperty _publishStandardRos2RawImage;
-        private SerializedProperty _sensorCameraRawImageTopic;
         private SerializedProperty _encodingOverride;
         private SerializedProperty _publishRateSource;
         private SerializedProperty _publishRateHz;
@@ -131,9 +127,6 @@ namespace Unity.FoxgloveSDK.Editor
             _cameraSlowStageThresholdMs = serializedObject.FindProperty("_cameraSlowStageThresholdMs");
             _sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
             _useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
-            _publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
-            _publishStandardRos2RawImage = serializedObject.FindProperty("_publishStandardRos2RawImage");
-            _sensorCameraRawImageTopic = serializedObject.FindProperty("_sensorCameraRawImageTopic");
             _encodingOverride = serializedObject.FindProperty("_encodingOverride");
             _publishRateSource = serializedObject.FindProperty("_publishRateSource");
             _publishRateHz = serializedObject.FindProperty("_publishRateHz");
@@ -185,18 +178,21 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_maxCaptureRateHz, Label("Max Capture Rate Hz"));
             EditorGUILayout.PropertyField(_cameraHealthMode, Label("Camera Health Mode"));
 
-            if (IsRos2CameraUiRelevant(
-                _manager,
-                _encodingOverride,
-                _publishStandardRos2CompressedImage,
-                _publishStandardRos2RawImage))
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Provider Payload",
+                EditorStyles.boldLabel);
+            if (_sensorUnitProfile != null)
             {
-                DrawRos2OutputsSection(
+                EditorGUILayout.PropertyField(
                     _sensorUnitProfile,
+                    Label("Sensor Unit Profile"));
+            }
+            if (_useSharedSensorClock != null)
+            {
+                EditorGUILayout.PropertyField(
                     _useSharedSensorClock,
-                    _publishStandardRos2CompressedImage,
-                    _publishStandardRos2RawImage,
-                    _sensorCameraRawImageTopic);
+                    Label("Use Shared Sensor Clock"));
             }
 
             var mode = GetMode(_outputMode);
@@ -349,66 +345,6 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                 }
             }
-        }
-
-        private void DrawRos2OutputsSection(
-            SerializedProperty sensorUnitProfile,
-            SerializedProperty useSharedSensorClock,
-            SerializedProperty publishStandardRos2CompressedImage,
-            SerializedProperty publishStandardRos2RawImage,
-            SerializedProperty sensorCameraRawImageTopic)
-        {
-            EditorGUILayout.Space();
-            _showRos2Outputs = EditorGUILayout.Foldout(_showRos2Outputs, "ROS2 Outputs", true);
-            if (!_showRos2Outputs)
-                return;
-
-            using (new EditorGUI.IndentLevelScope())
-            {
-                EditorGUILayout.PropertyField(sensorUnitProfile, Label("Sensor Unit Profile"));
-                EditorGUILayout.PropertyField(useSharedSensorClock, Label("Use Shared Sensor Clock"));
-                EditorGUILayout.PropertyField(
-                    publishStandardRos2CompressedImage,
-                    Label("Publish CompressedImage DDS"));
-                EditorGUILayout.PropertyField(
-                    publishStandardRos2RawImage,
-                    Label("Publish Raw Image DDS"));
-                if (publishStandardRos2RawImage.boolValue)
-                {
-                    EditorGUILayout.PropertyField(
-                        sensorCameraRawImageTopic,
-                        Label("Raw Image Topic"));
-                }
-
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.Toggle(Label("Publish CameraInfo DDS"), false);
-                }
-
-                EditorGUILayout.HelpBox(
-                    "CameraInfo DDS is currently provided by the standalone CameraInfo publisher. Keep it paired with this camera when ROS2 tools need intrinsics.",
-                    MessageType.None);
-            }
-        }
-
-        private static bool IsRos2CameraUiRelevant(
-            SerializedProperty manager,
-            SerializedProperty encodingOverride,
-            SerializedProperty publishStandardRos2CompressedImage,
-            SerializedProperty publishStandardRos2RawImage)
-        {
-            if (publishStandardRos2CompressedImage != null && publishStandardRos2CompressedImage.boolValue)
-                return true;
-            if (publishStandardRos2RawImage != null && publishStandardRos2RawImage.boolValue)
-                return true;
-            if (encodingOverride != null
-                && encodingOverride.enumValueIndex == (int)PublisherEncodingOverride.Ros2)
-                return true;
-
-            if (manager?.objectReferenceValue is FoxgloveManager configuredManager)
-                return configuredManager.Ros2NativeEnabled || configuredManager.DefaultPublisherEncoding == GlobalEncoding.Ros2;
-
-            return false;
         }
 
         /// <summary>
