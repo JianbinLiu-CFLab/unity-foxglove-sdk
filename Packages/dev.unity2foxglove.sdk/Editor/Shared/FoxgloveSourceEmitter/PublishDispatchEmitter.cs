@@ -31,6 +31,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[topicIndex]];
                 sb.AppendLine($"{pad}    private bool __foxRunCaptureActive_{topicIndex};");
+                if (MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
+                {
+                    sb.AppendLine(
+                        $"{pad}    private bool __foxRunRecordMessagePack_{topicIndex};");
+                }
                 if (TopicMetadataEmitter.IsInherited(fields))
                     sb.AppendLine($"{pad}    private FoxRunEncoding __foxRunCaptureEncoding_{topicIndex};");
                 if (fields.Count == 1 && NeedsCaptureSequence(fields[0]))
@@ -74,27 +80,32 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                    __foxRunCapture_{topicIndex}_{fieldIndex} = {TypeExprEmitter.MemberAccess(fields[fieldIndex].MemberName)};");
                 if (fields.Count == 1 && NeedsCaptureSequence(fields[0]))
                     sb.AppendLine($"{pad}                    __foxRunCaptureSequence_{topicIndex} = ++__foxRunSequence_{topicIndex};");
-                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields)
-                    && MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
                 {
-                    sb.AppendLine($"{pad}                    var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
-                    sb.AppendLine($"{pad}                    __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
+                    var buildCondition =
+                        MessagePackPublishDispatchEmitter
+                            .UsesMessagePack(fields)
+                            ? "true"
+                            : TopicMetadataEmitter
+                                .IsInherited(fields)
+                                ? $"__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_{topicIndex}"
+                                : $"__foxRunRecordMessagePack_{topicIndex}";
+                    sb.AppendLine(
+                        $"{pad}                    if ({buildCondition})");
+                    sb.AppendLine($"{pad}                    {{");
+                    sb.AppendLine(
+                        $"{pad}                        var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
+                    sb.AppendLine(
+                        $"{pad}                        __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
+                    sb.AppendLine($"{pad}                    }}");
                 }
                 else if (TopicMetadataEmitter.IsInherited(fields))
                 {
-                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
-                    {
-                        sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                    {{");
-                        sb.AppendLine($"{pad}                        var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
-                        sb.AppendLine($"{pad}                        __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
-                        sb.AppendLine($"{pad}                    }}");
-                    }
-                    else
-                    {
-                        sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                        throw new global::System.InvalidOperationException(\"Typed MessagePack capture is unavailable for this declaration.\");");
-                    }
+                    sb.AppendLine(
+                        $"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.InvalidOperationException(\"Typed MessagePack capture is unavailable for this declaration.\");");
                 }
                 sb.AppendLine($"{pad}                    __foxRunCaptureActive_{topicIndex} = true;");
                 sb.AppendLine($"{pad}                    return true;");
@@ -105,8 +116,13 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                    __foxRunCapture_{topicIndex}_{fieldIndex} = default;");
                 if (fields.Count == 1 && NeedsCaptureSequence(fields[0]))
                     sb.AppendLine($"{pad}                    __foxRunCaptureSequence_{topicIndex} = 0;");
-                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
+                {
                     sb.AppendLine($"{pad}                    __foxRunLastMessagePack_{topicIndex} = null;");
+                    sb.AppendLine(
+                        $"{pad}                    __foxRunRecordMessagePack_{topicIndex} = false;");
+                }
                 if (TopicMetadataEmitter.IsInherited(fields))
                     sb.AppendLine($"{pad}                    __foxRunCaptureEncoding_{topicIndex} = (FoxRunEncoding)0;");
                 sb.AppendLine($"{pad}                    __foxRunCaptureActive_{topicIndex} = false;");
@@ -133,8 +149,13 @@ namespace Unity.FoxgloveSDK.Editor
                 if (IsAggregateTopic(fields)
                     && !MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
                     sb.AppendLine($"{pad}                __foxRunLastJson_{topicIndex} = null;");
-                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
+                {
                     sb.AppendLine($"{pad}                __foxRunLastMessagePack_{topicIndex} = null;");
+                    sb.AppendLine(
+                        $"{pad}                __foxRunRecordMessagePack_{topicIndex} = false;");
+                }
                 if (TopicMetadataEmitter.IsInherited(fields))
                     sb.AppendLine($"{pad}                __foxRunCaptureEncoding_{topicIndex} = (FoxRunEncoding)0;");
                 sb.AppendLine($"{pad}                break;");
@@ -144,6 +165,11 @@ namespace Unity.FoxgloveSDK.Editor
 
             EmitOriginMethods(sb, topics, topicMap, pad);
             EmitWebSocketEncodingSetter(
+                sb,
+                topics,
+                topicMap,
+                pad);
+            EmitRecordingMethods(
                 sb,
                 topics,
                 topicMap,
@@ -264,6 +290,66 @@ namespace Unity.FoxgloveSDK.Editor
 
                 sb.AppendLine($"{pad}            case {topicIndex}: __foxRunCaptureEncoding_{topicIndex} = encoding; break;");
             }
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+        }
+
+        private static void EmitRecordingMethods(
+            StringBuilder sb,
+            IReadOnlyList<string> topics,
+            IReadOnlyDictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap,
+            string pad)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady(");
+            sb.AppendLine($"{pad}        int topicIndex, FoxgloveManager mgr, out string reason)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        reason = string.Empty;");
+            sb.AppendLine($"{pad}        if (mgr == null || mgr.SuppressLivePublishersForReplay) {{ reason = \"MCAP recording is unavailable.\"; return false; }}");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                var topic = StringLiteralEmitter.CSharpStringLiteral(
+                    topics[topicIndex]);
+                if (!MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
+                    continue;
+
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine(
+                    $"{pad}                __foxRunRecordMessagePack_{topicIndex} = mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                sb.AppendLine(
+                    $"{pad}                return __foxRunRecordMessagePack_{topicIndex};");
+            }
+            sb.AppendLine($"{pad}            default: return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured(");
+            sb.AppendLine($"{pad}        int topicIndex, FoxgloveManager mgr, ulong nowNs, out string reason)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        reason = string.Empty;");
+            sb.AppendLine($"{pad}        if (mgr == null) return false;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                var topic = StringLiteralEmitter.CSharpStringLiteral(
+                    topics[topicIndex]);
+                if (!MessagePackPublishDispatchEmitter
+                    .CanEncodeMessagePack(fields))
+                    continue;
+
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine(
+                    $"{pad}                if (!__foxRunRecordMessagePack_{topicIndex}) {{ reason = \"MessagePack recording was not prepared for this capture.\"; return false; }}");
+                sb.AppendLine(
+                    $"{pad}                return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+            }
+            sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
         }

@@ -57,6 +57,7 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveTopicObserverSource");
                 interfaces.Add("IFoxgloveTopicSinkSource");
                 interfaces.Add("IFoxglovePublishCaptureSource");
+                interfaces.Add("IFoxglovePublishRecordingSource");
                 interfaces.Add("IFoxRunWebSocketCaptureSource");
                 interfaces.Add("IFoxglovePublishOriginSource");
                 if (hasPolicy)

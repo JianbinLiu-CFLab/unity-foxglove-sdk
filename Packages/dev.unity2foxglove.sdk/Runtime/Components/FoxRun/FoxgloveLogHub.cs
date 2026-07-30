@@ -68,6 +68,26 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Optional generated MCAP seam for a topic whose selected publish
+    /// transports do not include the built-in WebSocket transport. When
+    /// WebSocket is selected, its ordinary Manager publish already records the
+    /// same channel and this seam must not be invoked.
+    /// </summary>
+    public interface IFoxglovePublishRecordingSource
+    {
+        bool FoxgloveLog_IsRecordingReady(
+            int topicIndex,
+            FoxgloveManager manager,
+            out string reason);
+
+        bool FoxgloveLog_RecordCaptured(
+            int topicIndex,
+            FoxgloveManager manager,
+            ulong nowNs,
+            out string reason);
+    }
+
+    /// <summary>
     /// Optional generated seam used to freeze an inherited WebSocket encoding
     /// before capture. Other Providers own their wire encoding independently.
     /// </summary>
@@ -433,16 +453,55 @@ namespace Unity.FoxgloveSDK.Components
 
                 var publishWebSocket =
                     SelectsWebSocket(info);
-                var encoding =
-                    ResolveWebSocketEncoding(info);
-                if (source
-                    is IFoxRunWebSocketCaptureSource
-                    encodingSource)
+                if (publishWebSocket
+                    && source
+                        is IFoxRunWebSocketCaptureSource
+                            encodingSource)
                 {
+                    var encoding =
+                        ResolveWebSocketEncoding(info);
                     encodingSource
                         .FoxgloveLog_SetWebSocketEncoding(
                             topicIndex,
                             encoding);
+                }
+
+                var recordingSource =
+                    !publishWebSocket
+                        ? source
+                            as IFoxglovePublishRecordingSource
+                        : null;
+                var recordingReady = false;
+                if (recordingSource != null)
+                {
+                    try
+                    {
+                        recordingReady =
+                            recordingSource
+                                .FoxgloveLog_IsRecordingReady(
+                                    topicIndex,
+                                    _manager,
+                                    out var recordingReason);
+                        if (!recordingReady
+                            && !string.IsNullOrWhiteSpace(
+                                recordingReason))
+                        {
+                            WarnOnce(
+                                source,
+                                topicIndex,
+                                new InvalidOperationException(
+                                    recordingReason));
+                        }
+                    }
+                    catch (Exception exception)
+                        when (FoxRunExceptionPolicy
+                            .IsRecoverable(exception))
+                    {
+                        WarnOnce(
+                            source,
+                            topicIndex,
+                            exception);
+                    }
                 }
 
                 var capture =
@@ -455,6 +514,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 var published = false;
+                var recorded = false;
                 try
                 {
                     var nowNs = _manager != null
@@ -523,7 +583,47 @@ namespace Unity.FoxgloveSDK.Components
                         published = true;
                     }
 
-                    return published;
+                    if (recordingReady)
+                    {
+                        try
+                        {
+                            if (recordingSource
+                                .FoxgloveLog_RecordCaptured(
+                                    topicIndex,
+                                    _manager,
+                                    nowNs,
+                                    out var recordingReason))
+                            {
+                                recorded = true;
+                            }
+                            else if (!string.IsNullOrWhiteSpace(
+                                         recordingReason))
+                            {
+                                WarnOnce(
+                                    source,
+                                    topicIndex,
+                                    new InvalidOperationException(
+                                        recordingReason));
+                            }
+                        }
+                        catch (Exception exception)
+                            when (FoxRunExceptionPolicy
+                                .IsRecoverable(exception))
+                        {
+                            WarnOnce(
+                                source,
+                                topicIndex,
+                                exception);
+                        }
+                    }
+
+                    // MCAP is an additive hidden sink. Its success must not
+                    // consume a Change sample while a selected live Provider
+                    // remains unavailable. A genuinely provider-less
+                    // declaration is the sole recording-only exception.
+                    return published
+                           || (!HasSelectedPublishProviders(info)
+                               && recorded);
                 }
                 finally
                 {
@@ -565,16 +665,22 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            var configured =
-                _manager
-                    ?.ConfiguredFoxRunPublishTransportIds;
-            if (configured == null)
+            var manager = _manager;
+            if (manager == null)
                 return false;
+
+            var active =
+                manager.ActiveFoxRunPublishSessionPolicy;
+            var inherited =
+                active != null && active.SessionActive
+                    ? active.PublishTransportIds
+                    : manager
+                        .ConfiguredFoxRunPublishTransportIds;
             for (var index = 0;
-                 index < configured.Count;
+                 index < inherited.Count;
                  index++)
             {
-                if (configured[index]
+                if (inherited[index]
                     == FoxgloveWebSocketTransport.TransportId)
                 {
                     return true;
@@ -582,6 +688,25 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return false;
+        }
+
+        private bool HasSelectedPublishProviders(
+            FoxgloveLogTopicInfo info)
+        {
+            var ids = info.PublishTransportIds;
+            if (ids != null)
+                return ids.Count > 0;
+
+            var manager = _manager;
+            if (manager == null)
+                return false;
+            var active =
+                manager.ActiveFoxRunPublishSessionPolicy;
+            return active != null && active.SessionActive
+                ? active.PublishTransportIds.Count > 0
+                : manager
+                    .ConfiguredFoxRunPublishTransportIds
+                    .Count > 0;
         }
 
         private FoxRunEncoding ResolveWebSocketEncoding(
@@ -598,6 +723,14 @@ namespace Unity.FoxgloveSDK.Components
                 ? _manager.ActiveFoxRunPublishEncoding
                 : FoxRunEncoding.Protobuf;
         }
+
+        private FoxRunEncoding ResolveAdditiveSinkEncoding(
+            FoxgloveLogTopicInfo info)
+            => SelectsWebSocket(info)
+               && ResolveWebSocketEncoding(info)
+                   == FoxRunEncoding.MessagePack
+                ? FoxRunEncoding.MessagePack
+                : FoxRunEncoding.JSON;
 
         private void QueueAdd(
             IFoxgloveLogSource source)
@@ -698,10 +831,8 @@ namespace Unity.FoxgloveSDK.Components
                             == FoxTopicVisibility.Exported
                         && !_sinkRouter.Register(
                             contract,
-                            ResolveWebSocketEncoding(info)
-                                == FoxRunEncoding.MessagePack
-                                ? FoxRunEncoding.MessagePack
-                                : FoxRunEncoding.JSON))
+                            ResolveAdditiveSinkEncoding(
+                                info)))
                     {
                         _topicBus.Unregister(
                             contract.Topic,

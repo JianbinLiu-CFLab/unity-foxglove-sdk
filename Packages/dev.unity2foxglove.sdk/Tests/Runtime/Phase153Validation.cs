@@ -71,32 +71,45 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyHubUsesBusAsSideChannel()
         {
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxTopicSinkRouter.cs");
 
             Check(hub.Contains("public interface IFoxgloveTopicContractSource", StringComparison.Ordinal)
                   && hub.Contains("public interface IFoxgloveTopicBusSource", StringComparison.Ordinal)
-                  && hub.Contains("private readonly FoxTopicBus _topicBus = new();", StringComparison.Ordinal)
+                  && hub.Contains("private readonly FoxTopicBus _topicBus = new FoxTopicBus();", StringComparison.Ordinal)
                   && hub.Contains("public FoxTopicBus TopicBus => _topicBus;", StringComparison.Ordinal)
-                  && hub.Contains("public static bool TryGetTopicBus(out FoxTopicBus bus)", StringComparison.Ordinal)
+                  && hub.Contains("public static bool TryGetTopicBus(", StringComparison.Ordinal)
                   && hub.Contains("EnsureInstance()", StringComparison.Ordinal)
-                  && hub.Contains("RegisterSourceContracts(source, count)", StringComparison.Ordinal)
-                  && hub.Contains("UnregisterSourceContracts(source, state.Timers.Length)", StringComparison.Ordinal)
+                  && hub.Contains("_topicBus.Register(", StringComparison.Ordinal)
+                  && hub.Contains("_topicBus.Unregister(", StringComparison.Ordinal)
+                  && hub.Contains("private bool AddSourceNow(", StringComparison.Ordinal)
                   && hub.Contains("RemoveSourceNow(source)", StringComparison.Ordinal),
                 "FoxgloveLogHub owns a local bus and registers/unregisters optional generated contracts");
 
-            Check(DispatchTopicContainsLiveThenBus(hub)
-                  && MethodDelegatesToDispatchTopic(
-                      hub,
-                      "TryPublishScheduledTopic",
-                      "scheduled publish")
-                  && MethodDelegatesToDispatchTopic(
-                      hub,
-                      "TryPublishTriggeredTopic",
-                      "trigger publish"),
-                "FoxRun scheduled and triggered live publish remain primary, followed by sink and bus side-channels");
+            Check(TryPublishContainsOrderedFanout(hub)
+                  && hub.Contains(
+                      "return instance.TryPublish(",
+                      StringComparison.Ordinal)
+                  && hub.Contains(
+                      "if (TryPublish(",
+                      StringComparison.Ordinal),
+                "FoxRun scheduled and triggered publish share one captured, ordered transport and side-channel fanout");
 
-            Check(hub.Contains("operation + \" bus side-channel\"", StringComparison.Ordinal)
-                  && hub.Contains("catch (Exception ex) when (IsRecoverableSourceException(ex))", StringComparison.Ordinal),
-                "Bus side-channel failures are isolated from live publish");
+            Check(hub.Contains(
+                      "catch (Exception exception)",
+                      StringComparison.Ordinal)
+                  && hub.Contains(
+                      "FoxRunExceptionPolicy",
+                      StringComparison.Ordinal)
+                  && hub.Contains(
+                      "capture?.FoxgloveLog_EndCapture(",
+                      StringComparison.Ordinal)
+                  && router.Contains(
+                      "public event Action<FoxTopicSinkFault> SinkFaulted;",
+                      StringComparison.Ordinal)
+                  && router.Contains(
+                      "catch (Exception exception)",
+                      StringComparison.Ordinal),
+                "Central fanout finalizes capture and bounds recoverable source and additive-sink faults");
         }
 
         private static void VerifyGeneratedSourceSurface()
@@ -140,55 +153,53 @@ namespace Unity.FoxgloveSDK.Tests
                 "Validation registry exposes the Phase153 flag");
         }
 
-        private static bool DispatchTopicContainsLiveThenBus(string source)
+        private static bool TryPublishContainsOrderedFanout(string source)
         {
             var methodStart = source.IndexOf(
-                "private bool DispatchTopic(",
+                "private bool TryPublish(",
                 StringComparison.Ordinal);
             if (methodStart < 0)
                 return false;
 
             var methodEnd = source.IndexOf(
-                "private static bool IsTargetAware(",
+                "private bool SelectsWebSocket(",
                 methodStart,
                 StringComparison.Ordinal);
-            var live = source.IndexOf(
+            var webSocket = source.IndexOf(
                 "source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);",
                 methodStart,
                 StringComparison.Ordinal);
-            var sink = source.IndexOf(
-                "PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);",
+            if (webSocket < 0)
+            {
+                webSocket = source.IndexOf(
+                    "source.FoxgloveLog_Publish(",
+                    methodStart,
+                    StringComparison.Ordinal);
+            }
+
+            var bus = source.IndexOf(
+                ".FoxgloveLog_PublishToBus(",
                 methodStart,
                 StringComparison.Ordinal);
-            var bus = source.IndexOf(
-                "busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);",
+            var observers = source.IndexOf(
+                ".FoxgloveLog_PublishCapturedToObservers(",
+                methodStart,
+                StringComparison.Ordinal);
+            var sinks = source.IndexOf(
+                "sinks.FoxgloveLog_PublishToSinks(",
+                methodStart,
+                StringComparison.Ordinal);
+            var recording = source.IndexOf(
+                ".FoxgloveLog_RecordCaptured(",
                 methodStart,
                 StringComparison.Ordinal);
             return methodEnd > methodStart
-                   && live >= methodStart
-                   && sink > live
-                   && bus > sink
-                   && bus < methodEnd;
-        }
-
-        private static bool MethodDelegatesToDispatchTopic(
-            string source,
-            string methodName,
-            string operation)
-        {
-            var methodStart = source.IndexOf(
-                "private bool " + methodName + "(",
-                StringComparison.Ordinal);
-            if (methodStart < 0)
-                return false;
-
-            var dispatch = source.IndexOf(
-                "DispatchTopic(source, topicIndex, nowNs, \""
-                + operation
-                + "\", publishLive, publishBus)",
-                methodStart,
-                StringComparison.Ordinal);
-            return dispatch >= methodStart;
+                   && webSocket >= methodStart
+                   && bus > webSocket
+                   && observers > bus
+                   && sinks > observers
+                   && recording > sinks
+                   && recording < methodEnd;
         }
 
         private static string ReadRepoText(string relativePath)

@@ -212,3 +212,17 @@ namespace Unity.FoxgloveSDK.Components
             => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);
     }
 }
+
+namespace Unity2Foxglove.Ros2ForUnity.Native
+{
+#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
+    /// <summary>
+    /// Adapter-lane identity surface for the runtime-gated Provider component.
+    /// The native lane compiles the real component instead.
+    /// </summary>
+    public sealed class FoxRunRos2TransportProvider
+    {
+        public const string IdValue = "unity2foxglove.r2fu";
+    }
+#endif
+}

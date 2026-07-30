@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "../../Runtime/Components/FoxRun/FoxRun*.cs"),
                 "185C-4: runtime validation explicitly compiles reader, limits, and transaction contracts");
 
-            var ros2Input = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
+            var ros2Input = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2InputDispatchEmitter.cs");
             Check(
                 !ros2Input.Contains("msgpack", StringComparison.OrdinalIgnoreCase),
                 "185C-5: ROS2 native input generation never inspects MessagePack bytes");

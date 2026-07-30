@@ -37,6 +37,25 @@ namespace Unity.FoxgloveSDK.Tests
                     "router.PublishCompatible"),
                 "185B-2: one captured payload is wired to live, recording, and compatible synchronous sinks");
 
+            var hub = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var hubBehavior = Read("Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxgloveLogHubProviderSessionTests.cs");
+            Check(
+                ContainsAll(
+                    hub,
+                    "IFoxglovePublishRecordingSource",
+                    "!publishWebSocket",
+                    "FoxgloveLog_IsRecordingReady",
+                    "FoxgloveLog_RecordCaptured",
+                    "active.PublishTransportIds",
+                    "!HasSelectedPublishProviders(info)",
+                    "&& recorded")
+                && ContainsAll(
+                    hubBehavior,
+                    "InheritedPublishUsesFrozenWebSocketSelection",
+                    "HiddenRecordingCannotConsumeUnavailableSelectedProvider",
+                    "ProviderlessDeclarationMayReportRecordingOnlySuccess"),
+                "185B-3: WebSocket-excluded topics retain provider-neutral MCAP without mutable-session routing or false live success");
+
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.MessagePack.cs");
             Check(
                 ContainsAll(
@@ -46,19 +65,19 @@ namespace Unity.FoxgloveSDK.Tests
                     "TryPublishFoxRunMessagePackRecording",
                     "MsgPackEncoding",
                     "string.Empty"),
-                "185B-3: Manager keeps live and recording-only MessagePack channels schemaless");
+                "185B-4: Manager keeps live and recording-only MessagePack channels schemaless");
 
             var generated = Read("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs");
             Check(
                 generated.Contains("/phase185/messagepack/full-duplex", StringComparison.Ordinal)
                 && generated.Contains("__BuildFoxRunMessagePack_", StringComparison.Ordinal)
                 && generated.Contains("FoxRunEncoding.MessagePack", StringComparison.Ordinal),
-                "185B-4: controlled TestLog generated output contains the typed MessagePack contract");
+                "185B-5: controlled TestLog generated output contains the typed MessagePack contract");
 
-            var ros2Publish = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomPublishEmitter.cs");
+            var ros2Publish = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2CustomPublishEmitter.cs");
             Check(
                 !ros2Publish.Contains("msgpack", StringComparison.OrdinalIgnoreCase),
-                "185B-5: ROS2 native publish generation remains on typed ROS2 DTO/CDR contracts");
+                "185B-6: ROS2 native publish generation remains on typed ROS2 DTO/CDR contracts");
 
             Console.WriteLine("FoxRun MessagePack publish/fanout: " + _passed + " checks passed.\n");
         }

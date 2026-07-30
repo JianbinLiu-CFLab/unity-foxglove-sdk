@@ -161,7 +161,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 encodingSetter,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)",
+                "if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_0)",
                 beginCapture,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -187,6 +187,67 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains(
                 "Frozen FoxRun publish encoding is unsupported.",
                 source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "186-A")]
+        public void RecordingOnlyMessagePackUsesAnIndependentCaptureDecision()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase186/recording-codec",
+                10f,
+                "Demo.Count",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Publish,
+                encoding:
+                    FoxRunGenerationDescriptorConstants.JsonEncoding,
+                typeShape: FoxRunTypeShape.Canonical("int32"),
+                publishTransportIds: new[]
+                {
+                    "unity2foxglove.r2fu"
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Demo",
+                "RecordingCounter",
+                new[] { member });
+            var beginCapture = Slice(
+                source,
+                "bool IFoxglovePublishCaptureSource.FoxgloveLog_BeginCapture",
+                "void IFoxglovePublishCaptureSource.FoxgloveLog_EndCapture");
+            var recording = Slice(
+                source,
+                "bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady",
+                "[Preserve]");
+
+            Assert.Contains(
+                "private bool __foxRunRecordMessagePack_0;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (__foxRunRecordMessagePack_0)",
+                beginCapture,
+                StringComparison.Ordinal);
+            Assert.Single(
+                Regex.Matches(
+                        beginCapture,
+                        "__BuildFoxRunMessagePack_0\\(\\)")
+                    .Cast<Match>());
+            Assert.Contains(
+                "TryPrepareFoxRunMessagePackRecording",
+                recording,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "TryPublishFoxRunMessagePackRecording",
+                recording,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "__foxRunCaptureEncoding_0",
+                recording,
                 StringComparison.Ordinal);
         }
 
@@ -320,68 +381,6 @@ namespace Demo
             Assert.True(itemNil);
             Assert.True(nested.TryComplete(), nested.Error);
             EndCapture(instance, nestedIndex);
-        }
-
-        [Fact]
-        [Trait("Phase", "185-F")]
-        public void BundledCdrMessagePackPublisherRetainsNativeJsonBuilderAndCompiles()
-        {
-            var shape = FoxRunReflectionTypeShapeBuilder.Build(
-                typeof(Foxglove.Pose));
-            var member = new FoxgloveSourceEmitter.TopicMember(
-                "_pose",
-                "Foxglove.Pose",
-                "/phase185f/bundled-pose",
-                10f,
-                "foxglove_msgs/msg/Pose",
-                (int)FoxRunPolicy.FixedRate,
-                0f,
-                mode: (int)FoxRunFlow.Publish,
-                encoding:
-                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
-                typeShape: shape,
-                targets:
-                    FoxRunGenerationDescriptorConstants.Ros2NativeTarget);
-            var generated = FoxgloveSourceEmitter.EmitClass(
-                "Demo",
-                "BundledPosePublisher",
-                new[] { member });
-            var declaration = @"
-namespace UnityEngine.Scripting
-{
-    [System.AttributeUsage(System.AttributeTargets.All)]
-    public sealed class PreserveAttribute : System.Attribute { }
-}
-
-namespace Demo
-{
-    public partial class BundledPosePublisher
-    {
-        private Foxglove.Pose _pose = new Foxglove.Pose();
-    }
-}
-";
-            var compilation = CSharpCompilation.Create(
-                "Phase185FBundledMessagePack_"
-                + Guid.NewGuid().ToString("N"),
-                GeneratedPublishSyntaxTrees(declaration, generated),
-                DynamicCompilationReferences(),
-                new CSharpCompilationOptions(
-                    OutputKind.DynamicallyLinkedLibrary));
-            using var image = new MemoryStream();
-            var emit = compilation.Emit(image);
-
-            Assert.Contains(
-                "private byte[] __BuildFoxRunJson_0()",
-                generated,
-                StringComparison.Ordinal);
-            Assert.True(
-                emit.Success,
-                "Generated bundled MessagePack publisher failed to compile: "
-                + string.Join(
-                    "; ",
-                    emit.Diagnostics.Select(
-                        diagnostic => diagnostic.ToString())));
         }
 
         [Fact]
@@ -636,7 +635,7 @@ namespace Demo
         [InlineData("JSON")]
         [InlineData("Protobuf")]
         [Trait("Phase", "185-F")]
-        public void CompiledNonMessagePackSinkSideChannelExcludesTargetSinks(
+        public void CompiledNonMessagePackSinkSideChannelUsesOneJsonWireView(
             string encodingName)
         {
             const string topic = "/phase185f/compatible-sink";
@@ -665,31 +664,17 @@ namespace Demo
             var topicIndex = FindTopicIndex(instance, topic);
             var contract = GetContract(instance, topicIndex);
             var additive = new GeneratedRecordingSink();
-            var target = new GeneratedTargetSink();
-            var legacyTarget = new GeneratedLegacyTargetSink();
+            var external = new GeneratedExternalSink();
             var router = new FoxTopicSinkRouter();
             router.AddSink(additive);
-            router.AddSink(target);
-            router.AddSink(legacyTarget);
+            router.AddSink(external);
             Assert.True(router.Register(contract));
-
-            var primary = router.PublishTarget(
-                FoxRunEndpoint.Ros2Native,
-                contract,
-                1854UL,
-                new byte[] { 0x01 },
-                "primary");
-            Assert.True(primary.Succeeded);
-            Assert.Equal(0, additive.PublishCalls);
-            Assert.Equal(1, target.PublishCalls);
-            Assert.Equal(1, legacyTarget.PublishCalls);
 
             Assert.True(BeginCapture(instance, topicIndex));
             PublishToSinks(instance, topicIndex, router, 1855UL);
 
             Assert.Equal(1, additive.PublishCalls);
-            Assert.Equal(1, target.PublishCalls);
-            Assert.Equal(1, legacyTarget.PublishCalls);
+            Assert.Equal(1, external.PublishCalls);
             Assert.Equal("json", additive.LastContract.Encoding);
             Assert.Same(
                 additive.RegisteredContract,
@@ -1274,40 +1259,24 @@ namespace Unity.FoxgloveSDK.Components
         void FoxgloveLog_EndCapture(int topicIndex);
     }
 
-    public interface IFoxglovePublishTargetSource
-    {
-        bool FoxgloveLog_IsTargetReady(
-            int topicIndex,
-            FoxRunEndpoint target,
-            FoxRunResolvedPublishContract contract,
-            FoxgloveManager manager,
-            FoxTopicBus bus,
-            FoxTopicSinkRouter router,
-            out string reason);
-        bool FoxgloveLog_PublishCaptured(
-            int topicIndex,
-            FoxRunEndpoint target,
-            FoxRunResolvedPublishContract contract,
-            FoxgloveManager manager,
-            FoxTopicBus bus,
-            FoxTopicSinkRouter router,
-            ulong nowNs,
-            out string reason);
-    }
-
     public interface IFoxglovePublishRecordingSource
     {
         bool FoxgloveLog_IsRecordingReady(
             int topicIndex,
-            FoxRunResolvedPublishContract contract,
             FoxgloveManager manager,
             out string reason);
         bool FoxgloveLog_RecordCaptured(
             int topicIndex,
-            FoxRunResolvedPublishContract contract,
             FoxgloveManager manager,
             ulong nowNs,
             out string reason);
+    }
+
+    public interface IFoxRunWebSocketCaptureSource
+    {
+        void FoxgloveLog_SetWebSocketEncoding(
+            int topicIndex,
+            FoxRunEncoding encoding);
     }
 
     public interface IFoxglovePublishOriginSource
@@ -1366,8 +1335,11 @@ namespace Unity.FoxgloveSDK.Components
                 var info = getTopic.Invoke(source, new object[] { index })
                            ?? throw new InvalidOperationException(
                                "Generated topic metadata is null.");
-                var actualTopic = Assert.IsType<string>(
-                    info.GetType().GetField("Topic")!.GetValue(info));
+                var infoType = info.GetType();
+                var topicValue =
+                    infoType.GetProperty("Topic")?.GetValue(info)
+                    ?? infoType.GetField("Topic")?.GetValue(info);
+                var actualTopic = Assert.IsType<string>(topicValue);
                 if (string.Equals(
                         actualTopic,
                         topic,
@@ -1564,9 +1536,9 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private sealed class GeneratedLegacyTargetSink : IFoxTopicSink
+        private sealed class GeneratedExternalSink : IFoxTopicSink
         {
-            public string Name => "generated-legacy-target";
+            public string Name => "generated-external";
             public FoxTopicSinkCapabilities Capabilities =>
                 FoxTopicSinkCapabilities.External;
             public int PublishCalls { get; private set; }
@@ -1593,56 +1565,5 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private sealed class GeneratedTargetSink :
-            IFoxTopicSink,
-            IFoxTopicTargetSink
-        {
-            public string Name => "generated-target";
-            public FoxTopicSinkCapabilities Capabilities =>
-                FoxTopicSinkCapabilities.External;
-            public FoxRunEndpoint Target => FoxRunEndpoint.Ros2Native;
-            public int PublishCalls { get; private set; }
-
-            public void Register(FoxTopicContract contract)
-            {
-            }
-
-            public bool IsReady(
-                FoxTopicContract contract,
-                out string reason)
-            {
-                reason = string.Empty;
-                return true;
-            }
-
-            public bool TryPublish(
-                FoxTopicContract contract,
-                ulong timestampNs,
-                byte[] payload,
-                string origin,
-                out string reason)
-            {
-                PublishCalls++;
-                reason = string.Empty;
-                return true;
-            }
-
-            public void Publish(
-                FoxTopicContract contract,
-                ulong timestampNs,
-                byte[] payload,
-                string origin)
-            {
-                PublishCalls++;
-            }
-
-            public void Flush()
-            {
-            }
-
-            public void Dispose()
-            {
-            }
-        }
     }
 }

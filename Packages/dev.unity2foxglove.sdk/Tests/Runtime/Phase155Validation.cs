@@ -45,7 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(router.Contains("public sealed class FoxTopicSinkRouter : IDisposable", StringComparison.Ordinal)
                   && router.Contains("if (contract.Visibility == FoxTopicVisibility.LocalOnly)", StringComparison.Ordinal)
-                  && router.Contains("ReportFault(sink, contract.Topic, \"publish\", ex)", StringComparison.Ordinal)
+                  && router.Contains("ReportFault(", StringComparison.Ordinal)
+                  && router.Contains("\"publish\"", StringComparison.Ordinal)
                   && router.Contains("_reportedFaults.Add(key)", StringComparison.Ordinal),
                 "155-2: router never exports LocalOnly topics and isolates per-sink faults with report-once dedup");
 
@@ -54,11 +55,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(router.Contains("public bool Unregister(string topic)", StringComparison.Ordinal)
                   && router.Contains("_contracts.Remove(topic);", StringComparison.Ordinal)
-                  && router.Contains("_contractTargets.Remove(topic);", StringComparison.Ordinal)
-                  && router.Contains("_resolvedContracts.Remove(topic);", StringComparison.Ordinal)
-                  && router.Contains("_contractOwnerCounts.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("_wireContracts.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("_ownerCounts.Remove(topic);", StringComparison.Ordinal)
                   && router.Contains("lifecycle.Unregister(topic);", StringComparison.Ordinal),
-                "155-4: router removes all stale contract state and notifies lifecycle sinks");
+                "155-4: router removes logical, wire, and ownership state before notifying lifecycle sinks");
         }
 
         private static void VerifyHubOwnsRouterAndFansOutAfterLivePublish()
@@ -66,17 +66,20 @@ namespace Unity.FoxgloveSDK.Tests
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
             Check(hub.Contains("public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter", StringComparison.Ordinal)
-                  && hub.Contains("public static bool TryGetTopicSinkRouter(out FoxTopicSinkRouter router)", StringComparison.Ordinal)
-                  && hub.Contains("_sinkRouter.RegisterTargets(", StringComparison.Ordinal)
-                  && hub.Contains("_sinkRouter.Dispose()", StringComparison.Ordinal),
-                "155-5: hub owns the sink router, registers frozen target contracts, and disposes it on teardown");
+                  && hub.Contains("public static bool TryGetTopicSinkRouter(", StringComparison.Ordinal)
+                  && hub.Contains("out FoxTopicSinkRouter router)", StringComparison.Ordinal)
+                  && hub.Contains("_sinkRouter.Register(", StringComparison.Ordinal)
+                  && hub.Contains("ResolveWebSocketEncoding(info)", StringComparison.Ordinal)
+                  && hub.Contains("_sinkRouter.Dispose();", StringComparison.Ordinal),
+                "155-5: hub owns the additive sink router, registers its frozen wire view, and disposes it on teardown");
 
             Check(LiveThenSink(hub),
                 "155-6: live publish stays primary and the sink fanout runs afterward gated on HasSinks");
 
-            Check(hub.Contains("_sinkRouter.Unregister(contract.Topic)", StringComparison.Ordinal)
+            Check(hub.Contains("_sinkRouter.Unregister(", StringComparison.Ordinal)
+                  && hub.Contains("contract.Topic);", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.SinkFaulted += OnSinkFaulted", StringComparison.Ordinal)
-                  && hub.Contains("Debug.LogWarning(message)", StringComparison.Ordinal),
+                  && hub.Contains("Debug.LogException(fault.Exception)", StringComparison.Ordinal),
                 "155-7: hub unregisters stale sink contracts and makes sink faults visible by default");
         }
 
@@ -110,40 +113,30 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool LiveThenSink(string hub)
         {
             var dispatchStart = hub.IndexOf(
-                "private bool DispatchTopic(",
+                "private bool TryPublish(",
                 StringComparison.Ordinal);
             var dispatchEnd = hub.IndexOf(
-                "private static bool IsTargetAware(",
+                "private bool SelectsWebSocket(",
                 dispatchStart,
                 StringComparison.Ordinal);
             var live = hub.IndexOf(
-                "source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);",
+                "source.FoxgloveLog_Publish(",
                 dispatchStart,
-                StringComparison.Ordinal);
-            var sinkCall = hub.IndexOf(
-                "PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);",
-                dispatchStart,
-                StringComparison.Ordinal);
-
-            var sideChannelStart = hub.IndexOf(
-                "private void PublishTopicSinkSideChannel(",
                 StringComparison.Ordinal);
             var gate = hub.IndexOf(
-                "_sinkRouter.HasSinks && source is IFoxgloveTopicSinkSource",
-                sideChannelStart,
+                "_sinkRouter.HasSinks",
+                dispatchStart,
                 StringComparison.Ordinal);
             var publish = hub.IndexOf(
-                "sinkSource.FoxgloveLog_PublishToSinks(topicIndex, _sinkRouter, nowNs);",
-                sideChannelStart,
+                ".FoxgloveLog_PublishToSinks(",
+                gate,
                 StringComparison.Ordinal);
             return dispatchStart >= 0
                    && dispatchEnd > dispatchStart
                    && live >= dispatchStart
-                   && sinkCall > live
-                   && sinkCall < dispatchEnd
-                   && sideChannelStart >= 0
-                   && gate >= sideChannelStart
-                   && publish > gate;
+                   && gate > live
+                   && publish > gate
+                   && publish < dispatchEnd;
         }
 
         private static string ReadRepoText(string relativePath)

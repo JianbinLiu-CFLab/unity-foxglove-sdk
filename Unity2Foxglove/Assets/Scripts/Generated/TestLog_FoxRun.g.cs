@@ -16,7 +16,7 @@ using UnityEngine.Scripting;
 using Unity.FoxgloveSDK.Components;
 
 [Preserve]
-partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource
+partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource
 {
     int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -62,30 +62,37 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
 
     private readonly string __foxRunOrigin = "unity2foxglove-" + global::System.Guid.NewGuid().ToString("N");
     private bool __foxRunCaptureActive_0;
+    private bool __foxRunRecordMessagePack_0;
     private FoxRunEncoding __foxRunCaptureEncoding_0;
     private int __foxRunCapture_0_0;
     private bool __foxRunCaptureActive_1;
+    private bool __foxRunRecordMessagePack_1;
     private FoxRunEncoding __foxRunCaptureEncoding_1;
     private ulong __foxRunSequence_1;
     private ulong __foxRunCaptureSequence_1;
     private global::UnityEngine.Vector3 __foxRunCapture_1_0;
     private bool __foxRunCaptureActive_2;
+    private bool __foxRunRecordMessagePack_2;
     private FoxRunEncoding __foxRunCaptureEncoding_2;
     private float __foxRunCapture_2_0;
     private bool __foxRunCaptureActive_3;
+    private bool __foxRunRecordMessagePack_3;
     private FoxRunEncoding __foxRunCaptureEncoding_3;
     private ulong __foxRunSequence_3;
     private ulong __foxRunCaptureSequence_3;
     private global::UnityEngine.Vector3 __foxRunCapture_3_0;
     private bool __foxRunCaptureActive_4;
+    private bool __foxRunRecordMessagePack_4;
     private FoxRunEncoding __foxRunCaptureEncoding_4;
     private ulong __foxRunSequence_4;
     private ulong __foxRunCaptureSequence_4;
     private global::UnityEngine.Vector3 __foxRunCapture_4_0;
     private bool __foxRunCaptureActive_5;
+    private bool __foxRunRecordMessagePack_5;
     private int __foxRunCapture_5_0;
     private int __foxRunCapture_5_1;
     private bool __foxRunCaptureActive_6;
+    private bool __foxRunRecordMessagePack_6;
     private int __foxRunCapture_6_0;
     private int __foxRunCapture_6_1;
     private bool __foxRunRemoteOwned_6;
@@ -101,7 +108,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 try
                 {
                     __foxRunCapture_0_0 = this.conditionalHealth;
-                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_0)
                     {
                         var __payload_0 = __BuildFoxRunMessagePack_0();
                         __foxRunLastMessagePack_0 = __payload_0;
@@ -113,6 +120,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_0_0 = default;
                     __foxRunLastMessagePack_0 = null;
+                    __foxRunRecordMessagePack_0 = false;
                     __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                     __foxRunCaptureActive_0 = false;
                     throw;
@@ -124,7 +132,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_1_0 = this.conditionalPosition;
                     __foxRunCaptureSequence_1 = ++__foxRunSequence_1;
-                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_1)
                     {
                         var __payload_1 = __BuildFoxRunMessagePack_1();
                         __foxRunLastMessagePack_1 = __payload_1;
@@ -137,6 +145,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                     __foxRunCapture_1_0 = default;
                     __foxRunCaptureSequence_1 = 0;
                     __foxRunLastMessagePack_1 = null;
+                    __foxRunRecordMessagePack_1 = false;
                     __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                     __foxRunCaptureActive_1 = false;
                     throw;
@@ -146,7 +155,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 try
                 {
                     __foxRunCapture_2_0 = this._health;
-                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_2)
                     {
                         var __payload_2 = __BuildFoxRunMessagePack_2();
                         __foxRunLastMessagePack_2 = __payload_2;
@@ -158,6 +167,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_2_0 = default;
                     __foxRunLastMessagePack_2 = null;
+                    __foxRunRecordMessagePack_2 = false;
                     __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                     __foxRunCaptureActive_2 = false;
                     throw;
@@ -169,7 +179,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_3_0 = this._pos;
                     __foxRunCaptureSequence_3 = ++__foxRunSequence_3;
-                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_3)
                     {
                         var __payload_3 = __BuildFoxRunMessagePack_3();
                         __foxRunLastMessagePack_3 = __payload_3;
@@ -182,6 +192,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                     __foxRunCapture_3_0 = default;
                     __foxRunCaptureSequence_3 = 0;
                     __foxRunLastMessagePack_3 = null;
+                    __foxRunRecordMessagePack_3 = false;
                     __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                     __foxRunCaptureActive_3 = false;
                     throw;
@@ -193,7 +204,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_4_0 = this._position2;
                     __foxRunCaptureSequence_4 = ++__foxRunSequence_4;
-                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_4)
                     {
                         var __payload_4 = __BuildFoxRunMessagePack_4();
                         __foxRunLastMessagePack_4 = __payload_4;
@@ -206,6 +217,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                     __foxRunCapture_4_0 = default;
                     __foxRunCaptureSequence_4 = 0;
                     __foxRunLastMessagePack_4 = null;
+                    __foxRunRecordMessagePack_4 = false;
                     __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                     __foxRunCaptureActive_4 = false;
                     throw;
@@ -216,6 +228,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_5_0 = this._messagePackAppliedSequence;
                     __foxRunCapture_5_1 = this._messagePackAppliedValue;
+                    if (__foxRunRecordMessagePack_5)
+                    {
+                        var __payload_5 = __BuildFoxRunMessagePack_5();
+                        __foxRunLastMessagePack_5 = __payload_5;
+                    }
                     __foxRunCaptureActive_5 = true;
                     return true;
                 }
@@ -223,6 +240,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_5_0 = default;
                     __foxRunCapture_5_1 = default;
+                    __foxRunLastMessagePack_5 = null;
+                    __foxRunRecordMessagePack_5 = false;
                     __foxRunCaptureActive_5 = false;
                     throw;
                 }
@@ -232,8 +251,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 {
                     __foxRunCapture_6_0 = this._messagePackSequence;
                     __foxRunCapture_6_1 = this._messagePackValue;
-                    var __payload_6 = __BuildFoxRunMessagePack_6();
-                    __foxRunLastMessagePack_6 = __payload_6;
+                    if (true)
+                    {
+                        var __payload_6 = __BuildFoxRunMessagePack_6();
+                        __foxRunLastMessagePack_6 = __payload_6;
+                    }
                     __foxRunCaptureActive_6 = true;
                     return true;
                 }
@@ -242,6 +264,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                     __foxRunCapture_6_0 = default;
                     __foxRunCapture_6_1 = default;
                     __foxRunLastMessagePack_6 = null;
+                    __foxRunRecordMessagePack_6 = false;
                     __foxRunCaptureActive_6 = false;
                     throw;
                 }
@@ -257,6 +280,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 __foxRunCapture_0_0 = default;
                 __foxRunCaptureActive_0 = false;
                 __foxRunLastMessagePack_0 = null;
+                __foxRunRecordMessagePack_0 = false;
                 __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                 break;
             case 1:
@@ -264,12 +288,14 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 __foxRunCaptureSequence_1 = 0;
                 __foxRunCaptureActive_1 = false;
                 __foxRunLastMessagePack_1 = null;
+                __foxRunRecordMessagePack_1 = false;
                 __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                 break;
             case 2:
                 __foxRunCapture_2_0 = default;
                 __foxRunCaptureActive_2 = false;
                 __foxRunLastMessagePack_2 = null;
+                __foxRunRecordMessagePack_2 = false;
                 __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                 break;
             case 3:
@@ -277,6 +303,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 __foxRunCaptureSequence_3 = 0;
                 __foxRunCaptureActive_3 = false;
                 __foxRunLastMessagePack_3 = null;
+                __foxRunRecordMessagePack_3 = false;
                 __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                 break;
             case 4:
@@ -284,18 +311,22 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 __foxRunCaptureSequence_4 = 0;
                 __foxRunCaptureActive_4 = false;
                 __foxRunLastMessagePack_4 = null;
+                __foxRunRecordMessagePack_4 = false;
                 __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                 break;
             case 5:
                 __foxRunCapture_5_0 = default;
                 __foxRunCapture_5_1 = default;
                 __foxRunCaptureActive_5 = false;
+                __foxRunLastMessagePack_5 = null;
+                __foxRunRecordMessagePack_5 = false;
                 break;
             case 6:
                 __foxRunCapture_6_0 = default;
                 __foxRunCapture_6_1 = default;
                 __foxRunCaptureActive_6 = false;
                 __foxRunLastMessagePack_6 = null;
+                __foxRunRecordMessagePack_6 = false;
                 break;
         }
     }
@@ -346,6 +377,70 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
             case 2: __foxRunCaptureEncoding_2 = encoding; break;
             case 3: __foxRunCaptureEncoding_3 = encoding; break;
             case 4: __foxRunCaptureEncoding_4 = encoding; break;
+        }
+    }
+
+    bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady(
+        int topicIndex, FoxgloveManager mgr, out string reason)
+    {
+        reason = string.Empty;
+        if (mgr == null || mgr.SuppressLivePublishersForReplay) { reason = "MCAP recording is unavailable."; return false; }
+        switch (topicIndex)
+        {
+            case 0:
+                __foxRunRecordMessagePack_0 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/conditional_health", out _, out reason);
+                return __foxRunRecordMessagePack_0;
+            case 1:
+                __foxRunRecordMessagePack_1 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/conditional_position", out _, out reason);
+                return __foxRunRecordMessagePack_1;
+            case 2:
+                __foxRunRecordMessagePack_2 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/health", out _, out reason);
+                return __foxRunRecordMessagePack_2;
+            case 3:
+                __foxRunRecordMessagePack_3 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/position", out _, out reason);
+                return __foxRunRecordMessagePack_3;
+            case 4:
+                __foxRunRecordMessagePack_4 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/position2", out _, out reason);
+                return __foxRunRecordMessagePack_4;
+            case 5:
+                __foxRunRecordMessagePack_5 = mgr.TryPrepareFoxRunMessagePackRecording("/phase185/messagepack/apply-evidence", out _, out reason);
+                return __foxRunRecordMessagePack_5;
+            case 6:
+                __foxRunRecordMessagePack_6 = mgr.TryPrepareFoxRunMessagePackRecording("/phase185/messagepack/full-duplex", out _, out reason);
+                return __foxRunRecordMessagePack_6;
+            default: return false;
+        }
+    }
+
+    bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured(
+        int topicIndex, FoxgloveManager mgr, ulong nowNs, out string reason)
+    {
+        reason = string.Empty;
+        if (mgr == null) return false;
+        switch (topicIndex)
+        {
+            case 0:
+                if (!__foxRunRecordMessagePack_0) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/debug/conditional_health", __foxRunLastMessagePack_0, nowNs, out reason);
+            case 1:
+                if (!__foxRunRecordMessagePack_1) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/debug/conditional_position", __foxRunLastMessagePack_1, nowNs, out reason);
+            case 2:
+                if (!__foxRunRecordMessagePack_2) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/debug/health", __foxRunLastMessagePack_2, nowNs, out reason);
+            case 3:
+                if (!__foxRunRecordMessagePack_3) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/debug/position", __foxRunLastMessagePack_3, nowNs, out reason);
+            case 4:
+                if (!__foxRunRecordMessagePack_4) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/debug/position2", __foxRunLastMessagePack_4, nowNs, out reason);
+            case 5:
+                if (!__foxRunRecordMessagePack_5) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/phase185/messagepack/apply-evidence", __foxRunLastMessagePack_5, nowNs, out reason);
+            case 6:
+                if (!__foxRunRecordMessagePack_6) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                return mgr.TryPublishFoxRunMessagePackRecording("/phase185/messagepack/full-duplex", __foxRunLastMessagePack_6, nowNs, out reason);
+            default: return false;
         }
     }
     [Preserve]
@@ -662,6 +757,20 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
             __writer.WriteMapHeader(1);
             __writer.WriteString("position2");
             __WriteFoxRunMessagePackObject_0(__writer, __foxRunCapture_4_0);
+            return __writer.ToArray();
+        }
+    }
+    private byte[] __foxRunLastMessagePack_5;
+
+    private byte[] __BuildFoxRunMessagePack_5()
+    {
+        using (var __writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())
+        {
+            __writer.WriteMapHeader(2);
+            __writer.WriteString("messagePackAppliedSequence");
+            __writer.WriteInt32((int)__foxRunCapture_5_0);
+            __writer.WriteString("messagePackAppliedValue");
+            __writer.WriteInt32((int)__foxRunCapture_5_1);
             return __writer.ToArray();
         }
     }

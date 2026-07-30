@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     [Preserve]
-    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishTargetSource, IFoxglovePublishRecordingSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource
+    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource
     {
         int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -20,13 +20,13 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             switch (index)
             {
-                case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
-                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 10f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
-                case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
-                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
-                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPolicy.Trigger, 0f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
-                case 5: return new FoxgloveLogTopicInfo("/debug/value", 5f, FoxRunPolicy.Change, 0.01f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: true);
-                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPolicy.Change, 0.001f, (FoxRunFlow)1, declaredSource: (FoxRunEndpoint)0, hasExplicitSource: false, declaredTargets: (FoxRunEndpoint)0, hasExplicitTargets: false, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, qosProfile: (FoxRunQosProfile)0, hasExplicitQosProfile: false, qosReliability: (FoxRunQosReliability)0, hasExplicitReliability: false, qosDurability: (FoxRunQosDurability)0, hasExplicitDurability: false, qosHistory: (FoxRunQosHistory)0, hasExplicitHistory: false, qosDepth: 0, hasExplicitDepth: false, hasExplicitHz: false);
+                case 0: return new FoxgloveLogTopicInfo("/debug/array", 0f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: false);
+                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 0f, FoxRunPolicy.FixedRate, 0f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: true);
+                case 2: return new FoxgloveLogTopicInfo("/debug/list", 0f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: false);
+                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 0f, FoxRunPolicy.Change, 0f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: false);
+                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 0f, FoxRunPolicy.Trigger, 0f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: false);
+                case 5: return new FoxgloveLogTopicInfo("/debug/value", 5f, FoxRunPolicy.Change, 0.01f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: true);
+                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 0f, FoxRunPolicy.Change, 0.001f, (FoxRunFlow)1, publishTransportIds: null, subscribeTransportId: null, declaredEncoding: (FoxRunEncoding)0, hasExplicitEncoding: false, deliveryPolicy: new FoxRunDeliveryPolicy(FoxRunDeliveryReliability.ProviderDefault, FoxRunDeliveryDurability.ProviderDefault, FoxRunDeliveryHistory.ProviderDefault, 0), hasExplicitDeliveryPolicy: false, hasExplicitHz: false);
                 default: return default;
             }
         }
@@ -58,26 +58,35 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
 
         private readonly string __foxRunOrigin = "unity2foxglove-" + global::System.Guid.NewGuid().ToString("N");
         private bool __foxRunCaptureActive_0;
+        private bool __foxRunRecordMessagePack_0;
         private FoxRunEncoding __foxRunCaptureEncoding_0;
         private float[] __foxRunCapture_0_0;
         private bool __foxRunCaptureActive_1;
+        private bool __foxRunRecordMessagePack_1;
         private FoxRunEncoding __foxRunCaptureEncoding_1;
         private string __foxRunCapture_1_0;
         private bool __foxRunCaptureActive_2;
+        private bool __foxRunRecordMessagePack_2;
         private FoxRunEncoding __foxRunCaptureEncoding_2;
         private global::System.Collections.Generic.List<float> __foxRunCapture_2_0;
         private bool __foxRunCaptureActive_3;
+        private bool __foxRunRecordMessagePack_3;
         private FoxRunEncoding __foxRunCaptureEncoding_3;
         private int? __foxRunCapture_3_0;
         private bool __foxRunCaptureActive_4;
+        private bool __foxRunRecordMessagePack_4;
         private FoxRunEncoding __foxRunCaptureEncoding_4;
         private int __foxRunCapture_4_0;
         private bool __foxRunCaptureActive_5;
+        private bool __foxRunRecordMessagePack_5;
         private FoxRunEncoding __foxRunCaptureEncoding_5;
         private float __foxRunCapture_5_0;
         private float __foxRunCapture_5_1;
         private bool __foxRunCaptureActive_6;
+        private bool __foxRunRecordMessagePack_6;
         private FoxRunEncoding __foxRunCaptureEncoding_6;
+        private ulong __foxRunSequence_6;
+        private ulong __foxRunCaptureSequence_6;
         private global::UnityEngine.Vector3 __foxRunCapture_6_0;
 
         bool IFoxglovePublishCaptureSource.FoxgloveLog_BeginCapture(int topicIndex)
@@ -89,7 +98,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_0_0 = this._samples;
-                        if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_0)
                         {
                             var __payload_0 = __BuildFoxRunMessagePack_0();
                             __foxRunLastMessagePack_0 = __payload_0;
@@ -101,6 +110,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_0_0 = default;
                         __foxRunLastMessagePack_0 = null;
+                        __foxRunRecordMessagePack_0 = false;
                         __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_0 = false;
                         throw;
@@ -110,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_1_0 = this._extra;
-                        if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_1)
                         {
                             var __payload_1 = __BuildFoxRunMessagePack_1();
                             __foxRunLastMessagePack_1 = __payload_1;
@@ -122,6 +132,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_1_0 = default;
                         __foxRunLastMessagePack_1 = null;
+                        __foxRunRecordMessagePack_1 = false;
                         __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_1 = false;
                         throw;
@@ -131,7 +142,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_2_0 = this._sampleList;
-                        if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_2)
                         {
                             var __payload_2 = __BuildFoxRunMessagePack_2();
                             __foxRunLastMessagePack_2 = __payload_2;
@@ -143,6 +154,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_2_0 = default;
                         __foxRunLastMessagePack_2 = null;
+                        __foxRunRecordMessagePack_2 = false;
                         __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_2 = false;
                         throw;
@@ -152,7 +164,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_3_0 = this._optionalCount;
-                        if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_3)
                         {
                             var __payload_3 = __BuildFoxRunMessagePack_3();
                             __foxRunLastMessagePack_3 = __payload_3;
@@ -164,6 +176,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_3_0 = default;
                         __foxRunLastMessagePack_3 = null;
+                        __foxRunRecordMessagePack_3 = false;
                         __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_3 = false;
                         throw;
@@ -173,7 +186,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     try
                     {
                         __foxRunCapture_4_0 = this._trigger;
-                        if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_4)
                         {
                             var __payload_4 = __BuildFoxRunMessagePack_4();
                             __foxRunLastMessagePack_4 = __payload_4;
@@ -185,6 +198,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_4_0 = default;
                         __foxRunLastMessagePack_4 = null;
+                        __foxRunRecordMessagePack_4 = false;
                         __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_4 = false;
                         throw;
@@ -195,7 +209,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     {
                         __foxRunCapture_5_0 = this._value;
                         __foxRunCapture_5_1 = this._valueMirror;
-                        if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
+                        if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_5)
                         {
                             var __payload_5 = __BuildFoxRunMessagePack_5();
                             __foxRunLastMessagePack_5 = __payload_5;
@@ -208,16 +222,19 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                         __foxRunCapture_5_0 = default;
                         __foxRunCapture_5_1 = default;
                         __foxRunLastMessagePack_5 = null;
+                        __foxRunRecordMessagePack_5 = false;
                         __foxRunCaptureEncoding_5 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_5 = false;
                         throw;
                     }
                 case 6:
                     if (__foxRunCaptureActive_6) return false;
+                    if (__foxRunSequence_6 == ulong.MaxValue) return false;
                     try
                     {
                         __foxRunCapture_6_0 = this._position;
-                        if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
+                        __foxRunCaptureSequence_6 = ++__foxRunSequence_6;
+                        if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack || __foxRunRecordMessagePack_6)
                         {
                             var __payload_6 = __BuildFoxRunMessagePack_6();
                             __foxRunLastMessagePack_6 = __payload_6;
@@ -228,7 +245,9 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     catch
                     {
                         __foxRunCapture_6_0 = default;
+                        __foxRunCaptureSequence_6 = 0;
                         __foxRunLastMessagePack_6 = null;
+                        __foxRunRecordMessagePack_6 = false;
                         __foxRunCaptureEncoding_6 = (FoxRunEncoding)0;
                         __foxRunCaptureActive_6 = false;
                         throw;
@@ -245,30 +264,35 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     __foxRunCapture_0_0 = default;
                     __foxRunCaptureActive_0 = false;
                     __foxRunLastMessagePack_0 = null;
+                    __foxRunRecordMessagePack_0 = false;
                     __foxRunCaptureEncoding_0 = (FoxRunEncoding)0;
                     break;
                 case 1:
                     __foxRunCapture_1_0 = default;
                     __foxRunCaptureActive_1 = false;
                     __foxRunLastMessagePack_1 = null;
+                    __foxRunRecordMessagePack_1 = false;
                     __foxRunCaptureEncoding_1 = (FoxRunEncoding)0;
                     break;
                 case 2:
                     __foxRunCapture_2_0 = default;
                     __foxRunCaptureActive_2 = false;
                     __foxRunLastMessagePack_2 = null;
+                    __foxRunRecordMessagePack_2 = false;
                     __foxRunCaptureEncoding_2 = (FoxRunEncoding)0;
                     break;
                 case 3:
                     __foxRunCapture_3_0 = default;
                     __foxRunCaptureActive_3 = false;
                     __foxRunLastMessagePack_3 = null;
+                    __foxRunRecordMessagePack_3 = false;
                     __foxRunCaptureEncoding_3 = (FoxRunEncoding)0;
                     break;
                 case 4:
                     __foxRunCapture_4_0 = default;
                     __foxRunCaptureActive_4 = false;
                     __foxRunLastMessagePack_4 = null;
+                    __foxRunRecordMessagePack_4 = false;
                     __foxRunCaptureEncoding_4 = (FoxRunEncoding)0;
                     break;
                 case 5:
@@ -276,12 +300,15 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     __foxRunCapture_5_1 = default;
                     __foxRunCaptureActive_5 = false;
                     __foxRunLastMessagePack_5 = null;
+                    __foxRunRecordMessagePack_5 = false;
                     __foxRunCaptureEncoding_5 = (FoxRunEncoding)0;
                     break;
                 case 6:
                     __foxRunCapture_6_0 = default;
+                    __foxRunCaptureSequence_6 = 0;
                     __foxRunCaptureActive_6 = false;
                     __foxRunLastMessagePack_6 = null;
+                    __foxRunRecordMessagePack_6 = false;
                     __foxRunCaptureEncoding_6 = (FoxRunEncoding)0;
                     break;
             }
@@ -303,167 +330,80 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             }
         }
 
-        bool IFoxglovePublishTargetSource.FoxgloveLog_IsTargetReady(
-            int topicIndex, FoxRunEndpoint target, FoxRunResolvedPublishContract resolved,
-            FoxgloveManager mgr, FoxTopicBus bus, FoxTopicSinkRouter router, out string reason)
+        void IFoxRunWebSocketCaptureSource.FoxgloveLog_SetWebSocketEncoding(int topicIndex, FoxRunEncoding encoding)
         {
-            reason = string.Empty;
-            if (resolved == null || !resolved.Selects(target)) { reason = "Target was not selected."; return false; }
             switch (topicIndex)
             {
-                case 0: __foxRunCaptureEncoding_0 = resolved.FoxgloveEncoding; break;
-                case 1: __foxRunCaptureEncoding_1 = resolved.FoxgloveEncoding; break;
-                case 2: __foxRunCaptureEncoding_2 = resolved.FoxgloveEncoding; break;
-                case 3: __foxRunCaptureEncoding_3 = resolved.FoxgloveEncoding; break;
-                case 4: __foxRunCaptureEncoding_4 = resolved.FoxgloveEncoding; break;
-                case 5: __foxRunCaptureEncoding_5 = resolved.FoxgloveEncoding; break;
-                case 6: __foxRunCaptureEncoding_6 = resolved.FoxgloveEncoding; break;
+                case 0: __foxRunCaptureEncoding_0 = encoding; break;
+                case 1: __foxRunCaptureEncoding_1 = encoding; break;
+                case 2: __foxRunCaptureEncoding_2 = encoding; break;
+                case 3: __foxRunCaptureEncoding_3 = encoding; break;
+                case 4: __foxRunCaptureEncoding_4 = encoding; break;
+                case 5: __foxRunCaptureEncoding_5 = encoding; break;
+                case 6: __foxRunCaptureEncoding_6 = encoding; break;
             }
-            if (mgr == null) { reason = "Foxglove Manager is unavailable."; return false; }
-            if (mgr.SuppressLivePublishersForReplay) { reason = "Replay is suppressing live publishers."; return false; }
-            if (target == FoxRunEndpoint.Foxglove)
-            {
-                if (mgr.IsRunning) return true;
-                reason = "Foxglove output is unavailable."; return false;
-            }
-            var __contract = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(topicIndex);
-            if (target == FoxRunEndpoint.Ros2Native)
-            {
-                switch (topicIndex)
-                {
-                }
-                switch (topicIndex)
-                {
-                }
-                reason = "No exact native ROS 2 serializer is available for this declaration."; return false;
-            }
-            if (target == FoxRunEndpoint.Ros2Bridge)
-            {
-                switch (topicIndex)
-                {
-                }
-                reason = "No exact ROS 2 Bridge serializer is available for this declaration."; return false;
-            }
-            reason = "Unknown publish target."; return false;
-        }
-
-        bool IFoxglovePublishTargetSource.FoxgloveLog_PublishCaptured(
-            int topicIndex, FoxRunEndpoint target, FoxRunResolvedPublishContract resolved,
-            FoxgloveManager mgr, FoxTopicBus bus, FoxTopicSinkRouter router, ulong nowNs, out string reason)
-        {
-            reason = string.Empty;
-            if (target == FoxRunEndpoint.Foxglove)
-            {
-                ((IFoxgloveLogSource)this).FoxgloveLog_Publish(topicIndex, mgr, nowNs);
-                return true;
-            }
-            var __contract = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(topicIndex);
-            if (target == FoxRunEndpoint.Ros2Native)
-            {
-                switch (topicIndex)
-                {
-                }
-            }
-            if (target == FoxRunEndpoint.Ros2Native)
-            {
-                if (router == null) { reason = "Target router is unavailable."; return false; }
-                switch (topicIndex)
-                {
-                    default: reason = "No exact native ROS 2 serializer is available for this declaration."; return false;
-                }
-            }
-            if (target == FoxRunEndpoint.Ros2Bridge)
-            {
-                switch (topicIndex)
-                {
-                    default: reason = "No exact ROS 2 Bridge serializer is available for this declaration."; return false;
-                }
-            }
-            reason = "Unknown publish target."; return false;
         }
 
         bool IFoxglovePublishRecordingSource.FoxgloveLog_IsRecordingReady(
-            int topicIndex, FoxRunResolvedPublishContract resolved, FoxgloveManager mgr, out string reason)
+            int topicIndex, FoxgloveManager mgr, out string reason)
         {
             reason = string.Empty;
-            if (resolved == null || resolved.Selects(FoxRunEndpoint.Foxglove)) return false;
             if (mgr == null || mgr.SuppressLivePublishersForReplay) { reason = "MCAP recording is unavailable."; return false; }
             switch (topicIndex)
             {
                 case 0:
-                    __foxRunCaptureEncoding_0 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/array", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_0 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/array", out _, out reason);
+                    return __foxRunRecordMessagePack_0;
                 case 1:
-                    __foxRunCaptureEncoding_1 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/extra", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_1 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/extra", out _, out reason);
+                    return __foxRunRecordMessagePack_1;
                 case 2:
-                    __foxRunCaptureEncoding_2 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/list", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_2 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/list", out _, out reason);
+                    return __foxRunRecordMessagePack_2;
                 case 3:
-                    __foxRunCaptureEncoding_3 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/nullable", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_3 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/nullable", out _, out reason);
+                    return __foxRunRecordMessagePack_3;
                 case 4:
-                    __foxRunCaptureEncoding_4 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/trigger", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_4 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/trigger", out _, out reason);
+                    return __foxRunRecordMessagePack_4;
                 case 5:
-                    __foxRunCaptureEncoding_5 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/value", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_5 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/value", out _, out reason);
+                    return __foxRunRecordMessagePack_5;
                 case 6:
-                    __foxRunCaptureEncoding_6 = resolved.FoxgloveEncoding;
-                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPrepareFoxRunMessagePackRecording("/debug/vector", out _, out reason);
-                    return false;
+                    __foxRunRecordMessagePack_6 = mgr.TryPrepareFoxRunMessagePackRecording("/debug/vector", out _, out reason);
+                    return __foxRunRecordMessagePack_6;
                 default: return false;
             }
         }
 
         bool IFoxglovePublishRecordingSource.FoxgloveLog_RecordCaptured(
-            int topicIndex, FoxRunResolvedPublishContract resolved, FoxgloveManager mgr, ulong nowNs, out string reason)
+            int topicIndex, FoxgloveManager mgr, ulong nowNs, out string reason)
         {
             reason = string.Empty;
-            if (resolved == null || resolved.Selects(FoxRunEndpoint.Foxglove) || mgr == null) return false;
+            if (mgr == null) return false;
             switch (topicIndex)
             {
                 case 0:
-                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/array", __foxRunLastMessagePack_0, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_0) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/array", __foxRunLastMessagePack_0, nowNs, out reason);
                 case 1:
-                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/extra", __foxRunLastMessagePack_1, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_1) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/extra", __foxRunLastMessagePack_1, nowNs, out reason);
                 case 2:
-                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/list", __foxRunLastMessagePack_2, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_2) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/list", __foxRunLastMessagePack_2, nowNs, out reason);
                 case 3:
-                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/nullable", __foxRunLastMessagePack_3, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_3) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/nullable", __foxRunLastMessagePack_3, nowNs, out reason);
                 case 4:
-                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/trigger", __foxRunLastMessagePack_4, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_4) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/trigger", __foxRunLastMessagePack_4, nowNs, out reason);
                 case 5:
-                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/value", __foxRunLastMessagePack_5, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_5) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/value", __foxRunLastMessagePack_5, nowNs, out reason);
                 case 6:
-                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
-                        return mgr.TryPublishFoxRunMessagePackRecording("/debug/vector", __foxRunLastMessagePack_6, nowNs, out reason);
-                    return false;
+                    if (!__foxRunRecordMessagePack_6) { reason = "MessagePack recording was not prepared for this capture."; return false; }
+                    return mgr.TryPublishFoxRunMessagePackRecording("/debug/vector", __foxRunLastMessagePack_6, nowNs, out reason);
                 default: return false;
             }
         }
@@ -1234,6 +1174,22 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             published |= FoxgloveLogHub.Trigger(this, 4);
             return published;
         }
+        private float[] __FoxRunRead_samples_ee5552edf7db96a9() => __foxRunCapture_0_0;
+
+        private string __FoxRunRead_extra_d38bfc70d930f492() => __foxRunCapture_1_0;
+
+        private System.Collections.Generic.List<float> __FoxRunRead_sampleList_3b2b8000796afd9a() => __foxRunCapture_2_0;
+
+        private int? __FoxRunRead_optionalCount_4e5493976d91a131() => __foxRunCapture_3_0;
+
+        private int __FoxRunRead_trigger_342c76e698075d00() => __foxRunCapture_4_0;
+
+        private float __FoxRunRead_value_b2ddfbbed3a8dbb3() => __foxRunCapture_5_0;
+
+        private float __FoxRunRead_valueMirror_a81a546626512ef6() => __foxRunCapture_5_1;
+
+        private UnityEngine.Vector3 __FoxRunRead_position_fa1c12bd59505221() => __foxRunCapture_6_0;
+
 
         private bool __hasLast_0;
         private double __lastPublishSec_0;

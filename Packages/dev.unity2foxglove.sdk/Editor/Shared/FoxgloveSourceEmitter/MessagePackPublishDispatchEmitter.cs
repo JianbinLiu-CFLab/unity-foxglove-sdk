@@ -35,10 +35,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         internal static bool MayUseMessagePack(
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+            => CanEncodeMessagePack(fields)
+               && (UsesMessagePack(fields)
+                   || TopicMetadataEmitter.IsInherited(fields));
+
+        internal static bool CanEncodeMessagePack(
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
             => fields != null
                && fields.Count > 0
-               && (UsesMessagePack(fields)
-                   || TopicMetadataEmitter.IsInherited(fields))
                && fields.All(field =>
                    FoxRunMessagePackTypeShapeRules.IsPublishSupported(
                        field.TypeShape,
@@ -53,7 +57,7 @@ namespace Unity.FoxgloveSDK.Editor
             var objectShapes = new List<ObjectShape>();
             foreach (var topic in topics)
             {
-                if (!MayUseMessagePack(topicMap[topic]))
+                if (!CanEncodeMessagePack(topicMap[topic]))
                     continue;
                 foreach (var field in topicMap[topic])
                     CollectObjectShapes(field.TypeShape, objectShapes);
@@ -62,7 +66,7 @@ namespace Unity.FoxgloveSDK.Editor
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
-                if (!MayUseMessagePack(fields))
+                if (!CanEncodeMessagePack(fields))
                     continue;
 
                 sb.AppendLine($"{pad}    private byte[] __foxRunLastMessagePack_{topicIndex};");

@@ -4,6 +4,7 @@
 // Module: Ros2ForUnity.Native
 // Purpose: R2FU-owned ordinary native-output admission policy.
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
@@ -61,3 +62,4 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
     }
 }
+#endif
