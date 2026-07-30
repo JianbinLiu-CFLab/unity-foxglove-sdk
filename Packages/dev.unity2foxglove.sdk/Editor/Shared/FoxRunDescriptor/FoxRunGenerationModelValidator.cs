@@ -493,6 +493,20 @@ namespace Unity.FoxgloveSDK.Editor
             var subscribes = member.Mode == 2 || member.Mode == 3;
             var hasExplicitTargets = member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets);
             var hasExplicitSource = member.HasNamedArgument(FoxRunNamedArgumentPresence.Source);
+            if (member.HasNamedArgument(
+                    FoxRunNamedArgumentPresence.Encoding)
+                && string.Equals(
+                    member.Encoding,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal))
+            {
+                // Explicit MessagePack selects the WebSocket codec even when
+                // the same declaration also has a valid native ROS 2 shape.
+                // Native capability must never suppress MessagePack shape
+                // validation.
+                return true;
+            }
+
             var explicitFoxglovePublish = publishes
                                           && hasExplicitTargets
                                           && TargetsContain(
@@ -533,7 +547,9 @@ namespace Unity.FoxgloveSDK.Editor
                 // shape is not a canonical WebSocket field shape.  Keep the
                 // existing validation for every inbound/P&S declaration: an
                 // inherited provider there can still resolve to WebSocket.
-                if (IsNativeCustomPublishOutputContract(member, hasValidNativeCapability)
+                if (IsNativeCustomPublishOutputContract(
+                        member,
+                        hasValidNativeCapability)
                     && !subscribes)
                     return false;
 
@@ -838,19 +854,16 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' cannot mix FoxRunMessage aggregate fields with field-level FoxRun members."));
                 }
 
-                var duplicateJsonName = members
-                    .Where(member => member.IsAggregateMember)
-                    .GroupBy(member => member.JsonFieldName, StringComparer.Ordinal)
-                    .FirstOrDefault(names => names.Count() > 1);
-                if (duplicateJsonName != null)
-                {
-                    var first = duplicateJsonName.First();
-                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                        "FOXRUN022",
-                        first.DeclaringType + "." + first.MemberName,
-                        first.MemberName,
-                        "FoxRun aggregate topic '" + group.Key + "' has duplicate JSON field name '" + duplicateJsonName.Key + "'."));
-                }
+                ValidateDirectionalJsonNames(
+                    group.Key,
+                    "publish",
+                    members.Where(member => member.Mode == 1 || member.Mode == 3),
+                    diagnostics);
+                ValidateDirectionalJsonNames(
+                    group.Key,
+                    "subscribe",
+                    members.Where(member => member.Mode == 2 || member.Mode == 3),
+                    diagnostics);
 
                 var collision = members
                     .GroupBy(member => member.MemberName.TrimStart('_'), StringComparer.Ordinal)
@@ -889,6 +902,32 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' has mixed OnlyIf values."));
                 }
             }
+        }
+
+        private static void ValidateDirectionalJsonNames(
+            string topic,
+            string direction,
+            IEnumerable<FoxRunGenerationMember> members,
+            ICollection<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            var duplicateJsonName = members
+                .GroupBy(member => member.JsonFieldName, StringComparer.Ordinal)
+                .FirstOrDefault(names => names.Count() > 1);
+            if (duplicateJsonName == null)
+                return;
+
+            var first = duplicateJsonName.First();
+            diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                "FOXRUN022",
+                first.DeclaringType + "." + first.MemberName,
+                first.MemberName,
+                "FoxRun topic '"
+                + topic
+                + "' has duplicate "
+                + direction
+                + " JSON field name '"
+                + duplicateJsonName.Key
+                + "'."));
         }
 
         private static bool HasMixedDirectionalQosContract(IReadOnlyList<FoxRunGenerationMember> members)

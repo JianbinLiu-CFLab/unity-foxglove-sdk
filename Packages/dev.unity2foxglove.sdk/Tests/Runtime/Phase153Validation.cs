@@ -83,9 +83,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && hub.Contains("RemoveSourceNow(source)", StringComparison.Ordinal),
                 "FoxgloveLogHub owns a local bus and registers/unregisters optional generated contracts");
 
-            Check(MethodContainsLiveThenBus(hub, "TryPublishScheduledTopic", "scheduled publish")
-                  && MethodContainsLiveThenBus(hub, "TryPublishTriggeredTopic", "trigger publish"),
-                "FoxRun live publish remains the primary path and the bus runs afterward as a side-channel");
+            Check(DispatchTopicContainsLiveThenBus(hub)
+                  && MethodDelegatesToDispatchTopic(
+                      hub,
+                      "TryPublishScheduledTopic",
+                      "scheduled publish")
+                  && MethodDelegatesToDispatchTopic(
+                      hub,
+                      "TryPublishTriggeredTopic",
+                      "trigger publish"),
+                "FoxRun scheduled and triggered live publish remain primary, followed by sink and bus side-channels");
 
             Check(hub.Contains("operation + \" bus side-channel\"", StringComparison.Ordinal)
                   && hub.Contains("catch (Exception ex) when (IsRecoverableSourceException(ex))", StringComparison.Ordinal),
@@ -120,8 +127,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(golden.Contains("IFoxgloveTopicContractSource", StringComparison.Ordinal)
                   && golden.Contains("FoxgloveLog_PublishToBus", StringComparison.Ordinal)
                   && golden.Contains("bus.HasSubscribers(\"/debug/value\")", StringComparison.Ordinal)
-                  && golden.Contains("topic=/debug/value\\nencoding=json\\nschema=\\nfields=value:float32;valueMirror:float32", StringComparison.Ordinal),
-                "Roslyn golden baseline includes generated contracts and bus side-channel output");
+                  && metadata.Contains("sb.Append(\"v2|topic=\")", StringComparison.Ordinal)
+                  && metadata.Contains("FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed", StringComparison.Ordinal)
+                  && golden.Contains("v2|topic=12#/debug/value|encoding=4#json|schema=0#|fields=", StringComparison.Ordinal)
+                  && !golden.Contains("topic=/debug/value\\nencoding=json\\nschema=", StringComparison.Ordinal),
+                "Roslyn golden baseline includes generated contracts, injective v2 identity, and bus side-channel output");
         }
 
         private static void VerifyValidationCoverage()
@@ -130,15 +140,55 @@ namespace Unity.FoxgloveSDK.Tests
                 "Validation registry exposes the Phase153 flag");
         }
 
-        private static bool MethodContainsLiveThenBus(string source, string methodName, string operation)
+        private static bool DispatchTopicContainsLiveThenBus(string source)
         {
-            var methodStart = source.IndexOf(methodName, StringComparison.Ordinal);
+            var methodStart = source.IndexOf(
+                "private bool DispatchTopic(",
+                StringComparison.Ordinal);
             if (methodStart < 0)
                 return false;
 
-            var live = source.IndexOf("source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);", methodStart, StringComparison.Ordinal);
-            var bus = source.IndexOf("PublishTopicBusSideChannel(source, topicIndex, nowNs, \"" + operation + "\")", methodStart, StringComparison.Ordinal);
-            return live >= 0 && bus > live;
+            var methodEnd = source.IndexOf(
+                "private static bool IsTargetAware(",
+                methodStart,
+                StringComparison.Ordinal);
+            var live = source.IndexOf(
+                "source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);",
+                methodStart,
+                StringComparison.Ordinal);
+            var sink = source.IndexOf(
+                "PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);",
+                methodStart,
+                StringComparison.Ordinal);
+            var bus = source.IndexOf(
+                "busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);",
+                methodStart,
+                StringComparison.Ordinal);
+            return methodEnd > methodStart
+                   && live >= methodStart
+                   && sink > live
+                   && bus > sink
+                   && bus < methodEnd;
+        }
+
+        private static bool MethodDelegatesToDispatchTopic(
+            string source,
+            string methodName,
+            string operation)
+        {
+            var methodStart = source.IndexOf(
+                "private bool " + methodName + "(",
+                StringComparison.Ordinal);
+            if (methodStart < 0)
+                return false;
+
+            var dispatch = source.IndexOf(
+                "DispatchTopic(source, topicIndex, nowNs, \""
+                + operation
+                + "\", publishLive, publishBus)",
+                methodStart,
+                StringComparison.Ordinal);
+            return dispatch >= methodStart;
         }
 
         private static string ReadRepoText(string relativePath)

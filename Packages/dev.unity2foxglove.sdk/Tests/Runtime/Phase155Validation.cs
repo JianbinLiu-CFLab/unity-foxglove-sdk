@@ -53,8 +53,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "155-3: router replays known contracts so a sink can be attached at any time");
 
             Check(router.Contains("public bool Unregister(string topic)", StringComparison.Ordinal)
-                  && router.Contains("return _contracts.Remove(topic)", StringComparison.Ordinal),
-                "155-4: router removes stale source contracts so late sinks do not replay destroyed topics");
+                  && router.Contains("_contracts.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("_contractTargets.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("_resolvedContracts.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("_contractOwnerCounts.Remove(topic);", StringComparison.Ordinal)
+                  && router.Contains("lifecycle.Unregister(topic);", StringComparison.Ordinal),
+                "155-4: router removes all stale contract state and notifies lifecycle sinks");
         }
 
         private static void VerifyHubOwnsRouterAndFansOutAfterLivePublish()
@@ -63,9 +67,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(hub.Contains("public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter", StringComparison.Ordinal)
                   && hub.Contains("public static bool TryGetTopicSinkRouter(out FoxTopicSinkRouter router)", StringComparison.Ordinal)
-                  && hub.Contains("_sinkRouter.Register(contract)", StringComparison.Ordinal)
+                  && hub.Contains("_sinkRouter.RegisterTargets(", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.Dispose()", StringComparison.Ordinal),
-                "155-5: hub owns the sink router, registers exported contracts, and disposes it on teardown");
+                "155-5: hub owns the sink router, registers frozen target contracts, and disposes it on teardown");
 
             Check(LiveThenSink(hub),
                 "155-6: live publish stays primary and the sink fanout runs afterward gated on HasSinks");
@@ -84,8 +88,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(frame.Contains("IFoxgloveTopicSinkSource", StringComparison.Ordinal)
                   && emitter.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", StringComparison.Ordinal)
                   && emitter.Contains("if (router == null || !router.HasSinks)", StringComparison.Ordinal)
-                  && emitter.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(", StringComparison.Ordinal),
-                "155-8: generated sources fan topics out to the sink router, gated on HasSinks");
+                  && emitter.Contains("router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(", StringComparison.Ordinal)
+                  && emitter.Contains("FoxRunEncoding.JSON", StringComparison.Ordinal)
+                  && emitter.Contains("FoxRunEncoding.MessagePack", StringComparison.Ordinal)
+                  && !emitter.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(", StringComparison.Ordinal),
+                "155-8: generated sources fan compatible JSON or MessagePack views only, gated on HasSinks");
 
             Check(emitter.Contains("__foxRunLastJson_", StringComparison.Ordinal)
                   && emitter.Contains("var __sink_", StringComparison.Ordinal)
@@ -102,10 +109,41 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool LiveThenSink(string hub)
         {
-            var live = hub.IndexOf("source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);", StringComparison.Ordinal);
-            var sink = hub.IndexOf("FoxgloveLog_PublishToSinks(topicIndex, _sinkRouter, nowNs)", StringComparison.Ordinal);
-            var gate = hub.IndexOf("_sinkRouter.HasSinks && source is IFoxgloveTopicSinkSource", StringComparison.Ordinal);
-            return live >= 0 && sink > live && gate >= 0 && gate < sink;
+            var dispatchStart = hub.IndexOf(
+                "private bool DispatchTopic(",
+                StringComparison.Ordinal);
+            var dispatchEnd = hub.IndexOf(
+                "private static bool IsTargetAware(",
+                dispatchStart,
+                StringComparison.Ordinal);
+            var live = hub.IndexOf(
+                "source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);",
+                dispatchStart,
+                StringComparison.Ordinal);
+            var sinkCall = hub.IndexOf(
+                "PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);",
+                dispatchStart,
+                StringComparison.Ordinal);
+
+            var sideChannelStart = hub.IndexOf(
+                "private void PublishTopicSinkSideChannel(",
+                StringComparison.Ordinal);
+            var gate = hub.IndexOf(
+                "_sinkRouter.HasSinks && source is IFoxgloveTopicSinkSource",
+                sideChannelStart,
+                StringComparison.Ordinal);
+            var publish = hub.IndexOf(
+                "sinkSource.FoxgloveLog_PublishToSinks(topicIndex, _sinkRouter, nowNs);",
+                sideChannelStart,
+                StringComparison.Ordinal);
+            return dispatchStart >= 0
+                   && dispatchEnd > dispatchStart
+                   && live >= dispatchStart
+                   && sinkCall > live
+                   && sinkCall < dispatchEnd
+                   && sideChannelStart >= 0
+                   && gate >= sideChannelStart
+                   && publish > gate;
         }
 
         private static string ReadRepoText(string relativePath)

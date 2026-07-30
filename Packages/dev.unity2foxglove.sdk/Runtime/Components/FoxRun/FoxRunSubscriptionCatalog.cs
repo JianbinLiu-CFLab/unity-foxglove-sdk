@@ -331,6 +331,7 @@ namespace Unity.FoxgloveSDK.Components
                 ["collectionKind"] = shape.CollectionKind.ToString(),
                 ["binary"] = shape.IsBinary,
                 ["canConstruct"] = shape.CanConstruct,
+                ["isValueType"] = shape.IsValueType,
                 ["elementShape"] = BuildTypeShape(shape.ElementShape),
                 ["fields"] = fields,
                 ["enumValues"] = enumValues

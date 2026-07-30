@@ -473,7 +473,8 @@ namespace Unity.FoxgloveSDK.Editor
             AppendTypeShapeInfo(sb, shape.ElementShape, indentLevel + 1, trailingComma: true);
             AppendTypeShapeFields(sb, shape.Fields, indentLevel + 1, trailingComma: true);
             AppendTypeShapeEnumValues(sb, shape.EnumValues, indentLevel + 1, trailingComma: true);
-            sb.AppendLine(inner + BoolLiteral(shape.CanConstruct));
+            sb.AppendLine(inner + BoolLiteral(shape.CanConstruct) + ",");
+            sb.AppendLine(inner + BoolLiteral(shape.IsValueType));
             sb.AppendLine(indent + ")" + (trailingComma ? "," : string.Empty));
         }
 

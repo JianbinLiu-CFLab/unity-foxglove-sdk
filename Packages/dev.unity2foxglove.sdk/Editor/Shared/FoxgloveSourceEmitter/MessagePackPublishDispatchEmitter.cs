@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -34,7 +35,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         internal static bool MayUseMessagePack(
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
-            => UsesMessagePack(fields) || TopicMetadataEmitter.IsInherited(fields);
+            => fields != null
+               && fields.Count > 0
+               && (UsesMessagePack(fields)
+                   || TopicMetadataEmitter.IsInherited(fields))
+               && fields.All(field =>
+                   FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                       field.TypeShape,
+                       field.CanonicalType));
 
         internal static void EmitFieldsAndBuilders(
             StringBuilder sb,
@@ -45,6 +53,8 @@ namespace Unity.FoxgloveSDK.Editor
             var objectShapes = new List<ObjectShape>();
             foreach (var topic in topics)
             {
+                if (!MayUseMessagePack(topicMap[topic]))
+                    continue;
                 foreach (var field in topicMap[topic])
                     CollectObjectShapes(field.TypeShape, objectShapes);
             }
@@ -116,11 +126,25 @@ namespace Unity.FoxgloveSDK.Editor
                 $"{pad}    private static void __WriteFoxRunMessagePackObject_{shapeIndex}(");
             sb.AppendLine(
                 $"{pad}        global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter __writer,");
-            sb.AppendLine($"{pad}        {GlobalTypeName(shape.TypeName)} __value)");
+            var valueType = GlobalTypeName(shape.TypeName);
+            var nullableValueType = shape.IsValueType && shape.Nullable;
+            var parameterType = nullableValueType
+                ? "global::System.Nullable<" + valueType + ">"
+                : valueType;
+            sb.AppendLine($"{pad}        {parameterType} __value)");
             sb.AppendLine($"{pad}    {{");
-            if (shape.Nullable)
+            if (nullableValueType)
             {
-                sb.AppendLine($"{pad}        if ((object)__value == null)");
+                sb.AppendLine($"{pad}        if (!__value.HasValue)");
+                sb.AppendLine($"{pad}        {{");
+                sb.AppendLine($"{pad}            __writer.WriteNil();");
+                sb.AppendLine($"{pad}            return;");
+                sb.AppendLine($"{pad}        }}");
+            }
+            else if (!shape.IsValueType)
+            {
+                sb.AppendLine(
+                    $"{pad}        if ((object)__value == null)");
                 sb.AppendLine($"{pad}        {{");
                 sb.AppendLine($"{pad}            __writer.WriteNil();");
                 sb.AppendLine($"{pad}            return;");
@@ -131,6 +155,9 @@ namespace Unity.FoxgloveSDK.Editor
             // component shapes deliberately preserve x/y/z/w and r/g/b/a
             // rather than lexical order.
             var ordered = shape.Fields;
+            var objectAccess = nullableValueType
+                ? "__value.Value"
+                : "__value";
             sb.AppendLine($"{pad}        __writer.WriteMapHeader({ordered.Count});");
             var counter = new Counter();
             foreach (var field in ordered)
@@ -140,7 +167,7 @@ namespace Unity.FoxgloveSDK.Editor
                 EmitValue(
                     sb,
                     field.TypeShape,
-                    "__value." + IdentifierUtils.EscapeIdentifier(field.MemberName),
+                    objectAccess + "." + IdentifierUtils.EscapeIdentifier(field.MemberName),
                     "__writer",
                     pad + "        ",
                     objectShapes,
@@ -163,15 +190,23 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (shape.Nullable && shape.Kind != FoxRunTypeShapeKind.Object)
             {
-                sb.AppendLine($"{pad}if ((object){access} == null)");
+                var nullableValueType =
+                    shape.Kind == FoxRunTypeShapeKind.Enum
+                    || shape.Kind == FoxRunTypeShapeKind.Canonical
+                    && !string.Equals(
+                        shape.CanonicalType,
+                        "string",
+                        StringComparison.Ordinal);
+                sb.AppendLine(
+                    nullableValueType
+                        ? $"{pad}if (!{access}.HasValue)"
+                        : $"{pad}if ((object){access} == null)");
                 sb.AppendLine($"{pad}{{");
                 sb.AppendLine($"{pad}    {writer}.WriteNil();");
                 sb.AppendLine($"{pad}}}");
                 sb.AppendLine($"{pad}else");
                 sb.AppendLine($"{pad}{{");
-                var value = shape.Kind == FoxRunTypeShapeKind.Canonical
-                            && !string.Equals(shape.CanonicalType, "string", StringComparison.Ordinal)
-                            || shape.Kind == FoxRunTypeShapeKind.Enum
+                var value = nullableValueType
                     ? access + ".Value"
                     : access;
                 EmitNonNullValue(
@@ -204,7 +239,13 @@ namespace Unity.FoxgloveSDK.Editor
                     EmitCanonical(sb, shape.CanonicalType, access, writer, pad);
                     return;
                 case FoxRunTypeShapeKind.Enum:
-                    sb.AppendLine($"{pad}{writer}.WriteInt32(checked((int){access}));");
+                    EmitEnum(
+                        sb,
+                        shape,
+                        access,
+                        writer,
+                        pad,
+                        counter);
                     return;
                 case FoxRunTypeShapeKind.Object:
                     sb.AppendLine(
@@ -216,6 +257,43 @@ namespace Unity.FoxgloveSDK.Editor
                 default:
                     throw new InvalidOperationException("Unsupported typed MessagePack shape.");
             }
+        }
+
+        private static void EmitEnum(
+            StringBuilder sb,
+            FoxRunTypeShape shape,
+            string access,
+            string writer,
+            string pad,
+            Counter counter)
+        {
+            var suffix = counter.Next();
+            var numbers = shape.EnumValues
+                .Select(value => value.Number)
+                .Distinct()
+                .OrderBy(value => value)
+                .ToArray();
+            if (numbers.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Typed MessagePack enum shapes require at least one declared value.");
+            }
+            sb.AppendLine(
+                $"{pad}var __enum_{suffix} = checked((int){access});");
+            sb.AppendLine($"{pad}switch (__enum_{suffix})");
+            sb.AppendLine($"{pad}{{");
+            foreach (var number in numbers)
+            {
+                sb.AppendLine(
+                    $"{pad}    case {number.ToString(CultureInfo.InvariantCulture)}:");
+            }
+            sb.AppendLine($"{pad}        break;");
+            sb.AppendLine($"{pad}    default:");
+            sb.AppendLine(
+                $"{pad}        throw new global::System.InvalidOperationException(\"FoxRun MessagePack value is not a declared enum value.\");");
+            sb.AppendLine($"{pad}}}");
+            sb.AppendLine(
+                $"{pad}{writer}.WriteInt32(__enum_{suffix});");
         }
 
         private static void EmitCollection(

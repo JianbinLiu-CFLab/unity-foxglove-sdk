@@ -39,7 +39,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool nullable,
             FoxRunCollectionKind collectionKind,
             FoxRunTypeShape elementShape,
-            bool canConstruct)
+            bool canConstruct,
+            bool isValueType)
         {
             Kind = kind;
             TypeName = typeName ?? string.Empty;
@@ -52,12 +53,31 @@ namespace Unity.FoxgloveSDK.Editor
             CollectionKind = collectionKind;
             ElementShape = elementShape;
             CanConstruct = canConstruct;
+            IsValueType = isValueType;
         }
 
         private static IReadOnlyList<FoxRunTypeField> NormalizeObjectFields(
             string typeName,
             IEnumerable<FoxRunTypeField> fields)
-            => fields
+        {
+            var materialized = fields.ToList();
+            var duplicateJsonName = materialized
+                .Where(field => field != null)
+                .GroupBy(
+                    field => field.JsonName ?? string.Empty,
+                    StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicateJsonName != null)
+            {
+                throw new InvalidOperationException(
+                    "FOXRUN616: FoxRun DTO type '"
+                    + (typeName ?? string.Empty)
+                    + "' contains duplicate JSON field name '"
+                    + duplicateJsonName.Key
+                    + "'.");
+            }
+
+            return materialized
                 .OrderBy(
                     field => UnityComponentOrder(typeName, field?.JsonName),
                     Comparer<int>.Default)
@@ -65,6 +85,7 @@ namespace Unity.FoxgloveSDK.Editor
                 .ThenBy(field => field?.MemberName ?? string.Empty, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
+        }
 
         private static int UnityComponentOrder(string typeName, string jsonName)
         {
@@ -107,6 +128,12 @@ namespace Unity.FoxgloveSDK.Editor
         /// Subscribe consumes it.
         /// </summary>
         public bool CanConstruct { get; }
+        /// <summary>
+        /// Whether the logical CLR value is a non-reference value type.
+        /// MessagePack nil legality cannot be inferred from an object-shaped
+        /// type name in schema-only clients.
+        /// </summary>
+        public bool IsValueType { get; }
         public bool IsBinary => CollectionKind == FoxRunCollectionKind.Binary;
 
         public static FoxRunTypeShape Canonical(string canonicalType, bool nullable = false)
@@ -122,14 +149,19 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 FoxRunCollectionKind.None,
                 null,
-                canConstruct: true);
+                canConstruct: true,
+                isValueType: !string.Equals(
+                    canonicalType,
+                    "string",
+                    StringComparison.Ordinal));
         }
 
         public static FoxRunTypeShape Object(
             string typeName,
             IReadOnlyList<FoxRunTypeField> fields,
             bool nullable = false,
-            bool canConstruct = true)
+            bool canConstruct = true,
+            bool isValueType = false)
         {
             if (string.IsNullOrWhiteSpace(typeName))
                 throw new ArgumentException("A FoxRun DTO type name is required.", nameof(typeName));
@@ -142,7 +174,8 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 FoxRunCollectionKind.None,
                 null,
-                canConstruct);
+                canConstruct,
+                isValueType);
         }
 
         public static FoxRunTypeShape Enum(
@@ -161,7 +194,8 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 FoxRunCollectionKind.None,
                 null,
-                canConstruct: true);
+                canConstruct: true,
+                isValueType: true);
         }
 
         public static FoxRunTypeShape Collection(
@@ -182,7 +216,8 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 collectionKind,
                 elementShape,
-                canConstruct: true);
+                canConstruct: true,
+                isValueType: false);
         }
 
         public FoxRunTypeShape WithNullable(bool nullable = true)
@@ -198,7 +233,8 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 CollectionKind,
                 ElementShape,
-                CanConstruct);
+                CanConstruct,
+                IsValueType);
         }
     }
 
@@ -402,6 +438,16 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             bool includeUsageTraits)
         {
+            if (FoxRunTypeShapeDepth.MaximumRelativeDepth(shape)
+                > FoxServiceDtoRules.MaxDepth)
+            {
+                throw new InvalidOperationException(
+                    "FOXRUN616: FoxRun DTO graph exceeds the maximum supported depth of "
+                    + FoxServiceDtoRules.MaxDepth.ToString(
+                        CultureInfo.InvariantCulture)
+                    + ".");
+            }
+
             var sb = new StringBuilder();
             AppendShape(sb, shape, includeUsageTraits);
             return sb.ToString();
@@ -414,63 +460,195 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (shape == null)
             {
-                sb.Append("null");
+                sb.Append("N");
                 return;
             }
 
-            sb.Append(((int)shape.Kind).ToString(CultureInfo.InvariantCulture))
-                .Append(':')
-                .Append(shape.TypeName)
-                .Append(':')
-                .Append(shape.CanonicalType)
-                .Append(':')
+            sb.Append("S|kind=")
+                .Append(((int)shape.Kind).ToString(CultureInfo.InvariantCulture))
+                .Append("|type=");
+            AppendLengthPrefixed(sb, shape.TypeName);
+            sb.Append("|canonical=");
+            AppendLengthPrefixed(sb, shape.CanonicalType);
+            sb.Append("|collection=")
                 .Append(((int)shape.CollectionKind).ToString(CultureInfo.InvariantCulture));
             if (includeUsageTraits)
             {
-                sb.Append(':')
+                sb.Append("|nullable=")
                     .Append(shape.Nullable ? '1' : '0')
-                    .Append(':')
-                    .Append(shape.CanConstruct ? '1' : '0');
+                    .Append("|constructible=")
+                    .Append(shape.CanConstruct ? '1' : '0')
+                    .Append("|valueType=")
+                    .Append(shape.IsValueType ? '1' : '0');
             }
-            sb.Append('[');
+            sb.Append("|fields=")
+                .Append(shape.Fields.Count.ToString(CultureInfo.InvariantCulture));
             foreach (var field in shape.Fields)
             {
-                sb.Append(field.JsonName)
-                    .Append('=')
-                    .Append(field.MemberName)
-                    .Append(':')
+                sb.Append("|field|json=");
+                AppendLengthPrefixed(sb, field.JsonName);
+                sb.Append("|member=");
+                AppendLengthPrefixed(sb, field.MemberName);
+                sb.Append("|repeated=")
                     .Append(field.Repeated ? '1' : '0')
-                    .Append(':')
+                    .Append("|repeatedCollection=")
                     .Append(((int)field.RepeatedCollectionKind).ToString(CultureInfo.InvariantCulture))
-                    .Append(':')
+                    .Append("|assignable=")
                     .Append(field.CanAssign ? '1' : '0')
-                    .Append(':')
+                    .Append("|fieldNullable=")
                     .Append(field.IsNullable ? '1' : '0')
-                    .Append('{');
+                    .Append("|shape=");
                 AppendShape(sb, field.TypeShape, includeUsageTraits);
-                sb.Append("};");
             }
-            sb.Append(']');
-            if (shape.EnumValues.Count > 0)
+            sb.Append("|enumValues=")
+                .Append(shape.EnumValues.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (var value in shape.EnumValues
+                         .OrderBy(candidate => candidate.Number)
+                         .ThenBy(candidate => candidate.Name, StringComparer.Ordinal))
             {
-                sb.Append('(');
-                foreach (var value in shape.EnumValues
-                             .OrderBy(candidate => candidate.Number)
-                             .ThenBy(candidate => candidate.Name, StringComparer.Ordinal))
-                {
-                    sb.Append(value.Name)
-                        .Append('=')
-                        .Append(value.Number.ToString(CultureInfo.InvariantCulture))
-                        .Append(';');
-                }
-                sb.Append(')');
+                sb.Append("|enum|name=");
+                AppendLengthPrefixed(sb, value.Name);
+                sb.Append("|number=")
+                    .Append(value.Number.ToString(CultureInfo.InvariantCulture));
             }
             if (shape.ElementShape != null)
             {
-                sb.Append('<');
+                sb.Append("|element=");
                 AppendShape(sb, shape.ElementShape, includeUsageTraits);
-                sb.Append('>');
             }
+            else
+            {
+                sb.Append("|element=N");
+            }
+            sb.Append("|end");
+        }
+
+        internal static void AppendLengthPrefixed(
+            StringBuilder sb,
+            string value)
+        {
+            var normalized = value ?? string.Empty;
+            sb.Append(
+                    normalized.Length.ToString(
+                        CultureInfo.InvariantCulture))
+                .Append('#')
+                .Append(normalized);
+        }
+    }
+
+    /// <summary>
+    /// Computes the deepest descendant edge below one immutable shape. This
+    /// lets memoized builders reapply an absolute graph-depth limit at each
+    /// use site instead of trusting the depth where a subtree was first seen.
+    /// </summary>
+    internal static class FoxRunTypeShapeDepth
+    {
+        public static int MaximumRelativeDepth(FoxRunTypeShape shape)
+        {
+            if (shape == null)
+                return 0;
+
+            var maximum = 0;
+            var visits = new Stack<KeyValuePair<FoxRunTypeShape, int>>();
+            var greatestDepth =
+                new Dictionary<FoxRunTypeShape, int>();
+            visits.Push(
+                new KeyValuePair<FoxRunTypeShape, int>(shape, 0));
+            while (visits.Count > 0)
+            {
+                var visit = visits.Pop();
+                var current = visit.Key;
+                var depth = visit.Value;
+                if (current == null)
+                    continue;
+                if (depth > FoxServiceDtoRules.MaxDepth)
+                    return depth;
+                if (greatestDepth.TryGetValue(current, out var seenDepth)
+                    && seenDepth >= depth)
+                {
+                    continue;
+                }
+
+                greatestDepth[current] = depth;
+                maximum = Math.Max(maximum, depth);
+                if (IsUnityValueShape(current))
+                    continue;
+                foreach (var field in current.Fields)
+                {
+                    if (field?.TypeShape != null)
+                    {
+                        visits.Push(
+                            new KeyValuePair<FoxRunTypeShape, int>(
+                                field.TypeShape,
+                                depth + 1));
+                    }
+                }
+                if (current.ElementShape != null)
+                {
+                    visits.Push(
+                        new KeyValuePair<FoxRunTypeShape, int>(
+                            current.ElementShape,
+                            depth + 1));
+                }
+            }
+            return maximum;
+        }
+
+        public static bool IsUnityValueShape(FoxRunTypeShape shape)
+        {
+            if (shape == null
+                || shape.Kind != FoxRunTypeShapeKind.Object)
+            {
+                return false;
+            }
+
+            string[] components;
+            switch (shape.TypeName)
+            {
+                case "UnityEngine.Vector2":
+                    components = new[] { "x", "y" };
+                    break;
+                case "UnityEngine.Vector3":
+                    components = new[] { "x", "y", "z" };
+                    break;
+                case "UnityEngine.Quaternion":
+                    components = new[] { "x", "y", "z", "w" };
+                    break;
+                case "UnityEngine.Color":
+                    components = new[] { "r", "g", "b", "a" };
+                    break;
+                default:
+                    return false;
+            }
+
+            if (shape.Fields.Count != components.Length)
+                return false;
+            for (var index = 0; index < components.Length; index++)
+            {
+                var field = shape.Fields[index];
+                if (field == null
+                    || !string.Equals(
+                        field.JsonName,
+                        components[index],
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        field.MemberName,
+                        components[index],
+                        StringComparison.Ordinal)
+                    || field.Repeated
+                    || field.TypeShape == null
+                    || field.TypeShape.Kind
+                    != FoxRunTypeShapeKind.Canonical
+                    || field.TypeShape.Nullable
+                    || !string.Equals(
+                        field.TypeShape.CanonicalType,
+                        "float32",
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -513,29 +691,40 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (metadata == null)
             {
-                sb.Append("null");
+                sb.Append("N");
                 return;
             }
 
-            sb.Append(metadata.TypeName).Append('[');
+            sb.Append("M|type=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                metadata.TypeName);
+            sb.Append("|fields=")
+                .Append(
+                    metadata.Fields.Count.ToString(
+                        CultureInfo.InvariantCulture));
             foreach (var field in metadata.Fields
                          .OrderBy(candidate => candidate.JsonName, StringComparer.Ordinal)
                          .ThenBy(candidate => candidate.MemberName, StringComparer.Ordinal))
             {
-                sb.Append(field.JsonName)
-                    .Append('=')
-                    .Append(field.MemberName)
-                    .Append(':')
+                sb.Append("|field|json=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.JsonName);
+                sb.Append("|member=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.MemberName);
+                sb.Append("|number=")
                     .Append(field.FieldNumber.ToString(CultureInfo.InvariantCulture))
-                    .Append(':')
+                    .Append("|presenceOnly=")
                     .Append(field.PresenceOnly ? '1' : '0')
-                    .Append(':')
+                    .Append("|presenceHasValue=")
                     .Append(field.PresenceUsesHasValue ? '1' : '0')
-                    .Append('{');
+                    .Append("|type=");
                 AppendMetadata(sb, field.TypeMetadata);
-                sb.Append("};");
             }
-            sb.Append(']');
+            sb.Append("|end");
         }
     }
 
@@ -556,6 +745,28 @@ namespace Unity.FoxgloveSDK.Editor
             string canonicalType)
             => IsSupported(shape, canonicalType, requireInbound: true, new HashSet<FoxRunTypeShape>());
 
+        public static bool IsCanonicalSupported(string canonicalType)
+        {
+            switch (canonicalType)
+            {
+                case "bool":
+                case "int8":
+                case "uint8":
+                case "int16":
+                case "uint16":
+                case "int32":
+                case "uint32":
+                case "int64":
+                case "uint64":
+                case "float32":
+                case "float64":
+                case "string":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static bool IsSupported(
             FoxRunTypeShape shape,
             string canonicalType,
@@ -563,26 +774,70 @@ namespace Unity.FoxgloveSDK.Editor
             ISet<FoxRunTypeShape> visited)
         {
             if (shape == null)
-                return FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(canonicalType);
+                return IsCanonicalSupported(canonicalType);
+            if (FoxRunTypeShapeDepth.MaximumRelativeDepth(shape)
+                > FoxServiceDtoRules.MaxDepth)
+            {
+                return false;
+            }
             if (!visited.Add(shape))
                 return true;
 
             switch (shape.Kind)
             {
                 case FoxRunTypeShapeKind.Canonical:
-                    return FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(shape.CanonicalType);
+                    return IsCanonicalSupported(shape.CanonicalType);
                 case FoxRunTypeShapeKind.Enum:
-                    return shape.EnumValues.Count > 0;
+                    return !string.IsNullOrWhiteSpace(shape.TypeName)
+                           && shape.EnumValues.Count > 0;
                 case FoxRunTypeShapeKind.Collection:
-                    return shape.CollectionKind != FoxRunCollectionKind.None
-                           && shape.ElementShape != null
+                    if (shape.ElementShape == null)
+                        return false;
+                    if (shape.CollectionKind == FoxRunCollectionKind.Binary)
+                    {
+                        return shape.ElementShape.Kind
+                               == FoxRunTypeShapeKind.Canonical
+                               && !shape.ElementShape.Nullable
+                               && string.Equals(
+                                   shape.ElementShape.CanonicalType,
+                                   "uint8",
+                                   StringComparison.Ordinal);
+                    }
+                    if (shape.CollectionKind != FoxRunCollectionKind.Array
+                        && shape.CollectionKind != FoxRunCollectionKind.List)
+                    {
+                        return false;
+                    }
+                    if (shape.CollectionKind == FoxRunCollectionKind.Array
+                        && shape.ElementShape.Kind
+                        == FoxRunTypeShapeKind.Canonical
+                        && !shape.ElementShape.Nullable
+                        && string.Equals(
+                            shape.ElementShape.CanonicalType,
+                            "uint8",
+                            StringComparison.Ordinal))
+                    {
+                        // byte[] is the locked Binary family. Accepting an
+                        // equivalent manual Array<uint8> shape would emit an
+                        // array header for the same CLR type.
+                        return false;
+                    }
+                    return shape.ElementShape.Kind
+                           != FoxRunTypeShapeKind.Collection
                            && IsSupported(
                                shape.ElementShape,
                                shape.ElementShape.CanonicalType,
                                requireInbound,
                                visited);
                 case FoxRunTypeShapeKind.Object:
-                    if (requireInbound && !shape.CanConstruct)
+                    if (string.IsNullOrWhiteSpace(shape.TypeName)
+                        || IsUnsupportedPrimitiveObject(
+                            shape.TypeName)
+                        || (IsUnityValueTypeName(shape.TypeName)
+                            && (!shape.IsValueType
+                                || !FoxRunTypeShapeDepth.IsUnityValueShape(
+                                    shape)))
+                        || (requireInbound && !shape.CanConstruct))
                         return false;
                     foreach (var field in shape.Fields)
                     {
@@ -597,6 +852,57 @@ namespace Unity.FoxgloveSDK.Editor
                             return false;
                         }
                     }
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsUnsupportedPrimitiveObject(
+            string typeName)
+        {
+            var name = (typeName ?? string.Empty).Trim();
+            const string globalPrefix = "global::";
+            if (name.StartsWith(
+                    globalPrefix,
+                    StringComparison.Ordinal))
+            {
+                name = name.Substring(globalPrefix.Length);
+            }
+
+            switch (name)
+            {
+                case "char":
+                case "Char":
+                case "System.Char":
+                case "decimal":
+                case "Decimal":
+                case "System.Decimal":
+                case "object":
+                case "Object":
+                case "System.Object":
+                case "DateTime":
+                case "System.DateTime":
+                case "DateTimeOffset":
+                case "System.DateTimeOffset":
+                case "Guid":
+                case "System.Guid":
+                case "TimeSpan":
+                case "System.TimeSpan":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsUnityValueTypeName(string typeName)
+        {
+            switch (typeName ?? string.Empty)
+            {
+                case "UnityEngine.Vector2":
+                case "UnityEngine.Vector3":
+                case "UnityEngine.Quaternion":
+                case "UnityEngine.Color":
                     return true;
                 default:
                     return false;

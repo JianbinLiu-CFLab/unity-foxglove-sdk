@@ -106,6 +106,17 @@ namespace Demo
                 malformedError,
                 StringComparison.OrdinalIgnoreCase);
 
+            Assert.False(
+                transactional.FoxgloveInput_TryStageTransaction(
+                    0,
+                    PayloadWithDuplicateUnknown(),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(1024),
+                    out var unknownDuplicateError));
+            Assert.Contains(
+                "duplicate",
+                unknownDuplicateError,
+                StringComparison.OrdinalIgnoreCase);
+
             Assert.Equal(1, input.FoxgloveInput_Flush(1d, 60));
             Assert.Equal(1, receiverType.GetField("Count")!.GetValue(receiver));
             Assert.Equal(
@@ -185,6 +196,412 @@ namespace Demo
                     emit.Diagnostics.Select(diagnostic => diagnostic.ToString()))
                 + Environment.NewLine
                 + generatedSource);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void NullableUnityValueDecodesNilAsNull()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase185FNullableUnityInbound_"
+                + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+using UnityEngine;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class NullableUnityReceiver
+    {
+        [FoxRun(""/phase185f/nullable-vector"", Mode = FoxRunFlow.Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public Vector3? Position;
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver =
+                CSharpGeneratorDriver.Create(
+                    new FoxgloveLogSourceGenerator());
+            driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var output,
+                out _);
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+            Assert.True(
+                emit.Success,
+                "Generated nullable Unity MessagePack consumer failed to compile: "
+                + string.Join(
+                    "; ",
+                    emit.Diagnostics.Select(
+                        diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var receiverType = assembly.GetType(
+                "Demo.NullableUnityReceiver",
+                throwOnError: true);
+            var receiver = Activator.CreateInstance(receiverType);
+            var transactional =
+                Assert.IsAssignableFrom<IFoxgloveTransactionalInputSource>(
+                    receiver);
+            var input = Assert.IsAssignableFrom<IFoxgloveInputSource>(receiver);
+            using var writer = new FoxgloveMsgPackWriter();
+            writer.WriteMapHeader(1);
+            writer.WriteString("Position");
+            writer.WriteNil();
+
+            Assert.True(
+                transactional.FoxgloveInput_TryStageTransaction(
+                    0,
+                    writer.ToArray(),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(1024),
+                    out var error),
+                error);
+            Assert.Equal(1, input.FoxgloveInput_Flush(1d, 60));
+            Assert.Null(receiverType.GetField("Position")!.GetValue(receiver));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void GeneratedEnumDecoderRejectsUndeclaredAndNarrowingValues()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase185FEnumDomainInbound_"
+                + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public enum ByteMode : byte
+    {
+        Zero = 0,
+        One = 1,
+        AliasOfOne = 1
+    }
+
+    public enum UIntMode : uint
+    {
+        Zero = 0,
+        One = 1
+    }
+
+    public partial class ByteEnumReceiver
+    {
+        [FoxRun(""/phase185f/byte-enum"", Mode = FoxRunFlow.Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public ByteMode Mode;
+    }
+
+    public partial class UIntEnumReceiver
+    {
+        [FoxRun(""/phase185f/uint-enum"", Mode = FoxRunFlow.Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public UIntMode Mode;
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver =
+                CSharpGeneratorDriver.Create(
+                    new FoxgloveLogSourceGenerator());
+            driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var output,
+                out _);
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+            Assert.True(
+                emit.Success,
+                "Generated enum MessagePack consumer failed to compile: "
+                + string.Join(
+                    "; ",
+                    emit.Diagnostics.Select(
+                        diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var byteType = assembly.GetType(
+                "Demo.ByteEnumReceiver",
+                throwOnError: true);
+            var byteReceiver = Activator.CreateInstance(byteType);
+            var byteTransactions =
+                Assert.IsAssignableFrom<IFoxgloveTransactionalInputSource>(
+                    byteReceiver);
+
+            Assert.False(
+                byteTransactions.FoxgloveInput_TryStageTransaction(
+                    0,
+                    SingleIntPayload("Mode", 256),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(128),
+                    out var narrowingError));
+            Assert.Contains(
+                "declared enum",
+                narrowingError,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.False(
+                byteTransactions.FoxgloveInput_TryStageTransaction(
+                    0,
+                    SingleIntPayload("Mode", 2),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(128),
+                    out var undeclaredError));
+            Assert.Contains(
+                "declared enum",
+                undeclaredError,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                byteTransactions.FoxgloveInput_TryStageTransaction(
+                    0,
+                    SingleIntPayload("Mode", 1),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(128),
+                    out var aliasError),
+                aliasError);
+            Assert.Equal(
+                1,
+                Assert.IsAssignableFrom<IFoxgloveInputSource>(byteReceiver)
+                    .FoxgloveInput_Flush(1d, 60));
+            Assert.Equal(
+                1,
+                Convert.ToInt32(
+                    byteType.GetField("Mode")!.GetValue(byteReceiver)));
+
+            var uintType = assembly.GetType(
+                "Demo.UIntEnumReceiver",
+                throwOnError: true);
+            var uintReceiver = Activator.CreateInstance(uintType);
+            var uintTransactions =
+                Assert.IsAssignableFrom<IFoxgloveTransactionalInputSource>(
+                    uintReceiver);
+            Assert.False(
+                uintTransactions.FoxgloveInput_TryStageTransaction(
+                    0,
+                    SingleIntPayload("Mode", -1),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(128),
+                    out var unsignedError));
+            Assert.Contains(
+                "declared enum",
+                unsignedError,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("char")]
+        [InlineData("decimal")]
+        [InlineData("object")]
+        [InlineData("System.DateTime")]
+        [InlineData("System.DateTimeOffset")]
+        [InlineData("System.Guid")]
+        [InlineData("System.TimeSpan")]
+        [Trait("Phase", "185-F")]
+        public void ExplicitUnsupportedScalarShapesFailClosedForBothDirections(
+            string typeName)
+        {
+            foreach (var flow in new[] { "Publish", "Subscribe" })
+            {
+                var driver = RunGenerator(
+                    PrimitiveReceiverSource(
+                        typeName,
+                        "ExplicitScalar" + flow,
+                        ", Encoding = FoxRunEncoding.MessagePack",
+                        flow),
+                    out var output,
+                    out var generatorDiagnostics);
+                var allDiagnostics = generatorDiagnostics
+                    .Concat(driver.GetRunResult().Diagnostics)
+                    .Concat(output.GetDiagnostics())
+                    .ToArray();
+                var generated = GeneratedText(driver);
+
+                Assert.Contains(
+                    allDiagnostics,
+                    diagnostic => diagnostic.Id == "FOXRUN616");
+                Assert.DoesNotContain(
+                    allDiagnostics,
+                    diagnostic => diagnostic.Id == "CS8785");
+                Assert.DoesNotContain(
+                    "__TryReadFoxRunMessagePackValue_",
+                    generated,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "__BuildFoxRunMessagePack_",
+                    generated,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "IFoxgloveTransactionalInputSource",
+                    generated,
+                    StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ExplicitUnsupportedCollectionReportsFoxRun616WithoutFallback()
+        {
+            var driver = RunGenerator(@"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class UnsupportedCollectionReceiver
+    {
+        [FoxRun(""/phase185f/unsupported-collection"",
+            Mode = FoxRunFlow.Subscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public HashSet<int> Values;
+    }
+}",
+                out var output,
+                out var generatorDiagnostics);
+            var allDiagnostics = generatorDiagnostics
+                .Concat(driver.GetRunResult().Diagnostics)
+                .Concat(output.GetDiagnostics())
+                .ToArray();
+            var generated = GeneratedText(driver);
+
+            Assert.Contains(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN616");
+            Assert.DoesNotContain(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "CS8785");
+            Assert.DoesNotContain(
+                "__TryReadFoxRunMessagePackValue_",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "IFoxgloveTransactionalInputSource",
+                generated,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void DuplicateNestedJsonNamesEmitNoMessagePackCodec()
+        {
+            var driver = RunGenerator(@"
+using Newtonsoft.Json;
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public sealed class DuplicatePayload
+    {
+        [JsonProperty(""same"")] public int First;
+        [JsonProperty(""same"")] public int Second;
+    }
+
+    public partial class DuplicatePayloadDuplex
+    {
+        [FoxRun(""/phase185f/duplicate-json"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public DuplicatePayload Value;
+    }
+}",
+                out var output,
+                out var generatorDiagnostics);
+            var allDiagnostics = generatorDiagnostics
+                .Concat(driver.GetRunResult().Diagnostics)
+                .Concat(output.GetDiagnostics())
+                .ToArray();
+            var generated = GeneratedText(driver);
+
+            Assert.Contains(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN616");
+            Assert.DoesNotContain(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "CS8785");
+            Assert.DoesNotContain(
+                "__BuildFoxRunMessagePack_",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "__TryReadFoxRunMessagePackValue_",
+                generated,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void NonGenericValueTupleEmitsNoMessagePackCodec()
+        {
+            var driver = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class TupleDuplex
+    {
+        [FoxRun(""/phase185f/value-tuple"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            Encoding = FoxRunEncoding.MessagePack)]
+        public System.ValueTuple Value;
+    }
+}",
+                out var output,
+                out var generatorDiagnostics);
+            var allDiagnostics = generatorDiagnostics
+                .Concat(driver.GetRunResult().Diagnostics)
+                .Concat(output.GetDiagnostics())
+                .ToArray();
+            var generated = GeneratedText(driver);
+
+            Assert.Contains(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN616");
+            Assert.DoesNotContain(
+                allDiagnostics,
+                diagnostic => diagnostic.Id == "CS8785");
+            Assert.DoesNotContain(
+                "__BuildFoxRunMessagePack_",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "__TryReadFoxRunMessagePackValue_",
+                generated,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -583,40 +1000,25 @@ namespace Demo
                     receiver);
             var input = Assert.IsAssignableFrom<IFoxgloveInputSource>(receiver);
 
-            using var writer = new FoxgloveMsgPackWriter();
-            writer.WriteMapHeader(1);
-            writer.WriteString("Value");
-            writer.WriteMapHeader(6);
-            writer.WriteString("Samples");
-            writer.WriteArrayHeader(2);
-            writer.WriteInt32(3);
-            writer.WriteInt32(4);
-            writer.WriteString("Position");
-            writer.WriteMapHeader(3);
-            writer.WriteString("z");
-            writer.WriteFloat(3f);
-            writer.WriteString("x");
-            writer.WriteFloat(1f);
-            writer.WriteString("y");
-            writer.WriteFloat(2f);
-            writer.WriteString("Payload");
-            writer.WriteBinary(new byte[] { 0xaa, 0xbb });
-            writer.WriteString("Optional");
-            writer.WriteNil();
-            writer.WriteString("Nested");
-            writer.WriteMapHeader(1);
-            writer.WriteString("Value");
-            writer.WriteInt32(7);
-            writer.WriteString("Mode");
-            writer.WriteInt32(2);
-
             Assert.True(
                 transactional.FoxgloveInput_TryStageTransaction(
                     0,
-                    writer.ToArray(),
+                    NestedEnvelopePayload(
+                        duplicateUnknownNestedKey: false),
                     FoxgloveMsgPackReadLimits.ForPayloadBytes(4096),
                     out var error),
                 error);
+            Assert.False(
+                transactional.FoxgloveInput_TryStageTransaction(
+                    0,
+                    NestedEnvelopePayload(
+                        duplicateUnknownNestedKey: true),
+                    FoxgloveMsgPackReadLimits.ForPayloadBytes(4096),
+                    out var duplicateError));
+            Assert.Contains(
+                "duplicate",
+                duplicateError,
+                StringComparison.OrdinalIgnoreCase);
             Assert.Equal(1, input.FoxgloveInput_Flush(1d, 60));
 
             var envelope = receiverType.GetField("Value")!.GetValue(receiver);
@@ -764,6 +1166,61 @@ namespace Demo
             return writer.ToArray();
         }
 
+        private static byte[] PayloadWithDuplicateUnknown()
+        {
+            using var writer = new FoxgloveMsgPackWriter();
+            writer.WriteMapHeader(4);
+            writer.WriteString("Count");
+            writer.WriteInt32(2);
+            writer.WriteString("Label");
+            writer.WriteString("duplicate-unknown");
+            writer.WriteString("Future");
+            writer.WriteInt32(1);
+            writer.WriteString("Future");
+            writer.WriteInt32(2);
+            return writer.ToArray();
+        }
+
+        private static byte[] NestedEnvelopePayload(
+            bool duplicateUnknownNestedKey)
+        {
+            using var writer = new FoxgloveMsgPackWriter();
+            writer.WriteMapHeader(1);
+            writer.WriteString("Value");
+            writer.WriteMapHeader(6);
+            writer.WriteString("Samples");
+            writer.WriteArrayHeader(2);
+            writer.WriteInt32(3);
+            writer.WriteInt32(4);
+            writer.WriteString("Position");
+            writer.WriteMapHeader(3);
+            writer.WriteString("z");
+            writer.WriteFloat(3f);
+            writer.WriteString("x");
+            writer.WriteFloat(1f);
+            writer.WriteString("y");
+            writer.WriteFloat(2f);
+            writer.WriteString("Payload");
+            writer.WriteBinary(new byte[] { 0xaa, 0xbb });
+            writer.WriteString("Optional");
+            writer.WriteNil();
+            writer.WriteString("Nested");
+            writer.WriteMapHeader(
+                duplicateUnknownNestedKey ? 3 : 1);
+            writer.WriteString("Value");
+            writer.WriteInt32(7);
+            if (duplicateUnknownNestedKey)
+            {
+                writer.WriteString("Future");
+                writer.WriteInt32(1);
+                writer.WriteString("Future");
+                writer.WriteInt32(2);
+            }
+            writer.WriteString("Mode");
+            writer.WriteInt32(2);
+            return writer.ToArray();
+        }
+
         private static byte[] SingleIntPayload(string field, int value)
         {
             using var writer = new FoxgloveMsgPackWriter();
@@ -856,6 +1313,61 @@ namespace Demo
                 error);
         }
 
+        private static GeneratorDriver RunGenerator(
+            string source,
+            out Compilation output,
+            out Diagnostic[] generatorDiagnostics)
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase185FGeneratedInbound_"
+                + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver =
+                CSharpGeneratorDriver.Create(
+                    new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out output,
+                out var diagnostics);
+            generatorDiagnostics = diagnostics.ToArray();
+            return driver;
+        }
+
+        private static string GeneratedText(GeneratorDriver driver)
+            => string.Join(
+                Environment.NewLine,
+                driver.GetRunResult()
+                    .Results
+                    .SelectMany(result => result.GeneratedSources)
+                    .Select(source => source.SourceText.ToString()));
+
+        private static string PrimitiveReceiverSource(
+            string typeName,
+            string className,
+            string encodingClause,
+            string flow)
+            => @"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class " + className + @"
+    {
+        [FoxRun(""/phase185f/primitive-" + typeName + @""",
+            Mode = FoxRunFlow." + flow + encodingClause + @")]
+        public " + typeName + @" Value;
+    }
+}";
+
         private static MetadataReference[] DynamicCompilationReferences()
         {
             var locations = ((string)AppContext.GetData(
@@ -864,6 +1376,9 @@ namespace Demo
                 .Split(Path.PathSeparator)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Append(typeof(FoxRunEncoding).Assembly.Location)
+                .Append(
+                    typeof(Newtonsoft.Json.JsonPropertyAttribute)
+                        .Assembly.Location)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
             return locations
                 .Select(path => MetadataReference.CreateFromFile(path))

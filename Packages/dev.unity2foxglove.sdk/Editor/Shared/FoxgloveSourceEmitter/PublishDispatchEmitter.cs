@@ -75,18 +75,27 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                    __foxRunCapture_{topicIndex}_{fieldIndex} = {TypeExprEmitter.MemberAccess(fields[fieldIndex].MemberName)};");
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                     sb.AppendLine($"{pad}                    __foxRunCaptureSequence_{topicIndex} = ++__foxRunSequence_{topicIndex};");
-                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields)
+                    && MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
                 {
                     sb.AppendLine($"{pad}                    var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
                     sb.AppendLine($"{pad}                    __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
                 }
                 else if (TopicMetadataEmitter.IsInherited(fields))
                 {
-                    sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
-                    sb.AppendLine($"{pad}                    {{");
-                    sb.AppendLine($"{pad}                        var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
-                    sb.AppendLine($"{pad}                        __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
-                    sb.AppendLine($"{pad}                    }}");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                    {{");
+                        sb.AppendLine($"{pad}                        var __payload_{topicIndex} = __BuildFoxRunMessagePack_{topicIndex}();");
+                        sb.AppendLine($"{pad}                        __foxRunLastMessagePack_{topicIndex} = __payload_{topicIndex};");
+                        sb.AppendLine($"{pad}                    }}");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                    if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                        throw new global::System.InvalidOperationException(\"Typed MessagePack capture is unavailable for this declaration.\");");
+                    }
                 }
                 sb.AppendLine($"{pad}                    __foxRunCaptureActive_{topicIndex} = true;");
                 sb.AppendLine($"{pad}                    return true;");
@@ -412,8 +421,15 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     sb.AppendLine($"{pad}            case {topicIndex}:");
                     sb.AppendLine($"{pad}                __foxRunCaptureEncoding_{topicIndex} = resolved.FoxgloveEncoding;");
-                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
-                    sb.AppendLine($"{pad}                    return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                    return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack) {{ reason = \"Typed MessagePack shape is unavailable.\"; return false; }}");
+                    }
                     if (TryGetRos2CdrSchema(fields, out var inheritedSchema))
                     {
                         var inheritedSchemaContent =
@@ -430,7 +446,10 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
                 {
-                    sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        sb.AppendLine($"{pad}            case {topicIndex}: return mgr.TryPrepareFoxRunMessagePackRecording(\"{topic}\", out _, out reason);");
+                    else
+                        sb.AppendLine($"{pad}            case {topicIndex}: reason = \"Typed MessagePack shape is unavailable.\"; return false;");
                     continue;
                 }
                 if (!TryGetRos2CdrSchema(fields, out var schema))
@@ -458,8 +477,15 @@ namespace Unity.FoxgloveSDK.Editor
                 if (TopicMetadataEmitter.IsInherited(fields))
                 {
                     sb.AppendLine($"{pad}            case {topicIndex}:");
-                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
-                    sb.AppendLine($"{pad}                    return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                    return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{topicIndex} == FoxRunEncoding.MessagePack) {{ reason = \"Typed MessagePack shape is unavailable.\"; return false; }}");
+                    }
                     if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
                     {
                         var inheritedSchema = StringLiteralEmitter.CSharpStringLiteral(
@@ -483,7 +509,10 @@ namespace Unity.FoxgloveSDK.Editor
                 if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
                 {
                     sb.AppendLine($"{pad}            case {topicIndex}:");
-                    sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        sb.AppendLine($"{pad}                return mgr.TryPublishFoxRunMessagePackRecording(\"{topic}\", __foxRunLastMessagePack_{topicIndex}, nowNs, out reason);");
+                    else
+                        sb.AppendLine($"{pad}                reason = \"Typed MessagePack shape is unavailable.\"; return false;");
                     continue;
                 }
                 if (fields.Count == 1 && IsSupportedCustomCdr(fields[0]))
@@ -600,11 +629,19 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
-                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                {{");
-                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
-                        sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
-                        sb.AppendLine($"{pad}                }}");
+                        if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        {
+                            sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                            sb.AppendLine($"{pad}                {{");
+                            sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
+                            sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
+                            sb.AppendLine($"{pad}                }}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                            sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack publication is unavailable for this declaration.\");");
+                        }
                         sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.JSON)");
                         sb.AppendLine($"{pad}                {{");
                         sb.AppendLine($"{pad}                    var __payload_{i} = __BuildFoxRunJson_{i}();");
@@ -618,9 +655,14 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                     }
-                    else if (messagePack)
+                    else if (messagePack
+                             && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                     {
                         sb.AppendLine($"{pad}                mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __foxRunLastMessagePack_{i}, nowNs);");
+                    }
+                    else if (messagePack)
+                    {
+                        sb.AppendLine($"{pad}                throw new global::System.InvalidOperationException(\"Typed MessagePack publication is unavailable for this declaration.\");");
                     }
                     else
                     {
@@ -637,11 +679,19 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
-                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                {{");
-                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
-                        sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
-                        sb.AppendLine($"{pad}                }}");
+                        if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        {
+                            sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                            sb.AppendLine($"{pad}                {{");
+                            sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i} ?? throw new global::System.InvalidOperationException(\"Frozen MessagePack capture is unavailable.\");");
+                            sb.AppendLine($"{pad}                    mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __payload_{i}, nowNs);");
+                            sb.AppendLine($"{pad}                }}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                            sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack publication is unavailable for this declaration.\");");
+                        }
                         sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.JSON)");
                         sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields, i)}, nowNs);");
                         sb.AppendLine($"{pad}                else");
@@ -649,8 +699,11 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     else if (protobuf)
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
-                    else if (messagePack)
+                    else if (messagePack
+                             && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                         sb.AppendLine($"{pad}                mgr.PublishFoxRunMessagePackBytes(\"{topic}\", __foxRunLastMessagePack_{i}, nowNs);");
+                    else if (messagePack)
+                        sb.AppendLine($"{pad}                throw new global::System.InvalidOperationException(\"Typed MessagePack publication is unavailable for this declaration.\");");
                     else
                         sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields, i)}, nowNs);");
                     sb.AppendLine($"{pad}                break;");
@@ -718,10 +771,33 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(
                         $"{pad}            case {i}: return bus.HasObservers<{GlobalTypeName(customMember.TypeName)}>(\"{topic}\");");
                 }
-                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                else if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    if (IsAggregateTopic(fields))
+                    {
+                        sb.AppendLine(
+                            $"{pad}            case {i}: return bus.HasObservers<byte[]>(\"{topic}\");");
+                    }
+                    else if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine(
+                            $"{pad}            case {i}: return bus.HasObservers<byte[]>(\"{topic}\") || bus.HasObservers<Dictionary<string, object>>(\"{topic}\");");
+                    }
+                    else
+                    {
+                        sb.AppendLine(
+                            $"{pad}            case {i}: return bus.HasObservers<Dictionary<string, object>>(\"{topic}\");");
+                    }
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields)
+                         && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                 {
                     sb.AppendLine(
                         $"{pad}            case {i}: return bus.HasObservers<byte[]>(\"{topic}\");");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}            case {i}: return false;");
                 }
                 else if (IsAggregateTopic(fields))
                 {
@@ -759,12 +835,63 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(
                         $"{pad}                bus.PublishToObservers<{dtoType}>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, __foxRunCaptureSequence_{i});");
                 }
-                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                else if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine(
+                            $"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine(
+                            $"{pad}                    var __foxRunObserverPayload_{i} = __foxRunLastMessagePack_{i};");
+                        sb.AppendLine(
+                            $"{pad}                    var __foxRunObserverContract_{i} = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}).ForWireEncoding(FoxRunEncoding.MessagePack);");
+                        sb.AppendLine(
+                            $"{pad}                    bus.PublishToObservers<byte[]>(__foxRunObserverContract_{i}, nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
+                        sb.AppendLine($"{pad}                }}");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                {{");
+                    }
+                    else
+                    {
+                        sb.AppendLine(
+                            $"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine(
+                            $"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack observer publication is unavailable for this declaration.\");");
+                    }
+
+                    if (IsAggregateTopic(fields))
+                    {
+                        EnsurePureAggregateTopic(fields, topics[i]);
+                        sb.AppendLine(
+                            $"{pad}                    var __foxRunObserverPayload_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
+                        sb.AppendLine(
+                            $"{pad}                    bus.PublishToObservers<byte[]>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
+                    }
+                    else
+                    {
+                        sb.AppendLine(
+                            $"{pad}                    var __foxRunObserverPayload_{i} = {PayloadExpr(fields, i)};");
+                        sb.AppendLine(
+                            $"{pad}                    bus.PublishToObservers<Dictionary<string, object>>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
+                    }
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        sb.AppendLine($"{pad}                }}");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields)
+                         && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                 {
                     sb.AppendLine(
                         $"{pad}                var __foxRunObserverPayload_{i} = __foxRunLastMessagePack_{i};");
                     sb.AppendLine(
-                        $"{pad}                bus.PublishToObservers<byte[]>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
+                        $"{pad}                var __foxRunObserverContract_{i} = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}).ForWireEncoding(FoxRunEncoding.MessagePack);");
+                    sb.AppendLine(
+                        $"{pad}                bus.PublishToObservers<byte[]>(__foxRunObserverContract_{i}, nowNs, in __foxRunObserverPayload_{i}, __foxRunOrigin, 0UL);");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine(
+                        $"{pad}                throw new global::System.InvalidOperationException(\"Typed MessagePack observer publication is unavailable for this declaration.\");");
                 }
                 else if (IsAggregateTopic(fields))
                 {
@@ -806,10 +933,52 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                var __foxRunNativePayload_{i} = __foxRunCapture_{i}_0;");
                     sb.AppendLine($"{pad}                bus.Publish<{dtoType}>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunNativePayload_{i}, __foxRunOrigin);");
                 }
-                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                else if (TopicMetadataEmitter.IsInherited(fields))
+                {
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastMessagePack_{i};");
+                        sb.AppendLine(
+                            $"{pad}                    var __foxRunBusContract_{i} = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}).ForWireEncoding(FoxRunEncoding.MessagePack);");
+                        sb.AppendLine($"{pad}                    bus.Publish(__foxRunBusContract_{i}, nowNs, in __payload_{i}, __foxRunOrigin);");
+                        sb.AppendLine($"{pad}                }}");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                {{");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine(
+                            $"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack bus publication is unavailable for this declaration.\");");
+                    }
+
+                    if (IsAggregateTopic(fields))
+                    {
+                        EnsurePureAggregateTopic(fields, topics[i]);
+                        sb.AppendLine($"{pad}                    var __payload_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
+                        sb.AppendLine($"{pad}                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload_{i}, __foxRunOrigin);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, {PayloadExpr(fields, i)}, __foxRunOrigin);");
+                    }
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        sb.AppendLine($"{pad}                }}");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields)
+                         && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                 {
                     sb.AppendLine($"{pad}                var __payload_{i} = __foxRunLastMessagePack_{i};");
-                    sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload_{i}, __foxRunOrigin);");
+                    sb.AppendLine(
+                        $"{pad}                var __foxRunBusContract_{i} = ((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}).ForWireEncoding(FoxRunEncoding.MessagePack);");
+                    sb.AppendLine($"{pad}                bus.Publish(__foxRunBusContract_{i}, nowNs, in __payload_{i}, __foxRunOrigin);");
+                }
+                else if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine(
+                        $"{pad}                throw new global::System.InvalidOperationException(\"Typed MessagePack bus publication is unavailable for this declaration.\");");
                 }
                 else if (IsAggregateTopic(fields))
                 {
@@ -848,18 +1017,32 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 sb.AppendLine($"{pad}            case {i}:");
-                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields)
+                    && MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                 {
                     sb.AppendLine($"{pad}                router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
                     sb.AppendLine($"{pad}                break;");
                     continue;
                 }
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                {
+                    sb.AppendLine($"{pad}                throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
+                    continue;
+                }
                 if (TopicMetadataEmitter.IsInherited(fields))
                 {
-                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                    sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
-                    sb.AppendLine($"{pad}                else");
-                    sb.AppendLine($"{pad}                {{");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                {{");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
+                        sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
+                    }
                     if (IsAggregateTopic(fields))
                     {
                         EnsurePureAggregateTopic(fields, topics[i]);
@@ -869,8 +1052,9 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         sb.AppendLine($"{pad}                    var __sink_{i} = __BuildFoxRunJson_{i}();");
                     }
-                    sb.AppendLine($"{pad}                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, __sink_{i}, __foxRunOrigin);");
-                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.JSON, nowNs, __sink_{i}, __foxRunOrigin);");
+                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
+                        sb.AppendLine($"{pad}                }}");
                     sb.AppendLine($"{pad}                break;");
                     continue;
                 }
@@ -884,7 +1068,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     sb.AppendLine($"{pad}                var __sink_{i} = __BuildFoxRunJson_{i}();");
                 }
-                sb.AppendLine($"{pad}                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, __sink_{i}, __foxRunOrigin);");
+                sb.AppendLine($"{pad}                router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.JSON, nowNs, __sink_{i}, __foxRunOrigin);");
                 sb.AppendLine($"{pad}                break;");
             }
             sb.AppendLine($"{pad}        }}");
@@ -1031,7 +1215,8 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields))
+                if (MessagePackPublishDispatchEmitter.UsesMessagePack(fields)
+                    && !TryGetBundledCdrMember(fields, out _))
                     continue;
                 if (IsAggregateTopic(fields))
                 {

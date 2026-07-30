@@ -254,7 +254,16 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
                 return false;
             if (!TryReadArrayCount(marker, out count))
                 return false;
-            return TryEnterContainer(count, count);
+            if (!TryEnterContainer(count, count))
+            {
+                count = 0;
+                return false;
+            }
+            if (count <= RemainingBytes)
+                return true;
+            count = 0;
+            return Fail(
+                "MessagePack array length exceeds the remaining payload.");
         }
 
         public bool TryReadMapHeader(out int count)
@@ -265,8 +274,22 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
             if (!TryReadMapCount(marker, out count))
                 return false;
             if (count > int.MaxValue / 2)
-                return Fail("MessagePack map length exceeds the supported length.");
-            return TryEnterContainer(count, count * 2);
+            {
+                count = 0;
+                return Fail(
+                    "MessagePack map length exceeds the supported length.");
+            }
+            var childValues = count * 2;
+            if (!TryEnterContainer(count, childValues))
+            {
+                count = 0;
+                return false;
+            }
+            if (childValues <= RemainingBytes)
+                return true;
+            count = 0;
+            return Fail(
+                "MessagePack map length exceeds the remaining payload.");
         }
 
         /// <summary>Skip exactly one bounded MessagePack value.</summary>
@@ -640,6 +663,9 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
             var childValues = isMap ? count * 2 : count;
             if (!TryEnterContainer(count, childValues))
                 return false;
+            if (childValues > RemainingBytes)
+                return Fail(
+                    "MessagePack container length exceeds the remaining payload.");
             for (var index = 0; index < childValues; index++)
             {
                 if (!TrySkipValue())

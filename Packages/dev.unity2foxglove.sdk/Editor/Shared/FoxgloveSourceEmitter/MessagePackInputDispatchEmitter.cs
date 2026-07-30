@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -111,74 +112,18 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool MayUseMessagePack(
             FoxgloveSourceEmitter.TopicMember member)
         {
-            if (string.Equals(
-                    member.Encoding,
-                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
-                    StringComparison.Ordinal))
-            {
-                return true;
-            }
-            if (!string.Equals(
-                    member.Encoding,
-                    FoxRunGenerationDescriptorConstants.InheritEncoding,
-                    StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var shape = member.TypeShape;
-            if (shape == null)
-            {
-                var canonical = member.CanonicalType ?? string.Empty;
-                return IsSupportedCanonical(canonical);
-            }
-            return IsSupportedShape(shape);
-        }
-
-        private static bool IsSupportedShape(FoxRunTypeShape shape)
-        {
-            if (shape == null)
-                return false;
-            switch (shape.Kind)
-            {
-                case FoxRunTypeShapeKind.Canonical:
-                    return IsSupportedCanonical(shape.CanonicalType);
-                case FoxRunTypeShapeKind.Enum:
-                    return !string.IsNullOrWhiteSpace(shape.TypeName);
-                case FoxRunTypeShapeKind.Collection:
-                    return shape.ElementShape != null
-                           && IsSupportedShape(shape.ElementShape);
-                case FoxRunTypeShapeKind.Object:
-                    return !string.IsNullOrWhiteSpace(shape.TypeName)
-                           && shape.Fields != null
-                           && shape.Fields.All(field =>
-                               field != null
-                               && IsSupportedShape(field.TypeShape));
-                default:
-                    return false;
-            }
-        }
-
-        private static bool IsSupportedCanonical(string canonical)
-        {
-            switch (canonical)
-            {
-                case "bool":
-                case "int8":
-                case "uint8":
-                case "int16":
-                case "uint16":
-                case "int32":
-                case "uint32":
-                case "int64":
-                case "uint64":
-                case "float32":
-                case "float64":
-                case "string":
-                    return true;
-                default:
-                    return false;
-            }
+            var isMessagePack = string.Equals(
+                member.Encoding,
+                FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                StringComparison.Ordinal);
+            var isInherited = string.Equals(
+                member.Encoding,
+                FoxRunGenerationDescriptorConstants.InheritEncoding,
+                StringComparison.Ordinal);
+            return (isMessagePack || isInherited)
+                   && FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                       member.TypeShape,
+                       member.CanonicalType);
         }
 
         private static void EmitFields(
@@ -578,11 +523,19 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(
                     $"{pad}        {GlobalTypeName(topic.Members[memberIndex].TypeName)} __value_{memberIndex} = default;");
             }
+            sb.AppendLine(
+                $"{pad}        var __keys = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
             sb.AppendLine($"{pad}        for (var __index = 0; __index < __count; __index++)");
             sb.AppendLine($"{pad}        {{");
             sb.AppendLine($"{pad}            if (!__reader.TryReadString(out var __key))");
             sb.AppendLine($"{pad}            {{");
             sb.AppendLine($"{pad}                error = __reader.Error;");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}            }}");
+            sb.AppendLine($"{pad}            if (!__keys.Add(__key))");
+            sb.AppendLine($"{pad}            {{");
+            sb.AppendLine(
+                $"{pad}                error = \"MessagePack object contains a duplicate key.\";");
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}            }}");
             sb.AppendLine($"{pad}            switch (__key)");
@@ -595,12 +548,6 @@ namespace Unity.FoxgloveSDK.Editor
                 var shapeIndex = FindShape(shape, shapes);
                 sb.AppendLine(
                     $"{pad}                case \"{StringLiteralEmitter.CSharpStringLiteral(member.JsonFieldName)}\":");
-                sb.AppendLine($"{pad}                    if (__seen_{memberIndex})");
-                sb.AppendLine($"{pad}                    {{");
-                sb.AppendLine(
-                    $"{pad}                        error = \"MessagePack object contains a duplicate known key.\";");
-                sb.AppendLine($"{pad}                        return false;");
-                sb.AppendLine($"{pad}                    }}");
                 sb.AppendLine($"{pad}                    __seen_{memberIndex} = true;");
                 sb.AppendLine(
                     $"{pad}                    if (!__TryReadFoxRunMessagePackValue_{shapeIndex}(__reader, out var __decoded_{memberIndex}, out error)) return false;");
@@ -677,7 +624,21 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}            error = reader.Error;");
                 sb.AppendLine($"{pad}            return false;");
                 sb.AppendLine($"{pad}        }}");
-                sb.AppendLine($"{pad}        if (isNil) return true;");
+                if (shape.Kind == FoxRunTypeShapeKind.Object
+                    && shape.IsValueType
+                    && !shape.Nullable)
+                {
+                    sb.AppendLine($"{pad}        if (isNil)");
+                    sb.AppendLine($"{pad}        {{");
+                    sb.AppendLine(
+                        $"{pad}            error = \"MessagePack nil cannot be assigned to a non-nullable value type.\";");
+                    sb.AppendLine($"{pad}            return false;");
+                    sb.AppendLine($"{pad}        }}");
+                }
+                else
+                {
+                    sb.AppendLine($"{pad}        if (isNil) return true;");
+                }
             }
 
             switch (shape.Kind)
@@ -686,10 +647,33 @@ namespace Unity.FoxgloveSDK.Editor
                     EmitCanonicalReader(sb, shape, pad);
                     break;
                 case FoxRunTypeShapeKind.Enum:
+                    var enumNumbers = shape.EnumValues
+                        .Select(value => value.Number)
+                        .Distinct()
+                        .OrderBy(value => value)
+                        .ToArray();
+                    if (enumNumbers.Length == 0)
+                    {
+                        throw new InvalidOperationException(
+                            "Typed MessagePack enum shapes require at least one declared value.");
+                    }
                     sb.AppendLine($"{pad}        if (!reader.TryReadInt32(out var decoded))");
                     sb.AppendLine($"{pad}        {{");
                     sb.AppendLine($"{pad}            error = reader.Error;");
                     sb.AppendLine($"{pad}            return false;");
+                    sb.AppendLine($"{pad}        }}");
+                    sb.AppendLine($"{pad}        switch (decoded)");
+                    sb.AppendLine($"{pad}        {{");
+                    foreach (var number in enumNumbers)
+                    {
+                        sb.AppendLine(
+                            $"{pad}            case {number.ToString(CultureInfo.InvariantCulture)}:");
+                    }
+                    sb.AppendLine($"{pad}                break;");
+                    sb.AppendLine($"{pad}            default:");
+                    sb.AppendLine(
+                        $"{pad}                error = \"MessagePack value is not a declared enum value.\";");
+                    sb.AppendLine($"{pad}                return false;");
                     sb.AppendLine($"{pad}        }}");
                     sb.AppendLine(
                         $"{pad}        value = ({GlobalTypeName(shape.TypeName)})decoded;");
@@ -803,11 +787,19 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(
                     $"{pad}        {ClrType(field.TypeShape)} field_{index} = default;");
             }
+            sb.AppendLine(
+                $"{pad}        var keys = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
             sb.AppendLine($"{pad}        for (var index = 0; index < count; index++)");
             sb.AppendLine($"{pad}        {{");
             sb.AppendLine($"{pad}            if (!reader.TryReadString(out var key))");
             sb.AppendLine($"{pad}            {{");
             sb.AppendLine($"{pad}                error = reader.Error;");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}            }}");
+            sb.AppendLine($"{pad}            if (!keys.Add(key))");
+            sb.AppendLine($"{pad}            {{");
+            sb.AppendLine(
+                $"{pad}                error = \"MessagePack object contains a duplicate key.\";");
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}            }}");
             sb.AppendLine($"{pad}            switch (key)");
@@ -818,12 +810,6 @@ namespace Unity.FoxgloveSDK.Editor
                 var readerIndex = FindShape(field.TypeShape, shapes);
                 sb.AppendLine(
                     $"{pad}                case \"{StringLiteralEmitter.CSharpStringLiteral(field.JsonName)}\":");
-                sb.AppendLine($"{pad}                    if (seen_{index})");
-                sb.AppendLine($"{pad}                    {{");
-                sb.AppendLine(
-                    $"{pad}                        error = \"MessagePack object contains a duplicate known key.\";");
-                sb.AppendLine($"{pad}                        return false;");
-                sb.AppendLine($"{pad}                    }}");
                 sb.AppendLine($"{pad}                    seen_{index} = true;");
                 sb.AppendLine(
                     $"{pad}                    if (!__TryReadFoxRunMessagePackValue_{readerIndex}(reader, out field_{index}, out error)) return false;");
@@ -931,10 +917,7 @@ namespace Unity.FoxgloveSDK.Editor
                     throw new InvalidOperationException(
                         "Unsupported MessagePack CLR type shape.");
             }
-            if (shape.Nullable
-                && shape.Kind != FoxRunTypeShapeKind.Collection
-                && shape.Kind != FoxRunTypeShapeKind.Object
-                && !string.Equals(type, "string", StringComparison.Ordinal))
+            if (shape.Nullable && shape.IsValueType)
             {
                 return "global::System.Nullable<" + type + ">";
             }
@@ -967,6 +950,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool CanBeNil(FoxRunTypeShape shape)
             => shape.Nullable
+               || shape.Kind == FoxRunTypeShapeKind.Object
                || shape.Kind == FoxRunTypeShapeKind.Collection
                || shape.Kind == FoxRunTypeShapeKind.Canonical
                && string.Equals(shape.CanonicalType, "string", StringComparison.Ordinal);
@@ -999,7 +983,10 @@ namespace Unity.FoxgloveSDK.Editor
                 case "ulong":
                 case "float":
                 case "double":
+                case "decimal":
                 case "string":
+                case "char":
+                case "object":
                     return typeName;
             }
             return "global::" + typeName;

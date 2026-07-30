@@ -1169,9 +1169,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "\"Demo.NoDefaultConstructor\"",
                         StringComparison.Ordinal));
 
-            Assert.Equal(9, creation.ArgumentList.Arguments.Count);
+            Assert.Equal(10, creation.ArgumentList.Arguments.Count);
             Assert.Equal("true", creation.ArgumentList.Arguments[3].Expression.ToString());
             Assert.Equal("false", creation.ArgumentList.Arguments[8].Expression.ToString());
+            Assert.Equal("false", creation.ArgumentList.Arguments[9].Expression.ToString());
         }
 
         private static FoxRunProtobufContractInput CreateContract()

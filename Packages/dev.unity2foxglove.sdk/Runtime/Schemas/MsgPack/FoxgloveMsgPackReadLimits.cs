@@ -14,6 +14,7 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
     public sealed class FoxgloveMsgPackReadLimits
     {
         public const int DefaultMaxDepth = 34;
+        public const int AbsoluteMaxDepth = 34;
         public const int AbsoluteMaxContainerItems = 16_384;
 
         public FoxgloveMsgPackReadLimits(
@@ -22,9 +23,10 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
             int maxStringBytes,
             int maxBinaryBytes)
         {
-            if (maxDepth <= 0)
+            if (maxDepth <= 0 || maxDepth > AbsoluteMaxDepth)
                 throw new ArgumentOutOfRangeException(nameof(maxDepth));
-            if (maxContainerItems < 0)
+            if (maxContainerItems < 0
+                || maxContainerItems > AbsoluteMaxContainerItems)
                 throw new ArgumentOutOfRangeException(nameof(maxContainerItems));
             if (maxStringBytes < 0)
                 throw new ArgumentOutOfRangeException(nameof(maxStringBytes));

@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static IEnumerable<ISymbol> InheritedAndDeclaredMembers(INamedTypeSymbol type)
         {
             var seenJsonNames = new HashSet<string>(StringComparer.Ordinal);
+            var seenPropertySlots =
+                new HashSet<ISymbol>(SymbolEqualityComparer.Default);
             for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
             {
                 var members = new List<ISymbol>(current.GetMembers().Length);
@@ -30,15 +32,36 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     {
                         if (!CanParticipateInJsonNameDedup(field))
                             continue;
-                        if (seenJsonNames.Add(JsonPropertyName(field)))
+                        if (HasIgnoredSerializationAttribute(field))
+                        {
                             yield return field;
+                            continue;
+                        }
+                        if (!seenJsonNames.Add(JsonPropertyName(field)))
+                            continue;
+                        yield return field;
                     }
                     else if (member is IPropertySymbol property)
                     {
                         if (!CanParticipateInJsonNameDedup(property))
                             continue;
-                        if (seenJsonNames.Add(JsonPropertyName(property)))
+                        var propertySlot = property;
+                        while (propertySlot.OverriddenProperty != null)
+                            propertySlot = propertySlot.OverriddenProperty;
+                        if (!seenPropertySlots.Add(propertySlot))
+                            continue;
+                        if (HasIgnoredSerializationAttribute(property)
+                            || property.IsIndexer
+                            || property.GetMethod == null
+                            || property.GetMethod.DeclaredAccessibility
+                            != Accessibility.Public)
+                        {
                             yield return property;
+                            continue;
+                        }
+                        if (!seenJsonNames.Add(JsonPropertyName(property)))
+                            continue;
+                        yield return property;
                     }
                 }
             }

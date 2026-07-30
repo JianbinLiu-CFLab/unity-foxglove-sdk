@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
         public static IEnumerable<MemberInfo> SerializableMembers(Type type)
         {
             var seenJsonNames = new HashSet<string>(StringComparer.Ordinal);
+            var seenPropertySlots = new HashSet<MethodInfo>();
             for (var current = type; current != null && current != typeof(object); current = current.BaseType)
             {
                 var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
@@ -24,9 +25,28 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     if (!(member is FieldInfo) && !(member is PropertyInfo))
                         continue;
+                    if (member is PropertyInfo property
+                        && property.GetMethod != null
+                        && !seenPropertySlots.Add(
+                            property.GetMethod.GetBaseDefinition()))
+                    {
+                        continue;
+                    }
 
-                    if (seenJsonNames.Add(JsonPropertyName(member)))
+                    var ownsJsonName = !IsIgnored(member)
+                                       && (!(member is PropertyInfo candidate)
+                                           || (candidate.GetIndexParameters().Length == 0
+                                               && candidate.GetMethod != null
+                                               && candidate.GetMethod.IsPublic));
+                    if (!ownsJsonName)
+                    {
                         yield return member;
+                        continue;
+                    }
+
+                    if (!seenJsonNames.Add(JsonPropertyName(member)))
+                        continue;
+                    yield return member;
                 }
             }
         }

@@ -77,9 +77,31 @@ namespace Unity.FoxgloveSDK.Tests
             Check(generated.Any(s => s.HintName == "FoxRunGeneratedDescriptorInfo.g.cs"
                                      && s.SourceText.ToString().Contains("DescriptorJson", StringComparison.Ordinal)),
                 "115E-A5: Roslyn generator source harness exposes descriptor carrier source");
+            RefreshGoldenIfRequested(foxRunSource);
             var golden = ReadRepoText(GoldenRelativePath);
             Check(NormalizeNewlines(foxRunSource).TrimEnd() == NormalizeNewlines(golden).TrimEnd(),
                 "115E-A4: Roslyn generated source matches the golden baseline");
+        }
+
+        private static void RefreshGoldenIfRequested(string generatedSource)
+        {
+            if (!string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        "UNITY2FOXGLOVE_UPDATE_FOXRUN_GOLDEN"),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            File.WriteAllText(
+                RepoPath(GoldenRelativePath),
+                NormalizeNewlines(generatedSource).TrimEnd()
+                + Environment.NewLine,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Console.WriteLine(
+                "[UPDATE] Refreshed " + GoldenRelativePath
+                + " from the Roslyn generator.");
         }
 
         private static void VerifyReflectionHarnessCanLoadFixtureAssembly()

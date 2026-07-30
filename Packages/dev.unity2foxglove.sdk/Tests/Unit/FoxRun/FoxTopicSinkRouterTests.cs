@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
 using Xunit;
@@ -336,7 +337,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunEndpoint.Ros2Bridge,
                 ready: false,
                 succeeds: true);
-            var legacy = new RecordingSink("legacy", new List<string>());
+            var legacy = new RecordingSink(
+                "legacy",
+                new List<string>(),
+                FoxTopicSinkCapabilities.External);
             router.AddSink(unavailableBridge);
             router.AddSink(legacy);
             var contract = Exported("/phase184/readiness");
@@ -495,6 +499,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var received = Assert.Single(healthy.Published).Payload;
             var wireContract = Assert.Single(healthy.PublishedContracts);
+            Assert.Same(
+                Assert.Single(healthy.Registered),
+                wireContract);
             Assert.Same(borrowed, received);
             Assert.Equal("/phase185/msgpack", wireContract.Topic);
             Assert.Equal("msgpack", wireContract.Encoding);
@@ -506,6 +513,320 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             borrowed[3] = 0x02;
             Assert.Equal(0x02, received[3]);
             Assert.Equal(0x01, retainedCopy[3]);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void CompatibleFanoutReusesOneBoundedWireContractPerRegistration()
+        {
+            var router = new FoxTopicSinkRouter();
+            var sink = new RecordingSink("recording", new List<string>());
+            router.AddSink(sink);
+            var contract = new FoxTopicContract(
+                "/phase185f/stable-wire-contract",
+                "Demo.Logical",
+                "msgpack",
+                "canonical",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+            Assert.True(router.Register(contract));
+
+            router.PublishCompatible(
+                contract,
+                FoxRunEncoding.MessagePack,
+                1UL,
+                new byte[] { 0x80 },
+                "owner");
+            router.PublishCompatible(
+                contract,
+                FoxRunEncoding.MessagePack,
+                2UL,
+                new byte[] { 0x80 },
+                "owner");
+
+            Assert.Equal(2, sink.PublishedContracts.Count);
+            Assert.Same(
+                sink.PublishedContracts[0],
+                sink.PublishedContracts[1]);
+            Assert.Same(
+                Assert.Single(sink.Registered),
+                sink.PublishedContracts[0]);
+            Assert.Equal(
+                string.Empty,
+                sink.PublishedContracts[0].SchemaName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void WireEncodingViewChainsConvergeOnOneLogicalContractCache()
+        {
+            var logical = new FoxTopicContract(
+                "/phase185f/wire-view-chain",
+                "Demo.Logical",
+                "json",
+                "canonical",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+
+            var messagePack = logical.ForWireEncoding(
+                FoxRunEncoding.MessagePack);
+            var protobuf = messagePack.ForWireEncoding(
+                FoxRunEncoding.Protobuf);
+            var json = protobuf.ForWireEncoding(
+                FoxRunEncoding.JSON);
+
+            Assert.Same(logical, json);
+            Assert.Same(
+                messagePack,
+                json.ForWireEncoding(
+                    FoxRunEncoding.MessagePack));
+            Assert.Same(
+                protobuf,
+                messagePack.ForWireEncoding(
+                    FoxRunEncoding.Protobuf));
+            Assert.Equal(string.Empty, messagePack.SchemaName);
+            Assert.Equal("Demo.Logical", protobuf.SchemaName);
+            Assert.Equal("Demo.Logical", json.SchemaName);
+        }
+
+        [Theory]
+        [InlineData("json")]
+        [InlineData("protobuf")]
+        [Trait("Phase", "185-F")]
+        public void CompatibleNonMessagePackFanoutExcludesTargetSinks(
+            string declaredEncoding)
+        {
+            var router = new FoxTopicSinkRouter();
+            var additive = new RecordingSink(
+                "additive",
+                new List<string>());
+            var target = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(additive);
+            router.AddSink(target);
+            var contract = new FoxTopicContract(
+                "/phase185f/compatible-" + declaredEncoding,
+                "Demo.Payload",
+                declaredEncoding,
+                "canonical",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+            Assert.True(router.Register(contract));
+
+            router.PublishCompatible(
+                contract,
+                FoxRunEncoding.JSON,
+                3UL,
+                new byte[] { 0x7b, 0x7d },
+                "owner");
+
+            Assert.Single(additive.Published);
+            Assert.Same(
+                Assert.Single(additive.Registered),
+                Assert.Single(additive.PublishedContracts));
+            Assert.Equal(
+                "json",
+                additive.Registered[0].Encoding);
+            Assert.Same(
+                contract,
+                Assert.Single(target.Registered));
+            Assert.Equal(0, target.PublishCalls);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ResolvedInheritedMessagePackRegistersOneWireViewForInitialAndLateAdditiveSinks()
+        {
+            var router = new FoxTopicSinkRouter();
+            var initial = new RecordingSink(
+                "initial",
+                new List<string>());
+            var target = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(initial);
+            router.AddSink(target);
+            var logical = new FoxTopicContract(
+                "/phase185f/inherited-wire-registration",
+                "Demo.Payload",
+                "json",
+                "canonical",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+            var resolved = ResolvedPublish(
+                FoxRunEncoding.MessagePack);
+
+            Assert.True(router.RegisterTargets(resolved, logical));
+            var late = new RecordingSink("late", new List<string>());
+            router.AddSink(late);
+            router.PublishCompatible(
+                logical,
+                FoxRunEncoding.MessagePack,
+                4UL,
+                new byte[] { 0x80 },
+                "owner");
+
+            var initialRegistration = Assert.Single(initial.Registered);
+            var lateRegistration = Assert.Single(late.Registered);
+            Assert.Equal("msgpack", initialRegistration.Encoding);
+            Assert.Equal(string.Empty, initialRegistration.SchemaName);
+            Assert.Same(
+                initialRegistration,
+                Assert.Single(initial.PublishedContracts));
+            Assert.Same(
+                lateRegistration,
+                Assert.Single(late.PublishedContracts));
+            Assert.Same(
+                initialRegistration,
+                lateRegistration);
+            Assert.Same(
+                resolved,
+                Assert.Single(initial.ResolvedRegistrations).Resolved);
+            Assert.Same(
+                initialRegistration,
+                Assert.Single(initial.ResolvedRegistrations).Contract);
+            Assert.Same(
+                resolved,
+                Assert.Single(late.ResolvedRegistrations).Resolved);
+            Assert.Same(
+                lateRegistration,
+                Assert.Single(late.ResolvedRegistrations).Contract);
+            Assert.Same(
+                logical,
+                Assert.Single(target.Registered));
+            Assert.Equal(0, target.PublishCalls);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void PlainProtobufPublishUsesRegisteredJsonViewAndExcludesTargetSinks()
+        {
+            var router = new FoxTopicSinkRouter();
+            var initial = new RecordingSink(
+                "initial",
+                new List<string>());
+            var target = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(initial);
+            router.AddSink(target);
+            var logical = new FoxTopicContract(
+                "/phase185f/plain-protobuf",
+                "Demo.Payload",
+                "protobuf",
+                "canonical",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+
+            Assert.True(router.Register(logical));
+            var late = new RecordingSink("late", new List<string>());
+            router.AddSink(late);
+            router.Publish(
+                logical,
+                5UL,
+                new byte[] { 0x7b, 0x7d },
+                "legacy-json-owner");
+
+            Assert.Equal(
+                "json",
+                Assert.Single(initial.Registered).Encoding);
+            Assert.Equal(
+                "json",
+                Assert.Single(late.Registered).Encoding);
+            Assert.Same(
+                Assert.Single(initial.Registered),
+                Assert.Single(initial.PublishedContracts));
+            Assert.Same(
+                Assert.Single(late.Registered),
+                Assert.Single(late.PublishedContracts));
+            Assert.Same(
+                Assert.Single(initial.Registered),
+                Assert.Single(late.Registered));
+            Assert.Same(logical, Assert.Single(target.Registered));
+            Assert.Equal(0, target.PublishCalls);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ThrowingCapabilitiesIsIsolatedFromCompatibleFanout()
+        {
+            var router = new FoxTopicSinkRouter();
+            var faults = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += fault => faults.Add(fault);
+            router.AddSink(new ThrowingCapabilitiesSink("bad-capabilities"));
+            var healthy = new RecordingSink(
+                "healthy",
+                new List<string>());
+            router.AddSink(healthy);
+            var contract = Exported("/phase185f/capabilities-fanout");
+
+            Assert.True(router.Register(contract));
+            router.PublishCompatible(
+                contract,
+                FoxRunEncoding.JSON,
+                6UL,
+                Bytes("{}"),
+                "owner");
+
+            Assert.Single(healthy.Registered);
+            Assert.Single(healthy.Published);
+            Assert.Contains(
+                faults,
+                fault => fault.Operation == "register");
+            Assert.Contains(
+                faults,
+                fault => fault.Operation == "publish");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ThrowingCapabilitiesIsIsolatedFromTargetReadinessAndPublish()
+        {
+            var router = new FoxTopicSinkRouter();
+            var faults = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += fault => faults.Add(fault);
+            router.AddSink(new ThrowingCapabilitiesSink("bad-capabilities"));
+            var healthy = new RecordingSink(
+                "healthy-legacy",
+                new List<string>(),
+                FoxTopicSinkCapabilities.External);
+            router.AddSink(healthy);
+            var contract = Exported("/phase185f/capabilities-target");
+
+            Assert.True(router.RegisterTargets(
+                FoxRunEndpoint.Ros2Native,
+                contract));
+            Assert.True(router.HasReadyTarget(
+                FoxRunEndpoint.Ros2Native,
+                contract));
+            var result = router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                contract,
+                7UL,
+                Bytes("{}"),
+                "owner");
+
+            Assert.True(result.HadReadySink);
+            Assert.True(result.Succeeded);
+            Assert.Single(healthy.Published);
+            Assert.Contains(
+                faults,
+                fault => fault.Operation == "readiness");
+            Assert.Contains(
+                faults,
+                fault => fault.Operation == "publish");
         }
 
         [Fact]
@@ -674,25 +995,71 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static byte[] Bytes(string value) => Encoding.UTF8.GetBytes(value);
 
-        private sealed class RecordingSink : IFoxTopicSink
+        private static FoxRunResolvedPublishContract ResolvedPublish(
+            FoxRunEncoding encoding)
+        {
+            var constructor = typeof(FoxRunResolvedPublishContract)
+                .GetConstructor(
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    new[]
+                    {
+                        typeof(FoxRunEndpoint),
+                        typeof(FoxRunEncoding),
+                        typeof(FoxRunResolvedQos),
+                        typeof(FoxRunResolvedQos)
+                    },
+                    modifiers: null);
+            Assert.NotNull(constructor);
+            return (FoxRunResolvedPublishContract)constructor.Invoke(
+                new object[]
+                {
+                    FoxRunEndpoint.Foxglove
+                    | FoxRunEndpoint.Ros2Native,
+                    encoding,
+                    FoxRunResolvedQos.Default,
+                    FoxRunResolvedQos.Default
+                });
+        }
+
+        private sealed class RecordingSink :
+            IFoxTopicSink,
+            IFoxTopicResolvedContractSink
         {
             private readonly List<string> _order;
+            private readonly FoxTopicSinkCapabilities _capabilities;
 
-            public RecordingSink(string name, List<string> order)
+            public RecordingSink(
+                string name,
+                List<string> order,
+                FoxTopicSinkCapabilities capabilities =
+                    FoxTopicSinkCapabilities.Test)
             {
                 Name = name;
                 _order = order;
+                _capabilities = capabilities;
             }
 
             public string Name { get; }
-            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public FoxTopicSinkCapabilities Capabilities => _capabilities;
             public List<FoxTopicContract> Registered { get; } = new List<FoxTopicContract>();
             public List<FoxTopicContract> PublishedContracts { get; } =
                 new List<FoxTopicContract>();
+            public List<(
+                FoxTopicContract Contract,
+                FoxRunResolvedPublishContract Resolved)>
+                ResolvedRegistrations { get; } = new();
             public List<(string Topic, ulong TimestampNs, byte[] Payload, string Origin)> Published { get; } = new();
             public bool Disposed { get; private set; }
 
             public void Register(FoxTopicContract contract) => Registered.Add(contract);
+            public void Register(
+                FoxTopicContract contract,
+                FoxRunResolvedPublishContract resolved)
+            {
+                Registered.Add(contract);
+                ResolvedRegistrations.Add((contract, resolved));
+            }
 
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
             {
@@ -715,6 +1082,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public void Register(FoxTopicContract contract) { }
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
                 => throw new InvalidOperationException("boom");
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class ThrowingCapabilitiesSink : IFoxTopicSink
+        {
+            public ThrowingCapabilitiesSink(string name) => Name = name;
+
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities =>
+                throw new InvalidOperationException("capabilities boom");
+            public void Register(FoxTopicContract contract) { }
+            public void Publish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin)
+            {
+            }
             public void Flush() { }
             public void Dispose() { }
         }
@@ -877,7 +1263,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public FoxRunEndpoint Target { get; }
             public int RegisterCalls { get; private set; }
             public int PublishCalls { get; private set; }
-            public void Register(FoxTopicContract contract) => RegisterCalls++;
+            public List<FoxTopicContract> Registered { get; } =
+                new List<FoxTopicContract>();
+            public void Register(FoxTopicContract contract)
+            {
+                RegisterCalls++;
+                Registered.Add(contract);
+            }
             public bool IsReady(FoxTopicContract contract, out string reason)
             {
                 reason = _ready ? string.Empty : "unavailable";

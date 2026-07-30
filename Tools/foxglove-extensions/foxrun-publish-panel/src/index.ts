@@ -758,6 +758,7 @@ function isTypeShape(value: unknown, depth: number): value is FoxRunTypeShape {
       || typeof shape.typeName !== "string"
       || typeof shape.canonicalType !== "string"
       || typeof shape.nullable !== "boolean"
+      || typeof shape.isValueType !== "boolean"
       || (shape.collectionKind !== "None"
           && shape.collectionKind !== "Array"
           && shape.collectionKind !== "List"

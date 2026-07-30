@@ -242,6 +242,49 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Phase", "185-F")]
+        public void ReaderRejectsContainerCountsImpossibleForRemainingPayload()
+        {
+            var arrayReader = new FoxgloveMsgPackReader(
+                new byte[] { 0xdc, 0x40, 0x00 },
+                Limits());
+            Assert.False(arrayReader.TryReadArrayHeader(out var arrayCount));
+            Assert.Equal(0, arrayCount);
+            Assert.Contains(
+                "remaining",
+                arrayReader.Error,
+                StringComparison.OrdinalIgnoreCase);
+
+            var mapReader = new FoxgloveMsgPackReader(
+                new byte[] { 0xde, 0x20, 0x00 },
+                Limits());
+            Assert.False(mapReader.TryReadMapHeader(out var mapCount));
+            Assert.Equal(0, mapCount);
+            Assert.Contains(
+                "remaining",
+                mapReader.Error,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void PublicReadLimitsCannotExceedAbsoluteDepthOrContainerCaps()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new FoxgloveMsgPackReadLimits(
+                    FoxgloveMsgPackReadLimits.DefaultMaxDepth + 1,
+                    1,
+                    1,
+                    1));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new FoxgloveMsgPackReadLimits(
+                    FoxgloveMsgPackReadLimits.DefaultMaxDepth,
+                    FoxgloveMsgPackReadLimits.AbsoluteMaxContainerItems + 1,
+                    1,
+                    1));
+        }
+
+        [Fact]
         public void ReaderAcceptsWireDepthThirtyThreeAndThirtyFourButRejectsThirtyFive()
         {
             AssertRead(

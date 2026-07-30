@@ -85,11 +85,30 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Emits the optional Phase153 topic contract surface. Contracts are
-        /// generated constants so runtime registration does not need
-        /// reflection, model walking, or Editor-only helpers.
+        /// generated as stable readonly instances so runtime registration and
+        /// hot-path wire views do not need reflection, model walking,
+        /// per-publication allocation, or Editor-only helpers.
         /// </summary>
         internal static void EmitGetContract(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var topic = topics[i];
+                var fields = topicMap[topic];
+                var schema = fields.FirstOrDefault(
+                    field => !string.IsNullOrEmpty(field.SchemaName))
+                    ?.SchemaName ?? "";
+                var encoding = EffectiveEncoding(fields);
+                var canonical = CanonicalTopicShape(
+                    topic,
+                    schema,
+                    encoding,
+                    fields);
+                var fingerprint = Sha256Hex(canonical);
+                sb.AppendLine(
+                    $"{pad}    private static readonly FoxTopicContract __foxRunContract_{i} = new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+            }
+            sb.AppendLine();
             sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;");
             sb.AppendLine();
             sb.AppendLine($"{pad}    FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)");
@@ -98,14 +117,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        {{");
             for (int i = 0; i < topics.Count; i++)
             {
-                var topic = topics[i];
-                var fields = topicMap[topic];
-                var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "";
-                var encoding = EffectiveEncoding(fields);
-                var canonical = CanonicalTopicShape(topic, schema, encoding, fields);
-                var fingerprint = Sha256Hex(canonical);
                 sb.AppendLine(
-                    $"{pad}            case {i}: return new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+                    $"{pad}            case {i}: return __foxRunContract_{i};");
             }
             sb.AppendLine($"{pad}            default: return null;");
             sb.AppendLine($"{pad}        }}");
@@ -153,7 +166,22 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
             }
-            return FoxRunGenerationDescriptorConstants.JsonEncoding;
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.JsonEncoding;
+            }
+
+            throw new InvalidOperationException(
+                "FoxRun topic declares unsupported wire encoding '"
+                + (declared ?? string.Empty)
+                + "'.");
         }
 
         internal static bool IsInherited(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
@@ -230,22 +258,57 @@ namespace Unity.FoxgloveSDK.Editor
             return "(FoxRunQosHistory)0";
         }
 
-        private static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        internal static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var sb = new StringBuilder();
-            sb.Append("topic=").Append(topic ?? string.Empty).Append('\n');
-            sb.Append("encoding=").Append(encoding ?? string.Empty).Append('\n');
-            sb.Append("schema=").Append(schema ?? string.Empty).Append('\n');
-            sb.Append("fields=");
-            for (var i = 0; i < fields.Count; i++)
+            sb.Append("v2|topic=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                topic);
+            sb.Append("|encoding=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                encoding);
+            sb.Append("|schema=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                schema);
+            var orderedFields = fields
+                .OrderBy(
+                    field => field.JsonFieldName,
+                    StringComparer.Ordinal)
+                .ThenBy(
+                    field => field.MemberName,
+                    StringComparer.Ordinal)
+                .ToList();
+            sb.Append("|fields=")
+                .Append(
+                    orderedFields.Count.ToString(
+                        CultureInfo.InvariantCulture));
+            foreach (var field in orderedFields)
             {
-                if (i > 0)
-                    sb.Append(';');
-                var field = fields[i];
-                sb.Append(field.JsonFieldName);
-                sb.Append(':');
-                sb.Append(field.CanonicalType);
+                sb.Append("|field|json=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.JsonFieldName);
+                sb.Append("|member=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.MemberName);
+                sb.Append("|canonical=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.CanonicalType);
+                sb.Append("|shape=");
+                var identity = FoxRunTypeShapeIdentityFormatter.Build(
+                    field.TypeShape
+                    ?? FoxRunTypeShape.Canonical(field.CanonicalType),
+                    includeUsageTraits: true);
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    identity);
             }
+            sb.Append("|end");
             return sb.ToString();
         }
 

@@ -4,12 +4,20 @@
 // Module: Tools/foxglove-extensions/foxrun-publish-panel
 // Purpose: Bounded, catalog-driven typed MessagePack encoder for FoxRun input.
 
-const MAX_DEPTH = 34;
-const MAX_CONTAINER_ITEMS = 16_384;
+export const MESSAGEPACK_COMPATIBILITY_LIMITS = Object.freeze({
+  maxDepth: 34,
+  maxAggregateContainerItems: 16_384,
+});
+
+const MAX_DEPTH = MESSAGEPACK_COMPATIBILITY_LIMITS.maxDepth;
+const MAX_CONTAINER_ITEMS =
+  MESSAGEPACK_COMPATIBILITY_LIMITS.maxAggregateContainerItems;
 const MAX_STRING_BYTES = 1_048_576;
 const MAX_BINARY_BYTES = 1_048_576;
+const MAX_BASE64_INPUT_CHARACTERS = Math.ceil(MAX_BINARY_BYTES / 3) * 4;
 const MAX_OUTPUT_BYTES = 4_194_304;
 const MAX_UNKNOWN_FIELD_NAMES = 8;
+const MAX_FLOAT32 = 3.4028234663852886e38;
 
 export type FoxRunEnumValue = {
   name: string;
@@ -31,6 +39,7 @@ export type FoxRunTypeShape = {
   typeName: string;
   canonicalType: string;
   nullable: boolean;
+  isValueType: boolean;
   collectionKind: "None" | "Array" | "List" | "Binary";
   binary: boolean;
   canConstruct: boolean;
@@ -48,6 +57,10 @@ export type FoxRunSubscriptionField = {
   typeShape?: FoxRunTypeShape;
 };
 
+type ContainerBudget = {
+  used: number;
+};
+
 export function encodeMessagePackMessage(
   fields: readonly FoxRunSubscriptionField[],
   message: Record<string, unknown>,
@@ -58,6 +71,11 @@ export function encodeMessagePackMessage(
 
   validateKnownKeys(fields.map((field) => field.name), message, "MessagePack payload");
   const writer = new BoundedMessagePackWriter();
+  const containerBudget: ContainerBudget = { used: 0 };
+  consumeContainerItems(
+    containerBudget,
+    fields.length,
+    "MessagePack payload");
   writer.writeMapHeader(fields.length);
   for (const field of fields) {
     if (field.typeShape == undefined) {
@@ -73,6 +91,7 @@ export function encodeMessagePackMessage(
       message[field.name],
       field.name,
       1,
+      containerBudget,
       field.nullable);
   }
   return writer.toUint8Array();
@@ -83,14 +102,12 @@ function writeShape(
   shape: FoxRunTypeShape,
   value: unknown,
   path: string,
-  depth: number,
+  parentContainerDepth: number,
+  containerBudget: ContainerBudget,
   nullableOverride = false,
 ): void {
-  if (depth > MAX_DEPTH) {
-    throw new Error(`Field ${path} exceeds the MessagePack depth limit.`);
-  }
   if (value === null) {
-    if (!nullableOverride && !shape.nullable) {
+    if (!canWriteNil(shape, nullableOverride)) {
       throw new Error(`Field ${path} is not nullable.`);
     }
     writer.writeNil();
@@ -108,12 +125,42 @@ function writeShape(
       writer.writeInt(requireEnumValue(shape, value, path));
       return;
     case "Collection":
-      writeCollection(writer, shape, value, path, depth);
+      writeCollection(
+        writer,
+        shape,
+        value,
+        path,
+        shape.binary || shape.collectionKind === "Binary"
+          ? parentContainerDepth
+          : enterContainerDepth(parentContainerDepth, path),
+        containerBudget);
       return;
     case "Object":
-      writeObject(writer, shape, value, path, depth);
+      writeObject(
+        writer,
+        shape,
+        value,
+        path,
+        enterContainerDepth(parentContainerDepth, path),
+        containerBudget);
       return;
   }
+}
+
+function canWriteNil(
+  shape: FoxRunTypeShape,
+  nullableOverride: boolean,
+): boolean {
+  if (nullableOverride || shape.nullable) {
+    return true;
+  }
+  if (shape.kind === "Collection") {
+    return true;
+  }
+  if (shape.kind === "Canonical") {
+    return normalizeCanonicalType(shape.canonicalType || shape.typeName) === "string";
+  }
+  return shape.kind === "Object" && !shape.isValueType;
 }
 
 function writeCanonical(
@@ -172,7 +219,7 @@ function writeCanonical(
       ));
       return;
     case "float32":
-      writer.writeFloat32(requireFiniteNumber(path, value));
+      writer.writeFloat32(requireFloat32(path, value));
       return;
     case "float64":
       writer.writeFloat64(requireFiniteNumber(path, value));
@@ -190,6 +237,7 @@ function writeCollection(
   value: unknown,
   path: string,
   depth: number,
+  containerBudget: ContainerBudget,
 ): void {
   if (shape.binary || shape.collectionKind === "Binary") {
     writer.writeBinary(decodeBase64(path, value));
@@ -204,6 +252,7 @@ function writeCollection(
   if (value.length > MAX_CONTAINER_ITEMS) {
     throw new Error(`Field ${path} exceeds the MessagePack collection item limit.`);
   }
+  consumeContainerItems(containerBudget, value.length, path);
   writer.writeArrayHeader(value.length);
   for (let index = 0; index < value.length; index++) {
     writeShape(
@@ -211,7 +260,8 @@ function writeCollection(
       shape.elementShape,
       value[index],
       `${path}[${index}]`,
-      depth + 1);
+      depth,
+      containerBudget);
   }
 }
 
@@ -221,6 +271,7 @@ function writeObject(
   value: unknown,
   path: string,
   depth: number,
+  containerBudget: ContainerBudget,
 ): void {
   if (!isRecord(value)) {
     throw new Error(`Field ${path} must be an object.`);
@@ -228,6 +279,10 @@ function writeObject(
   if (shape.fields.length > MAX_CONTAINER_ITEMS) {
     throw new Error(`Field ${path} exceeds the MessagePack object field limit.`);
   }
+  consumeContainerItems(
+    containerBudget,
+    shape.fields.length,
+    path);
   validateKnownKeys(
     shape.fields.map((field) => field.jsonName),
     value,
@@ -244,9 +299,33 @@ function writeObject(
       field.typeShape,
       value[field.jsonName],
       `${path}.${field.jsonName}`,
-      depth + 1,
+      depth,
+      containerBudget,
       field.nullable);
   }
+}
+
+function enterContainerDepth(parentDepth: number, path: string): number {
+  const depth = parentDepth + 1;
+  if (depth > MAX_DEPTH) {
+    throw new Error(`Field ${path} exceeds the MessagePack depth limit.`);
+  }
+  return depth;
+}
+
+function consumeContainerItems(
+  budget: ContainerBudget,
+  childValues: number,
+  path: string,
+): void {
+  if (!Number.isSafeInteger(childValues) || childValues < 0) {
+    throw new Error(`Field ${path} has an invalid MessagePack container size.`);
+  }
+  if (budget.used > MAX_CONTAINER_ITEMS - childValues) {
+    throw new Error(
+      `Field ${path} exceeds the MessagePack aggregate container item limit.`);
+  }
+  budget.used += childValues;
 }
 
 function requireEnumValue(
@@ -308,6 +387,14 @@ function requireFiniteNumber(path: string, value: unknown): number {
   return value;
 }
 
+function requireFloat32(path: string, value: unknown): number {
+  const number = requireFiniteNumber(path, value);
+  if (Math.abs(number) > MAX_FLOAT32) {
+    throw new Error(`Field ${path} is outside the MessagePack float32 range.`);
+  }
+  return number;
+}
+
 function validateKnownKeys(
   names: readonly string[],
   value: Record<string, unknown>,
@@ -355,8 +442,22 @@ function decodeBase64(path: string, value: unknown): Uint8Array {
   if (typeof value !== "string") {
     throw new Error(`Field ${path} must be a base64 string.`);
   }
+  if (value.length > MAX_BASE64_INPUT_CHARACTERS) {
+    throw new Error(
+      "MessagePack base64 input exceeds the client-side character limit.");
+  }
+  const normalized = value.replace(/[\t\n\f\r ]/g, "");
+  const padding = normalized.endsWith("==")
+    ? 2
+    : normalized.endsWith("=")
+      ? 1
+      : 0;
+  const decodedLength = Math.floor(normalized.length * 3 / 4) - padding;
+  if (decodedLength > MAX_BINARY_BYTES) {
+    throw new Error("MessagePack binary exceeds the client-side byte limit.");
+  }
   try {
-    const binary = atob(value);
+    const binary = atob(normalized);
     return Uint8Array.from(binary, (character) => character.charCodeAt(0));
   } catch {
     throw new Error(`Field ${path} must be a valid base64 string.`);
@@ -436,6 +537,9 @@ class BoundedMessagePackWriter {
   }
 
   public writeString(value: string): void {
+    if (value.length > MAX_STRING_BYTES) {
+      throw new Error("MessagePack string exceeds the client-side byte limit.");
+    }
     validateUnicode(value);
     const encoded = this.utf8.encode(value);
     if (encoded.length > MAX_STRING_BYTES) {

@@ -275,6 +275,9 @@ namespace Unity.FoxgloveSDK.Editor
             WriteName(sb, "canConstruct");
             sb.Append(shape.CanConstruct ? "true" : "false");
             sb.Append(',');
+            WriteName(sb, "isValueType");
+            sb.Append(shape.IsValueType ? "true" : "false");
+            sb.Append(',');
             WriteStringField(sb, "collectionKind", shape.CollectionKind.ToString());
             sb.Append(',');
             WriteName(sb, "binary");

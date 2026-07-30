@@ -311,6 +311,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var nullable = RequiredBoolValue(shape, "nullable");
             var canConstruct = RequiredBoolValue(shape, "canConstruct");
+            var isValueType = RequiredBoolValue(shape, "isValueType");
             var collectionName = RequiredStringValue(shape, "collectionKind");
             if (!Enum.TryParse(collectionName, ignoreCase: false, out FoxRunCollectionKind collectionKind))
             {
@@ -321,9 +322,12 @@ namespace Unity.FoxgloveSDK.Tests
             switch (kind)
             {
                 case FoxRunTypeShapeKind.Canonical:
-                    return FoxRunTypeShape.Canonical(
-                        RequiredStringValue(shape, "canonicalType"),
-                        nullable);
+                    return RequireValueTypeIdentity(
+                        FoxRunTypeShape.Canonical(
+                            RequiredStringValue(shape, "canonicalType"),
+                            nullable),
+                        isValueType,
+                        path);
                 case FoxRunTypeShapeKind.Enum:
                 {
                     var values = new List<FoxRunEnumValue>();
@@ -336,10 +340,13 @@ namespace Unity.FoxgloveSDK.Tests
                             RequiredStringValue(value, "name"),
                             RequiredIntValue(value, "number")));
                     }
-                    return FoxRunTypeShape.Enum(
-                        RequiredStringValue(shape, "typeName"),
-                        values,
-                        nullable);
+                    return RequireValueTypeIdentity(
+                        FoxRunTypeShape.Enum(
+                            RequiredStringValue(shape, "typeName"),
+                            values,
+                            nullable),
+                        isValueType,
+                        path);
                 }
                 case FoxRunTypeShapeKind.Object:
                 {
@@ -374,7 +381,8 @@ namespace Unity.FoxgloveSDK.Tests
                         RequiredStringValue(shape, "typeName"),
                         fields,
                         nullable,
-                        canConstruct);
+                        canConstruct,
+                        isValueType);
                 }
                 case FoxRunTypeShapeKind.Collection:
                 {
@@ -384,19 +392,37 @@ namespace Unity.FoxgloveSDK.Tests
                             "FoxRun collection shape requires a non-empty collection kind.");
                     }
 
-                    return FoxRunTypeShape.Collection(
-                        collectionKind,
-                        TypeShapeValue(
-                            RequiredProperty(shape, "elementShape"),
-                            path + ".elementShape")
-                        ?? throw new InvalidOperationException(
-                            "FoxRun collection shape requires an element shape."),
-                        nullable);
+                    return RequireValueTypeIdentity(
+                        FoxRunTypeShape.Collection(
+                            collectionKind,
+                            TypeShapeValue(
+                                RequiredProperty(shape, "elementShape"),
+                                path + ".elementShape")
+                            ?? throw new InvalidOperationException(
+                                "FoxRun collection shape requires an element shape."),
+                            nullable),
+                        isValueType,
+                        path);
                 }
                 default:
                     throw new InvalidOperationException(
                         "Unsupported FoxRun type-shape kind: " + kindName);
             }
+        }
+
+        private static FoxRunTypeShape RequireValueTypeIdentity(
+            FoxRunTypeShape shape,
+            bool isValueType,
+            string path)
+        {
+            if (shape.IsValueType != isValueType)
+            {
+                throw new InvalidOperationException(
+                    "FoxRun type shape '"
+                    + path
+                    + "' has an inconsistent isValueType value.");
+            }
+            return shape;
         }
 
         private static FoxRunProtobufMetadata ProtobufMetadataValue(JToken token)

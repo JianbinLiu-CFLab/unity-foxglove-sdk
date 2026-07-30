@@ -99,7 +99,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunTypeShapeInfo elementShape,
             IReadOnlyList<FoxRunTypeFieldInfo> fields,
             IReadOnlyList<FoxRunEnumValueInfo> enumValues,
-            bool canConstruct = true)
+            bool canConstruct = true,
+            bool isValueType = false)
         {
             Kind = kind;
             TypeName = typeName ?? string.Empty;
@@ -112,6 +113,7 @@ namespace Unity.FoxgloveSDK.Components
             EnumValues = new List<FoxRunEnumValueInfo>(
                 enumValues ?? Array.Empty<FoxRunEnumValueInfo>()).AsReadOnly();
             CanConstruct = canConstruct;
+            IsValueType = isValueType;
         }
 
         public FoxRunTypeShapeInfoKind Kind { get; }
@@ -123,6 +125,7 @@ namespace Unity.FoxgloveSDK.Components
         public IReadOnlyList<FoxRunTypeFieldInfo> Fields { get; }
         public IReadOnlyList<FoxRunEnumValueInfo> EnumValues { get; }
         public bool CanConstruct { get; }
+        public bool IsValueType { get; }
         public bool IsBinary => CollectionKind == FoxRunCollectionInfoKind.Binary;
     }
 

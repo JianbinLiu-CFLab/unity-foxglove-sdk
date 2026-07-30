@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public string SinkName { get; }
         public string Topic { get; }
-        /// <summary>One of "register", "unregister", "publish", or "flush".</summary>
+        /// <summary>One of "register", "unregister", "readiness", "publish", or "flush".</summary>
         public string Operation { get; }
         public Exception Exception { get; }
     }
@@ -72,23 +72,24 @@ namespace Unity.FoxgloveSDK.Components
             for (var index = 0; index < _sinks.Count; index++)
             {
                 var sink = _sinks[index];
-                if (sink is IFoxTopicTargetSink targeted)
+                try
                 {
-                    if (targeted.Target != target)
-                        continue;
-                    try
+                    if (sink is IFoxTopicTargetSink targeted)
                     {
+                        if (targeted.Target != target)
+                            continue;
                         if (targeted.IsReady(contract, out _))
                             return true;
                     }
-                    catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
+                    else if (target == FoxRunEndpoint.Ros2Native
+                             && IsLegacyTargetSink(sink))
                     {
-                        ReportFault(sink, contract.Topic, "readiness", ex);
+                        return true;
                     }
                 }
-                else if (target == FoxRunEndpoint.Ros2Native)
+                catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
                 {
-                    return true;
+                    ReportFault(sink, contract.Topic, "readiness", ex);
                 }
             }
             return false;
@@ -113,13 +114,19 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var contract in _contracts.Values)
                 {
-                    if (!_contractTargets.TryGetValue(contract.Topic, out var targets)
-                        || !SelectsSink(targets, sink))
-                        continue;
-                    attemptedContracts.Add(contract);
-                    _resolvedContracts.TryGetValue(contract.Topic, out var resolved);
                     try
                     {
+                        if (!_contractTargets.TryGetValue(
+                                contract.Topic,
+                                out var targets)
+                            || !SelectsSink(targets, sink))
+                        {
+                            continue;
+                        }
+                        attemptedContracts.Add(contract);
+                        _resolvedContracts.TryGetValue(
+                            contract.Topic,
+                            out var resolved);
                         RegisterSink(sink, contract, resolved);
                     }
                     catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
@@ -150,16 +157,15 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var contract in _contracts.Values)
                 {
-                    if (!_contractTargets.TryGetValue(
-                            contract.Topic,
-                            out var targets)
-                        || !SelectsSink(targets, sink))
-                    {
-                        continue;
-                    }
-
                     try
                     {
+                        if (!_contractTargets.TryGetValue(
+                                contract.Topic,
+                                out var targets)
+                            || !SelectsSink(targets, sink))
+                        {
+                            continue;
+                        }
                         lifecycle.Unregister(contract.Topic);
                     }
                     catch (Exception exception) when (
@@ -221,12 +227,13 @@ namespace Unity.FoxgloveSDK.Components
             for (var i = 0; i < _sinks.Count; i++)
             {
                 var sink = _sinks[i];
-                if (!SelectsSink(targets, sink)
-                    || !(sink is IFoxTopicSinkContractLifecycle lifecycle))
-                    continue;
-
                 try
                 {
+                    if (!SelectsSink(targets, sink)
+                        || !(sink is IFoxTopicSinkContractLifecycle lifecycle))
+                    {
+                        continue;
+                    }
                     lifecycle.Unregister(topic);
                 }
                 catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
@@ -325,11 +332,11 @@ namespace Unity.FoxgloveSDK.Components
                 for (var i = 0; i < _sinks.Count; i++)
                 {
                     var sink = _sinks[i];
-                    if (!SelectsSink(targets, sink))
-                        continue;
-                    attemptedSinks.Add(sink);
                     try
                     {
+                        if (!SelectsSink(targets, sink))
+                            continue;
+                        attemptedSinks.Add(sink);
                         RegisterSink(sink, contract, resolved);
                     }
                     catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
@@ -349,18 +356,30 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Deliver one serialized payload to every sink in deterministic order.
-        /// Local-only contracts are not exported. A failing sink is isolated and
-        /// does not stop the remaining sinks.
+        /// Deliver one legacy JSON payload in deterministic order. Additive
+        /// byte sinks receive the registered JSON wire view. A target sink
+        /// receives the payload only when its logical contract is already the
+        /// same JSON wire contract; other target encodings are owned by
+        /// <see cref="PublishTarget"/>.
         /// </summary>
-        public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
-            => PublishCore(
+        public void Publish(
+            FoxTopicContract contract,
+            ulong timestampNs,
+            byte[] payload,
+            string origin)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+            PublishCore(
                 contract,
-                contract,
+                ResolveWireContract(contract, FoxRunEncoding.JSON),
                 timestampNs,
                 payload,
                 origin,
                 compatibleOnly: false);
+        }
 
         /// <summary>
         /// Deliver one serialized payload only to additive byte sinks. Target
@@ -410,13 +429,23 @@ namespace Unity.FoxgloveSDK.Components
             for (var i = 0; i < _sinks.Count; i++)
             {
                 var sink = _sinks[i];
-                if (compatibleOnly && sink is IFoxTopicTargetSink)
-                    continue;
-                if (!SelectsSink(targets, sink))
-                    continue;
                 try
                 {
-                    sink.Publish(wireContract, timestampNs, payload, origin);
+                    var isTargetSink = IsTargetSink(sink);
+                    if (compatibleOnly && isTargetSink)
+                        continue;
+                    if (isTargetSink
+                        && !ContractsMatch(registeredContract, wireContract))
+                    {
+                        continue;
+                    }
+                    if (!SelectsSink(targets, sink))
+                        continue;
+                    sink.Publish(
+                        isTargetSink ? registeredContract : wireContract,
+                        timestampNs,
+                        payload,
+                        origin);
                 }
                 catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
                 {
@@ -425,26 +454,42 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private static FoxTopicContract ResolveWireContract(
+        private FoxTopicContract ResolveWireContract(
             FoxTopicContract logicalContract,
             FoxRunEncoding wireEncoding)
         {
             if (logicalContract == null)
                 throw new ArgumentNullException(nameof(logicalContract));
 
-            var protocolEncoding =
-                FoxRunEncodingResolver.ToProtocolEncoding(wireEncoding);
-            var schemaName = wireEncoding == FoxRunEncoding.MessagePack
-                ? string.Empty
-                : logicalContract.SchemaName;
-            return new FoxTopicContract(
-                logicalContract.Topic,
-                schemaName,
-                protocolEncoding,
-                logicalContract.CanonicalType,
-                logicalContract.StableFingerprint,
-                logicalContract.Visibility,
-                logicalContract.WriterPolicy);
+            if (_contracts.TryGetValue(
+                    logicalContract.Topic,
+                    out var registered)
+                && ContractsMatch(registered, logicalContract))
+            {
+                logicalContract = registered;
+                _resolvedContracts.TryGetValue(
+                    registered.Topic,
+                    out var resolved);
+                var expected = CompatibleWireContract(
+                    registered,
+                    resolved);
+                var requested =
+                    registered.ForWireEncoding(wireEncoding);
+                if (!ContractsMatch(expected, requested))
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun additive sink wire encoding '"
+                        + requested.Encoding
+                        + "' does not match the registered wire contract '"
+                        + expected.Encoding
+                        + "' for topic '"
+                        + registered.Topic
+                        + "'.");
+                }
+                return expected;
+            }
+
+            return logicalContract.ForWireEncoding(wireEncoding);
         }
 
         public FoxTopicSinkPublishResult PublishTarget(
@@ -471,12 +516,14 @@ namespace Unity.FoxgloveSDK.Components
             for (var index = 0; index < _sinks.Count; index++)
             {
                 var sink = _sinks[index];
-                if (sink is IFoxTopicTargetSink targeted)
+                var readyTargetSelected = false;
+                try
                 {
-                    if (targeted.Target != target)
-                        continue;
-                    try
+                    if (sink is IFoxTopicTargetSink targeted)
                     {
+                        if (targeted.Target != target)
+                            continue;
+                        readyTargetSelected = true;
                         if (!targeted.IsReady(contract, out _))
                             continue;
                         hadReady = true;
@@ -489,24 +536,19 @@ namespace Unity.FoxgloveSDK.Components
                                 "publish",
                                 new InvalidOperationException("Target sink rejected the payload."));
                     }
-                    catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
+                    else if (target == FoxRunEndpoint.Ros2Native
+                             && IsLegacyTargetSink(sink))
                     {
                         hadReady = true;
-                        ReportFault(sink, contract.Topic, "publish", ex);
-                    }
-                }
-                else if (target == FoxRunEndpoint.Ros2Native)
-                {
-                    hadReady = true;
-                    try
-                    {
                         sink.Publish(contract, timestampNs, payload, origin);
                         succeeded = true;
                     }
-                    catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
-                    {
-                        ReportFault(sink, contract.Topic, "publish", ex);
-                    }
+                }
+                catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
+                {
+                    if (readyTargetSelected)
+                        hadReady = true;
+                    ReportFault(sink, contract.Topic, "publish", ex);
                 }
             }
 
@@ -615,7 +657,15 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ReportFault(IFoxTopicSink sink, string topic, string operation, Exception exception)
         {
-            var name = sink?.Name ?? string.Empty;
+            string name;
+            try
+            {
+                name = sink?.Name ?? string.Empty;
+            }
+            catch (Exception ex) when (FoxRunExceptionPolicy.IsRecoverable(ex))
+            {
+                name = sink?.GetType().FullName ?? string.Empty;
+            }
             var key = name + ":" + topic + ":" + operation + ":" + (exception?.GetType().FullName ?? string.Empty);
             if (!_reportedFaults.Add(key))
                 return;
@@ -650,15 +700,70 @@ namespace Unity.FoxgloveSDK.Components
             return (targets & FoxRunEndpoint.Ros2Native) != 0;
         }
 
+        private static bool IsTargetSink(IFoxTopicSink sink)
+            => sink is IFoxTopicTargetSink
+               || IsLegacyTargetSink(sink);
+
+        private static bool IsLegacyTargetSink(IFoxTopicSink sink)
+            => sink != null
+               && !(sink is IFoxTopicTargetSink)
+               && (sink.Capabilities
+                   & FoxTopicSinkCapabilities.External) != 0;
+
         private static void RegisterSink(
             IFoxTopicSink sink,
             FoxTopicContract contract,
             FoxRunResolvedPublishContract resolved)
         {
-            if (resolved != null && sink is IFoxTopicResolvedContractSink resolvedSink)
-                resolvedSink.Register(contract, resolved);
+            var registeredContract = IsTargetSink(sink)
+                ? contract
+                : CompatibleWireContract(contract, resolved);
+            if (resolved != null
+                && sink is IFoxTopicResolvedContractSink resolvedSink)
+                resolvedSink.Register(registeredContract, resolved);
             else
-                sink.Register(contract);
+                sink.Register(registeredContract);
+        }
+
+        private static FoxTopicContract CompatibleWireContract(
+            FoxTopicContract contract,
+            FoxRunResolvedPublishContract resolved)
+        {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+
+            if (string.Equals(
+                    contract.Encoding,
+                    "msgpack",
+                    StringComparison.Ordinal)
+                || (resolved != null
+                    && resolved.FoxgloveEncoding
+                    == FoxRunEncoding.MessagePack))
+            {
+                return contract.ForWireEncoding(
+                    FoxRunEncoding.MessagePack);
+            }
+
+            if (string.Equals(
+                    contract.Encoding,
+                    "json",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    contract.Encoding,
+                    "protobuf",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    contract.Encoding,
+                    "inherit",
+                    StringComparison.Ordinal))
+            {
+                return contract.ForWireEncoding(FoxRunEncoding.JSON);
+            }
+
+            throw new InvalidOperationException(
+                "FoxRun topic declares unsupported wire encoding '"
+                + contract.Encoding
+                + "'.");
         }
 
         private static bool ContractsMatch(

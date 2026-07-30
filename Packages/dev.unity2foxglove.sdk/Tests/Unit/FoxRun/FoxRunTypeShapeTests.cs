@@ -114,7 +114,13 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
         public static IEnumerable<object[]> UnsupportedMessagePackShapes()
         {
+            yield return new object[] { typeof(char) };
+            yield return new object[] { typeof(decimal) };
             yield return new object[] { typeof(object) };
+            yield return new object[] { typeof(DateTime) };
+            yield return new object[] { typeof(DateTimeOffset) };
+            yield return new object[] { typeof(Guid) };
+            yield return new object[] { typeof(TimeSpan) };
             yield return new object[] { typeof(Dictionary<string, int>) };
             yield return new object[] { typeof(HashSet<int>) };
             yield return new object[] { typeof(ICollection<int>) };
@@ -122,6 +128,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             yield return new object[] { typeof(Queue<int>) };
             yield return new object[] { typeof(Stack<int>) };
             yield return new object[] { typeof(Collection<int>) };
+            yield return new object[] { typeof(ValueTuple) };
             yield return new object[] { typeof((int First, int Second)) };
             yield return new object[] { typeof(Action) };
             yield return new object[] { typeof(IEnumerable<int>) };
@@ -141,6 +148,227 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 () => FoxRunReflectionTypeShapeBuilder.Build(type));
 
             Assert.StartsWith("FOXRUN616:", error.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("System.Char")]
+        [InlineData("System.Decimal")]
+        [InlineData("System.Object")]
+        [InlineData("System.DateTime")]
+        [InlineData("global::System.DateTimeOffset")]
+        [InlineData("System.Guid")]
+        [InlineData("TimeSpan")]
+        [Trait("Phase", "185-F")]
+        public void ManualUnsupportedScalarObjectShapesFailClosed(
+            string typeName)
+        {
+            var shape = FoxRunTypeShape.Object(
+                typeName,
+                Array.Empty<FoxRunTypeField>());
+
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                    shape,
+                    string.Empty));
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                    shape,
+                    string.Empty));
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.PublishAndSubscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true)
+            });
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN616");
+        }
+
+        public static IEnumerable<object[]> InvalidManualCollectionShapes()
+        {
+            yield return new object[]
+            {
+                FoxRunTypeShape.Collection(
+                    FoxRunCollectionKind.Array,
+                    FoxRunTypeShape.Collection(
+                        FoxRunCollectionKind.List,
+                        FoxRunTypeShape.Canonical("int32")))
+            };
+            yield return new object[]
+            {
+                FoxRunTypeShape.Collection(
+                    FoxRunCollectionKind.Binary,
+                    FoxRunTypeShape.Canonical("int32"))
+            };
+            yield return new object[]
+            {
+                FoxRunTypeShape.Collection(
+                    FoxRunCollectionKind.Binary,
+                    FoxRunTypeShape.Canonical("uint8", nullable: true))
+            };
+            yield return new object[]
+            {
+                FoxRunTypeShape.Collection(
+                    FoxRunCollectionKind.Array,
+                    FoxRunTypeShape.Canonical("uint8"))
+            };
+            yield return new object[]
+            {
+                FoxRunTypeShape.Collection(
+                    (FoxRunCollectionKind)99,
+                    FoxRunTypeShape.Canonical("int32"))
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(InvalidManualCollectionShapes))]
+        [Trait("Phase", "185-F")]
+        public void ManualInvalidCollectionShapesFailClosed(
+            FoxRunTypeShape shape)
+        {
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                    shape,
+                    string.Empty));
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                    shape,
+                    string.Empty));
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.PublishAndSubscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true)
+            });
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN616");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ManualShapeDepthUsesTheSameExactBoundaryAsBothBuilders()
+        {
+            var accepted = ManualObjectChain(FoxServiceDtoRules.MaxDepth);
+            var rejected = ManualObjectChain(FoxServiceDtoRules.MaxDepth + 1);
+
+            Assert.True(
+                FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                    accepted,
+                    string.Empty));
+            Assert.True(
+                FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                    accepted,
+                    string.Empty));
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsPublishSupported(
+                    rejected,
+                    string.Empty));
+            Assert.False(
+                FoxRunMessagePackTypeShapeRules.IsSubscribeSupported(
+                    rejected,
+                    string.Empty));
+
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    rejected,
+                    (int)FoxRunFlow.PublishAndSubscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true)
+            });
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN616");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void DuplicateTopLevelJsonNamesFailClosedForMessagePackTopics()
+        {
+            var shape = FoxRunTypeShape.Canonical("int32");
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Publish,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_first",
+                    jsonFieldName: "same"),
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Publish,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_second",
+                    jsonFieldName: "same")
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN022");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void OppositeDirectionsMayReuseATopLevelJsonName()
+        {
+            var shape = FoxRunTypeShape.Canonical("int32");
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Publish,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_outbound",
+                    jsonFieldName: "value"),
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Subscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_inbound",
+                    jsonFieldName: "value")
+            });
+
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN022");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void DuplicateSubscribeJsonNamesFailClosedForMessagePackTopics()
+        {
+            var shape = FoxRunTypeShape.Canonical("int32");
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Subscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_first",
+                    jsonFieldName: "same"),
+                ShapedMember(
+                    shape,
+                    (int)FoxRunFlow.Subscribe,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    explicitEncoding: true,
+                    memberName: "_second",
+                    jsonFieldName: "same")
+            });
+
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN022");
         }
 
         public static IEnumerable<object[]> MessagePackCollectionContractMatrix()
@@ -237,6 +465,48 @@ namespace UnityEngine
         }
 
         [Fact]
+        [Trait("Phase", "185-F")]
+        public void ObjectShapesCarryValueTypeIdentityAcrossBothHosts()
+        {
+            const string source = @"
+namespace Demo
+{
+    public struct ValuePayload { public int Value; }
+    public sealed class ReferencePayload { public int Value; }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185ObjectValueTypeParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+
+            var valueSymbol = compilation.GetTypeByMetadataName(
+                "Demo.ValuePayload");
+            var referenceSymbol = compilation.GetTypeByMetadataName(
+                "Demo.ReferencePayload");
+            Assert.NotNull(valueSymbol);
+            Assert.NotNull(referenceSymbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    valueSymbol,
+                    out var roslynValue));
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    referenceSymbol,
+                    out var roslynReference));
+
+            Assert.True(roslynValue.IsValueType);
+            Assert.False(roslynReference.IsValueType);
+            Assert.True(
+                FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(ValuePayload)).IsValueType);
+            Assert.False(
+                FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(ReferencePayload)).IsValueType);
+        }
+
+        [Fact]
         public void ObjectShapeFieldOrderIsCanonicalAcrossNestedHostDiscoveryOrder()
         {
             var firstNested = FoxRunTypeShape.Object(
@@ -298,6 +568,43 @@ namespace UnityEngine
             Assert.Equal(
                 FoxRunGenerationDescriptorJsonWriter.Write(firstModel),
                 FoxRunGenerationDescriptorJsonWriter.Write(secondModel));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void TypeShapeIdentityIsInjectiveForDelimiterBearingNames()
+        {
+            var scalar = FoxRunTypeShape.Canonical("int32");
+            var scalarIdentity =
+                FoxRunTypeShapeIdentityFormatter.Build(
+                    scalar,
+                    includeUsageTraits: true);
+            var fieldSuffix =
+                ":0:0:1:0{" + scalarIdentity + "};";
+            var twoFields = FoxRunTypeShape.Object(
+                "Demo.Collision",
+                new[]
+                {
+                    new FoxRunTypeField("a", "X", scalar),
+                    new FoxRunTypeField("b", "Y", scalar)
+                });
+            var oneField = FoxRunTypeShape.Object(
+                "Demo.Collision",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "a=X" + fieldSuffix + "b",
+                        "Y",
+                        scalar)
+                });
+
+            Assert.NotEqual(
+                FoxRunTypeShapeIdentityFormatter.Build(
+                    twoFields,
+                    includeUsageTraits: true),
+                FoxRunTypeShapeIdentityFormatter.Build(
+                    oneField,
+                    includeUsageTraits: true));
         }
 
         [Theory]
@@ -540,6 +847,609 @@ namespace Demo
                 FoxRunReflectionTypeShapeBuilder.Build(typeof(RequiredFirstNullableReusePayload)));
             AssertNullableReuseShape(
                 FoxRunReflectionTypeShapeBuilder.Build(typeof(OptionalFirstNullableReusePayload)));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        [Trait("Phase", "185-F")]
+        public void MemoizedSubtreeCannotBypassAbsoluteDepthAcrossEitherHost(
+            bool shallowFirst)
+        {
+            var compilation = CreateDepthReuseCompilation(
+                deepestIndex: 30,
+                shallowFirst);
+            var symbol = compilation.GetTypeByMetadataName("Demo.Root");
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            Assert.True(
+                emit.Success,
+                string.Join(
+                    Environment.NewLine,
+                    emit.Diagnostics.Select(diagnostic =>
+                        diagnostic.ToString())));
+            var reflectionType = System.Reflection.Assembly
+                .Load(image.ToArray())
+                .GetType("Demo.Root");
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(reflectionType));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        [Trait("Phase", "185-F")]
+        public void MemoizedSubtreeAcceptsExactDepthBoundaryAcrossEitherHost(
+            bool shallowFirst)
+        {
+            var compilation = CreateDepthReuseCompilation(
+                deepestIndex: 29,
+                shallowFirst);
+            var symbol = compilation.GetTypeByMetadataName("Demo.Root");
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            Assert.True(
+                emit.Success,
+                string.Join(
+                    Environment.NewLine,
+                    emit.Diagnostics.Select(diagnostic =>
+                        diagnostic.ToString())));
+            var reflectionType = System.Reflection.Assembly
+                .Load(image.ToArray())
+                .GetType("Demo.Root");
+            Assert.NotNull(
+                FoxRunReflectionTypeShapeBuilder.Build(reflectionType));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void DuplicateNestedJsonNamesFailClosedAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public sealed class DuplicateJsonNamePayload
+    {
+        [JsonProperty(""same"")] public int First;
+        [JsonProperty(""same"")] public int Second;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185DuplicateJsonNameParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.DuplicateJsonNamePayload");
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(DuplicateJsonNamePayload)));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "same",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void InheritedDistinctMembersWithOneJsonNameFailClosedAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class DuplicateJsonNameBase
+    {
+        [JsonProperty(""same"")] public int First;
+    }
+
+    public sealed class DuplicateJsonNameDerived : DuplicateJsonNameBase
+    {
+        [JsonProperty(""same"")] public int Second;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185InheritedDuplicateJsonNameParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.DuplicateJsonNameDerived");
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(DuplicateJsonNameDerived)));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "same",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void PropertyOverridesRemainOneLogicalJsonMemberAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class OverrideBase
+    {
+        [JsonProperty(""same"")]
+        public virtual int Value { get; set; }
+    }
+
+    public sealed class OverrideDerived : OverrideBase
+    {
+        [JsonProperty(""same"")]
+        public override int Value { get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185JsonOverrideParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.OverrideDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(OverrideDerived));
+            Assert.Equal("same", Assert.Single(roslyn.Fields).JsonName);
+            Assert.Equal(
+                "same",
+                Assert.Single(reflection.Fields).JsonName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void MostDerivedOverrideJsonNameIsAuthoritativeAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class OverrideRenameBase
+    {
+        [JsonProperty(""old"")]
+        public virtual int Value { get; set; }
+    }
+
+    public sealed class OverrideRenameDerived : OverrideRenameBase
+    {
+        [JsonProperty(""new"")]
+        public override int Value { get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185JsonOverrideRenameParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.OverrideRenameDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(OverrideRenameDerived));
+            Assert.Equal("new", Assert.Single(roslyn.Fields).JsonName);
+            Assert.Equal(
+                "new",
+                Assert.Single(reflection.Fields).JsonName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void UnannotatedDerivedOverrideUsesItsOwnJsonNameAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class OverrideUnannotatedBase
+    {
+        [JsonProperty(""old"")]
+        public virtual int Value { get; set; }
+    }
+
+    public sealed class OverrideUnannotatedDerived : OverrideUnannotatedBase
+    {
+        public override int Value { get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185JsonOverrideUnannotatedParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.OverrideUnannotatedDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(OverrideUnannotatedDerived));
+            Assert.Equal("Value", Assert.Single(roslyn.Fields).JsonName);
+            Assert.Equal(
+                "Value",
+                Assert.Single(reflection.Fields).JsonName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void IgnoredDerivedOverrideSuppressesTheBaseSlotAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class OverrideIgnoredBase
+    {
+        [JsonProperty(""old"")]
+        public virtual int Value { get; set; }
+    }
+
+    public sealed class OverrideIgnoredDerived : OverrideIgnoredBase
+    {
+        [JsonIgnore]
+        public override int Value { get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185JsonOverrideIgnoredParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.OverrideIgnoredDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(OverrideIgnoredDerived));
+            Assert.Empty(roslyn.Fields);
+            Assert.Empty(reflection.Fields);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void IgnoredUnrelatedJsonNameDoesNotSuppressBaseAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class IgnoredUnrelatedBase
+    {
+        [JsonProperty(""shared"")] public int BaseValue;
+    }
+
+    public sealed class IgnoredUnrelatedDerived : IgnoredUnrelatedBase
+    {
+        [JsonIgnore, JsonProperty(""shared"")]
+        public string IgnoredDifferent;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185IgnoredUnrelatedJsonParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.IgnoredUnrelatedDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(IgnoredUnrelatedDerived));
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(roslyn.Fields).MemberName);
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(reflection.Fields).MemberName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void IgnoredHiddenClrNameStillFailsClosedAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class IgnoredHiddenBase
+    {
+        public int Value;
+    }
+
+    public sealed class IgnoredHiddenDerived : IgnoredHiddenBase
+    {
+        [JsonIgnore] public new string Value;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185IgnoredHiddenClrParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.IgnoredHiddenDerived");
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(IgnoredHiddenDerived)));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Value",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void UnreadableUnrelatedJsonNameDoesNotSuppressBaseAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class UnreadableUnrelatedBase
+    {
+        [JsonProperty(""shared"")] public int BaseValue;
+    }
+
+    public sealed class UnreadableUnrelatedDerived : UnreadableUnrelatedBase
+    {
+        [JsonProperty(""shared"")]
+        public string UnreadableDifferent { private get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185UnreadableUnrelatedJsonParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.UnreadableUnrelatedDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(UnreadableUnrelatedDerived));
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(roslyn.Fields).MemberName);
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(reflection.Fields).MemberName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void PrivateUnrelatedJsonNameDoesNotConflictAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class PrivateUnrelatedBase
+    {
+        [JsonProperty(""shared"")] public int BaseValue;
+    }
+
+    public sealed class PrivateUnrelatedDerived : PrivateUnrelatedBase
+    {
+        [JsonProperty(""shared"")]
+        private string PrivateDifferent;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185PrivateUnrelatedJsonParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.PrivateUnrelatedDerived");
+
+            Assert.NotNull(symbol);
+            Assert.True(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(
+                    symbol,
+                    out var roslyn));
+            var reflection = FoxRunReflectionTypeShapeBuilder.Build(
+                typeof(PrivateUnrelatedDerived));
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(roslyn.Fields).MemberName);
+            Assert.Equal(
+                "BaseValue",
+                Assert.Single(reflection.Fields).MemberName);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void PrivateHiddenClrNameFailsClosedAcrossBothHosts()
+        {
+            const string source = @"
+namespace Demo
+{
+    public class PrivateHiddenBase { public int Value; }
+    public sealed class PrivateHiddenDerived : PrivateHiddenBase
+    {
+        private new string Value;
+    }
+}";
+            AssertHiddenLookupCollisionRejected(
+                source,
+                "Demo.PrivateHiddenDerived",
+                typeof(PrivateHiddenDerived));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void SetterOnlyHiddenClrNameFailsClosedAcrossBothHosts()
+        {
+            const string source = @"
+namespace Demo
+{
+    public class SetterOnlyHiddenBase { public int Value; }
+    public sealed class SetterOnlyHiddenDerived : SetterOnlyHiddenBase
+    {
+        public new string Value { set { } }
+    }
+}";
+            AssertHiddenLookupCollisionRejected(
+                source,
+                "Demo.SetterOnlyHiddenDerived",
+                typeof(SetterOnlyHiddenDerived));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void HiddenInheritedMemberNamesFailClosedAcrossBothHosts()
+        {
+            const string source = @"
+using Newtonsoft.Json;
+
+namespace Demo
+{
+    public class HiddenMemberBase
+    {
+        [JsonProperty(""baseValue"")] public int Value;
+    }
+
+    public sealed class HiddenMemberDerived : HiddenMemberBase
+    {
+        [JsonProperty(""derivedValue"")] public new int Value;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase185HiddenMemberParity",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(
+                "Demo.HiddenMemberDerived");
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(
+                    typeof(HiddenMemberDerived)));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Value",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        private static void AssertHiddenLookupCollisionRejected(
+            string source,
+            string metadataName,
+            Type reflectionType)
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase185HiddenLookupParity_" + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            var symbol = compilation.GetTypeByMetadataName(metadataName);
+
+            Assert.NotNull(symbol);
+            Assert.False(
+                FoxRunRoslynTypeShapeBuilder.TryBuild(symbol, out _));
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunReflectionTypeShapeBuilder.Build(reflectionType));
+            Assert.StartsWith(
+                "FOXRUN616:",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Value",
+                exception.Message,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -809,7 +1719,8 @@ namespace Demo
             bool explicitEncoding,
             string memberName = "_incoming",
             float hz = 10f,
-            bool explicitHz = false)
+            bool explicitHz = false,
+            string jsonFieldName = "")
         {
             var presence = explicitEncoding
                 ? FoxRunNamedArgumentPresence.Encoding
@@ -833,10 +1744,29 @@ namespace Demo
                 "Test",
                 0,
                 string.Empty,
+                jsonFieldName: jsonFieldName,
                 mode: mode,
                 encoding: encoding,
                 typeShape: shape,
                 namedArgumentPresence: presence);
+        }
+
+        private static FoxRunTypeShape ManualObjectChain(int relativeDepth)
+        {
+            var shape = FoxRunTypeShape.Canonical("int32");
+            for (var index = 0; index < relativeDepth; index++)
+            {
+                shape = FoxRunTypeShape.Object(
+                    "Demo.Depth" + index,
+                    new[]
+                    {
+                        new FoxRunTypeField(
+                            "next",
+                            "Next",
+                            shape)
+                    });
+            }
+            return shape;
         }
 
         private static void AssertDirectionAvailability(
@@ -943,8 +1873,56 @@ namespace Demo
         private static IEnumerable<MetadataReference> TrustedPlatformReferences()
         {
             var locations = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
-                .Split(Path.PathSeparator);
+                .Split(Path.PathSeparator)
+                .Append(
+                    typeof(Newtonsoft.Json.JsonPropertyAttribute)
+                        .Assembly.Location)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
             return locations.Select(location => MetadataReference.CreateFromFile(location));
+        }
+
+        private static CSharpCompilation CreateDepthReuseCompilation(
+            int deepestIndex,
+            bool shallowFirst)
+        {
+            var source = new System.Text.StringBuilder();
+            source.AppendLine("namespace Demo {");
+            source.AppendLine(
+                "public sealed class Shared { public int Value; }");
+            for (var index = deepestIndex; index >= 0; index--)
+            {
+                var target = index == deepestIndex
+                    ? "Shared"
+                    : "Deep" + (index + 1);
+                source.Append("public sealed class Deep")
+                    .Append(index)
+                    .Append(" { public ")
+                    .Append(target)
+                    .AppendLine(" Next; }");
+            }
+            source.AppendLine("public sealed class Root {");
+            if (shallowFirst)
+            {
+                source.AppendLine("public Shared Shallow;");
+                source.AppendLine("public Deep0 Deep;");
+            }
+            else
+            {
+                source.AppendLine("public Deep0 Deep;");
+                source.AppendLine("public Shared Shallow;");
+            }
+            source.AppendLine("} }");
+            return CSharpCompilation.Create(
+                "Phase185MemoDepth_"
+                + deepestIndex
+                + "_"
+                + shallowFirst
+                + "_"
+                + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(source.ToString()) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
         }
 
         private enum WideEnum : long
@@ -973,6 +1951,16 @@ namespace Demo
         private sealed class CollectionSample
         {
             public int Value { get; set; }
+        }
+
+        private struct ValuePayload
+        {
+            public int Value;
+        }
+
+        private sealed class ReferencePayload
+        {
+            public int Value;
         }
 
         private sealed class NoDefaultConstructorPayload
@@ -1005,6 +1993,165 @@ namespace Demo
         {
             public NullableReuseSample? Optional;
             public NullableReuseSample Required;
+        }
+
+        private sealed class DuplicateJsonNamePayload
+        {
+            [Newtonsoft.Json.JsonProperty("same")]
+            public int First;
+
+            [Newtonsoft.Json.JsonProperty("same")]
+            public int Second;
+        }
+
+        private class DuplicateJsonNameBase
+        {
+            [Newtonsoft.Json.JsonProperty("same")]
+            public int First;
+        }
+
+        private sealed class DuplicateJsonNameDerived :
+            DuplicateJsonNameBase
+        {
+            [Newtonsoft.Json.JsonProperty("same")]
+            public int Second;
+        }
+
+        private class OverrideBase
+        {
+            [Newtonsoft.Json.JsonProperty("same")]
+            public virtual int Value { get; set; }
+        }
+
+        private sealed class OverrideDerived : OverrideBase
+        {
+            [Newtonsoft.Json.JsonProperty("same")]
+            public override int Value { get; set; }
+        }
+
+        private class OverrideRenameBase
+        {
+            [Newtonsoft.Json.JsonProperty("old")]
+            public virtual int Value { get; set; }
+        }
+
+        private sealed class OverrideRenameDerived :
+            OverrideRenameBase
+        {
+            [Newtonsoft.Json.JsonProperty("new")]
+            public override int Value { get; set; }
+        }
+
+        private class OverrideUnannotatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("old")]
+            public virtual int Value { get; set; }
+        }
+
+        private sealed class OverrideUnannotatedDerived :
+            OverrideUnannotatedBase
+        {
+            public override int Value { get; set; }
+        }
+
+        private class OverrideIgnoredBase
+        {
+            [Newtonsoft.Json.JsonProperty("old")]
+            public virtual int Value { get; set; }
+        }
+
+        private sealed class OverrideIgnoredDerived :
+            OverrideIgnoredBase
+        {
+            [Newtonsoft.Json.JsonIgnore]
+            public override int Value { get; set; }
+        }
+
+        private class IgnoredUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("shared")]
+            public int BaseValue;
+        }
+
+        private sealed class IgnoredUnrelatedDerived :
+            IgnoredUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonIgnore]
+            [Newtonsoft.Json.JsonProperty("shared")]
+            public string IgnoredDifferent;
+        }
+
+        private class IgnoredHiddenBase
+        {
+            public int Value;
+        }
+
+        private sealed class IgnoredHiddenDerived :
+            IgnoredHiddenBase
+        {
+            [Newtonsoft.Json.JsonIgnore]
+            public new string Value;
+        }
+
+        private class UnreadableUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("shared")]
+            public int BaseValue;
+        }
+
+        private sealed class UnreadableUnrelatedDerived :
+            UnreadableUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("shared")]
+            public string UnreadableDifferent { private get; set; }
+        }
+
+        private class PrivateUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("shared")]
+            public int BaseValue;
+        }
+
+        private sealed class PrivateUnrelatedDerived :
+            PrivateUnrelatedBase
+        {
+            [Newtonsoft.Json.JsonProperty("shared")]
+            private string PrivateDifferent;
+        }
+
+        private class PrivateHiddenBase
+        {
+            public int Value;
+        }
+
+        private sealed class PrivateHiddenDerived :
+            PrivateHiddenBase
+        {
+            private new string Value;
+        }
+
+        private class SetterOnlyHiddenBase
+        {
+            public int Value;
+        }
+
+        private sealed class SetterOnlyHiddenDerived :
+            SetterOnlyHiddenBase
+        {
+            public new string Value { set { } }
+        }
+
+        private class HiddenMemberBase
+        {
+            [Newtonsoft.Json.JsonProperty("baseValue")]
+            public int Value;
+        }
+
+        private sealed class HiddenMemberDerived :
+            HiddenMemberBase
+        {
+            [Newtonsoft.Json.JsonProperty("derivedValue")]
+            public new int Value;
         }
 
         private sealed class PrivateGetterPayload

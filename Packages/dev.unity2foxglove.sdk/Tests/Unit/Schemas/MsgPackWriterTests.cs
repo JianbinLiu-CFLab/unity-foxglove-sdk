@@ -6,6 +6,7 @@
 
 using System;
 using System.Text;
+using System.Text.Json;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
@@ -140,6 +141,59 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void WriterRejectsLoneLowSurrogateBeforeRetainingHeaderOrPayload()
         {
             AssertInvalidStringDoesNotRetainBytes("\udc00");
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void WriterAndRuntimeLimitsMatchSharedCrossLanguageContract()
+        {
+            using var contract = JsonDocument.Parse(TestSources.Text(
+                "Tools/foxglove-extensions/foxrun-publish-panel/messagepack-contract-v1.json"));
+            var root = contract.RootElement;
+            var limits = root.GetProperty("limits");
+            Assert.Equal(
+                FoxgloveMsgPackReadLimits.AbsoluteMaxDepth,
+                limits.GetProperty("maxDepth").GetInt32());
+            Assert.Equal(
+                FoxgloveMsgPackReadLimits.AbsoluteMaxContainerItems,
+                limits.GetProperty("maxAggregateContainerItems").GetInt32());
+
+            using var writer = new FoxgloveMsgPackWriter();
+            writer.WriteMapHeader(8);
+            writer.WriteString("nil");
+            writer.WriteNil();
+            writer.WriteString("truth");
+            writer.WriteBool(true);
+            writer.WriteString("negative");
+            writer.WriteInt32(-33);
+            writer.WriteString("positive");
+            writer.WriteUInt32(128);
+            writer.WriteString("single");
+            writer.WriteFloat(1f);
+            writer.WriteString("text");
+            writer.WriteString("a");
+            writer.WriteString("bytes");
+            writer.WriteBinary(new byte[] { 0xff });
+            writer.WriteString("items");
+            writer.WriteArrayHeader(2);
+            writer.WriteInt32(1);
+            writer.WriteInt32(2);
+            Assert.Equal(
+                root.GetProperty("vectors")
+                    .GetProperty("scalarMap")
+                    .GetProperty("expectedHex")
+                    .GetString(),
+                Convert.ToHexString(writer.ToArray()).ToLowerInvariant());
+
+            writer.Clear();
+            var utf8 = root.GetProperty("vectors")
+                .GetProperty("utf8StringMap");
+            writer.WriteMapHeader(1);
+            writer.WriteString("text");
+            writer.WriteString(utf8.GetProperty("value").GetString());
+            Assert.Equal(
+                utf8.GetProperty("expectedHex").GetString(),
+                Convert.ToHexString(writer.ToArray()).ToLowerInvariant());
         }
 
         private static void AssertInvalidStringDoesNotRetainBytes(string invalid)

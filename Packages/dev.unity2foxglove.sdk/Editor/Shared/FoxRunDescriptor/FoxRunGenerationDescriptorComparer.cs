@@ -307,6 +307,12 @@ namespace Unity.FoxgloveSDK.Editor
                 semantic);
             CompareSemantic(
                 key,
+                path + ".isValueType",
+                left.IsValueType ? "true" : "false",
+                right.IsValueType ? "true" : "false",
+                semantic);
+            CompareSemantic(
+                key,
                 path + ".collectionKind",
                 left.CollectionKind.ToString(),
                 right.CollectionKind.ToString(),

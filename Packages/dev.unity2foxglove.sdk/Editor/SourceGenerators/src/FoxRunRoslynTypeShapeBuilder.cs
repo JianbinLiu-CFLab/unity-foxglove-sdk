@@ -52,7 +52,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (type == null)
                 throw new ArgumentException("A FoxRun field type is required.", nameof(type));
             if (depth > FoxServiceDtoRules.MaxDepth)
-                throw new InvalidOperationException("FoxRun DTO nesting exceeds the supported depth.");
+                throw new InvalidOperationException(
+                    "FOXRUN616: FoxRun DTO nesting exceeds the supported depth.");
 
             var nullable = IsNullableValueType(type);
             type = UnwrapNullable(type);
@@ -109,13 +110,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
 
             if (memo.TryGetValue(typeName, out var cached))
+            {
+                EnsureCachedShapeFitsDepth(cached, depth);
                 return cached.WithNullable(nullable);
+            }
             if (!stack.Add(typeName))
             {
                 throw new InvalidOperationException(
                     "FoxRun DTO graph contains a cycle at '" + typeName + "'.");
             }
 
+            EnsureNoDuplicateDeclaredJsonNames(named);
             var fields = new List<FoxRunTypeField>();
             foreach (var member in InheritedAndDeclaredMembers(named))
             {
@@ -143,10 +148,162 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var result = FoxRunTypeShape.Object(
                 typeName,
                 fields,
-                canConstruct: CanConstruct(named));
+                canConstruct: CanConstruct(named),
+                isValueType: named.IsValueType);
             stack.Remove(typeName);
             memo[typeName] = result;
             return result.WithNullable(nullable);
+        }
+
+        private static void EnsureNoDuplicateDeclaredJsonNames(
+            INamedTypeSymbol type)
+        {
+            var membersByJsonName =
+                new Dictionary<string, ISymbol>(StringComparer.Ordinal);
+            var lookupMembersByClrName =
+                new Dictionary<string, ISymbol>(StringComparer.Ordinal);
+            var ambiguousLookupMembers =
+                new Dictionary<string, ISymbol[]>(StringComparer.Ordinal);
+            var serializableClrNames =
+                new HashSet<string>(StringComparer.Ordinal);
+            var propertySlots =
+                new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            for (var current = type;
+                 current != null
+                 && current.SpecialType != SpecialType.System_Object;
+                 current = current.BaseType)
+            {
+                foreach (var member in current.GetMembers())
+                {
+                    if (!CanAffectClrMemberLookup(member))
+                        continue;
+
+                    if (member is IPropertySymbol property)
+                    {
+                        var propertySlot = RootProperty(property);
+                        if (!propertySlots.Add(propertySlot))
+                            continue;
+                    }
+
+                    var isSerializable = IsSerializableMember(member);
+                    if (lookupMembersByClrName.TryGetValue(
+                            member.Name,
+                            out var sameName)
+                        && !SymbolEqualityComparer.Default.Equals(
+                            sameName.ContainingType,
+                            member.ContainingType)
+                        && isSerializable)
+                    {
+                        if (!ambiguousLookupMembers.ContainsKey(member.Name))
+                        {
+                            ambiguousLookupMembers.Add(
+                                member.Name,
+                                new[] { sameName, member });
+                        }
+                    }
+                    else if (!lookupMembersByClrName.ContainsKey(member.Name))
+                    {
+                        lookupMembersByClrName.Add(member.Name, member);
+                    }
+
+                    if (!isSerializable)
+                        continue;
+                    serializableClrNames.Add(member.Name);
+
+                    if (HasIgnoredSerializationAttribute(member))
+                        continue;
+
+                    var jsonName = JsonPropertyName(member);
+                    if (membersByJsonName.TryGetValue(
+                            jsonName,
+                            out var existing))
+                    {
+                        throw new InvalidOperationException(
+                            "FOXRUN616: FoxRun DTO type '"
+                            + FullTypeName(type)
+                            + "' contains duplicate JSON field name '"
+                            + jsonName
+                            + "'.");
+                    }
+                    membersByJsonName.Add(jsonName, member);
+                }
+            }
+
+            foreach (var name in serializableClrNames.OrderBy(
+                         value => value,
+                         StringComparer.Ordinal))
+            {
+                if (!ambiguousLookupMembers.TryGetValue(
+                        name,
+                        out var collision))
+                {
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    "FOXRUN616: FoxRun DTO type '"
+                    + FullTypeName(type)
+                    + "' contains inherited members with ambiguous CLR name '"
+                    + name
+                    + "' ('"
+                    + FullTypeName(collision[0].ContainingType)
+                    + "' and '"
+                    + FullTypeName(collision[1].ContainingType)
+                    + "').");
+            }
+        }
+
+        private static bool CanAffectClrMemberLookup(ISymbol member)
+            => !member.IsImplicitlyDeclared
+               && (member is IFieldSymbol
+                   || member is IPropertySymbol
+                   || member is IEventSymbol
+                   || member is INamedTypeSymbol
+                   || (member is IMethodSymbol method
+                       && method.MethodKind == MethodKind.Ordinary));
+
+        private static IPropertySymbol RootProperty(
+            IPropertySymbol property)
+        {
+            while (property.OverriddenProperty != null)
+                property = property.OverriddenProperty;
+            return property;
+        }
+
+        private static bool IsSerializableMember(ISymbol member)
+        {
+            if (member is IFieldSymbol field)
+            {
+                return !field.IsStatic
+                       && !field.IsConst
+                       && field.DeclaredAccessibility
+                       == Accessibility.Public;
+            }
+
+            if (member is IPropertySymbol property)
+            {
+                return !property.IsStatic
+                       && property.DeclaredAccessibility
+                       == Accessibility.Public
+                       && !property.IsIndexer
+                       && property.GetMethod != null
+                       && property.GetMethod.DeclaredAccessibility
+                       == Accessibility.Public;
+            }
+
+            return false;
+        }
+
+        private static void EnsureCachedShapeFitsDepth(
+            FoxRunTypeShape shape,
+            int depth)
+        {
+            if (FoxRunTypeShapeDepth.MaximumRelativeDepth(shape)
+                > FoxServiceDtoRules.MaxDepth - depth)
+            {
+                throw new InvalidOperationException(
+                    "FOXRUN616: FoxRun DTO nesting exceeds the supported depth.");
+            }
         }
 
         private static void AddMember(
@@ -224,11 +381,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static bool IsUnsupported(INamedTypeSymbol type)
         {
             var typeName = FullTypeName(type);
-            return type.SpecialType == SpecialType.System_Object
+            return FoxServiceDtoTypeNames.IsScalar(typeName)
+                   || type.SpecialType == SpecialType.System_Object
                    || type.TypeKind == TypeKind.Interface
                    || type.IsAbstract
                    || type.TypeKind == TypeKind.Delegate
                    || type.IsGenericType
+                   || string.Equals(
+                       typeName,
+                       "System.ValueTuple",
+                       StringComparison.Ordinal)
                    || IsDelegateType(type)
                    || IsUnityObjectType(type)
                    || FoxServiceDtoTypeNames.IsTaskLike(typeName)
@@ -304,7 +466,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         FoxRunTypeShape.Canonical("float32")))
                     .ToList(),
                 nullable,
-                canConstruct: true);
+                canConstruct: true,
+                isValueType: true);
             return true;
         }
     }

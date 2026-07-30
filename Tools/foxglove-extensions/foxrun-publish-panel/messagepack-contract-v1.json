@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "limits": {
+    "maxDepth": 34,
+    "maxAggregateContainerItems": 16384
+  },
+  "vectors": {
+    "scalarMap": {
+      "expectedHex": "88a36e696cc0a57472757468c3a86e65676174697665d0dfa8706f736974697665cc80a673696e676c65ca3f800000a474657874a161a56279746573c401ffa56974656d73920102"
+    },
+    "utf8StringMap": {
+      "value": "éééééééééééééééé",
+      "expectedHex": "81a474657874d920c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9"
+    }
+  }
+}

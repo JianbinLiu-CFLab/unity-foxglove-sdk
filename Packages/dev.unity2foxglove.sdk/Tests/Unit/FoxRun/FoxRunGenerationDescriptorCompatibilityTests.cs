@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
 
             Assert.Contains("\"typeShape\":", json, StringComparison.Ordinal);
+            Assert.Contains("\"isValueType\":true", json, StringComparison.Ordinal);
             Assert.Contains("\"encodingVariants\":", json, StringComparison.Ordinal);
             Assert.Contains("\"normalizedSchedule\":", json, StringComparison.Ordinal);
             Assert.Contains("\"publishUnavailableDiagnosticId\":", json, StringComparison.Ordinal);
@@ -89,7 +90,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                         FoxRunTypeShape.Canonical("float32"),
                         repeated: true,
                         repeatedCollectionKind: FoxRunCollectionKind.List)
-                });
+                },
+                isValueType: true);
             var protobufMetadata = new FoxRunProtobufMetadata(
                 5,
                 new FoxRunProtobufTypeMetadata(
@@ -150,6 +152,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 string.Join(Environment.NewLine, comparison.ProvenanceDifferences));
             var member = Assert.Single(Assert.Single(read.Types).Members);
             Assert.Equal(FoxRunTypeShapeKind.Object, member.TypeShape.Kind);
+            Assert.True(member.TypeShape.IsValueType);
             Assert.Equal("ACTIVE", member.TypeShape.Fields[0].TypeShape.EnumValues[1].Name);
             var variant = Assert.Single(member.EncodingVariants);
             Assert.False(variant.PublishAvailable);
@@ -211,6 +214,48 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
 
             Assert.Contains(propertyName, error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void V5MissingNestedValueTypeIdentityFailsClosed()
+        {
+            var root = JObject.Parse(CurrentDescriptorJson());
+            var shape = (JObject)root["types"]![0]!["members"]![0]!["typeShape"]!;
+            shape.Property("isValueType")!.Remove();
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
+
+            Assert.Contains("isValueType", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void V5WrongNestedValueTypeIdentityTypeFailsClosed()
+        {
+            var root = JObject.Parse(CurrentDescriptorJson());
+            var shape = (JObject)root["types"]![0]!["members"]![0]!["typeShape"]!;
+            shape["isValueType"] = "true";
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
+
+            Assert.Contains("isValueType", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void V5InconsistentNestedValueTypeIdentityFailsClosed()
+        {
+            var root = JObject.Parse(CurrentDescriptorJson());
+            var shape = (JObject)root["types"]![0]!["members"]![0]!["typeShape"]!;
+            shape["isValueType"] = false;
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxRunGenerationDescriptorJsonReader.Read(root.ToString()));
+
+            Assert.Contains("isValueType", error.Message, StringComparison.Ordinal);
         }
 
         [Theory]

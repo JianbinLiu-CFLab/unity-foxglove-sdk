@@ -92,7 +92,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunCollectionInfoKind.None,
                 null,
                 Array.Empty<FoxRunTypeFieldInfo>(),
-                Array.Empty<FoxRunEnumValueInfo>());
+                Array.Empty<FoxRunEnumValueInfo>(),
+                canConstruct: true,
+                isValueType: true);
             var listShape = new FoxRunTypeShapeInfo(
                 FoxRunTypeShapeInfoKind.Collection,
                 string.Empty,
@@ -111,7 +113,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 null,
                 Array.Empty<FoxRunTypeFieldInfo>(),
                 Array.Empty<FoxRunEnumValueInfo>(),
-                canConstruct: false);
+                canConstruct: false,
+                isValueType: true);
             var objectShape = new FoxRunTypeShapeInfo(
                 FoxRunTypeShapeInfoKind.Object,
                 "Demo.Input",
@@ -198,6 +201,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("Object", typeShape.Value<string>("kind"));
             Assert.Equal("Demo.Input", typeShape.Value<string>("typeName"));
             Assert.False(typeShape.Value<bool>("canConstruct"));
+            Assert.False(typeShape.Value<bool>("isValueType"));
             var shapeFields = (JArray)typeShape["fields"];
             var samples = Assert.Single(
                 shapeFields,
@@ -209,11 +213,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 samples["typeShape"]["elementShape"].Value<string>("kind"));
             Assert.True(
                 samples["typeShape"]["elementShape"].Value<bool>("canConstruct"));
+            Assert.True(
+                samples["typeShape"]["elementShape"].Value<bool>("isValueType"));
             var nested = Assert.Single(
                 shapeFields,
                 candidate => ((JObject)candidate).Value<string>("jsonName") == "nested");
             Assert.Equal("Object", nested["typeShape"].Value<string>("kind"));
             Assert.False(nested["typeShape"].Value<bool>("canConstruct"));
+            Assert.True(nested["typeShape"].Value<bool>("isValueType"));
             var normalizedSchedule = (JObject)field["normalizedSchedule"];
             Assert.Equal((int)FoxRunPolicy.Change, normalizedSchedule.Value<int>("policy"));
             Assert.True(normalizedSchedule.Value<bool>("hasExplicitHz"));

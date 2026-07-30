@@ -53,6 +53,7 @@ const int32Shape = {
   typeName: "",
   canonicalType: "int32",
   nullable: false,
+  isValueType: true,
   collectionKind: "None",
   binary: false,
   canConstruct: true,
@@ -169,6 +170,36 @@ describe("FoxRun Publish catalog state", () => {
         ],
       }),
     );
+  });
+
+  it("rejects MessagePack type shapes without explicit value-type semantics", () => {
+    const { isValueType: _isValueType, ...shapeWithoutValueType } = int32Shape;
+    const catalog = {
+      ...summary,
+      contracts: [{
+        ...summary.contracts[0],
+        flow: "Subscribe",
+        encoding: "msgpack",
+        schemaName: "",
+        wireSchemaName: "",
+        logicalSchemaName: "Demo.Input",
+        subscribeAvailable: true,
+        unavailableDiagnosticId: "",
+        unavailableReason: "",
+        protobufDescriptorAvailable: false,
+        protobufDescriptorDigest: "",
+        fields: [{
+          name: "value",
+          type: "int32",
+          nullable: false,
+          array: false,
+          protobufFieldNumber: 0,
+          typeShape: shapeWithoutValueType,
+        }],
+      }],
+    };
+
+    expect(readContractDetail(catalog, "/zeta")).toBeUndefined();
   });
 
   it("locks installed extension metadata to JSON, Protobuf, and MessagePack", () => {

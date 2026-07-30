@@ -569,6 +569,9 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "canConstruct");
             sb.Append(shape.CanConstruct ? "true" : "false");
             sb.Append(',');
+            AppendPropertyName(sb, "isValueType");
+            sb.Append(shape.IsValueType ? "true" : "false");
+            sb.Append(',');
             AppendPropertyName(sb, "collectionKind");
             AppendString(sb, shape.CollectionKind.ToString());
             sb.Append(',');

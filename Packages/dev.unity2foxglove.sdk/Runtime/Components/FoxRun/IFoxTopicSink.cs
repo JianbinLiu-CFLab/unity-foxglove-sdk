@@ -10,8 +10,11 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Coarse capability flags describing what kind of destination a sink is.
-    /// Used only for diagnostics and capability-aware routing; it does not change
-    /// delivery semantics, which remain sink-specific.
+    /// Used for diagnostics and capability-aware routing. A legacy sink that
+    /// does not implement <see cref="IFoxTopicTargetSink"/> is treated as the
+    /// historical Ros2Native target only when it declares
+    /// <see cref="FoxTopicSinkCapabilities.External"/>; other sinks are
+    /// additive byte consumers.
     /// </summary>
     [Flags]
     public enum FoxTopicSinkCapabilities
