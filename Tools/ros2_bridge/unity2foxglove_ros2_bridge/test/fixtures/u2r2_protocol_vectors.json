@@ -254,5 +254,1081 @@
       "mutation": "close after accept before a complete frame",
       "expected": "reject"
     }
-  ]
+  ],
+  "v2": {
+    "protocolVersion": 2,
+    "envelopeVersion": 1,
+    "requestId": "unsigned_64_nonzero",
+    "messageId": "unsigned_64_nonzero",
+    "jsonMaxDepth": 64,
+    "canonicalKeyOrder": "utf8_byte_ordinal",
+    "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+    "connectionGeneration": 7,
+    "capabilities": [
+      "publish",
+      "subscribe"
+    ],
+    "operations": [
+      {
+        "id": "hello_request",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "hello",
+          "protocolVersion": 2,
+          "requestId": 1,
+          "clientName": "unity2foxglove",
+          "capabilities": [
+            "publish",
+            "subscribe"
+          ],
+          "unicodeSample": "\u0085\u2028\u2029\ud83d\ude00\ue000",
+          "": 1,
+          "😀": 2
+        },
+        "headerJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":1,\"unicodeSample\":\"\\u0085\\u2028\\u2029\\ud83d\\ude00\\ue000\",\"\\ue000\":1,\"\\ud83d\\ude00\":2}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000c8000000000000007b226361706162696c6974696573223a5b227075626c697368222c22737562736372696265225d2c22636c69656e744e616d65223a22756e69747932666f78676c6f7665222c226f70223a2268656c6c6f222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a312c22756e69636f646553616d706c65223a225c75303038355c75323032385c75323032395c75643833645c75646530305c7565303030222c225c7565303030223a312c225c75643833645c7564653030223a327d"
+      },
+      {
+        "id": "hello_ack",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "hello_request",
+        "header": {
+          "op": "hello_ack",
+          "protocolVersion": 2,
+          "requestId": 1,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "capabilities": [
+            "publish",
+            "subscribe"
+          ]
+        },
+        "headerJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"connectionGeneration\":7,\"op\":\"hello_ack\",\"protocolVersion\":2,\"requestId\":1,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000b5000000000000007b226361706162696c6974696573223a5b227075626c697368222c22737562736372696265225d2c22636f6e6e656374696f6e47656e65726174696f6e223a372c226f70223a2268656c6c6f5f61636b222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a312c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "health_ping",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "health_ping",
+          "protocolVersion": 2,
+          "requestId": 2,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"op\":\"health_ping\",\"protocolVersion\":2,\"requestId\":2,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000082000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226f70223a226865616c74685f70696e67222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a322c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162227d"
+      },
+      {
+        "id": "health_pong",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "health_ping",
+        "header": {
+          "op": "health_pong",
+          "protocolVersion": 2,
+          "requestId": 2,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "sidecarName": "unity2foxglove_ros2_bridge",
+          "sidecarVersion": "0.2.0"
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"op\":\"health_pong\",\"protocolVersion\":2,\"requestId\":2,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"sidecarName\":\"unity2foxglove_ros2_bridge\",\"sidecarVersion\":\"0.2.0\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000d4000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226f70223a226865616c74685f706f6e67222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a322c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22736964656361724e616d65223a22756e69747932666f78676c6f76655f726f73325f627269646765222c227369646563617256657273696f6e223a22302e322e30222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "prepare_publisher",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "prepare_publisher",
+          "protocolVersion": 2,
+          "requestId": 3,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "topic": "/phase186/v2/state",
+          "schemaName": "std_msgs/msg/String",
+          "encoding": "cdr",
+          "qos": {
+            "profile": "default",
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10
+          }
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"encoding\":\"cdr\",\"op\":\"prepare_publisher\",\"protocolVersion\":2,\"qos\":{\"depth\":10,\"durability\":\"volatile\",\"history\":\"keep_last\",\"profile\":\"default\",\"reliability\":\"reliable\"},\"requestId\":3,\"schemaName\":\"std_msgs/msg/String\",\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"topic\":\"/phase186/v2/state\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000047010000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22656e636f64696e67223a22636472222c226f70223a22707265706172655f7075626c6973686572222c2270726f746f636f6c56657273696f6e223a322c22716f73223a7b226465707468223a31302c226475726162696c697479223a22766f6c6174696c65222c22686973746f7279223a226b6565705f6c617374222c2270726f66696c65223a2264656661756c74222c2272656c696162696c697479223a2272656c6961626c65227d2c22726571756573744964223a332c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22746f706963223a222f70686173653138362f76322f7374617465227d"
+      },
+      {
+        "id": "publisher_ready",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "prepare_publisher",
+        "header": {
+          "op": "publisher_ready",
+          "protocolVersion": 2,
+          "requestId": 3,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"op\":\"publisher_ready\",\"protocolVersion\":2,\"requestId\":3,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000094000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226f70223a227075626c69736865725f7265616479222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a332c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "publisher_error",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "prepare_publisher",
+        "header": {
+          "op": "publisher_ready",
+          "protocolVersion": 2,
+          "requestId": 3,
+          "status": "error",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "errorCode": "invalid_contract",
+          "message": "publisher contract rejected",
+          "terminal": false
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"errorCode\":\"invalid_contract\",\"message\":\"publisher contract rejected\",\"op\":\"publisher_ready\",\"protocolVersion\":2,\"requestId\":3,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"error\",\"terminal\":false}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000ef000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226572726f72436f6465223a22696e76616c69645f636f6e7472616374222c226d657373616765223a227075626c697368657220636f6e74726163742072656a6563746564222c226f70223a227075626c69736865725f7265616479222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a332c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226572726f72222c227465726d696e616c223a66616c73657d"
+      },
+      {
+        "id": "publish",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "publish",
+          "protocolVersion": 2,
+          "requestId": 4,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "messageId": 1,
+          "topic": "/phase186/v2/state",
+          "schemaName": "std_msgs/msg/String",
+          "encoding": "cdr",
+          "logTimeNs": 1700186000000000000,
+          "sequence": 8,
+          "qos": {
+            "profile": "default",
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10
+          }
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"encoding\":\"cdr\",\"logTimeNs\":1700186000000000000,\"messageId\":1,\"op\":\"publish\",\"protocolVersion\":2,\"qos\":{\"depth\":10,\"durability\":\"volatile\",\"history\":\"keep_last\",\"profile\":\"default\",\"reliability\":\"reliable\"},\"requestId\":4,\"schemaName\":\"std_msgs/msg/String\",\"sequence\":8,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"topic\":\"/phase186/v2/state\"}",
+        "payloadLength": 10,
+        "payloadHex": "00010000020000004100",
+        "frameHex": "5532523201000000780100000a0000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22656e636f64696e67223a22636472222c226c6f6754696d654e73223a313730303138363030303030303030303030302c226d6573736167654964223a312c226f70223a227075626c697368222c2270726f746f636f6c56657273696f6e223a322c22716f73223a7b226465707468223a31302c226475726162696c697479223a22766f6c6174696c65222c22686973746f7279223a226b6565705f6c617374222c2270726f66696c65223a2264656661756c74222c2272656c696162696c697479223a2272656c6961626c65227d2c22726571756573744964223a342c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c2273657175656e6365223a382c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22746f706963223a222f70686173653138362f76322f7374617465227d00010000020000004100"
+      },
+      {
+        "id": "publish_result",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "publish",
+        "header": {
+          "op": "publish_result",
+          "protocolVersion": 2,
+          "requestId": 4,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "messageId": 1
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"messageId\":1,\"op\":\"publish_result\",\"protocolVersion\":2,\"requestId\":4,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000a1000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226d6573736167654964223a312c226f70223a227075626c6973685f726573756c74222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a342c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "register_subscription",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "register_subscription",
+          "protocolVersion": 2,
+          "requestId": 5,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "contractId": 41,
+          "topic": "/phase186/v2/input",
+          "schemaName": "std_msgs/msg/String",
+          "encoding": "cdr",
+          "qos": {
+            "profile": "default",
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10
+          }
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"contractId\":41,\"encoding\":\"cdr\",\"op\":\"register_subscription\",\"protocolVersion\":2,\"qos\":{\"depth\":10,\"durability\":\"volatile\",\"history\":\"keep_last\",\"profile\":\"default\",\"reliability\":\"reliable\"},\"requestId\":5,\"schemaName\":\"std_msgs/msg/String\",\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"topic\":\"/phase186/v2/input\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "55325232010000005b010000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22636f6e74726163744964223a34312c22656e636f64696e67223a22636472222c226f70223a2272656769737465725f737562736372697074696f6e222c2270726f746f636f6c56657273696f6e223a322c22716f73223a7b226465707468223a31302c226475726162696c697479223a22766f6c6174696c65222c22686973746f7279223a226b6565705f6c617374222c2270726f66696c65223a2264656661756c74222c2272656c696162696c697479223a2272656c6961626c65227d2c22726571756573744964223a352c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22746f706963223a222f70686173653138362f76322f696e707574227d"
+      },
+      {
+        "id": "subscription_ready",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "register_subscription",
+        "header": {
+          "op": "subscription_ready",
+          "protocolVersion": 2,
+          "requestId": 5,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "contractId": 41
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"contractId\":41,\"op\":\"subscription_ready\",\"protocolVersion\":2,\"requestId\":5,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000a7000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22636f6e74726163744964223a34312c226f70223a22737562736372697074696f6e5f7265616479222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a352c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "message",
+        "direction": "sidecar_to_client",
+        "kind": "event",
+        "terminal": false,
+        "header": {
+          "op": "message",
+          "protocolVersion": 2,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "contractId": 41,
+          "encoding": "cdr",
+          "messageId": 2,
+          "topic": "/phase186/v2/input",
+          "schemaName": "std_msgs/msg/String",
+          "receiveTimeNs": 1700186000000000100,
+          "representation": "xcdr1-le",
+          "sequence": 9
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"contractId\":41,\"encoding\":\"cdr\",\"messageId\":2,\"op\":\"message\",\"protocolVersion\":2,\"receiveTimeNs\":1700186000000000100,\"representation\":\"xcdr1-le\",\"schemaName\":\"std_msgs/msg/String\",\"sequence\":9,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"topic\":\"/phase186/v2/input\"}",
+        "payloadLength": 10,
+        "payloadHex": "00010000020000004100",
+        "frameHex": "55325232010000002c0100000a0000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22636f6e74726163744964223a34312c22656e636f64696e67223a22636472222c226d6573736167654964223a322c226f70223a226d657373616765222c2270726f746f636f6c56657273696f6e223a322c227265636569766554696d654e73223a313730303138363030303030303030303130302c22726570726573656e746174696f6e223a2278636472312d6c65222c22736368656d614e616d65223a227374645f6d7367732f6d73672f537472696e67222c2273657175656e6365223a392c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22746f706963223a222f70686173653138362f76322f696e707574227d00010000020000004100"
+      },
+      {
+        "id": "unregister_subscription",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "unregister_subscription",
+          "protocolVersion": 2,
+          "requestId": 6,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "contractId": 41
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"contractId\":41,\"op\":\"unregister_subscription\",\"protocolVersion\":2,\"requestId\":6,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "55325232010000009e000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22636f6e74726163744964223a34312c226f70223a22756e72656769737465725f737562736372697074696f6e222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a362c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162227d"
+      },
+      {
+        "id": "subscription_removed",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": false,
+        "correlatesTo": "unregister_subscription",
+        "header": {
+          "op": "subscription_removed",
+          "protocolVersion": 2,
+          "requestId": 6,
+          "status": "ok",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "contractId": 41
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"contractId\":41,\"op\":\"subscription_removed\",\"protocolVersion\":2,\"requestId\":6,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"ok\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000a9000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c22636f6e74726163744964223a34312c226f70223a22737562736372697074696f6e5f72656d6f766564222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a362c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226f6b227d"
+      },
+      {
+        "id": "busy",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": true,
+        "correlatesTo": "hello_request",
+        "header": {
+          "op": "busy",
+          "protocolVersion": 2,
+          "requestId": 1,
+          "status": "error",
+          "errorCode": "busy",
+          "message": "data session already leased",
+          "terminal": true
+        },
+        "headerJson": "{\"errorCode\":\"busy\",\"message\":\"data session already leased\",\"op\":\"busy\",\"protocolVersion\":2,\"requestId\":1,\"status\":\"error\",\"terminal\":true}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "55325232010000008b000000000000007b226572726f72436f6465223a2262757379222c226d657373616765223a22646174612073657373696f6e20616c7265616479206c6561736564222c226f70223a2262757379222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a312c22737461747573223a226572726f72222c227465726d696e616c223a747275657d"
+      },
+      {
+        "id": "hello_unsupported_version",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "hello",
+          "protocolVersion": 3,
+          "requestId": 8,
+          "clientName": "unity2foxglove",
+          "capabilities": [
+            "publish",
+            "subscribe"
+          ]
+        },
+        "headerJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":3,\"requestId\":8}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000075000000000000007b226361706162696c6974696573223a5b227075626c697368222c22737562736372696265225d2c22636c69656e744e616d65223a22756e69747932666f78676c6f7665222c226f70223a2268656c6c6f222c2270726f746f636f6c56657273696f6e223a332c22726571756573744964223a387d"
+      },
+      {
+        "id": "protocol_rejected",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": true,
+        "correlatesTo": "hello_unsupported_version",
+        "header": {
+          "op": "fault",
+          "protocolVersion": 2,
+          "requestId": 8,
+          "status": "error",
+          "errorCode": "unsupported_protocol",
+          "message": "protocolVersion 2 required",
+          "terminal": true
+        },
+        "headerJson": "{\"errorCode\":\"unsupported_protocol\",\"message\":\"protocolVersion 2 required\",\"op\":\"fault\",\"protocolVersion\":2,\"requestId\":8,\"status\":\"error\",\"terminal\":true}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "55325232010000009b000000000000007b226572726f72436f6465223a22756e737570706f727465645f70726f746f636f6c222c226d657373616765223a2270726f746f636f6c56657273696f6e2032207265717569726564222c226f70223a226661756c74222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a382c22737461747573223a226572726f72222c227465726d696e616c223a747275657d"
+      },
+      {
+        "id": "hello_missing_capability",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "hello",
+          "protocolVersion": 2,
+          "requestId": 9,
+          "clientName": "unity2foxglove",
+          "capabilities": [
+            "publish"
+          ]
+        },
+        "headerJson": "{\"capabilities\":[\"publish\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":9}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000069000000000000007b226361706162696c6974696573223a5b227075626c697368225d2c22636c69656e744e616d65223a22756e69747932666f78676c6f7665222c226f70223a2268656c6c6f222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a397d"
+      },
+      {
+        "id": "capability_rejected",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": true,
+        "correlatesTo": "hello_missing_capability",
+        "header": {
+          "op": "fault",
+          "protocolVersion": 2,
+          "requestId": 9,
+          "status": "error",
+          "errorCode": "missing_capability",
+          "message": "subscribe capability required",
+          "terminal": true
+        },
+        "headerJson": "{\"errorCode\":\"missing_capability\",\"message\":\"subscribe capability required\",\"op\":\"fault\",\"protocolVersion\":2,\"requestId\":9,\"status\":\"error\",\"terminal\":true}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "55325232010000009c000000000000007b226572726f72436f6465223a226d697373696e675f6361706162696c697479222c226d657373616765223a22737562736372696265206361706162696c697479207265717569726564222c226f70223a226661756c74222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a392c22737461747573223a226572726f72222c227465726d696e616c223a747275657d"
+      },
+      {
+        "id": "terminal_fault_request",
+        "direction": "client_to_sidecar",
+        "kind": "request",
+        "terminal": false,
+        "header": {
+          "op": "health_ping",
+          "protocolVersion": 2,
+          "requestId": 7,
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"op\":\"health_ping\",\"protocolVersion\":2,\"requestId\":7,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\"}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "553252320100000082000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226f70223a226865616c74685f70696e67222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a372c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162227d"
+      },
+      {
+        "id": "terminal_fault",
+        "direction": "sidecar_to_client",
+        "kind": "response",
+        "terminal": true,
+        "correlatesTo": "terminal_fault_request",
+        "header": {
+          "op": "fault",
+          "protocolVersion": 2,
+          "requestId": 7,
+          "status": "error",
+          "sessionId": "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b",
+          "connectionGeneration": 7,
+          "errorCode": "invalid_frame",
+          "message": "terminal protocol fault",
+          "terminal": true
+        },
+        "headerJson": "{\"connectionGeneration\":7,\"errorCode\":\"invalid_frame\",\"message\":\"terminal protocol fault\",\"op\":\"fault\",\"protocolVersion\":2,\"requestId\":7,\"sessionId\":\"5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b\",\"status\":\"error\",\"terminal\":true}",
+        "payloadLength": 0,
+        "payloadHex": "",
+        "frameHex": "5532523201000000dd000000000000007b22636f6e6e656374696f6e47656e65726174696f6e223a372c226572726f72436f6465223a22696e76616c69645f6672616d65222c226d657373616765223a227465726d696e616c2070726f746f636f6c206661756c74222c226f70223a226661756c74222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a372c2273657373696f6e4964223a2235653763346539302d623562322d346462342d623237662d356133306538303836653162222c22737461747573223a226572726f72222c227465726d696e616c223a747275657d"
+      }
+    ],
+    "strictJsonVectors": [
+      {
+        "id": "escaped_surrogate_pair",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"\\uD83D\\uDE80\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":10}",
+        "valid": true
+      },
+      {
+        "id": "json_depth_at_limit",
+        "action": "nested_padding",
+        "arrayNesting": 63,
+        "valid": true
+      },
+      {
+        "id": "json_depth_above_limit",
+        "action": "nested_padding",
+        "arrayNesting": 64,
+        "valid": false,
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      }
+    ],
+    "encodeNegativeVectors": [
+      {
+        "id": "encode_undefined_value",
+        "action": "undefined_value",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "encode_nonfinite_value",
+        "action": "nonfinite_value",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "encode_depth_above_limit",
+        "action": "nested_padding",
+        "arrayNesting": 64,
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "encode_invalid_utf8_key",
+        "action": "invalid_utf8_key",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "encode_invalid_utf8_value",
+        "action": "invalid_utf8_value",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      }
+    ],
+    "unsigned64Vectors": [
+      {
+        "id": "request_id_2_pow_63",
+        "valueDecimal": "9223372036854775808",
+        "header": {
+          "op": "hello",
+          "protocolVersion": 2,
+          "requestId": 9223372036854775808,
+          "clientName": "unity2foxglove",
+          "capabilities": [
+            "publish",
+            "subscribe"
+          ]
+        },
+        "headerJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":9223372036854775808}",
+        "frameHex": "553252320100000087000000000000007b226361706162696c6974696573223a5b227075626c697368222c22737562736372696265225d2c22636c69656e744e616d65223a22756e69747932666f78676c6f7665222c226f70223a2268656c6c6f222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a393232333337323033363835343737353830387d"
+      },
+      {
+        "id": "request_id_uint64_max",
+        "valueDecimal": "18446744073709551615",
+        "header": {
+          "op": "hello",
+          "protocolVersion": 2,
+          "requestId": 18446744073709551615,
+          "clientName": "unity2foxglove",
+          "capabilities": [
+            "publish",
+            "subscribe"
+          ]
+        },
+        "headerJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":18446744073709551615}",
+        "frameHex": "553252320100000088000000000000007b226361706162696c6974696573223a5b227075626c697368222c22737562736372696265225d2c22636c69656e744e616d65223a22756e69747932666f78676c6f7665222c226f70223a2268656c6c6f222c2270726f746f636f6c56657273696f6e223a322c22726571756573744964223a31383434363734343037333730393535313631357d"
+      }
+    ],
+    "errorCodes": [
+      {
+        "code": "busy",
+        "terminal": true,
+        "responseOps": [
+          "busy"
+        ]
+      },
+      {
+        "code": "unsupported_protocol",
+        "terminal": true,
+        "responseOps": [
+          "fault"
+        ]
+      },
+      {
+        "code": "missing_capability",
+        "terminal": true,
+        "responseOps": [
+          "fault"
+        ]
+      },
+      {
+        "code": "invalid_frame",
+        "terminal": true,
+        "responseOps": [
+          "fault"
+        ]
+      },
+      {
+        "code": "invalid_contract",
+        "terminal": false,
+        "responseOps": [
+          "publisher_ready"
+        ]
+      },
+      {
+        "code": "publisher_unavailable",
+        "terminal": false,
+        "responseOps": [
+          "publisher_ready"
+        ]
+      }
+    ],
+    "stateTransitions": [
+      {
+        "from": "awaiting_first_frame",
+        "operation": "hello",
+        "protocolVersion": 2,
+        "to": "v2_active",
+        "dialect": "v2",
+        "acquiresDataLease": true
+      },
+      {
+        "from": "awaiting_first_frame",
+        "operation": "health_ping",
+        "protocolVersion": 1,
+        "to": "v1_probe",
+        "dialect": "v1",
+        "acquiresDataLease": false
+      },
+      {
+        "from": "awaiting_first_frame",
+        "operation": "prepare_publisher",
+        "protocolVersion": 1,
+        "to": "v1_data",
+        "dialect": "v1",
+        "acquiresDataLease": true
+      },
+      {
+        "from": "awaiting_first_frame",
+        "operation": "publish",
+        "protocolVersion": 1,
+        "to": "v1_data",
+        "dialect": "v1",
+        "acquiresDataLease": true
+      },
+      {
+        "from": "v2_active",
+        "operation": "publish",
+        "protocolVersion": 1,
+        "to": "terminal",
+        "errorCode": "dialect_downgrade"
+      },
+      {
+        "from": "v2_active",
+        "operation": "fault",
+        "protocolVersion": 2,
+        "to": "terminal",
+        "errorCode": "invalid_frame"
+      }
+    ],
+    "negativeVectors": [
+      {
+        "id": "v2_zero_request_id",
+        "action": "mutate_header",
+        "baseVector": "hello_request",
+        "field": "requestId",
+        "value": 0,
+        "mutation": "set requestId to zero",
+        "expectedErrorCode": "invalid_request_id",
+        "terminal": true
+      },
+      {
+        "id": "v2_request_counter_wrap",
+        "action": "counter_wrap",
+        "mutation": "advance request counter past uint64 max",
+        "expectedErrorCode": "counter_exhausted",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_counter_wrap",
+        "action": "counter_wrap",
+        "mutation": "advance message counter past uint64 max",
+        "expectedErrorCode": "counter_exhausted",
+        "terminal": true
+      },
+      {
+        "id": "v2_invalid_utf8",
+        "action": "raw_header_hex",
+        "headerHex": "ff",
+        "mutation": "place ff in the JSON header",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_utf8_bom",
+        "action": "raw_header_hex",
+        "headerHex": "efbbbf7b7d",
+        "mutation": "prefix the JSON header with a UTF-8 BOM",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_duplicate_operation",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "provide duplicate op properties",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_trailing_json_root",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{}{}",
+        "mutation": "append a second JSON root",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_downgrade_same_socket",
+        "action": "state_downgrade",
+        "mutation": "send v1 publish after v2 hello",
+        "expectedErrorCode": "dialect_downgrade",
+        "terminal": true
+      },
+      {
+        "id": "v2_missing_subscribe_capability",
+        "action": "missing_capability",
+        "mutation": "negotiate publish only while subscriptions are required",
+        "expectedErrorCode": "missing_capability",
+        "terminal": true
+      },
+      {
+        "id": "v2_single_quoted_json",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{'op':'hello','protocolVersion':2,'requestId':1}",
+        "mutation": "use single-quoted JSON strings",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_trailing_comma",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":1,}",
+        "mutation": "append a trailing object comma",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_unquoted_key",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{op:\"hello\",\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use an unquoted object key",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_nan",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":NaN}",
+        "mutation": "use NaN",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_infinity",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":Infinity}",
+        "mutation": "use Infinity",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_undefined",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":undefined}",
+        "mutation": "use undefined",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_json_comment",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"op\":\"hello\",/*comment*/\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a JSON comment",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_unpaired_high_surrogate",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"\\uD800\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use an unpaired escaped high surrogate",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_unpaired_low_surrogate",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"\\uDC00\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use an unpaired escaped low surrogate",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_uint64_overflow",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"protocolVersion\":2,\"requestId\":18446744073709551616}",
+        "parseV2": true,
+        "mutation": "use uint64 max plus one",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_numeric_fraction",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"padding\":1.0,\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a fractional JSON number",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_numeric_large_exponent",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"padding\":1e29,\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a positive exponent JSON number",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_numeric_small_exponent",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"padding\":1e-100,\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a negative exponent JSON number",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_numeric_negative",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"padding\":-1,\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a negative JSON integer",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_numeric_negative_zero",
+        "action": "raw_header_json",
+        "rawHeaderJson": "{\"capabilities\":[\"publish\",\"subscribe\"],\"clientName\":\"unity2foxglove\",\"op\":\"hello\",\"padding\":-0,\"protocolVersion\":2,\"requestId\":1}",
+        "mutation": "use a negative-zero JSON number token",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_busy_nonterminal",
+        "action": "mutate_header",
+        "baseVector": "busy",
+        "field": "terminal",
+        "value": false,
+        "mutation": "mark busy nonterminal",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_invalid_contract_terminal",
+        "action": "mutate_header",
+        "baseVector": "publisher_error",
+        "field": "terminal",
+        "value": true,
+        "mutation": "mark invalid_contract terminal",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_ok_with_error_code",
+        "action": "mutate_header",
+        "baseVector": "hello_ack",
+        "field": "errorCode",
+        "value": "invalid_frame",
+        "mutation": "add errorCode to ok response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_ok_with_message",
+        "action": "mutate_header",
+        "baseVector": "hello_ack",
+        "field": "message",
+        "value": "not allowed",
+        "mutation": "add message to ok response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_ok_with_terminal",
+        "action": "mutate_header",
+        "baseVector": "hello_ack",
+        "field": "terminal",
+        "value": false,
+        "mutation": "add terminal to ok response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_error_without_error_code",
+        "action": "remove_header",
+        "baseVector": "publisher_error",
+        "field": "errorCode",
+        "mutation": "remove errorCode from error response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_error_without_message",
+        "action": "remove_header",
+        "baseVector": "publisher_error",
+        "field": "message",
+        "mutation": "remove message from error response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_error_without_terminal",
+        "action": "remove_header",
+        "baseVector": "publisher_error",
+        "field": "terminal",
+        "mutation": "remove terminal from error response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_error_wrong_response_op",
+        "action": "mutate_header",
+        "baseVector": "busy",
+        "field": "errorCode",
+        "value": "invalid_contract",
+        "mutation": "use invalid_contract on busy response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_hello_forged_identity",
+        "action": "forge_hello_identity",
+        "mutation": "add sessionId and connectionGeneration to hello",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_request_with_response_metadata",
+        "action": "mutate_header",
+        "baseVector": "hello_request",
+        "field": "status",
+        "value": "ok",
+        "mutation": "add response metadata to a request",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_missing_encoding",
+        "action": "remove_header",
+        "baseVector": "message",
+        "field": "encoding",
+        "mutation": "remove inbound CDR encoding",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_wrong_encoding",
+        "action": "mutate_header",
+        "baseVector": "message",
+        "field": "encoding",
+        "value": "json",
+        "mutation": "declare a non-CDR inbound encoding",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_missing_representation",
+        "action": "remove_header",
+        "baseVector": "message",
+        "field": "representation",
+        "mutation": "remove inbound CDR representation",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_unsupported_representation",
+        "action": "mutate_header",
+        "baseVector": "message",
+        "field": "representation",
+        "value": "cdr-body-only",
+        "mutation": "declare CDR without the required encapsulation header",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_missing_encapsulation",
+        "action": "replace_payload",
+        "baseVector": "message",
+        "payloadHex": "00",
+        "mutation": "send fewer than four CDR encapsulation bytes",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_message_wrong_encapsulation",
+        "action": "replace_payload",
+        "baseVector": "message",
+        "payloadHex": "00000000020000004100",
+        "mutation": "send a non-XCDR1 little-endian encapsulation prefix",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_busy_status_ok",
+        "action": "response_status_ok",
+        "baseVector": "busy",
+        "mutation": "mark busy successful and remove error metadata",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_fault_status_ok",
+        "action": "response_status_ok",
+        "baseVector": "terminal_fault",
+        "mutation": "mark fault successful and remove error metadata",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_busy_forged_contract_id",
+        "action": "mutate_header",
+        "baseVector": "busy",
+        "field": "contractId",
+        "value": 41,
+        "mutation": "attach a contract ID to an error response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_fault_forged_message_id",
+        "action": "mutate_header",
+        "baseVector": "terminal_fault",
+        "field": "messageId",
+        "value": 1,
+        "mutation": "attach a message ID to an error response",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_hello_forged_log_time",
+        "action": "mutate_header",
+        "baseVector": "hello_request",
+        "field": "logTimeNs",
+        "value": 0,
+        "mutation": "attach publish timing to hello",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_health_forged_receive_time",
+        "action": "mutate_header",
+        "baseVector": "health_ping",
+        "field": "receiveTimeNs",
+        "value": 0,
+        "mutation": "attach inbound timing to health",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_publish_forged_representation",
+        "action": "mutate_header",
+        "baseVector": "publish",
+        "field": "representation",
+        "value": "xcdr1-le",
+        "mutation": "attach inbound representation to publish",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      },
+      {
+        "id": "v2_busy_forged_encoding",
+        "action": "mutate_header",
+        "baseVector": "busy",
+        "field": "encoding",
+        "value": "cdr",
+        "mutation": "attach a data encoding to busy",
+        "expectedErrorCode": "invalid_frame",
+        "terminal": true
+      }
+    ]
+  }
 }

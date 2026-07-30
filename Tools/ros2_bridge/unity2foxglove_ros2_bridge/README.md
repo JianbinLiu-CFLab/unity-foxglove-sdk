@@ -35,6 +35,11 @@ conflicts receive a correlated `publisher_ready` error on the same connection,
 so Unity can mark only that declaration unavailable. Unity should reconnect
 after a transport-level rejection, and the sidecar log will identify it.
 
+The frozen v1 dialect and the independently implemented v2 protocol authority
+are documented in [U2R2_PROTOCOL.md](U2R2_PROTOCOL.md). The current sidecar
+runtime continues to use its maintained v1 publish path until the v2 session
+runtime is wired separately.
+
 Normal Unity2Foxglove Foxglove WebSocket use does not require ROS.
 
 ## Prerequisites

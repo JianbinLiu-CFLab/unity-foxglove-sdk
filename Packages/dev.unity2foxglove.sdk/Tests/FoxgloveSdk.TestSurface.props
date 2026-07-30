@@ -44,6 +44,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Transport/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/IO/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/**/*.cs" LinkBase="Ros2BridgeRuntime" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2bridge/Runtime/Protocol/**/*.cs" LinkBase="Ros2BridgeProtocol" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Sensors/**/*.cs" Exclude="$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidar.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/VirtualImu.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/SensorUnitProfile.cs;$(MSBuildThisFileDirectory)../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Registry/*.cs" />
