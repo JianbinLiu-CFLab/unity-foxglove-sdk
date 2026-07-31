@@ -151,12 +151,17 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             WaitUntil(
                 () => transport.ConnectCount >= 2,
                 "the duplex runtime did not reconnect");
-            WaitForPublisherReady(runtime);
-            Assert.True(
-                runtime.TryEnqueuePrepared(
-                    Frame(sequence: 3),
-                    out var reason),
-                reason);
+            WaitUntil(
+                () => runtime.PreparePublisher(
+                          Topic,
+                          Schema,
+                          Qos(),
+                          out _)
+                      == Ros2BridgePublisherReadiness.Ready
+                      && runtime.TryEnqueuePrepared(
+                          Frame(sequence: 3),
+                          out _),
+                "the post-reconnect publisher did not become ready and enqueue on one connection generation");
             WaitUntil(
                 () => runtime.GetStatsSnapshot().SentFrames == 1,
                 "the post-reconnect publish did not complete");
