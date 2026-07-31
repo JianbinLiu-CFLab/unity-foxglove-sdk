@@ -70,8 +70,14 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             body.Append(pad)
                 .Append("public partial class ")
                 .Append(EscapeIdentifier(type.ClassName))
-                .AppendLine();
+                .AppendLine(" : global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedPublishSource");
             body.Append(pad).AppendLine("{");
+            EmitPublishDispatch(
+                body,
+                type,
+                topics,
+                topicMap,
+                pad);
             EmitBuilders(body, topics, topicMap, pad);
             body.Append(pad).AppendLine("}");
 
@@ -79,6 +85,152 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 body.AppendLine("}");
 
             return body.ToString();
+        }
+
+        private static void EmitPublishDispatch(
+            StringBuilder sb,
+            FoxRunGenerationType type,
+            IReadOnlyList<string> topics,
+            IReadOnlyDictionary<string, List<FoxRunGenerationMember>> topicMap,
+            string pad)
+        {
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    bool global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedPublishSource.FoxRunBridge_TryBuildPublish(int topicIndex, ulong nowNs, out global::Unity.FoxgloveSDK.Components.FoxRunTransportPublishRoute route, out string reason)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        route = default;");
+            sb.AppendLine($"{pad}        reason = string.Empty;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0;
+                 topicIndex < topics.Count;
+                 topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                if (fields.Count != 1 || !IsSupportedCustom(fields[0]))
+                    continue;
+
+                var member = fields[0];
+                var shape = ProjectShape(member.TypeShape);
+                var stableId = BuildStableMemberId(
+                    type.DeclaringType,
+                    member.MemberKind,
+                    member.MemberName,
+                    member.Topic,
+                    member.Mode,
+                    member.JsonFieldName);
+                var schemaName = RosPackageName
+                                 + "/msg/"
+                                 + shape.PayloadIdentity
+                                 + "Envelope";
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine(
+                    $"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var payload, out reason))");
+                sb.AppendLine($"{pad}                    return false;");
+                sb.AppendLine(
+                    $"{pad}                route = new global::Unity.FoxgloveSDK.Components.FoxRunTransportPublishRoute(");
+                sb.AppendLine(
+                    $"{pad}                    \"{CSharpStringLiteral(stableId)}\",");
+                sb.AppendLine(
+                    $"{pad}                    \"{CSharpStringLiteral(member.Topic)}\",");
+                sb.AppendLine(
+                    $"{pad}                    \"{CSharpStringLiteral(schemaName)}\",");
+                sb.AppendLine($"{pad}                    payload,");
+                sb.AppendLine($"{pad}                    nowNs,");
+                sb.AppendLine(
+                    $"{pad}                    __foxRunCaptureSequence_{topicIndex},");
+                sb.AppendLine(
+                    $"{pad}                    new global::Unity.FoxgloveSDK.Components.FoxRunDeliveryPolicy(");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{ReliabilityLiteral(member.Reliability)},");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{DurabilityLiteral(member.Durability)},");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{HistoryLiteral(member.History)},");
+                sb.AppendLine(
+                    $"{pad}                        {member.Depth}),");
+                sb.AppendLine($"{pad}                    \"cdr\",");
+                sb.AppendLine($"{pad}                    \"ros2msg\");");
+                sb.AppendLine($"{pad}                return true;");
+            }
+            sb.AppendLine($"{pad}            default:");
+            sb.AppendLine(
+                $"{pad}                reason = \"The Bridge physical emitter has no publish binding for this topic index.\";");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+        }
+
+        private static string BuildStableMemberId(
+            string declaringType,
+            string memberKind,
+            string memberName,
+            string topic,
+            int flow,
+            string jsonFieldName)
+            => (declaringType ?? string.Empty)
+               + "\n"
+               + (memberKind ?? string.Empty)
+               + "\n"
+               + (memberName ?? string.Empty)
+               + "\n"
+               + (topic ?? string.Empty)
+               + "\n"
+               + flow.ToString(CultureInfo.InvariantCulture)
+               + "\n"
+               + (jsonFieldName ?? string.Empty);
+
+        private static string ReliabilityLiteral(string value)
+        {
+            if (string.Equals(value, "reliable", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.Reliable";
+            if (string.Equals(value, "best-effort", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.BestEffort";
+            if (string.Equals(
+                    value,
+                    "system-default",
+                    StringComparison.Ordinal))
+            {
+                return "FoxRunDeliveryReliability.SystemDefault";
+            }
+            return "FoxRunDeliveryReliability.ProviderDefault";
+        }
+
+        private static string DurabilityLiteral(string value)
+        {
+            if (string.Equals(value, "volatile", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.Volatile";
+            if (string.Equals(
+                    value,
+                    "transient-local",
+                    StringComparison.Ordinal))
+            {
+                return "FoxRunDeliveryDurability.TransientLocal";
+            }
+            if (string.Equals(
+                    value,
+                    "system-default",
+                    StringComparison.Ordinal))
+            {
+                return "FoxRunDeliveryDurability.SystemDefault";
+            }
+            return "FoxRunDeliveryDurability.ProviderDefault";
+        }
+
+        private static string HistoryLiteral(string value)
+        {
+            if (string.Equals(value, "keep-last", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepLast";
+            if (string.Equals(value, "keep-all", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepAll";
+            if (string.Equals(
+                    value,
+                    "system-default",
+                    StringComparison.Ordinal))
+            {
+                return "FoxRunDeliveryHistory.SystemDefault";
+            }
+            return "FoxRunDeliveryHistory.ProviderDefault";
         }
 
         private static void EmitBuilders(
@@ -284,10 +436,10 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         private static bool IsSupportedCustom(FoxRunGenerationMember member)
             => member != null
                && member.Mode != 2
-               && member.PublishTransportIds != null
-               && member.PublishTransportIds.Contains(
-                   BridgeProviderId,
-                   StringComparer.Ordinal)
+               && (member.PublishTransportIds == null
+                   || member.PublishTransportIds.Contains(
+                       BridgeProviderId,
+                       StringComparer.Ordinal))
                && ProjectShape(member.TypeShape) != null;
 
         private static string BuildSchemaContent(

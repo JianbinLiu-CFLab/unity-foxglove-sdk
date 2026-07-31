@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Components
                 throw new InvalidOperationException(
                     "FoxRun transport session generation is exhausted.");
 
-            var selection = CreateConfiguredTransportSelection();
+            var selection = CreateCapturedTransportSelection();
             if (!_foxRunTransportProviderRegistry.TryCaptureSession(
                     selection,
                     generation + 1UL,
@@ -277,6 +277,31 @@ namespace Unity.FoxgloveSDK.Components
                 in request);
         }
 
+        /// <summary>
+        /// Fan out one captured generated topic to each selected Provider
+        /// which owns a physical emitter for that generated source.
+        /// </summary>
+        public FoxRunGeneratedTransportFanoutResult
+            PublishGeneratedTransports(
+                IFoxRunGeneratedTransportSource source,
+                int topicIndex,
+                string topic,
+                IReadOnlyList<string> explicitTransportIds,
+                ulong logTimeNs)
+        {
+            var request =
+                new FoxRunGeneratedTransportPublishRequest(
+                    source,
+                    topicIndex,
+                    topic,
+                    logTimeNs);
+            return FoxRunGeneratedTransportFanout.Publish(
+                _activeFoxRunTransportSession?.PublishTransports,
+                explicitTransportIds,
+                _activeFoxRunTransportSession?.PublishTransportIds,
+                in request);
+        }
+
         /// <summary>Resolve one schema from a frozen Provider session.</summary>
         public bool TryResolveTransportSchema(
             string providerId,
@@ -389,6 +414,37 @@ namespace Unity.FoxgloveSDK.Components
         {
             var publish = _foxRunPublishTransportIds
                           ?? Array.Empty<string>();
+            return new FoxRunTransportSelection(
+                publish,
+                _enableFoxRunInbound,
+                _enableFoxRunInbound
+                    ? _foxRunSubscribeTransportId
+                    : null);
+        }
+
+        private FoxRunTransportSelection CreateCapturedTransportSelection()
+        {
+            var configured = _foxRunPublishTransportIds
+                             ?? Array.Empty<string>();
+            var explicitIds =
+                FoxRunSchemaInfoRegistry
+                    .GetExplicitPublishTransportIds();
+            if (explicitIds.Count == 0)
+                return CreateConfiguredTransportSelection();
+
+            var union = new HashSet<string>(
+                configured,
+                StringComparer.Ordinal);
+            for (var index = 0;
+                 index < explicitIds.Count;
+                 index++)
+            {
+                union.Add(explicitIds[index]);
+            }
+
+            var publish = new string[union.Count];
+            union.CopyTo(publish);
+            Array.Sort(publish, StringComparer.Ordinal);
             return new FoxRunTransportSelection(
                 publish,
                 _enableFoxRunInbound,

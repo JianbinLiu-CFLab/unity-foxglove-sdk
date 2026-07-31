@@ -77,6 +77,7 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxRunTransportSessionSnapshot : IDisposable
     {
         private readonly IFoxRunTransportSession[] _allSessions;
+        private readonly IReadOnlyList<FoxRunTransportId> _publishIdView;
         private readonly IReadOnlyList<IFoxRunTransportSession> _publishView;
         private int _disposed;
 
@@ -89,11 +90,17 @@ namespace Unity.FoxgloveSDK.Components
             Generation = generation;
             var publishCopy = (IFoxRunTransportSession[])publishTransports.Clone();
             _publishView = Array.AsReadOnly(publishCopy);
+            var publishIds = new FoxRunTransportId[publishCopy.Length];
+            for (var index = 0; index < publishCopy.Length; index++)
+                publishIds[index] = publishCopy[index].Id;
+            _publishIdView = Array.AsReadOnly(publishIds);
             SubscribeTransport = subscribeTransport;
             _allSessions = (IFoxRunTransportSession[])allSessions.Clone();
         }
 
         public ulong Generation { get; }
+        public IReadOnlyList<FoxRunTransportId> PublishTransportIds =>
+            _publishIdView;
         public IReadOnlyList<IFoxRunTransportSession> PublishTransports => _publishView;
         public IFoxRunTransportSession SubscribeTransport { get; }
 

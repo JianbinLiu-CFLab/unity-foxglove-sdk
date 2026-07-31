@@ -211,7 +211,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunNamedArgumentPresence presence)
             => (member.NamedArgumentPresence & presence) == presence;
 
-        private static string EncodingLiteral(string value)
+        internal static string EncodingLiteral(string value)
         {
             if (string.Equals(value, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
                 return "FoxRunEncoding.Protobuf";

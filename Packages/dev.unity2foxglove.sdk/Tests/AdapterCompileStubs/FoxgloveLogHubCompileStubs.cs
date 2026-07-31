@@ -209,6 +209,14 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        public FoxRunGeneratedTransportFanoutResult PublishGeneratedTransports(
+            IFoxRunGeneratedTransportSource source,
+            int topicIndex,
+            string topic,
+            IReadOnlyList<string> explicitTransportIds,
+            ulong logTimeNs)
+            => default;
+
         public void RaiseFoxRunPublishSessionChanged()
             => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);
     }

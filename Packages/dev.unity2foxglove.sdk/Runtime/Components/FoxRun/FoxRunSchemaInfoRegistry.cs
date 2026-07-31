@@ -29,6 +29,33 @@ namespace Unity.FoxgloveSDK.Components
         public static string ConflictingHash { get { lock (Sync) return _conflictingHash; } }
         public static FoxRunSchemaManifestInfo Current { get { lock (Sync) return _current; } }
 
+        internal static IReadOnlyList<string>
+            GetExplicitPublishTransportIds()
+        {
+            lock (Sync)
+            {
+                if (_current == null)
+                    return Array.Empty<string>();
+
+                return _current.Types
+                    .Where(type => type != null)
+                    .SelectMany(type => type.Contracts)
+                    .Where(contract =>
+                        contract != null
+                        && FlowSupports(
+                            contract.Flow,
+                            FoxRunFlow.Publish)
+                        && contract.PublishTransportIds != null)
+                    .SelectMany(
+                        contract => contract.PublishTransportIds)
+                    .Where(
+                        id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(id => id, StringComparer.Ordinal)
+                    .ToArray();
+            }
+        }
+
         /// <summary>Builds Inspector-friendly effective topic contracts from generated metadata.</summary>
         public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(FoxRunEncoding managerDefault)
             => GetTopicSummaries(managerDefault, managerDefault);

@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         int FoxRunTransport_MemberCount { get; }
         IFoxRunGeneratedMemberAccess FoxRunTransport_GetMember(int index);
+        ulong FoxRunTransport_GetCaptureSequence(int topicIndex);
     }
 
     /// <summary>

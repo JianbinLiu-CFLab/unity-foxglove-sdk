@@ -54,6 +54,7 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveLogSource");
                 interfaces.Add("IFoxgloveTopicContractSource");
                 interfaces.Add("IFoxgloveTopicBusSource");
+                interfaces.Add("IFoxgloveTopicBusDemandSource");
                 interfaces.Add("IFoxgloveTopicObserverSource");
                 interfaces.Add("IFoxgloveTopicSinkSource");
                 interfaces.Add("IFoxglovePublishCaptureSource");
@@ -73,6 +74,8 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveTransactionalInputSource");
             if (hasTransactionalOwnedInput)
                 interfaces.Add("IFoxgloveTransactionalOwnedInputSource");
+            if (hasProviderAccess)
+                interfaces.Add("IFoxRunGeneratedTransportSource");
             sb.Append($"{pad}partial class {className}");
             if (interfaces.Count > 0)
                 sb.Append(" : " + string.Join(", ", interfaces));

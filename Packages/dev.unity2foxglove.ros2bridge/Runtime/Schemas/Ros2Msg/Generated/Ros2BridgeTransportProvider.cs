@@ -409,6 +409,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private sealed class Session :
             IFoxRunTransportSession,
+            IFoxRunGeneratedTransportSession,
             IFoxRunTransportSchemaContributor,
             IFoxRunOrdinaryPayloadMapper,
             IFoxRunMcapDecoderContribution
@@ -495,6 +496,134 @@ namespace Unity2Foxglove.Ros2Bridge
             internal Ros2BridgeStatsSnapshot GetStatsSnapshot()
                 => _runtime?.GetStatsSnapshot()
                    ?? Ros2BridgeStatsSnapshot.Disabled;
+
+            public FoxRunTransportPublishResult PublishGenerated(
+                in FoxRunGeneratedTransportPublishRequest request)
+            {
+                if (request.Source
+                    is IFoxRunBridgeGeneratedPublishSource bridgeSource)
+                {
+                    try
+                    {
+                        if (!bridgeSource.FoxRunBridge_TryBuildPublish(
+                                request.TopicIndex,
+                                request.LogTimeNs,
+                                out var route,
+                                out var reason))
+                        {
+                            return FoxRunTransportPublishResult.Rejected(
+                                Bound(reason));
+                        }
+                        if (!string.Equals(
+                                route.Topic,
+                                request.Topic,
+                                StringComparison.Ordinal)
+                            || route.LogTimeNs != request.LogTimeNs)
+                        {
+                            return FoxRunTransportPublishResult.Rejected(
+                                "Generated Bridge route does not match the captured topic and timestamp.");
+                        }
+
+                        return Publish(in route);
+                    }
+                    catch (Exception exception)
+                    {
+                        return FoxRunTransportPublishResult.Failed(
+                            Bound(exception.Message));
+                    }
+                }
+
+                return PublishGeneratedOrdinary(in request);
+            }
+
+            private FoxRunTransportPublishResult
+                PublishGeneratedOrdinary(
+                    in FoxRunGeneratedTransportPublishRequest request)
+            {
+                IFoxRunGeneratedMemberAccess selected = null;
+                for (var index = 0;
+                     index
+                     < request.Source.FoxRunTransport_MemberCount;
+                     index++)
+                {
+                    var candidate =
+                        request.Source.FoxRunTransport_GetMember(
+                            index);
+                    if (candidate == null
+                        || !candidate.CanRead
+                        || (candidate.Flow != FoxRunFlow.Publish
+                            && candidate.Flow
+                            != FoxRunFlow.PublishAndSubscribe)
+                        || !string.Equals(
+                            candidate.Topic,
+                            request.Topic,
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (selected != null)
+                    {
+                        return FoxRunTransportPublishResult.Rejected(
+                            "ROS2 Bridge ordinary mapping requires exactly one generated member per topic.");
+                    }
+                    selected = candidate;
+                }
+
+                if (selected == null)
+                {
+                    return FoxRunTransportPublishResult.Rejected(
+                        "The generated source has no readable Bridge member for this topic.");
+                }
+
+                object value;
+                try
+                {
+                    value = selected.ReadBoxed();
+                }
+                catch (Exception exception)
+                {
+                    return FoxRunTransportPublishResult.Failed(
+                        Bound(exception.Message));
+                }
+                if (value == null)
+                {
+                    return FoxRunTransportPublishResult.Rejected(
+                        "ROS2 Bridge cannot map a null generated value.");
+                }
+
+                var ordinary =
+                    new FoxRunOrdinaryPayloadRequest(
+                        selected.StableMemberId,
+                        request.Topic,
+                        selected.LogicalSchemaName,
+                        value,
+                        request.LogTimeNs,
+                        request.Source
+                            .FoxRunTransport_GetCaptureSequence(
+                                request.TopicIndex),
+                        selected.DeliveryPolicy);
+                if (!TryMap(
+                        in ordinary,
+                        out var contribution,
+                        out var reason))
+                {
+                    return FoxRunTransportPublishResult.Rejected(
+                        Bound(reason));
+                }
+
+                var route = new FoxRunTransportPublishRoute(
+                    ordinary.StablePublisherId,
+                    ordinary.Topic,
+                    contribution.LogicalSchemaName,
+                    contribution.Payload,
+                    ordinary.LogTimeNs,
+                    ordinary.Sequence,
+                    ordinary.DeliveryPolicy,
+                    contribution.MessageEncoding,
+                    contribution.SchemaEncoding);
+                return Publish(in route);
+            }
 
             public FoxRunTransportPublishResult Publish(
                 in FoxRunTransportPublishRoute route)

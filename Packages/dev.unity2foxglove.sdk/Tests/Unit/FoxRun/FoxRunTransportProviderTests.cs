@@ -150,6 +150,41 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void CapturedPublishTransportIdsRemainFrozenWithSession()
+        {
+            var registry = new FoxRunTransportProviderRegistry();
+            var alpha = new FakeProvider(
+                "unity2foxglove.alpha",
+                FoxRunTransportCapabilities.Publish);
+            var bravo = new FakeProvider(
+                "unity2foxglove.bravo",
+                FoxRunTransportCapabilities.Publish);
+            registry.Register(alpha);
+            registry.Register(bravo);
+            var configuredIds = new[] { alpha.Id.Value };
+            var selection = new FoxRunTransportSelection(
+                configuredIds,
+                subscriptionsEnabled: false,
+                subscribeTransportId: null);
+
+            Assert.True(registry.TryCaptureSession(
+                selection,
+                generation: 186,
+                out var snapshot,
+                out _));
+
+            configuredIds[0] = bravo.Id.Value;
+            registry.Unregister(alpha);
+            Assert.Equal(
+                new[] { alpha.Id.Value },
+                snapshot.PublishTransportIds.Select(id => id.Value));
+            Assert.Same(
+                alpha.LastCapturedSession,
+                snapshot.PublishTransports.Single());
+            snapshot.Dispose();
+        }
+
+        [Fact]
         public void CaptureFailsClosedForMissingUnavailableOrCapabilityMismatch()
         {
             var registry = new FoxRunTransportProviderRegistry();
@@ -273,6 +308,83 @@ namespace Unity.FoxgloveSDK.Tests
             Assert.True(result.AnyAccepted);
             Assert.False(result.AllAccepted);
             snapshot.Dispose();
+        }
+
+        [Fact]
+        public void GeneratedFanoutUsesExplicitRoutesAndClassifiesEverySelectedProvider()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var sessions = new IFoxRunTransportSession[]
+            {
+                new GeneratedSession(
+                    "unity2foxglove.alpha",
+                    calls,
+                    FoxRunTransportPublishResult.Accepted()),
+                new GeneratedSession(
+                    "unity2foxglove.bravo",
+                    calls,
+                    FoxRunTransportPublishResult.Failed("fixture")),
+                new GeneratedSession(
+                    "unity2foxglove.charlie",
+                    calls,
+                    FoxRunTransportPublishResult.Rejected("fixture"))
+            };
+            var source = new GeneratedSource();
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                source,
+                topicIndex: 0,
+                "/phase186/generated",
+                logTimeNs: 186);
+
+            var result = FoxRunGeneratedTransportFanout.Publish(
+                sessions,
+                explicitTransportIds: new[]
+                {
+                    "unity2foxglove.charlie",
+                    "unity2foxglove.alpha"
+                },
+                inheritedTransportIds: new[]
+                {
+                    new FoxRunTransportId("unity2foxglove.bravo")
+                },
+                in request);
+
+            Assert.Equal(
+                new[]
+                {
+                    "unity2foxglove.alpha",
+                    "unity2foxglove.charlie"
+                },
+                calls);
+            Assert.Equal(2, result.Matched);
+            Assert.Equal(1, result.Accepted);
+            Assert.Equal(1, result.Rejected);
+            Assert.Equal(0, result.Unavailable);
+            Assert.Equal(0, result.Failed);
+            Assert.True(result.AnyAccepted);
+            Assert.False(result.AllAccepted);
+            Assert.Collection(
+                result.TargetResults,
+                target =>
+                {
+                    Assert.Equal(
+                        new FoxRunTransportId("unity2foxglove.alpha"),
+                        target.TransportId);
+                    Assert.Equal(
+                        FoxRunTransportRouteResultState.Accepted,
+                        target.State);
+                    Assert.Equal(string.Empty, target.Reason);
+                },
+                target =>
+                {
+                    Assert.Equal(
+                        new FoxRunTransportId("unity2foxglove.charlie"),
+                        target.TransportId);
+                    Assert.Equal(
+                        FoxRunTransportRouteResultState.Rejected,
+                        target.State);
+                    Assert.Equal("fixture", target.Reason);
+                });
         }
 
         [Fact]
@@ -670,8 +782,24 @@ namespace Unity.FoxgloveSDK.Tests
             Assert.Contains(
                 "=> __foxRunCapture_0_0;",
                 source);
-            Assert.DoesNotContain("IFoxRunGeneratedTransportSource", source);
-            Assert.DoesNotContain("new FoxRunGeneratedMemberAccess", source);
+            Assert.Contains("IFoxRunGeneratedTransportSource", source);
+            Assert.Contains(
+                "IFoxRunGeneratedTransportSource.FoxRunTransport_MemberCount => 1;",
+                source);
+            Assert.Contains(
+                "IFoxRunGeneratedTransportSource.FoxRunTransport_GetMember(int index)",
+                source);
+            Assert.Contains(
+                "new FoxRunGeneratedMemberAccess<int>",
+                source);
+            Assert.Contains(
+                "\""
+                + StringLiteralEmitter.CSharpStringLiteral(stableId)
+                + "\"",
+                source);
+            Assert.Contains(
+                "FoxRunTransport_GetCaptureSequence(int topicIndex)",
+                source);
             Assert.DoesNotContain("System.Reflection", source);
             Assert.DoesNotContain("GetField(", source);
             Assert.DoesNotContain("GetProperty(", source);
@@ -906,6 +1034,61 @@ namespace Unity.FoxgloveSDK.Tests
             public void Dispose()
             {
                 Disposed = true;
+            }
+        }
+
+        private sealed class GeneratedSource :
+            IFoxRunGeneratedTransportSource
+        {
+            public int FoxRunTransport_MemberCount => 0;
+
+            public IFoxRunGeneratedMemberAccess FoxRunTransport_GetMember(
+                int index)
+                => throw new ArgumentOutOfRangeException(nameof(index));
+
+            public ulong FoxRunTransport_GetCaptureSequence(int topicIndex)
+                => 0;
+        }
+
+        private sealed class GeneratedSession :
+            IFoxRunTransportSession,
+            IFoxRunGeneratedTransportSession
+        {
+            private readonly System.Collections.Generic.IList<string> _calls;
+            private readonly FoxRunTransportPublishResult _result;
+
+            internal GeneratedSession(
+                string id,
+                System.Collections.Generic.IList<string> calls,
+                FoxRunTransportPublishResult result)
+            {
+                Id = new FoxRunTransportId(id);
+                _calls = calls;
+                _result = result;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities =>
+                FoxRunTransportCapabilities.Publish;
+            public ulong Generation => 186;
+
+            public FoxRunTransportPublishResult PublishGenerated(
+                in FoxRunGeneratedTransportPublishRequest request)
+            {
+                _calls.Add(Id.Value);
+                return _result;
+            }
+
+            public FoxRunTransportPublishResult Publish(
+                in FoxRunTransportPublishRoute route)
+                => throw new NotSupportedException();
+
+            public FoxRunTransportSubscribeResult Subscribe(
+                in FoxRunTransportSubscribeRoute route)
+                => FoxRunTransportSubscribeResult.Rejected("not used");
+
+            public void Dispose()
+            {
             }
         }
 

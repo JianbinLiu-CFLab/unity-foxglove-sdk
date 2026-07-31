@@ -10,6 +10,248 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>
+    /// One captured generated topic handed to a Provider-owned physical
+    /// emitter. The source exposes only deterministic direct accessors.
+    /// </summary>
+    public readonly struct FoxRunGeneratedTransportPublishRequest
+    {
+        public FoxRunGeneratedTransportPublishRequest(
+            IFoxRunGeneratedTransportSource source,
+            int topicIndex,
+            string topic,
+            ulong logTimeNs)
+        {
+            Source = source
+                     ?? throw new ArgumentNullException(nameof(source));
+            if (topicIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(topicIndex));
+            if (string.IsNullOrWhiteSpace(topic))
+                throw new ArgumentException(
+                    "Topic cannot be empty.",
+                    nameof(topic));
+
+            TopicIndex = topicIndex;
+            Topic = topic;
+            LogTimeNs = logTimeNs;
+        }
+
+        public IFoxRunGeneratedTransportSource Source { get; }
+        public int TopicIndex { get; }
+        public string Topic { get; }
+        public ulong LogTimeNs { get; }
+    }
+
+    /// <summary>
+    /// Optional session seam implemented only by Providers which consume
+    /// generated member/type-shape access. The core never knows their wire
+    /// representation.
+    /// </summary>
+    public interface IFoxRunGeneratedTransportSession
+    {
+        FoxRunTransportPublishResult PublishGenerated(
+            in FoxRunGeneratedTransportPublishRequest request);
+    }
+
+    public readonly struct FoxRunGeneratedTransportTargetResult
+    {
+        internal FoxRunGeneratedTransportTargetResult(
+            FoxRunTransportId transportId,
+            FoxRunTransportPublishResult result)
+        {
+            TransportId = transportId;
+            State = result.State;
+            Reason = result.Reason ?? string.Empty;
+        }
+
+        public FoxRunTransportId TransportId { get; }
+        public FoxRunTransportRouteResultState State { get; }
+        public string Reason { get; }
+    }
+
+    public readonly struct FoxRunGeneratedTransportFanoutResult
+    {
+        private readonly
+            IReadOnlyList<FoxRunGeneratedTransportTargetResult>
+            _targetResults;
+
+        internal FoxRunGeneratedTransportFanoutResult(
+            IReadOnlyList<FoxRunGeneratedTransportTargetResult> targetResults,
+            int matched,
+            int accepted,
+            int rejected,
+            int unavailable,
+            int failed)
+        {
+            _targetResults = targetResults;
+            Matched = matched;
+            Accepted = accepted;
+            Rejected = rejected;
+            Unavailable = unavailable;
+            Failed = failed;
+        }
+
+        public IReadOnlyList<FoxRunGeneratedTransportTargetResult>
+            TargetResults =>
+                _targetResults
+                ?? Array.Empty<FoxRunGeneratedTransportTargetResult>();
+        public int Matched { get; }
+        public int Accepted { get; }
+        public int Rejected { get; }
+        public int Unavailable { get; }
+        public int Failed { get; }
+        public bool AnyAccepted => Accepted > 0;
+        public bool AllAccepted => Matched > 0 && Accepted == Matched;
+    }
+
+    internal static class FoxRunGeneratedTransportFanout
+    {
+        internal static FoxRunGeneratedTransportFanoutResult Publish(
+            IReadOnlyList<IFoxRunTransportSession> sessions,
+            IReadOnlyList<string> explicitTransportIds,
+            IReadOnlyList<FoxRunTransportId> inheritedTransportIds,
+            in FoxRunGeneratedTransportPublishRequest request)
+        {
+            var matched = 0;
+            var accepted = 0;
+            var rejected = 0;
+            var unavailable = 0;
+            var failed = 0;
+            var selectedCount = CountSelected(
+                sessions,
+                explicitTransportIds,
+                inheritedTransportIds);
+            if (selectedCount == 0)
+            {
+                return new FoxRunGeneratedTransportFanoutResult(
+                    Array.Empty<FoxRunGeneratedTransportTargetResult>(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
+            }
+
+            var targetResults =
+                new FoxRunGeneratedTransportTargetResult[selectedCount];
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                var session = sessions[index];
+                if (!(session is IFoxRunGeneratedTransportSession generated)
+                    || !Selects(
+                        session.Id,
+                        explicitTransportIds,
+                        inheritedTransportIds))
+                {
+                    continue;
+                }
+
+                matched++;
+                FoxRunTransportPublishResult result;
+                try
+                {
+                    result = generated.PublishGenerated(in request);
+                }
+                catch (Exception exception)
+                {
+                    result = FoxRunTransportPublishResult.Failed(
+                        exception.Message);
+                }
+
+                switch (result.State)
+                {
+                    case FoxRunTransportRouteResultState.Accepted:
+                        accepted++;
+                        break;
+                    case FoxRunTransportRouteResultState.Rejected:
+                        rejected++;
+                        break;
+                    case FoxRunTransportRouteResultState.Unavailable:
+                        unavailable++;
+                        break;
+                    case FoxRunTransportRouteResultState.Failed:
+                        failed++;
+                        break;
+                    default:
+                        result = FoxRunTransportPublishResult.Failed(
+                            "Provider returned an invalid route result state.");
+                        failed++;
+                        break;
+                }
+                targetResults[matched - 1] =
+                    new FoxRunGeneratedTransportTargetResult(
+                        session.Id,
+                        result);
+            }
+
+            return new FoxRunGeneratedTransportFanoutResult(
+                targetResults,
+                matched,
+                accepted,
+                rejected,
+                unavailable,
+                failed);
+        }
+
+        private static int CountSelected(
+            IReadOnlyList<IFoxRunTransportSession> sessions,
+            IReadOnlyList<string> explicitTransportIds,
+            IReadOnlyList<FoxRunTransportId> inheritedTransportIds)
+        {
+            if (sessions == null)
+                return 0;
+
+            var count = 0;
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                var session = sessions[index];
+                if (session is IFoxRunGeneratedTransportSession
+                    && Selects(
+                        session.Id,
+                        explicitTransportIds,
+                        inheritedTransportIds))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private static bool Selects(
+            FoxRunTransportId id,
+            IReadOnlyList<string> explicitTransportIds,
+            IReadOnlyList<FoxRunTransportId> inheritedTransportIds)
+        {
+            if (explicitTransportIds != null)
+            {
+                for (var index = 0;
+                     index < explicitTransportIds.Count;
+                     index++)
+                {
+                    if (string.Equals(
+                            explicitTransportIds[index],
+                            id.Value,
+                            StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            if (inheritedTransportIds == null)
+                return false;
+            for (var index = 0;
+                 index < inheritedTransportIds.Count;
+                 index++)
+            {
+                if (inheritedTransportIds[index] == id)
+                    return true;
+            }
+            return false;
+        }
+    }
+
     public readonly struct FoxRunTransportSchemaRequest
     {
         public FoxRunTransportSchemaRequest(

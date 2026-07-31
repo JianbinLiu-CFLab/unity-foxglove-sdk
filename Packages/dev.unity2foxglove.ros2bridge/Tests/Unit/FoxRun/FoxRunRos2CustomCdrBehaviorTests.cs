@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
+using Unity2Foxglove.Ros2Bridge;
 using Unity2Foxglove.Ros2Bridge.Editor;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Xunit;
@@ -25,6 +26,35 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         private const string Topic = "/phase184/custom-cdr";
         private static readonly Lazy<GeneratedContract> Contract =
             new Lazy<GeneratedContract>(CompileGeneratedContract);
+
+        [Fact]
+        public void BridgeContributionExposesOneTypedProviderPublishRoute()
+        {
+            var source = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase181",
+                    "GeneratedCdrProbe",
+                    new[] { CreateCustomMember() }));
+
+            Assert.Contains(
+                "IFoxRunBridgeGeneratedPublishSource",
+                source);
+            Assert.Contains(
+                "FoxRunBridge_TryBuildPublish(int topicIndex, ulong nowNs",
+                source);
+            Assert.Contains(
+                "new global::Unity.FoxgloveSDK.Components.FoxRunTransportPublishRoute(",
+                source);
+            Assert.Contains(
+                "\"cdr\"",
+                source);
+            Assert.Contains(
+                "\"ros2msg\"",
+                source);
+            Assert.DoesNotContain(
+                "System.Reflection",
+                source);
+        }
 
         [Fact]
         public void GeneratedBuilderMatchesIndependentPhase181StyleOracleExactly()
@@ -60,6 +90,44 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(string.Empty, actual.Reason);
             Assert.Equal(expected.Bytes, actual.Payload);
             Assert.Equal(new byte[] { 0x00, 0x01, 0x00, 0x00 }, actual.Payload.Take(4).ToArray());
+        }
+
+        [Fact]
+        public void GeneratedProviderRouteCarriesExactCdrIdentityAndCapturedMetadata()
+        {
+            const string origin = "phase186-provider-route";
+            const ulong sequence = 186UL;
+            const ulong nowNs = 1_860_000_000UL;
+            var values = new FixtureValues
+            {
+                Count = 42,
+                Message = "bridge"
+            };
+
+            var result = Contract.Value.BuildRoute(
+                values,
+                origin,
+                sequence,
+                nowNs);
+            var oracle = BuildOracle(
+                values,
+                origin,
+                sequence,
+                nowNs);
+
+            Assert.True(result.Success, result.Reason);
+            Assert.Equal(Topic, result.Route.Topic);
+            Assert.Equal(nowNs, result.Route.LogTimeNs);
+            Assert.Equal(sequence, result.Route.Sequence);
+            Assert.Equal("cdr", result.Route.MessageEncoding);
+            Assert.Equal("ros2msg", result.Route.SchemaEncoding);
+            Assert.StartsWith(
+                "unity2foxglove_foxrun_interfaces_v1/msg/",
+                result.Route.LogicalSchemaName);
+            Assert.EndsWith(
+                "Envelope",
+                result.Route.LogicalSchemaName);
+            Assert.Equal(oracle.Bytes, result.Route.Payload.ToArray());
         }
 
         [Fact]
@@ -538,6 +606,54 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 ulong sequence,
                 ulong nowNs)
             {
+                var fixture = CreateFixture(
+                    values,
+                    origin,
+                    sequence);
+                var state = fixture.State;
+                var probe = fixture.Probe;
+                var arguments = new object[] { nowNs, null, null };
+                var success = (bool)_buildMethod.Invoke(probe, arguments);
+                var optionalTextReadCount = (int)_stateType
+                    .GetField("OptionalTextReadCount", BindingFlags.Instance | BindingFlags.Public)
+                    .GetValue(state);
+                return new BuildResult(
+                    success,
+                    (byte[])arguments[1],
+                    (string)arguments[2],
+                    optionalTextReadCount);
+            }
+
+            public (
+                bool Success,
+                FoxRunTransportPublishRoute Route,
+                string Reason) BuildRoute(
+                    FixtureValues values,
+                    string origin,
+                    ulong sequence,
+                    ulong nowNs)
+            {
+                var fixture = CreateFixture(
+                    values,
+                    origin,
+                    sequence);
+                var source =
+                    Assert.IsAssignableFrom<
+                        IFoxRunBridgeGeneratedPublishSource>(
+                        fixture.Probe);
+                var success = source.FoxRunBridge_TryBuildPublish(
+                    topicIndex: 0,
+                    nowNs,
+                    out var route,
+                    out var reason);
+                return (success, route, reason);
+            }
+
+            private (object State, object Probe) CreateFixture(
+                FixtureValues values,
+                string origin,
+                ulong sequence)
+            {
                 var state = Activator.CreateInstance(_stateType);
                 SetField(state, "Bytes", values.Bytes);
                 SetField(state, "Count", values.Count);
@@ -562,16 +678,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 var probe = Activator.CreateInstance(
                     _probeType,
                     new[] { origin, state, (object)sequence });
-                var arguments = new object[] { nowNs, null, null };
-                var success = (bool)_buildMethod.Invoke(probe, arguments);
-                var optionalTextReadCount = (int)_stateType
-                    .GetField("OptionalTextReadCount", BindingFlags.Instance | BindingFlags.Public)
-                    .GetValue(state);
-                return new BuildResult(
-                    success,
-                    (byte[])arguments[1],
-                    (string)arguments[2],
-                    optionalTextReadCount);
+                return (state, probe);
             }
 
             private static void SetField(object target, string name, object value)

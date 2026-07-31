@@ -535,6 +535,38 @@ namespace Unity.FoxgloveSDK.Components
                         published = true;
                     }
 
+                    if (_manager != null
+                        && source
+                            is IFoxRunGeneratedTransportSource
+                                generatedSource)
+                    {
+                        var providerResult =
+                            _manager.PublishGeneratedTransports(
+                                generatedSource,
+                                topicIndex,
+                                info.Topic,
+                                info.PublishTransportIds,
+                                nowNs);
+                        if (providerResult.AnyAccepted)
+                            published = true;
+                        if (providerResult.Rejected > 0
+                            || providerResult.Unavailable > 0
+                            || providerResult.Failed > 0)
+                        {
+                            WarnOnce(
+                                source,
+                                topicIndex,
+                                new InvalidOperationException(
+                                    "Generated Provider fanout failed: "
+                                    + providerResult.Rejected
+                                    + " rejected, "
+                                    + providerResult.Unavailable
+                                    + " unavailable, "
+                                    + providerResult.Failed
+                                    + " failed."));
+                        }
+                    }
+
                     if (source
                         is IFoxgloveTopicBusSource busSource)
                     {

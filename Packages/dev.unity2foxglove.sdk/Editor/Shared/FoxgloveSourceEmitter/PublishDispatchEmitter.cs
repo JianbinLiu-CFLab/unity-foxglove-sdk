@@ -354,7 +354,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
-        private static bool NeedsCaptureSequence(
+        internal static bool NeedsCaptureSequence(
             FoxgloveSourceEmitter.TopicMember member)
             => member?.TypeShape?.Kind == FoxRunTypeShapeKind.Object
                && member.TypeShape.CanConstruct;
@@ -507,27 +507,22 @@ namespace Unity.FoxgloveSDK.Editor
         {
             IReadOnlyDictionary<string, FoxgloveSourceEmitter.TopicMember>
                 nativeBusMembers = null;
-            if (nativeBusMembers != null && nativeBusMembers.Count > 0)
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    [Preserve]");
+            sb.AppendLine($"{pad}    bool IFoxgloveTopicBusDemandSource.FoxgloveLog_HasBusSubscribers(int topicIndex, FoxTopicBus bus)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        if (bus == null)");
+            sb.AppendLine($"{pad}            return false;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
             {
-                sb.AppendLine();
-                sb.AppendLine($"{pad}    [Preserve]");
-                sb.AppendLine($"{pad}    bool IFoxgloveTopicBusDemandSource.FoxgloveLog_HasBusSubscribers(int topicIndex, FoxTopicBus bus)");
-                sb.AppendLine($"{pad}    {{");
-                sb.AppendLine($"{pad}        if (bus == null)");
-                sb.AppendLine($"{pad}            return false;");
-                sb.AppendLine($"{pad}        switch (topicIndex)");
-                sb.AppendLine($"{pad}        {{");
-                for (int i = 0; i < topics.Count; i++)
-                {
-                    if (!nativeBusMembers.ContainsKey(topics[i]))
-                        continue;
-                    var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
-                    sb.AppendLine($"{pad}            case {i}: return bus.HasSubscribers(\"{topic}\");");
-                }
-                sb.AppendLine($"{pad}            default: return false;");
-                sb.AppendLine($"{pad}        }}");
-                sb.AppendLine($"{pad}    }}");
+                var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                sb.AppendLine($"{pad}            case {i}: return bus.HasSubscribers(\"{topic}\");");
             }
+            sb.AppendLine($"{pad}            default: return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
 
             sb.AppendLine();
             sb.AppendLine($"{pad}    [Preserve]");
