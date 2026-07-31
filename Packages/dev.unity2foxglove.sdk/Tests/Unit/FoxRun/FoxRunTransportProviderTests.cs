@@ -314,6 +314,103 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void ExclusiveRetirementRemainsOccupiedUntilCleanupCompletes()
+        {
+            var owner = FoxRunTransportRetirementOwner.CreateForTests(capacity: 2);
+            var providerId = new FoxRunTransportId("unity2foxglove.exclusive");
+            Assert.True(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 11,
+                workerCount: 1,
+                out var reservation));
+            Assert.False(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 12,
+                workerCount: 1,
+                out _));
+
+            var lease = new BlockingDetachedLease();
+            Assert.True(reservation.TryConvertToRetired(
+                workerIndex: 0,
+                lease,
+                workerIdentity: "worker-0",
+                retainedBytes: 64,
+                retainedResources: 2));
+
+            Exception completionFailure = null;
+            var completion = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    Assert.True(reservation.TryCompleteRetired(workerIndex: 0));
+                }
+                catch (Exception ex)
+                {
+                    completionFailure = ex;
+                }
+            });
+            completion.Start();
+
+            Assert.True(lease.DisposeEntered.Wait(TimeSpan.FromSeconds(2)));
+            Assert.False(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 12,
+                workerCount: 1,
+                out _));
+            Assert.Equal(1, owner.OccupiedCount);
+            Assert.Equal(1, owner.RetiredCount);
+
+            lease.AllowDispose.Set();
+            Assert.True(completion.Join(TimeSpan.FromSeconds(2)));
+            Assert.Null(completionFailure);
+            Assert.Equal(0, owner.OccupiedCount);
+
+            Assert.True(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 13,
+                workerCount: 1,
+                out var replacement));
+            Assert.True(replacement.TryReturn(workerIndex: 0));
+        }
+
+        [Fact]
+        public void ExclusiveRetirementCleanupFailureIsObservableAndFinallyReleasesSlot()
+        {
+            var owner = FoxRunTransportRetirementOwner.CreateForTests(capacity: 1);
+            var providerId = new FoxRunTransportId("unity2foxglove.throwing-exclusive");
+            Assert.True(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 21,
+                workerCount: 1,
+                out var reservation));
+            Assert.True(reservation.TryConvertToRetired(
+                workerIndex: 0,
+                new ThrowingDetachedLease(),
+                workerIdentity: "worker-0",
+                retainedBytes: 32,
+                retainedResources: 1));
+
+            var failure = Assert.Throws<InvalidOperationException>(
+                () => reservation.TryCompleteRetired(workerIndex: 0));
+
+            Assert.Equal("test cleanup failure", failure.Message);
+            Assert.Equal(0, owner.OccupiedCount);
+            Assert.Equal(0, owner.RetiredCount);
+            Assert.True(owner.TryReserveExclusive(
+                providerId,
+                FoxRunTransportDirection.Publish,
+                generation: 22,
+                workerCount: 1,
+                out var replacement));
+            Assert.True(replacement.TryReturn(workerIndex: 0));
+        }
+
+        [Fact]
         public void AttributeUsesDirectionSpecificProviderIds()
         {
             var publishProperty = typeof(FoxRunAttribute).GetProperty("PublishTransportIds");
@@ -820,6 +917,27 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Disposed = true;
             }
+        }
+
+        private sealed class BlockingDetachedLease : IFoxRunDetachedRetirementLease
+        {
+            internal System.Threading.ManualResetEventSlim DisposeEntered { get; } =
+                new System.Threading.ManualResetEventSlim(false);
+
+            internal System.Threading.ManualResetEventSlim AllowDispose { get; } =
+                new System.Threading.ManualResetEventSlim(false);
+
+            public void Dispose()
+            {
+                DisposeEntered.Set();
+                Assert.True(AllowDispose.Wait(TimeSpan.FromSeconds(2)));
+            }
+        }
+
+        private sealed class ThrowingDetachedLease : IFoxRunDetachedRetirementLease
+        {
+            public void Dispose()
+                => throw new InvalidOperationException("test cleanup failure");
         }
     }
 }

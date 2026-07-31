@@ -122,7 +122,15 @@ namespace Unity2Foxglove.Ros2Bridge
                     Clamp(_port, 1, 65535),
                     Math.Max(1, _queueCapacity),
                     Math.Max(1, _reconnectIntervalMs),
-                    Math.Max(1, _sendTimeoutMs));
+                    Math.Max(1, _sendTimeoutMs),
+                    sinkFactory: null,
+                    retirementOwner: FoxRunTransportRetirementOwner.Shared,
+                    providerId: Id,
+                    direction: FoxRunTransportDirection.Publish,
+                    generation: generation,
+                    joinTimeoutMs: Math.Max(
+                        1000,
+                        Math.Max(1, _sendTimeoutMs) + 250));
                 runtime.Start(enabled: true, autoConnect: _autoConnect);
                 var captured = new Session(
                     this,

@@ -13,8 +13,12 @@ using Components = Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
-    /// <summary>Manager-owned background sender with bounded queueing and reconnect lifecycle for ROS2 Bridge frames.</summary>
-    public sealed class Ros2BridgeRuntime : IRos2BridgeSink
+    /// <summary>
+    /// Detached worker-reachable resource group. The public runtime shell may
+    /// release this object after an in-place retirement transfer.
+    /// </summary>
+    internal sealed class Ros2BridgeWorkerLease :
+        Components.IFoxRunDetachedRetirementLease
     {
         internal const int MaxRuntimeDiagnosticChars = 512;
         private const string PreparationCapacityReason =
@@ -24,9 +28,11 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly int _queueCapacity;
         private readonly int _reconnectIntervalMs;
         private readonly int _sendTimeoutMs;
-        private readonly Func<IRos2BridgeSink> _sinkFactory;
+        private readonly IRos2BridgeSink _ownedSink;
+        private readonly Components.FoxRunTransportRetirementReservation _retirement;
+        private readonly string _workerIdentity;
         private readonly object _gate = new object();
-        private readonly object _lifecycleGate = new object();
+        private readonly object _retirementGate = new object();
         private readonly Queue<QueuedPublish> _queue;
         private readonly Queue<PublisherPreparationKey> _preparationQueue =
             new Queue<PublisherPreparationKey>();
@@ -50,15 +56,25 @@ namespace Unity2Foxglove.Ros2Bridge
         private IRos2BridgeSink _sink;
         private long _connectionGeneration;
         private long _nextConnectAttemptUnixMs;
-        private bool _disposed;
+        private QueuedPublish _inFlightPublish;
+        private bool _hasInFlightPublish;
+        private InFlightPreparation _inFlightPreparation;
+        private bool _hasInFlightPreparation;
+        private bool _workerExited;
+        private bool _retired;
+        private bool _finalized;
+        private int _resourcesDisposed;
 
-        public Ros2BridgeRuntime(
+        internal Ros2BridgeWorkerLease(
             string host,
             int port,
             int queueCapacity,
             int reconnectIntervalMs,
             int sendTimeoutMs,
-            Func<IRos2BridgeSink> sinkFactory = null)
+            IRos2BridgeSink ownedSink,
+            Components.FoxRunTransportRetirementReservation retirement,
+            string workerIdentity,
+            Ros2BridgeStatsSnapshot initialStats)
         {
             Ros2BridgeTcpClient.ValidateLoopbackHost(host);
             if (port <= 0 || port > 65535)
@@ -75,8 +91,18 @@ namespace Unity2Foxglove.Ros2Bridge
             _queueCapacity = queueCapacity;
             _reconnectIntervalMs = reconnectIntervalMs;
             _sendTimeoutMs = sendTimeoutMs;
-            _sinkFactory = sinkFactory ?? (() => new Ros2BridgeTcpClient());
+            _ownedSink = ownedSink ?? throw new ArgumentNullException(nameof(ownedSink));
+            _retirement = retirement ?? throw new ArgumentNullException(nameof(retirement));
+            _workerIdentity = string.IsNullOrWhiteSpace(workerIdentity)
+                ? throw new ArgumentException("Worker identity cannot be empty.", nameof(workerIdentity))
+                : workerIdentity;
             _queue = new Queue<QueuedPublish>(queueCapacity);
+            _sentFrames = initialStats.SentFrames;
+            _droppedFrames = initialStats.DroppedFrames;
+            _failedFrames = initialStats.FailedFrames;
+            _lastError = initialStats.LastError;
+            _lastConnectedUnixMs = initialStats.LastConnectedUnixMs;
+            _lastDisconnectedUnixMs = initialStats.LastDisconnectedUnixMs;
         }
 
         public bool IsConnected
@@ -153,25 +179,20 @@ namespace Unity2Foxglove.Ros2Bridge
             return readiness;
         }
 
-        public void Start(bool enabled, bool autoConnect)
+        internal void Start()
         {
             lock (_gate)
             {
-                _enabled = enabled;
-                _autoConnect = autoConnect;
+                _enabled = true;
+                _autoConnect = true;
                 _stopRequested = false;
-                if (_worker != null && !_worker.IsAlive)
-                    _worker = null;
-                if (!_enabled || !_autoConnect || _worker != null)
-                    return;
-
                 var generation = ++_workerGeneration;
-                _worker = new Thread(() => WorkerLoop(generation))
+                _worker = new Thread(WorkerEntry)
                 {
                     IsBackground = true,
-                    Name = "Unity2Foxglove ROS2 Bridge"
+                    Name = _workerIdentity
                 };
-                _worker.Start();
+                _worker.Start(new WorkerStart(this, generation));
             }
 
             _signal.Set();
@@ -288,20 +309,9 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        public void Stop()
-        {
-            lock (_lifecycleGate)
-            {
-                if (_disposed)
-                    return;
-                StopCore();
-            }
-        }
-
-        private void StopCore()
+        internal bool StopAndJoin(int joinTimeoutMs)
         {
             Thread worker;
-            IRos2BridgeSink sinkToClose;
             lock (_gate)
             {
                 _enabled = false;
@@ -315,7 +325,6 @@ namespace Unity2Foxglove.Ros2Bridge
                 _preparationQueue.Clear();
                 _preparations.Clear();
                 worker = _worker;
-                sinkToClose = _sink;
                 _sink = null;
                 _connected = false;
                 _connecting = false;
@@ -325,30 +334,35 @@ namespace Unity2Foxglove.Ros2Bridge
             ExceptionDispatchInfo fatal = null;
             try
             {
-                CloseSink(sinkToClose);
+                DisconnectSink(_ownedSink);
             }
             catch (Exception exception)
             {
                 fatal = ExceptionDispatchInfo.Capture(exception);
             }
             _signal.Set();
-            var joinTimeoutMs = Math.Max(1000, _sendTimeoutMs + 250);
-            if (worker != null && worker.IsAlive && !worker.Join(joinTimeoutMs))
+            var joined = worker == null
+                         || !worker.IsAlive
+                         || worker.Join(joinTimeoutMs);
+            if (!joined)
             {
                 lock (_gate)
                 {
                     _lastError = "ROS2 Bridge worker did not stop within timeout.";
-                    if (_worker == worker)
-                        _worker = null;
                 }
             }
 
-            lock (_gate)
+            var retired = false;
+            if (joined)
             {
-                if (_worker == worker && (worker == null || !worker.IsAlive))
-                    _worker = null;
+                FinalizeActive();
+            }
+            else
+            {
+                retired = TryRetireAfterTimeout();
             }
             fatal?.Throw();
+            return retired;
         }
 
         /// <summary>
@@ -356,56 +370,21 @@ namespace Unity2Foxglove.Ros2Bridge
         /// constructor timeout for worker connect attempts; <paramref name="timeoutMs"/> is
         /// validated for IRos2BridgeSink compatibility.
         /// </summary>
-        public void Connect(string host, int port, int timeoutMs)
-        {
-            var normalizedHost = NormalizeLoopbackHost(host);
-            if (!string.Equals(normalizedHost, _host, StringComparison.OrdinalIgnoreCase) || port != _port)
-            {
-                throw new InvalidOperationException(
-                    "ROS2 Bridge runtime Connect must use the configured host and port; create a new runtime for a different endpoint.");
-            }
-            if (timeoutMs <= 0)
-                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge connect timeout must be positive.");
-            // The worker uses the constructor timeout; the interface timeout is validated for sink compatibility.
-            Start(enabled: true, autoConnect: true);
-        }
-
-        /// <summary>
-        /// Enqueues <paramref name="frame"/> for asynchronous worker delivery. The runtime
-        /// uses its constructor timeout for the actual transport send; <paramref name="timeoutMs"/>
-        /// is validated for IRos2BridgeSink compatibility.
-        /// </summary>
-        public void Send(Ros2BridgeFrame frame, int timeoutMs)
-        {
-            if (timeoutMs <= 0)
-                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge send timeout must be positive.");
-            // Transport send timeout is owned by the background worker so this enqueue stays non-blocking.
-            if (!TryEnqueue(frame, out var reason))
-                throw new InvalidOperationException(reason);
-        }
-
-        /// <summary>Stops the background worker and clears queued frames without disposing this reusable runtime.</summary>
-        public void Disconnect()
-        {
-            // Dispose owns the wait handle; Disconnect is a non-terminal sink stop so Connect can start the worker again.
-            Stop();
-        }
-
         public void Dispose()
         {
-            lock (_lifecycleGate)
+            DisposeResources();
+        }
+
+        private static void WorkerEntry(object state)
+        {
+            var start = (WorkerStart)state;
+            try
             {
-                if (_disposed)
-                    return;
-                try
-                {
-                    StopCore();
-                }
-                finally
-                {
-                    _disposed = true;
-                    _signal.Dispose();
-                }
+                start.Lease.WorkerLoop(start.Generation);
+            }
+            finally
+            {
+                start.Lease.OnWorkerExited();
             }
         }
 
@@ -433,34 +412,41 @@ namespace Unity2Foxglove.Ros2Bridge
                         continue;
                     }
 
-                    IRos2BridgeSink sink;
-                    lock (_gate)
-                    {
-                        if (_stopRequested || !_enabled || generation != _workerGeneration)
-                            return;
-                        sink = _sink;
-                    }
-
-                    if (sink == null)
-                    {
-                        MarkFailure("ROS2 Bridge sink is not connected.", disconnect: true, countFrameFailure: false);
-                        continue;
-                    }
-
                     try
                     {
-                        sink.Send(queued.Frame, _sendTimeoutMs);
+                        IRos2BridgeSink sink;
                         lock (_gate)
                         {
-                            if (generation != _workerGeneration)
+                            if (_stopRequested || !_enabled || generation != _workerGeneration)
                                 return;
-                            _sentFrames++;
-                            _lastError = string.Empty;
+                            sink = _sink;
+                        }
+
+                        if (sink == null)
+                        {
+                            MarkFailure("ROS2 Bridge sink is not connected.", disconnect: true, countFrameFailure: false);
+                            continue;
+                        }
+
+                        try
+                        {
+                            sink.Send(queued.Frame, _sendTimeoutMs);
+                            lock (_gate)
+                            {
+                                if (generation != _workerGeneration)
+                                    return;
+                                _sentFrames++;
+                                _lastError = string.Empty;
+                            }
+                        }
+                        catch (Exception ex) when (IsRecoverableRuntimeException(ex))
+                        {
+                            MarkFailure(ex.Message, disconnect: true);
                         }
                     }
-                    catch (Exception ex) when (IsRecoverableRuntimeException(ex))
+                    finally
                     {
-                        MarkFailure(ex.Message, disconnect: true);
+                        ClearInFlightPublish(queued);
                     }
                 }
                 catch (ObjectDisposedException) when (ShouldStop(generation))
@@ -489,13 +475,9 @@ namespace Unity2Foxglove.Ros2Bridge
                 _connecting = true;
             }
 
-            IRos2BridgeSink sink = null;
             try
             {
-                sink = _sinkFactory();
-                sink.Connect(_host, _port, _sendTimeoutMs);
-                IRos2BridgeSink previousSink = null;
-                var canInstall = false;
+                _ownedSink.Connect(_host, _port, _sendTimeoutMs);
                 lock (_gate)
                 {
                     if (_stopRequested || !_enabled || generation != _workerGeneration)
@@ -503,60 +485,18 @@ namespace Unity2Foxglove.Ros2Bridge
                         _connected = false;
                         _connecting = false;
                         _lastDisconnectedUnixMs = NowUnixMs();
+                        return false;
                     }
-                    else
-                    {
-                        previousSink = _sink;
-                        _sink = null;
-                        _connected = false;
-                        canInstall = true;
-                    }
+                    _sink = _ownedSink;
+                    _connected = true;
+                    _connecting = false;
+                    _lastConnectedUnixMs = NowUnixMs();
+                    _lastError = string.Empty;
+                    _connectionGeneration++;
+                    _nextConnectAttemptUnixMs = 0;
+                    QueueAllPreparationsLocked();
                 }
-
-                if (!canInstall)
-                {
-                    var rejectedSink = sink;
-                    sink = null;
-                    CloseSink(rejectedSink);
-                    return false;
-                }
-
-                // Retire the old connection before publishing the replacement
-                // into shared state. A fatal close therefore cannot leave a
-                // new sink reported as connected while the worker exits.
-                var retiredSink = previousSink;
-                previousSink = null;
-                CloseSink(retiredSink);
-
-                lock (_gate)
-                {
-                    if (_stopRequested || !_enabled || generation != _workerGeneration)
-                    {
-                        _connected = false;
-                        _connecting = false;
-                        _lastDisconnectedUnixMs = NowUnixMs();
-                    }
-                    else
-                    {
-                        _sink = sink;
-                        sink = null;
-                        _connected = true;
-                        _connecting = false;
-                        _lastConnectedUnixMs = NowUnixMs();
-                        _lastError = string.Empty;
-                        _connectionGeneration++;
-                        _nextConnectAttemptUnixMs = 0;
-                        QueueAllPreparationsLocked();
-                    }
-                }
-
-                if (sink == null)
-                    return true;
-
-                var supersededSink = sink;
-                sink = null;
-                CloseSink(supersededSink);
-                return false;
+                return true;
             }
             catch (Exception ex)
             {
@@ -565,16 +505,13 @@ namespace Unity2Foxglove.Ros2Bridge
                     : ExceptionDispatchInfo.Capture(ex);
                 try
                 {
-                    var failedCandidate = sink;
-                    sink = null;
-                    CloseSink(failedCandidate);
+                    DisconnectSink(_ownedSink);
                 }
                 catch (Exception cleanupException)
                 {
                     fatal ??= ExceptionDispatchInfo.Capture(cleanupException);
                 }
 
-                IRos2BridgeSink installedSink;
                 lock (_gate)
                 {
                     _connected = false;
@@ -584,16 +521,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         NowUnixMs() + _reconnectIntervalMs;
                     _lastError = BoundRuntimeDiagnostic(ex.Message);
                     InvalidatePreparationsLocked();
-                    installedSink = _sink;
                     _sink = null;
-                }
-                try
-                {
-                    CloseSink(installedSink);
-                }
-                catch (Exception cleanupException)
-                {
-                    fatal ??= ExceptionDispatchInfo.Capture(cleanupException);
                 }
 
                 fatal?.Throw();
@@ -611,6 +539,7 @@ namespace Unity2Foxglove.Ros2Bridge
                     var candidate = _queue.Dequeue();
                     if (!candidate.RequiresPreparation)
                     {
+                        SetInFlightPublishLocked(candidate);
                         queued = candidate;
                         return true;
                     }
@@ -632,6 +561,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         && entry.ReadyConnectionGeneration == _connectionGeneration
                         && _connectionGeneration >= candidate.EnqueueConnectionGeneration)
                     {
+                        SetInFlightPublishLocked(candidate);
                         queued = candidate;
                         return true;
                     }
@@ -641,6 +571,29 @@ namespace Unity2Foxglove.Ros2Bridge
 
                 queued = default;
                 return false;
+            }
+        }
+
+        private void SetInFlightPublishLocked(QueuedPublish publish)
+        {
+            _inFlightPublish = publish;
+            _hasInFlightPublish = true;
+        }
+
+        private void ClearInFlightPublish(QueuedPublish publish)
+        {
+            lock (_gate)
+            {
+                if (!_hasInFlightPublish
+                    || !ReferenceEquals(
+                        _inFlightPublish.Frame,
+                        publish.Frame))
+                {
+                    return;
+                }
+
+                _inFlightPublish = default;
+                _hasInFlightPublish = false;
             }
         }
 
@@ -702,13 +655,25 @@ namespace Unity2Foxglove.Ros2Bridge
                 return true;
             }
 
+            byte[] request = null;
             try
             {
-                var request = Ros2BridgePublisherPreparationCodec.WriteRequest(
+                request = Ros2BridgePublisherPreparationCodec.WriteRequest(
                     requestId,
                     key.Topic,
                     key.SchemaName,
                     key.Qos);
+                if (!TrySetInFlightPreparation(
+                        workerGeneration,
+                        connectionGeneration,
+                        sink,
+                        key,
+                        entry,
+                        requestId,
+                        request))
+                {
+                    return true;
+                }
                 var responseFrame = transport.ExchangePublisherPreparation(
                     request,
                     _sendTimeoutMs);
@@ -770,14 +735,277 @@ namespace Unity2Foxglove.Ros2Bridge
                     disconnect: true,
                     countFrameFailure: false);
             }
+            finally
+            {
+                ClearInFlightPreparation(entry, requestId, request);
+            }
 
             return true;
+        }
+
+        private bool TrySetInFlightPreparation(
+            long workerGeneration,
+            long connectionGeneration,
+            IRos2BridgeSink sink,
+            PublisherPreparationKey key,
+            PublisherPreparationEntry entry,
+            string requestId,
+            byte[] request)
+        {
+            lock (_gate)
+            {
+                if (_stopRequested
+                    || !_enabled
+                    || workerGeneration != _workerGeneration
+                    || connectionGeneration != _connectionGeneration
+                    || !ReferenceEquals(sink, _sink)
+                    || !_preparations.TryGetValue(key, out var current)
+                    || !ReferenceEquals(current, entry)
+                    || !string.Equals(
+                        current.RequestId,
+                        requestId,
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                _inFlightPreparation = new InFlightPreparation(
+                    key,
+                    entry,
+                    requestId,
+                    request);
+                _hasInFlightPreparation = true;
+                return true;
+            }
+        }
+
+        private void ClearInFlightPreparation(
+            PublisherPreparationEntry entry,
+            string requestId,
+            byte[] request)
+        {
+            lock (_gate)
+            {
+                if (!_hasInFlightPreparation
+                    || !ReferenceEquals(
+                        _inFlightPreparation.Entry,
+                        entry)
+                    || !ReferenceEquals(
+                        _inFlightPreparation.Request,
+                        request)
+                    || !string.Equals(
+                        _inFlightPreparation.RequestId,
+                        requestId,
+                        StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _inFlightPreparation = default;
+                _hasInFlightPreparation = false;
+            }
         }
 
         private bool ShouldStop(long generation)
         {
             lock (_gate)
                 return _stopRequested || generation != _workerGeneration;
+        }
+
+        private bool TryRetireAfterTimeout()
+        {
+            var finalizeDirect = false;
+            lock (_retirementGate)
+            {
+                if (_finalized || _retired)
+                    return _retired;
+                if (_workerExited)
+                {
+                    _finalized = true;
+                    finalizeDirect = true;
+                }
+                else
+                {
+                    CaptureRetainedOwnership(
+                        out var retainedBytes,
+                        out var retainedResources);
+                    if (!_retirement.TryConvertToRetired(
+                            workerIndex: 0,
+                            this,
+                            _workerIdentity,
+                            retainedBytes,
+                            retainedResources))
+                    {
+                        throw new InvalidOperationException(
+                            "ROS2 Bridge failed to convert its pre-reserved retirement slot.");
+                    }
+                    _retired = true;
+                    return true;
+                }
+            }
+
+            if (finalizeDirect)
+            {
+                try
+                {
+                    DisposeResources();
+                }
+                finally
+                {
+                    _retirement.TryReturn(0);
+                }
+            }
+            return false;
+        }
+
+        private void CaptureRetainedOwnership(
+            out long retainedBytes,
+            out int retainedResources)
+        {
+            lock (_gate)
+            {
+                retainedBytes = 0;
+                retainedResources = 0;
+                CountRetainedResource(_ownedSink, ref retainedResources);
+                CountRetainedResource(_worker, ref retainedResources);
+                CountRetainedResource(_signal, ref retainedResources);
+                CountRetainedResource(_queue, ref retainedResources);
+                CountRetainedResource(
+                    _preparationQueue,
+                    ref retainedResources);
+                CountRetainedResource(
+                    _preparations,
+                    ref retainedResources);
+
+                foreach (var queued in _queue)
+                {
+                    retainedResources = checked(retainedResources + 1);
+                    retainedBytes = checked(
+                        retainedBytes + queued.Frame.PayloadLength);
+                }
+
+                if (_hasInFlightPublish
+                    && _inFlightPublish.Frame != null)
+                {
+                    retainedResources = checked(retainedResources + 1);
+                    retainedBytes = checked(
+                        retainedBytes
+                        + _inFlightPublish.Frame.PayloadLength);
+                }
+
+                if (_hasInFlightPreparation)
+                {
+                    retainedResources = checked(retainedResources + 1);
+                    if (_inFlightPreparation.Request != null)
+                    {
+                        retainedResources = checked(retainedResources + 1);
+                        retainedBytes = checked(
+                            retainedBytes
+                            + _inFlightPreparation.Request.Length);
+                    }
+                    CountRetainedResource(
+                        _inFlightPreparation.Entry,
+                        ref retainedResources);
+                    CountRetainedResource(
+                        _inFlightPreparation.RequestId,
+                        ref retainedResources);
+                    CountRetainedResource(
+                        _inFlightPreparation.Key.Topic,
+                        ref retainedResources);
+                    CountRetainedResource(
+                        _inFlightPreparation.Key.SchemaName,
+                        ref retainedResources);
+                }
+            }
+        }
+
+        private static void CountRetainedResource(
+            object resource,
+            ref int retainedResources)
+        {
+            if (resource != null)
+                retainedResources = checked(retainedResources + 1);
+        }
+
+        private void FinalizeActive()
+        {
+            lock (_retirementGate)
+            {
+                if (_finalized || _retired)
+                    return;
+                _finalized = true;
+            }
+
+            try
+            {
+                DisposeResources();
+            }
+            finally
+            {
+                _retirement.TryReturn(0);
+            }
+        }
+
+        private void OnWorkerExited()
+        {
+            var completeRetired = false;
+            lock (_retirementGate)
+            {
+                _workerExited = true;
+                if (_retired && !_finalized)
+                {
+                    _finalized = true;
+                    completeRetired = true;
+                }
+            }
+
+            if (completeRetired)
+                _retirement.TryCompleteRetired(0);
+        }
+
+        private void DisposeResources()
+        {
+            if (Interlocked.Exchange(ref _resourcesDisposed, 1) != 0)
+                return;
+
+            ExceptionDispatchInfo fatal = null;
+            lock (_gate)
+            {
+                _queue.Clear();
+                _preparationQueue.Clear();
+                _preparations.Clear();
+                _inFlightPublish = default;
+                _hasInFlightPublish = false;
+                _inFlightPreparation = default;
+                _hasInFlightPreparation = false;
+                _sink = null;
+                _worker = null;
+            }
+            try
+            {
+                _ownedSink.Dispose();
+            }
+            catch (Exception exception) when (IsRecoverableRuntimeException(exception))
+            {
+                // A recoverable final cleanup failure must not leak the token.
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
+            try
+            {
+                _signal.Dispose();
+            }
+            catch (Exception exception) when (IsRecoverableRuntimeException(exception))
+            {
+                // The resource group is already terminal.
+            }
+            catch (Exception exception)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(exception);
+            }
+            fatal?.Throw();
         }
 
         private void MarkFailure(string message, bool disconnect, bool countFrameFailure = true)
@@ -803,15 +1031,14 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
             }
 
-            CloseSink(sink);
+            DisconnectSink(sink);
         }
 
-        internal static void CloseSink(IRos2BridgeSink sink)
+        private static void DisconnectSink(IRos2BridgeSink sink)
         {
             if (sink == null)
                 return;
 
-            ExceptionDispatchInfo fatal = null;
             try
             {
                 sink.Disconnect();
@@ -823,23 +1050,8 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             catch (Exception exception)
             {
-                fatal = ExceptionDispatchInfo.Capture(exception);
+                ExceptionDispatchInfo.Capture(exception).Throw();
             }
-            try
-            {
-                sink.Dispose();
-            }
-            catch (Exception exception) when (
-                IsRecoverableRuntimeException(exception))
-            {
-                // Shutdown is best-effort; state has already been updated.
-            }
-            catch (Exception exception)
-            {
-                fatal ??= ExceptionDispatchInfo.Capture(exception);
-            }
-
-            fatal?.Throw();
         }
 
         private static bool IsRecoverableRuntimeException(Exception exception)
@@ -893,6 +1105,20 @@ namespace Unity2Foxglove.Ros2Bridge
             _preparationQueue.Enqueue(key);
         }
 
+        private readonly struct WorkerStart
+        {
+            internal WorkerStart(
+                Ros2BridgeWorkerLease lease,
+                long generation)
+            {
+                Lease = lease;
+                Generation = generation;
+            }
+
+            internal Ros2BridgeWorkerLease Lease { get; }
+            internal long Generation { get; }
+        }
+
         private sealed class PublisherPreparationEntry
         {
             internal Ros2BridgePublisherReadiness Readiness =
@@ -921,6 +1147,26 @@ namespace Unity2Foxglove.Ros2Bridge
             internal PublisherPreparationKey PreparationKey { get; }
             internal bool RequiresPreparation { get; }
             internal long EnqueueConnectionGeneration { get; }
+        }
+
+        private readonly struct InFlightPreparation
+        {
+            internal InFlightPreparation(
+                PublisherPreparationKey key,
+                PublisherPreparationEntry entry,
+                string requestId,
+                byte[] request)
+            {
+                Key = key;
+                Entry = entry;
+                RequestId = requestId;
+                Request = request;
+            }
+
+            internal PublisherPreparationKey Key { get; }
+            internal PublisherPreparationEntry Entry { get; }
+            internal string RequestId { get; }
+            internal byte[] Request { get; }
         }
 
         private readonly struct PublisherPreparationKey :

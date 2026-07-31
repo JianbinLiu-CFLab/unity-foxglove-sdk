@@ -134,14 +134,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeConnectContractAndWorkerGenerationAreExplicit()
         {
             var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var shell = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
 
             Check(source.Contains("_workerGeneration", StringComparison.Ordinal)
-                  && source.Contains("WorkerLoop(generation)", StringComparison.Ordinal)
+                  && source.Contains("start.Lease.WorkerLoop(start.Generation)", StringComparison.Ordinal)
                   && source.Contains("generation != _workerGeneration", StringComparison.Ordinal),
                 "134-16G-1: bridge runtime invalidates stale workers with generation checks");
-            Check(source.Contains("Connect must use the configured host and port", StringComparison.Ordinal)
-                  && source.Contains("NormalizeLoopbackHost(host)", StringComparison.Ordinal)
-                  && source.Contains("timeoutMs <= 0", StringComparison.Ordinal),
+            Check(shell.Contains("Connect must use the configured endpoint", StringComparison.Ordinal)
+                  && shell.Contains("NormalizeLoopbackHost(host)", StringComparison.Ordinal)
+                  && shell.Contains("timeoutMs <= 0", StringComparison.Ordinal),
                 "134-16G-2: Connect validates host, port, and timeout instead of silently ignoring arguments");
         }
 

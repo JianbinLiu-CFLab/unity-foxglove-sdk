@@ -15,6 +15,7 @@ namespace Unity2Foxglove.Ros2Bridge
         IRos2BridgeSink,
         IRos2BridgePublisherPreparationTransport
     {
+        private readonly object _gate = new object();
         private TcpClient _client;
         private int _sendTimeoutMs;
 
@@ -22,12 +23,15 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             get
             {
-                if (_client == null || !_client.Connected)
+                TcpClient client;
+                lock (_gate)
+                    client = _client;
+                if (client == null || !client.Connected)
                     return false;
 
                 try
                 {
-                    var socket = _client.Client;
+                    var socket = client.Client;
                     return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0);
                 }
                 catch (SocketException)
@@ -59,22 +63,29 @@ namespace Unity2Foxglove.Ros2Bridge
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS 2 bridge connect timeout must be positive.");
 
-            Disconnect();
+            DisposeClient();
             var client = new TcpClient();
             try
             {
+                lock (_gate)
+                    _client = client;
                 var task = client.ConnectAsync(host, port);
                 if (!task.Wait(timeoutMs))
                     throw new TimeoutException("Timed out connecting to ROS 2 bridge sidecar.");
 
                 client.NoDelay = true;
                 client.Client.SendTimeout = timeoutMs;
-                _sendTimeoutMs = timeoutMs;
-                _client = client;
+                lock (_gate)
+                    _sendTimeoutMs = timeoutMs;
                 client = null;
             }
             catch
             {
+                lock (_gate)
+                {
+                    if (ReferenceEquals(_client, client))
+                        _client = null;
+                }
                 client?.Dispose();
                 throw;
             }
@@ -84,19 +95,23 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
-            if (_client == null || !_client.Connected)
+            TcpClient client;
+            lock (_gate)
+                client = _client;
+            if (client == null || !client.Connected)
                 throw new InvalidOperationException("ROS 2 bridge TCP client is not connected.");
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS 2 bridge send timeout must be positive.");
 
-            var socket = _client.Client;
+            var socket = client.Client;
             if (_sendTimeoutMs != timeoutMs)
             {
                 socket.SendTimeout = timeoutMs;
-                _sendTimeoutMs = timeoutMs;
+                lock (_gate)
+                    _sendTimeoutMs = timeoutMs;
             }
 
-            var stream = _client.GetStream();
+            var stream = client.GetStream();
             Ros2BridgeFrameWriter.Write(frame, stream);
             stream.Flush();
         }
@@ -105,16 +120,19 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (request == null || request.Length == 0)
                 throw new ArgumentException("Publisher preparation request is empty.", nameof(request));
-            if (_client == null || !_client.Connected)
+            TcpClient client;
+            lock (_gate)
+                client = _client;
+            if (client == null || !client.Connected)
                 throw new InvalidOperationException("ROS 2 bridge TCP client is not connected.");
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
-            var socket = _client.Client;
+            var socket = client.Client;
             socket.SendTimeout = timeoutMs;
             socket.ReceiveTimeout = timeoutMs;
             _sendTimeoutMs = timeoutMs;
-            var stream = _client.GetStream();
+            var stream = client.GetStream();
             stream.Write(request, 0, request.Length);
             stream.Flush();
             return Ros2BridgePublisherPreparationCodec.ReadFrame(stream);
@@ -122,24 +140,42 @@ namespace Unity2Foxglove.Ros2Bridge
 
         public void Disconnect()
         {
-            if (_client == null)
+            TcpClient client;
+            lock (_gate)
+                client = _client;
+            if (client == null)
                 return;
 
             try
             {
-                _client.Close();
+                try
+                {
+                    client.Client.Shutdown(SocketShutdown.Both);
+                }
+                catch (SocketException)
+                {
+                    // A failed or peer-closed socket is already waking I/O.
+                }
+                client.Client.Close();
             }
-            finally
+            catch (ObjectDisposedException)
             {
-                _client.Dispose();
-                _client = null;
-                _sendTimeoutMs = 0;
+                // Repeated wake is idempotent; final wrapper disposal is separate.
             }
         }
 
-        public void Dispose()
+        public void Dispose() => DisposeClient();
+
+        private void DisposeClient()
         {
-            Disconnect();
+            TcpClient client;
+            lock (_gate)
+            {
+                client = _client;
+                _client = null;
+                _sendTimeoutMs = 0;
+            }
+            client?.Dispose();
         }
     }
 }

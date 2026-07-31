@@ -48,21 +48,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRos2BridgeRuntimeHardening()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
-            Check(source.Contains("sinkToClose = _sink")
-                  && source.Contains("_sink = null")
-                  && source.Contains("CloseSink(sinkToClose)")
-                  && source.Contains("Math.Max(1000, _sendTimeoutMs + 250)")
-                  && source.Contains("worker.Join(joinTimeoutMs)"),
-                "100A-1: Stop closes the sink before bounded worker join to unblock blocking sends");
-            Check(source.Contains("_stopRequested || !_enabled") && source.Contains("CloseSink(sink)") && source.Contains("return false"),
-                "100A-2: EnsureConnected closes late-connected sink when stop/disable wins");
+            var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
+            Check(source.Contains("DisconnectSink(_ownedSink)")
+                  && source.Contains("_signal.Set()")
+                  && source.Contains("worker.Join(joinTimeoutMs)")
+                  && source.Contains("TryRetireAfterTimeout()")
+                  && source.Contains("TryConvertToRetired("),
+                "100A-1: Stop wakes I/O before bounded join and transfers the pre-reserved lease on timeout");
+            Check(source.Contains("_stopRequested || !_enabled")
+                  && source.Contains("_ownedSink.Connect(")
+                  && source.Contains("DisposeResources()")
+                  && source.Contains("return false"),
+                "100A-2: late Connect observes stopped admission while final sink disposal stays with the worker lease");
             Check(source.Contains("catch (ObjectDisposedException) when (ShouldStop("),
                 "100A-3: worker loop treats shutdown disposal as clean exit");
             Check(source.Contains("catch (Exception ex)") && source.Contains("MarkFailure(ex.Message, disconnect: true)")
                   && source.Contains("countFrameFailure: false"),
                 "100A-4: worker loop has a top-level failure guard");
-            Check(source.Contains("auto-connect is disabled") && source.Contains("return false"),
-                "100A-5: autoConnect=false sends fail clearly instead of queuing into an idle runtime");
+            Check(shell.Contains("if (!enabled || !autoConnect)")
+                  && shell.Contains("ROS2 Bridge runtime is not ready.")
+                  && shell.Contains("return false"),
+                "100A-5: autoConnect=false creates no worker and sends fail clearly");
         }
 
         private static void VerifyPointCloudDemandCaching()

@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeProtocolCommentTargets()
         {
             CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs",
                 "public sealed class Ros2BridgeRuntime",
                 "105C-1: bridge runtime summary documents queue/reconnect lifecycle",
                 "queue", "reconnect");

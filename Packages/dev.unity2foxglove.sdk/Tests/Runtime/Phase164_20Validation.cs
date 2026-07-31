@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
             var send = PhaseValidationSourceHelpers.SourceMethod(source, "public void Send");
 
-            Check(send.Contains("var stream = _client.GetStream();", StringComparison.Ordinal)
+            Check(send.Contains("var stream = client.GetStream();", StringComparison.Ordinal)
                   && send.Contains("Ros2BridgeFrameWriter.Write(frame, stream);", StringComparison.Ordinal)
                   && send.Contains("stream.Flush();", StringComparison.Ordinal),
                 "164-20B-1: TCP bridge sender writes frames directly to the network stream");

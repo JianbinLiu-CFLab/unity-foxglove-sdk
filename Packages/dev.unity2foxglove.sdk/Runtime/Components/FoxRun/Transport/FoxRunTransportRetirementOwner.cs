@@ -94,7 +94,8 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     var count = 0;
                     for (var i = 0; i < _slots.Length; i++)
-                        if (_slots[i].State == SlotState.Retired)
+                        if (_slots[i].State == SlotState.Retired
+                            || _slots[i].State == SlotState.Completing)
                             count++;
                     return count;
                 }
@@ -107,6 +108,41 @@ namespace Unity.FoxgloveSDK.Components
             ulong generation,
             int workerCount,
             out FoxRunTransportRetirementReservation reservation)
+            => TryReserveCore(
+                providerId,
+                direction,
+                generation,
+                workerCount,
+                exclusive: false,
+                out reservation);
+
+        /// <summary>
+        /// Atomically reserves worker slots and rejects a second reservation
+        /// for the same Provider direction while either reservation is active
+        /// or retired. This is for transports whose detached worker may still
+        /// touch exclusive process or socket state.
+        /// </summary>
+        public bool TryReserveExclusive(
+            FoxRunTransportId providerId,
+            FoxRunTransportDirection direction,
+            ulong generation,
+            int workerCount,
+            out FoxRunTransportRetirementReservation reservation)
+            => TryReserveCore(
+                providerId,
+                direction,
+                generation,
+                workerCount,
+                exclusive: true,
+                out reservation);
+
+        private bool TryReserveCore(
+            FoxRunTransportId providerId,
+            FoxRunTransportDirection direction,
+            ulong generation,
+            int workerCount,
+            bool exclusive,
+            out FoxRunTransportRetirementReservation reservation)
         {
             if (workerCount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(workerCount));
@@ -118,8 +154,18 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var freeCount = 0;
                 for (var i = 0; i < _slots.Length; i++)
+                {
+                    if (_slots[i].State != SlotState.Free
+                        && _slots[i].ProviderId == providerId
+                        && _slots[i].Direction == direction
+                        && (exclusive || _slots[i].Exclusive))
+                    {
+                        reservation = null;
+                        return false;
+                    }
                     if (_slots[i].State == SlotState.Free)
                         freeCount++;
+                }
                 if (freeCount < workerCount)
                 {
                     reservation = null;
@@ -140,7 +186,8 @@ namespace Unity.FoxgloveSDK.Components
                         reservationId,
                         providerId,
                         direction,
-                        generation);
+                        generation,
+                        exclusive);
                     indexes[cursor++] = i;
                 }
 
@@ -160,7 +207,8 @@ namespace Unity.FoxgloveSDK.Components
                 for (var i = 0; i < _slots.Length; i++)
                 {
                     ref var slot = ref _slots[i];
-                    if (slot.State != SlotState.Retired)
+                    if (slot.State != SlotState.Retired
+                        && slot.State != SlotState.Completing)
                         continue;
                     result.Add(new FoxRunTransportRetirementInfo(
                         slot.ProviderId,
@@ -242,11 +290,22 @@ namespace Unity.FoxgloveSDK.Components
                 if (!Owns(slotIndex, reservationId, SlotState.Retired))
                     return false;
                 lease = _slots[slotIndex].Lease;
-                _slots[slotIndex] = default;
+                _slots[slotIndex].State = SlotState.Completing;
             }
 
-            lease.Dispose();
-            return true;
+            try
+            {
+                lease.Dispose();
+                return true;
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (Owns(slotIndex, reservationId, SlotState.Completing))
+                        _slots[slotIndex] = default;
+                }
+            }
         }
 
         private bool Owns(
@@ -262,7 +321,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             Free = 0,
             Active = 1,
-            Retired = 2
+            Retired = 2,
+            Completing = 3
         }
 
         private struct Slot
@@ -277,19 +337,22 @@ namespace Unity.FoxgloveSDK.Components
             internal long RetainedBytes;
             internal int RetainedResources;
             internal DateTime RetiredAtUtc;
+            internal bool Exclusive;
 
             internal static Slot Active(
                 ulong reservationId,
                 FoxRunTransportId providerId,
                 FoxRunTransportDirection direction,
-                ulong generation)
+                ulong generation,
+                bool exclusive)
                 => new Slot
                 {
                     State = SlotState.Active,
                     ReservationId = reservationId,
                     ProviderId = providerId,
                     Direction = direction,
-                    Generation = generation
+                    Generation = generation,
+                    Exclusive = exclusive
                 };
         }
     }

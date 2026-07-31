@@ -125,8 +125,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             };
             var responseGate = new ManualResetEventSlim(false);
             var second = new PreparationTransport("ok") { ResponseGate = responseGate };
-            var transports = new Queue<IRos2BridgeSink>(new IRos2BridgeSink[] { first, second });
-            using var runtime = Runtime(() => transports.Dequeue());
+            var transport = new ReconnectSequenceTransport(first, second);
+            using var runtime = Runtime(() => transport);
             runtime.Start(enabled: true, autoConnect: true);
 
             Assert.Equal(
@@ -197,10 +197,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 FailNextPublish = true,
                 SendGate = firstSendGate
             };
-            var legacy = new LegacyTransport();
-            var transports = new Queue<IRos2BridgeSink>(
-                new IRos2BridgeSink[] { first, legacy });
-            using var runtime = Runtime(() => transports.Dequeue());
+            var rejected = new PreparationTransport(
+                "error",
+                "typesupport_unavailable",
+                "typesupport unavailable");
+            var transport = new ReconnectSequenceTransport(first, rejected);
+            using var runtime = Runtime(() => transport);
             runtime.Start(enabled: true, autoConnect: true);
 
             Assert.Equal(
@@ -249,7 +251,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.True(SpinWait.SpinUntil(
                 () => runtime.GetStatsSnapshot().FailedFrames >= 2,
                 TimeSpan.FromSeconds(3)));
-            Assert.Empty(legacy.SentFrames);
+            Assert.Empty(rejected.SentFrames);
             Assert.True(runtime.GetStatsSnapshot().DroppedFrames >= 1);
         }
 
@@ -480,25 +482,20 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         {
             var sink = new FatalDisconnectSink();
             var runtime = Runtime(() => sink);
-            var runtimeType = typeof(Ros2BridgeRuntime);
-            var sinkField = runtimeType.GetField(
-                "_sink",
-                System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic);
-            var signalField = runtimeType.GetField(
-                "_signal",
-                System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(sinkField);
-            Assert.NotNull(signalField);
-            sinkField.SetValue(runtime, sink);
-            var signal = Assert.IsType<AutoResetEvent>(signalField.GetValue(runtime));
+            runtime.Start(enabled: true, autoConnect: true);
+            Assert.True(SpinWait.SpinUntil(
+                () => runtime.IsConnected,
+                TimeSpan.FromSeconds(1)));
 
             var thrown = Assert.Throws<OutOfMemoryException>(() => runtime.Dispose());
 
             Assert.Equal("stop-primary", thrown.Message);
             Assert.Equal(1, sink.DisposeCount);
-            Assert.Throws<ObjectDisposedException>(() => signal.Set());
+            Assert.Equal(
+                Ros2BridgeRuntimeLifecycleState.Stopped,
+                runtime.LifecycleState);
+            Assert.Throws<ObjectDisposedException>(
+                () => runtime.Start(enabled: true, autoConnect: true));
         }
 
         [Fact]
@@ -515,40 +512,36 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void FatalPreviousSinkCloseRollsBackConnectedReplacement()
+        public void ReconnectReusesOneDetachedSinkAndInvokesFactoryOncePerRun()
         {
-            var previous = new FatalDisconnectSink();
-            var candidate = new TrackingLifecycleSink();
-            var runtime = Runtime(() => candidate);
-            var runtimeType = typeof(Ros2BridgeRuntime);
-            SetPrivateField(runtimeType, runtime, "_enabled", true);
-            SetPrivateField(runtimeType, runtime, "_workerGeneration", 1L);
-            SetPrivateField(runtimeType, runtime, "_sink", previous);
-            SetPrivateField(runtimeType, runtime, "_connected", false);
-            var ensureConnected = runtimeType.GetMethod(
-                "EnsureConnected",
-                System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(ensureConnected);
+            var transport = new PreparationTransport("ok")
+            {
+                FailNextPublish = true
+            };
+            var factoryCalls = 0;
+            using var runtime = Runtime(() =>
+            {
+                Interlocked.Increment(ref factoryCalls);
+                return transport;
+            });
+            runtime.Start(enabled: true, autoConnect: true);
+            Assert.True(SpinWait.SpinUntil(
+                () => runtime.IsConnected,
+                TimeSpan.FromSeconds(1)));
+            Assert.True(runtime.TryEnqueue(
+                Frame(
+                    "/phase184/reusable",
+                    "phase184_msgs/msg/Reusable",
+                    FoxRunResolvedQos.Default,
+                    sequence: 1),
+                out var reason), reason);
+            Assert.True(SpinWait.SpinUntil(
+                () => transport.ConnectCount >= 2,
+                TimeSpan.FromSeconds(3)));
 
-            var invocation = Assert.Throws<System.Reflection.TargetInvocationException>(
-                () => ensureConnected.Invoke(runtime, new object[] { 1L }));
-            var primary = Assert.IsType<OutOfMemoryException>(
-                invocation.InnerException);
-
-            Assert.Equal("stop-primary", primary.Message);
-            Assert.Equal(1, previous.DisposeCount);
-            Assert.Equal(1, candidate.ConnectCount);
-            Assert.Equal(1, candidate.DisconnectCount);
-            Assert.Equal(1, candidate.DisposeCount);
-            Assert.False(runtime.GetStatsSnapshot().Connected);
-            Assert.False(runtime.GetStatsSnapshot().Connecting);
-            Assert.Null(runtimeType.GetField(
-                    "_sink",
-                    System.Reflection.BindingFlags.Instance
-                    | System.Reflection.BindingFlags.NonPublic)
-                ?.GetValue(runtime));
-            runtime.Dispose();
+            Assert.Equal(1, Volatile.Read(ref factoryCalls));
+            runtime.Stop();
+            Assert.Equal(1, transport.DisposeCount);
         }
 
         [Fact]
@@ -854,6 +847,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             public Func<byte[], byte[]> MutateResponse { get; set; }
             public bool IsConnected { get; private set; }
             public int ConnectCount { get; private set; }
+            public int DisposeCount { get; private set; }
             public int RequestCount
             {
                 get
@@ -930,7 +924,53 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             }
 
             public void Disconnect() => IsConnected = false;
-            public void Dispose() => Disconnect();
+            public void Dispose()
+            {
+                DisposeCount++;
+                Disconnect();
+            }
+        }
+
+        private sealed class ReconnectSequenceTransport :
+            IRos2BridgeSink,
+            IRos2BridgePublisherPreparationTransport
+        {
+            private readonly IRos2BridgeSink[] _transports;
+            private int _index;
+
+            internal ReconnectSequenceTransport(params IRos2BridgeSink[] transports)
+            {
+                _transports = transports;
+            }
+
+            private IRos2BridgeSink Current => _transports[_index];
+
+            public bool IsConnected => Current.IsConnected;
+
+            public void Connect(string host, int port, int timeoutMs)
+                => Current.Connect(host, port, timeoutMs);
+
+            public void Send(Ros2BridgeFrame frame, int timeoutMs)
+                => Current.Send(frame, timeoutMs);
+
+            public byte[] ExchangePublisherPreparation(
+                byte[] request,
+                int timeoutMs)
+                => ((IRos2BridgePublisherPreparationTransport)Current)
+                    .ExchangePublisherPreparation(request, timeoutMs);
+
+            public void Disconnect()
+            {
+                Current.Disconnect();
+                if (_index + 1 < _transports.Length)
+                    _index++;
+            }
+
+            public void Dispose()
+            {
+                for (var i = 0; i < _transports.Length; i++)
+                    _transports[i].Dispose();
+            }
         }
 
         private sealed class FatalDisconnectSink : IRos2BridgeSink
@@ -975,20 +1015,6 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 DisposeCount++;
                 IsConnected = false;
             }
-        }
-
-        private static void SetPrivateField(
-            Type runtimeType,
-            object instance,
-            string name,
-            object value)
-        {
-            var field = runtimeType.GetField(
-                name,
-                System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            field.SetValue(instance, value);
         }
 
         private static byte[] MutateHeader(byte[] frame, Action<JObject> mutate)

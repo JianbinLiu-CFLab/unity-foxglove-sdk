@@ -71,13 +71,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyBridgeLifecycle()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
-            Check(source.Contains("auto-connect is disabled", StringComparison.Ordinal)
-                  && source.Contains("return false", StringComparison.Ordinal),
-                "111F-B1: Ros2Bridge rejects sends when auto-connect is disabled");
-            Check(source.Contains("CloseSink(sinkToClose)", StringComparison.Ordinal)
+            var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
+            Check(shell.Contains("if (!enabled || !autoConnect)", StringComparison.Ordinal)
+                  && shell.Contains("runtime is not ready", StringComparison.Ordinal),
+                "111F-B1: Ros2Bridge creates no worker and rejects sends when auto-connect is disabled");
+            Check(source.Contains("DisconnectSink(_ownedSink)", StringComparison.Ordinal)
                   && source.Contains("worker.Join(joinTimeoutMs)", StringComparison.Ordinal)
-                  && source.Contains("Math.Max(1000, _sendTimeoutMs + 250)", StringComparison.Ordinal),
-                "111F-B2: Ros2Bridge closes sink before bounded worker join");
+                  && source.Contains("TryRetireAfterTimeout()", StringComparison.Ordinal),
+                "111F-B2: Ros2Bridge wakes the sink before bounded join and retires without premature disposal");
             Check(source.Contains("countFrameFailure: false", StringComparison.Ordinal),
                 "111F-B3: Ros2Bridge connection failures do not inflate frame failures");
             Check(source.Contains("IRos2BridgeSink sink;", StringComparison.Ordinal)
