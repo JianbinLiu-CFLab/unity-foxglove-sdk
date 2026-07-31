@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         private FoxRunTransportSessionSnapshot _activeFoxRunTransportSession;
         private FoxRunTransportSessionCaptureError?
             _lastFoxRunTransportSessionCaptureError;
+        private bool _startServerAfterTransportCapture;
 
         /// <summary>Frozen neutral Provider sessions for the current Manager lifetime.</summary>
         public FoxRunTransportSessionSnapshot ActiveFoxRunTransportSession =>
@@ -118,12 +119,25 @@ namespace Unity.FoxgloveSDK.Components
                     out _activeFoxRunTransportSession,
                     out var failure))
             {
+                var shouldReport =
+                    !_lastFoxRunTransportSessionCaptureError.HasValue
+                    || _lastFoxRunTransportSessionCaptureError.Value.Code
+                        != failure.Code
+                    || _lastFoxRunTransportSessionCaptureError.Value.TransportId
+                        != failure.TransportId
+                    || !string.Equals(
+                        _lastFoxRunTransportSessionCaptureError.Value.Reason,
+                        failure.Reason,
+                        StringComparison.Ordinal);
                 _lastFoxRunTransportSessionCaptureError = failure;
-                Debug.LogWarning(
-                    "[FoxRun] Transport session capture failed closed for '"
-                    + failure.TransportId.Value
-                    + "': "
-                    + failure.Reason);
+                if (shouldReport)
+                {
+                    Debug.LogWarning(
+                        "[FoxRun] Transport session capture failed closed for '"
+                        + failure.TransportId.Value
+                        + "': "
+                        + failure.Reason);
+                }
                 return false;
             }
 
@@ -396,6 +410,10 @@ namespace Unity.FoxgloveSDK.Components
             var components = GetComponents<MonoBehaviour>();
             for (var i = 0; i < components.Length; i++)
             {
+                if (components[i] == null)
+                    continue;
+                if (!components[i].isActiveAndEnabled)
+                    continue;
                 if (components[i] is IFoxRunTransportProvider provider)
                     RegisterFoxRunTransportProvider(provider);
             }

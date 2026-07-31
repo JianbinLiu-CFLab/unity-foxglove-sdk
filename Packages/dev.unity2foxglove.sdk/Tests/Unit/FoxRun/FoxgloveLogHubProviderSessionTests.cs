@@ -94,6 +94,27 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void MissingFrozenTransportSessionCannotFallbackToNextWebSocketSelection()
+        {
+            using var fixture = new Fixture(
+                activeProviderIds: new[]
+                {
+                    FoxgloveWebSocketTransport.TransportId
+                },
+                nextSessionProviderIds: new[]
+                {
+                    FoxgloveWebSocketTransport.TransportId
+                },
+                hasFrozenTransportSession: false);
+
+            Assert.False(fixture.Publish());
+            Assert.Equal(0, fixture.Source.WebSocketPublishes);
+            Assert.Equal(1, fixture.Source.RecordingReadinessChecks);
+            Assert.Equal(1, fixture.Source.RecordingPublishes);
+            Assert.Equal(0, fixture.Source.WebSocketEncodingSets);
+        }
+
+        [Fact]
         public void RosOnlyInheritedPublishRegistersAdditiveSinkAsJson()
         {
             using var fixture = new Fixture(
@@ -125,7 +146,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             internal Fixture(
                 IReadOnlyList<FoxRunTransportId> activeProviderIds,
                 IReadOnlyList<FoxRunTransportId> nextSessionProviderIds,
-                bool addSink = false)
+                bool addSink = false,
+                bool hasFrozenTransportSession = true)
             {
                 if (InstanceField == null
                     || ManagerField == null
@@ -159,6 +181,16 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     ConfiguredFoxRunPublishTransportIds =
                         nextSessionProviderIds
                 };
+                manager.ActiveFoxRunTransportSession =
+                    hasFrozenTransportSession
+                        ? new FoxRunTransportSessionSnapshot(
+                            generation: 7,
+                            publishTransports:
+                                Array.Empty<IFoxRunTransportSession>(),
+                            subscribeTransport: null,
+                            allSessions:
+                                Array.Empty<IFoxRunTransportSession>())
+                        : null;
 
                 _hub = new FoxgloveLogHub();
                 ManagerField.SetValue(_hub, manager);

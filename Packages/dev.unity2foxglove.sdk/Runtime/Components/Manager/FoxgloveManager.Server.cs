@@ -27,6 +27,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void StartServer()
         {
+            if (!BeginFoxRunTransportSessionIfNeeded())
+            {
+                _startServerAfterTransportCapture = true;
+                return;
+            }
+
+            _startServerAfterTransportCapture = false;
+            BeginFoxRunPublishSessionIfNeeded();
             BeginFoxRunSubscriptionSessionIfNeeded();
 
             if (IsRunning)
@@ -228,6 +236,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="restoreLivePublishers">Whether live publishers should be restored after shutdown.</param>
         private void StopServer(bool restoreLivePublishers)
         {
+            _startServerAfterTransportCapture = false;
             if (!IsRunning)
             {
                 StopRemoteMcapFileServer();

@@ -407,6 +407,11 @@ namespace Unity.FoxgloveSDK.Components
         private void Update()
         {
             SyncFoxRunSubscriptionSession();
+            if (_startServerAfterTransportCapture
+                && _activeFoxRunTransportSession != null)
+            {
+                StartServer();
+            }
 
             var frameStallStageStart = BeginFrameStallStageTiming();
             _runtime?.Tick();

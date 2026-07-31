@@ -143,6 +143,7 @@ namespace Unity.FoxgloveSDK.Components
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
         public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy { get; set; }
+        public FoxRunTransportSessionSnapshot ActiveFoxRunTransportSession { get; set; }
         public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds { get; set; } =
             Array.Empty<FoxRunTransportId>();
         public float ActiveFoxRunDefaultPublishRateHz { get; set; } = 10f;

@@ -151,6 +151,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _publisherHub.BindProviderOwner(_manager, this);
             _subscriptionHub.BindProviderOwner(_manager, this);
 
+            if (!isActiveAndEnabled)
+            {
+                Interlocked.Exchange(ref _registered, 0);
+                _manager.UnregisterFoxRunTransportProvider(this);
+                return true;
+            }
+
             if (Interlocked.Exchange(ref _registered, 1) == 0)
                 _manager.RegisterFoxRunTransportProvider(this);
             return true;

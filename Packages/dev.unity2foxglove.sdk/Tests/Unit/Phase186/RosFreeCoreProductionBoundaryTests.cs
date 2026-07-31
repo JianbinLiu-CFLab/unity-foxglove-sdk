@@ -83,7 +83,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
                     continue;
                 }
 
-                var source = File.ReadAllText(file);
+                var source = StripSerializationMigrationAttributes(
+                    File.ReadAllText(file));
                 var match = ForbiddenSymbol.Match(source);
                 if (match.Success)
                 {
@@ -163,6 +164,91 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
                     source,
                     StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public void RenamedPointCloudFieldsPreserveSerializedUserData()
+        {
+            var source = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs"));
+            var migrations = new Dictionary<string, string>
+            {
+                ["_publishPackedPointCloudTfAnchor"] =
+                    "_publishPointCloud2NativeTfAnchor",
+                ["_packedPointCloudTfParentFrame"] =
+                    "_pointCloud2NativeTfParentFrame",
+                ["_packedPointCloudTfChildFrame"] =
+                    "_pointCloud2NativeTfChildFrame",
+                ["_packedPointCloudTfTranslation"] =
+                    "_pointCloud2NativeTfTranslation",
+                ["_packedPointCloudTfRotationEuler"] =
+                    "_pointCloud2NativeTfRotationEuler",
+                ["_deskewedPackedPointCloudTopic"] =
+                    "_deskewedPointCloud2NativeTopic",
+                ["_deskewedPackedPointCloudMaxPublishRateHz"] =
+                    "_deskewedPointCloud2NativeMaxPublishRateHz"
+            };
+
+            foreach (var migration in migrations)
+            {
+                Assert.Matches(
+                    @"\[FormerlySerializedAs\("""
+                    + Regex.Escape(migration.Value)
+                    + @"""\)\]\s*\r?\n\s*\[[^\]]*SerializeField[^\]]*\]"
+                    + @"[^\r\n]*\b"
+                    + Regex.Escape(migration.Key)
+                    + @"\b",
+                    source);
+            }
+        }
+
+        [Fact]
+        public void ManagerLifecycleCannotBypassFailedTransportCapture()
+        {
+            var server = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs"));
+            var subscriptions = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunSubscriptionSession.cs"));
+            var providers = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs"));
+
+            Assert.Matches(
+                @"public void StartServer\(\)\s*\{\s*"
+                + @"if \(!BeginFoxRunTransportSessionIfNeeded\(\)\)\s*"
+                + @"\{\s*_startServerAfterTransportCapture = true;\s*"
+                + @"return;\s*\}",
+                server);
+            Assert.Matches(
+                @"private void SyncFoxRunSubscriptionSession\(\)\s*\{\s*"
+                + @"if \(_activeFoxRunTransportSession == null\s*"
+                + @"&& !BeginFoxRunTransportSessionIfNeeded\(\)\)\s*"
+                + @"\{\s*EndFoxRunSubscriptionSession\(\);\s*return;\s*\}",
+                subscriptions);
+            Assert.Contains(
+                "if (!components[i].isActiveAndEnabled)",
+                providers,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void R2fuProviderDoesNotRegisterWhileDisabled()
+        {
+            var source = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs"));
+            var activeGuard = source.IndexOf(
+                "if (!isActiveAndEnabled)",
+                StringComparison.Ordinal);
+            var registration = source.IndexOf(
+                "Interlocked.Exchange(ref _registered, 1)",
+                StringComparison.Ordinal);
+
+            Assert.True(activeGuard >= 0);
+            Assert.True(registration > activeGuard);
         }
 
         [Fact]
@@ -331,6 +417,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
             => relative.IndexOf("Ros2", StringComparison.OrdinalIgnoreCase) >= 0
                || relative.IndexOf("R2fu", StringComparison.OrdinalIgnoreCase) >= 0
                || relative.IndexOf("Cdr", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        private static string StripSerializationMigrationAttributes(
+            string source)
+            => Regex.Replace(
+                source,
+                @"\[FormerlySerializedAs\(""[^""]+""\)\]",
+                string.Empty,
+                RegexOptions.CultureInvariant);
 
         private static IEnumerable<string> EnumerateProductionFiles()
         {

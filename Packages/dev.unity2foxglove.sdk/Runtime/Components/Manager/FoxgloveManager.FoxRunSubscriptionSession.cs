@@ -76,6 +76,14 @@ namespace Unity.FoxgloveSDK.Components
 
         private void SyncFoxRunSubscriptionSession()
         {
+            if (_activeFoxRunTransportSession == null
+                && !BeginFoxRunTransportSessionIfNeeded())
+            {
+                EndFoxRunSubscriptionSession();
+                return;
+            }
+
+            BeginFoxRunPublishSessionIfNeeded();
             if (_enableFoxRunInbound)
                 BeginFoxRunSubscriptionSessionIfNeeded();
             else

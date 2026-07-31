@@ -12,6 +12,7 @@ using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
+using UnityEngine.Serialization;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
 
@@ -54,22 +55,29 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _includeSyntheticIntensity;
 
         [Tooltip("Publish a lightweight frame anchor when no scene, robot, or SLAM tree owns the point-cloud frame.")]
+        [FormerlySerializedAs("_publishPointCloud2NativeTfAnchor")]
         [SerializeField] private bool _publishPackedPointCloudTfAnchor;
         [Tooltip("Parent frame used when publishing the PackedPointCloud Native TF anchor.")]
+        [FormerlySerializedAs("_pointCloud2NativeTfParentFrame")]
         [SerializeField] private string _packedPointCloudTfParentFrame = "map";
         [Tooltip("Child frame used when publishing the PackedPointCloud Native TF anchor. Leave empty to follow Frame Id.")]
+        [FormerlySerializedAs("_pointCloud2NativeTfChildFrame")]
         [SerializeField] private string _packedPointCloudTfChildFrame;
         [Tooltip("TF anchor translation in ROS coordinates.")]
+        [FormerlySerializedAs("_pointCloud2NativeTfTranslation")]
         [SerializeField] private Vector3 _packedPointCloudTfTranslation;
         [Tooltip("TF anchor rotation in ROS roll/pitch/yaw degrees.")]
+        [FormerlySerializedAs("_pointCloud2NativeTfRotationEuler")]
         [SerializeField] private Vector3 _packedPointCloudTfRotationEuler;
 
         [Header("Motion Compensation")]
         [Tooltip("Emit an optional deskewed PackedPointCloud visualization stream. Leave disabled for raw SLAM input.")]
         [SerializeField] private bool _enableMotionCompensation;
         [SerializeField] private PointCloudMotionCompensationOutputPolicy _motionCompensationOutputPolicy = PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic;
+        [FormerlySerializedAs("_deskewedPointCloud2NativeTopic")]
         [SerializeField] private string _deskewedPackedPointCloudTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
         [Tooltip("Optional cap for deskewed PackedPointCloud visualization output. Set 0 to publish a deskewed frame for every eligible raw scan.")]
+        [FormerlySerializedAs("_deskewedPointCloud2NativeMaxPublishRateHz")]
         [SerializeField, Min(0f)] private float _deskewedPackedPointCloudMaxPublishRateHz = 2f;
         [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanStart;
         [SerializeField] private PointCloudMotionCompensationSource _motionCompensationSource = PointCloudMotionCompensationSource.SensorTransform;

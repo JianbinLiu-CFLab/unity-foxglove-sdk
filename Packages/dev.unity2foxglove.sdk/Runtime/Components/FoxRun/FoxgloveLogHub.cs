@@ -452,7 +452,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 var publishWebSocket =
-                    SelectsWebSocket(info);
+                    _manager?.ActiveFoxRunTransportSession != null
+                    && SelectsWebSocket(info);
                 if (publishWebSocket
                     && source
                         is IFoxRunWebSocketCaptureSource
