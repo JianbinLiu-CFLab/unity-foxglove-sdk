@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             PublicPayloadViewCannotMutateSerializedFrame();
             PublicPayloadViewReturnsFreshDefensiveCopies();
-            WriterAndRuntimeUseOwnedPayloadSnapshot();
+            WriterAndSchedulerUseOwnedPayloadSnapshot();
             PublicPayloadGetterDocumentsCopyCost();
             CommandRunnerDrainsTimedOutProcessOutput();
             HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation();
@@ -73,26 +73,33 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16B-2: mutating one public payload copy does not affect later reads");
         }
 
-        private static void WriterAndRuntimeUseOwnedPayloadSnapshot()
+        private static void WriterAndSchedulerUseOwnedPayloadSnapshot()
         {
             var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var schedulerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs");
 
             Check(frameSource.Contains("private readonly byte[] _payload", StringComparison.Ordinal)
+                  && frameSource.Contains("private readonly int _payloadOffset", StringComparison.Ordinal)
+                  && frameSource.Contains("private readonly int _payloadLength", StringComparison.Ordinal)
                   && frameSource.Contains("clonePayload: true", StringComparison.Ordinal)
                   && frameSource.Contains("Ros2BridgeFrame CreateOwned", StringComparison.Ordinal)
                   && frameSource.Contains("clonePayload: false", StringComparison.Ordinal)
                   && frameSource.Contains("_payload = clonePayload ? (byte[])payload.Clone() : payload", StringComparison.Ordinal)
-                  && frameSource.Contains("public byte[] Payload => (byte[])_payload.Clone()", StringComparison.Ordinal),
-                "134-16C-1: bridge frame public constructors clone payloads while the internal owned path is explicit");
+                  && frameSource.Contains("new ReadOnlyMemory<byte>(", StringComparison.Ordinal)
+                  && frameSource.Contains("_payloadOffset,", StringComparison.Ordinal)
+                  && frameSource.Contains("_payloadLength);", StringComparison.Ordinal)
+                  && frameSource.Contains("public byte[] Payload => PayloadMemory.ToArray()", StringComparison.Ordinal),
+                "134-16C-1: public frames clone payloads while owned offset/length views remain explicit");
             Check(writerSource.Contains("frame.PayloadLength", StringComparison.Ordinal)
                   && writerSource.Contains("frame.WritePayloadTo(destination)", StringComparison.Ordinal)
                   && !writerSource.Contains("stream.Write(frame.Payload", StringComparison.Ordinal),
                 "134-16C-2: bridge writer consumes the owned snapshot instead of the public copy");
-            Check(runtimeSource.Contains("frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal)
-                  && !runtimeSource.Contains("frame.Payload.Length > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal),
-                "134-16C-3: runtime queue size checks use the owned snapshot length");
+            Check(schedulerSource.Contains("measurement = Ros2BridgeFrameWriter.Measure(frame);", StringComparison.Ordinal)
+                  && schedulerSource.Contains("_ = U2R2FrameSize.Create(", StringComparison.Ordinal)
+                  && schedulerSource.Contains("measurement.PayloadBytes", StringComparison.Ordinal)
+                  && schedulerSource.Contains("return Ros2BridgeOutboundEnqueueDisposition.Oversize;", StringComparison.Ordinal),
+                "134-16C-3: scheduler admission measures owned wire bytes and classifies oversize frames");
         }
 
         private static void PublicPayloadGetterDocumentsCopyCost()
@@ -268,7 +275,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !topicProfileSource.Contains("while (value.Contains(\"//\"))", StringComparison.Ordinal),
                 "134-16K-1: C# bridge topic normalization rejects newlines and collapses slashes in one pass");
             Check(writerSource.Contains("frame.PayloadLength} bytes", StringComparison.Ordinal)
-                  && writerSource.Contains("headerBytes.Length} bytes", StringComparison.Ordinal)
+                  && writerSource.Contains("Encoding.UTF8.GetByteCount(headerJson)", StringComparison.Ordinal)
+                  && writerSource.Contains("headerBytes} bytes", StringComparison.Ordinal)
                   && !writerSource.Contains("Phase 94 maximum", StringComparison.Ordinal),
                 "134-16K-2: frame writer oversize errors include actual sizes and avoid stale phase wording");
         }

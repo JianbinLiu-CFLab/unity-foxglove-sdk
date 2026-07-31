@@ -82,8 +82,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && state.Contains("SetPreparedDemand")
                   && state.Contains("ClearPreparedDemand"),
                 "100B-1: point-cloud publisher caches demand for one prepared frame");
-            Check(source.Contains("TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge)"),
-                "100B-2: raw/Draco helpers reuse cached demand when called from Update/PublishFrame");
+            Check(source.Contains("TryGetPreparedPublishDemand(out var publishWebSocket, out var publishProvider)"),
+                "100B-2: raw/Draco helpers reuse cached Provider demand when called from Update/PublishFrame");
             Check(source.Contains("protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)"),
                 "100B-3: protected PublishPreparedFrame signature remains compatible");
         }
@@ -159,9 +159,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             Check(source.Contains("private readonly byte[] _payload")
+                  && source.Contains("private readonly int _payloadOffset")
+                  && source.Contains("private readonly int _payloadLength")
                   && source.Contains("clonePayload ? (byte[])payload.Clone() : payload")
                   && source.Contains("internal static Ros2BridgeFrame CreateOwned")
-                  && source.Contains("public byte[] Payload => (byte[])_payload.Clone()"),
+                  && source.Contains("internal static Ros2BridgeFrame CreateWireOwnedView")
+                  && source.Contains("public ReadOnlyMemory<byte> PayloadMemory")
+                  && source.Contains("public byte[] Payload => PayloadMemory.ToArray()"),
                 "100F-1: bridge frame keeps public defensive payload copies while allowing internal owned payload transfer");
             var writer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(destination)")
