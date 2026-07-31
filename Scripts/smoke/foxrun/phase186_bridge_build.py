@@ -40,6 +40,11 @@ INTERFACE_DIGEST = (
     "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd"
 )
 ROS_PACKAGE_NAME = "unity2foxglove_foxrun_interfaces_v1"
+STANDARD_ROS_PACKAGE_NAME = "foxglove_msgs"
+STANDARD_SCHEMA_TYPE = "foxglove_msgs/msg/Log"
+STANDARD_SCHEMA_DIGEST = (
+    "1cacf4b47ef1c6306f00c673ed283837f80c9f1b67ffa8ecf3a0929f62e6c5fd"
+)
 SUMMARY_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -157,6 +162,189 @@ def load_interface_authority(repository: pathlib.Path) -> dict[str, object]:
     }
 
 
+def load_standard_schema_authority(
+    repository: pathlib.Path,
+) -> dict[str, object]:
+    """Lock the exact generated standard schema used by the live duplex probe."""
+
+    root = pathlib.Path(repository).resolve()
+    source = (
+        root
+        / "third-party"
+        / "foxglove-sdk"
+        / "schemas"
+        / "ros2"
+        / "Log.msg"
+    )
+    catalog = (
+        root
+        / "Packages"
+        / "dev.unity2foxglove.ros2bridge"
+        / "Runtime"
+        / "Schemas"
+        / "Ros2Msg"
+        / "FoxgloveRos2MsgSchemaCatalog.cs"
+    )
+    try:
+        source_bytes = source.read_bytes()
+        source_text = source_bytes.decode("utf-8")
+        catalog_text = catalog.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BridgeBuildFailure(
+            "tracked generated standard ROS schema authority is unavailable"
+        ) from exc
+    source_digest = hashlib.sha256(source_bytes).hexdigest()
+    if source_digest != STANDARD_SCHEMA_DIGEST:
+        raise BridgeBuildFailure(
+            "tracked generated standard ROS schema digest differs from authority"
+        )
+    if (
+        f'"{STANDARD_SCHEMA_TYPE}"' not in catalog_text
+        or f'"{STANDARD_SCHEMA_DIGEST}"' not in catalog_text
+    ):
+        raise BridgeBuildFailure(
+            "Bridge generated schema catalog differs from the live standard authority"
+        )
+    return {
+        "rosPackageName": STANDARD_ROS_PACKAGE_NAME,
+        "canonicalType": STANDARD_SCHEMA_TYPE,
+        "sourceDigest": source_digest,
+        "sourcePath": str(source),
+        "sourceText": source_text,
+        "sourceBytes": source_bytes,
+    }
+
+
+def build_overlay_colcon_command(
+    colcon: pathlib.Path,
+    python_executable: pathlib.Path,
+) -> list[str]:
+    """Build the Phase181 and generated-standard test packages together."""
+
+    command = _load_phase181_peer(repository_root()).build_windows_colcon_command(
+        colcon,
+        ROS_PACKAGE_NAME,
+        python_executable,
+    )
+    try:
+        selected = command.index("--packages-select")
+    except ValueError as exc:
+        raise BridgeBuildFailure(
+            "maintained colcon command lacks an explicit package selection"
+        ) from exc
+    if command[selected + 1] != ROS_PACKAGE_NAME:
+        raise BridgeBuildFailure(
+            "maintained colcon command selected the wrong Phase181 package"
+        )
+    command.insert(selected + 2, STANDARD_ROS_PACKAGE_NAME)
+    return command
+
+
+def overlay_build_cache_key(
+    peer_cache_key: str,
+    standard_source_digest: str,
+) -> str:
+    """Bind the reusable peer workspace to every staged schema source."""
+
+    if (
+        _SHA256.fullmatch(peer_cache_key) is None
+        or _SHA256.fullmatch(standard_source_digest) is None
+    ):
+        raise BridgeBuildFailure(
+            "overlay cache identity requires exact SHA-256 inputs"
+        )
+    payload = (
+        "phase186-overlay-v1\0"
+        + peer_cache_key
+        + "\0"
+        + standard_source_digest
+    ).encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def stage_standard_schema_package(
+    repository: pathlib.Path,
+    workspace: pathlib.Path,
+) -> pathlib.Path:
+    """Stage one exact test-only foxglove_msgs package into an owned workspace."""
+
+    authority = load_standard_schema_authority(repository)
+    destination = (
+        pathlib.Path(workspace)
+        / "src"
+        / STANDARD_ROS_PACKAGE_NAME
+    )
+    if destination.exists():
+        raise BridgeBuildFailure(
+            "owned overlay already contains the generated standard package"
+        )
+    try:
+        message_directory = destination / "msg"
+        message_directory.mkdir(parents=True)
+        (message_directory / "Log.msg").write_bytes(
+            bytes(authority["sourceBytes"])
+        )
+        (destination / "package.xml").write_text(
+            """<?xml version=\"1.0\"?>
+<package format=\"3\">
+  <name>foxglove_msgs</name>
+  <version>0.0.0</version>
+  <description>Phase186 generated-standard duplex certification fixture.</description>
+  <maintainer email=\"noreply@example.invalid\">Unity2Foxglove Phase186</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+  <depend>builtin_interfaces</depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <export><build_type>ament_cmake</build_type></export>
+</package>
+""",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (destination / "CMakeLists.txt").write_text(
+            """cmake_minimum_required(VERSION 3.12)
+project(foxglove_msgs)
+find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+rosidl_generate_interfaces(${PROJECT_NAME}
+  \"msg/Log.msg\"
+  DEPENDENCIES builtin_interfaces
+)
+ament_export_dependencies(rosidl_default_runtime)
+ament_package()
+""",
+            encoding="utf-8",
+            newline="\n",
+        )
+    except OSError as exc:
+        raise BridgeBuildFailure(
+            "generated standard ROS schema package could not be staged"
+        ) from exc
+    return destination
+
+
+def validate_installed_standard_schema(
+    install_prefix: pathlib.Path,
+    expected_digest: str,
+) -> None:
+    """Reject absent or stale generated-standard outputs, including cache reuse."""
+
+    install = pathlib.Path(install_prefix)
+    package = install / "share" / STANDARD_ROS_PACKAGE_NAME
+    message = package / "msg" / "Log.msg"
+    if not (package / "package.xml").is_file() or not message.is_file():
+        raise BridgeBuildFailure(
+            "row overlay lacks the generated standard schema package"
+        )
+    if sha256_file(message) != expected_digest:
+        raise BridgeBuildFailure(
+            "row overlay generated standard schema bytes differ from authority"
+        )
+
+
 def sha256_file(path: pathlib.Path) -> str:
     """Hash one required file."""
 
@@ -196,6 +384,7 @@ def expected_overlay_authority(
     install_prefix: pathlib.Path,
     *,
     source_digest: str,
+    standard_source_digest: str,
 ) -> dict[str, object]:
     """Create the exact row-scoped overlay authority record."""
 
@@ -210,6 +399,10 @@ def expected_overlay_authority(
         raise BridgeBuildFailure("row overlay has no local_setup.bat")
     if source_digest != INTERFACE_DIGEST:
         raise BridgeBuildFailure("row overlay source digest does not match the lock")
+    if standard_source_digest != STANDARD_SCHEMA_DIGEST:
+        raise BridgeBuildFailure(
+            "row overlay generated standard digest does not match the lock"
+        )
     return {
         "schemaVersion": SUMMARY_SCHEMA_VERSION,
         "validated": True,
@@ -220,6 +413,11 @@ def expected_overlay_authority(
         "canonicalType": INTERFACE_TYPE,
         "interfaceDigest": INTERFACE_DIGEST,
         "sourceDigest": source_digest,
+        "standardSchema": {
+            "rosPackageName": STANDARD_ROS_PACKAGE_NAME,
+            "canonicalType": STANDARD_SCHEMA_TYPE,
+            "sourceDigest": standard_source_digest,
+        },
         "installPrefix": str(install),
         "localSetupSha256": sha256_file(setup),
     }
@@ -250,6 +448,14 @@ def validate_overlay_authority(
             raise BridgeBuildFailure(
                 "overlay authority mismatch for " + key
             )
+    if value.get("standardSchema") != {
+        "rosPackageName": STANDARD_ROS_PACKAGE_NAME,
+        "canonicalType": STANDARD_SCHEMA_TYPE,
+        "sourceDigest": STANDARD_SCHEMA_DIGEST,
+    }:
+        raise BridgeBuildFailure(
+            "overlay generated standard schema authority mismatch"
+        )
     install_text = value.get("installPrefix")
     setup_digest = value.get("localSetupSha256")
     if not isinstance(install_text, str) or not isinstance(setup_digest, str):
@@ -307,6 +513,8 @@ def validate_build_summary(value: Mapping[str, object], row: BridgeRow) -> None:
         "platform": "Windows",
         "interfaceDigest": INTERFACE_DIGEST,
         "canonicalType": INTERFACE_TYPE,
+        "standardCanonicalType": STANDARD_SCHEMA_TYPE,
+        "standardSchemaDigest": STANDARD_SCHEMA_DIGEST,
     }
     for key, expected_value in expected.items():
         if value.get(key) != expected_value:
@@ -335,15 +543,18 @@ def validate_build_summary(value: Mapping[str, object], row: BridgeRow) -> None:
     ):
         raise BridgeBuildFailure("ctest evidence is missing or incomplete")
     compiler = value.get("compiler")
-    executable = value.get("probeExecutable")
     if not isinstance(compiler, Mapping) or not compiler.get("identity"):
         raise BridgeBuildFailure("compiler identity is missing")
-    if (
-        not isinstance(executable, Mapping)
-        or not isinstance(executable.get("sha256"), str)
-        or _SHA256.fullmatch(str(executable.get("sha256"))) is None
-    ):
-        raise BridgeBuildFailure("probe executable identity is missing")
+    for name in ("probeExecutable", "generatedDuplexProbe"):
+        executable = value.get(name)
+        if (
+            not isinstance(executable, Mapping)
+            or not isinstance(executable.get("sha256"), str)
+            or _SHA256.fullmatch(str(executable.get("sha256"))) is None
+        ):
+            raise BridgeBuildFailure(
+                name + " executable identity is missing"
+            )
 
 
 def _write_json_atomic(path: pathlib.Path, value: Mapping[str, object]) -> None:
@@ -506,6 +717,21 @@ def _build_cpp_environment(
     return env
 
 
+def cpp_runtime_paths(
+    physical_row_root: pathlib.Path,
+    runtime_row_root: pathlib.Path,
+) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    """Separate durable evidence paths from short Windows CMake/include paths."""
+
+    physical = pathlib.Path(physical_row_root)
+    runtime = pathlib.Path(runtime_row_root)
+    return (
+        physical / "cpp-build",
+        runtime / "cpp-build",
+        runtime / "peer-workspace" / "install",
+    )
+
+
 def run_row(
     repository: pathlib.Path,
     row: BridgeRow,
@@ -530,12 +756,15 @@ def run_row(
         "platform": platform.system(),
         "canonicalType": INTERFACE_TYPE,
         "interfaceDigest": INTERFACE_DIGEST,
+        "standardCanonicalType": STANDARD_SCHEMA_TYPE,
+        "standardSchemaDigest": STANDARD_SCHEMA_DIGEST,
         "startedAt": started,
     }
     try:
         if os.name != "nt" or platform.system() != "Windows":
             raise LivePrerequisiteMissing("Windows-native execution")
         authority = load_interface_authority(repository)
+        standard_authority = load_standard_schema_authority(repository)
         peer = _load_phase181_peer(repository)
         ros2_root = pathlib.Path(
             os.environ.get(
@@ -569,18 +798,20 @@ def run_row(
                 "Visual Studio C++ x64 toolchain"
             ) from exc
 
-        colcon_command = peer.build_windows_colcon_command(
+        colcon_command = build_overlay_colcon_command(
             toolchain.colcon_executable,
-            ROS_PACKAGE_NAME,
             toolchain.python_executable,
         )
-        cache_key = peer.peer_build_cache_key(
-            authority["_lock"],
-            row.row_id,
-            row.distro,
-            row.rmw,
-            toolchain,
-            colcon_command,
+        cache_key = overlay_build_cache_key(
+            peer.peer_build_cache_key(
+                authority["_lock"],
+                row.row_id,
+                row.distro,
+                row.rmw,
+                toolchain,
+                colcon_command,
+            ),
+            str(standard_authority["sourceDigest"]),
         )
         workspace, reused = peer.prepare_peer_build_workspace(
             output_root,
@@ -608,12 +839,20 @@ def run_row(
                     runtime_workspace,
                     ROS_PACKAGE_NAME,
                 )
+                stage_standard_schema_package(
+                    repository,
+                    runtime_workspace,
+                )
                 command_results["colcon"] = run_logged(
                     colcon_command,
                     cwd=runtime_workspace,
                     env=build_environment,
                     log_path=physical_workspace / "colcon-build.log",
                     timeout_seconds=1800,
+                )
+                validate_installed_standard_schema(
+                    physical_workspace / "install",
+                    str(standard_authority["sourceDigest"]),
                 )
                 peer.seal_peer_build_workspace(
                     physical_workspace,
@@ -622,11 +861,18 @@ def run_row(
                 )
 
         install_prefix = workspace / "install"
+        validate_installed_standard_schema(
+            install_prefix,
+            str(standard_authority["sourceDigest"]),
+        )
         overlay = expected_overlay_authority(
             row,
             row_root,
             install_prefix,
             source_digest=str(authority["sourceDigest"]),
+            standard_source_digest=str(
+                standard_authority["sourceDigest"]
+            ),
         )
         validate_overlay_authority(overlay, row, row_root)
         _write_json_atomic(row_root / "overlay-authority.json", overlay)
@@ -637,127 +883,142 @@ def run_row(
             / "ros2_bridge"
             / "unity2foxglove_ros2_bridge"
         )
-        cpp_build = row_root / "cpp-build"
-        cpp_temp = row_root / "tmp"
-        cpp_environment = _build_cpp_environment(
-            build_environment,
-            toolchain.ros2_root,
-            install_prefix,
-            cpp_temp,
-        )
-        cmake = _find_tool("cmake.exe", cpp_environment)
-        ctest = _find_tool("ctest.exe", cpp_environment)
-        ninja = _find_tool("ninja.exe", cpp_environment)
-        library = toolchain.ros2_root / ".pixi" / "envs" / "default" / "Library"
-        nlohmann_directories = (
-            library / "share" / "cmake" / "nlohmann_json",
-            library / "lib" / "cmake" / "nlohmann_json",
-            pathlib.Path(sys.prefix)
-            / "Library"
-            / "share"
-            / "cmake"
-            / "nlohmann_json",
-        )
-        nlohmann_directory = next(
-            (
-                candidate
-                for candidate in nlohmann_directories
-                if (candidate / "nlohmann_jsonConfig.cmake").is_file()
-            ),
-            None,
-        )
-        if nlohmann_directory is None:
-            raise LivePrerequisiteMissing("nlohmann_json CMake package")
-        configure_command = [
-            str(cmake),
-            "-S",
-            str(source_root),
-            "-B",
-            str(cpp_build),
-            "-G",
-            "Ninja",
-            "-DBUILD_TESTING=ON",
-            "-DCMAKE_BUILD_TYPE=Release",
-            "-DCMAKE_MAKE_PROGRAM=" + str(ninja).replace("\\", "/"),
-            "-DPython3_EXECUTABLE="
-            + str(toolchain.python_executable).replace("\\", "/"),
-            "-DPYTHON_EXECUTABLE="
-            + str(toolchain.python_executable).replace("\\", "/"),
-            "-DOPENSSL_ROOT_DIR=" + str(library).replace("\\", "/"),
-            "-Dnlohmann_json_DIR="
-            + str(nlohmann_directory).replace("\\", "/"),
-            "-Dtinyxml2_DIR="
-            + str(library / "lib" / "cmake" / "tinyxml2").replace("\\", "/"),
-        ]
-        command_results["cmakeConfigure"] = run_logged(
-            configure_command,
-            cwd=row_root,
-            env=cpp_environment,
-            log_path=row_root / "cmake-configure.log",
-            timeout_seconds=300,
-        )
-        command_results["cmakeBuild"] = run_logged(
-            [str(cmake), "--build", str(cpp_build)],
-            cwd=row_root,
-            env=cpp_environment,
-            log_path=row_root / "cmake-build.log",
-            timeout_seconds=900,
-        )
+        with peer.temporary_short_windows_peer_workspace(row_root) as (
+            physical_cpp_root,
+            runtime_cpp_root,
+        ):
+            cpp_build, runtime_cpp_build, runtime_install_prefix = (
+                cpp_runtime_paths(physical_cpp_root, runtime_cpp_root)
+            )
+            cpp_temp = runtime_cpp_root / "tmp"
+            cpp_environment = _build_cpp_environment(
+                build_environment,
+                toolchain.ros2_root,
+                runtime_install_prefix,
+                cpp_temp,
+            )
+            cmake = _find_tool("cmake.exe", cpp_environment)
+            ctest = _find_tool("ctest.exe", cpp_environment)
+            ninja = _find_tool("ninja.exe", cpp_environment)
+            library = toolchain.ros2_root / ".pixi" / "envs" / "default" / "Library"
+            nlohmann_directories = (
+                library / "share" / "cmake" / "nlohmann_json",
+                library / "lib" / "cmake" / "nlohmann_json",
+                pathlib.Path(sys.prefix)
+                / "Library"
+                / "share"
+                / "cmake"
+                / "nlohmann_json",
+            )
+            nlohmann_directory = next(
+                (
+                    candidate
+                    for candidate in nlohmann_directories
+                    if (candidate / "nlohmann_jsonConfig.cmake").is_file()
+                ),
+                None,
+            )
+            if nlohmann_directory is None:
+                raise LivePrerequisiteMissing("nlohmann_json CMake package")
+            configure_command = [
+                str(cmake),
+                "-S",
+                str(source_root),
+                "-B",
+                str(runtime_cpp_build),
+                "-G",
+                "Ninja",
+                "-DBUILD_TESTING=ON",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_MAKE_PROGRAM=" + str(ninja).replace("\\", "/"),
+                "-DPython3_EXECUTABLE="
+                + str(toolchain.python_executable).replace("\\", "/"),
+                "-DPYTHON_EXECUTABLE="
+                + str(toolchain.python_executable).replace("\\", "/"),
+                "-DOPENSSL_ROOT_DIR=" + str(library).replace("\\", "/"),
+                "-Dnlohmann_json_DIR="
+                + str(nlohmann_directory).replace("\\", "/"),
+                "-Dtinyxml2_DIR="
+                + str(library / "lib" / "cmake" / "tinyxml2").replace("\\", "/"),
+            ]
+            command_results["cmakeConfigure"] = run_logged(
+                configure_command,
+                cwd=runtime_cpp_root,
+                env=cpp_environment,
+                log_path=row_root / "cmake-configure.log",
+                timeout_seconds=300,
+            )
+            command_results["cmakeBuild"] = run_logged(
+                [str(cmake), "--build", str(runtime_cpp_build)],
+                cwd=runtime_cpp_root,
+                env=cpp_environment,
+                log_path=row_root / "cmake-build.log",
+                timeout_seconds=900,
+            )
 
-        if not run_tests:
+            if not run_tests:
+                result = {
+                    **base,
+                    "verdict": "BUILD ONLY",
+                    "finishedAt": timestamp(),
+                    "overlayAuthority": overlay,
+                    "commands": command_results,
+                    "bridgeSourceDigest": hash_source_tree(source_root),
+                }
+                _write_json_atomic(summary_path, result)
+                return result
+
+            command_results["ctest"] = run_logged(
+                [
+                    str(ctest),
+                    "--test-dir",
+                    str(runtime_cpp_build),
+                    "--output-on-failure",
+                    "-C",
+                    "Release",
+                ],
+                cwd=runtime_cpp_root,
+                env=cpp_environment,
+                log_path=row_root / "ctest.log",
+                timeout_seconds=300,
+            )
+            test_count, passed = _ctest_counts(row_root / "ctest.log")
+            probe_executable = cpp_build / "phase186_origin_suppression_probe.exe"
+            if not probe_executable.is_file():
+                raise BridgeBuildFailure(
+                    "origin-suppression probe executable was not built"
+                )
+            generated_duplex_probe = cpp_build / "test_generated_duplex.exe"
+            if not generated_duplex_probe.is_file():
+                raise BridgeBuildFailure(
+                    "generated standard and Phase181 duplex probe was not built"
+                )
             result = {
                 **base,
-                "verdict": "BUILD ONLY",
+                "verdict": "PASS",
                 "finishedAt": timestamp(),
+                "ros2Root": str(toolchain.ros2_root.resolve()),
                 "overlayAuthority": overlay,
+                "overlayReused": reused,
                 "commands": command_results,
+                "ctest": {"tests": test_count, "passed": passed},
+                "compiler": _compiler_identity(
+                    cpp_build / "CMakeCache.txt",
+                    cpp_environment,
+                ),
                 "bridgeSourceDigest": hash_source_tree(source_root),
+                "probeExecutable": {
+                    "path": str(probe_executable.resolve()),
+                    "sha256": sha256_file(probe_executable),
+                },
+                "generatedDuplexProbe": {
+                    "path": str(generated_duplex_probe.resolve()),
+                    "sha256": sha256_file(generated_duplex_probe),
+                },
             }
+            validate_build_summary(result, row)
             _write_json_atomic(summary_path, result)
             return result
-
-        command_results["ctest"] = run_logged(
-            [
-                str(ctest),
-                "--test-dir",
-                str(cpp_build),
-                "--output-on-failure",
-                "-C",
-                "Release",
-            ],
-            cwd=row_root,
-            env=cpp_environment,
-            log_path=row_root / "ctest.log",
-            timeout_seconds=300,
-        )
-        test_count, passed = _ctest_counts(row_root / "ctest.log")
-        probe_executable = cpp_build / "phase186_origin_suppression_probe.exe"
-        if not probe_executable.is_file():
-            raise BridgeBuildFailure(
-                "origin-suppression probe executable was not built"
-            )
-        result = {
-            **base,
-            "verdict": "PASS",
-            "finishedAt": timestamp(),
-            "ros2Root": str(toolchain.ros2_root.resolve()),
-            "overlayAuthority": overlay,
-            "overlayReused": reused,
-            "commands": command_results,
-            "ctest": {"tests": test_count, "passed": passed},
-            "compiler": _compiler_identity(
-                cpp_build / "CMakeCache.txt",
-                cpp_environment,
-            ),
-            "bridgeSourceDigest": hash_source_tree(source_root),
-            "probeExecutable": {
-                "path": str(probe_executable.resolve()),
-                "sha256": sha256_file(probe_executable),
-            },
-        }
-        validate_build_summary(result, row)
-        _write_json_atomic(summary_path, result)
-        return result
     except LivePrerequisiteMissing as exc:
         result = {
             **not_run_summary(row, str(exc)),

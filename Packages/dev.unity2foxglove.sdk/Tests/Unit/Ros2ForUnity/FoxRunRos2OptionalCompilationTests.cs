@@ -599,7 +599,8 @@ namespace Demo
                     Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
                     "FoxRunEncoding.cs",
                     Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportId.cs"),
-                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportContracts.cs")
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportContracts.cs"),
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunGeneratedMemberAccess.cs")
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(attributeRoot, file))));
             var compilation = CSharpCompilation.Create(

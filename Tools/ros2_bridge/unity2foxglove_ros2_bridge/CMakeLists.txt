@@ -154,6 +154,30 @@ if(BUILD_TESTING)
     target_link_libraries(test_full_duplex_origin ws2_32)
   endif()
 
+  find_package(foxglove_msgs QUIET)
+  find_package(unity2foxglove_foxrun_interfaces_v1 QUIET)
+  if(foxglove_msgs_FOUND AND unity2foxglove_foxrun_interfaces_v1_FOUND)
+    ament_add_gtest(test_generated_duplex
+      test/test_generated_duplex.cpp
+    )
+    target_compile_features(test_generated_duplex PUBLIC cxx_std_20)
+    target_link_libraries(test_generated_duplex
+      bridge_runtime
+      rclcpp::rclcpp
+      nlohmann_json::nlohmann_json
+    )
+    ament_target_dependencies(test_generated_duplex
+      foxglove_msgs
+      unity2foxglove_foxrun_interfaces_v1
+    )
+    if(WIN32)
+      target_link_libraries(test_generated_duplex ws2_32)
+    endif()
+  else()
+    message(STATUS
+      "Skipping generated duplex certification: exact external schema overlays are absent")
+  endif()
+
   add_executable(phase186_origin_suppression_probe
     test/test_origin_suppression.cpp
   )
