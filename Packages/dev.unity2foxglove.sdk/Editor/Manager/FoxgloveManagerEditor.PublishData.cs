@@ -71,12 +71,64 @@ namespace Unity.FoxgloveSDK.Editor
             if (manager == null)
                 return;
 
+            foreach (var setupDrawer in
+                     FoxRunManagerSetupDrawerRegistry.Capture())
+            {
+                setupDrawer.Draw(manager, serializedObject);
+            }
+
+            var publishTransportIds =
+                FindCachedProperty(
+                    "_foxRunPublishTransportIds");
+            var subscribeTransportId =
+                FindCachedProperty(
+                    "_foxRunSubscribeTransportId");
             foreach (var drawer in
                      FoxRunTransportProviderDrawerRegistry.Capture())
             {
-                drawer.EnsureProvider(manager);
+                if (ShouldEnsureProvider(
+                        drawer,
+                        publishTransportIds,
+                        subscribeTransportId))
+                {
+                    drawer.EnsureProvider(manager);
+                }
+
                 drawer.Draw(manager, serializedObject);
             }
+        }
+
+        private bool ShouldEnsureProvider(
+            IFoxRunTransportProviderDrawer drawer,
+            SerializedProperty publishTransportIds,
+            SerializedProperty subscribeTransportId)
+        {
+            if (drawer == null
+                || serializedObject.isEditingMultipleObjects)
+            {
+                return false;
+            }
+
+            var publishSelected =
+                (drawer.Capabilities
+                 & FoxRunTransportCapabilities.Publish) != 0
+                && publishTransportIds != null
+                && !publishTransportIds
+                    .hasMultipleDifferentValues
+                && SerializedStringArrayContains(
+                    publishTransportIds,
+                    drawer.TransportId);
+            var subscribeSelected =
+                (drawer.Capabilities
+                 & FoxRunTransportCapabilities.Subscribe) != 0
+                && subscribeTransportId != null
+                && !subscribeTransportId
+                    .hasMultipleDifferentValues
+                && string.Equals(
+                    subscribeTransportId.stringValue,
+                    drawer.TransportId,
+                    System.StringComparison.Ordinal);
+            return publishSelected || subscribeSelected;
         }
 
         private static bool SerializedStringArrayContains(

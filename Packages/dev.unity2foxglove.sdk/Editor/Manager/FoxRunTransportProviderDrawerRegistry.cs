@@ -22,6 +22,16 @@ namespace Unity.FoxgloveSDK.Editor
         void Draw(FoxgloveManager manager, SerializedObject managerObject);
     }
 
+    public interface IFoxRunManagerSetupDrawer
+    {
+        string DrawerId { get; }
+        int Order { get; }
+
+        void Draw(
+            FoxgloveManager manager,
+            SerializedObject managerObject);
+    }
+
     /// <summary>
     /// Domain-reload-scoped definitions only. Runtime Provider/component
     /// instances are never stored here.
@@ -68,6 +78,71 @@ namespace Unity.FoxgloveSDK.Editor
                 return Drawers
                     .OrderBy(pair => pair.Key.Value, StringComparer.Ordinal)
                     .Select(pair => pair.Value)
+                    .ToArray();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Optional package setup controls that must remain available before a
+    /// transport runtime or Provider component can exist.
+    /// </summary>
+    [InitializeOnLoad]
+    public static class FoxRunManagerSetupDrawerRegistry
+    {
+        private static readonly object Gate = new object();
+        private static readonly Dictionary<
+            string,
+            IFoxRunManagerSetupDrawer> Drawers =
+                new Dictionary<
+                    string,
+                    IFoxRunManagerSetupDrawer>(
+                    StringComparer.Ordinal);
+
+        static FoxRunManagerSetupDrawerRegistry()
+        {
+        }
+
+        public static void Register(
+            IFoxRunManagerSetupDrawer drawer)
+        {
+            if (drawer == null)
+                throw new ArgumentNullException(nameof(drawer));
+            if (string.IsNullOrWhiteSpace(drawer.DrawerId))
+            {
+                throw new ArgumentException(
+                    "Manager setup drawer ID cannot be empty.",
+                    nameof(drawer));
+            }
+
+            lock (Gate)
+            {
+                if (Drawers.TryGetValue(
+                        drawer.DrawerId,
+                        out var existing)
+                    && !ReferenceEquals(existing, drawer)
+                    && existing.GetType() != drawer.GetType())
+                {
+                    throw new InvalidOperationException(
+                        "Duplicate Manager setup drawer ID '"
+                        + drawer.DrawerId
+                        + "'.");
+                }
+
+                Drawers[drawer.DrawerId] = drawer;
+            }
+        }
+
+        public static IReadOnlyList<
+            IFoxRunManagerSetupDrawer> Capture()
+        {
+            lock (Gate)
+            {
+                return Drawers.Values
+                    .OrderBy(drawer => drawer.Order)
+                    .ThenBy(
+                        drawer => drawer.DrawerId,
+                        StringComparer.Ordinal)
                     .ToArray();
             }
         }
