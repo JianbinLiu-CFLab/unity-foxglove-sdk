@@ -568,7 +568,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     if (TryUnwrapNullable(enumType, out var unwrappedEnum))
                         enumType = unwrappedEnum;
                     sb.AppendLine(
-                        $"{pad}var {value} = ({GlobalTypeName(enumType)})reader.ReadInt32();");
+                        $"{pad}var {value} = ({GlobalTypeName(enumType)}){PrimitiveReadExpression(member.RosType)};");
                     break;
                 case BridgeDtoMemberKind.Scalar:
                     sb.AppendLine(
@@ -639,7 +639,9 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             }
             else if (member.SequenceElementIsEnum)
             {
-                item = "(" + elementType + ")reader.ReadInt32()";
+                item = "(" + elementType + ")"
+                       + PrimitiveReadExpression(
+                           StripArray(member.RosType));
             }
             else if (string.Equals(
                          StripArray(member.RosType),
@@ -1190,12 +1192,15 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
             if (shape.Kind == FoxRunTypeShapeKind.Enum)
             {
+                var enumRosType = string.IsNullOrEmpty(shape.CanonicalType)
+                    ? "int32"
+                    : shape.CanonicalType;
                 return new BridgeDtoMemberShape(
                     field.MemberName,
                     rosName,
                     BridgeDtoMemberKind.Enum,
                     NullableTypeName(shape.TypeName, shape.Nullable),
-                    "int32",
+                    enumRosType,
                     string.Empty,
                     null,
                     shape.Nullable || field.IsNullable,
@@ -1244,7 +1249,9 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             if (shape.Kind == FoxRunTypeShapeKind.Object)
                 return nested?.PayloadIdentity ?? string.Empty;
             if (shape.Kind == FoxRunTypeShapeKind.Enum)
-                return "int32";
+                return string.IsNullOrEmpty(shape.CanonicalType)
+                    ? "int32"
+                    : shape.CanonicalType;
             if (shape.Kind != FoxRunTypeShapeKind.Canonical)
                 return string.Empty;
 
@@ -1328,9 +1335,6 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 AppendLengthFramed(
                     builder,
                     member.HasPresence ? "1" : "0");
-                AppendLengthFramed(
-                    builder,
-                    member.SequenceElementIsEnum ? "1" : "0");
                 AppendLengthFramed(
                     builder,
                     member.SequenceRepresentation.ToString());

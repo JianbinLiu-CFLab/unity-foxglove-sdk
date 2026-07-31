@@ -361,7 +361,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 .ThenBy(value => value.Name, StringComparer.Ordinal)
                 .ToList();
 
-            var result = FoxRunTypeShape.Enum(typeName, values);
+            var result = FoxRunTypeShape.Enum(
+                typeName,
+                values,
+                underlyingCanonicalType:
+                    FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
+                        FullTypeName(type.EnumUnderlyingType)));
             memo[typeName] = result;
             return result;
         }

@@ -181,14 +181,33 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunTypeShape Enum(
             string typeName,
             IReadOnlyList<FoxRunEnumValue> values,
-            bool nullable = false)
+            bool nullable = false,
+            string underlyingCanonicalType = "int32")
         {
             if (string.IsNullOrWhiteSpace(typeName))
                 throw new ArgumentException("A FoxRun enum type name is required.", nameof(typeName));
+            if (string.IsNullOrWhiteSpace(underlyingCanonicalType))
+                underlyingCanonicalType = "int32";
+            switch (underlyingCanonicalType)
+            {
+                case "int8":
+                case "uint8":
+                case "int16":
+                case "uint16":
+                case "int32":
+                case "uint32":
+                case "int64":
+                case "uint64":
+                    break;
+                default:
+                    throw new ArgumentException(
+                        "A FoxRun enum requires an integer canonical underlying type.",
+                        nameof(underlyingCanonicalType));
+            }
             return new FoxRunTypeShape(
                 FoxRunTypeShapeKind.Enum,
                 typeName,
-                string.Empty,
+                underlyingCanonicalType,
                 Array.Empty<FoxRunTypeField>(),
                 values,
                 nullable,

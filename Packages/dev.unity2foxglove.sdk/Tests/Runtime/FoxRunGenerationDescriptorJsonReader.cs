@@ -415,7 +415,8 @@ namespace Unity.FoxgloveSDK.Tests
                         FoxRunTypeShape.Enum(
                             RequiredStringValue(shape, "typeName"),
                             values,
-                            nullable),
+                            nullable,
+                            RequiredStringValue(shape, "canonicalType")),
                         isValueType,
                         path);
                 }

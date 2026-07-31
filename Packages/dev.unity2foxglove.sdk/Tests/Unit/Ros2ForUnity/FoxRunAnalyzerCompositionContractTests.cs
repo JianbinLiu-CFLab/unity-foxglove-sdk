@@ -201,6 +201,14 @@ namespace AnalyzerCompositionFixtures
                 "04c0e0d39b4c108bdb86e242f44215e394f5f56175e18a8ab60c682987e8b422",
                 generated[BridgeHint],
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "writer.WriteUInt16((ushort)",
+                generated[BridgeHint],
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "reader.ReadUInt16()",
+                generated[BridgeHint],
+                StringComparison.Ordinal);
         }
 
         private static AnalyzerExecution Run(
