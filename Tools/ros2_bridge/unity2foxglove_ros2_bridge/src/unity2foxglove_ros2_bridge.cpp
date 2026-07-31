@@ -43,9 +43,13 @@
 #include <nlohmann/json.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/contexts/default_context.hpp>
+#include <rclcpp/generic_subscription.hpp>
 #include <rclcpp/serialized_message.hpp>
+#include <rclcpp/typesupport_helpers.hpp>
+#include <rclcpp/version.h>
 
 #include "unity2foxglove_ros2_bridge/bridge_lifecycle.hpp"
+#include "unity2foxglove_ros2_bridge/bridge_origin.hpp"
 #include "unity2foxglove_ros2_bridge/bridge_process.hpp"
 #include "unity2foxglove_ros2_bridge/bridge_session.hpp"
 
@@ -1619,6 +1623,60 @@ using GenericPublisherFactory =
       const std::string &,
       const rclcpp::QoS &)>;
 
+#if RCLCPP_VERSION_MAJOR < 20
+class BridgeGenericSubscriptionWithInfo final
+  : public rclcpp::GenericSubscription
+{
+public:
+  using Callback = std::function<void(
+      const std::shared_ptr<rclcpp::SerializedMessage> &,
+      const rclcpp::MessageInfo &)>;
+
+  BridgeGenericSubscriptionWithInfo(
+    rclcpp::node_interfaces::NodeBaseInterface * node_base,
+    const std::shared_ptr<rcpputils::SharedLibrary> & typesupport,
+    const std::string & topic,
+    const std::string & message_type,
+    const rclcpp::QoS & qos,
+    Callback callback,
+    const rclcpp::SubscriptionOptions & options)
+  : rclcpp::GenericSubscription(
+      node_base,
+      typesupport,
+      topic,
+      message_type,
+      qos,
+      [](std::shared_ptr<rclcpp::SerializedMessage>) {},
+      options),
+    callback_(std::move(callback))
+  {
+    if (!callback_) {
+      throw std::invalid_argument(
+              "a Bridge generic subscription callback is required");
+    }
+  }
+
+  void handle_message(
+    std::shared_ptr<void> & message,
+    const rclcpp::MessageInfo & message_info) override
+  {
+    callback_(
+      std::static_pointer_cast<rclcpp::SerializedMessage>(message),
+      message_info);
+  }
+
+  void handle_serialized_message(
+    const std::shared_ptr<rclcpp::SerializedMessage> & message,
+    const rclcpp::MessageInfo & message_info) override
+  {
+    callback_(message, message_info);
+  }
+
+private:
+  Callback callback_;
+};
+#endif
+
 class BridgeNode
 {
 public:
@@ -1629,6 +1687,9 @@ public:
     u2r2::ProtocolLimits::defaults().max_contracts())
   : node_(std::move(node)),
     payload_format_(payload_format),
+    origin_registry_(
+      std::make_shared<bridge_runtime::BridgeOriginRegistry>(
+        maximum_publishers)),
     maximum_publishers_(maximum_publishers)
   {
     if (!node_) {
@@ -1639,8 +1700,9 @@ public:
     }
 
     const auto publisher_node = node_;
+    const auto origin_registry = origin_registry_;
     publisher_factory_ =
-      [publisher_node](
+      [publisher_node, origin_registry](
       const std::string & topic,
       const std::string & message_type,
       const rclcpp::QoS & qos)
@@ -1649,9 +1711,18 @@ public:
         // for the exact canonical message type before returning a publisher.
         auto publisher =
           publisher_node->create_generic_publisher(topic, message_type, qos);
-        return [publisher = std::move(publisher)](
+        auto origin_registered = std::make_shared<std::once_flag>();
+        return [
+          publisher = std::move(publisher),
+          origin_registry,
+          origin_registered](
           const rclcpp::SerializedMessage & message)
           {
+            std::call_once(
+              *origin_registered,
+              [&]() {
+                origin_registry->register_local(publisher->get_gid());
+              });
             publisher->publish(message);
           };
       };
@@ -1663,6 +1734,9 @@ public:
     uint64_t maximum_publishers =
     u2r2::ProtocolLimits::defaults().max_contracts())
   : payload_format_(payload_format),
+    origin_registry_(
+      std::make_shared<bridge_runtime::BridgeOriginRegistry>(
+        maximum_publishers)),
     publisher_factory_(std::move(publisher_factory)),
     maximum_publishers_(maximum_publishers)
   {
@@ -1786,13 +1860,11 @@ public:
     contract.depth = static_cast<int>(identity.qos.depth);
     auto qos = make_qos(contract);
     const auto logger = node_->get_logger();
-    auto subscription = node_->create_generic_subscription(
-      identity.topic,
-      identity.schema_name,
-      qos,
-      [callback = std::move(callback), logger](
+    const auto origin_registry = origin_registry_;
+    auto receive =
+      [callback = std::move(callback), logger, origin_registry](
         std::shared_ptr<rclcpp::SerializedMessage> message,
-        const rclcpp::MessageInfo &) {
+        const rclcpp::MessageInfo & info) {
         if (!message) {
           return;
         }
@@ -1804,7 +1876,9 @@ public:
           (void)callback(
             serialized.buffer,
             serialized.buffer_length,
-            now < 0 ? 0U : static_cast<uint64_t>(now));
+            now < 0 ? 0U : static_cast<uint64_t>(now),
+            origin_registry->classify(
+              info.get_rmw_message_info().publisher_gid));
         } catch (const std::exception & error) {
           RCLCPP_ERROR(
             logger,
@@ -1817,7 +1891,29 @@ public:
             "[unity2foxglove_ros2_bridge] serialized subscription "
             "callback rejected a sample with an unknown error");
         }
-      });
+      };
+#if RCLCPP_VERSION_MAJOR < 20
+    rclcpp::SubscriptionOptions options;
+    const auto topics = node_->get_node_topics_interface();
+    auto subscription =
+      std::make_shared<BridgeGenericSubscriptionWithInfo>(
+      topics->get_node_base_interface(),
+      rclcpp::get_typesupport_library(
+        identity.schema_name,
+        "rosidl_typesupport_cpp"),
+      identity.topic,
+      identity.schema_name,
+      qos,
+      std::move(receive),
+      options);
+    topics->add_subscription(subscription, options.callback_group);
+#else
+    auto subscription = node_->create_generic_subscription(
+      identity.topic,
+      identity.schema_name,
+      qos,
+      std::move(receive));
+#endif
     if (!subscription) {
       throw std::runtime_error(
               "generic subscription factory returned no subscription");
@@ -1839,6 +1935,7 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
+  std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry_;
   GenericPublisherFactory publisher_factory_;
   uint64_t maximum_publishers_;
   PublisherContractRegistry publisher_contracts_;

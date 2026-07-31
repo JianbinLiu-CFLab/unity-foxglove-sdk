@@ -210,13 +210,15 @@ BridgeSerializedCallback BridgeOutboundQueue::callback(
   return [state, gate](
            const uint8_t * payload,
            size_t payload_size,
-           uint64_t receive_time_ns) {
+           uint64_t receive_time_ns,
+           BridgeSampleOrigin origin) {
            return Enqueue(
              state,
              gate,
              payload,
              payload_size,
-             receive_time_ns);
+             receive_time_ns,
+             origin);
          };
 }
 
@@ -224,14 +226,16 @@ BridgeSerializedAdmission BridgeOutboundQueue::enqueue(
   const std::shared_ptr<BridgeSubscriptionGate> & gate,
   const uint8_t * payload,
   size_t payload_size,
-  uint64_t receive_time_ns)
+  uint64_t receive_time_ns,
+  BridgeSampleOrigin origin)
 {
   return Enqueue(
     state_,
     gate,
     payload,
     payload_size,
-    receive_time_ns);
+    receive_time_ns,
+    origin);
 }
 
 BridgeSerializedAdmission BridgeOutboundQueue::Enqueue(
@@ -239,7 +243,8 @@ BridgeSerializedAdmission BridgeOutboundQueue::Enqueue(
   const std::shared_ptr<BridgeSubscriptionGate> & gate,
   const uint8_t * payload,
   size_t payload_size,
-  uint64_t receive_time_ns)
+  uint64_t receive_time_ns,
+  BridgeSampleOrigin origin)
 {
   const auto gate_state =
     std::static_pointer_cast<GateState>(GateStateOf(gate));
@@ -254,6 +259,23 @@ BridgeSerializedAdmission BridgeOutboundQueue::Enqueue(
       ++state->stats.inactive;
       return BridgeSerializedAdmission::inactive;
     }
+  }
+  if (origin == BridgeSampleOrigin::local) {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    ++state->stats.suppressed_local;
+    return BridgeSerializedAdmission::suppressed_local;
+  }
+  if (
+    origin == BridgeSampleOrigin::missing ||
+    origin == BridgeSampleOrigin::ambiguous)
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    ++state->stats.invalid_origin;
+    return BridgeSerializedAdmission::invalid_origin;
+  }
+  if (origin != BridgeSampleOrigin::external) {
+    throw std::invalid_argument(
+            "the Bridge sample origin classification is invalid");
   }
   if (payload_size > state->limits.max_payload_bytes()) {
     std::lock_guard<std::mutex> lock(state->mutex);

@@ -21,6 +21,7 @@ target_link_libraries(u2r2_protocol PUBLIC
 
 add_library(bridge_runtime STATIC
   src/bridge_lifecycle.cpp
+  src/bridge_origin.cpp
   src/bridge_outbound_queue.cpp
   src/bridge_process.cpp
   src/bridge_session.cpp
@@ -139,6 +140,19 @@ if(BUILD_TESTING)
   target_link_libraries(test_bridge_outbound_queue
     bridge_runtime
   )
+
+  ament_add_gtest(test_full_duplex_origin
+    test/test_full_duplex_origin.cpp
+  )
+  target_compile_features(test_full_duplex_origin PUBLIC cxx_std_20)
+  target_link_libraries(test_full_duplex_origin
+    bridge_runtime
+    rclcpp::rclcpp
+    nlohmann_json::nlohmann_json
+  )
+  if(WIN32)
+    target_link_libraries(test_full_duplex_origin ws2_32)
+  endif()
 
   add_executable(phase186_origin_suppression_probe
     test/test_origin_suppression.cpp

@@ -2239,7 +2239,11 @@ TEST(
   uint64_t receive_time_ns = 0;
   auto subscription = bridge.subscribe(
     identity,
-    [&](const uint8_t * data, size_t size, uint64_t time_ns) {
+    [&](const uint8_t * data,
+      size_t size,
+      uint64_t time_ns,
+      bridge_runtime::BridgeSampleOrigin origin) {
+      EXPECT_EQ(bridge_runtime::BridgeSampleOrigin::external, origin);
       {
         std::lock_guard<std::mutex> lock(received_mutex);
         received.assign(data, data + size);

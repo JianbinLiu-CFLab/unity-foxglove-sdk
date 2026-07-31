@@ -76,7 +76,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
-      "sha256": "f79deeefc0bd4c392b3e7a99a6bf4d90791808a1218c79166774466801aedd6a",
+      "sha256": "e6489fcb5836e7ab1d820b471b886a85c559a8c1f0278ac11c293f9db36d79c9",
       "classification": "original",
       "influence": "Original strict C# U2R2 v2 frame codec.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -90,7 +90,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolModel.cs",
-      "sha256": "cedc2872b60dfcf678f2a3acbc1370bde036555e17b8cc493f3321ddac593237",
+      "sha256": "feba4fd497d9ad9761cf81b51969c4648d6718c1bb07d494b1a529fa64a87cc9",
       "classification": "original",
       "influence": "Original C# U2R2 v2 protocol and error model.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -111,7 +111,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "17fd51fe78e3d1c9fab9e9afcbddfa9ea22e985d81322051d0b82e189ba03d12",
+      "sha256": "5492901e18e7ecfbb773f9c7eba8303f767322814f8a44282931ff91c7319a38",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -142,28 +142,28 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol.hpp",
-      "sha256": "599d331e801b966a09923ad815f888f5a35b823a4a76c56b1c9e732faa8ef97e",
+      "sha256": "254f10251129100e9351adb8e593ba9417a5869fa5b0ee66d615f1e0c9e9ae19",
       "classification": "original",
       "influence": "Original strict C++ U2R2 v2 protocol declarations.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp",
-      "sha256": "a2ac31b08f2a385fa007313b24171d9ec2498d2e6237ffdb830ba891dc63443f",
+      "sha256": "811b1ec65431680db2eeb18b5136e48b438e1b912ee7e2f6c342acbdea2a3b0d",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority declarations.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol.cpp",
-      "sha256": "753bbc07e83e886f41f77d6eb55104f1d30766d5d5365d2ff886a6e415e53ab0",
+      "sha256": "122049491bfa112378915653af73a454d9436edb6bd8a7526c73b0197d0c2176",
       "classification": "original",
       "influence": "Original strict C++ U2R2 v2 protocol implementation.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
-      "sha256": "5cd8aecf37ac9578d3b4430b2ae5bd3525101c699896d5438b8e92ee3cff50c6",
+      "sha256": "aed0643dbc71f17578fb34da0b64441c462c4e1e9f062b7d78e35baa49205202",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority implementation.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -176,7 +176,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "d876c35822f0e681670bbb6fbdf39dedd1c128c5fef93a2ce8c5f31f95c50be8",
+      "sha256": "edbfd88f47685caecea80e72f84549b12bb1fdf8464e7d928dd485322b77c757",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"

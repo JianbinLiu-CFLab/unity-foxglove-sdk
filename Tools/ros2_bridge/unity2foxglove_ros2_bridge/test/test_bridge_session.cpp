@@ -352,7 +352,8 @@ TEST(BridgeV2Session, RegistrationReadyReplayMessageAndRemovalAreOneTransaction)
         callback(
           reinterpret_cast<const uint8_t *>("\x00\x01\x00\x00"),
           4U,
-          1U));
+          1U,
+          runtime::BridgeSampleOrigin::external));
       return std::shared_ptr<void>(
         new int(1),
         [&](void * pointer) {
@@ -381,7 +382,11 @@ TEST(BridgeV2Session, RegistrationReadyReplayMessageAndRemovalAreOneTransaction)
   ASSERT_TRUE(callback);
   EXPECT_EQ(
     runtime::BridgeSerializedAdmission::accepted,
-    callback(payload.data(), payload.size(), 186U));
+    callback(
+      payload.data(),
+      payload.size(),
+      186U,
+      runtime::BridgeSampleOrigin::external));
   auto outbound = session.try_begin_write();
   ASSERT_TRUE(outbound.has_value());
   const auto message = u2r2::parse_v2(
@@ -419,7 +424,11 @@ TEST(BridgeV2Session, RegistrationReadyReplayMessageAndRemovalAreOneTransaction)
   EXPECT_EQ(1, entity_destructions);
   EXPECT_EQ(
     runtime::BridgeSerializedAdmission::inactive,
-    callback(payload.data(), payload.size(), 187U));
+    callback(
+      payload.data(),
+      payload.size(),
+      187U,
+      runtime::BridgeSampleOrigin::external));
   auto removed = session.try_begin_write();
   ASSERT_TRUE(removed.has_value());
   const auto removed_bytes = removed->frame().bytes();

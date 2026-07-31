@@ -12,6 +12,7 @@
 #include <memory>
 #include <string>
 
+#include "unity2foxglove_ros2_bridge/bridge_origin.hpp"
 #include "unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp"
 
 namespace unity2foxglove::ros2_bridge::runtime
@@ -25,6 +26,8 @@ enum class BridgeSerializedAdmission
   unsupported_representation = 3,
   payload_too_large = 4,
   capacity_rejected = 5,
+  suppressed_local = 6,
+  invalid_origin = 7,
 };
 
 struct BridgeOutboundQueueStats
@@ -34,6 +37,8 @@ struct BridgeOutboundQueueStats
   uint64_t unsupported_representation{0};
   uint64_t payload_too_large{0};
   uint64_t capacity_rejected{0};
+  uint64_t suppressed_local{0};
+  uint64_t invalid_origin{0};
 };
 
 class BridgeSubscriptionGate final
@@ -52,7 +57,8 @@ private:
 using BridgeSerializedCallback = std::function<BridgeSerializedAdmission(
     const uint8_t *,
     size_t,
-    uint64_t)>;
+    uint64_t,
+    BridgeSampleOrigin)>;
 
 class BridgeOutboundQueue final
 {
@@ -77,7 +83,8 @@ public:
     const std::shared_ptr<BridgeSubscriptionGate> & gate,
     const uint8_t * payload,
     size_t payload_size,
-    uint64_t receive_time_ns);
+    uint64_t receive_time_ns,
+    BridgeSampleOrigin origin = BridgeSampleOrigin::external);
   BridgeOutboundQueueStats stats() const;
   void close();
 
@@ -90,7 +97,8 @@ private:
     const std::shared_ptr<BridgeSubscriptionGate> & gate,
     const uint8_t * payload,
     size_t payload_size,
-    uint64_t receive_time_ns);
+    uint64_t receive_time_ns,
+    BridgeSampleOrigin origin);
   std::shared_ptr<State> state_;
 };
 }  // namespace unity2foxglove::ros2_bridge::runtime
