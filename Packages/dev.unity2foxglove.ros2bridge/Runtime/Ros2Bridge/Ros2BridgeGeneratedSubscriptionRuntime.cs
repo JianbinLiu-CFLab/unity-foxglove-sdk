@@ -440,6 +440,65 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        internal Ros2BridgeSubscriptionObservationSnapshot
+            GetObservationSnapshot()
+        {
+            lock (_gate)
+            {
+                var observed = 0;
+                var active = 0;
+                var pending = 0;
+                var unavailable = 0;
+                var rejected = 0;
+                var faulted = 0;
+                var selectedContractId = ulong.MaxValue;
+                var selectedReason = string.Empty;
+                foreach (var observation in _observations.Values)
+                {
+                    if (observation.State
+                            == Ros2BridgeGeneratedSubscriptionState.Stopped
+                        && observation.ActiveLeases == 0)
+                    {
+                        continue;
+                    }
+                    observed++;
+                    switch (observation.State)
+                    {
+                        case Ros2BridgeGeneratedSubscriptionState.Active:
+                            active++;
+                            break;
+                        case Ros2BridgeGeneratedSubscriptionState.Pending:
+                        case Ros2BridgeGeneratedSubscriptionState.Stopped:
+                            pending++;
+                            break;
+                        case Ros2BridgeGeneratedSubscriptionState.Unavailable:
+                            unavailable++;
+                            break;
+                        case Ros2BridgeGeneratedSubscriptionState.Rejected:
+                            rejected++;
+                            break;
+                        case Ros2BridgeGeneratedSubscriptionState.Faulted:
+                            faulted++;
+                            break;
+                    }
+                    if (!string.IsNullOrWhiteSpace(observation.LastReason)
+                        && observation.ContractId < selectedContractId)
+                    {
+                        selectedContractId = observation.ContractId;
+                        selectedReason = observation.LastReason;
+                    }
+                }
+                return new Ros2BridgeSubscriptionObservationSnapshot(
+                    observed,
+                    active,
+                    pending,
+                    unavailable,
+                    rejected,
+                    faulted,
+                    selectedReason);
+            }
+        }
+
         internal bool TryGetContractSnapshot(
             in FoxRunTransportSubscribeRoute route,
             out Ros2BridgeGeneratedSubscriptionSnapshot snapshot)

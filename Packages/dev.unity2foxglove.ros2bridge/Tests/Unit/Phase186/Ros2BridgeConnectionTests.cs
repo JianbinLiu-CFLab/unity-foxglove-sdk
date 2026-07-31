@@ -20,6 +20,84 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
     public sealed class Ros2BridgeConnectionTests
     {
         [Fact]
+        public void ConnectedSocketIsNotSubscribeDecodeReadiness()
+        {
+            var stats = new Ros2BridgeStatsSnapshot(
+                enabled: true,
+                connected: true,
+                connecting: false,
+                queuedFrames: 0,
+                sentFrames: 0,
+                droppedFrames: 0,
+                failedFrames: 0,
+                lastError: string.Empty,
+                lastConnectedUnixMs: 186,
+                lastDisconnectedUnixMs: 0);
+
+            var status = Ros2BridgeTransportStatusMapper.Create(
+                generation: 186,
+                FoxRunTransportCapabilities.Publish
+                | FoxRunTransportCapabilities.Subscribe,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                hasInboundPipeline: true,
+                Ros2BridgePublisherObservationSnapshot.Empty,
+                new Ros2BridgeSubscriptionObservationSnapshot(
+                    observedContracts: 1,
+                    activeContracts: 0,
+                    pendingContracts: 1,
+                    unavailableContracts: 0,
+                    rejectedContracts: 0,
+                    faultedContracts: 0,
+                    lastReason: "awaiting decoded binding"));
+
+            Assert.Equal(FoxRunTransportObservedState.Ready, status.Publish.State);
+            Assert.Equal(FoxRunTransportObservedState.Starting, status.Subscribe.State);
+            Assert.Equal(FoxRunTransportObservedState.Degraded, status.State);
+            Assert.False(status.Subscribe.IsReady);
+            Assert.Contains(
+                status.Diagnostics,
+                diagnostic => diagnostic.Code == "ROS2BRIDGE005");
+        }
+
+        [Fact]
+        public void ObservedDisconnectMapsToBoundedStableReconnectingStatus()
+        {
+            var stats = new Ros2BridgeStatsSnapshot(
+                enabled: true,
+                connected: false,
+                connecting: false,
+                queuedFrames: 0,
+                sentFrames: 0,
+                droppedFrames: 0,
+                failedFrames: 1,
+                lastError: new string('x', 700),
+                lastConnectedUnixMs: 185,
+                lastDisconnectedUnixMs: 186);
+
+            var status = Ros2BridgeTransportStatusMapper.Create(
+                generation: 187,
+                FoxRunTransportCapabilities.Publish,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                hasInboundPipeline: false,
+                Ros2BridgePublisherObservationSnapshot.Empty,
+                Ros2BridgeSubscriptionObservationSnapshot.Empty);
+
+            Assert.Equal(
+                FoxRunTransportObservedState.Reconnecting,
+                status.Publish.State);
+            Assert.Equal(
+                FoxRunTransportObservedState.Reconnecting,
+                status.State);
+            var diagnostic = Assert.Single(status.Diagnostics);
+            Assert.Equal("ROS2BRIDGE002", diagnostic.Code);
+            Assert.Equal(
+                FoxRunTransportDiagnostic.MaximumMessageChars,
+                diagnostic.Message.Length);
+        }
+
+        [Fact]
         public void CleanupAttemptsEveryActionAndPreservesFirstFailure()
         {
             var order = new System.Collections.Generic.List<int>();
@@ -750,6 +828,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Ros2BridgeGeneratedSubscriptionState.Stopped,
                 stopped.State);
             Assert.Equal(0, stopped.ActiveLeases);
+            var observed = subscriptions.GetObservationSnapshot();
+            Assert.Equal(0, observed.ObservedContracts);
+            Assert.Equal(0, observed.PendingContracts);
             Assert.True(
                 unregisterSeen.Wait(TimeSpan.FromSeconds(3)));
             peer.AssertCompleted();

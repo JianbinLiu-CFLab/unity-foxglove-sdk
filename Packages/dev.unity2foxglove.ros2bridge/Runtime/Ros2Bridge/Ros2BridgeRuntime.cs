@@ -490,6 +490,76 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        internal Ros2BridgePublisherObservationSnapshot
+            GetPublisherObservationSnapshot()
+        {
+            lock (_gate)
+            {
+                var ready = 0;
+                var pending = 0;
+                var rejected = 0;
+                string selectedTopic = null;
+                string selectedSchema = null;
+                string selectedReason = string.Empty;
+                var selectedPriority = 0;
+                foreach (var pair in _preparations)
+                {
+                    var priority = 0;
+                    switch (pair.Value.Readiness)
+                    {
+                        case Ros2BridgePublisherReadiness.Ready:
+                            ready++;
+                            break;
+                        case Ros2BridgePublisherReadiness.Pending:
+                            pending++;
+                            priority = 1;
+                            break;
+                        case Ros2BridgePublisherReadiness.Rejected:
+                            rejected++;
+                            priority = 2;
+                            break;
+                    }
+                    if (priority == 0
+                        || priority < selectedPriority
+                        || (priority == selectedPriority
+                            && ComparePreparationKey(
+                                pair.Key,
+                                selectedTopic,
+                                selectedSchema) >= 0))
+                    {
+                        continue;
+                    }
+                    selectedPriority = priority;
+                    selectedTopic = pair.Key.Topic;
+                    selectedSchema = pair.Key.SchemaName;
+                    selectedReason = pair.Value.Reason;
+                }
+                return new Ros2BridgePublisherObservationSnapshot(
+                    _preparations.Count,
+                    ready,
+                    pending,
+                    rejected,
+                    selectedReason);
+            }
+        }
+
+        private static int ComparePreparationKey(
+            PublisherPreparationKey candidate,
+            string selectedTopic,
+            string selectedSchema)
+        {
+            if (selectedTopic == null)
+                return -1;
+            var topic = string.CompareOrdinal(
+                candidate.Topic,
+                selectedTopic);
+            return topic != 0
+                ? topic
+                : string.CompareOrdinal(
+                    candidate.SchemaName,
+                    selectedSchema);
+        }
+
         internal bool StopAndJoin(int joinTimeoutMs)
         {
             Thread worker;

@@ -588,6 +588,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private sealed class Session :
             IFoxRunTransportSession,
+            IFoxRunTransportStatusSource,
             IFoxRunGeneratedTransportSession,
             IFoxRunTransportSchemaContributor,
             IFoxRunOrdinaryPayloadMapper,
@@ -683,6 +684,25 @@ namespace Unity2Foxglove.Ros2Bridge
             internal Ros2BridgeStatsSnapshot GetStatsSnapshot()
                 => _runtime?.GetStatsSnapshot()
                    ?? Ros2BridgeStatsSnapshot.Disabled;
+
+            public FoxRunTransportStatusSnapshot CaptureStatus(
+                FoxRunTransportCapabilities selectedDirections)
+            {
+                var runtime = _runtime;
+                var subscriptions = _subscriptions;
+                return Ros2BridgeTransportStatusMapper.Create(
+                    Generation,
+                    selectedDirections,
+                    runtime?.LifecycleState
+                    ?? Ros2BridgeRuntimeLifecycleState.Stopped,
+                    runtime?.GetStatsSnapshot()
+                    ?? Ros2BridgeStatsSnapshot.Disabled,
+                    runtime?.HasInboundPipeline ?? false,
+                    runtime?.GetPublisherObservationSnapshot()
+                    ?? Ros2BridgePublisherObservationSnapshot.Empty,
+                    subscriptions?.GetObservationSnapshot()
+                    ?? Ros2BridgeSubscriptionObservationSnapshot.Empty);
+            }
 
             public FoxRunTransportPublishResult PublishGenerated(
                 in FoxRunGeneratedTransportPublishRequest request)

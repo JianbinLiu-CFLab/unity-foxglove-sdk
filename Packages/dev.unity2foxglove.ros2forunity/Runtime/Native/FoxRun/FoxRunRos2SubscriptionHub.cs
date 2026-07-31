@@ -847,6 +847,68 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _scanCooldown = 0f;
         }
 
+        internal FoxRunTransportDirectionStatus CaptureTransportStatus()
+        {
+            if (!_providerSessionActive || _stopping)
+            {
+                return new FoxRunTransportDirectionStatus(
+                    FoxRunTransportDirection.Subscribe,
+                    selected: true,
+                    FoxRunTransportObservedState.Stopped,
+                    0,
+                    0,
+                    0);
+            }
+
+            var ready = 0;
+            var pending = 0;
+            var failed = 0;
+            for (var index = 0; index < _bindings.Count; index++)
+            {
+                switch (_bindings[index].Binding.State)
+                {
+                    case FoxRunRos2SubscriptionBindingState.Ready:
+                    case FoxRunRos2SubscriptionBindingState.Receiving:
+                        ready++;
+                        break;
+                    case FoxRunRos2SubscriptionBindingState.Unsupported:
+                    case FoxRunRos2SubscriptionBindingState.Failed:
+                        failed++;
+                        break;
+                    default:
+                        pending++;
+                        break;
+                }
+            }
+
+            var state = failed != 0
+                ? ready == 0
+                    ? FoxRunTransportObservedState.Failed
+                    : FoxRunTransportObservedState.Degraded
+                : pending != 0
+                    ? ready == 0
+                        ? FoxRunTransportObservedState.Starting
+                        : FoxRunTransportObservedState.Degraded
+                    : FoxRunTransportObservedState.Ready;
+            FoxRunTransportDiagnostic? diagnostic = failed != 0
+                ? new FoxRunTransportDiagnostic(
+                    "R2FU004",
+                    "One or more native subscription bindings failed.")
+                : pending != 0
+                    ? new FoxRunTransportDiagnostic(
+                        "R2FU003",
+                        "Native subscription bindings are waiting for runtime readiness.")
+                    : (FoxRunTransportDiagnostic?)null;
+            return new FoxRunTransportDirectionStatus(
+                FoxRunTransportDirection.Subscribe,
+                selected: true,
+                state,
+                _bindings.Count,
+                ready,
+                failed,
+                diagnostic);
+        }
+
         private void Awake()
         {
             EnsureHostCleanupQueue();

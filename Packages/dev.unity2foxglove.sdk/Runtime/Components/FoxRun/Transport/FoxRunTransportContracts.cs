@@ -5,6 +5,7 @@
 // Purpose: Neutral runtime contracts shared by FoxRun transport providers.
 
 using System;
+using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -29,6 +30,296 @@ namespace Unity.FoxgloveSDK.Components
     {
         Publish = 1,
         Subscribe = 2
+    }
+
+    /// <summary>
+    /// Provider-neutral observed state. This is deliberately separate from
+    /// <see cref="FoxRunTransportLifecycleState"/>, which only gates whether
+    /// a new frozen session may be captured.
+    /// </summary>
+    public enum FoxRunTransportObservedState : byte
+    {
+        Stopped = 0,
+        Starting = 1,
+        Ready = 2,
+        Degraded = 3,
+        Reconnecting = 4,
+        Failed = 5
+    }
+
+    /// <summary>One stable, bounded Provider runtime diagnostic.</summary>
+    public readonly struct FoxRunTransportDiagnostic :
+        IEquatable<FoxRunTransportDiagnostic>
+    {
+        public const int MaximumCodeChars = 64;
+        public const int MaximumMessageChars = 512;
+
+        public FoxRunTransportDiagnostic(string code, string message)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+                throw new ArgumentException(
+                    "Transport diagnostic code cannot be empty.",
+                    nameof(code));
+            var normalizedCode = code.Trim();
+            if (normalizedCode.Length > MaximumCodeChars)
+            {
+                throw new ArgumentException(
+                    "Transport diagnostic code exceeds the stable bound.",
+                    nameof(code));
+            }
+
+            Code = normalizedCode;
+            Message = BoundMessage(message);
+        }
+
+        public string Code { get; }
+        public string Message { get; }
+
+        public bool Equals(FoxRunTransportDiagnostic other)
+            => string.Equals(Code, other.Code, StringComparison.Ordinal)
+               && string.Equals(
+                   Message,
+                   other.Message,
+                   StringComparison.Ordinal);
+
+        public override bool Equals(object obj)
+            => obj is FoxRunTransportDiagnostic other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return ((Code == null
+                            ? 0
+                            : StringComparer.Ordinal.GetHashCode(Code))
+                        * 397)
+                       ^ (Message == null
+                           ? 0
+                           : StringComparer.Ordinal.GetHashCode(Message));
+            }
+        }
+
+        private static string BoundMessage(string message)
+        {
+            var value = string.IsNullOrWhiteSpace(message)
+                ? "Unspecified transport diagnostic."
+                : message.Trim();
+            return value.Length <= MaximumMessageChars
+                ? value
+                : value.Substring(0, MaximumMessageChars);
+        }
+    }
+
+    /// <summary>Observed readiness for one selected Provider direction.</summary>
+    public readonly struct FoxRunTransportDirectionStatus
+    {
+        public FoxRunTransportDirectionStatus(
+            FoxRunTransportDirection direction,
+            bool selected,
+            FoxRunTransportObservedState state,
+            int observedContractCount,
+            int readyContractCount,
+            int failedContractCount,
+            FoxRunTransportDiagnostic? diagnostic = null)
+        {
+            ValidateDirection(direction);
+            ValidateState(state);
+            if (observedContractCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(observedContractCount));
+            if (readyContractCount < 0
+                || readyContractCount > observedContractCount)
+                throw new ArgumentOutOfRangeException(nameof(readyContractCount));
+            if (failedContractCount < 0
+                || failedContractCount > observedContractCount
+                || failedContractCount
+                > observedContractCount - readyContractCount)
+                throw new ArgumentOutOfRangeException(nameof(failedContractCount));
+            if (!selected
+                && (state != FoxRunTransportObservedState.Stopped
+                    || observedContractCount != 0
+                    || readyContractCount != 0
+                    || failedContractCount != 0
+                    || diagnostic.HasValue))
+            {
+                throw new ArgumentException(
+                    "An unselected transport direction must be an empty Stopped observation.",
+                    nameof(selected));
+            }
+
+            Direction = direction;
+            Selected = selected;
+            State = state;
+            ObservedContractCount = observedContractCount;
+            ReadyContractCount = readyContractCount;
+            FailedContractCount = failedContractCount;
+            Diagnostic = diagnostic;
+        }
+
+        public FoxRunTransportDirection Direction { get; }
+        public bool Selected { get; }
+        public FoxRunTransportObservedState State { get; }
+        public int ObservedContractCount { get; }
+        public int ReadyContractCount { get; }
+        public int FailedContractCount { get; }
+        public FoxRunTransportDiagnostic? Diagnostic { get; }
+        public bool IsReady => Selected && State == FoxRunTransportObservedState.Ready;
+
+        public static FoxRunTransportDirectionStatus Unselected(
+            FoxRunTransportDirection direction)
+            => new FoxRunTransportDirectionStatus(
+                direction,
+                selected: false,
+                FoxRunTransportObservedState.Stopped,
+                0,
+                0,
+                0);
+
+        private static void ValidateDirection(FoxRunTransportDirection direction)
+        {
+            if (direction != FoxRunTransportDirection.Publish
+                && direction != FoxRunTransportDirection.Subscribe)
+                throw new ArgumentOutOfRangeException(nameof(direction));
+        }
+
+        private static void ValidateState(FoxRunTransportObservedState state)
+        {
+            if (state < FoxRunTransportObservedState.Stopped
+                || state > FoxRunTransportObservedState.Failed)
+                throw new ArgumentOutOfRangeException(nameof(state));
+        }
+    }
+
+    /// <summary>
+    /// Immutable status captured from one frozen Provider session. Diagnostic
+    /// codes are unique and the collection is always bounded.
+    /// </summary>
+    public readonly struct FoxRunTransportStatusSnapshot
+    {
+        public const int MaximumDiagnostics = 8;
+        private readonly IReadOnlyList<FoxRunTransportDiagnostic> _diagnostics;
+
+        public FoxRunTransportStatusSnapshot(
+            FoxRunTransportId providerId,
+            ulong generation,
+            FoxRunTransportDirectionStatus publish,
+            FoxRunTransportDirectionStatus subscribe,
+            IEnumerable<FoxRunTransportDiagnostic> diagnostics = null)
+        {
+            _ = new FoxRunTransportId(providerId.Value);
+            if (publish.Direction != FoxRunTransportDirection.Publish)
+                throw new ArgumentException(
+                    "Publish observation has the wrong direction.",
+                    nameof(publish));
+            if (subscribe.Direction != FoxRunTransportDirection.Subscribe)
+                throw new ArgumentException(
+                    "Subscribe observation has the wrong direction.",
+                    nameof(subscribe));
+
+            ProviderId = providerId;
+            Generation = generation;
+            Publish = publish;
+            Subscribe = subscribe;
+            State = Combine(publish, subscribe);
+
+            var values = new List<FoxRunTransportDiagnostic>(
+                MaximumDiagnostics);
+            var codes = new HashSet<string>(StringComparer.Ordinal);
+            AddDiagnostic(values, codes, publish.Diagnostic);
+            AddDiagnostic(values, codes, subscribe.Diagnostic);
+            if (diagnostics != null)
+            {
+                foreach (var diagnostic in diagnostics)
+                {
+                    if (values.Count >= MaximumDiagnostics)
+                        break;
+                    AddDiagnostic(values, codes, diagnostic);
+                }
+            }
+            _diagnostics = Array.AsReadOnly(values.ToArray());
+        }
+
+        public FoxRunTransportId ProviderId { get; }
+        public ulong Generation { get; }
+        public FoxRunTransportObservedState State { get; }
+        public FoxRunTransportDirectionStatus Publish { get; }
+        public FoxRunTransportDirectionStatus Subscribe { get; }
+        public IReadOnlyList<FoxRunTransportDiagnostic> Diagnostics =>
+            _diagnostics ?? Array.Empty<FoxRunTransportDiagnostic>();
+
+        private static void AddDiagnostic(
+            ICollection<FoxRunTransportDiagnostic> values,
+            ISet<string> codes,
+            FoxRunTransportDiagnostic? candidate)
+        {
+            if (!candidate.HasValue)
+                return;
+            AddDiagnostic(values, codes, candidate.Value);
+        }
+
+        private static void AddDiagnostic(
+            ICollection<FoxRunTransportDiagnostic> values,
+            ISet<string> codes,
+            FoxRunTransportDiagnostic candidate)
+        {
+            if (values.Count >= MaximumDiagnostics
+                || string.IsNullOrEmpty(candidate.Code)
+                || !codes.Add(candidate.Code))
+                return;
+            values.Add(candidate);
+        }
+
+        private static FoxRunTransportObservedState Combine(
+            FoxRunTransportDirectionStatus publish,
+            FoxRunTransportDirectionStatus subscribe)
+        {
+            var selected = 0;
+            var ready = 0;
+            var hasDegraded = false;
+            var hasReconnecting = false;
+            var hasStarting = false;
+            var hasFailed = false;
+            Observe(publish);
+            Observe(subscribe);
+
+            if (selected == 0)
+                return FoxRunTransportObservedState.Stopped;
+            if (ready == selected)
+                return FoxRunTransportObservedState.Ready;
+            if (hasDegraded || ready != 0)
+                return FoxRunTransportObservedState.Degraded;
+            if (hasFailed)
+                return FoxRunTransportObservedState.Failed;
+            if (hasReconnecting)
+                return FoxRunTransportObservedState.Reconnecting;
+            if (hasStarting)
+                return FoxRunTransportObservedState.Starting;
+            return FoxRunTransportObservedState.Stopped;
+
+            void Observe(FoxRunTransportDirectionStatus direction)
+            {
+                if (!direction.Selected)
+                    return;
+                selected++;
+                switch (direction.State)
+                {
+                    case FoxRunTransportObservedState.Ready:
+                        ready++;
+                        break;
+                    case FoxRunTransportObservedState.Degraded:
+                        hasDegraded = true;
+                        break;
+                    case FoxRunTransportObservedState.Reconnecting:
+                        hasReconnecting = true;
+                        break;
+                    case FoxRunTransportObservedState.Starting:
+                        hasStarting = true;
+                        break;
+                    case FoxRunTransportObservedState.Failed:
+                        hasFailed = true;
+                        break;
+                }
+            }
+        }
     }
 
     public enum FoxRunTransportRouteResultState
@@ -295,6 +586,16 @@ namespace Unity.FoxgloveSDK.Components
         ulong Generation { get; }
         FoxRunTransportPublishResult Publish(in FoxRunTransportPublishRoute route);
         FoxRunTransportSubscribeResult Subscribe(in FoxRunTransportSubscribeRoute route);
+    }
+
+    /// <summary>
+    /// Optional observed-state surface for a frozen session. The Manager
+    /// supplies the exact directions selected for that session.
+    /// </summary>
+    public interface IFoxRunTransportStatusSource
+    {
+        FoxRunTransportStatusSnapshot CaptureStatus(
+            FoxRunTransportCapabilities selectedDirections);
     }
 
     /// <summary>Manager-local registration endpoint implemented by provider companions.</summary>

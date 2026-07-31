@@ -232,7 +232,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private sealed class Session : IFoxRunTransportSession
+        private sealed class Session :
+            IFoxRunTransportSession,
+            IFoxRunTransportStatusSource
         {
             private FoxRunRos2TransportProvider _owner;
 
@@ -252,6 +254,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             public ulong Generation { get; }
 
+            public FoxRunTransportStatusSnapshot CaptureStatus(
+                FoxRunTransportCapabilities selectedDirections)
+            {
+                var owner = _owner;
+                var publishSelected =
+                    (selectedDirections
+                     & FoxRunTransportCapabilities.Publish) != 0;
+                var subscribeSelected =
+                    (selectedDirections
+                     & FoxRunTransportCapabilities.Subscribe) != 0;
+                var active = owner != null
+                             && Volatile.Read(
+                                 ref owner._activeGeneration)
+                             == checked((long)Generation);
+                var publish = publishSelected
+                    ? owner?._publisherHub?.CaptureTransportStatus()
+                      ?? EmptyDirection(
+                          FoxRunTransportDirection.Publish,
+                          active)
+                    : FoxRunTransportDirectionStatus.Unselected(
+                        FoxRunTransportDirection.Publish);
+                var subscribe = subscribeSelected
+                    ? owner?._subscriptionHub?.CaptureTransportStatus()
+                      ?? EmptyDirection(
+                          FoxRunTransportDirection.Subscribe,
+                          active)
+                    : FoxRunTransportDirectionStatus.Unselected(
+                        FoxRunTransportDirection.Subscribe);
+                return new FoxRunTransportStatusSnapshot(
+                    Id,
+                    Generation,
+                    publish,
+                    subscribe);
+            }
+
             public FoxRunTransportPublishResult Publish(
                 in FoxRunTransportPublishRoute route)
                 => FoxRunTransportPublishResult.Rejected(
@@ -267,6 +304,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var owner = Interlocked.Exchange(ref _owner, null);
                 owner?.Release(Generation);
             }
+
+            private static FoxRunTransportDirectionStatus EmptyDirection(
+                FoxRunTransportDirection direction,
+                bool active)
+                => new FoxRunTransportDirectionStatus(
+                    direction,
+                    selected: true,
+                    active
+                        ? FoxRunTransportObservedState.Starting
+                        : FoxRunTransportObservedState.Stopped,
+                    0,
+                    0,
+                    0,
+                    active
+                        ? new FoxRunTransportDiagnostic(
+                            "R2FU001",
+                            "The native Provider session is active but its observed hub is not ready.")
+                        : (FoxRunTransportDiagnostic?)null);
         }
     }
 }

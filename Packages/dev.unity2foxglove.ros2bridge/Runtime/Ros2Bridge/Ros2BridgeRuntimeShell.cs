@@ -347,6 +347,14 @@ namespace Unity2Foxglove.Ros2Bridge
                 return _run?.GetStatsSnapshot() ?? _lastSnapshot;
         }
 
+        internal Ros2BridgePublisherObservationSnapshot
+            GetPublisherObservationSnapshot()
+        {
+            lock (_lifecycleGate)
+                return _run?.GetPublisherObservationSnapshot()
+                       ?? Ros2BridgePublisherObservationSnapshot.Empty;
+        }
+
         public void Stop()
         {
             lock (_lifecycleGate)

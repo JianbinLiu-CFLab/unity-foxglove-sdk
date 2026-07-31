@@ -38,6 +38,24 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunTransportSessionSnapshot ActiveFoxRunTransportSession =>
             _activeFoxRunTransportSession;
 
+        /// <summary>
+        /// Current observed Provider states. With no captured session this is
+        /// empty; configured capture failures remain explicit through
+        /// <see cref="LastFoxRunTransportSessionCaptureError"/>.
+        /// </summary>
+        public IReadOnlyList<FoxRunTransportStatusSnapshot>
+            CaptureFoxRunTransportStatuses()
+            => _activeFoxRunTransportSession?.CaptureStatuses()
+               ?? Array.Empty<FoxRunTransportStatusSnapshot>();
+
+        public IReadOnlyList<FoxRunTransportRetirementInfo>
+            CaptureRetiredFoxRunTransportWorkers()
+            => FoxRunTransportRetirementOwner.Shared.CaptureRetired();
+
+        public IReadOnlyList<FoxRunTransportRetirementExitInfo>
+            CaptureFoxRunTransportWorkerFinalExits()
+            => FoxRunTransportRetirementOwner.Shared.CaptureFinalExits();
+
         public FoxRunTransportSessionCaptureError?
             LastFoxRunTransportSessionCaptureError =>
                 _lastFoxRunTransportSessionCaptureError;
@@ -560,7 +578,8 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private sealed class BuiltInFoxgloveTransportSession :
-            IFoxRunTransportSession
+            IFoxRunTransportSession,
+            IFoxRunTransportStatusSource
         {
             private FoxgloveManager _manager;
 
@@ -577,6 +596,44 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunTransportCapabilities.Publish
                 | FoxRunTransportCapabilities.Subscribe;
             public ulong Generation { get; }
+
+            public FoxRunTransportStatusSnapshot CaptureStatus(
+                FoxRunTransportCapabilities selectedDirections)
+            {
+                var manager = _manager;
+                var state = manager != null && manager.IsRunning
+                    ? FoxRunTransportObservedState.Ready
+                    : FoxRunTransportObservedState.Stopped;
+                var publishSelected =
+                    (selectedDirections
+                     & FoxRunTransportCapabilities.Publish) != 0;
+                var subscribeSelected =
+                    (selectedDirections
+                     & FoxRunTransportCapabilities.Subscribe) != 0;
+                return new FoxRunTransportStatusSnapshot(
+                    Id,
+                    Generation,
+                    publishSelected
+                        ? new FoxRunTransportDirectionStatus(
+                            FoxRunTransportDirection.Publish,
+                            selected: true,
+                            state,
+                            0,
+                            0,
+                            0)
+                        : FoxRunTransportDirectionStatus.Unselected(
+                            FoxRunTransportDirection.Publish),
+                    subscribeSelected
+                        ? new FoxRunTransportDirectionStatus(
+                            FoxRunTransportDirection.Subscribe,
+                            selected: true,
+                            state,
+                            0,
+                            0,
+                            0)
+                        : FoxRunTransportDirectionStatus.Unselected(
+                            FoxRunTransportDirection.Subscribe));
+            }
 
             public FoxRunTransportPublishResult Publish(
                 in FoxRunTransportPublishRoute route)

@@ -86,6 +86,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
+            DrawFoxRunTransportObservedStatus(manager);
+
             var publishTransportIds =
                 FindCachedProperty(
                     "_foxRunPublishTransportIds");
@@ -106,6 +108,164 @@ namespace Unity.FoxgloveSDK.Editor
                 drawer.Draw(manager, serializedObject);
             }
         }
+
+        private static void DrawFoxRunTransportObservedStatus(
+            FoxgloveManager manager)
+        {
+            var statuses =
+                manager.CaptureFoxRunTransportStatuses();
+            var failure =
+                manager.LastFoxRunTransportSessionCaptureError;
+            var visibleProviderIds = new HashSet<string>(
+                statuses.Select(status => status.ProviderId.Value),
+                StringComparer.Ordinal);
+            foreach (var transportId in
+                     manager.ConfiguredFoxRunPublishTransportIds)
+            {
+                visibleProviderIds.Add(transportId.Value);
+            }
+            var subscribeTransportId =
+                manager.ConfiguredFoxRunSubscribeTransportId;
+            if (!string.IsNullOrEmpty(subscribeTransportId.Value))
+                visibleProviderIds.Add(subscribeTransportId.Value);
+            var retired = manager
+                .CaptureRetiredFoxRunTransportWorkers()
+                .Where(worker => visibleProviderIds.Contains(
+                    worker.ProviderId.Value))
+                .ToArray();
+            var finalExits = manager
+                .CaptureFoxRunTransportWorkerFinalExits()
+                .Where(worker => visibleProviderIds.Contains(
+                    worker.ProviderId.Value))
+                .ToArray();
+            if (statuses.Count == 0
+                && !failure.HasValue
+                && retired.Length == 0
+                && finalExits.Length == 0)
+            {
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Provider Runtime Status",
+                EditorStyles.boldLabel);
+            if (failure.HasValue)
+            {
+                var captureFailure = failure.Value;
+                EditorGUILayout.HelpBox(
+                    "Configured Provider capture failed closed ["
+                    + captureFailure.Code
+                    + "] "
+                    + (captureFailure.TransportId.Value
+                       ?? "<invalid Provider ID>")
+                    + ": "
+                    + captureFailure.Reason,
+                    MessageType.Error);
+            }
+
+            for (var index = 0; index < statuses.Count; index++)
+            {
+                var status = statuses[index];
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextField(
+                        "Provider",
+                        status.ProviderId.Value);
+                    EditorGUILayout.EnumPopup(
+                        "Aggregate",
+                        status.State);
+                    if (status.Publish.Selected)
+                    {
+                        EditorGUILayout.TextField(
+                            "Publish",
+                            DirectionLabel(status.Publish));
+                    }
+                    if (status.Subscribe.Selected)
+                    {
+                        EditorGUILayout.TextField(
+                            "Subscribe",
+                            DirectionLabel(status.Subscribe));
+                    }
+                }
+                for (var diagnosticIndex = 0;
+                     diagnosticIndex < status.Diagnostics.Count;
+                     diagnosticIndex++)
+                {
+                    var diagnostic =
+                        status.Diagnostics[diagnosticIndex];
+                    EditorGUILayout.HelpBox(
+                        diagnostic.Code + ": " + diagnostic.Message,
+                        status.State == FoxRunTransportObservedState.Failed
+                            ? MessageType.Error
+                            : MessageType.Warning);
+                }
+            }
+
+            for (var index = 0; index < retired.Length; index++)
+            {
+                var worker = retired[index];
+                EditorGUILayout.HelpBox(
+                    "Retired Provider worker: "
+                    + worker.ProviderId.Value
+                    + " / "
+                    + worker.Direction
+                    + " / generation "
+                    + worker.Generation
+                    + " / "
+                    + worker.WorkerIdentity
+                    + " / resources "
+                    + worker.RetainedResources
+                    + " / bytes "
+                    + worker.RetainedBytes
+                    + " / age "
+                    + worker.Age.TotalSeconds.ToString("F1")
+                    + "s",
+                    MessageType.Warning);
+            }
+
+            var firstExit = Math.Max(0, finalExits.Length - 4);
+            for (var index = firstExit;
+                 index < finalExits.Length;
+                 index++)
+            {
+                var worker = finalExits[index];
+                EditorGUILayout.HelpBox(
+                    worker.DiagnosticCode
+                    + ": Provider worker final exit: "
+                    + worker.ProviderId.Value
+                    + " / "
+                    + worker.Direction
+                    + " / generation "
+                    + worker.Generation
+                    + " / "
+                    + worker.WorkerIdentity
+                    + " / resources "
+                    + worker.RetainedResources
+                    + " / bytes "
+                    + worker.RetainedBytes
+                    + " / age "
+                    + worker.Age.TotalSeconds.ToString("F1")
+                    + "s"
+                    + (worker.Succeeded
+                        ? " / completed"
+                        : " / failed: " + worker.Failure),
+                    worker.Succeeded
+                        ? MessageType.Info
+                        : MessageType.Error);
+            }
+        }
+
+        private static string DirectionLabel(
+            FoxRunTransportDirectionStatus status)
+            => status.State
+               + " (ready "
+               + status.ReadyContractCount
+               + "/"
+               + status.ObservedContractCount
+               + ", failed "
+               + status.FailedContractCount
+               + ")";
 
         private void DrawPublishTransportSelection(
             SerializedProperty destinations)

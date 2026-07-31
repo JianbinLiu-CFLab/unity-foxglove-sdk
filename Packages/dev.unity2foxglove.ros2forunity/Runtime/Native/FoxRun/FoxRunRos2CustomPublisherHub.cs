@@ -66,6 +66,42 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _scanCooldown = 0f;
         }
 
+        internal FoxRunTransportDirectionStatus CaptureTransportStatus()
+        {
+            if (!_providerSessionActive || _stopping)
+            {
+                return new FoxRunTransportDirectionStatus(
+                    FoxRunTransportDirection.Publish,
+                    selected: true,
+                    FoxRunTransportObservedState.Stopped,
+                    0,
+                    0,
+                    0);
+            }
+
+            var ready = 0;
+            for (var index = 0; index < _bindings.Count; index++)
+                if (!_bindings[index].IsStopped)
+                    ready++;
+            var failed = _bindings.Count - ready;
+            return new FoxRunTransportDirectionStatus(
+                FoxRunTransportDirection.Publish,
+                selected: true,
+                failed == 0
+                    ? FoxRunTransportObservedState.Ready
+                    : ready == 0
+                        ? FoxRunTransportObservedState.Failed
+                        : FoxRunTransportObservedState.Degraded,
+                _bindings.Count,
+                ready,
+                failed,
+                failed == 0
+                    ? (FoxRunTransportDiagnostic?)null
+                    : new FoxRunTransportDiagnostic(
+                        "R2FU002",
+                        "One or more native publisher bindings stopped."));
+        }
+
         private void OnEnable()
         {
             _stopping = false;
@@ -581,6 +617,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void WarnOnce(string key, string message)
         {
+            if (_warnings.Count >= MaximumBindings)
+                return;
             if (_warnings.Add(key))
                 Debug.LogWarning("[FoxRun ROS2] " + message);
         }

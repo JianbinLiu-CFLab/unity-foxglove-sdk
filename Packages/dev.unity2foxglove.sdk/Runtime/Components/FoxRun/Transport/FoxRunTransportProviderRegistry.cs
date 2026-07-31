@@ -120,6 +120,67 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        /// <summary>
+        /// Captures one immutable observed status per unique frozen session.
+        /// A selected Provider without a valid status source is reported as a
+        /// bounded failure instead of being inferred Ready from configuration.
+        /// </summary>
+        public IReadOnlyList<FoxRunTransportStatusSnapshot> CaptureStatuses()
+        {
+            var result = new List<FoxRunTransportStatusSnapshot>(
+                _allSessions.Length);
+            for (var index = 0; index < _allSessions.Length; index++)
+            {
+                var session = _allSessions[index];
+                var selectedDirections = SelectedDirections(session);
+                FoxRunTransportStatusSnapshot status;
+                try
+                {
+                    if (!(session is IFoxRunTransportStatusSource source))
+                    {
+                        status = FailureStatus(
+                            session,
+                            selectedDirections,
+                            "FOXTRANSPORT001",
+                            "Selected Provider session does not expose observed status.");
+                    }
+                    else
+                    {
+                        status = source.CaptureStatus(selectedDirections);
+                        if (status.ProviderId != session.Id
+                            || status.Generation != session.Generation
+                            || status.Publish.Selected
+                            != ((selectedDirections
+                                 & FoxRunTransportCapabilities.Publish) != 0)
+                            || status.Subscribe.Selected
+                            != ((selectedDirections
+                                 & FoxRunTransportCapabilities.Subscribe) != 0))
+                        {
+                            status = FailureStatus(
+                                session,
+                                selectedDirections,
+                                "FOXTRANSPORT002",
+                                "Provider returned observed status with mismatched identity, generation, or selected directions.");
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    status = FailureStatus(
+                        session,
+                        selectedDirections,
+                        "FOXTRANSPORT003",
+                        "Provider status capture failed: " + exception.Message);
+                }
+                result.Add(status);
+            }
+
+            result.Sort((left, right) => string.CompareOrdinal(
+                left.ProviderId.Value,
+                right.ProviderId.Value));
+            return result.AsReadOnly();
+        }
+
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -140,6 +201,63 @@ namespace Unity.FoxgloveSDK.Components
 
             if (first != null)
                 throw first;
+        }
+
+        private FoxRunTransportCapabilities SelectedDirections(
+            IFoxRunTransportSession session)
+        {
+            var selected = (FoxRunTransportCapabilities)0;
+            for (var index = 0; index < _publishView.Count; index++)
+            {
+                if (ReferenceEquals(_publishView[index], session))
+                {
+                    selected |= FoxRunTransportCapabilities.Publish;
+                    break;
+                }
+            }
+            if (ReferenceEquals(SubscribeTransport, session))
+                selected |= FoxRunTransportCapabilities.Subscribe;
+            return selected;
+        }
+
+        private static FoxRunTransportStatusSnapshot FailureStatus(
+            IFoxRunTransportSession session,
+            FoxRunTransportCapabilities selectedDirections,
+            string code,
+            string message)
+        {
+            var diagnostic = new FoxRunTransportDiagnostic(code, message);
+            var publishSelected =
+                (selectedDirections
+                 & FoxRunTransportCapabilities.Publish) != 0;
+            var subscribeSelected =
+                (selectedDirections
+                 & FoxRunTransportCapabilities.Subscribe) != 0;
+            return new FoxRunTransportStatusSnapshot(
+                session.Id,
+                session.Generation,
+                publishSelected
+                    ? new FoxRunTransportDirectionStatus(
+                        FoxRunTransportDirection.Publish,
+                        selected: true,
+                        FoxRunTransportObservedState.Failed,
+                        0,
+                        0,
+                        0,
+                        diagnostic)
+                    : FoxRunTransportDirectionStatus.Unselected(
+                        FoxRunTransportDirection.Publish),
+                subscribeSelected
+                    ? new FoxRunTransportDirectionStatus(
+                        FoxRunTransportDirection.Subscribe,
+                        selected: true,
+                        FoxRunTransportObservedState.Failed,
+                        0,
+                        0,
+                        0,
+                        diagnostic)
+                    : FoxRunTransportDirectionStatus.Unselected(
+                        FoxRunTransportDirection.Subscribe));
         }
     }
 

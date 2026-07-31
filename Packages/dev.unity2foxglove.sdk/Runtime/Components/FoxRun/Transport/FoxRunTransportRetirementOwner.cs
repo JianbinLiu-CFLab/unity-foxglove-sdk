@@ -26,7 +26,8 @@ namespace Unity.FoxgloveSDK.Components
             string workerIdentity,
             long retainedBytes,
             int retainedResources,
-            DateTime retiredAtUtc)
+            DateTime retiredAtUtc,
+            DateTime observedAtUtc)
         {
             ProviderId = providerId;
             Direction = direction;
@@ -35,6 +36,7 @@ namespace Unity.FoxgloveSDK.Components
             RetainedBytes = retainedBytes;
             RetainedResources = retainedResources;
             RetiredAtUtc = retiredAtUtc;
+            Age = NonNegativeAge(retiredAtUtc, observedAtUtc);
         }
 
         public FoxRunTransportId ProviderId { get; }
@@ -44,6 +46,74 @@ namespace Unity.FoxgloveSDK.Components
         public long RetainedBytes { get; }
         public int RetainedResources { get; }
         public DateTime RetiredAtUtc { get; }
+        public TimeSpan Age { get; }
+
+        private static TimeSpan NonNegativeAge(
+            DateTime startedAtUtc,
+            DateTime endedAtUtc)
+            => endedAtUtc <= startedAtUtc
+                ? TimeSpan.Zero
+                : endedAtUtc - startedAtUtc;
+    }
+
+    /// <summary>Bounded final outcome for one detached worker.</summary>
+    public readonly struct FoxRunTransportRetirementExitInfo
+    {
+        internal FoxRunTransportRetirementExitInfo(
+            FoxRunTransportId providerId,
+            FoxRunTransportDirection direction,
+            ulong generation,
+            string workerIdentity,
+            long retainedBytes,
+            int retainedResources,
+            DateTime retiredAtUtc,
+            DateTime exitedAtUtc,
+            Exception failure)
+        {
+            ProviderId = providerId;
+            Direction = direction;
+            Generation = generation;
+            WorkerIdentity = workerIdentity ?? string.Empty;
+            RetainedBytes = retainedBytes;
+            RetainedResources = retainedResources;
+            RetiredAtUtc = retiredAtUtc;
+            ExitedAtUtc = exitedAtUtc;
+            Age = exitedAtUtc <= retiredAtUtc
+                ? TimeSpan.Zero
+                : exitedAtUtc - retiredAtUtc;
+            Succeeded = failure == null;
+            DiagnosticCode = Succeeded
+                ? "FOXTRANSPORTRETIRE001"
+                : "FOXTRANSPORTRETIRE002";
+            Failure = failure == null
+                ? string.Empty
+                : Bound(failure.Message);
+        }
+
+        public FoxRunTransportId ProviderId { get; }
+        public FoxRunTransportDirection Direction { get; }
+        public ulong Generation { get; }
+        public string WorkerIdentity { get; }
+        public long RetainedBytes { get; }
+        public int RetainedResources { get; }
+        public DateTime RetiredAtUtc { get; }
+        public DateTime ExitedAtUtc { get; }
+        public TimeSpan Age { get; }
+        public bool Succeeded { get; }
+        public string DiagnosticCode { get; }
+        public string Failure { get; }
+
+        private static string Bound(string value)
+        {
+            value = string.IsNullOrWhiteSpace(value)
+                ? "Detached Provider worker cleanup failed."
+                : value.Trim();
+            return value.Length <= FoxRunTransportDiagnostic.MaximumMessageChars
+                ? value
+                : value.Substring(
+                    0,
+                    FoxRunTransportDiagnostic.MaximumMessageChars);
+        }
     }
 
     /// <summary>
@@ -59,6 +129,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly object _gate = new object();
         private readonly Slot[] _slots;
+        private readonly Queue<FoxRunTransportRetirementExitInfo>
+            _finalExits;
         private ulong _nextReservation;
 
         private FoxRunTransportRetirementOwner(int capacity)
@@ -66,6 +138,8 @@ namespace Unity.FoxgloveSDK.Components
             if (capacity <= 0)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             _slots = new Slot[capacity];
+            _finalExits =
+                new Queue<FoxRunTransportRetirementExitInfo>(capacity);
         }
 
         public static FoxRunTransportRetirementOwner Shared => SharedInstance;
@@ -204,6 +278,7 @@ namespace Unity.FoxgloveSDK.Components
             lock (_gate)
             {
                 var result = new List<FoxRunTransportRetirementInfo>();
+                var observedAtUtc = DateTime.UtcNow;
                 for (var i = 0; i < _slots.Length; i++)
                 {
                     ref var slot = ref _slots[i];
@@ -217,11 +292,23 @@ namespace Unity.FoxgloveSDK.Components
                         slot.WorkerIdentity,
                         slot.RetainedBytes,
                         slot.RetainedResources,
-                        slot.RetiredAtUtc));
+                        slot.RetiredAtUtc,
+                        observedAtUtc));
                 }
 
                 return result.AsReadOnly();
             }
+        }
+
+        /// <summary>
+        /// Captures the newest bounded final worker outcomes in completion
+        /// order. The history never exceeds retirement capacity.
+        /// </summary>
+        public IReadOnlyList<FoxRunTransportRetirementExitInfo>
+            CaptureFinalExits()
+        {
+            lock (_gate)
+                return Array.AsReadOnly(_finalExits.ToArray());
         }
 
         internal static FoxRunTransportRetirementOwner CreateForTests(int capacity)
@@ -293,19 +380,51 @@ namespace Unity.FoxgloveSDK.Components
                 _slots[slotIndex].State = SlotState.Completing;
             }
 
+            Exception failure = null;
             try
             {
                 lease.Dispose();
                 return true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+                throw;
             }
             finally
             {
                 lock (_gate)
                 {
                     if (Owns(slotIndex, reservationId, SlotState.Completing))
+                    {
+                        RecordFinalExitLocked(
+                            _slots[slotIndex],
+                            failure,
+                            DateTime.UtcNow);
                         _slots[slotIndex] = default;
+                    }
                 }
             }
+        }
+
+        private void RecordFinalExitLocked(
+            Slot slot,
+            Exception failure,
+            DateTime exitedAtUtc)
+        {
+            if (_finalExits.Count == _slots.Length)
+                _finalExits.Dequeue();
+            _finalExits.Enqueue(
+                new FoxRunTransportRetirementExitInfo(
+                    slot.ProviderId,
+                    slot.Direction,
+                    slot.Generation,
+                    slot.WorkerIdentity,
+                    slot.RetainedBytes,
+                    slot.RetainedResources,
+                    slot.RetiredAtUtc,
+                    exitedAtUtc,
+                    failure));
         }
 
         private bool Owns(
