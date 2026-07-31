@@ -10,10 +10,13 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity2Foxglove.Ros2Bridge.Protocol;
+using Components = Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
-    internal sealed class Ros2BridgeConnection : IDisposable
+    internal sealed class Ros2BridgeConnection :
+        IDisposable,
+        IRos2BridgeContractWireController
     {
         private readonly object _gate = new object();
         private readonly IRos2BridgeSessionTransport _transport;
@@ -22,6 +25,20 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly int _writerCapacity;
         private readonly int _pendingCapacity;
         private readonly int _timeoutMs;
+        private readonly IRos2BridgeInboundContractResolver
+            _inboundResolver;
+        private readonly IRos2BridgeInboundFrameReceiver
+            _inboundReceiver;
+        private readonly IRos2BridgeBytePool _inboundPool;
+        private readonly Components
+            .FoxRunTransportRetirementReservation _retirement;
+        private readonly int _readerRetirementIndex;
+        private readonly int _writerRetirementIndex;
+        private readonly string _retirementIdentity;
+        private readonly object _retirementGate = new object();
+        private readonly bool[] _workerExited = new bool[2];
+        private readonly bool[] _workerRetired = new bool[2];
+        private readonly bool[] _workerSlotReturned = new bool[2];
         private readonly Queue<PendingRequest> _writerQueue =
             new Queue<PendingRequest>();
         private readonly Dictionary<ulong, PendingRequest> _pending =
@@ -49,7 +66,15 @@ namespace Unity2Foxglove.Ros2Bridge
             bool requiresSubscription,
             int writerCapacity,
             int pendingCapacity,
-            int timeoutMs)
+            int timeoutMs,
+            IRos2BridgeInboundContractResolver inboundResolver = null,
+            IRos2BridgeInboundFrameReceiver inboundReceiver = null,
+            IRos2BridgeBytePool inboundPool = null,
+            Components.FoxRunTransportRetirementReservation
+                retirement = null,
+            int readerRetirementIndex = -1,
+            int writerRetirementIndex = -1,
+            string retirementIdentity = null)
         {
             _transport = transport
                 ?? throw new ArgumentNullException(nameof(transport));
@@ -76,6 +101,51 @@ namespace Unity2Foxglove.Ros2Bridge
             _writerCapacity = writerCapacity;
             _pendingCapacity = pendingCapacity;
             _timeoutMs = timeoutMs;
+            if ((inboundResolver == null)
+                != (inboundReceiver == null))
+            {
+                throw new ArgumentException(
+                    "Bridge inbound resolution and ownership must be configured together.");
+            }
+            _inboundResolver = inboundResolver;
+            _inboundReceiver = inboundReceiver;
+            _inboundPool = inboundPool
+                           ?? Ros2BridgeSharedBytePool.Instance;
+            if (retirement == null)
+            {
+                if (readerRetirementIndex != -1
+                    || writerRetirementIndex != -1
+                    || !string.IsNullOrEmpty(
+                        retirementIdentity))
+                {
+                    throw new ArgumentException(
+                        "Bridge worker retirement indexes require a reservation.");
+                }
+            }
+            else
+            {
+                if (readerRetirementIndex < 0
+                    || writerRetirementIndex < 0
+                    || readerRetirementIndex
+                    == writerRetirementIndex
+                    || readerRetirementIndex
+                    >= retirement.WorkerCount
+                    || writerRetirementIndex
+                    >= retirement.WorkerCount
+                    || string.IsNullOrWhiteSpace(
+                        retirementIdentity))
+                {
+                    throw new ArgumentException(
+                        "Bridge reader and writer require distinct reserved worker slots.");
+                }
+            }
+            _retirement = retirement;
+            _readerRetirementIndex =
+                readerRetirementIndex;
+            _writerRetirementIndex =
+                writerRetirementIndex;
+            _retirementIdentity =
+                retirementIdentity?.Trim() ?? string.Empty;
             _lifecycleState =
                 Ros2BridgeSessionLifecycleState.Stopped;
         }
@@ -241,6 +311,83 @@ namespace Unity2Foxglove.Ros2Bridge
                     _limits));
         }
 
+        Ros2BridgeSessionResult
+            IRos2BridgeContractWireController.Register(
+                Ros2BridgeSessionContract contract)
+            => ExchangeContract(
+                contract,
+                U2R2Operation.SubscriptionReady,
+                (requestId, snapshot) =>
+                    Ros2BridgeV2SessionCodec
+                        .CreateSubscriptionRegistration(
+                            snapshot,
+                            requestId,
+                            contract));
+
+        Ros2BridgeSessionResult
+            IRos2BridgeContractWireController.Unregister(
+                Ros2BridgeSessionContract contract)
+            => ExchangeContract(
+                contract,
+                U2R2Operation.SubscriptionRemoved,
+                (requestId, snapshot) =>
+                    Ros2BridgeV2SessionCodec
+                        .CreateSubscriptionRemoval(
+                            snapshot,
+                            requestId,
+                            contract));
+
+        private Ros2BridgeSessionResult ExchangeContract(
+            Ros2BridgeSessionContract contract,
+            U2R2Operation expectedResponse,
+            Func<
+                ulong,
+                Ros2BridgeV2SessionSnapshot,
+                Ros2BridgeV2Request> requestFactory)
+        {
+            if (contract == null)
+            {
+                return Ros2BridgeSessionResult.Reject(
+                    "The Bridge subscription contract is null.");
+            }
+            try
+            {
+                var response = Exchange(
+                    requestFactory,
+                    EffectiveTimeout(
+                        _timeoutMs,
+                        _limits.WriteTimeoutMs));
+                if (response.Operation == expectedResponse
+                    && string.Equals(
+                        response.Status,
+                        "ok",
+                        StringComparison.Ordinal))
+                {
+                    return Ros2BridgeSessionResult.Accepted();
+                }
+                var reason = string.IsNullOrWhiteSpace(
+                    response.ErrorMessage)
+                    ? "The Bridge peer rejected the subscription request."
+                    : response.ErrorMessage;
+                return response.Terminal
+                    ? Ros2BridgeSessionResult.Fault(reason)
+                    : Ros2BridgeSessionResult.Reject(reason);
+            }
+            catch (U2R2ProtocolException exception)
+            {
+                return exception.Terminal
+                    ? Ros2BridgeSessionResult.Fault(
+                        exception.Message)
+                    : Ros2BridgeSessionResult.Reject(
+                        exception.Message);
+            }
+            catch (Exception exception)
+            {
+                return Ros2BridgeSessionResult.Fault(
+                    exception.Message);
+            }
+        }
+
         private byte[] EnqueueAndWait(
             Ros2BridgeV2Request request,
             int timeoutMs)
@@ -313,7 +460,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             finally
             {
-                OnWorkerExited();
+                OnWorkerExited(workerIndex: 1);
             }
         }
 
@@ -365,7 +512,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             finally
             {
-                OnWorkerExited();
+                OnWorkerExited(workerIndex: 0);
             }
         }
 
@@ -403,17 +550,23 @@ namespace Unity2Foxglove.Ros2Bridge
 
                 try
                 {
-                    var message = U2R2ProtocolCodec.ParseV2(
-                        U2R2ProtocolCodec.DecodeFrame(
-                            wireBytes,
-                            _limits));
+                    var decoded = U2R2ProtocolCodec.DecodeFrame(
+                        wireBytes,
+                        _limits);
+                    var message =
+                        U2R2ProtocolCodec.ParseV2(decoded);
+                    if (message.Operation
+                        == U2R2Operation.Message)
+                    {
+                        HandleInboundMessage(
+                            message,
+                            decoded.Payload);
+                        continue;
+                    }
                     if (!message.IsResponse)
                     {
                         throw new U2R2ProtocolException(
-                            message.Operation
-                            == U2R2Operation.Message
-                                ? "unknown_contract"
-                                : "invalid_frame",
+                            "invalid_frame",
                             "The Bridge reader received an unowned non-response frame.",
                             terminal: true);
                     }
@@ -464,6 +617,85 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        private void HandleInboundMessage(
+            U2R2Message message,
+            ReadOnlyMemory<byte> payload)
+        {
+            if (_inboundResolver == null
+                || _inboundReceiver == null)
+            {
+                throw new U2R2ProtocolException(
+                    "unknown_contract",
+                    "The Bridge reader has no inbound contract owner.",
+                    terminal: true);
+            }
+            if (payload.Length < 4
+                || payload.Span[0] != 0
+                || payload.Span[1] != 1
+                || payload.Span[2] != 0
+                || payload.Span[3] != 0)
+            {
+                throw new U2R2ProtocolException(
+                    "invalid_frame",
+                    "The Bridge inbound payload is not complete XCDR1 little-endian CDR.",
+                    terminal: true);
+            }
+
+            var resolution =
+                _inboundResolver.TryResolveInbound(
+                    message,
+                    out var contract);
+            if (resolution.State
+                == Ros2BridgeSessionResultState.Rejected)
+            {
+                return;
+            }
+            if (!resolution.IsAccepted || contract == null)
+            {
+                throw new U2R2ProtocolException(
+                    "unknown_contract",
+                    string.IsNullOrWhiteSpace(
+                        resolution.Reason)
+                        ? "The Bridge inbound contract is unavailable."
+                        : resolution.Reason,
+                    terminal: true);
+            }
+
+            Ros2BridgeInboundFrame owned = null;
+            var transferred = false;
+            try
+            {
+                owned = Ros2BridgeInboundFrame.CopyOwned(
+                    contract,
+                    message.SessionId,
+                    message.ConnectionGeneration,
+                    message.MessageId,
+                    message.Sequence,
+                    message.ReceiveTimeNs,
+                    payload,
+                    _inboundPool);
+                var admission =
+                    _inboundReceiver.TryAccept(owned);
+                transferred = true;
+                if (admission.State
+                    == Ros2BridgeSessionResultState.Faulted)
+                {
+                    throw new U2R2ProtocolException(
+                        "invalid_frame",
+                        string.IsNullOrWhiteSpace(
+                            admission.Reason)
+                            ? "The Bridge inbound queue faulted."
+                            : admission.Reason,
+                        terminal: true);
+                }
+            }
+            finally
+            {
+                if (!transferred)
+                    owned?.Dispose();
+            }
+        }
+
         private void Fault(Exception exception)
         {
             if (exception == null)
@@ -510,8 +742,9 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        private void OnWorkerExited()
+        private void OnWorkerExited(int workerIndex)
         {
+            CompleteWorkerOwnershipOnExit(workerIndex);
             if (Interlocked.Decrement(ref _workersRemaining) != 0)
                 return;
 
@@ -598,8 +831,112 @@ namespace Unity2Foxglove.Ros2Bridge
                         Ros2BridgeSessionLifecycleState.Stopped;
                 }
             }
+            FinalizeWorkerRetirement(
+                workerIndex: 0,
+                readerJoined);
+            FinalizeWorkerRetirement(
+                workerIndex: 1,
+                writerJoined);
             TryDisposeResources();
         }
+
+        private void CompleteWorkerOwnershipOnExit(
+            int workerIndex)
+        {
+            if (_retirement == null)
+                return;
+
+            var completeRetired = false;
+            var returnActive = false;
+            lock (_retirementGate)
+            {
+                _workerExited[workerIndex] = true;
+                if (_workerRetired[workerIndex])
+                {
+                    completeRetired = true;
+                }
+                else if (_disposeRequested
+                         && !_workerSlotReturned[workerIndex])
+                {
+                    _workerSlotReturned[workerIndex] = true;
+                    returnActive = true;
+                }
+            }
+
+            var reservationIndex =
+                RetirementIndex(workerIndex);
+            if (completeRetired)
+            {
+                _retirement.TryCompleteRetired(
+                    reservationIndex);
+            }
+            else if (returnActive)
+            {
+                _retirement.TryReturn(
+                    reservationIndex);
+            }
+        }
+
+        private void FinalizeWorkerRetirement(
+            int workerIndex,
+            bool joined)
+        {
+            if (_retirement == null)
+                return;
+
+            WorkerRetirementLease lease = null;
+            var returnActive = false;
+            lock (_retirementGate)
+            {
+                if (_workerSlotReturned[workerIndex]
+                    || _workerRetired[workerIndex])
+                {
+                    return;
+                }
+                if (joined || _workerExited[workerIndex])
+                {
+                    _workerSlotReturned[workerIndex] = true;
+                    returnActive = true;
+                }
+                else
+                {
+                    lease = new WorkerRetirementLease(this);
+                    var converted =
+                        _retirement.TryConvertToRetired(
+                            RetirementIndex(workerIndex),
+                            lease,
+                            _retirementIdentity
+                            + (workerIndex == 0
+                                ? "/reader"
+                                : "/writer"),
+                            retainedBytes: 0,
+                            retainedResources: 3);
+                    if (converted)
+                    {
+                        _workerRetired[workerIndex] = true;
+                        lease = null;
+                    }
+                    else
+                    {
+                        _lastFault ??=
+                            new InvalidOperationException(
+                                "The Bridge worker retirement reservation could not be converted.");
+                    }
+                }
+            }
+
+            lease?.Dispose();
+            if (returnActive)
+            {
+                _retirement.TryReturn(
+                    RetirementIndex(workerIndex));
+            }
+        }
+
+        private int RetirementIndex(int workerIndex)
+            => workerIndex == 0
+                ? _readerRetirementIndex
+                : _writerRetirementIndex;
 
         private void TryDisposeResources()
         {
@@ -751,6 +1088,25 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             public void Dispose() => _completed.Dispose();
+        }
+
+        private sealed class WorkerRetirementLease :
+            Components.IFoxRunDetachedRetirementLease
+        {
+            private Ros2BridgeConnection _owner;
+
+            internal WorkerRetirementLease(
+                Ros2BridgeConnection owner)
+            {
+                _owner = owner
+                    ?? throw new ArgumentNullException(
+                        nameof(owner));
+            }
+
+            public void Dispose()
+                => Interlocked.Exchange(
+                    ref _owner,
+                    null);
         }
     }
 }

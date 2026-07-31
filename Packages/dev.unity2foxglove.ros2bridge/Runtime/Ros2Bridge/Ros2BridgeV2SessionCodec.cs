@@ -282,6 +282,72 @@ namespace Unity2Foxglove.Ros2Bridge
                     snapshot.ConnectionGeneration));
         }
 
+        internal static Ros2BridgeV2Request
+            CreateSubscriptionRegistration(
+                Ros2BridgeV2SessionSnapshot snapshot,
+                ulong requestId,
+                Ros2BridgeSessionContract contract)
+        {
+            ValidateSubscriptionSnapshot(snapshot);
+            ValidateSubscriptionContract(contract);
+            var header = new JObject
+            {
+                ["connectionGeneration"] =
+                    snapshot.ConnectionGeneration,
+                ["contractId"] = contract.ContractId,
+                ["encoding"] = Ros2BridgeFrame.CdrEncoding,
+                ["op"] = "register_subscription",
+                ["protocolVersion"] =
+                    U2R2ProtocolCodec.ProtocolVersion,
+                ["qos"] = CreateQos(contract.Qos),
+                ["requestId"] = requestId,
+                ["schemaName"] = contract.CanonicalRosType,
+                ["sessionId"] = snapshot.SessionId,
+                ["topic"] = contract.Topic,
+            };
+            return CreateRequest(
+                header,
+                Array.Empty<byte>(),
+                snapshot.Limits,
+                U2R2ResponseExpectation.FromKnownRequest(
+                    U2R2Operation.RegisterSubscription,
+                    requestId,
+                    snapshot.SessionId,
+                    snapshot.ConnectionGeneration,
+                    contractId: contract.ContractId));
+        }
+
+        internal static Ros2BridgeV2Request
+            CreateSubscriptionRemoval(
+                Ros2BridgeV2SessionSnapshot snapshot,
+                ulong requestId,
+                Ros2BridgeSessionContract contract)
+        {
+            ValidateSubscriptionSnapshot(snapshot);
+            ValidateSubscriptionContract(contract);
+            var header = new JObject
+            {
+                ["connectionGeneration"] =
+                    snapshot.ConnectionGeneration,
+                ["contractId"] = contract.ContractId,
+                ["op"] = "unregister_subscription",
+                ["protocolVersion"] =
+                    U2R2ProtocolCodec.ProtocolVersion,
+                ["requestId"] = requestId,
+                ["sessionId"] = snapshot.SessionId,
+            };
+            return CreateRequest(
+                header,
+                Array.Empty<byte>(),
+                snapshot.Limits,
+                U2R2ResponseExpectation.FromKnownRequest(
+                    U2R2Operation.UnregisterSubscription,
+                    requestId,
+                    snapshot.SessionId,
+                    snapshot.ConnectionGeneration,
+                    contractId: contract.ContractId));
+        }
+
         internal static Ros2BridgeV2PublishMeasurement MeasurePublish(
             Ros2BridgeFrame frame,
             Ros2BridgeV2SessionSnapshot snapshot,
@@ -519,6 +585,34 @@ namespace Unity2Foxglove.Ros2Bridge
                 throw new U2R2ProtocolException(
                     "missing_capability",
                     "The U2R2 session cannot publish.");
+            }
+        }
+
+        private static void ValidateSubscriptionSnapshot(
+            Ros2BridgeV2SessionSnapshot snapshot)
+        {
+            ValidateSnapshot(snapshot);
+            if (!snapshot.HasCapability(
+                    U2R2Capability.Subscribe))
+            {
+                throw new U2R2ProtocolException(
+                    "missing_capability",
+                    "The U2R2 session cannot subscribe.");
+            }
+        }
+
+        private static void ValidateSubscriptionContract(
+            Ros2BridgeSessionContract contract)
+        {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+            if (contract.Direction
+                != FoxRunTransportDirection.Subscribe)
+            {
+                throw new U2R2ProtocolException(
+                    "invalid_contract",
+                    "A U2R2 subscription request requires subscribe direction.",
+                    terminal: false);
             }
         }
 

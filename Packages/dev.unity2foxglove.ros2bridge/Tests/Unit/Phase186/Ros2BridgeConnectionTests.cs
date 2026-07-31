@@ -307,6 +307,173 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             peer.AssertCompleted();
         }
 
+        [Fact]
+        public void ReadyMessageTransfersOwnedLogicalPayloadToInboundQueue()
+        {
+            using var sendMessage = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+                Assert.True(
+                    sendMessage.Wait(TimeSpan.FromSeconds(3)));
+                WriteFrame(
+                    stream,
+                    MessageHeader(),
+                    new byte[] { 0x00, 0x01, 0x00, 0x00, 0x2a });
+                Assert.Equal(-1, stream.ReadByte());
+            });
+            var contract = new Ros2BridgeSessionContract(
+                new FoxRunTransportId(
+                    "unity2foxglove.ros2bridge"),
+                FoxRunTransportDirection.Subscribe,
+                "/phase186/inbound",
+                "phase186_msgs/msg/Inbound",
+                FoxRunResolvedQos.Default,
+                "binding-inbound",
+                contractId: 11,
+                generation: 7);
+            var contracts = new Ros2BridgeSessionContractSnapshot(
+                generation: 7,
+                new[] { contract });
+            var state = new Ros2BridgeSessionState(
+                new Ros2BridgeSessionSettings(
+                    "127.0.0.1",
+                    peer.Port,
+                    generation: 7,
+                    U2R2ProtocolLimits.Default));
+            Assert.True(state.TryActivateLocal(contract, out _));
+            var reconnect = state.BeginReconnect(contracts);
+            using var queue = new Ros2BridgeInboundQueue(
+                new Ros2BridgeInboundQueueLimits(
+                    maxPayloadBytes: 32,
+                    maxTotalBytes: 64,
+                    maxPerContractDepth: 2,
+                    maxPerContractBytes: 64));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 1000,
+                inboundResolver: state,
+                inboundReceiver: queue);
+
+            var wireSession = connection.Start();
+            Assert.True(state.TryCompleteHandshake(
+                reconnect.AttemptGeneration,
+                wireSession,
+                out _));
+            Assert.True(state.TryMarkSubscriptionReady(
+                reconnect.AttemptGeneration,
+                contract,
+                out _));
+            queue.BeginSession(
+                wireSession.SessionId,
+                wireSession.ConnectionGeneration,
+                contracts);
+            sendMessage.Set();
+
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => queue.GetStatsSnapshot().QueuedFrames == 1,
+                    TimeSpan.FromSeconds(2)));
+            Assert.True(queue.TryBeginApply(out var apply));
+            using (apply)
+            {
+                Assert.Equal(
+                    new byte[] { 0, 1, 0, 0, 0x2a },
+                    apply.Frame.Payload.ToArray());
+                apply.MarkApplied();
+            }
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Ready,
+                connection.LifecycleState);
+
+            connection.Dispose();
+            peer.AssertCompleted();
+        }
+
+        [Fact]
+        public void SubscriptionRegisterAndUnregisterUseCorrelatedWriterLane()
+        {
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+
+                var register = Parse(ReadWireFrame(stream));
+                Assert.Equal(
+                    U2R2Operation.RegisterSubscription,
+                    register.Operation);
+                Assert.Equal(11UL, register.ContractId);
+                Assert.Equal("/phase186/inbound", register.Topic);
+                Assert.Equal(
+                    "phase186_msgs/msg/Inbound",
+                    register.SchemaName);
+                WriteFrame(
+                    stream,
+                    ContractResponse(
+                        "subscription_ready",
+                        register.RequestId,
+                        register.ContractId));
+
+                var unregister = Parse(ReadWireFrame(stream));
+                Assert.Equal(
+                    U2R2Operation.UnregisterSubscription,
+                    unregister.Operation);
+                Assert.Equal(11UL, unregister.ContractId);
+                WriteFrame(
+                    stream,
+                    ContractResponse(
+                        "subscription_removed",
+                        unregister.RequestId,
+                        unregister.ContractId));
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+            var contract = new Ros2BridgeSessionContract(
+                new FoxRunTransportId(
+                    "unity2foxglove.ros2bridge"),
+                FoxRunTransportDirection.Subscribe,
+                "/phase186/inbound",
+                "phase186_msgs/msg/Inbound",
+                FoxRunResolvedQos.Default,
+                "binding-inbound",
+                contractId: 11,
+                generation: 7);
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 1000);
+            connection.Start();
+            var controller =
+                (IRos2BridgeContractWireController)connection;
+
+            Assert.True(controller.Register(contract).IsAccepted);
+            Assert.True(controller.Unregister(contract).IsAccepted);
+
+            releasePeer.Set();
+            peer.AssertCompleted();
+        }
+
         private static U2R2Message Parse(byte[] wireBytes)
             => U2R2ProtocolCodec.ParseV2(
                 U2R2ProtocolCodec.DecodeFrame(wireBytes));
@@ -343,13 +510,54 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 ["status"] = "ok",
             };
 
+        private static JObject MessageHeader()
+            => new JObject
+            {
+                ["connectionGeneration"] = 19,
+                ["contractId"] = 11,
+                ["encoding"] = "cdr",
+                ["messageId"] = 1,
+                ["op"] = "message",
+                ["protocolVersion"] = 2,
+                ["receiveTimeNs"] = 2,
+                ["representation"] = "xcdr1-le",
+                ["schemaName"] = "phase186_msgs/msg/Inbound",
+                ["sequence"] = 1,
+                ["sessionId"] = "phase186-session",
+                ["topic"] = "/phase186/inbound",
+            };
+
+        private static JObject ContractResponse(
+            string operation,
+            ulong requestId,
+            ulong contractId)
+            => new JObject
+            {
+                ["connectionGeneration"] = 19,
+                ["contractId"] = contractId,
+                ["op"] = operation,
+                ["protocolVersion"] = 2,
+                ["requestId"] = requestId,
+                ["sessionId"] = "phase186-session",
+                ["status"] = "ok",
+            };
+
         private static void WriteFrame(
             Stream stream,
             JObject header)
+            => WriteFrame(
+                stream,
+                header,
+                Array.Empty<byte>());
+
+        private static void WriteFrame(
+            Stream stream,
+            JObject header,
+            byte[] payload)
         {
             var wire = U2R2ProtocolCodec.EncodeFrame(
                 header,
-                Array.Empty<byte>());
+                payload);
             stream.Write(wire, 0, wire.Length);
             stream.Flush();
         }

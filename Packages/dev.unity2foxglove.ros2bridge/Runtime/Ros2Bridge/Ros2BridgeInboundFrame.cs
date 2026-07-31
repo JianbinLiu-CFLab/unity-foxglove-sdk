@@ -5,10 +5,37 @@
 // Purpose: Exact-slice ownership for one inbound encapsulated-CDR message.
 
 using System;
+using System.Buffers;
 using System.Threading;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
+    internal interface IRos2BridgeBytePool
+    {
+        byte[] Rent(int minimumLength);
+
+        void Return(byte[] storage);
+    }
+
+    internal sealed class Ros2BridgeSharedBytePool :
+        IRos2BridgeBytePool
+    {
+        internal static readonly Ros2BridgeSharedBytePool Instance =
+            new Ros2BridgeSharedBytePool();
+
+        private Ros2BridgeSharedBytePool()
+        {
+        }
+
+        public byte[] Rent(int minimumLength)
+            => ArrayPool<byte>.Shared.Rent(minimumLength);
+
+        public void Return(byte[] storage)
+            => ArrayPool<byte>.Shared.Return(
+                storage,
+                clearArray: false);
+    }
+
     internal sealed class Ros2BridgeInboundFrame : IDisposable
     {
         private byte[] _storage;
@@ -120,6 +147,49 @@ namespace Unity2Foxglove.Ros2Bridge
                 payloadOffset,
                 payloadLength,
                 release);
+
+        internal static Ros2BridgeInboundFrame CopyOwned(
+            Ros2BridgeSessionContract contract,
+            string sessionId,
+            ulong connectionGeneration,
+            ulong messageId,
+            ulong sequence,
+            ulong receiveTimeNs,
+            ReadOnlyMemory<byte> payload,
+            IRos2BridgeBytePool pool = null)
+        {
+            pool ??= Ros2BridgeSharedBytePool.Instance;
+            var storage = pool.Rent(payload.Length);
+            if (storage == null || storage.Length < payload.Length)
+            {
+                if (storage != null)
+                    pool.Return(storage);
+                throw new InvalidOperationException(
+                    "The Bridge byte pool returned insufficient storage.");
+            }
+
+            try
+            {
+                payload.Span.CopyTo(
+                    storage.AsSpan(0, payload.Length));
+                return CreateOwned(
+                    contract,
+                    sessionId,
+                    connectionGeneration,
+                    messageId,
+                    sequence,
+                    receiveTimeNs,
+                    storage,
+                    payloadOffset: 0,
+                    payloadLength: payload.Length,
+                    release: pool.Return);
+            }
+            catch
+            {
+                pool.Return(storage);
+                throw;
+            }
+        }
 
         public void Dispose()
         {

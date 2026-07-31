@@ -38,8 +38,26 @@ namespace Unity2Foxglove.Ros2Bridge
         bool IsReleased { get; }
     }
 
+    internal interface IRos2BridgeContractWireController
+    {
+        Ros2BridgeSessionResult Register(
+            Ros2BridgeSessionContract contract);
+
+        Ros2BridgeSessionResult Unregister(
+            Ros2BridgeSessionContract contract);
+    }
+
+    internal interface IRos2BridgeInboundContractResolver
+    {
+        Ros2BridgeSessionResult TryResolveInbound(
+            U2R2Message message,
+            out Ros2BridgeSessionContract contract);
+    }
+
     internal interface IRos2BridgeInboundFrameReceiver
     {
+        // Ownership is transferred for every non-null frame, including when
+        // admission is rejected.
         Ros2BridgeSessionResult TryAccept(
             Ros2BridgeInboundFrame frame);
     }
@@ -94,6 +112,17 @@ namespace Unity2Foxglove.Ros2Bridge
         internal static Ros2BridgeSessionResult Reject(string reason)
             => new Ros2BridgeSessionResult(
                 Ros2BridgeSessionResultState.Rejected,
+                reason);
+
+        internal static Ros2BridgeSessionResult Unavailable(
+            string reason)
+            => new Ros2BridgeSessionResult(
+                Ros2BridgeSessionResultState.Unavailable,
+                reason);
+
+        internal static Ros2BridgeSessionResult Fault(string reason)
+            => new Ros2BridgeSessionResult(
+                Ros2BridgeSessionResultState.Faulted,
                 reason);
 
         private static string Bound(string value)
