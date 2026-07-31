@@ -10,6 +10,22 @@ headers, request/response correlation, connection states, stable error codes,
 and terminal classification. The C# and C++ codecs consume the fixture
 independently and must reproduce every v2 frame byte for byte.
 
+## Provenance and clean-room status
+
+The Phase186-B protocol implementation is original. Design review used only
+the architectural ideas listed in
+[the provenance ledger](../../../../Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json);
+no implementation code or comments were copied from the inspected upstream
+project.
+
+The inspected reference was the official
+[Unity-Technologies/ROS-TCP-Connector](https://github.com/Unity-Technologies/ROS-TCP-Connector.git)
+repository at revision
+`c27f00c6cf750d2d0564349b3039d19aa3925e7c`, commit date
+`2022-02-02T09:25:06-08:00`, subject `Release 0.7.0`, under
+`Apache-2.0`. The linked `PROVENANCE.json` records the exact commit, tree,
+LICENSE blob, inspected files, implementation hashes, and classifications.
+
 ## Envelope
 
 Every frame has a 16-byte little-endian fixed header:
@@ -96,22 +112,6 @@ Subscriptions require a successful v2 negotiation with the `subscribe`
 capability. A capability or protocol mismatch is terminal and never falls
 back on the same connection.
 
-Stable wire errors are an explicit code/terminal/response-operation mapping:
-
-| Error code | Terminal | Allowed response |
-| --- | --- | --- |
-| `busy` | yes | `busy` |
-| `unsupported_protocol` | yes | `fault` |
-| `missing_capability` | yes | `fault` |
-| `invalid_frame` | yes | `fault` |
-| `invalid_contract` | no | `publisher_ready` |
-| `publisher_unavailable` | no | `publisher_ready` |
-
-Successful responses contain none of `errorCode`, `message`, or `terminal`.
-Error responses require all three, and non-response operations contain no
-response metadata. `busy` and `fault` always use `status: "error"` and can
-never be represented as successful responses.
-
 ## frozen v1 compatibility
 
 v1 remains an explicit legacy dialect with string request IDs. A first
@@ -119,6 +119,76 @@ v1 remains an explicit legacy dialect with string request IDs. A first
 `prepare_publisher` or `publish` acquires the sole data-session lease. v1 bytes
 remain frozen by the same authority fixture; v2 does not reinterpret them.
 
-Replay caches, request high-water marks, ordering fences, queue fairness, and
-session memory/time budgets are separate runtime enforcement work. This codec
-slice defines no implicit implementation of those policies.
+## Frozen limits and implementation status
+
+The stable error ledger binds all 23 codes to terminal classification and
+legal wire responses. “local only” means the code is an internal authority
+result and cannot be placed on the wire.
+
+| Error code | Terminal | Allowed wire response |
+| --- | --- | --- |
+| `busy` | yes | `busy` |
+| `unsupported_protocol` | yes | `fault` |
+| `missing_capability` | yes | `fault` |
+| `invalid_frame` | yes | `fault` |
+| `invalid_contract` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `contract_identity_mismatch` | yes | local only |
+| `publisher_unavailable` | no | `publisher_ready` |
+| `invalid_request_id` | yes | local only |
+| `request_id_exhausted` | yes | local only |
+| `counter_exhausted` | yes | local only |
+| `request_id_conflict` | yes | `fault` |
+| `response_mismatch` | yes | local only |
+| `request_in_flight` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `stale_request` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `capacity_exceeded` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `contract_not_ready` | yes | local only |
+| `unknown_contract` | yes | `subscription_removed`, `fault` |
+| `contract_sequence_fault` | no | local only |
+| `contract_sequence_exhausted` | no | local only |
+| `invalid_configuration` | yes | local only |
+| `dialect_downgrade` | yes | local only |
+| `peer_closed` | yes | local only |
+| `timeout` | yes | local only |
+
+Successful responses contain none of `errorCode`, `message`, or `terminal`.
+Error responses require all three, and non-response operations contain no
+response metadata. `busy` and `fault` always use `status: "error"` and can
+never be represented as successful responses.
+
+The Phase186-B authority freezes exactly 27 positive limits:
+
+| Limit | Value |
+| --- | ---: |
+| `maxConnections` | 9 |
+| `maxDataSessions` | 1 |
+| `maxProbes` | 8 |
+| `maxContracts` | 64 |
+| `maxOutstandingRequests` | 8 |
+| `maxReplayEntries` | 16 |
+| `maxReplayBytes` | 4194304 |
+| `maxTombstones` | 32 |
+| `fixedFrameBytes` | 16 |
+| `maxHeaderBytes` | 65536 |
+| `maxPayloadBytes` | 67108864 |
+| `maxTransientBytes` | 134348832 |
+| `maxInFlightBytes` | 134348832 |
+| `maxQueuedBytes` | 268697664 |
+| `maxTotalQueueDepth` | 128 |
+| `maxPerContractQueueDepth` | 8 |
+| `maxPerContractQueueBytes` | 134348832 |
+| `reservedControlQueueDepth` | 8 |
+| `reservedControlQueueBytes` | 1048576 |
+| `controlBurstLimit` | 2 |
+| `handshakeTimeoutMs` | 5000 |
+| `partialFrameTimeoutMs` | 2000 |
+| `readTimeoutMs` | 5000 |
+| `writeTimeoutMs` | 5000 |
+| `joinTimeoutMs` | 5000 |
+| `shutdownTimeoutMs` | 10000 |
+| `maxJsonDepth` | 64 |
+
+The codecs and authority objects enforce and test this model, but the v2
+session/lease/queue authority is not yet wired into the production runtime.
+Phase186-C owns that wiring. Successful parsing must not be reported as
+production enforcement.

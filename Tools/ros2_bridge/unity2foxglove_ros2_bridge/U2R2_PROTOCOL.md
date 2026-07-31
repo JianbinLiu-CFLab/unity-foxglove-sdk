@@ -5,6 +5,21 @@ The normative byte and state ledger is
 Both the extracted Bridge package C# codec and this sidecar's C++ codec read
 that fixture independently and reproduce every listed v2 frame byte for byte.
 
+## Provenance and clean-room status
+
+The Phase186-B protocol implementation is original. Design review used only
+the architectural ideas listed in [the provenance ledger](PROVENANCE.json);
+no implementation code or comments were copied from the inspected upstream
+project.
+
+The inspected reference was the official
+[Unity-Technologies/ROS-TCP-Connector](https://github.com/Unity-Technologies/ROS-TCP-Connector.git)
+repository at revision
+`c27f00c6cf750d2d0564349b3039d19aa3925e7c`, commit date
+`2022-02-02T09:25:06-08:00`, subject `Release 0.7.0`, under
+`Apache-2.0`. [PROVENANCE.json](PROVENANCE.json) records the exact commit,
+tree, LICENSE blob, inspected files, implementation hashes, and classifications.
+
 ## Frame envelope
 
 `U2R2` is a framed loopback TCP protocol. Each frame starts with 16 bytes:
@@ -88,23 +103,76 @@ little-endian XCDR1 encapsulation header. The decoder requires at least four
 payload bytes and validates that exact prefix. Unsupported representations
 are rejected.
 
-The stable error ledger binds each code to its terminal classification and
-legal response operation:
+## Frozen limits and implementation status
 
-| Error code | Terminal | Allowed response |
+The stable error ledger binds all 23 codes to terminal classification and
+legal wire responses. “local only” means the code is an internal authority
+result and cannot be placed on the wire.
+
+| Error code | Terminal | Allowed wire response |
 | --- | --- | --- |
 | `busy` | yes | `busy` |
 | `unsupported_protocol` | yes | `fault` |
 | `missing_capability` | yes | `fault` |
 | `invalid_frame` | yes | `fault` |
-| `invalid_contract` | no | `publisher_ready` |
+| `invalid_contract` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `contract_identity_mismatch` | yes | local only |
 | `publisher_unavailable` | no | `publisher_ready` |
+| `invalid_request_id` | yes | local only |
+| `request_id_exhausted` | yes | local only |
+| `counter_exhausted` | yes | local only |
+| `request_id_conflict` | yes | `fault` |
+| `response_mismatch` | yes | local only |
+| `request_in_flight` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `stale_request` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `capacity_exceeded` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `contract_not_ready` | yes | local only |
+| `unknown_contract` | yes | `subscription_removed`, `fault` |
+| `contract_sequence_fault` | no | local only |
+| `contract_sequence_exhausted` | no | local only |
+| `invalid_configuration` | yes | local only |
+| `dialect_downgrade` | yes | local only |
+| `peer_closed` | yes | local only |
+| `timeout` | yes | local only |
 
 An `ok` response carries no error metadata. An `error` response requires
 `errorCode`, `message`, and `terminal`. Requests and events carry none of the
 response metadata fields. `busy` and `fault` always use `status: "error"`;
 neither operation can be encoded as a successful response.
 
-Replay, duplicate-request retention, subscription ordering fences, queue
-fairness, and complete runtime memory/time bounds are deliberately outside
-this model/codec slice and must not be inferred from successful parsing.
+The Phase186-B authority freezes exactly 27 positive limits:
+
+| Limit | Value |
+| --- | ---: |
+| `maxConnections` | 9 |
+| `maxDataSessions` | 1 |
+| `maxProbes` | 8 |
+| `maxContracts` | 64 |
+| `maxOutstandingRequests` | 8 |
+| `maxReplayEntries` | 16 |
+| `maxReplayBytes` | 4194304 |
+| `maxTombstones` | 32 |
+| `fixedFrameBytes` | 16 |
+| `maxHeaderBytes` | 65536 |
+| `maxPayloadBytes` | 67108864 |
+| `maxTransientBytes` | 134348832 |
+| `maxInFlightBytes` | 134348832 |
+| `maxQueuedBytes` | 268697664 |
+| `maxTotalQueueDepth` | 128 |
+| `maxPerContractQueueDepth` | 8 |
+| `maxPerContractQueueBytes` | 134348832 |
+| `reservedControlQueueDepth` | 8 |
+| `reservedControlQueueBytes` | 1048576 |
+| `controlBurstLimit` | 2 |
+| `handshakeTimeoutMs` | 5000 |
+| `partialFrameTimeoutMs` | 2000 |
+| `readTimeoutMs` | 5000 |
+| `writeTimeoutMs` | 5000 |
+| `joinTimeoutMs` | 5000 |
+| `shutdownTimeoutMs` | 10000 |
+| `maxJsonDepth` | 64 |
+
+The codecs and authority objects enforce and test this model, but the v2
+session/lease/queue authority is not yet wired into the production runtime.
+Phase186-C owns that wiring. Successful parsing must not be reported as
+production enforcement.

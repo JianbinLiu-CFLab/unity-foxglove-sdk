@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "capturedFromHead": "b5388cb4051750939776d217208f467f37aa86c6",
+  "capturedTree": "4ef65eace86d0163c7ec0b75b21975ccfca95751",
   "purpose": "Exact compact inventory of tracked SDK production assets that Phase186A must move, split, or delete.",
   "scopes": [
     {
