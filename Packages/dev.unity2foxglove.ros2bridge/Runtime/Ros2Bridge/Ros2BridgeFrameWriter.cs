@@ -12,6 +12,30 @@ using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
+    internal readonly struct Ros2BridgeFrameMeasurement
+    {
+        internal Ros2BridgeFrameMeasurement(
+            Ros2BridgeFrame frame,
+            string headerJson,
+            int headerBytes,
+            int payloadBytes,
+            int totalWireBytes)
+        {
+            Frame = frame ?? throw new ArgumentNullException(nameof(frame));
+            HeaderJson = headerJson
+                ?? throw new ArgumentNullException(nameof(headerJson));
+            HeaderBytes = headerBytes;
+            PayloadBytes = payloadBytes;
+            TotalWireBytes = totalWireBytes;
+        }
+
+        internal Ros2BridgeFrame Frame { get; }
+        internal string HeaderJson { get; }
+        internal int HeaderBytes { get; }
+        internal int PayloadBytes { get; }
+        internal int TotalWireBytes { get; }
+    }
+
     /// <summary>Encodes <see cref="Ros2BridgeFrame"/> values to the Phase 94 U2R2 wire frame.</summary>
     public static class Ros2BridgeFrameWriter
     {
@@ -32,21 +56,25 @@ namespace Unity2Foxglove.Ros2Bridge
 
         public static byte[] Write(Ros2BridgeFrame frame)
         {
-            var headerBytes = BuildHeaderBytes(frame);
-            var buffer = new byte[checked(16 + headerBytes.Length + frame.PayloadLength)];
-            using var stream = new MemoryStream(buffer, 0, buffer.Length, writable: true, publiclyVisible: true);
-            Write(frame, stream, headerBytes);
-            if (stream.Position != buffer.Length)
-                throw new InvalidOperationException("ROS 2 bridge frame writer produced an unexpected byte count.");
-            return buffer;
+            var measurement = Measure(frame);
+            return EncodeOwned(frame, measurement);
         }
 
         internal static void Write(Ros2BridgeFrame frame, Stream destination)
         {
-            Write(frame, destination, BuildHeaderBytes(frame));
+            var measurement = Measure(frame);
+            var headerBytes = Encoding.UTF8.GetBytes(
+                measurement.HeaderJson);
+            if (headerBytes.Length != measurement.HeaderBytes)
+            {
+                throw new InvalidOperationException(
+                    "ROS 2 bridge JSON header measurement changed during encoding.");
+            }
+            Write(frame, destination, headerBytes);
         }
 
-        private static byte[] BuildHeaderBytes(Ros2BridgeFrame frame)
+        internal static Ros2BridgeFrameMeasurement Measure(
+            Ros2BridgeFrame frame)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
@@ -81,15 +109,90 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             var headerJson = JsonConvert.SerializeObject(header, Formatting.None);
-            var headerBytes = Encoding.UTF8.GetBytes(headerJson);
-            if (headerBytes.Length > MaxHeaderBytes)
+            var headerBytes = Encoding.UTF8.GetByteCount(headerJson);
+            if (headerBytes > MaxHeaderBytes)
             {
                 throw new ArgumentException(
-                    $"ROS 2 bridge JSON header is {headerBytes.Length} bytes, exceeding the {MaxHeaderBytes} byte maximum.",
+                    $"ROS 2 bridge JSON header is {headerBytes} bytes, exceeding the {MaxHeaderBytes} byte maximum.",
                     nameof(frame));
             }
 
-            return headerBytes;
+            return new Ros2BridgeFrameMeasurement(
+                frame,
+                headerJson,
+                headerBytes,
+                frame.PayloadLength,
+                checked(16 + headerBytes + frame.PayloadLength));
+        }
+
+        internal static byte[] EncodeOwned(
+            Ros2BridgeFrame frame,
+            Ros2BridgeFrameMeasurement measurement)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+            if (!ReferenceEquals(frame, measurement.Frame))
+            {
+                throw new ArgumentException(
+                    "The ROS 2 bridge frame measurement belongs to a different frame.",
+                    nameof(measurement));
+            }
+            if (measurement.HeaderJson == null
+                || measurement.HeaderBytes < 0
+                || measurement.PayloadBytes != frame.PayloadLength
+                || measurement.TotalWireBytes
+                != checked(
+                    16
+                    + measurement.HeaderBytes
+                    + measurement.PayloadBytes))
+            {
+                throw new ArgumentException(
+                    "The ROS 2 bridge frame measurement is invalid.",
+                    nameof(measurement));
+            }
+
+            var buffer = new byte[measurement.TotalWireBytes];
+            Buffer.BlockCopy(
+                FramePrefix,
+                0,
+                buffer,
+                0,
+                FramePrefix.Length);
+            WriteUInt32LE(
+                buffer,
+                8,
+                checked((uint)measurement.HeaderBytes));
+            WriteUInt32LE(
+                buffer,
+                12,
+                checked((uint)measurement.PayloadBytes));
+            var encodedHeaderBytes = Encoding.UTF8.GetBytes(
+                measurement.HeaderJson,
+                0,
+                measurement.HeaderJson.Length,
+                buffer,
+                16);
+            if (encodedHeaderBytes != measurement.HeaderBytes)
+            {
+                throw new InvalidOperationException(
+                    "ROS 2 bridge JSON header measurement changed during encoding.");
+            }
+
+            var payloadOffset = checked(16 + encodedHeaderBytes);
+            using var stream = new MemoryStream(
+                buffer,
+                0,
+                buffer.Length,
+                writable: true,
+                publiclyVisible: true);
+            stream.Position = payloadOffset;
+            frame.WritePayloadTo(stream);
+            if (stream.Position != buffer.Length)
+            {
+                throw new InvalidOperationException(
+                    "ROS 2 bridge frame writer produced an unexpected byte count.");
+            }
+            return buffer;
         }
 
         private static void Write(Ros2BridgeFrame frame, Stream destination, byte[] headerBytes)

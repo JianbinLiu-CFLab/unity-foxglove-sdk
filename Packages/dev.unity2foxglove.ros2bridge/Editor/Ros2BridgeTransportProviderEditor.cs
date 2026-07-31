@@ -66,14 +66,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
             var stats =
                 ((Ros2BridgeTransportProvider)target).GetStatsSnapshot();
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Session", EditorStyles.boldLabel);
-            EditorGUILayout.Toggle("Connected", stats.Connected);
-            EditorGUILayout.IntField("Queued Frames", stats.QueuedFrames);
-            EditorGUILayout.LongField("Sent Frames", stats.SentFrames);
-            EditorGUILayout.LongField("Dropped Frames", stats.DroppedFrames);
-            if (!string.IsNullOrEmpty(stats.LastError))
-                EditorGUILayout.HelpBox(stats.LastError, MessageType.Warning);
+            Ros2BridgeProviderDrawer.DrawStats(stats);
         }
 
         private void Draw(string propertyName, string label)

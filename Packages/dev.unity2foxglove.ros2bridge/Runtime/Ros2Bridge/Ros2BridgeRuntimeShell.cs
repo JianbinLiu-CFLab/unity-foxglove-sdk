@@ -52,6 +52,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private volatile Ros2BridgeRuntimeLifecycleState _lifecycleState;
         private bool _configuredEnabled;
         private bool _configuredAutoConnect;
+        private bool _hasStarted;
         private bool _disposed;
 
         public Ros2BridgeRuntime(
@@ -198,9 +199,11 @@ namespace Unity2Foxglove.Ros2Bridge
                         sink,
                         reservation,
                         workerIdentity,
+                        _generation,
                         _lastSnapshot);
                     sink = null;
                     run.Start();
+                    _hasStarted = true;
                     _run = run;
                     _lastSnapshot = run.GetStatsSnapshot();
                     _lifecycleState = Ros2BridgeRuntimeLifecycleState.Ready;
@@ -249,6 +252,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 if (_run == null)
                 {
+                    RecordRejectedAfterStop();
                     reason = GetUnavailableReason();
                     return false;
                 }
@@ -264,6 +268,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 if (_run == null)
                 {
+                    RecordRejectedAfterStop();
                     reason = GetUnavailableReason();
                     return false;
                 }
@@ -392,7 +397,46 @@ namespace Unity2Foxglove.Ros2Bridge
                 source.FailedFrames,
                 source.LastError,
                 source.LastConnectedUnixMs,
-                source.LastDisconnectedUnixMs);
+                source.LastDisconnectedUnixMs,
+                source.AcceptedFrames,
+                source.ReplacedFrames,
+                source.OversizeFrames,
+                source.BackpressureRejectedFrames,
+                source.RejectedAfterStopFrames,
+                source.FaultedFrames,
+                source.DisposalFailures,
+                queuedBytes: 0,
+                transientBytes: 0,
+                inFlightBytes: 0);
+        }
+
+        private void RecordRejectedAfterStop()
+        {
+            if (!_hasStarted)
+                return;
+            _lastSnapshot = new Ros2BridgeStatsSnapshot(
+                _lastSnapshot.Enabled,
+                _lastSnapshot.Connected,
+                _lastSnapshot.Connecting,
+                _lastSnapshot.QueuedFrames,
+                _lastSnapshot.SentFrames,
+                _lastSnapshot.DroppedFrames,
+                _lastSnapshot.FailedFrames,
+                _lastSnapshot.LastError,
+                _lastSnapshot.LastConnectedUnixMs,
+                _lastSnapshot.LastDisconnectedUnixMs,
+                _lastSnapshot.AcceptedFrames,
+                _lastSnapshot.ReplacedFrames,
+                _lastSnapshot.OversizeFrames,
+                _lastSnapshot.BackpressureRejectedFrames,
+                _lastSnapshot.RejectedAfterStopFrames == long.MaxValue
+                    ? long.MaxValue
+                    : _lastSnapshot.RejectedAfterStopFrames + 1,
+                _lastSnapshot.FaultedFrames,
+                _lastSnapshot.DisposalFailures,
+                _lastSnapshot.QueuedBytes,
+                _lastSnapshot.TransientBytes,
+                _lastSnapshot.InFlightBytes);
         }
 
         private static IRos2BridgeSink CreateTcpSink()

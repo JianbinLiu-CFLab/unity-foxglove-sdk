@@ -20,6 +20,51 @@ namespace Unity2Foxglove.Ros2Bridge
             string lastError,
             long lastConnectedUnixMs,
             long lastDisconnectedUnixMs)
+            : this(
+                enabled,
+                connected,
+                connecting,
+                queuedFrames,
+                sentFrames,
+                droppedFrames,
+                failedFrames,
+                lastError,
+                lastConnectedUnixMs,
+                lastDisconnectedUnixMs,
+                acceptedFrames: 0,
+                replacedFrames: 0,
+                oversizeFrames: 0,
+                backpressureRejectedFrames: 0,
+                rejectedAfterStopFrames: 0,
+                faultedFrames: 0,
+                disposalFailures: 0,
+                queuedBytes: 0,
+                transientBytes: 0,
+                inFlightBytes: 0)
+        {
+        }
+
+        public Ros2BridgeStatsSnapshot(
+            bool enabled,
+            bool connected,
+            bool connecting,
+            int queuedFrames,
+            long sentFrames,
+            long droppedFrames,
+            long failedFrames,
+            string lastError,
+            long lastConnectedUnixMs,
+            long lastDisconnectedUnixMs,
+            long acceptedFrames,
+            long replacedFrames,
+            long oversizeFrames,
+            long backpressureRejectedFrames,
+            long rejectedAfterStopFrames,
+            long faultedFrames,
+            long disposalFailures,
+            long queuedBytes,
+            long transientBytes,
+            long inFlightBytes)
         {
             Enabled = enabled;
             Connected = connected;
@@ -31,6 +76,16 @@ namespace Unity2Foxglove.Ros2Bridge
             LastError = lastError ?? string.Empty;
             LastConnectedUnixMs = lastConnectedUnixMs;
             LastDisconnectedUnixMs = lastDisconnectedUnixMs;
+            AcceptedFrames = acceptedFrames;
+            ReplacedFrames = replacedFrames;
+            OversizeFrames = oversizeFrames;
+            BackpressureRejectedFrames = backpressureRejectedFrames;
+            RejectedAfterStopFrames = rejectedAfterStopFrames;
+            FaultedFrames = faultedFrames;
+            DisposalFailures = disposalFailures;
+            QueuedBytes = queuedBytes;
+            TransientBytes = transientBytes;
+            InFlightBytes = inFlightBytes;
         }
 
         public static Ros2BridgeStatsSnapshot Disabled { get; } = new Ros2BridgeStatsSnapshot(
@@ -55,5 +110,15 @@ namespace Unity2Foxglove.Ros2Bridge
         public string LastError { get; }
         public long LastConnectedUnixMs { get; }
         public long LastDisconnectedUnixMs { get; }
+        public long AcceptedFrames { get; }
+        public long ReplacedFrames { get; }
+        public long OversizeFrames { get; }
+        public long BackpressureRejectedFrames { get; }
+        public long RejectedAfterStopFrames { get; }
+        public long FaultedFrames { get; }
+        public long DisposalFailures { get; }
+        public long QueuedBytes { get; }
+        public long TransientBytes { get; }
+        public long InFlightBytes { get; }
     }
 }

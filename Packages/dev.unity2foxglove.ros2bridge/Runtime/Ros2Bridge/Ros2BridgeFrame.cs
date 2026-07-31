@@ -18,6 +18,8 @@ namespace Unity2Foxglove.Ros2Bridge
         public const string CdrEncoding = "cdr";
 
         private readonly byte[] _payload;
+        private readonly int _payloadOffset;
+        private readonly int _payloadLength;
 
         public Ros2BridgeFrame(string topic, string schemaName, string encoding, ulong logTimeNs, ulong sequence, byte[] payload)
             : this(topic, schemaName, encoding, logTimeNs, sequence, payload, null)
@@ -55,6 +57,17 @@ namespace Unity2Foxglove.Ros2Bridge
             byte[] payload,
             FoxRunResolvedQos? qos = null)
             => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: true, validateSchema: false);
+
+        internal static Ros2BridgeFrame CreateWireOwnedView(
+            Ros2BridgeFrame source,
+            byte[] wireBytes,
+            int payloadOffset,
+            int payloadLength)
+            => new Ros2BridgeFrame(
+                source,
+                wireBytes,
+                payloadOffset,
+                payloadLength);
 
         private Ros2BridgeFrame(
             string topic,
@@ -115,7 +128,40 @@ namespace Unity2Foxglove.Ros2Bridge
             LogTimeNs = logTimeNs;
             Sequence = sequence;
             _payload = clonePayload ? (byte[])payload.Clone() : payload;
+            _payloadOffset = 0;
+            _payloadLength = payload.Length;
             Qos = qos;
+        }
+
+        private Ros2BridgeFrame(
+            Ros2BridgeFrame source,
+            byte[] wireBytes,
+            int payloadOffset,
+            int payloadLength)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (wireBytes == null)
+                throw new ArgumentNullException(nameof(wireBytes));
+            if (payloadOffset < 0
+                || payloadLength <= 0
+                || payloadLength != source.PayloadLength
+                || payloadOffset > wireBytes.Length - payloadLength)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(payloadOffset),
+                    "ROS 2 bridge wire payload view is outside its owned buffer.");
+            }
+
+            Topic = source.Topic;
+            SchemaName = source.SchemaName;
+            Encoding = source.Encoding;
+            LogTimeNs = source.LogTimeNs;
+            Sequence = source.Sequence;
+            Qos = source.Qos;
+            _payload = wireBytes;
+            _payloadOffset = payloadOffset;
+            _payloadLength = payloadLength;
         }
 
         internal static bool IsValidResolvedQos(FoxRunResolvedQos qos)
@@ -133,19 +179,26 @@ namespace Unity2Foxglove.Ros2Bridge
         public ulong LogTimeNs { get; }
         public ulong Sequence { get; }
         /// <summary>Read-only view of the serialized payload without allocating a defensive copy.</summary>
-        public ReadOnlyMemory<byte> PayloadMemory => _payload;
+        public ReadOnlyMemory<byte> PayloadMemory =>
+            new ReadOnlyMemory<byte>(
+                _payload,
+                _payloadOffset,
+                _payloadLength);
         [Obsolete("Payload returns a defensive copy on every call. Use PayloadMemory for a non-allocating read-only view, or cache Payload if a mutable copy is required.")]
-        public byte[] Payload => (byte[])_payload.Clone();
+        public byte[] Payload => PayloadMemory.ToArray();
         public FoxRunResolvedQos? Qos { get; }
 
-        internal int PayloadLength => _payload.Length;
+        internal int PayloadLength => _payloadLength;
 
         internal void WritePayloadTo(Stream stream)
         {
             if (stream == null)
                 throw new ArgumentNullException(nameof(stream));
 
-            stream.Write(_payload, 0, _payload.Length);
+            stream.Write(
+                _payload,
+                _payloadOffset,
+                _payloadLength);
         }
     }
 }

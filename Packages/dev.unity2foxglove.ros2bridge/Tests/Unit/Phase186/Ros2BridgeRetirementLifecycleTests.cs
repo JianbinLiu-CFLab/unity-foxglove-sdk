@@ -806,7 +806,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.Contains(
                 leaseFields,
                 field => typeof(IRos2BridgeSink).IsAssignableFrom(field.FieldType));
-            Assert.True(leaseFields.Count(field => IsQueue(field.FieldType)) >= 2);
+            Assert.Contains(
+                leaseFields,
+                field => IsQueue(field.FieldType));
+            Assert.Contains(
+                leaseFields,
+                field => field.FieldType
+                    == typeof(Ros2BridgeOutboundScheduler));
             Assert.Contains(leaseFields, field => field.Name == "_sentFrames");
             Assert.Contains(leaseFields, field => field.Name == "_droppedFrames");
             Assert.Contains(leaseFields, field => field.Name == "_failedFrames");

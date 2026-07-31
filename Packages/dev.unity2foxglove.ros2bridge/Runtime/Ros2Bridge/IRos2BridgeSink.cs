@@ -41,4 +41,13 @@ namespace Unity2Foxglove.Ros2Bridge
     {
         byte[] ExchangePublisherPreparation(byte[] request, int timeoutMs);
     }
+
+    /// <summary>
+    /// Internal zero-reencode seam for the Bridge runtime's already-owned
+    /// bounded U2R2 wire frames.
+    /// </summary>
+    internal interface IRos2BridgeRawWireSink
+    {
+        void SendWire(ReadOnlyMemory<byte> wireBytes, int timeoutMs);
+    }
 }

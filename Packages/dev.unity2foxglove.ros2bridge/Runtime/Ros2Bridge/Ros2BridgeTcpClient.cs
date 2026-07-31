@@ -7,13 +7,15 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
     /// <summary>Sends U2R2 bridge frames to a loopback-only ROS 2 sidecar.</summary>
     public sealed class Ros2BridgeTcpClient :
         IRos2BridgeSink,
-        IRos2BridgePublisherPreparationTransport
+        IRos2BridgePublisherPreparationTransport,
+        IRos2BridgeRawWireSink
     {
         private readonly object _gate = new object();
         private TcpClient _client;
@@ -95,24 +97,37 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
-            TcpClient client;
-            lock (_gate)
-                client = _client;
-            if (client == null || !client.Connected)
-                throw new InvalidOperationException("ROS 2 bridge TCP client is not connected.");
-            if (timeoutMs <= 0)
-                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS 2 bridge send timeout must be positive.");
-
-            var socket = client.Client;
-            if (_sendTimeoutMs != timeoutMs)
-            {
-                socket.SendTimeout = timeoutMs;
-                lock (_gate)
-                    _sendTimeoutMs = timeoutMs;
-            }
-
+            var client = GetConnectedClient(timeoutMs);
             var stream = client.GetStream();
             Ros2BridgeFrameWriter.Write(frame, stream);
+            stream.Flush();
+        }
+
+        void IRos2BridgeRawWireSink.SendWire(
+            ReadOnlyMemory<byte> wireBytes,
+            int timeoutMs)
+        {
+            if (wireBytes.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "ROS 2 bridge wire frame is empty.",
+                    nameof(wireBytes));
+            }
+            if (!MemoryMarshal.TryGetArray(
+                    wireBytes,
+                    out ArraySegment<byte> segment)
+                || segment.Array == null)
+            {
+                throw new InvalidOperationException(
+                    "ROS 2 bridge owned wire memory is not array-backed.");
+            }
+
+            var client = GetConnectedClient(timeoutMs);
+            var stream = client.GetStream();
+            stream.Write(
+                segment.Array,
+                segment.Offset,
+                segment.Count);
             stream.Flush();
         }
 
@@ -165,6 +180,33 @@ namespace Unity2Foxglove.Ros2Bridge
         }
 
         public void Dispose() => DisposeClient();
+
+        private TcpClient GetConnectedClient(int timeoutMs)
+        {
+            TcpClient client;
+            lock (_gate)
+                client = _client;
+            if (client == null || !client.Connected)
+            {
+                throw new InvalidOperationException(
+                    "ROS 2 bridge TCP client is not connected.");
+            }
+            if (timeoutMs <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(timeoutMs),
+                    "ROS 2 bridge send timeout must be positive.");
+            }
+
+            var socket = client.Client;
+            if (_sendTimeoutMs != timeoutMs)
+            {
+                socket.SendTimeout = timeoutMs;
+                lock (_gate)
+                    _sendTimeoutMs = timeoutMs;
+            }
+            return client;
+        }
 
         private void DisposeClient()
         {

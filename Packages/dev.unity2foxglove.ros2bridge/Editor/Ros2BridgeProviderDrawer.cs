@@ -103,7 +103,72 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     "_sendTimeoutMs",
                     "Send Timeout (ms)");
                 providerObject.ApplyModifiedProperties();
+                if (Application.isPlaying)
+                    DrawStats(provider.GetStatsSnapshot());
                 _healthDrawer.Draw(providerObject);
+            }
+        }
+
+        internal static void DrawStats(
+            Ros2BridgeStatsSnapshot stats)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "ROS 2 Bridge Session",
+                EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.Toggle(
+                    "Connected",
+                    stats.Connected);
+                EditorGUILayout.IntField(
+                    "Queued Frames",
+                    stats.QueuedFrames);
+                EditorGUILayout.LongField(
+                    "Queued Bytes",
+                    stats.QueuedBytes);
+                EditorGUILayout.LongField(
+                    "Transient Bytes",
+                    stats.TransientBytes);
+                EditorGUILayout.LongField(
+                    "In-Flight Bytes",
+                    stats.InFlightBytes);
+                EditorGUILayout.LongField(
+                    "Accepted Frames",
+                    stats.AcceptedFrames);
+                EditorGUILayout.LongField(
+                    "Sent Frames",
+                    stats.SentFrames);
+                EditorGUILayout.LongField(
+                    "Dropped Frames",
+                    stats.DroppedFrames);
+                EditorGUILayout.LongField(
+                    "Replaced Frames",
+                    stats.ReplacedFrames);
+                EditorGUILayout.LongField(
+                    "Oversize Frames",
+                    stats.OversizeFrames);
+                EditorGUILayout.LongField(
+                    "Backpressure Rejections",
+                    stats.BackpressureRejectedFrames);
+                EditorGUILayout.LongField(
+                    "After-Stop Rejections",
+                    stats.RejectedAfterStopFrames);
+                EditorGUILayout.LongField(
+                    "Failed Frames",
+                    stats.FailedFrames);
+                EditorGUILayout.LongField(
+                    "Faulted Frames",
+                    stats.FaultedFrames);
+                EditorGUILayout.LongField(
+                    "Disposal Failures",
+                    stats.DisposalFailures);
+            }
+            if (!string.IsNullOrEmpty(stats.LastError))
+            {
+                EditorGUILayout.HelpBox(
+                    stats.LastError,
+                    MessageType.Warning);
             }
         }
 
