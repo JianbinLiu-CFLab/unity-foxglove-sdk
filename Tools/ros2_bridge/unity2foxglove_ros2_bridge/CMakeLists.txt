@@ -11,6 +11,7 @@ find_package(nlohmann_json REQUIRED)
 
 add_library(u2r2_protocol STATIC
   src/u2r2_protocol.cpp
+  src/u2r2_protocol_authority.cpp
 )
 target_compile_features(u2r2_protocol PUBLIC cxx_std_20)
 target_include_directories(u2r2_protocol PUBLIC include)
@@ -70,6 +71,18 @@ if(BUILD_TESTING)
     u2r2_protocol
   )
   target_compile_definitions(test_u2r2_protocol PRIVATE
+    U2R2_PROTOCOL_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/u2r2_protocol_vectors.json"
+  )
+
+  ament_add_gtest(test_u2r2_protocol_authority
+    test/test_u2r2_protocol_authority.cpp
+  )
+  target_compile_features(test_u2r2_protocol_authority PUBLIC cxx_std_20)
+  target_include_directories(test_u2r2_protocol_authority PRIVATE include)
+  target_link_libraries(test_u2r2_protocol_authority
+    u2r2_protocol
+  )
+  target_compile_definitions(test_u2r2_protocol_authority PRIVATE
     U2R2_PROTOCOL_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/u2r2_protocol_vectors.json"
   )
 

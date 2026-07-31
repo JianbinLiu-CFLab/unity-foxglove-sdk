@@ -22,8 +22,15 @@ using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.UnitTests
 {
+    [CollectionDefinition(Name, DisableParallelization = true)]
+    public sealed class Ros2BridgeNetworkTimingSerialCollection
+    {
+        public const string Name = "ROS 2 Bridge network timing serial";
+    }
+
     [Trait("Phase", "171")]
     [Trait("Domain", "Routing")]
+    [Collection(Ros2BridgeNetworkTimingSerialCollection.Name)]
     public sealed class MirrorSinkRoutingTests
     {
         [Fact]

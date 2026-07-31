@@ -265,8 +265,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                 healthResponse);
 
             var mismatchedOperation = RequestWithMutation(
-                "health_ping",
-                header => header["op"] = "prepare_publisher");
+                "prepare_publisher",
+                header => header["requestId"] = 2);
             AssertResponseMismatch(
                 U2R2ResponseExpectation.FromRequest(mismatchedOperation),
                 healthResponse);
@@ -506,7 +506,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             var errorCodes = Assert.IsType<JArray>(authority["errorCodes"])
                 .Values<JObject>()
                 .ToArray();
-            Assert.Equal(6, errorCodes.Length);
+            Assert.Equal(23, errorCodes.Length);
             Assert.Equal(
                 errorCodes.Length,
                 errorCodes.Select(item => item.Value<string>("code"))
@@ -515,6 +515,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             foreach (var entry in errorCodes)
             {
                 var code = entry.Value<string>("code");
+                var wire = entry.Value<bool>("wire");
                 var terminal = entry.Value<bool>("terminal");
                 Assert.True(
                     U2R2ProtocolCodec.TryGetStableErrorTerminal(code, out var actualTerminal));
@@ -524,13 +525,27 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     .Values<string>()
                     .Select(ParseOperation)
                     .ToArray();
-                Assert.NotEmpty(allowed);
+                if (wire)
+                    Assert.NotEmpty(allowed);
+                else
+                    Assert.Empty(allowed);
                 foreach (var operation in allowed)
                 {
                     Assert.True(
                         U2R2ProtocolCodec.IsStableErrorAllowedForResponse(
                             code,
                             operation));
+                    var encoded = U2R2ProtocolCodec.EncodeFrame(
+                        ErrorResponseHeader(
+                            operation,
+                            code,
+                            terminal),
+                        Array.Empty<byte>());
+                    var parsed = U2R2ProtocolCodec.ParseV2(
+                        U2R2ProtocolCodec.DecodeFrame(encoded));
+                    Assert.Equal(operation, parsed.Operation);
+                    Assert.Equal(code, parsed.ErrorCode);
+                    Assert.Equal(terminal, parsed.Terminal);
                 }
                 foreach (var operation in ResponseOperations().Except(allowed))
                 {
@@ -538,6 +553,19 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                         U2R2ProtocolCodec.IsStableErrorAllowedForResponse(
                             code,
                             operation));
+                }
+                if (!wire)
+                {
+                    var forged = U2R2ProtocolCodec.EncodeFrame(
+                        ErrorResponseHeader(
+                            U2R2Operation.Fault,
+                            code,
+                            terminal),
+                        Array.Empty<byte>());
+                    var error = Assert.Throws<U2R2ProtocolException>(
+                        () => U2R2ProtocolCodec.ParseV2(
+                            U2R2ProtocolCodec.DecodeFrame(forged)));
+                    Assert.Equal("invalid_frame", error.ErrorCode);
                 }
             }
             Assert.False(
@@ -878,6 +906,56 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             yield return U2R2Operation.SubscriptionRemoved;
             yield return U2R2Operation.Busy;
             yield return U2R2Operation.Fault;
+        }
+
+        private static JObject ErrorResponseHeader(
+            U2R2Operation operation,
+            string code,
+            bool terminal)
+        {
+            var header = new JObject
+            {
+                ["op"] = OperationName(operation),
+                ["protocolVersion"] = 2,
+                ["requestId"] = 1,
+                ["status"] = "error",
+                ["errorCode"] = code,
+                ["message"] = "fixture error",
+                ["terminal"] = terminal,
+            };
+            if (operation != U2R2Operation.Busy
+                && operation != U2R2Operation.Fault)
+            {
+                header["sessionId"] =
+                    "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b";
+                header["connectionGeneration"] = 7;
+            }
+            return header;
+        }
+
+        private static string OperationName(U2R2Operation operation)
+        {
+            switch (operation)
+            {
+                case U2R2Operation.HelloAck:
+                    return "hello_ack";
+                case U2R2Operation.HealthPong:
+                    return "health_pong";
+                case U2R2Operation.PublisherReady:
+                    return "publisher_ready";
+                case U2R2Operation.PublishResult:
+                    return "publish_result";
+                case U2R2Operation.SubscriptionReady:
+                    return "subscription_ready";
+                case U2R2Operation.SubscriptionRemoved:
+                    return "subscription_removed";
+                case U2R2Operation.Busy:
+                    return "busy";
+                case U2R2Operation.Fault:
+                    return "fault";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(operation));
+            }
         }
 
         private static U2R2Operation ParseOperation(string value)

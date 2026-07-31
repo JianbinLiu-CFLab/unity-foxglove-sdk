@@ -812,6 +812,7 @@
     "errorCodes": [
       {
         "code": "busy",
+        "wire": true,
         "terminal": true,
         "responseOps": [
           "busy"
@@ -819,6 +820,7 @@
       },
       {
         "code": "unsupported_protocol",
+        "wire": true,
         "terminal": true,
         "responseOps": [
           "fault"
@@ -826,6 +828,7 @@
       },
       {
         "code": "missing_capability",
+        "wire": true,
         "terminal": true,
         "responseOps": [
           "fault"
@@ -833,6 +836,7 @@
       },
       {
         "code": "invalid_frame",
+        "wire": true,
         "terminal": true,
         "responseOps": [
           "fault"
@@ -840,17 +844,139 @@
       },
       {
         "code": "invalid_contract",
+        "wire": true,
+        "terminal": false,
+        "responseOps": [
+          "publisher_ready",
+          "publish_result",
+          "subscription_ready",
+          "subscription_removed"
+        ]
+      },
+      {
+        "code": "contract_identity_mismatch",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "publisher_unavailable",
+        "wire": true,
         "terminal": false,
         "responseOps": [
           "publisher_ready"
         ]
       },
       {
-        "code": "publisher_unavailable",
+        "code": "invalid_request_id",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "request_id_exhausted",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "counter_exhausted",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "request_id_conflict",
+        "wire": true,
+        "terminal": true,
+        "responseOps": ["fault"]
+      },
+      {
+        "code": "response_mismatch",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "request_in_flight",
+        "wire": true,
         "terminal": false,
         "responseOps": [
-          "publisher_ready"
+          "publisher_ready",
+          "publish_result",
+          "subscription_ready",
+          "subscription_removed"
         ]
+      },
+      {
+        "code": "stale_request",
+        "wire": true,
+        "terminal": false,
+        "responseOps": [
+          "publisher_ready",
+          "publish_result",
+          "subscription_ready",
+          "subscription_removed"
+        ]
+      },
+      {
+        "code": "capacity_exceeded",
+        "wire": true,
+        "terminal": false,
+        "responseOps": [
+          "publisher_ready",
+          "publish_result",
+          "subscription_ready",
+          "subscription_removed"
+        ]
+      },
+      {
+        "code": "contract_not_ready",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "unknown_contract",
+        "wire": true,
+        "terminal": true,
+        "responseOps": ["subscription_removed", "fault"]
+      },
+      {
+        "code": "contract_sequence_fault",
+        "wire": false,
+        "terminal": false,
+        "responseOps": []
+      },
+      {
+        "code": "contract_sequence_exhausted",
+        "wire": false,
+        "terminal": false,
+        "responseOps": []
+      },
+      {
+        "code": "invalid_configuration",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "dialect_downgrade",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "peer_closed",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
+      },
+      {
+        "code": "timeout",
+        "wire": false,
+        "terminal": true,
+        "responseOps": []
       }
     ],
     "stateTransitions": [
@@ -1329,6 +1455,673 @@
         "expectedErrorCode": "invalid_frame",
         "terminal": true
       }
-    ]
+    ],
+    "commit2": {
+      "limits": {
+        "maxConnections": 9,
+        "maxDataSessions": 1,
+        "maxProbes": 8,
+        "maxContracts": 64,
+        "maxOutstandingRequests": 8,
+        "maxReplayEntries": 16,
+        "maxReplayBytes": 4194304,
+        "maxTombstones": 32,
+        "fixedFrameBytes": 16,
+        "maxHeaderBytes": 65536,
+        "maxPayloadBytes": 67108864,
+        "maxTransientBytes": 134348832,
+        "maxInFlightBytes": 134348832,
+        "maxQueuedBytes": 268697664,
+        "maxTotalQueueDepth": 128,
+        "maxPerContractQueueDepth": 8,
+        "maxPerContractQueueBytes": 134348832,
+        "reservedControlQueueDepth": 8,
+        "reservedControlQueueBytes": 1048576,
+        "controlBurstLimit": 2,
+        "handshakeTimeoutMs": 5000,
+        "partialFrameTimeoutMs": 2000,
+        "readTimeoutMs": 5000,
+        "writeTimeoutMs": 5000,
+        "joinTimeoutMs": 5000,
+        "shutdownTimeoutMs": 10000,
+        "maxJsonDepth": 64
+      },
+      "scenarios": [
+        {
+          "id": "sender_starts_at_one",
+          "expectedIds": [1, 2]
+        },
+        {
+          "id": "receiver_accepts_higher_first",
+          "requestId": 7,
+          "expectedHighWater": 7
+        },
+        {
+          "id": "retained_identical_replay",
+          "requestId": 1,
+          "canonicalRequestHex": "01020304",
+          "responseHex": "aabbcc",
+          "expectedDecision": "replay_cached"
+        },
+        {
+          "id": "retained_payload_conflict",
+          "requestId": 1,
+          "canonicalRequestHex": "01020304",
+          "conflictingRequestHex": "01020305",
+          "expectedErrorCode": "request_id_conflict",
+          "terminal": true
+        },
+        {
+          "id": "stale_after_replay_eviction",
+          "requestIds": [1, 2, 3],
+          "staleRequestId": 1,
+          "expectedErrorCode": "stale_request",
+          "terminal": false
+        },
+        {
+          "id": "control_reserved_before_mutation",
+          "requestId": 1,
+          "expectedErrorCode": "capacity_exceeded",
+          "terminal": false
+        },
+        {
+          "id": "replay_bytes_max_plus_one",
+          "requestId": 1,
+          "expectedErrorCode": "capacity_exceeded",
+          "terminal": false
+        },
+        {
+          "id": "ready_precedes_message",
+          "contractId": 41,
+          "generation": 7,
+          "firstSequence": 1,
+          "expectedOrder": ["subscription_ready", "message"],
+          "expectedErrorCode": "contract_not_ready",
+          "terminal": true
+        },
+        {
+          "id": "unregister_fences_writer",
+          "contractId": 41,
+          "generation": 7,
+          "expectedOrder": ["subscription_ready", "message", "subscription_removed"],
+          "expectedAdmission": "late_tombstone"
+        },
+        {
+          "id": "bounded_generation_tombstones",
+          "firstContractId": 41,
+          "secondContractId": 42,
+          "generation": 7,
+          "expectedRevokedContracts": 1,
+          "expectedErrorCode": "unknown_contract",
+          "terminal": true
+        },
+        {
+          "id": "unknown_contract_faults",
+          "contractId": 999,
+          "generation": 7,
+          "expectedErrorCode": "unknown_contract",
+          "terminal": true
+        },
+        {
+          "id": "sequence_starts_one_and_is_monotonic",
+          "acceptedSequences": [1, 2],
+          "rejectedSequence": 2,
+          "expectedErrorCode": "contract_sequence_fault",
+          "terminal": false
+        },
+        {
+          "id": "sequence_faults_before_wrap",
+          "startingSequence": "18446744073709551614",
+          "lastAcceptedSequence": "18446744073709551615",
+          "expectedErrorCode": "contract_sequence_exhausted",
+          "terminal": false
+        },
+        {
+          "id": "drop_oldest_is_contract_local",
+          "coldTokens": ["cold-1"],
+          "retainedHotTokens": ["hot-2", "hot-3"],
+          "expectedResult": "dropped_oldest"
+        },
+        {
+          "id": "replace_latest_is_contract_local",
+          "retainedHotTokens": ["hot-1", "hot-3"],
+          "expectedResult": "replaced_latest"
+        },
+        {
+          "id": "zero_byte_replace_releases_depth",
+          "expectedResult": "replaced_latest",
+          "expectedOrder": ["replacement"],
+          "expectedQueuedDepth": 1,
+          "expectedQueuedBytes": 1
+        },
+        {
+          "id": "per_contract_fifo_round_robin",
+          "expectedOrder": ["a-1", "b-1", "a-2", "b-2"]
+        },
+        {
+          "id": "bounded_control_priority_allows_data",
+          "expectedOrder": ["control-1", "control-2", "data-1", "control-3"]
+        },
+        {
+          "id": "fenced_control_yields_to_other_contract_data",
+          "contractId": 43,
+          "generation": 7,
+          "requestId": 11,
+          "expectedOrder": [
+            "other-data",
+            "subscription_ready",
+            "same-data"
+          ]
+        },
+        {
+          "id": "reserved_control_survives_full_data_budget",
+          "dataTokens": ["data-1", "data-2"],
+          "controlToken": "control-1",
+          "expectedControlReserved": true
+        },
+        {
+          "id": "queued_writer_accounting_exact",
+          "frameBytes": 8,
+          "expectedQueuedBeforeWrite": 8,
+          "expectedQueuedDuringWrite": 0,
+          "expectedInFlightDuringWrite": 8,
+          "expectedFinalBytes": 0
+        },
+        {
+          "id": "byte_reservations_release_exactly_once",
+          "expectedFinalBytes": 0
+        },
+        {
+          "id": "concurrent_lease_settlement_exactly_once",
+          "workerCount": 2,
+          "iterations": 1000,
+          "expectedFinalBytes": 0,
+          "expectedFinalConnections": 0
+        },
+        {
+          "id": "terminal_close_cancels_pending_authorities",
+          "requestId": 7,
+          "contractId": 41,
+          "generation": 7,
+          "expectedOutstandingRequests": 0,
+          "expectedRetainedEntries": 0,
+          "expectedReplayBytes": 0,
+          "expectedContracts": 0,
+          "expectedReservedDepth": 0,
+          "expectedReservedBytes": 0,
+          "expectedRevokedContracts": 0,
+          "closeCalls": 2
+        },
+        {
+          "id": "terminal_close_rejects_wrong_authorities",
+          "requestId": 61,
+          "wrongRequestId": 62,
+          "contractId": 84,
+          "generation": 4,
+          "expectedBoundOutstanding": 1,
+          "expectedBoundReservedDepth": 1,
+          "expectedClosedOutstanding": 0,
+          "expectedClosedReservedDepth": 0
+        },
+        {
+          "id": "revoked_capacity_rejection_has_no_side_effects",
+          "maxContracts": 1,
+          "maxTombstones": 1,
+          "expectedBound": 2,
+          "attackAttempts": 3
+        },
+        {
+          "id": "unregister_revoked_capacity_is_atomic",
+          "maxContracts": 2,
+          "maxTombstones": 1,
+          "targetContractId": 132,
+          "fillerContractId": 133,
+          "generation": 1,
+          "targetRegisterRequestId": 101,
+          "fillerRegisterRequestId": 102,
+          "fillerUnregisterRequestId": 103,
+          "failedUnregisterRequestId": 104,
+          "retryUnregisterRequestId": 105,
+          "revokedFillerIds": [900, 901],
+          "expectedRevokedAtCapacity": 3,
+          "expectedRevokedAfterRelease": 2,
+          "expectedContractsAfterFailure": 1,
+          "expectedOutstandingAfterCancel": 0,
+          "expectedReservedDepthAfterCancel": 0
+        },
+        {
+          "id": "one_reader_and_one_writer",
+          "expectedConcurrentReaders": 1,
+          "expectedConcurrentWriters": 1
+        },
+        {
+          "id": "capacity_counter_max_plus_one",
+          "capacity": 2,
+          "expectedFinalCount": 0
+        },
+        {
+          "id": "checked_frame_size_bounds",
+          "expectedErrorCode": "capacity_exceeded",
+          "terminal": false
+        },
+        {
+          "id": "request_counter_exhausts_before_wrap",
+          "startingRequestId": "18446744073709551614",
+          "lastRequestId": "18446744073709551615",
+          "expectedErrorCode": "request_id_exhausted",
+          "terminal": true
+        },
+        {
+          "id": "request_counter_is_thread_safe",
+          "workerCount": 16,
+          "iterationsPerWorker": 4096,
+          "expectedFirstId": 1,
+          "expectedLastId": 65536,
+          "expectedUniqueIds": 65536
+        },
+        {
+          "id": "wrong_generation_is_not_a_tombstone",
+          "contractId": 41,
+          "removedGeneration": 7,
+          "wrongGeneration": 8,
+          "expectedErrorCode": "unknown_contract",
+          "terminal": true
+        },
+        {
+          "id": "failed_reservation_has_no_side_effects",
+          "requestId": 7,
+          "expectedHighWater": 0,
+          "expectedMutationCount": 0,
+          "expectedErrorCode": "capacity_exceeded",
+          "terminal": false
+        },
+        {
+          "id": "replay_advances_high_water_once",
+          "requestId": 7,
+          "canonicalRequestHex": "01020304",
+          "responseHex": "aabbcc",
+          "expectedHighWater": 7,
+          "expectedMutationCount": 1,
+          "expectedDecision": "replay_cached"
+        },
+        {
+          "id": "pending_request_identity_is_atomic",
+          "requestId": 7,
+          "lowerRequestId": 6,
+          "higherRequestId": 8,
+          "canonicalRequestHex": "01020304",
+          "conflictingRequestHex": "01020305",
+          "expectedHighWater": 7,
+          "identicalPending": {
+            "expectedErrorCode": "request_in_flight",
+            "terminal": false
+          },
+          "conflictingPending": {
+            "expectedErrorCode": "request_id_conflict",
+            "terminal": true
+          },
+          "lowerPending": {
+            "expectedErrorCode": "stale_request",
+            "terminal": false
+          }
+        },
+        {
+          "id": "replay_completion_abort_exactly_once",
+          "completeRequestId": 1,
+          "abortRequestId": 2,
+          "canonicalRequestHex": "01020304",
+          "completeResponseHex": "aabbcc",
+          "abortResponseHex": "ddeeff",
+          "expectedOutstandingRequests": 0,
+          "expectedMutationCount": 2
+        },
+        {
+          "id": "all_named_counters_are_bounded",
+          "counterNames": [
+            "connections",
+            "dataSessions",
+            "probes",
+            "contracts",
+            "outstandingRequests"
+          ],
+          "expectedErrorCode": "capacity_exceeded",
+          "terminal": false
+        },
+        {
+          "id": "limits_diagnostic_snapshot_is_immutable",
+          "expectedLimitCount": 27
+        },
+        {
+          "id": "limits_configuration_fails_closed",
+          "invalidMutations": [
+            "missing_field",
+            "unknown_field",
+            "zero_value",
+            "data_sessions_not_one",
+            "connections_below_roles",
+            "per_contract_below_max_frame",
+            "queued_below_max_frame",
+            "control_depth_exceeds_total",
+            "control_burst_exceeds_depth",
+            "revoked_bound_overflow",
+            "unknown_with_field"
+          ],
+          "expectedErrorCode": "invalid_configuration",
+          "terminal": true
+        },
+        {
+          "id": "ready_unregister_full_ordering",
+          "contractId": 41,
+          "generation": 7,
+          "firstSequence": 1,
+          "expectedOrder": ["subscription_ready", "queued", "subscription_removed"],
+          "expectedAdmission": "late_tombstone",
+          "expectedPreReadyErrorCode": "contract_not_ready",
+          "terminal": true
+        },
+        {
+          "id": "contract_identity_validation",
+          "validTopics": ["/camera/front", "/robot_1/status", "/_private/_status"],
+          "invalidTopics": [
+            "",
+            "camera/front",
+            "/camera front",
+            "/camera//front",
+            "/1st/sensor",
+            "/unity/2nd_sensor"
+          ],
+          "validTypes": ["sensor_msgs/msg/Image", "demo_interfaces/msg/Telemetry"],
+          "invalidTypes": [
+            "",
+            "Image",
+            "sensor_msgs/Image",
+            "sensor_msgs/msg/image",
+            "sensor-msgs/msg/Image",
+            "a/msg/Type",
+            "foo__bar/msg/Type",
+            "sensor_msgs_/msg/Type",
+            "sensor_msgs/msg/Image_Name"
+          ],
+          "typeLengthBoundaries": {
+            "validPackageLength": 255,
+            "invalidPackageLength": 256,
+            "validTypeLength": 255,
+            "invalidTypeLength": 256
+          },
+          "invalidDirections": [0, 3, 4294967295],
+          "validQos": [
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "volatile",
+              "history": "keep_last",
+              "depth": 10
+            },
+            {
+              "profile": "sensor_data",
+              "reliability": "best_effort",
+              "durability": "volatile",
+              "history": "keep_last",
+              "depth": 5
+            },
+            {
+              "profile": "system_default",
+              "reliability": "system_default",
+              "durability": "system_default",
+              "history": "system_default",
+              "depth": 0
+            },
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "transient_local",
+              "history": "keep_all",
+              "depth": 0
+            }
+          ],
+          "invalidQos": [
+            {
+              "profile": "unknown",
+              "reliability": "reliable",
+              "durability": "volatile",
+              "history": "keep_last",
+              "depth": 10
+            },
+            {
+              "profile": "default",
+              "reliability": "unknown",
+              "durability": "volatile",
+              "history": "keep_last",
+              "depth": 10
+            },
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "unknown",
+              "history": "keep_last",
+              "depth": 10
+            },
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "volatile",
+              "history": "unknown",
+              "depth": 10
+            },
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "volatile",
+              "history": "keep_last",
+              "depth": 0
+            },
+            {
+              "profile": "default",
+              "reliability": "reliable",
+              "durability": "volatile",
+              "history": "keep_all",
+              "depth": 1
+            },
+            {
+              "profile": "system_default",
+              "reliability": "system_default",
+              "durability": "system_default",
+              "history": "system_default",
+              "depth": 1
+            }
+          ],
+          "invalidQosShapes": [
+            "non_object",
+            "missing_axis",
+            "extra_axis",
+            "profile_non_string",
+            "reliability_non_string",
+            "durability_non_string",
+            "history_non_string",
+            "depth_negative",
+            "depth_fraction",
+            "depth_above_uint32"
+          ],
+          "expectedErrorCode": "invalid_contract",
+          "terminal": false
+        },
+        {
+          "id": "contract_identity_alias_and_replay",
+          "contractId": 77,
+          "generation": 3,
+          "registerRequestId": 21,
+          "aliasStartRequestId": 22,
+          "aliasMutations": [
+            "topic",
+            "schemaName",
+            "profile",
+            "reliability",
+            "durability",
+            "history",
+            "depth",
+            "direction"
+          ],
+          "expectedReplayDecision": "replay_cached",
+          "expectedResponseCount": 1,
+          "expectedErrorCode": "invalid_contract",
+          "terminal": false
+        },
+        {
+          "id": "fresh_registration_requires_subscribe_direction",
+          "contractId": 78,
+          "generation": 3,
+          "requestId": 30,
+          "expectedResponseToken": "subscription_ready:30:invalid_contract",
+          "expectedResponseHex": "ee",
+          "expectedErrorCode": "invalid_contract",
+          "terminal": false
+        },
+        {
+          "id": "message_requires_frozen_contract_identity",
+          "contractId": 79,
+          "generation": 3,
+          "aliasMutations": [
+            "topic",
+            "schemaName",
+            "profile",
+            "reliability",
+            "durability",
+            "history",
+            "depth",
+            "direction"
+          ],
+          "expectedErrorCode": "contract_identity_mismatch",
+          "terminal": true
+        },
+        {
+          "id": "composed_register_unregister_single_response",
+          "contractId": 81,
+          "generation": 5,
+          "registerRequestId": 31,
+          "unregisterRequestId": 32,
+          "expectedRegisterResponses": 1,
+          "expectedUnregisterResponses": 1,
+          "expectedReplayResponses": 1,
+          "expectedOrder": [
+            "subscription_ready",
+            "replay:31",
+            "message",
+            "subscription_removed",
+            "replay:32"
+          ]
+        },
+        {
+          "id": "fenced_response_fifo_and_transaction_binding",
+          "contractId": 82,
+          "generation": 6,
+          "registerRequestId": 61,
+          "decoyRequestId": 62,
+          "unregisterRequestId": 63,
+          "expectedOrder": [
+            "subscription_ready",
+            "subscription_removed"
+          ],
+          "expectedOutstandingRequests": 0
+        },
+        {
+          "id": "semantic_rejections_commit_exact_replay",
+          "contractId": 120,
+          "generation": 1,
+          "duplicateRequestId": 71,
+          "capacityRequestId": 72,
+          "unknownRequestId": 73,
+          "cases": [
+            {
+              "kind": "duplicate",
+              "responseOperation": "subscription_ready",
+              "errorCode": "invalid_contract",
+              "terminal": false,
+              "responseHex": "a1"
+            },
+            {
+              "kind": "capacity",
+              "responseOperation": "subscription_ready",
+              "errorCode": "capacity_exceeded",
+              "terminal": false,
+              "responseHex": "a2"
+            },
+            {
+              "kind": "unknown",
+              "responseOperation": "subscription_removed",
+              "errorCode": "unknown_contract",
+              "terminal": true,
+              "responseHex": "a3"
+            }
+          ],
+          "expectedOutstandingRequests": 0
+        },
+        {
+          "id": "contract_claim_blocks_external_cancel",
+          "contractId": 121,
+          "generation": 1,
+          "requestId": 81,
+          "responseOperation": "subscription_ready",
+          "abortErrorCode": "invalid_contract",
+          "abortResponseHex": "b1",
+          "expectedOutstandingRequests": 0
+        },
+        {
+          "id": "cached_replay_rejects_wrong_scheduler",
+          "requestId": 91,
+          "canonicalRequestHex": "c1",
+          "responseHex": "c2",
+          "expectedWrongSchedulerDepth": 0
+        },
+        {
+          "id": "invalid_overflow_policy_has_no_side_effects",
+          "invalidPolicy": 0,
+          "expectedQueuedDepth": 0,
+          "expectedQueuedBytes": 0,
+          "expectedErrorCode": "invalid_contract",
+          "terminal": false
+        },
+        {
+          "id": "replay_responses_respect_control_fairness",
+          "requestIds": [41, 42, 43],
+          "expectedOrder": ["response:41", "response:42", "data", "response:43"]
+        },
+        {
+          "id": "response_transaction_rejects_wrong_scheduler",
+          "requestId": 51,
+          "contractId": 91,
+          "generation": 2,
+          "expectedOutstandingRequests": 0,
+          "expectedReservedDepth": 0
+        },
+        {
+          "id": "codec_consumes_session_limit_snapshot",
+          "maxHeaderBytes": 64,
+          "maxPayloadBytes": 1,
+          "maxJsonDepth": 2,
+          "expectedWireErrorCode": "invalid_frame",
+          "expectedConfigurationErrorCode": "invalid_configuration",
+          "terminal": true
+        },
+        {
+          "id": "pure_peer_close_transition",
+          "expectedState": "closed",
+          "expectedErrorCode": "peer_closed",
+          "terminal": true
+        },
+        {
+          "id": "pure_timeout_transitions",
+          "timeoutKinds": [
+            "handshake",
+            "partial_frame",
+            "read",
+            "write",
+            "join",
+            "shutdown"
+          ],
+          "expectedErrorCode": "timeout",
+          "terminal": true
+        }
+      ]
+    }
   }
 }

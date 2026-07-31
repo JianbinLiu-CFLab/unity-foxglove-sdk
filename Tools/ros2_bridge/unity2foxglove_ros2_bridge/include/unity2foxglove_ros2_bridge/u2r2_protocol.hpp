@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -15,6 +16,8 @@
 
 namespace unity2foxglove::ros2_bridge::u2r2
 {
+class ProtocolLimits;
+
 constexpr uint16_t kEnvelopeVersion = 1;
 constexpr uint32_t kProtocolVersion = 2;
 
@@ -79,6 +82,17 @@ struct Frame
   std::vector<uint8_t> payload;
 };
 
+struct Qos
+{
+  std::string profile;
+  std::string reliability;
+  std::string durability;
+  std::string history;
+  uint32_t depth{0};
+
+  bool operator==(const Qos &) const noexcept = default;
+};
+
 struct Message
 {
   Operation operation{Operation::Unknown};
@@ -99,6 +113,9 @@ struct Message
   uint64_t receive_time_ns{0};
   std::string encoding;
   std::string representation;
+  std::string topic;
+  std::string schema_name;
+  std::optional<Qos> qos;
 };
 
 class ResponseExpectation final
@@ -207,7 +224,14 @@ private:
 std::vector<uint8_t> encode_frame(
   const nlohmann::json & header,
   const std::vector<uint8_t> & payload);
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload,
+  const ProtocolLimits & limits);
 Frame decode_frame(const std::vector<uint8_t> & bytes);
+Frame decode_frame(
+  const std::vector<uint8_t> & bytes,
+  const ProtocolLimits & limits);
 Message parse_v2(const Frame & frame);
 LegacyV1Message parse_legacy_v1_first_frame(
   const std::vector<uint8_t> & bytes);

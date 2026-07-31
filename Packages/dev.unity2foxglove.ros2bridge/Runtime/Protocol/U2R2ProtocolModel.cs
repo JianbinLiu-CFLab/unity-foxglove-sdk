@@ -178,7 +178,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             ulong logTimeNs,
             ulong receiveTimeNs,
             string encoding,
-            string representation)
+            string representation,
+            string topic,
+            string schemaName,
+            U2R2Qos qos)
         {
             Operation = operation;
             OperationName = operationName;
@@ -199,6 +202,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             ReceiveTimeNs = receiveTimeNs;
             Encoding = encoding ?? string.Empty;
             Representation = representation ?? string.Empty;
+            Topic = topic ?? string.Empty;
+            SchemaName = schemaName ?? string.Empty;
+            Qos = qos;
         }
 
         public U2R2Operation Operation { get; }
@@ -236,6 +242,12 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         public string Encoding { get; }
 
         public string Representation { get; }
+
+        public string Topic { get; }
+
+        public string SchemaName { get; }
+
+        public U2R2Qos Qos { get; }
     }
 
     public sealed class U2R2ResponseExpectation

@@ -19,6 +19,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 {
     [Trait("Phase", "184-D")]
     [Trait("Domain", "Ros2Bridge")]
+    [Collection(
+        Unity2Foxglove.Ros2Bridge.UnitTests
+            .Ros2BridgeNetworkTimingSerialCollection.Name)]
     public sealed class Ros2BridgePublisherPreparationTests
     {
         [Fact]

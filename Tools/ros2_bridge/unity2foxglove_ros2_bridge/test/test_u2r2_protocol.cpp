@@ -260,6 +260,51 @@ std::vector<Operation> ResponseOperations()
   };
 }
 
+std::string OperationName(Operation operation)
+{
+  switch (operation) {
+    case Operation::HelloAck:
+      return "hello_ack";
+    case Operation::HealthPong:
+      return "health_pong";
+    case Operation::PublisherReady:
+      return "publisher_ready";
+    case Operation::PublishResult:
+      return "publish_result";
+    case Operation::SubscriptionReady:
+      return "subscription_ready";
+    case Operation::SubscriptionRemoved:
+      return "subscription_removed";
+    case Operation::Busy:
+      return "busy";
+    case Operation::Fault:
+      return "fault";
+    default:
+      throw std::invalid_argument("operation is not a response");
+  }
+}
+
+nlohmann::json ErrorResponseHeader(
+  Operation operation,
+  const std::string & code,
+  bool terminal)
+{
+  nlohmann::json header{
+    {"op", OperationName(operation)},
+    {"protocolVersion", 2},
+    {"requestId", 1},
+    {"status", "error"},
+    {"errorCode", code},
+    {"message", "fixture error"},
+    {"terminal", terminal},
+  };
+  if (operation != Operation::Busy && operation != Operation::Fault) {
+    header["sessionId"] = "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b";
+    header["connectionGeneration"] = 7;
+  }
+  return header;
+}
+
 ConnectionState ParseConnectionState(const std::string & value)
 {
   if (value == "v1_probe") {
@@ -928,9 +973,10 @@ TEST(U2R2ProtocolV2, SharedLedgersExecuteEveryErrorTransitionAndNegativeVector)
   const auto authority = fixture.at("v2");
 
   std::unordered_set<std::string> seen_codes;
-  ASSERT_EQ(6U, authority.at("errorCodes").size());
+  ASSERT_EQ(23U, authority.at("errorCodes").size());
   for (const auto & entry : authority.at("errorCodes")) {
     const auto code = entry.at("code").get<std::string>();
+    const auto wire = entry.at("wire").get<bool>();
     ASSERT_TRUE(seen_codes.insert(code).second);
     bool terminal = false;
     EXPECT_TRUE(try_get_stable_error_terminal(code, terminal));
@@ -940,14 +986,27 @@ TEST(U2R2ProtocolV2, SharedLedgersExecuteEveryErrorTransitionAndNegativeVector)
     for (const auto & operation : entry.at("responseOps")) {
       allowed.push_back(ParseOperation(operation.get<std::string>()));
     }
-    ASSERT_FALSE(allowed.empty());
+    EXPECT_EQ(wire, !allowed.empty());
     for (const auto operation : allowed) {
       EXPECT_TRUE(is_stable_error_allowed_for_response(code, operation));
+      const auto parsed = parse_v2(decode_frame(encode_frame(
+          ErrorResponseHeader(operation, code, terminal),
+          {})));
+      EXPECT_EQ(operation, parsed.operation);
+      EXPECT_EQ(code, parsed.error_code);
+      EXPECT_EQ(terminal, parsed.terminal);
     }
     for (const auto operation : ResponseOperations()) {
       if (std::find(allowed.begin(), allowed.end(), operation) == allowed.end()) {
         EXPECT_FALSE(is_stable_error_allowed_for_response(code, operation));
       }
+    }
+    if (!wire) {
+      ExpectProtocolError("invalid_frame", true, [&]() {
+        (void)parse_v2(decode_frame(encode_frame(
+              ErrorResponseHeader(Operation::Fault, code, terminal),
+              {})));
+      });
     }
   }
   bool terminal = false;

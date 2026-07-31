@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "unity2foxglove_ros2_bridge/u2r2_protocol.hpp"
+#include "unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,9 +19,6 @@ namespace unity2foxglove::ros2_bridge::u2r2
 namespace
 {
 constexpr size_t kFixedHeaderBytes = 16;
-constexpr uint32_t kMaxJsonHeaderBytes = 64U * 1024U;
-constexpr uint32_t kMaxPayloadBytes = 64U * 1024U * 1024U;
-constexpr int kMaxJsonDepth = 64;
 constexpr std::array<uint8_t, 4> kMagic{{'U', '2', 'R', '2'}};
 
 const std::unordered_map<std::string, Operation> kOperations{
@@ -52,8 +50,43 @@ const std::unordered_map<std::string, StableErrorRule> kStableErrors{
   {"unsupported_protocol", {true, {Operation::Fault}}},
   {"missing_capability", {true, {Operation::Fault}}},
   {"invalid_frame", {true, {Operation::Fault}}},
-  {"invalid_contract", {false, {Operation::PublisherReady}}},
+  {"invalid_contract", {false, {
+      Operation::PublisherReady,
+      Operation::PublishResult,
+      Operation::SubscriptionReady,
+      Operation::SubscriptionRemoved}}},
+  {"contract_identity_mismatch", {true, {}}},
   {"publisher_unavailable", {false, {Operation::PublisherReady}}},
+  {"invalid_request_id", {true, {}}},
+  {"request_id_exhausted", {true, {}}},
+  {"counter_exhausted", {true, {}}},
+  {"request_id_conflict", {true, {Operation::Fault}}},
+  {"response_mismatch", {true, {}}},
+  {"request_in_flight", {false, {
+      Operation::PublisherReady,
+      Operation::PublishResult,
+      Operation::SubscriptionReady,
+      Operation::SubscriptionRemoved}}},
+  {"stale_request", {false, {
+      Operation::PublisherReady,
+      Operation::PublishResult,
+      Operation::SubscriptionReady,
+      Operation::SubscriptionRemoved}}},
+  {"capacity_exceeded", {false, {
+      Operation::PublisherReady,
+      Operation::PublishResult,
+      Operation::SubscriptionReady,
+      Operation::SubscriptionRemoved}}},
+  {"contract_not_ready", {true, {}}},
+  {"unknown_contract", {true, {
+      Operation::SubscriptionRemoved,
+      Operation::Fault}}},
+  {"contract_sequence_fault", {false, {}}},
+  {"contract_sequence_exhausted", {false, {}}},
+  {"invalid_configuration", {true, {}}},
+  {"dialect_downgrade", {true, {}}},
+  {"peer_closed", {true, {}}},
+  {"timeout", {true, {}}},
 };
 
 [[noreturn]] void InvalidFrame(const std::string & message)
@@ -79,23 +112,25 @@ void WriteU32(std::vector<uint8_t> & bytes, size_t offset, uint32_t value)
 
 void ValidateJsonValueDomain(
   const nlohmann::json & value,
-  int container_depth)
+  uint64_t container_depth,
+  uint64_t max_json_depth)
 {
   if (value.is_object()) {
-    if (container_depth > kMaxJsonDepth) {
+    if (container_depth > max_json_depth) {
       InvalidFrame("the U2R2 JSON header exceeds its depth limit");
     }
     for (const auto & item : value.items()) {
-      ValidateJsonValueDomain(item.value(), container_depth + 1);
+      ValidateJsonValueDomain(
+        item.value(), container_depth + 1, max_json_depth);
     }
     return;
   }
   if (value.is_array()) {
-    if (container_depth > kMaxJsonDepth) {
+    if (container_depth > max_json_depth) {
       InvalidFrame("the U2R2 JSON header exceeds its depth limit");
     }
     for (const auto & item : value) {
-      ValidateJsonValueDomain(item, container_depth + 1);
+      ValidateJsonValueDomain(item, container_depth + 1, max_json_depth);
     }
     return;
   }
@@ -160,7 +195,9 @@ void ValidateUnsignedIntegerLexemes(const std::string & text)
   }
 }
 
-nlohmann::json ParseStrictObject(const std::string & text)
+nlohmann::json ParseStrictObject(
+  const std::string & text,
+  uint64_t max_json_depth)
 {
   if (
     text.size() >= 3 &&
@@ -178,7 +215,7 @@ nlohmann::json ParseStrictObject(const std::string & text)
       text,
       [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json & parsed) {
         if (
-          depth >= kMaxJsonDepth &&
+          static_cast<uint64_t>(depth) >= max_json_depth &&
           (event == nlohmann::json::parse_event_t::object_start ||
           event == nlohmann::json::parse_event_t::array_start))
         {
@@ -208,7 +245,7 @@ nlohmann::json ParseStrictObject(const std::string & text)
     if (!value.is_object()) {
       InvalidFrame("the U2R2 JSON header must be an object");
     }
-    ValidateJsonValueDomain(value, 1);
+    ValidateJsonValueDomain(value, 1, max_json_depth);
     return value;
   } catch (const ProtocolError &) {
     throw;
@@ -781,10 +818,24 @@ std::vector<uint8_t> encode_frame(
   const nlohmann::json & header,
   const std::vector<uint8_t> & payload)
 {
+  return encode_frame(header, payload, ProtocolLimits::defaults());
+}
+
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload,
+  const ProtocolLimits & limits)
+{
+  if (limits.fixed_frame_bytes() != kFixedHeaderBytes) {
+    throw ProtocolError(
+            "invalid_configuration",
+            "the U2R2 wire fixedFrameBytes value must be 16",
+            true);
+  }
   if (!header.is_object()) {
     InvalidFrame("the U2R2 JSON header must be an object");
   }
-  ValidateJsonValueDomain(header, 1);
+  ValidateJsonValueDomain(header, 1, limits.max_json_depth());
   std::string json;
   try {
     json = header.dump(
@@ -795,10 +846,10 @@ std::vector<uint8_t> encode_frame(
   } catch (const nlohmann::json::exception &) {
     InvalidFrame("the U2R2 JSON header is invalid");
   }
-  if (json.empty() || json.size() > kMaxJsonHeaderBytes) {
+  if (json.empty() || json.size() > limits.max_header_bytes()) {
     InvalidFrame("the U2R2 JSON header length is out of range");
   }
-  if (payload.size() > kMaxPayloadBytes) {
+  if (payload.size() > limits.max_payload_bytes()) {
     InvalidFrame("the U2R2 payload length is out of range");
   }
 
@@ -817,6 +868,19 @@ std::vector<uint8_t> encode_frame(
 
 Frame decode_frame(const std::vector<uint8_t> & bytes)
 {
+  return decode_frame(bytes, ProtocolLimits::defaults());
+}
+
+Frame decode_frame(
+  const std::vector<uint8_t> & bytes,
+  const ProtocolLimits & limits)
+{
+  if (limits.fixed_frame_bytes() != kFixedHeaderBytes) {
+    throw ProtocolError(
+            "invalid_configuration",
+            "the U2R2 wire fixedFrameBytes value must be 16",
+            true);
+  }
   if (bytes.size() < kFixedHeaderBytes) {
     InvalidFrame("the U2R2 frame is shorter than its fixed header");
   }
@@ -831,10 +895,10 @@ Frame decode_frame(const std::vector<uint8_t> & bytes)
 
   const auto header_length = ReadU32(bytes, 8);
   const auto payload_length = ReadU32(bytes, 12);
-  if (header_length == 0 || header_length > kMaxJsonHeaderBytes) {
+  if (header_length == 0 || header_length > limits.max_header_bytes()) {
     InvalidFrame("the U2R2 JSON header length is out of range");
   }
-  if (payload_length > kMaxPayloadBytes) {
+  if (payload_length > limits.max_payload_bytes()) {
     InvalidFrame("the U2R2 payload length is out of range");
   }
   const uint64_t expected_length =
@@ -849,7 +913,7 @@ Frame decode_frame(const std::vector<uint8_t> & bytes)
     bytes.begin() + kFixedHeaderBytes,
     bytes.begin() + kFixedHeaderBytes + header_length);
   Frame frame;
-  frame.header = ParseStrictObject(json);
+  frame.header = ParseStrictObject(json, limits.max_json_depth());
   frame.payload.assign(
     bytes.begin() + kFixedHeaderBytes + header_length,
     bytes.end());
@@ -961,6 +1025,12 @@ Message parse_v2(const Frame & frame)
   }
 
   message.capabilities = ReadCapabilities(frame.header, operation);
+  parse_contract_fields(
+    frame.header,
+    operation,
+    message.topic,
+    message.schema_name,
+    message.qos);
   ValidatePayload(operation, frame.payload.size());
   if (operation == Operation::Message) {
     if (

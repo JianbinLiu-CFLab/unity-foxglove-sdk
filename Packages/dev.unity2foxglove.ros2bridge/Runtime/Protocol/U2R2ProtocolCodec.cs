@@ -19,9 +19,6 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
     public static class U2R2ProtocolCodec
     {
         private const int FixedHeaderBytes = 16;
-        private const int MaxJsonHeaderBytes = 64 * 1024;
-        private const int MaxPayloadBytes = 64 * 1024 * 1024;
-        private const int MaxJsonDepth = 64;
         private static readonly byte[] Magic = { (byte)'U', (byte)'2', (byte)'R', (byte)'2' };
         private static readonly UTF8Encoding StrictUtf8 =
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -66,10 +63,62 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     U2R2Operation.Fault),
                 ["invalid_contract"] = new StableErrorRule(
                     terminal: false,
-                    U2R2Operation.PublisherReady),
+                    U2R2Operation.PublisherReady,
+                    U2R2Operation.PublishResult,
+                    U2R2Operation.SubscriptionReady,
+                    U2R2Operation.SubscriptionRemoved),
+                ["contract_identity_mismatch"] = new StableErrorRule(
+                    terminal: true),
                 ["publisher_unavailable"] = new StableErrorRule(
                     terminal: false,
                     U2R2Operation.PublisherReady),
+                ["invalid_request_id"] = new StableErrorRule(
+                    terminal: true),
+                ["request_id_exhausted"] = new StableErrorRule(
+                    terminal: true),
+                ["counter_exhausted"] = new StableErrorRule(
+                    terminal: true),
+                ["request_id_conflict"] = new StableErrorRule(
+                    terminal: true,
+                    U2R2Operation.Fault),
+                ["response_mismatch"] = new StableErrorRule(
+                    terminal: true),
+                ["request_in_flight"] = new StableErrorRule(
+                    terminal: false,
+                    U2R2Operation.PublisherReady,
+                    U2R2Operation.PublishResult,
+                    U2R2Operation.SubscriptionReady,
+                    U2R2Operation.SubscriptionRemoved),
+                ["stale_request"] = new StableErrorRule(
+                    terminal: false,
+                    U2R2Operation.PublisherReady,
+                    U2R2Operation.PublishResult,
+                    U2R2Operation.SubscriptionReady,
+                    U2R2Operation.SubscriptionRemoved),
+                ["capacity_exceeded"] = new StableErrorRule(
+                    terminal: false,
+                    U2R2Operation.PublisherReady,
+                    U2R2Operation.PublishResult,
+                    U2R2Operation.SubscriptionReady,
+                    U2R2Operation.SubscriptionRemoved),
+                ["contract_not_ready"] = new StableErrorRule(
+                    terminal: true),
+                ["unknown_contract"] = new StableErrorRule(
+                    terminal: true,
+                    U2R2Operation.SubscriptionRemoved,
+                    U2R2Operation.Fault),
+                ["contract_sequence_fault"] = new StableErrorRule(
+                    terminal: false),
+                ["contract_sequence_exhausted"] = new StableErrorRule(
+                    terminal: false),
+                ["invalid_configuration"] = new StableErrorRule(
+                    terminal: true),
+                ["dialect_downgrade"] = new StableErrorRule(
+                    terminal: true),
+                ["peer_closed"] = new StableErrorRule(
+                    terminal: true),
+                ["timeout"] = new StableErrorRule(
+                    terminal: true),
             };
 
         public const int EnvelopeVersion = 1;
@@ -96,15 +145,41 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                && StableErrors.TryGetValue(errorCode, out var rule)
                && rule.ResponseOperations.Contains(operation);
 
+        private static void ValidateFixedHeaderLimit(
+            U2R2ProtocolLimits limits)
+        {
+            if (limits.FixedFrameBytes != FixedHeaderBytes)
+            {
+                throw new U2R2ProtocolException(
+                    "invalid_configuration",
+                    "The U2R2 wire fixedFrameBytes value must be 16.",
+                    terminal: true);
+            }
+        }
+
         public static byte[] EncodeFrame(JObject header, byte[] payload)
+            => EncodeFrame(header, payload, U2R2ProtocolLimits.Default);
+
+        public static byte[] EncodeFrame(
+            JObject header,
+            byte[] payload,
+            U2R2ProtocolLimits limits)
         {
             if (header == null)
                 throw new ArgumentNullException(nameof(header));
+            if (limits == null)
+                throw new ArgumentNullException(nameof(limits));
+            ValidateFixedHeaderLimit(limits);
 
             payload ??= Array.Empty<byte>();
-            ValidateHeaderValueDomain(header, containerDepth: 1);
+            ValidateHeaderValueDomain(
+                header,
+                containerDepth: 1,
+                limits.MaxJsonDepth);
             var canonicalHeader = SerializeCanonicalHeader(Canonicalize(header));
-            Rfc8259JsonValidator.Validate(canonicalHeader);
+            Rfc8259JsonValidator.Validate(
+                canonicalHeader,
+                limits.MaxJsonDepth);
             byte[] headerBytes;
             try
             {
@@ -115,9 +190,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 throw InvalidFrame("The U2R2 header is not valid UTF-8.", exception);
             }
 
-            if (headerBytes.Length == 0 || headerBytes.Length > MaxJsonHeaderBytes)
+            if (headerBytes.Length == 0
+                || checked((ulong)headerBytes.LongLength) > limits.MaxHeaderBytes)
                 throw InvalidFrame("The U2R2 JSON header length is out of range.");
-            if (payload.Length > MaxPayloadBytes)
+            if (checked((ulong)payload.LongLength) > limits.MaxPayloadBytes)
                 throw InvalidFrame("The U2R2 payload length is out of range.");
 
             var frame = new byte[checked(FixedHeaderBytes + headerBytes.Length + payload.Length)];
@@ -136,9 +212,17 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         }
 
         public static U2R2Frame DecodeFrame(byte[] frame)
+            => DecodeFrame(frame, U2R2ProtocolLimits.Default);
+
+        public static U2R2Frame DecodeFrame(
+            byte[] frame,
+            U2R2ProtocolLimits limits)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
+            if (limits == null)
+                throw new ArgumentNullException(nameof(limits));
+            ValidateFixedHeaderLimit(limits);
             if (frame.Length < FixedHeaderBytes)
                 throw InvalidFrame("The U2R2 frame is shorter than its fixed header.");
 
@@ -153,9 +237,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
             var headerLength = ReadUInt32(frame, 8);
             var payloadLength = ReadUInt32(frame, 12);
-            if (headerLength == 0 || headerLength > MaxJsonHeaderBytes)
+            if (headerLength == 0 || headerLength > limits.MaxHeaderBytes)
                 throw InvalidFrame("The U2R2 JSON header length is out of range.");
-            if (payloadLength > MaxPayloadBytes)
+            if (payloadLength > limits.MaxPayloadBytes)
                 throw InvalidFrame("The U2R2 payload length is out of range.");
 
             long expectedLength = FixedHeaderBytes + (long)headerLength + payloadLength;
@@ -175,8 +259,11 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 throw InvalidFrame("The U2R2 JSON header is not valid UTF-8.", exception);
             }
 
-            var header = ParseStrictObject(json);
-            ValidateHeaderValueDomain(header, containerDepth: 1);
+            var header = ParseStrictObject(json, limits.MaxJsonDepth);
+            ValidateHeaderValueDomain(
+                header,
+                containerDepth: 1,
+                limits.MaxJsonDepth);
             var payload = new byte[checked((int)payloadLength)];
             Buffer.BlockCopy(
                 frame,
@@ -330,6 +417,12 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 throw InvalidFrame("U2R2 session identity fields must be present together.");
 
             var capabilities = ReadCapabilities(header, operation);
+            U2R2CommandAdmission.ParseContract(
+                header,
+                operation,
+                out var topic,
+                out var schemaName,
+                out var qos);
             ValidatePayload(operation, frame.Payload.Length);
             if (operation == U2R2Operation.Message)
                 ValidateXcdr1LittleEndianPayload(frame.Payload);
@@ -359,7 +452,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 logTimeNs,
                 receiveTimeNs,
                 encoding,
-                representation);
+                representation,
+                topic,
+                schemaName,
+                qos);
         }
 
         public static void ValidateResponseCorrelation(
@@ -412,17 +508,21 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             }
         }
 
-        private static JObject ParseStrictObject(string json)
+        private static JObject ParseStrictObject(
+            string json,
+            ulong maxJsonDepth)
         {
             try
             {
-                Rfc8259JsonValidator.Validate(json);
+                Rfc8259JsonValidator.Validate(json, maxJsonDepth);
                 using var textReader = new StringReader(json);
                 using var reader = new JsonTextReader(textReader)
                 {
                     DateParseHandling = DateParseHandling.None,
                     FloatParseHandling = FloatParseHandling.Decimal,
-                    MaxDepth = MaxJsonDepth,
+                    MaxDepth = maxJsonDepth > int.MaxValue
+                        ? int.MaxValue
+                        : checked((int)maxJsonDepth),
                     SupportMultipleContent = true,
                 };
                 if (!reader.Read() || reader.TokenType != JsonToken.StartObject)
@@ -647,7 +747,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
         private static void ValidateHeaderValueDomain(
             JToken token,
-            int containerDepth)
+            ulong containerDepth,
+            ulong maxJsonDepth)
         {
             if (token == null)
                 throw InvalidFrame("The U2R2 JSON header is invalid.");
@@ -655,19 +756,25 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             switch (token.Type)
             {
                 case JTokenType.Object:
-                    if (containerDepth > MaxJsonDepth)
+                    if (containerDepth > maxJsonDepth)
                         throw InvalidFrame("The U2R2 JSON header exceeds its depth limit.");
                     foreach (var property in ((JObject)token).Properties())
                     {
                         ValidateUtf8Text(property.Name, "property name");
-                        ValidateHeaderValueDomain(property.Value, containerDepth + 1);
+                        ValidateHeaderValueDomain(
+                            property.Value,
+                            checked(containerDepth + 1),
+                            maxJsonDepth);
                     }
                     return;
                 case JTokenType.Array:
-                    if (containerDepth > MaxJsonDepth)
+                    if (containerDepth > maxJsonDepth)
                         throw InvalidFrame("The U2R2 JSON header exceeds its depth limit.");
                     foreach (var value in (JArray)token)
-                        ValidateHeaderValueDomain(value, containerDepth + 1);
+                        ValidateHeaderValueDomain(
+                            value,
+                            checked(containerDepth + 1),
+                            maxJsonDepth);
                     return;
                 case JTokenType.Integer:
                     ReadUnsigned(token, "JSON number");
@@ -830,12 +937,14 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
         private static class Rfc8259JsonValidator
         {
-            public static void Validate(string json)
+            public static void Validate(
+                string json,
+                ulong maxJsonDepth)
             {
                 if (json == null)
                     throw InvalidFrame("The U2R2 JSON header is invalid.");
 
-                var parser = new Parser(json);
+                var parser = new Parser(json, maxJsonDepth);
                 parser.SkipWhitespace();
                 parser.ParseValue(depth: 0);
                 parser.SkipWhitespace();
@@ -846,11 +955,13 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             private sealed class Parser
             {
                 private readonly string _json;
+                private readonly ulong _maxJsonDepth;
                 private int _index;
 
-                public Parser(string json)
+                public Parser(string json, ulong maxJsonDepth)
                 {
                     _json = json;
+                    _maxJsonDepth = maxJsonDepth;
                 }
 
                 public bool AtEnd => _index == _json.Length;
@@ -875,7 +986,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
                 public void ParseValue(int depth)
                 {
-                    if (depth > MaxJsonDepth || _index >= _json.Length)
+                    if (depth < 0
+                        || checked((ulong)depth) > _maxJsonDepth
+                        || _index >= _json.Length)
                         Fail();
 
                     switch (_json[_index])
