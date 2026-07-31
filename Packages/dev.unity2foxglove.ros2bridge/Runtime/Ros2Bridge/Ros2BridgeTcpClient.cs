@@ -19,7 +19,8 @@ namespace Unity2Foxglove.Ros2Bridge
         IRos2BridgeSink,
         IRos2BridgePublisherPreparationTransport,
         IRos2BridgeRawWireSink,
-        IRos2BridgeV2SessionTransport
+        IRos2BridgeV2SessionTransport,
+        IRos2BridgeSessionTransport
     {
         private readonly object _gate = new object();
         private readonly object _ioGate = new object();
@@ -99,7 +100,8 @@ namespace Unity2Foxglove.Ros2Bridge
                     client.Client.SendTimeout = timeoutMs;
                     lock (_gate)
                         _sendTimeoutMs = timeoutMs;
-                    _socketDialect = U2R2Dialect.None;
+                    lock (_gate)
+                        _socketDialect = U2R2Dialect.None;
                     client = null;
                 }
                 catch
@@ -219,9 +221,61 @@ namespace Unity2Foxglove.Ros2Bridge
                 return ReadV2FrameCore(
                     client.GetStream(),
                     limits,
-                    deadline);
+                    deadline,
+                    requireEmptyPayload: true);
             }
         }
+
+        void IRos2BridgeSessionTransport.BeginV2(
+            U2R2ProtocolLimits limits,
+            int timeoutMs)
+        {
+            if (limits == null)
+                throw new ArgumentNullException(nameof(limits));
+            GetConnectedClient(timeoutMs);
+            LatchDialect(U2R2Dialect.V2);
+        }
+
+        void IRos2BridgeSessionTransport.WriteV2(
+            ReadOnlyMemory<byte> wireBytes,
+            U2R2ProtocolLimits limits,
+            int timeoutMs)
+        {
+            if (wireBytes.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "A U2R2 v2 wire frame is required.",
+                    nameof(wireBytes));
+            }
+            if (limits == null)
+                throw new ArgumentNullException(nameof(limits));
+
+            var client = GetConnectedClient(timeoutMs);
+            LatchDialect(U2R2Dialect.V2);
+            var deadline = new ExchangeDeadline(timeoutMs);
+            deadline.BeginPhase(limits.WriteTimeoutMs);
+            WriteMemory(client.Client, wireBytes, deadline);
+        }
+
+        byte[] IRos2BridgeSessionTransport.ReadV2(
+            U2R2ProtocolLimits limits,
+            int timeoutMs)
+        {
+            if (limits == null)
+                throw new ArgumentNullException(nameof(limits));
+            var client = GetConnectedClient(timeoutMs);
+            LatchDialect(U2R2Dialect.V2);
+            var deadline = new ExchangeDeadline(timeoutMs);
+            deadline.BeginPhase(limits.ReadTimeoutMs);
+            return ReadV2FrameCore(
+                client.GetStream(),
+                limits,
+                deadline,
+                requireEmptyPayload: false);
+        }
+
+        void IRos2BridgeSessionTransport.Close()
+            => Disconnect();
 
         public void Disconnect()
         {
@@ -333,13 +387,18 @@ namespace Unity2Foxglove.Ros2Bridge
             var deadline = new ExchangeDeadline(
                 LimitToInt(limits.ReadTimeoutMs));
             deadline.BeginPhase(limits.ReadTimeoutMs);
-            return ReadV2FrameCore(stream, limits, deadline);
+            return ReadV2FrameCore(
+                stream,
+                limits,
+                deadline,
+                requireEmptyPayload: false);
         }
 
         private static byte[] ReadV2FrameCore(
             Stream stream,
             U2R2ProtocolLimits limits,
-            ExchangeDeadline deadline)
+            ExchangeDeadline deadline,
+            bool requireEmptyPayload)
         {
             var fixedHeader = new byte[
                 checked((int)limits.FixedFrameBytes)];
@@ -367,7 +426,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             var headerLength = ReadUInt32LE(fixedHeader, 8);
             var payloadLength = ReadUInt32LE(fixedHeader, 12);
-            if (payloadLength != 0)
+            if (requireEmptyPayload && payloadLength != 0)
             {
                 throw new U2R2ProtocolException(
                     "invalid_frame",
@@ -465,17 +524,20 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private void LatchDialect(U2R2Dialect requested)
         {
-            if (_socketDialect == U2R2Dialect.None)
+            lock (_gate)
             {
-                _socketDialect = requested;
-                return;
-            }
-            if (_socketDialect != requested)
-            {
-                throw new U2R2ProtocolException(
-                    "dialect_downgrade",
-                    "A ROS 2 Bridge TCP connection cannot change wire dialect.",
-                    terminal: true);
+                if (_socketDialect == U2R2Dialect.None)
+                {
+                    _socketDialect = requested;
+                    return;
+                }
+                if (_socketDialect != requested)
+                {
+                    throw new U2R2ProtocolException(
+                        "dialect_downgrade",
+                        "A ROS 2 Bridge TCP connection cannot change wire dialect.",
+                        terminal: true);
+                }
             }
         }
 
@@ -511,6 +573,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 client = _client;
                 _client = null;
                 _sendTimeoutMs = 0;
+                _socketDialect = U2R2Dialect.None;
             }
             client?.Dispose();
         }
