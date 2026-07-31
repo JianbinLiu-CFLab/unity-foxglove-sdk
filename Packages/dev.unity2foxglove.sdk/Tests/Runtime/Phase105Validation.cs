@@ -120,10 +120,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "public const int MaxHeaderBytes = 64 * 1024;",
                 "105C-4: U2R2 max header size documents protocol units",
                 "U2R2", "bytes");
-            CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Attributes/FoxRunQosProfile.cs",
+            CheckGroupCommentBefore(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/FoxRunRos2Qos.cs",
                 "public enum FoxRunQosProfile",
-                "105C-5: portable QoS profiles document their ROS 2 meaning",
+                "105C-5: Provider-owned QoS profiles document their ROS 2 meaning",
                 "ROS 2", "QoS");
             CheckGroupCommentBefore(
                 "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",

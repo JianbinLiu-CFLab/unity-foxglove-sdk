@@ -50,8 +50,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "71A-2: manager exposes DefaultPublishRateHz read-only property");
             Check(publishDataSection.Contains("_defaultPublishRateHz"),
                 "71A-3: Manager Inspector draws Default Publish Rate Hz in Publish Data");
-            Check(IndexOf(publishDataSection, "Subheader(\"Publish Rate\")") < IndexOf(publishDataSection, "Subheader(\"Publisher Encoding\")"),
-                "71A-4: Publish Data shows Publish Rate before Publisher Encoding");
+            Check(IndexOf(publishDataSection, "Subheader(\"Publish Destinations\")") < IndexOf(publishDataSection, "_defaultPublishRateHz")
+                  && IndexOf(publishDataSection, "_defaultPublishRateHz") < IndexOf(publishDataSection, "Subheader(\"Component Publishers\")"),
+                "71A-4: Publish Data keeps the default rate between destinations and component publishers");
         }
 
         private static void VerifyPublisherRatePolicy()
@@ -134,20 +135,28 @@ namespace Unity.FoxgloveSDK.Tests
             var generationModelSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             var topicMetaSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var hubSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var scheduledPublish = PhaseValidationSourceHelpers.SourceMethod(
+                hubSource,
+                "private void TryPublishScheduled");
 
             Check(attrSource.Contains("public float Hz { get; set; } = -1f"),
                 "71E-1: FoxRunAttribute keeps an explicit unspecified Hz sentinel");
-            Check(generatorSource.Contains("float hz = -1f")
+            Check(generatorSource.Contains("var hz = -1f")
                     && generatorSource.Contains("case \"Hz\":")
-                    && generatorSource.Contains("FoxRunNamedArgumentPresence.Hz"),
+                    && generatorSource.Contains("FoxRunNamedArgumentPresence.Hz")
+                    && generatorSource.Contains("out hz"),
                 "71E-2: source generator preserves omitted and explicit FoxRun Hz");
             Check(generationModelSource.Contains("DeclaredHz = hz")
                     && generationModelSource.Contains("Hz = NormalizeHz(hz)"),
                 "71E-2a: generation model preserves declaration intent and resolves publish cadence separately");
             Check(topicMetaSource.Contains("fields.Max(m => m.Hz)"),
                 "71E-3: shared emitter emits resolved FoxRun topic Hz metadata");
-            Check(hubSource.Contains("info.Hz")
-                    && hubSource.Contains("nonPositivePublishesEveryFrame: false"),
+            Check(scheduledPublish.Contains("info.HasExplicitHz")
+                    && scheduledPublish.Contains("info.Hz")
+                    && scheduledPublish.Contains("ActiveFoxRunDefaultPublishRateHz")
+                    && scheduledPublish.Contains("FixedRatePublishScheduler")
+                    && scheduledPublish.Contains("nonPositivePublishesEveryFrame:")
+                    && scheduledPublish.Contains("false))"),
                 "71E-4: FoxgloveLogHub schedules from resolved metadata without invalid-rate per-frame fallback");
         }
 

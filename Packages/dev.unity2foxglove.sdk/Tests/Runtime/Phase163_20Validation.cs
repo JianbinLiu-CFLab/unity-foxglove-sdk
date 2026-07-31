@@ -112,7 +112,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
                   && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
                   && guard.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
-                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
+                  && guard.Contains("R2fuProviderId", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunLoadedSceneContractProbe", StringComparison.Ordinal)
+                  && guard.Contains("PublishTransportIdsSerializedProperty", StringComparison.Ordinal)
+                  && guard.Contains("SubscribeTransportIdSerializedProperty", StringComparison.Ordinal)
                   && guard.Contains("Ros2UnityComponentSuffix", StringComparison.Ordinal)
                   && !guard.Contains("\"ROS2.ROS2UnityComponent\"", StringComparison.Ordinal)
                   && guard.Contains("ShutdownShared", StringComparison.Ordinal),

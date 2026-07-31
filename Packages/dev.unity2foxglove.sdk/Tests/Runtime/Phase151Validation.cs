@@ -119,7 +119,6 @@ namespace Unity.FoxgloveSDK.Tests
                 ("FoxglovePublisher.Tick", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs"),
                 ("FoxgloveManager.PublishJson", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
                 ("FoxgloveManager.PublishProto", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
-                ("FoxgloveManager.PublishRos2", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
                 ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
                 ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
                 ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
@@ -148,6 +147,12 @@ namespace Unity.FoxgloveSDK.Tests
                         "Bounded profiler marker exists: " + marker);
                 }
             }
+
+            var managerPublishing = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            Check(!managerPublishing.Contains("\"FoxgloveManager.PublishRos2\"", StringComparison.Ordinal)
+                  && !managerPublishing.Contains("PublishRos2(", StringComparison.Ordinal),
+                "Core Manager exposes no retired ROS-specific profiler or publish boundary");
 
             var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
             var serialize = ExtractMethod(pointCloud2, "public static byte[] Serialize(");

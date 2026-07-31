@@ -59,11 +59,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(CheckOrdered(onDestroy, "_cleanupWhenReadbacksDrain = _pendingRequests > 0;", "StopVideoSidecar();")
                   && CheckOrdered(onDestroy, "_cleanupWhenReadbacksDrain = _pendingRequests > 0;", "StopJpegWorker(clearQueues: true);"),
                 "163-15B-1: primary camera destroy marks drain cleanup before stopping workers");
-            Check(lateUpdate.Contains("var publishJpegOutput = !profile.IsVideo && (publishWebSocket || publishBridge || publishNativeFrame);", StringComparison.Ordinal)
+            Check(lateUpdate.Contains("var publishJpegOutput = !profile.IsVideo && (publishWebSocket || publishProvider || publishNativeFrame);", StringComparison.Ordinal)
                   && CheckOrdered(lateUpdate, "var publishRawFrame = HasSensorRawImageDemand();", "if (publishJpegOutput && !AllowJpegCaptureByBackpressure()) return;"),
                 "163-15B-2: raw-only camera output is not suppressed by JPEG backpressure");
-            Check(source.Contains("optional R2FU/native ROS2 adapter subscribes to the raw image event", StringComparison.Ordinal),
-                "163-15B-3: raw image tooltip documents native adapter subscriber requirement");
+            var r2fuBinding = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraRawImageBinding.cs");
+            Check(source.Contains("public event Action<SensorRawImageFrame> SensorRawImageReady;", StringComparison.Ordinal)
+                  && r2fuBinding.Contains("_source.SensorRawImageReady += OnFrameReady;", StringComparison.Ordinal),
+                "163-15B-3: core raw event and optional R2FU subscriber remain explicitly separated");
         }
 
         private static void CameraInfoAndCalibrationIntrinsicsUseAspectRatio()

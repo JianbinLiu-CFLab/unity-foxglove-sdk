@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySmokeLifecycle("Phase130", "RViz2 MarkerArray Acceptance/Phase130Rviz2MarkerArraySmoke.cs");
             VerifySmokeLifecycle("Phase132", "ROS2 Standard Message Expansion/Phase132StandardMessagesSmoke.cs");
             VerifyCameraInfoDistortionContract();
-            VerifyRos2SinkThreadSafety();
+            VerifyR2fuTypedBindingThreadSafety();
             VerifyValidationRegistered();
 
             Console.WriteLine($"Phase 163-52: {_passed} real-project/R2FU smoke checks passed.");
@@ -78,16 +78,27 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-52C-1: Phase132 CameraInfo publishes five zero plumb_bob distortion coefficients");
         }
 
-        private static void VerifyRos2SinkThreadSafety()
+        private static void VerifyR2fuTypedBindingThreadSafety()
         {
-            var sink = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
-            Check(sink.Contains("private readonly object _gate = new object();", StringComparison.Ordinal)
-                  && sink.Contains("lock (_gate)", StringComparison.Ordinal)
-                  && sink.Contains("new List<IRos2TopicPublisher>(_publishers.Values)", StringComparison.Ordinal),
-                "163-52D-1: Ros2R2FUTopicSink guards publisher and report-once state");
-            Check(sink.Contains("IRos2TopicPublisher publisher;", StringComparison.Ordinal)
-                  && sink.Contains("publisher.TryPublish(payload, timestampNs, out var error)", StringComparison.Ordinal),
-                "163-52D-2: Ros2R2FUTopicSink publishes outside the dictionary lock");
+            var binding = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs");
+            var start = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "internal FoxRunRos2RegistrationResult TryStart");
+            var publish = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "private bool OnBusEnvelope");
+
+            Check(binding.Contains("Main-thread typed-bus binding", StringComparison.Ordinal)
+                  && binding.Contains("only on the Unity main thread", StringComparison.Ordinal)
+                  && binding.Contains("never participates in ROS executor callbacks", StringComparison.Ordinal),
+                "163-52D-1: the typed R2FU publisher binding states its main-thread confinement explicitly");
+            Check(start.Contains("_backend.Register<TEnvelope>(_contract, _qos)", StringComparison.Ordinal)
+                  && start.Contains("_token = registration.Token;", StringComparison.Ordinal)
+                  && publish.Contains("Volatile.Read(ref _token)", StringComparison.Ordinal)
+                  && publish.Contains("_backend.TryPublish(token, mapped)", StringComparison.Ordinal)
+                  && !publish.Contains("_backend.Register", StringComparison.Ordinal),
+                "163-52D-2: the typed R2FU hot path reuses its registered publisher token without registration work");
         }
 
         private static void VerifyValidationRegistered()

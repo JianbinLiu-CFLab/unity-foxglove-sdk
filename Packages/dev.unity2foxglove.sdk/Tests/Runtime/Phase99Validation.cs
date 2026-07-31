@@ -44,7 +44,8 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase99Validation
     {
         public const int ReportSchemaVersion = 1;
-        private static readonly Lazy<string> PackageVersion = new Lazy<string>(ReadPackageVersionCore);
+        private static readonly Lazy<string> PackageVersion =
+            new Lazy<string>(ReadBridgePackageVersion);
 
         private static readonly string[] PhaseCommands =
         {
@@ -303,19 +304,64 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPackageAndDocsHygiene()
         {
-            var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
-            var samples = packageJson["samples"]?.Children<JObject>().ToList() ?? new List<JObject>();
-            Check(samples.Count == 4 && samples.Any(sample => sample["displayName"]?.ToString() == "ROS2 Bridge Sample"),
-                "99D-1: package metadata includes ROS2 Bridge Sample as fourth sample");
+            var sdkPackage =
+                JObject.Parse(ReadRepoText(
+                    "Packages/dev.unity2foxglove.sdk/package.json"));
+            var sdkSamples =
+                sdkPackage["samples"]?.Children<JObject>().ToList()
+                ?? new List<JObject>();
+            var bridgePackage =
+                JObject.Parse(ReadRepoText(
+                    "Packages/dev.unity2foxglove.ros2bridge/package.json"));
+            var bridgeSamples =
+                bridgePackage["samples"]?.Children<JObject>().ToList()
+                ?? new List<JObject>();
+            var bridgeDependencies =
+                bridgePackage["dependencies"] as JObject;
+            Check(sdkSamples.Count == 3
+                  && sdkSamples.All(sample =>
+                      sample["displayName"]?.ToString()
+                      != "ROS2 Bridge Sample")
+                  && bridgePackage["name"]?.ToString()
+                  == "dev.unity2foxglove.ros2bridge"
+                  && bridgePackage["version"]?.ToString()
+                  == "0.1.0-preview.1"
+                  && bridgeDependencies != null
+                  && bridgeDependencies.Properties()
+                      .Select(property => property.Name)
+                      .SequenceEqual(new[]
+                      {
+                          "dev.unity2foxglove.sdk"
+                      })
+                  && bridgeSamples.Count == 1
+                  && bridgeSamples[0]["displayName"]?.ToString()
+                  == "ROS2 Bridge Sample"
+                  && bridgeSamples[0]["path"]?.ToString()
+                  == "Samples~/Ros2BridgeSample",
+                "99D-1: the optional Bridge package, not the ROS-free SDK, owns the Bridge identity, sole SDK dependency, and sample declaration");
 
             var releaseValidation = ReadRepoText("Scripts/package/validate_unity_package.py");
             Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)")
-                  && releaseValidation.Contains("\"ROS2 Bridge Sample\""),
-                "99D-2: release validation expects the fourth sample");
+                  && releaseValidation.Contains("ROS2_BRIDGE_PACKAGE")
+                  && releaseValidation.Contains("\"ROS2 Bridge package identity\"")
+                  && releaseValidation.Contains("\"ROS2 Bridge dependency boundary\"")
+                  && releaseValidation.Contains("\"ROS2 Bridge sample declaration\""),
+                "99D-2: release validation checks SDK samples and the optional Bridge package boundary independently");
 
             var docsIndex = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/README.md");
-            Check(docsIndex.Contains("16_ROS2_Bridge_Sample"),
-                "99D-3: package docs index links ROS2 Bridge sample guide");
+            var bridgeGuide = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/16_ROS2_Bridge_Sample.md");
+            Check(docsIndex.Contains(
+                      "ROS-specific setup and sample guides are shipped by the relevant companion package.",
+                      StringComparison.Ordinal)
+                  && docsIndex.Contains(
+                      "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample",
+                      StringComparison.Ordinal)
+                  && bridgeGuide.Contains("# ROS2 Bridge Sample", StringComparison.Ordinal)
+                  && bridgeGuide.Contains(
+                      "`unity2foxglove_ros2_bridge` sidecar",
+                      StringComparison.Ordinal),
+                "99D-3: SDK docs defer ROS setup while the Bridge package owns its sample guide");
 
             var publicText = string.Join("\n", PublicDocSources());
             Check(!publicText.Contains("Unity auto-launches", StringComparison.OrdinalIgnoreCase)
@@ -424,7 +470,7 @@ namespace Unity.FoxgloveSDK.Tests
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/README.md");
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
             yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
-            yield return ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/16_ROS2_Bridge_Sample.md");
+            yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/16_ROS2_Bridge_Sample.md");
             yield return ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
             yield return ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
         }
@@ -432,12 +478,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadPackageVersion()
             => PackageVersion.Value;
 
-        private static string ReadPackageVersionCore()
+        private static string ReadBridgePackageVersion()
         {
-            var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
+            var packageJson = JObject.Parse(ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/package.json"));
             var version = packageJson["version"]?.ToString();
             if (string.IsNullOrWhiteSpace(version))
-                throw new InvalidDataException("Package version is missing from package.json.");
+                throw new InvalidDataException(
+                    "Bridge package version is missing from package.json.");
 
             return version;
         }

@@ -228,17 +228,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyInspectorSourceExpectations()
         {
-            var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
-            var diagnosticsEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
+            var managerEditors = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
+            var providerDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
             var prefs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
-            var bridgeMethod = SourceMethod(ros2BridgeEditor, "void DrawRos2BridgeSection");
-            var diagnosticsMethod = SourceMethod(diagnosticsEditor, "void DrawDiagnosticsSection");
-            Check(bridgeMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal)
-                  && !diagnosticsMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal),
-                "97F-1: Manager ROS2 Bridge section owns ROS2 Bridge health drawer");
+            Check(providerDrawer.Contains("Ros2BridgeHealthDrawer", StringComparison.Ordinal)
+                  && providerDrawer.Contains("_healthDrawer.Draw(providerObject)", StringComparison.Ordinal)
+                  && !managerEditors.Contains("Ros2BridgeHealthDrawer", StringComparison.Ordinal),
+                "97F-1: extracted Bridge Provider drawer owns ROS2 Bridge health diagnostics");
             Check(drawer.Contains("ROS2 Bridge Health") && drawer.Contains("Check ROS2 Bridge"),
                 "97F-2: Inspector exposes one-click health check");
             Check(drawer.Contains("Task.Run") && drawer.Contains("progress: progress =>"),

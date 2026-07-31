@@ -176,22 +176,44 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSourceIntegration()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
+            var managerProviders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var bridgeDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
+            var bridgeQos = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/FoxRunRos2Qos.cs");
             var wrapper = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
-            Check(manager.Contains("_ros2BridgeNamespace") && manager.Contains("_ros2BridgeQos"),
-                "96D-1: Manager owns bridge namespace and QoS settings");
-            Check(manager.Contains("ResolveRos2BridgeQos") && manager.Contains("TryResolveRos2BridgeTopic"),
-                "96D-2: Manager exposes topic and QoS resolvers");
-            Check(publishing.Contains("effectiveTopic") && publishing.Contains("FoxRunResolvedQos"),
-                "96D-3: Manager bridge publish path resolves effective topic and QoS");
-            Check(publishing.Contains("Ros2BridgeFrame.CreateValidated(") && publishing.Contains("effectiveTopic") && publishing.Contains("qos"),
-                "96D-4: Manager enqueues QoS-profiled bridge frames");
-            Check(publisherBase.Contains("_ros2BridgeTopicOverride") && publisherBase.Contains("EffectiveRos2BridgeTopic"),
-                "96D-5: Publisher base exposes bridge topic override and effective topic");
-            Check(publisherBase.Contains("PublishRos2BridgeCdr(_topic, _ros2BridgeTopicOverride"),
-                "96D-6: Publisher base passes override to Manager bridge publish path");
+            Check(bridgeProvider.Contains("_host")
+                  && bridgeProvider.Contains("_port")
+                  && bridgeProvider.Contains("Ros2BridgeRuntime")
+                  && bridgeQos.Contains("public readonly struct FoxRunResolvedQos")
+                  && bridgeQos.Contains("public static class FoxRunRos2QosProfileResolver"),
+                "96D-1: Bridge package owns runtime configuration and portable QoS authority");
+            Check(bridgeProvider.Contains("route.Topic")
+                  && bridgeProvider.Contains("ResolveQos(route.DeliveryPolicy)")
+                  && bridgeProvider.Contains("FoxRunDeliveryPolicy policy"),
+                "96D-2: Bridge Provider resolves neutral topic and delivery policy");
+            Check(bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("TryMapOrdinary")
+                  && bridgeProvider.Contains("FoxRunOrdinaryPayloadContribution")
+                  && bridgeProvider.Contains("Ros2BridgeMcapCodecs.MessageEncoding"),
+                "96D-3: Bridge Provider owns ordinary-value CDR mapping");
+            Check(bridgeProvider.Contains("runtime.PreparePublisher")
+                  && bridgeProvider.Contains("Ros2BridgeFrame.CreateOwned")
+                  && bridgeProvider.Contains("runtime.TryEnqueuePrepared"),
+                "96D-4: Bridge Provider prepares and enqueues QoS-profiled owned frames");
+            Check(publisherBase.Contains("FoxRunOrdinaryPayloadRequest")
+                  && publisherBase.Contains("_topic")
+                  && publisherBase.Contains("FoxRunDeliveryPolicy.ProviderDefault")
+                  && !publisherBase.Contains("_ros2BridgeTopicOverride")
+                  && !publisherBase.Contains("EffectiveRos2BridgeTopic"),
+                "96D-5: Publisher base passes topic and delivery policy through a neutral request");
+            Check(managerProviders.Contains("PublishOrdinaryTransports")
+                  && bridgeDrawer.Contains("FoxRunTransportProviderDrawerRegistry.Register")
+                  && bridgeDrawer.Contains("Ros2BridgeTransportProvider")
+                  && !manager.Contains("Ros2Bridge")
+                  && !managerProviders.Contains("Ros2Bridge"),
+                "96D-6: generic Manager fanout and Bridge Provider drawer preserve package ownership");
             Check(wrapper.Contains("Ros2BridgeFrame.CreateOwned(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal)
                   && !wrapper.Contains("new Ros2BridgeFrame(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal),
                 "96D-7: Phase94/95 wrapper uses owned-payload frame construction");
@@ -224,67 +246,41 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var dataTransportEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.DataTransport.cs");
-            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
             var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var bridgeDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
-            var managerInspector = FindMethod(managerEditor, "OnInspectorGUI");
-            var dataTransportSection = FindMethod(dataTransportEditor, "DrawDataTransportSection");
-            var publishDataSection = FindMethod(publishDataEditor, "DrawPublishDataSection");
-            var executableManagerInvocations = ExecutableInvocations(managerInspector);
-            var allManagerInvocations = AllInvocations(managerInspector);
-            var directPublishSubsections = DirectInvocations(dataTransportSection)
-                .Where(IsPublishDataTransportSubsection)
-                .ToArray();
-            var executablePublishSubsections = ExecutableInvocations(dataTransportSection)
-                .Where(IsPublishDataTransportSubsection)
-                .ToArray();
-            var allPublishSubsections = AllInvocations(dataTransportSection)
-                .Where(IsPublishDataTransportSubsection)
-                .ToArray();
-            var bridgeEnabledBranches = DirectIfStatements(publishDataSection)
-                .Where(statement =>
-                    statement.Condition.ToString().IndexOf("_ros2BridgeEnabled", StringComparison.Ordinal) >= 0
-                    && statement.Condition.ToString().IndexOf("includesRos2Bridge", StringComparison.Ordinal) >= 0)
-                .ToArray();
-            var branchSubsections = bridgeEnabledBranches
-                .SelectMany(DirectThenInvocations)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection"))
-                .ToArray();
-            var branchBridgeSubsections = branchSubsections
-                .Where(IsRos2BridgeOutputSubsection)
-                .ToArray();
-            var allBridgeOutputSubsections = AllInvocations(publishDataSection)
-                .Where(IsRos2BridgeOutputSubsection)
-                .ToArray();
 
-            Check(managerInspector != null
-                  && !executableManagerInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                                                     && HasMethodGroupArgument(invocation, "DrawRos2BridgeSection"))
-                  && !allManagerInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection"))
-                  && dataTransportSection != null
-                  && directPublishSubsections.Length == 1
-                  && executablePublishSubsections.Length == 1
-                  && allPublishSubsections.Length == 1
-                  && ReferenceEquals(directPublishSubsections[0], executablePublishSubsections[0])
-                  && ReferenceEquals(directPublishSubsections[0], allPublishSubsections[0])
-                  && publishDataSection != null
-                  && bridgeEnabledBranches.Length == 1
-                  && branchSubsections.Length == 1
-                  && branchBridgeSubsections.Length == 1
-                  && allBridgeOutputSubsections.Length == 1
-                  && ReferenceEquals(branchBridgeSubsections[0], allBridgeOutputSubsections[0]),
-                "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish Data");
-            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"ROS 2 QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
-                "96F-2: Manager Inspector exposes topic namespace and portable QoS profile");
-            Check(ros2BridgeEditor.Contains("\"Host\"") && ros2BridgeEditor.Contains("\"Default Output\"") && ros2BridgeEditor.Contains("\"Allow Publisher Override\""),
-                "96F-3: Manager bridge labels are compact product labels");
-            Check(cameraEditor.Contains("Bridge Topic Override") && pointCloudEditor.Contains("Bridge Topic Override"),
-                "96F-4: custom publisher Inspectors expose topic override");
-            Check(cameraEditor.Contains("Effective Bridge Topic") && pointCloudEditor.Contains("Effective Bridge Topic"),
-                "96F-5: custom publisher Inspectors show effective bridge topic");
-            Check(cameraEditor.Contains("Effective Bridge QoS") && pointCloudEditor.Contains("Effective Bridge QoS"),
-                "96F-6: custom publisher Inspectors show effective bridge QoS");
+            Check(dataTransportEditor.Contains("DrawFoxRunTransportProviderExtensions")
+                  && publishDataEditor.Contains("FoxRunTransportProviderDrawerRegistry.Capture")
+                  && !managerEditor.Contains("DrawRos2BridgeSection")
+                  && !dataTransportEditor.Contains("DrawRos2BridgeSection")
+                  && !publishDataEditor.Contains("DrawRos2BridgeSection"),
+                "96F-1: Manager Inspector hosts generic Provider extensions under Data Transport");
+            Check(bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("ResolveQos(route.DeliveryPolicy)")
+                  && bridgeProvider.Contains("route.Topic"),
+                "96F-2: Bridge Provider owns topic and portable QoS mapping");
+            Check(bridgeDrawer.Contains("\"ROS 2 Bridge\"")
+                  && bridgeDrawer.Contains("\"Available\"")
+                  && bridgeDrawer.Contains("\"Auto Connect\"")
+                  && bridgeDrawer.Contains("\"Host\""),
+                "96F-3: extracted Bridge Provider labels are compact product labels");
+            Check(cameraEditor.Contains("Provider Payload")
+                  && pointCloudEditor.Contains("Packed Provider Frame")
+                  && !cameraEditor.Contains("Bridge Topic Override")
+                  && !pointCloudEditor.Contains("Bridge Topic Override"),
+                "96F-4: custom publisher Inspectors expose Provider-neutral payload controls");
+            Check(publisherBase.Contains("_topic")
+                  && publisherBase.Contains("FoxRunOrdinaryPayloadRequest")
+                  && bridgeProvider.Contains("route.Topic"),
+                "96F-5: effective topic flows through the neutral Provider request");
+            Check(publisherBase.Contains("FoxRunDeliveryPolicy.ProviderDefault")
+                  && bridgeProvider.Contains("route.DeliveryPolicy")
+                  && bridgeProvider.Contains("FoxRunResolvedQos"),
+                "96F-6: effective QoS is resolved inside the Bridge Provider");
         }
 
         private static MethodDeclarationSyntax FindMethod(string source, string methodName)

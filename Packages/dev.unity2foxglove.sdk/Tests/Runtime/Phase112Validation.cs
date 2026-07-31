@@ -228,12 +228,15 @@ namespace Unity.FoxgloveSDK.Tests
                     "112-F2: manifest code avoids out-of-scope token: " + token);
             Check(FoxrunManifestWriter.CurrentManifestVersion == 4
                   && manifestCode.Contains("subscriptions", StringComparison.Ordinal)
-                  && manifestCode.Contains("SupportsRos2Native", StringComparison.Ordinal)
-                  && manifestCode.Contains("QosReliability", StringComparison.Ordinal)
-                  && manifestCode.Contains("QosDurability", StringComparison.Ordinal)
-                  && manifestCode.Contains("QosHistory", StringComparison.Ordinal)
-                  && manifestCode.Contains("QosDepth", StringComparison.Ordinal),
-                "112-F2a: current manifest retains the native ROS2 subscription and portable QoS contract");
+                  && manifestCode.Contains("PublishTransportIds", StringComparison.Ordinal)
+                  && manifestCode.Contains("SubscribeTransportId", StringComparison.Ordinal)
+                  && manifestCode.Contains("ProviderData", StringComparison.Ordinal)
+                  && !manifestCode.Contains("SupportsRos2Native", StringComparison.Ordinal)
+                  && !manifestCode.Contains("QosReliability", StringComparison.Ordinal)
+                  && !manifestCode.Contains("QosDurability", StringComparison.Ordinal)
+                  && !manifestCode.Contains("QosHistory", StringComparison.Ordinal)
+                  && !manifestCode.Contains("QosDepth", StringComparison.Ordinal),
+                "112-F2a: current manifest retains provider-neutral transport selection and extension data");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             Check(project.Contains("Phase112Validation.cs", StringComparison.Ordinal)

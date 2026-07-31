@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 156 validation for the optional FoxRun ROS2 R2FU sink boundary.
+// Purpose: Phase 156 validation for the optional FoxRun R2FU Provider boundary.
 
 using System;
 using System.IO;
@@ -21,8 +21,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyOptionalPackagePresent();
             VerifyPackageDependencyDirection();
-            VerifyBootstrapRequiresRealContextProvider();
-            VerifySinkIsOutboundOnlyAndFailClosed();
+            VerifyProviderRequiresRealManagerAttachment();
+            VerifyProviderUsesTypedBindingsAndFailsClosed();
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 156: " + _passCount + " checks passed.\n");
@@ -43,45 +43,50 @@ namespace Unity.FoxgloveSDK.Tests
                 "156-1: core SDK asmdef remains free of optional R2FU package references");
 
             Check(optionalAsmdef.Contains("\"Unity.FoxgloveSDK\"", StringComparison.Ordinal),
-                "156-2: optional R2FU package may depend on the core SDK sink interface");
+                "156-2: optional R2FU package may depend on the core SDK Provider interface");
         }
 
-        private static void VerifyBootstrapRequiresRealContextProvider()
+        private static void VerifyProviderRequiresRealManagerAttachment()
         {
-            var bootstrap = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2TopicSinkBootstrap.cs");
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
 
-            Check(bootstrap.Contains("Func<IUnity2FoxgloveRos2Context> createContext", StringComparison.Ordinal)
-                  && bootstrap.Contains("_createContext = createContext ?? throw new ArgumentNullException", StringComparison.Ordinal)
-                  && !bootstrap.Contains("Unity2FoxgloveRos2ContextFactory.Create()", StringComparison.Ordinal),
-                "156-3: ROS2 sink bootstrap requires a real context provider instead of the unavailable facade factory");
+            Check(provider.Contains("GetComponent<FoxgloveManager>()", StringComparison.Ordinal)
+                  && provider.Contains("The R2FU Provider must share a GameObject with one FoxgloveManager.", StringComparison.Ordinal)
+                  && !provider.Contains("Unity2FoxgloveRos2ContextFactory.Create()", StringComparison.Ordinal),
+                "156-3: the R2FU Provider requires a real same-GameObject Manager instead of the unavailable facade factory");
 
-            Check(bootstrap.Contains("FoxgloveLogHub.TryGetTopicSinkRouter(out _router)", StringComparison.Ordinal)
-                  && bootstrap.Contains("_router.AddSink(_sink)", StringComparison.Ordinal)
-                  && bootstrap.Contains("_router.RemoveSink(_sink)", StringComparison.Ordinal),
-                "156-4: optional bootstrap attaches and detaches through the core sink router");
+            Check(provider.Contains("_manager.RegisterFoxRunTransportProvider(this)", StringComparison.Ordinal)
+                  && provider.Contains("manager.UnregisterFoxRunTransportProvider(this)", StringComparison.Ordinal)
+                  && provider.Contains("private void OnDisable() => Detach();", StringComparison.Ordinal),
+                "156-4: the optional Provider attaches and detaches through the neutral Manager registry");
         }
 
-        private static void VerifySinkIsOutboundOnlyAndFailClosed()
+        private static void VerifyProviderUsesTypedBindingsAndFailsClosed()
         {
-            var sink = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
+            var binding = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs");
 
-            Check(sink.Contains("public sealed class Ros2R2FUTopicSink : IFoxTopicSink", StringComparison.Ordinal)
-                  && sink.Contains("IRos2TopicPublisherFactory", StringComparison.Ordinal)
-                  && sink.Contains("payload == null", StringComparison.Ordinal)
-                  && sink.Contains("publisher.TryPublish(payload, timestampNs", StringComparison.Ordinal)
-                  && !sink.Contains("payload ?? Array.Empty<byte>()", StringComparison.Ordinal),
-                "156-5: ROS2 R2FU sink consumes serialized FoxRun bytes through explicit publisher mappings");
+            Check(provider.Contains("IFoxRunTransportProvider", StringComparison.Ordinal)
+                  && provider.Contains("FoxRunRos2CustomPublisherHub", StringComparison.Ordinal)
+                  && binding.Contains("IFoxRunRos2NativePublisherBackend", StringComparison.Ordinal)
+                  && binding.Contains("_backend.TryPublish(token, mapped)", StringComparison.Ordinal)
+                  && !binding.Contains("byte[] payload", StringComparison.Ordinal),
+                "156-5: the R2FU Provider publishes through generated typed bindings instead of serialized core-SDK bytes");
 
-            Check(sink.Contains("ReportOnce(contract.Topic, \"ROS2 runtime unavailable", StringComparison.Ordinal)
-                  && sink.Contains("explicit ROS2 mapping for FoxRun topic", StringComparison.Ordinal)
-                  && !sink.Contains("CreateSubscription", StringComparison.Ordinal),
-                "156-6: ROS2 sink is outbound-only and fails closed for unavailable runtimes or unknown mappings");
+            Check(provider.Contains("R2FU routes are emitted as generated typed ROS2 bindings, not untyped byte payloads.", StringComparison.Ordinal)
+                  && provider.Contains("R2FU subscriptions are emitted as generated typed ROS2 bindings.", StringComparison.Ordinal)
+                  && provider.Contains("FoxRunTransportPublishResult.Rejected", StringComparison.Ordinal)
+                  && provider.Contains("FoxRunTransportSubscribeResult.Rejected", StringComparison.Ordinal),
+                "156-6: the neutral Provider session fails closed instead of accepting untyped publish or subscribe routes");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase156"),
-                "156-7: validation registry exposes the ROS2 R2FU topic sink flag");
+                "156-7: validation registry exposes the R2FU Provider boundary flag");
         }
 
         private static string ReadRepoText(string relativePath)

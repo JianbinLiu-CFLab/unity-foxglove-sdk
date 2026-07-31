@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             LaserScanRejectsInvalidAngles();
             PointCloudPendingFrameIsThreadSafe();
             TransformPublisherSanitizesAndSharesConversion();
-            SceneCubePublisherReusesRos2Payload();
+            SceneCubePublisherReusesProviderPayload();
 
             Console.WriteLine($"Phase 134-12: {_passed} checks passed.");
         }
@@ -220,21 +220,23 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Verifies scene cube publisher reuses ROS2 payload and timestamp helpers.
+        /// Verifies scene cube publisher reuses its provider payload and timestamp helpers.
         /// </summary>
-        private static void SceneCubePublisherReusesRos2Payload()
+        private static void SceneCubePublisherReusesProviderPayload()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             Check(!source.Contains("PublishRos2SceneUpdate("),
-                "134-12I-1: scene cube publisher removes private unused ROS2 helper");
-            Check(source.Contains("ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload)"),
-                "134-12I-2: scene cube publisher reuses the existing ROS2 payload for bridge output");
+                "134-12I-1: scene cube publisher does not retain its retired package-specific helper");
+            Check(source.Contains("providerMessage ??= CreateProtobufSceneUpdate(unixNs)", StringComparison.Ordinal)
+                  && source.Contains("PublishOrdinaryTransport(", StringComparison.Ordinal),
+                "134-12I-2: scene cube publisher reuses the existing protobuf value for provider output");
             Check(source.Contains("Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs)"),
                 "134-12I-3: scene cube protobuf path uses shared timestamp helper");
             Check(!source.Contains("unixNs / 1_000_000_000UL"),
                 "134-12I-4: scene cube publisher no longer inlines timestamp conversion");
-            Check(source.Contains("PublishProtobufSceneUpdate(unixNs, encodingResolution)", StringComparison.Ordinal)
-                  && source.Contains("SceneUpdateMessage message = null;", StringComparison.Ordinal),
+            Check(source.Contains("SceneUpdateMessage message = null;", StringComparison.Ordinal)
+                  && source.Contains("if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)", StringComparison.Ordinal)
+                  && source.Contains("providerMessage = CreateProtobufSceneUpdate(unixNs);", StringComparison.Ordinal),
                 "134-12I-5: scene cube protobuf path avoids building a discarded JSON SceneUpdateMessage");
         }
 

@@ -126,28 +126,34 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunHubIsolatesSourceFailures()
         {
             var source = ReadRepoText(FoxRunHubPath);
-            Check(source.Contains("private readonly Dictionary<SourceFailureKey, SourceFailureWarningState> _warnedSourceFailures = new();", StringComparison.Ordinal)
-                  && source.Contains("private readonly struct SourceFailureKey", StringComparison.Ordinal)
-                  && source.Contains("private readonly struct SourceFailureWarningState", StringComparison.Ordinal),
-                "134-5B-1: FoxRun hub tracks keyed, cooldown-bounded source failure warnings");
-            Check(source.Contains("TryPublishScheduledTopic(kv.Key, state.Topics[i], i, ref state.Timers[i], nowNs, nowSec)", StringComparison.Ordinal),
+            Check(source.Contains("private readonly HashSet<string> _reportedFailures", StringComparison.Ordinal)
+                  && source.Contains("private void WarnOnce(", StringComparison.Ordinal)
+                  && source.Contains("!_reportedFailures.Add(message)", StringComparison.Ordinal),
+                "134-5B-1: FoxRun hub tracks keyed one-time source failure warnings");
+            Check(source.Contains("TryPublishScheduled(", StringComparison.Ordinal)
+                  && source.Contains("source,", StringComparison.Ordinal)
+                  && source.Contains("state.Topics[index],", StringComparison.Ordinal)
+                  && source.Contains("ref state.Timers[index]", StringComparison.Ordinal),
                 "134-5B-2: FoxRun scheduled updates route through per-topic isolation");
-            Check(source.Contains("private bool TryPublishScheduledTopic", StringComparison.Ordinal)
-                  && source.Contains("catch (Exception ex)", StringComparison.Ordinal)
-                  && source.Contains("LogSourceFailure(source, topicIndex, \"scheduled publish\", ex)", StringComparison.Ordinal)
+            Check(source.Contains("private void TryPublishScheduled(", StringComparison.Ordinal)
+                  && source.Contains("private bool TryPublish(", StringComparison.Ordinal)
+                  && source.Contains("catch (Exception exception)", StringComparison.Ordinal)
+                  && source.Contains("when (FoxRunExceptionPolicy", StringComparison.Ordinal)
+                  && source.Contains("WarnOnce(", StringComparison.Ordinal)
                   && source.Contains("return false;", StringComparison.Ordinal),
                 "134-5B-3: FoxRun scheduled source exceptions are contained and reported");
-            Check(source.Contains("private bool TryPublishTriggeredTopic", StringComparison.Ordinal)
-                  && source.Contains("LogSourceFailure(source, topicIndex, \"trigger publish\", ex)", StringComparison.Ordinal)
-                  && source.Contains("return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs", StringComparison.Ordinal),
+            Check(source.Contains("public static bool Trigger(", StringComparison.Ordinal)
+                  && source.Contains("return instance.TryPublish(", StringComparison.Ordinal)
+                  && source.Contains("explicitTrigger: true", StringComparison.Ordinal),
                 "134-5B-4: FoxRun trigger publishes return false instead of throwing on generated source failure");
-            Check(source.Contains("[FoxRun] {operation} failed", StringComparison.Ordinal)
-                  && source.Contains("_warnedSourceFailures.TryGetValue(key", StringComparison.Ordinal)
-                  && source.Contains("WarningDebouncer.ShouldEmitKeyedCooldown", StringComparison.Ordinal)
-                  && source.Contains("_warnedSourceFailures[key]", StringComparison.Ordinal),
-                "134-5B-5: FoxRun source failure warnings identify operation/source/topic and debounce repeats");
+            Check(source.Contains("source?.GetType().FullName", StringComparison.Ordinal)
+                  && source.Contains("+ topicIndex", StringComparison.Ordinal)
+                  && source.Contains("+ exception.GetType().FullName", StringComparison.Ordinal)
+                  && source.Contains("+ exception.Message", StringComparison.Ordinal)
+                  && source.Contains("Debug.LogWarning(\"[FoxRun] \" + message)", StringComparison.Ordinal),
+                "134-5B-5: FoxRun source failure warnings identify source, topic, exception type, and message while suppressing repeats");
 
-            var update = Slice(source, "private void Update()", "private bool TryPublishScheduledTopic");
+            var update = Slice(source, "private void Update()", "private void ResolveManager()");
             Check(!update.Contains("FoxgloveLog_Publish", StringComparison.Ordinal)
                   && !update.Contains("FoxgloveLog_ShouldPublish", StringComparison.Ordinal)
                   && !update.Contains("FoxgloveLog_MarkPublished", StringComparison.Ordinal),
@@ -158,19 +164,21 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText(FoxRunHubPath);
             var exceptionPolicy = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunPublishTargetStatus.cs");
-            Check(source.Contains("PendingRegistrations", StringComparison.Ordinal)
-                  && source.Contains("PendingRegistrations.Add(source)", StringComparison.Ordinal)
-                  && source.Contains("PendingRegistrationsGate", StringComparison.Ordinal)
-                  && source.Contains("lock (PendingRegistrationsGate)", StringComparison.Ordinal)
-                  && source.Contains("DrainPendingRegistrations();", StringComparison.Ordinal),
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunExceptionPolicy.cs");
+            Check(source.Contains("private static readonly List<IFoxgloveLogSource> Pending", StringComparison.Ordinal)
+                  && source.Contains("private static readonly HashSet<IFoxgloveLogSource> PendingSet", StringComparison.Ordinal)
+                  && source.Contains("private static readonly object PendingGate", StringComparison.Ordinal)
+                  && source.Contains("lock (PendingGate)", StringComparison.Ordinal)
+                  && source.Contains("DrainPending();", StringComparison.Ordinal),
                 "134-5B-7: FoxRun hub preserves early source registrations behind a locked pending list until singleton creation");
-            Check(source.Contains("[SerializeField] private bool _enableFallbackSceneScan = true;", StringComparison.Ordinal)
+            Check(source.Contains("[SerializeField]", StringComparison.Ordinal)
+                  && source.Contains("private bool _enableFallbackSceneScan = true;", StringComparison.Ordinal)
                   && source.Contains("if (_enableFallbackSceneScan)", StringComparison.Ordinal)
                   && source.Contains("Scan();", StringComparison.Ordinal),
                 "134-5B-8: FoxRun fallback scene scan can be disabled when self-registration is reliable");
-            Check(source.Contains("catch (Exception ex) when (IsRecoverableSourceException(ex))", StringComparison.Ordinal)
-                  && source.Contains("FoxRunExceptionPolicy.IsRecoverable(ex)", StringComparison.Ordinal)
+            Check(source.Contains("catch (Exception exception)", StringComparison.Ordinal)
+                  && source.Contains("FoxRunExceptionPolicy", StringComparison.Ordinal)
+                  && source.Contains(".IsRecoverable(exception)", StringComparison.Ordinal)
                   && exceptionPolicy.Contains("!(exception is OutOfMemoryException)", StringComparison.Ordinal)
                   && exceptionPolicy.Contains("!(exception is AccessViolationException)", StringComparison.Ordinal),
                 "134-5B-9: FoxRun source isolation delegates to the shared fatal-exception policy");

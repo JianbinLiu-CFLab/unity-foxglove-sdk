@@ -128,38 +128,53 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunIntegration()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
-            var update = Slice(source, "private void Update()", "private void Scan()");
-            var addSource = Slice(source, "private bool AddSource", "private bool TriggerSource");
-            var triggerSource = Slice(source, "private bool TriggerSource", "/// <summary>Clears all timers");
+            var update = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private void Update");
+            var scheduledPublish = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private void TryPublishScheduled");
+            var addSource = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private bool AddSourceNow");
+            var trigger = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "public static bool Trigger");
 
             Check(source.Contains("using Unity.FoxgloveSDK.Util;"),
                 "72C-1: FoxRun hub imports the scheduler utility namespace");
-            Check(source.Contains("Dictionary<IFoxgloveLogSource, FoxgloveLogSourceState>"),
+            Check(source.Contains("Dictionary<IFoxgloveLogSource, SourceState>")
+                  && source.Contains("FixedRatePublishState[] Timers"),
                 "72C-2: FoxRun hub stores per-topic scheduler state");
-            Check(update.Contains("Time.realtimeSinceStartupAsDouble"),
+            Check(scheduledPublish.Contains("Time.realtimeSinceStartupAsDouble"),
                 "72C-3: FoxRun cadence keeps its existing realtime basis");
-            Check(!update.Contains("var dt = Time.deltaTime") && !update.Contains("t[i] -= dt"),
+            Check(!scheduledPublish.Contains("var dt = Time.deltaTime")
+                  && !scheduledPublish.Contains("t[i] -= dt"),
                 "72C-4: FoxRun no longer uses frame countdown timers for publish cadence");
             var oldCountdownFallback = "t[i] = info.RateHz > 0 ? 1f / " + "info.RateHz : 1f";
-            Check(!update.Contains(oldCountdownFallback),
+            Check(!scheduledPublish.Contains(oldCountdownFallback),
                 "72C-5: FoxRun no longer resets countdown timers from elapsed frames");
-            Check(update.Contains("var publishRateHz = info.HasExplicitHz")
-                  && update.Contains("? info.Hz")
-                  && update.Contains(": _mgr.ActiveFoxRunDefaultPublishRateHz;")
-                  && update.Contains("publishRateHz,")
-                  && !update.Contains("Math.Max(1"),
+            Check(scheduledPublish.Contains("info.HasExplicitHz")
+                  && scheduledPublish.Contains("? info.Hz")
+                  && scheduledPublish.Contains("ActiveFoxRunDefaultPublishRateHz")
+                  && scheduledPublish.Contains(": inheritedRate")
+                  && scheduledPublish.Contains("rate,")
+                  && !scheduledPublish.Contains("Math.Max(1"),
                 "72C-6: FoxRun preserves explicit Hz while resolving omitted cadence from the frozen publish profile");
-            Check(update.Contains("FixedRatePublishScheduler.ShouldPublish"),
+            Check(scheduledPublish.Contains("FixedRatePublishScheduler")
+                  && scheduledPublish.Contains(".ShouldPublish("),
                 "72C-7: FoxRun routes cadence through the shared scheduler");
-            Check(update.Contains("nonPositivePublishesEveryFrame: false"),
+            Check(scheduledPublish.Contains("nonPositivePublishesEveryFrame:")
+                  && scheduledPublish.Contains("false))"),
                 "72C-8: FoxRun keeps explicit non-positive rates disabled instead of every-frame publishers");
-            Check(addSource.Contains("new FoxgloveLogSourceState(")
-                  && addSource.Contains("private bool AddSourceNow")
+            Check(addSource.Contains("new SourceState(")
                   && addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
-            Check(triggerSource.Contains("TryPublishTriggeredTopic")
-                  && !triggerSource.Contains("FixedRatePublishScheduler.ShouldPublish")
-                  && !triggerSource.Contains(".Timers["),
+            Check(trigger.Contains("TryPublish(")
+                  && trigger.Contains("explicitTrigger: true")
+                  && !trigger.Contains("TryPublishScheduled")
+                  && !trigger.Contains("FixedRatePublishScheduler")
+                  && !trigger.Contains(".Timers["),
                 "72C-10: triggered FoxRun publications bypass normal cadence scheduling");
         }
 

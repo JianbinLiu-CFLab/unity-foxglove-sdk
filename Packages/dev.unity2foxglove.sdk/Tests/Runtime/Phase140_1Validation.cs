@@ -38,8 +38,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyUnityThreadContractsAreExplicit();
             VerifyOpt1PublishJsonByteEquivalence();
             VerifyOpt5DrainToExceptionSafety();
-            VerifyOpt3NamespaceCacheNoRuntimeSetter();
-            VerifyOpt2QosAfterEarlyExitGuards();
+            VerifyOpt3ProviderConfigurationIsSessionFrozen();
+            VerifyOpt2ProviderQosAfterEarlyExitGuards();
 
             Console.WriteLine($"Phase 140-1: {_passed} checks passed.");
         }
@@ -97,8 +97,9 @@ namespace Unity.FoxgloveSDK.Tests
             var sharedClock = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveSharedSensorClock.cs");
 
             Check(ros2Policy.Contains("Unity main thread", StringComparison.Ordinal)
-                  && ros2Policy.Contains("Refresh", StringComparison.Ordinal),
-                "140-1D-1: Ros2NativeOutputPolicy documents its Unity-main-thread manager lookup contract");
+                  && ros2Policy.Contains("Object.FindFirstObjectByType<FoxgloveManager>()", StringComparison.Ordinal)
+                  && ros2Policy.Contains("_manager.GetComponent<", StringComparison.Ordinal),
+                "140-1D-1: R2FU output policy documents and implements its Unity-main-thread Provider lookup");
             Check(sharedClock.Contains("main-thread-only", StringComparison.Ordinal)
                   && sharedClock.Contains("not synchronized", StringComparison.Ordinal),
                 "140-1D-2: shared sensor clock documents its single-threaded Unity owner contract");
@@ -204,61 +205,50 @@ namespace Unity.FoxgloveSDK.Tests
             Check(drained2.SequenceEqual(new[] { 10, 11, 12 }), "OPT-5: no stale items re-delivered after exception+clear");
         }
 
-        private static void VerifyOpt3NamespaceCacheNoRuntimeSetter()
+        private static void VerifyOpt3ProviderConfigurationIsSessionFrozen()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var lines = source.Split('\n');
-            var assignments = 0;
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (!ContainsExactIdentifier(trimmed, "_ros2BridgeNamespace")) continue;
-                if (trimmed.Contains("= ")) assignments++;
-            }
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var manager = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
 
-            Check(assignments <= 1, "OPT-3: _ros2BridgeNamespace has no runtime setter (only [SerializeField] init)");
-            Check(source.Contains("InvalidateRos2BridgeNamespaceCache()", StringComparison.Ordinal), "OPT-3: InvalidateRos2BridgeNamespaceCache exists");
-            Check(CountOccurrences(source, "InvalidateRos2BridgeNamespaceCache()") >= 2, "OPT-3: cache invalidated from at least 2 call sites (OnValidate + InitializeOutputModeWatchers)");
+            Check(provider.Contains("[SerializeField] private string _host = \"127.0.0.1\";", StringComparison.Ordinal)
+                  && provider.Contains("[SerializeField, Min(1)] private int _port = 8767;", StringComparison.Ordinal)
+                  && provider.Contains("public bool TryCaptureSession(", StringComparison.Ordinal)
+                  && provider.Contains("var runtime = new Ros2BridgeRuntime(", StringComparison.Ordinal),
+                "OPT-3: ROS2 Bridge configuration is captured by its optional Provider");
+            Check(manager.Contains("Active snapshots are", StringComparison.Ordinal)
+                  && manager.Contains("immutable and are not recaptured.", StringComparison.Ordinal)
+                  && manager.Contains("private FoxRunTransportSessionSnapshot _activeFoxRunTransportSession;", StringComparison.Ordinal)
+                  && !manager.Contains("_ros2BridgeNamespace", StringComparison.Ordinal),
+                "OPT-3: core Manager freezes neutral Provider sessions and owns no Bridge namespace cache");
         }
 
-        private static void VerifyOpt2QosAfterEarlyExitGuards()
+        private static void VerifyOpt2ProviderQosAfterEarlyExitGuards()
         {
-            var source = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
-            var body = ExtractMethodBody(source, "public bool TryPrepareRos2BridgePublish(");
-            Check(!string.IsNullOrEmpty(body), "OPT-2: TryPrepareRos2BridgePublish method body found");
+            var source = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var body = ExtractMethodBody(
+                source,
+                "public FoxRunTransportPublishResult Publish(");
+            Check(!string.IsNullOrEmpty(body),
+                "OPT-2: ROS2 Bridge Provider publish method body found");
 
-            var qosDef = body.IndexOf("qos = default", StringComparison.Ordinal);
-            var qosRes = body.IndexOf("qos = ResolveRos2BridgeQos", StringComparison.Ordinal);
-            var early1 = body.IndexOf("SuppressLivePublishersForReplay", StringComparison.Ordinal);
-            var early2 = body.IndexOf("!_ros2BridgeEnabled", StringComparison.Ordinal);
+            var qosResolution = body.IndexOf(
+                "var qos = ResolveQos(route.DeliveryPolicy);",
+                StringComparison.Ordinal);
+            var runtimeGuard = body.IndexOf("runtime == null", StringComparison.Ordinal);
+            var encodingGuard = body.IndexOf("route.MessageEncoding", StringComparison.Ordinal);
+            var schemaGuard = body.IndexOf("string.IsNullOrWhiteSpace(", StringComparison.Ordinal);
+            var schemaEncodingGuard = body.IndexOf("route.SchemaEncoding", StringComparison.Ordinal);
 
-            Check(qosDef >= 0, "OPT-2: qos = default present");
-            Check(qosRes > qosDef, "OPT-2: ResolveRos2BridgeQos() called after qos=default");
-            Check(qosRes > early1 && qosRes > early2, "OPT-2: ResolveRos2BridgeQos() called after both early-exit guards");
-        }
-
-        private static bool ContainsExactIdentifier(string text, string identifier)
-        {
-            var index = 0;
-            while ((index = text.IndexOf(identifier, index, StringComparison.Ordinal)) >= 0)
-            {
-                var afterEnd = index + identifier.Length;
-                if (afterEnd >= text.Length || !(char.IsLetterOrDigit(text[afterEnd]) || text[afterEnd] == '_'))
-                    return true;
-                index = afterEnd;
-            }
-
-            return false;
-        }
-
-        private static int CountOccurrences(string text, string pattern)
-        {
-            var count = 0;
-            var index = 0;
-            while ((index = text.IndexOf(pattern, index, StringComparison.Ordinal)) >= 0)
-            { count++; index += pattern.Length; }
-
-            return count;
+            Check(qosResolution >= 0,
+                "OPT-2: Provider resolves QoS from the frozen delivery policy");
+            Check(qosResolution > runtimeGuard
+                  && qosResolution > encodingGuard
+                  && qosResolution > schemaGuard
+                  && qosResolution > schemaEncodingGuard,
+                "OPT-2: Provider resolves QoS only after runtime and wire-contract early exits");
         }
 
         private static void Check(bool condition, string name)

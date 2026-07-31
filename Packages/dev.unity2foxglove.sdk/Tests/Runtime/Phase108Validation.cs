@@ -190,16 +190,15 @@ namespace Unity.FoxgloveSDK.Tests
                     .OrderBy(path => path, StringComparer.Ordinal)
                     .ToList()
                 : new List<string>();
-            var expectedEditorFiles = new[]
+            var expectedTopLevelEditorFiles = new[]
             {
                 OptionalPackage + "/Editor/FoxRunRos2CustomTypesupportInspector.cs",
-                OptionalPackage + "/Editor/Native/FoxRunRos2SubscriptionDiagnosticsInspector.cs",
-                OptionalPackage + "/Editor/Native/Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef",
                 OptionalPackage + "/Editor/Phase181Ros2RuntimeBatchSelection.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportPreflight.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityEditorRestartRelay.cs",
+                OptionalPackage + "/Editor/Ros2ForUnityManagerSetupDrawer.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeCapabilityModel.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs",
@@ -208,8 +207,36 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Ros2ForUnityZenohRouterSettings.cs",
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
             };
-            Check(editorFiles.SequenceEqual(expectedEditorFiles),
-                "108-C4: optional package Editor surface is limited to runtime selection and restart, custom typesupport preflight, Zenoh router configuration, and native diagnostics boundaries");
+            var topLevelEditorFiles = editorFiles
+                .Where(path =>
+                    !path.Substring(
+                            (OptionalPackage + "/Editor/").Length)
+                        .Contains("/", StringComparison.Ordinal))
+                .ToList();
+            var unexpectedEditorFiles = editorFiles
+                .Where(path =>
+                    !expectedTopLevelEditorFiles.Contains(
+                        path,
+                        StringComparer.Ordinal)
+                    && !path.StartsWith(
+                        OptionalPackage + "/Editor/Native/",
+                        StringComparison.Ordinal)
+                    && !path.StartsWith(
+                        OptionalPackage + "/Editor/SourceGenerators/",
+                        StringComparison.Ordinal))
+                .ToList();
+            Check(topLevelEditorFiles.SequenceEqual(expectedTopLevelEditorFiles)
+                  && unexpectedEditorFiles.Count == 0
+                  && editorFiles.Contains(
+                      OptionalPackage + "/Editor/Native/FoxRunR2fuEmitterContribution.cs",
+                      StringComparer.Ordinal)
+                  && editorFiles.Contains(
+                      OptionalPackage + "/Editor/Native/FoxRunR2fuProviderDrawer.cs",
+                      StringComparer.Ordinal)
+                  && editorFiles.Contains(
+                      OptionalPackage + "/Editor/SourceGenerators/src/FoxRunR2fuAnalyzerPipeline.cs",
+                      StringComparer.Ordinal),
+                "108-C4: optional package Editor surface is limited to activation, Provider integration, and its owned source generator");
         }
 
         private static void VerifyValidationWiring()
@@ -328,6 +355,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsOptionalPackageRuntimeBinary(string path)
         {
+            if (IsOwnedOptionalEditorAnalyzer(path))
+                return false;
+
             if (!path.StartsWith(OptionalPackage + "/", StringComparison.Ordinal))
                 return false;
 
@@ -339,6 +369,21 @@ namespace Unity.FoxgloveSDK.Tests
                    || extension.Equals(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsOwnedOptionalEditorAnalyzer(string path)
+        {
+            var absolute = Path.IsPathRooted(path)
+                ? path
+                : Path.Combine(
+                    RepoRoot(),
+                    path.Replace('/', Path.DirectorySeparatorChar));
+            var relative = Path.GetRelativePath(RepoRoot(), absolute).Replace('\\', '/');
+            return relative.Equals(
+                OptionalPackage
+                + "/Editor/SourceGenerators/analyzers/dotnet/cs/"
+                + "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll",
+                StringComparison.Ordinal);
         }
 
         private static JObject LoadJsonObject(string relativePath)
@@ -353,6 +398,8 @@ namespace Unity.FoxgloveSDK.Tests
             return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".props", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".xml", StringComparison.OrdinalIgnoreCase);
         }

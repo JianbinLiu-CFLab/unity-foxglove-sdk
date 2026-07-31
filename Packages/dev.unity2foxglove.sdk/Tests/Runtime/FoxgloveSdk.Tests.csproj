@@ -47,6 +47,7 @@
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/**/*.cs" LinkBase="Ros2BridgeRuntime" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Protocol/**/*.cs" LinkBase="Ros2BridgeProtocol" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <!-- Runtime/Sensors wildcard is intentionally broad; every Unity-dependent file must stay explicitly excluded here. -->
     <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;../../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />

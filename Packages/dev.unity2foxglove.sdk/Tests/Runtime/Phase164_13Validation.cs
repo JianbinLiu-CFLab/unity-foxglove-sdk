@@ -60,10 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPointCloudBuildersRemainDeferredToPointCloudPhase()
         {
             var packed = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
-            var nativePacked = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
+            var nativePacked = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudDataBuilder.cs");
 
             Check(packed.Contains("public static PointCloudPackedData Build(PointCloudFrame frame)", StringComparison.Ordinal)
-                  && nativePacked.Contains("BuildVirtualLidarFullStride", StringComparison.Ordinal),
+                  && nativePacked.Contains("internal static PointCloudPackedData BuildVirtualLidarFullStride", StringComparison.Ordinal),
                 "164-13C-1: point-cloud builder optimization candidates are present for the dedicated point-cloud phase");
         }
 

@@ -156,6 +156,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new Phase90FakeTransport();
             using var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.EnableRos2BridgeSchemas();
             runtime.Start("phase90-runtime", "127.0.0.1", 9090);
             transport.SimulateConnect(1);
 
@@ -208,6 +209,7 @@ namespace Unity.FoxgloveSDK.Tests
             var componentsRoot = Path.Combine(runtimeRoot, "Components");
             Check(Directory.Exists(componentsRoot), "90G-0b: Runtime Components source root exists");
             var catalog = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
 
             Check(SourceTreeAvoids(runtimeRoot, "class CdrWriter", "Ros2CdrPublisher"),
                 "90G-1: Phase90 does not introduce CDR writer or CDR publisher");
@@ -216,9 +218,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!catalog.Contains("HasDedicatedUnityPublisher"),
                 "90G-3: ROS2 catalog does not imply dedicated ROS2 CDR publisher support");
 
-            Check(SourceTreeContains(componentsRoot, "PublisherEffectiveEncoding.Ros2")
-                  && SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr"),
-                "90G-4: publisher output mode uses product ROS2 labeling instead of CDR internals");
+            Check(SourceTreeAvoids(
+                      componentsRoot,
+                      "PublisherEffectiveEncoding.Ros2",
+                      "TryPrepareRos2Publish",
+                      "PublishRos2")
+                  && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("Ros2BridgeMcapCodecs.MessageEncoding"),
+                "90G-4: core publishers stay Provider-neutral while Bridge owns CDR mapping");
             Check(catalog.Contains("deterministic startup cost", StringComparison.Ordinal)
                   && catalog.Contains("Duplicate ROS2 schema name in Foxglove catalog", StringComparison.Ordinal)
                   && catalog.Contains("Ros2StandardMsgSchemaCatalog.TryGet(schemaName, out entry)", StringComparison.Ordinal),

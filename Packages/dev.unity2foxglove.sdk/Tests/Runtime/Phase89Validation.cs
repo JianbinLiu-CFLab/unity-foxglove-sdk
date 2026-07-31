@@ -100,11 +100,12 @@ namespace Unity.FoxgloveSDK.Tests
             var worker = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             Check(publisherSource.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
                   && worker.Contains("DracoPointCloudNativeEncoder")
-                  && worker.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
+                  && worker.Contains("CompressedPointCloudMessageBuilder.CreateProtobuf")
                   && worker.Contains(".TryEncode(")
-                  && publisherSource.Contains("PublishProto("),
-                "89B-5: Draco mode encodes through bundled native DLL and publishes CompressedPointCloud protobuf");
-            Check(publisherSource.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && publisherSource.Contains("PublishProto(")
+                  && publisherSource.Contains("PublishOrdinaryTransport("),
+                "89B-5: Draco mode encodes once for WebSocket protobuf and ordinary Provider fanout");
+            Check(publisherSource.Contains("PointCloudMessageBuilder.CreateProtobuf(frame)")
                   && publisherSource.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
                 "89B-6: raw mode preserves existing PointCloud protobuf and JSON builders");
             Check(publisherSource.Contains("publishes nothing")
@@ -229,9 +230,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "89G-2: docs state bundled Draco DLL behavior and no raw fallback");
             Check(combined.Contains("worker thread")
                   && combined.Contains("main thread")
-                  && combined.Contains("Raw/ROS2")
+                  && combined.Contains("Provider")
                   && !combined.Contains("synchronous native", StringComparison.OrdinalIgnoreCase),
-                "89G-3: docs describe current Draco worker behavior and main-thread preparation costs");
+                "89G-3: docs describe current Draco worker behavior, Provider handoff, and main-thread preparation costs");
         }
 
         private static void VerifyBundledWindowsDracoNativePlugin()

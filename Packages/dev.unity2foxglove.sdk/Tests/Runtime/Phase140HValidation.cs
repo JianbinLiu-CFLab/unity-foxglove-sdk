@@ -71,11 +71,21 @@ namespace Unity.FoxgloveSDK.Tests
             Check(MethodContains(publishing, "public void PublishProto", "_runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);")
                   && MethodContains(publishing, "public void PublishProto", "RecordPublishCadence(topic, ProtobufEncoding);"),
                 "140H-2B: protobuf publish path records cadence after successful publish");
-            Check(MethodContains(publishing, "public void PublishRos2(string topic", "_runtime.PublishRos2Cdr(channelId, payload, logTimeNs);")
-                  && MethodContains(publishing, "public void PublishRos2(string topic", "RecordPublishCadence(topic, CdrEncoding);"),
-                "140H-2C: ROS2 publish path records cadence after successful publish");
-            Check(!MethodContains(publishing, "public void PublishRos2BridgeCdr(string topic, string topicOverride", "RecordPublishCadence("),
-                "140H-2D: ROS2 Bridge mirror path is not counted as WebSocket publish cadence");
+            var providers = Read(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
+            Check(MethodContains(
+                      providers,
+                      "public FoxRunTransportPublishResult PublishOrdinaryTransport(",
+                      "return session.Publish(in route);")
+                  && !MethodContains(
+                      providers,
+                      "public FoxRunTransportPublishResult PublishOrdinaryTransport(",
+                      "RecordPublishCadence("),
+                "140H-2C: optional Provider publish remains outside WebSocket cadence accounting");
+            Check(!publishing.Contains("PublishRos2(", StringComparison.Ordinal)
+                  && !publishing.Contains("PublishRos2BridgeCdr(", StringComparison.Ordinal)
+                  && !providers.Contains("RecordPublishCadence(", StringComparison.Ordinal),
+                "140H-2D: core publish boundaries contain no ROS-specific cadence route");
         }
 
         private static void TransportRemainsTopicAgnostic()

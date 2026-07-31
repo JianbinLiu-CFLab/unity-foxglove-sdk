@@ -135,18 +135,35 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyTriggerApiSourceContract()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var managerPublishing = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var trigger = ExtractMethodBody(source, "public static bool Trigger(");
+            var publish = ExtractMethodBody(source, "private bool TryPublish(");
 
-            Check(source.Contains("public static bool Trigger(IFoxgloveLogSource source, int topicIndex)"),
+            Check(!string.IsNullOrEmpty(trigger)
+                  && source.Contains("public static bool Trigger(", StringComparison.Ordinal)
+                  && source.Contains("IFoxgloveLogSource source,", StringComparison.Ordinal)
+                  && source.Contains("int topicIndex)", StringComparison.Ordinal),
                 "53D-1: FoxgloveLogHub exposes stable trigger API");
-            Check(source.Contains("source == null") && source.Contains("return false"),
+            Check(trigger.Contains("source == null", StringComparison.Ordinal)
+                  && trigger.Contains("return false", StringComparison.Ordinal),
                 "53D-2: trigger API treats null source as unavailable state");
-            Check(source.Contains("SuppressLivePublishersForReplay") && source.Contains("return false"),
-                "53D-3: trigger API respects replay live-publisher suppression");
-            Check(source.Contains("topicIndex < 0") && source.Contains("FoxgloveLog_TopicCount"),
-                "53D-4: trigger API validates topic index");
-            Check(source.Contains("FoxgloveLog_Publish(topicIndex") && source.Contains("FoxgloveLog_MarkPublished(topicIndex"),
-                "53D-5: trigger API publishes then updates policy state");
-            Check(!source.Contains("StartServer") && !source.Contains("Start("),
+            Check(publish.Contains("SelectsWebSocket(info)", StringComparison.Ordinal)
+                  && publish.Contains("HasSelectedPublishProviders(info)", StringComparison.Ordinal)
+                  && managerPublishing.Contains("SuppressLivePublishersForReplay", StringComparison.Ordinal),
+                "53D-3: trigger dispatch is Provider-neutral while WebSocket replay suppression remains at its transport boundary");
+            Check(publish.Contains("topicIndex < 0", StringComparison.Ordinal)
+                  && publish.Contains("topicIndex", StringComparison.Ordinal)
+                  && publish.Contains(">= state.Topics.Length", StringComparison.Ordinal)
+                  && publish.Contains("!state.Accepted[topicIndex]", StringComparison.Ordinal),
+                "53D-4: shared trigger dispatcher validates accepted topic index");
+            Check(trigger.Contains("return instance.TryPublish(", StringComparison.Ordinal)
+                  && trigger.Contains("explicitTrigger: true", StringComparison.Ordinal)
+                  && publish.Contains("FoxgloveLog_BeginCapture(", StringComparison.Ordinal)
+                  && publish.Contains("FoxgloveLog_EndCapture(", StringComparison.Ordinal),
+                "53D-5: trigger API delegates one explicit capture to the shared Provider-aware dispatcher");
+            Check(!trigger.Contains("StartServer", StringComparison.Ordinal)
+                  && !trigger.Contains("Start(", StringComparison.Ordinal),
                 "53D-6: trigger API does not start or create manager lifecycle");
         }
 

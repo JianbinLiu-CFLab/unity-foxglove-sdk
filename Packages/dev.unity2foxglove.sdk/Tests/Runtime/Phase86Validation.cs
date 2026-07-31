@@ -162,12 +162,30 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunTimerMutationSafety()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
-            Check(source.Contains("_pendingAdds") && source.Contains("_pendingRemoves") && source.Contains("_iteratingTimers"),
-                "86G-1: FoxRun hub has pending timer mutation queues");
-            Check(source.Contains("ApplyPendingTimerMutations()") && source.Contains("try") && source.Contains("finally"),
-                "86G-2: FoxRun hub applies timer mutations outside enumeration");
-            Check(source.Contains("RemoveSource(IFoxgloveLogSource source)"),
-                "86G-3: FoxRun unregister path is centralized");
+            var update = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private void Update");
+            var unregister = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "public static void UnregisterSource");
+            var applyDeferred = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private void ApplyDeferred");
+
+            Check(source.Contains("_deferredAdds")
+                  && source.Contains("_deferredRemoves")
+                  && source.Contains("_iterating"),
+                "86G-1: FoxRun hub has deferred source-mutation queues");
+            Check(update.Contains("ApplyDeferred();")
+                  && update.IndexOf("ApplyDeferred();", StringComparison.Ordinal)
+                     != update.LastIndexOf("ApplyDeferred();", StringComparison.Ordinal)
+                  && update.Contains("_iterating = true")
+                  && update.Contains("finally")
+                  && update.Contains("_iterating = false"),
+                "86G-2: FoxRun hub applies source mutations outside enumeration");
+            Check(unregister.Contains("QueueRemove(source)")
+                  && applyDeferred.Contains("RemoveSourceNow(source)"),
+                "86G-3: FoxRun unregister path is centralized through deferred removal");
         }
 
         private static void VerifyManagerStopCleanup()

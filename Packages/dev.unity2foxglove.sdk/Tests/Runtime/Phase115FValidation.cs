@@ -264,7 +264,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySingleLoweringAndEmitterBoundary()
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
-            Check(Count(generator, "FoxRunRoslynGenerationModelLowerer.Lower") == 1,
+            var compactGenerator = Regex.Replace(
+                generator,
+                @"\s+",
+                string.Empty);
+            Check(Count(compactGenerator, "FoxRunRoslynGenerationModelLowerer.Lower(") == 1,
                 "115F-D1: Roslyn source generator lowers once for descriptor and source emission");
             Check(!generator.Contains("EmitClass(spc, grp.ToArray())", StringComparison.Ordinal),
                 "115F-D2: Roslyn source generator emits from the shared lowered model");

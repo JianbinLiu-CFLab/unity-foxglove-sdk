@@ -23,13 +23,17 @@ namespace Unity.FoxgloveSDK.Tests
             "FoxgloveManagerEditor.DataTransport.cs",
             "FoxgloveManagerEditor.PublishData.cs",
             "FoxgloveManagerEditor.SubscribeData.cs",
-            "FoxgloveManagerEditor.R2fuRuntime.cs",
             "FoxgloveManagerEditor.Mcap.cs",
-            "FoxgloveManagerEditor.Ros2Bridge.cs",
             "FoxgloveManagerEditor.Diagnostics.cs",
             "FoxgloveManagerEditor.Security.cs",
             "FoxgloveManagerEditor.Helpers.cs",
             "FoxgloveManagerEditor.FoxServices.cs",
+        };
+
+        private static readonly string[] ProviderDrawerFiles =
+        {
+            "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs",
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs",
         };
 
         private static readonly string[] FoldoutStatics =
@@ -38,10 +42,10 @@ namespace Unity.FoxgloveSDK.Tests
             "_dataTransportExpanded",
             "_dataTransportPublishExpanded",
             "_dataTransportSubscribeExpanded",
-            "_dataTransportNativeRuntimeExpanded",
-            "_dataTransportRos2BridgeExpanded",
             "_mcapExpanded",
+            "_foxServicesExpanded",
             "_schemaEvidenceAdvancedExpanded",
+            "_remoteFileAccessExpanded",
             "_diagnosticsExpanded",
         };
 
@@ -62,6 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFoldoutStaticCounts();
             VerifySectionMethodCounts();
             VerifyAssetRootDefinitionDrawerPlacement();
+            VerifyProviderSpecificEditorsAreExtracted();
 
             Console.WriteLine("Phase 137E: " + _passed + " checks passed.\n");
         }
@@ -117,7 +122,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var count = 0;
                 foreach (var f in PartialFiles)
-                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private bool " + field + ";", StringComparison.Ordinal))
+                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private bool " + field, StringComparison.Ordinal))
                         count++;
                 Check(count == 1, "137E-6: " + field + " declared exactly once (found " + count + ")");
             }
@@ -126,13 +131,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySectionMethodCounts()
         {
             var methods = new[] {
+                "DrawConnectionSecuritySection",
                 "DrawDataTransportSection",
                 "DrawPublishDataSection",
                 "DrawSubscribeDataSection",
                 "DrawMcapSection",
                 "DrawDiagnosticsSection",
-                "DrawRos2BridgeSection",
                 "DrawFoxServicesSection",
+                "DrawRemoteFileAccessSection",
+                "DrawSchemaEvidenceSection",
+                "DrawSecureWebSocketSection",
             };
             foreach (var m in methods)
             {
@@ -162,6 +170,28 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(!File.ReadAllText(Path.Combine(Dir, f)).Contains("AssetRootDefinitionDrawer", StringComparison.Ordinal),
                     "137E-9: AssetRootDefinitionDrawer NOT in " + f);
             }
+        }
+
+        private static void VerifyProviderSpecificEditorsAreExtracted()
+        {
+            foreach (var file in ProviderDrawerFiles)
+            {
+                Check(File.Exists(file), "137E-10: Provider drawer exists: " + Path.GetFileName(file));
+                var content = File.ReadAllText(file);
+                Check(content.Contains("IFoxRunTransportProviderDrawer", StringComparison.Ordinal)
+                      && content.Contains("FoxRunTransportProviderDrawerRegistry.Register", StringComparison.Ordinal),
+                    "137E-11: Provider drawer registers through the generic editor seam: " + Path.GetFileName(file));
+            }
+
+            var managerEditors = string.Empty;
+            foreach (var file in PartialFiles)
+                managerEditors += File.ReadAllText(Path.Combine(Dir, file));
+
+            Check(!managerEditors.Contains("Ros2BridgeTransportProvider", StringComparison.Ordinal)
+                  && !managerEditors.Contains("FoxRunRos2TransportProvider", StringComparison.Ordinal)
+                  && !managerEditors.Contains("DrawRos2BridgeSection", StringComparison.Ordinal)
+                  && !managerEditors.Contains("DrawR2fuRuntimeSection", StringComparison.Ordinal),
+                "137E-12: core Manager editor partials remain Provider-neutral");
         }
 
         private static void Check(bool condition, string label)

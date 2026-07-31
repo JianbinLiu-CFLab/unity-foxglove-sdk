@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerServicesPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Services.cs";
+        private const string TransportContributionsPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportContributions.cs";
         private const string PublisherEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs";
 
@@ -71,21 +73,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("public bool HasValidTopic => HasValidPublisherTopic(_topic)", StringComparison.Ordinal),
                 "134-4B-1: publisher base exposes topic validity for Inspector and tests");
             Check(source.Contains("ValidateConfiguredTopic(\"publish\")", StringComparison.Ordinal)
-                  && source.Contains("ValidateConfiguredTopic(\"ROS2 Bridge publish\")", StringComparison.Ordinal),
-                "134-4B-2: publisher base validates topic before WebSocket and ROS2 Bridge preparation");
+                  && source.Contains("ValidateConfiguredTopic(\"Provider publish\")", StringComparison.Ordinal),
+                "134-4B-2: publisher base validates topic before WebSocket and ordinary Provider preparation");
             Check(source.Contains("if (!ValidateConfiguredTopic(\"publish\")) return;", StringComparison.Ordinal)
-                  && source.Contains("if (!ValidateConfiguredTopic(\"ROS2 Bridge publish\")) return;", StringComparison.Ordinal),
-                "134-4B-3: publisher base validates topic before direct publish helpers");
+                  && source.Contains("|| !ValidateConfiguredTopic(\"Provider publish\")", StringComparison.Ordinal)
+                  && source.Contains("return default;", StringComparison.Ordinal),
+                "134-4B-3: publisher base validates topic before WebSocket and Provider publish helpers");
             Check(source.Contains("Configure a non-empty topic before publishing", StringComparison.Ordinal)
                   && source.Contains("_lastPublishTopicWarningKey", StringComparison.Ordinal)
-                  && source.Contains("_lastRos2BridgeTopicWarningKey", StringComparison.Ordinal)
+                  && source.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
                   && source.Contains("GetTopicWarningKey(operation)", StringComparison.Ordinal),
-                "134-4B-4: invalid topic warnings are actionable and de-duplicated per publisher");
+                "134-4B-4: invalid topic and Provider failures are actionable and de-duplicated per publisher");
         }
 
         private static void VerifyManagerRejectsInvalidTopicsBeforeRegistration()
         {
             var source = ReadRepoText(ManagerPublishingPath);
+            var transportContributions = ReadRepoText(TransportContributionsPath);
             var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
             var normalizer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/TopicNameNormalizer.cs");
             Check(warningState.Contains("LastInvalidPublishTopicWarningKey", StringComparison.Ordinal)
@@ -96,19 +100,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && normalizer.Contains("!string.IsNullOrWhiteSpace(topic)", StringComparison.Ordinal),
                 "134-4C-2: manager has a whitespace-aware topic predicate");
             Check(source.Contains("if (!TryValidatePublishTopic(topic, \"prepare schema publish\"))", StringComparison.Ordinal)
-                  && (source.Contains("if (!TryValidatePublishTopic(topic, \"prepare ROS2 publish\"))", StringComparison.Ordinal)
-                      || source.Contains("TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId, \"prepare ROS2 publish\")", StringComparison.Ordinal)),
-                "134-4C-3: manager preflight rejects invalid topics before channel registration");
+                  && source.Contains("if (!TryValidatePublishTopic(topic, \"prepare MsgPack publish\"))", StringComparison.Ordinal)
+                  && transportContributions.Contains("if (string.IsNullOrWhiteSpace(topic))", StringComparison.Ordinal)
+                  && transportContributions.Contains("throw new ArgumentException(\"Topic cannot be empty.\"", StringComparison.Ordinal),
+                "134-4C-3: WebSocket preflight and neutral Provider requests reject invalid topics before routing");
             Check(source.Contains("if (!TryValidatePublishTopic(topic, \"publish JSON\"))", StringComparison.Ordinal)
                   && source.Contains("if (!TryValidatePublishTopic(topic, \"publish Protobuf\"))", StringComparison.Ordinal)
-                  && (source.Contains("if (!TryValidatePublishTopic(topic, \"publish ROS2\"))", StringComparison.Ordinal)
-                      || source.Contains("TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId, \"publish ROS2\")", StringComparison.Ordinal)),
-                "134-4C-4: manager direct publish APIs reject invalid topics before channel registration");
+                  && source.Contains("if (!TryValidatePublishTopic(topic, \"publish MsgPack\"))", StringComparison.Ordinal)
+                  && !source.Contains("publish ROS2", StringComparison.Ordinal),
+                "134-4C-4: core direct publish APIs reject invalid topics without ROS-specific paths");
             Check(source.Contains("throw new System.InvalidOperationException(\"Foxglove publisher topic must be non-empty.\")", StringComparison.Ordinal)
                   && source.Contains("private uint GetOrRegisterChannel(string topic, string encoding)", StringComparison.Ordinal)
                   && source.Contains("public uint GetOrRegisterSchemaChannel(string topic", StringComparison.Ordinal)
-                  && source.Contains("public uint GetOrRegisterRos2MsgSchemaChannel(string topic", StringComparison.Ordinal),
-                "134-4C-5: low-level channel registration helpers fail closed for invalid topics");
+                  && !source.Contains("GetOrRegisterRos2MsgSchemaChannel", StringComparison.Ordinal)
+                  && transportContributions.Contains("Topic cannot be empty.", StringComparison.Ordinal),
+                "134-4C-5: low-level WebSocket registration and neutral Provider requests fail closed for invalid topics");
         }
 
         private static void VerifyInspectorWarnsForInvalidTopics()

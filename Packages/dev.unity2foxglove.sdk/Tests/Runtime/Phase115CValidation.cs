@@ -234,14 +234,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("private bool _dataTransportExpanded;", StringComparison.Ordinal)
                   && editor.Contains("private bool _dataTransportPublishExpanded;", StringComparison.Ordinal)
                   && editor.Contains("private bool _dataTransportSubscribeExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private bool _dataTransportNativeRuntimeExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private bool _dataTransportRos2BridgeExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _dataTransportNativeRuntimeExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _dataTransportRos2BridgeExpanded;", StringComparison.Ordinal)
                   && !editor.Contains("private bool _publishDataExpanded;", StringComparison.Ordinal)
                   && !editor.Contains("private bool _subscribeDataExpanded;", StringComparison.Ordinal)
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawFoxRunTransportProviderExtensions", StringComparison.Ordinal)
                   && editor.Contains("private bool _schemaEvidenceAdvancedExpanded;", StringComparison.Ordinal)
                   && layout.Contains("WorkflowSubsection", StringComparison.Ordinal),
-                "115C-F1: Data Transport parent and nested Inspector foldouts coexist with collapsed low-frequency schema evidence");
+                "115C-F1: provider-neutral Data Transport foldouts coexist with Provider extensions and collapsed schema evidence");
 
             Check(mcapEditor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
                   && mcapEditor.Contains("Refresh Evidence Now", StringComparison.Ordinal)

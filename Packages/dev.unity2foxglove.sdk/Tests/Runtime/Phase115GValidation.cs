@@ -207,16 +207,18 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNestedObjectClassification()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
+            var diagnosticsSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var codeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
-            Check(validator.Contains("Error(\"FOXRUN006\"", StringComparison.Ordinal)
-                  || validator.Contains("Severity = \"Error\"", StringComparison.Ordinal),
-                "115G-F1: legacy user-defined FoxRun payloads without a native shape fail fast instead of warning only");
+            Check(validator.Contains("\"FOXRUN006\"", StringComparison.Ordinal)
+                  && diagnosticsSource.Contains("\"FOXRUN006\"", StringComparison.Ordinal)
+                  && diagnosticsSource.Contains("DiagnosticSeverity.Error", StringComparison.Ordinal),
+                "115G-F1: user-defined FoxRun payloads without a neutral type shape fail fast instead of warning only");
 
-            Check(sourceGenerator.Contains("FoxRunRoslynRos2CustomDtoShapeBuilder.Build", StringComparison.Ordinal)
+            Check(sourceGenerator.Contains("FoxRunRoslynTypeShapeBuilder.TryBuild", StringComparison.Ordinal)
                   && codeGenerator.Contains("FoxRunGenerationModelValidator.Validate", StringComparison.Ordinal),
-                "115G-F2: Roslyn custom-DTO classification and build-time validation are both wired into generation hosts");
+                "115G-F2: Roslyn neutral type-shape classification and build-time validation are both wired into generation hosts");
 
             var nestedModel = new FoxRunGenerationModel(new[]
             {
@@ -244,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
             });
             var nestedDiagnostics = FoxRunGenerationModelValidator.Validate(nestedModel);
             Check(nestedDiagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN006" && diagnostic.Severity == "Error"),
-                "115G-F3: shared validator reports FOXRUN006 for a legacy nested member without a custom DTO shape");
+                "115G-F3: shared validator reports FOXRUN006 for a nested member without a neutral type shape");
 
             var generated = RunGenerator(NestedObjectFixtureSource(), "FoxRunNestedObject115G", out var roslynDiagnostics);
             var descriptor = generated.FirstOrDefault(sourceResult =>
@@ -256,10 +258,10 @@ namespace Unity.FoxgloveSDK.Tests
                 ? Regex.Unescape(descriptorMatch.Groups["json"].Value)
                 : string.Empty;
             Check(!roslynDiagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                  && descriptorJson.Contains("\"ros2ContractKind\":\"CustomDto\"", StringComparison.Ordinal)
-                  && descriptorJson.Contains("\"ros2CustomDtoShape\":{", StringComparison.Ordinal)
-                  && descriptorJson.Contains("\"isSupported\":true", StringComparison.Ordinal),
-                "115G-F4: Roslyn generator classifies a supported nested object as a CustomDto instead of legacy FOXRUN006");
+                  && descriptorJson.Contains("\"typeShape\":{\"kind\":\"Object\"", StringComparison.Ordinal)
+                  && descriptorJson.Contains("\"memberName\":\"count\"", StringComparison.Ordinal)
+                  && descriptorJson.Contains("\"canonicalType\":\"int32\"", StringComparison.Ordinal),
+                "115G-F4: Roslyn generator lowers a supported nested object to the neutral type-shape graph instead of FOXRUN006");
         }
 
         private static void VerifyAnalyzerDllRefreshEvidence()
