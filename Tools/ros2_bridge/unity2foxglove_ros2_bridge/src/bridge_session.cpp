@@ -5,7 +5,9 @@
 // Purpose: Frozen U2R2 first-frame, identity, and replay session integration.
 
 #include "unity2foxglove_ros2_bridge/bridge_session.hpp"
+#include "unity2foxglove_ros2_bridge/bridge_writer.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -80,25 +82,82 @@ void ValidateSameRequest(
             true);
   }
 }
+
+bool HasCapability(
+  const std::vector<u2r2::Capability> & capabilities,
+  u2r2::Capability capability)
+{
+  return std::find(
+    capabilities.begin(),
+    capabilities.end(),
+    capability) != capabilities.end();
+}
+
+nlohmann::json NegotiatedCapabilityNames(
+  const std::vector<u2r2::Capability> & capabilities)
+{
+  auto result = nlohmann::json::array();
+  if (HasCapability(capabilities, u2r2::Capability::Publish)) {
+    result.push_back("publish");
+  }
+  if (HasCapability(capabilities, u2r2::Capability::Subscribe)) {
+    result.push_back("subscribe");
+  }
+  return result;
+}
 }  // namespace
 
 struct BridgeSessionProtocol::Impl final
 {
   explicit Impl(const u2r2::ProtocolLimits & value)
   : limits(value),
-    scheduler(value),
+    writer(value),
     replay(value)
   {
+    auto lease = writer.try_attach_writer();
+    if (!lease) {
+      throw std::logic_error("a Bridge session requires one writer lease");
+    }
+    writer_lease = std::move(*lease);
+  }
+
+  ~Impl()
+  {
+    writer.close();
   }
 
   const u2r2::ProtocolLimits limits;
   u2r2::SessionStateMachine state;
-  u2r2::BoundedOutboundScheduler scheduler;
+  BridgeWriterCore writer;
+  BridgeWriterLease writer_lease;
   u2r2::RequestReplayAuthority replay;
   std::optional<u2r2::Message> hello;
   std::string session_id;
   uint64_t connection_generation{0};
   std::unordered_map<std::string, std::string> prepared_publishers;
+
+  void require_capability(u2r2::Operation operation) const
+  {
+    std::optional<u2r2::Capability> required;
+    switch (operation) {
+      case u2r2::Operation::PreparePublisher:
+      case u2r2::Operation::Publish:
+        required = u2r2::Capability::Publish;
+        break;
+      case u2r2::Operation::RegisterSubscription:
+      case u2r2::Operation::UnregisterSubscription:
+        required = u2r2::Capability::Subscribe;
+        break;
+      default:
+        return;
+    }
+    if (!hello || !HasCapability(hello->capabilities, *required)) {
+      throw u2r2::ProtocolError(
+              "missing_capability",
+              "the U2R2 operation requires an unnegotiated capability",
+              true);
+    }
+  }
 
   u2r2::Message parse_active_v2_request(
     const u2r2::Frame & frame) const
@@ -119,11 +178,13 @@ struct BridgeSessionProtocol::Impl final
       message.operation == u2r2::Operation::Hello ||
       (message.operation != u2r2::Operation::HealthPing &&
       message.operation != u2r2::Operation::PreparePublisher &&
-      message.operation != u2r2::Operation::Publish))
+      message.operation != u2r2::Operation::Publish &&
+      message.operation != u2r2::Operation::RegisterSubscription &&
+      message.operation != u2r2::Operation::UnregisterSubscription))
     {
       throw u2r2::ProtocolError(
               "invalid_frame",
-              "the U2R2 operation is not valid in a publish session",
+              "the U2R2 operation is not valid in an active session",
               true);
     }
     if (
@@ -147,6 +208,7 @@ struct BridgeSessionProtocol::Impl final
               "the U2R2 request ID is below the hello high-water mark",
               false);
     }
+    require_capability(message.operation);
     return message;
   }
 };
@@ -182,7 +244,7 @@ FirstFrameClassification BridgeSessionProtocol::accept_first_frame(
   FirstFrameClassification result;
   if (DeclaresV2(frame)) {
     auto message = u2r2::parse_v2(frame);
-    impl_->state.accept_v2(message, {u2r2::Capability::Publish});
+    impl_->state.accept_v2(message, {});
     impl_->hello = message;
     result.dialect = u2r2::Dialect::V2;
     result.role = FirstFrameRole::data_session;
@@ -222,7 +284,10 @@ void BridgeSessionProtocol::bind_v2_identity(u2r2::SessionIdentity identity)
       {"status", "ok"},
       {"sessionId", impl_->session_id},
       {"connectionGeneration", impl_->connection_generation},
-      {"capabilities", nlohmann::json::array({"publish"})},
+      {
+        "capabilities",
+        NegotiatedCapabilityNames(impl_->hello->capabilities),
+      },
     },
     {},
     impl_->limits);
@@ -318,8 +383,9 @@ u2r2::ReplayDecision BridgeSessionProtocol::execute_replayable(
     parsed.request_id,
     canonical,
     maximum_response_bytes,
-    impl_->scheduler);
+    impl_->writer.scheduler());
   if (admission.decision() == u2r2::ReplayDecision::replay_cached) {
+    impl_->writer.notify();
     return admission.decision();
   }
 
@@ -334,6 +400,7 @@ u2r2::ReplayDecision BridgeSessionProtocol::execute_replayable(
     } else {
       impl_->replay.complete(admission, result.exact_response);
     }
+    impl_->writer.notify();
   } catch (...) {
     try {
       impl_->replay.cancel_pending(admission);
@@ -347,52 +414,43 @@ u2r2::ReplayDecision BridgeSessionProtocol::execute_replayable(
 std::optional<u2r2::ControlReservation>
 BridgeSessionProtocol::try_reserve_control(uint64_t bytes)
 {
-  return impl_->scheduler.try_reserve_control(bytes);
+  return impl_->writer.try_reserve_control(bytes);
 }
 
 std::optional<u2r2::ByteLease>
 BridgeSessionProtocol::try_reserve_transient(uint64_t bytes)
 {
-  return impl_->scheduler.try_reserve_transient(bytes);
+  return impl_->writer.try_reserve_transient(bytes);
 }
 
 std::optional<u2r2::ByteLease>
 BridgeSessionProtocol::try_begin_read(uint64_t bytes)
 {
-  return impl_->scheduler.try_begin_read(bytes);
+  return impl_->writer.try_begin_read(bytes);
 }
 
 void BridgeSessionProtocol::enqueue_control(
   std::string token,
   std::vector<uint8_t> exact_frame)
 {
-  auto reservation = impl_->scheduler.try_reserve_control(
-    static_cast<uint64_t>(exact_frame.size()));
-  if (!reservation) {
-    throw u2r2::ProtocolError(
-            "capacity_exceeded",
-            "no control capacity remains for the sidecar response",
-            false);
-  }
-  reservation->commit(
-    u2r2::OutboundFrame::control(
-      std::move(token),
-      std::move(exact_frame)));
+  impl_->writer.enqueue_control(
+    std::move(token),
+    std::move(exact_frame));
 }
 
 std::optional<u2r2::WriteLease> BridgeSessionProtocol::try_begin_write()
 {
-  return impl_->scheduler.try_begin_write();
+  return impl_->writer.try_begin_write(impl_->writer_lease);
 }
 
 uint64_t BridgeSessionProtocol::transient_bytes() const
 {
-  return impl_->scheduler.transient_bytes();
+  return impl_->writer.transient_bytes();
 }
 
 uint64_t BridgeSessionProtocol::in_flight_bytes() const
 {
-  return impl_->scheduler.in_flight_bytes();
+  return impl_->writer.in_flight_bytes();
 }
 
 const u2r2::ProtocolLimits & BridgeSessionProtocol::limits() const noexcept

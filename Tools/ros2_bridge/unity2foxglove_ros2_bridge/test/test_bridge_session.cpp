@@ -24,14 +24,16 @@ std::vector<uint8_t> Encode(const nlohmann::json & header)
   return u2r2::encode_frame(header, {});
 }
 
-std::vector<uint8_t> Hello(uint64_t request_id = 1)
+std::vector<uint8_t> Hello(
+  uint64_t request_id = 1,
+  nlohmann::json capabilities = nlohmann::json::array({"publish"}))
 {
   return Encode({
       {"op", "hello"},
       {"protocolVersion", 2},
       {"requestId", request_id},
       {"clientName", "phase186c-test"},
-      {"capabilities", nlohmann::json::array({"publish"})},
+      {"capabilities", std::move(capabilities)},
     });
 }
 
@@ -119,12 +121,34 @@ std::vector<uint8_t> V2Publish(
   return u2r2::encode_frame(header, {0x00, 0x01, 0x00, 0x00, 0x01});
 }
 
+std::vector<uint8_t> V2Register(
+  const runtime::BridgeSessionProtocol & session,
+  uint64_t request_id,
+  uint64_t contract_id = 41)
+{
+  auto header = SessionHeader(session, "register_subscription", request_id);
+  header["contractId"] = contract_id;
+  header["topic"] = "/phase186/v2/input";
+  header["schemaName"] = "std_msgs/msg/String";
+  header["encoding"] = "cdr";
+  header["qos"] = {
+    {"profile", "default"},
+    {"reliability", "reliable"},
+    {"durability", "volatile"},
+    {"history", "keep_last"},
+    {"depth", 10},
+  };
+  return Encode(header);
+}
+
 runtime::BridgeSessionProtocol ActiveV2Session(
   runtime::ProcessConnectionAuthority & process,
-  const u2r2::ProtocolLimits & limits = u2r2::ProtocolLimits::defaults())
+  const u2r2::ProtocolLimits & limits = u2r2::ProtocolLimits::defaults(),
+  nlohmann::json capabilities = nlohmann::json::array({"publish"}))
 {
   runtime::BridgeSessionProtocol session(limits);
-  const auto first = session.accept_first_frame(Hello());
+  const auto first =
+    session.accept_first_frame(Hello(1, std::move(capabilities)));
   EXPECT_EQ(runtime::FirstFrameRole::data_session, first.role);
   session.bind_v2_identity(process.allocate_session_identity());
   auto hello_ack = session.try_begin_write();
@@ -201,6 +225,91 @@ TEST(BridgeV2Session, HelloAckFreezesSidecarIdentityAndPublishCapability)
   ASSERT_EQ(1U, response.capabilities.size());
   EXPECT_EQ(u2r2::Capability::Publish, response.capabilities[0]);
   write->release();
+}
+
+TEST(BridgeV2Session, HelloAckNegotiatesSubscribeOnlyAndDuplexCapabilities)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  const std::vector<nlohmann::json> offers{
+    nlohmann::json::array({"subscribe"}),
+    nlohmann::json::array({"subscribe", "publish"}),
+  };
+  const std::vector<std::vector<u2r2::Capability>> expected{
+    {u2r2::Capability::Subscribe},
+    {u2r2::Capability::Publish, u2r2::Capability::Subscribe},
+  };
+
+  for (size_t index = 0; index < offers.size(); ++index) {
+    runtime::BridgeSessionProtocol session(u2r2::ProtocolLimits::defaults());
+    ASSERT_EQ(
+      runtime::FirstFrameRole::data_session,
+      session.accept_first_frame(Hello(index + 20U, offers[index])).role);
+    session.bind_v2_identity(process.allocate_session_identity());
+
+    auto write = session.try_begin_write();
+    ASSERT_TRUE(write.has_value());
+    const auto response = u2r2::parse_v2(
+      u2r2::decode_frame(write->frame().bytes()));
+    EXPECT_EQ(expected[index], response.capabilities);
+    write->release();
+  }
+}
+
+TEST(BridgeV2Session, SubscribeOnlySessionRejectsPublishOperations)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  auto session = ActiveV2Session(
+    process,
+    u2r2::ProtocolLimits::defaults(),
+    nlohmann::json::array({"subscribe"}));
+
+  EXPECT_EQ(
+    u2r2::Operation::RegisterSubscription,
+    session.parse_v2_request(V2Register(session, 2)).operation);
+  try {
+    (void)session.parse_v2_request(V2Prepare(session, 3));
+    FAIL() << "a subscribe-only session accepted a publish operation";
+  } catch (const u2r2::ProtocolError & error) {
+    EXPECT_EQ("missing_capability", error.code());
+    EXPECT_TRUE(error.terminal());
+  }
+}
+
+TEST(BridgeV2Session, PublishOnlySessionRejectsSubscriptionOperations)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  auto session = ActiveV2Session(process);
+
+  EXPECT_EQ(
+    u2r2::Operation::PreparePublisher,
+    session.parse_v2_request(V2Prepare(session, 2)).operation);
+  try {
+    (void)session.parse_v2_request(V2Register(session, 3));
+    FAIL() << "a publish-only session accepted a subscription operation";
+  } catch (const u2r2::ProtocolError & error) {
+    EXPECT_EQ("missing_capability", error.code());
+    EXPECT_TRUE(error.terminal());
+  }
+}
+
+TEST(BridgeV2Session, DuplexSessionAcceptsBothDirectionalOperations)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  auto session = ActiveV2Session(
+    process,
+    u2r2::ProtocolLimits::defaults(),
+    nlohmann::json::array({"publish", "subscribe"}));
+
+  EXPECT_EQ(
+    u2r2::Operation::PreparePublisher,
+    session.parse_v2_request(V2Prepare(session, 2)).operation);
+  EXPECT_EQ(
+    u2r2::Operation::RegisterSubscription,
+    session.parse_v2_request(V2Register(session, 3)).operation);
 }
 
 TEST(BridgeV2Session, HelloRequestIdIsTheInitialSessionHighWaterMark)

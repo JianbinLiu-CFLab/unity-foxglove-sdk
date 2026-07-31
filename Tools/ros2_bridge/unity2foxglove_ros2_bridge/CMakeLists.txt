@@ -23,6 +23,7 @@ add_library(bridge_runtime STATIC
   src/bridge_lifecycle.cpp
   src/bridge_process.cpp
   src/bridge_session.cpp
+  src/bridge_writer.cpp
 )
 target_compile_features(bridge_runtime PUBLIC cxx_std_20)
 target_include_directories(bridge_runtime PUBLIC include)
@@ -120,6 +121,14 @@ if(BUILD_TESTING)
   )
   target_compile_definitions(test_u2r2_protocol_authority PRIVATE
     U2R2_PROTOCOL_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/u2r2_protocol_vectors.json"
+  )
+
+  ament_add_gtest(test_bridge_writer
+    test/test_bridge_writer.cpp
+  )
+  target_compile_features(test_bridge_writer PUBLIC cxx_std_20)
+  target_link_libraries(test_bridge_writer
+    bridge_runtime
   )
 
   add_executable(phase186_origin_suppression_probe
