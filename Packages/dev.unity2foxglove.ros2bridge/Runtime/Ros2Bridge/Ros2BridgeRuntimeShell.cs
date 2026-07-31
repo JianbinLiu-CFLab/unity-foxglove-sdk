@@ -43,6 +43,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly FoxRunTransportId _providerId;
         private readonly FoxRunTransportDirection _direction;
         private readonly ulong _generation;
+        private readonly bool _enableDuplexSession;
         private readonly object _lifecycleGate = new object();
 
         private Func<IRos2BridgeSink> _sinkFactory;
@@ -88,7 +89,8 @@ namespace Unity2Foxglove.Ros2Bridge
             FoxRunTransportId providerId,
             FoxRunTransportDirection direction,
             ulong generation,
-            int joinTimeoutMs)
+            int joinTimeoutMs,
+            bool enableDuplexSession = false)
         {
             Ros2BridgeTcpClient.ValidateLoopbackHost(host);
             if (port <= 0 || port > 65535)
@@ -111,6 +113,9 @@ namespace Unity2Foxglove.Ros2Bridge
             _reconnectIntervalMs = reconnectIntervalMs;
             _sendTimeoutMs = sendTimeoutMs;
             _joinTimeoutMs = joinTimeoutMs;
+            _enableDuplexSession =
+                sinkFactory == null
+                || enableDuplexSession;
             _sinkFactory = sinkFactory ?? CreateTcpSink;
             _retirementOwner = retirementOwner
                                ?? throw new ArgumentNullException(nameof(retirementOwner));
@@ -128,6 +133,15 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 lock (_lifecycleGate)
                     return _run?.IsConnected ?? false;
+            }
+        }
+
+        internal bool HasInboundPipeline
+        {
+            get
+            {
+                lock (_lifecycleGate)
+                    return _run?.HasInboundPipeline ?? false;
             }
         }
 
@@ -168,10 +182,14 @@ namespace Unity2Foxglove.Ros2Bridge
                         _providerId,
                         _direction,
                         _generation,
-                        workerCount: 1,
+                        workerCount:
+                            _enableDuplexSession
+                                ? 3
+                                : 1,
                         out var reservation))
                 {
-                    _lifecycleState = Ros2BridgeRuntimeLifecycleState.Stopped;
+                    _lifecycleState =
+                        Ros2BridgeRuntimeLifecycleState.Stopped;
                     reason = RetirementUnavailableReason;
                     return false;
                 }
@@ -202,6 +220,8 @@ namespace Unity2Foxglove.Ros2Bridge
                         requiresSubscription:
                             _direction
                             == FoxRunTransportDirection.Subscribe,
+                        enableDuplexSession:
+                            _enableDuplexSession,
                         _generation,
                         _lastSnapshot);
                     sink = null;

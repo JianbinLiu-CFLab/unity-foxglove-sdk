@@ -56,6 +56,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private bool _stopRequested;
         private bool _disposeRequested;
         private int _workersRemaining;
+        private int _disposeTeardownReady;
         private int _resourcesDisposed;
         private int _readerManagedThreadId;
         private int _writerManagedThreadId;
@@ -174,6 +175,10 @@ namespace Unity2Foxglove.Ros2Bridge
         internal int WriterManagedThreadId
             => Volatile.Read(ref _writerManagedThreadId);
 
+        internal bool HasInboundPipeline
+            => _inboundResolver != null
+               && _inboundReceiver != null;
+
         internal Ros2BridgeV2SessionSnapshot Start()
         {
             Ros2BridgeV2Request hello;
@@ -191,13 +196,27 @@ namespace Unity2Foxglove.Ros2Bridge
                     throw new InvalidOperationException(
                         "The Bridge session transport is not connected.");
                 }
-
+                lock (_retirementGate)
+                {
+                    for (var i = 0; i < _workerExited.Length; i++)
+                    {
+                        if (_workerRetired[i]
+                            || _workerSlotReturned[i])
+                        {
+                            throw new InvalidOperationException(
+                                "A returned Bridge worker slot cannot be reused.");
+                        }
+                        _workerExited[i] = false;
+                    }
+                }
                 _transport.BeginV2(_limits, _timeoutMs);
                 _stopRequested = false;
                 _lastFault = null;
                 _lifecycleState =
                     Ros2BridgeSessionLifecycleState.AwaitingHandshake;
                 _workersRemaining = 2;
+                Volatile.Write(ref _readerManagedThreadId, 0);
+                Volatile.Write(ref _writerManagedThreadId, 0);
                 _reader = new Thread(ReaderEntry)
                 {
                     IsBackground = true,
@@ -256,6 +275,65 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 Fault(exception);
                 throw;
+            }
+        }
+
+        internal void Abort(Exception reason)
+            => Fault(
+                reason
+                ?? new IOException(
+                    "The Bridge connection was aborted for reconnect."));
+
+        internal void ResetAfterFault()
+        {
+            Thread reader;
+            Thread writer;
+            lock (_gate)
+            {
+                ThrowIfDisposedLocked();
+                if (_lifecycleState
+                    != Ros2BridgeSessionLifecycleState.Faulted
+                    && _lifecycleState
+                    != Ros2BridgeSessionLifecycleState.Stopped)
+                {
+                    throw new InvalidOperationException(
+                        "Only a stopped or faulted Bridge connection can reconnect.");
+                }
+                reader = _reader;
+                writer = _writer;
+            }
+
+            var joinTimeout = EffectiveTimeout(
+                _timeoutMs,
+                _limits.JoinTimeoutMs);
+            if (!JoinUnlessCurrent(reader, joinTimeout)
+                || !JoinUnlessCurrent(writer, joinTimeout)
+                || Volatile.Read(ref _workersRemaining) != 0)
+            {
+                throw new U2R2ProtocolException(
+                    "timeout",
+                    "The previous Bridge connection workers did not exit before reconnect.",
+                    terminal: true);
+            }
+
+            lock (_gate)
+            {
+                ThrowIfDisposedLocked();
+                if (_pending.Count != 0
+                    || _writerQueue.Count != 0)
+                {
+                    throw new U2R2ProtocolException(
+                        "invalid_configuration",
+                        "The faulted Bridge connection retained pending work.",
+                        terminal: true);
+                }
+                _reader = null;
+                _writer = null;
+                _snapshot = null;
+                _stopRequested = false;
+                _lastFault = null;
+                _lifecycleState =
+                    Ros2BridgeSessionLifecycleState.Stopped;
             }
         }
 
@@ -801,6 +879,12 @@ namespace Unity2Foxglove.Ros2Bridge
                 lock (_gate)
                     _lastFault ??= exception;
             }
+            finally
+            {
+                Volatile.Write(
+                    ref _disposeTeardownReady,
+                    1);
+            }
 
             var joinTimeout = EffectiveTimeout(
                 _timeoutMs,
@@ -941,6 +1025,8 @@ namespace Unity2Foxglove.Ros2Bridge
         private void TryDisposeResources()
         {
             if (!_disposeRequested
+                || Volatile.Read(
+                    ref _disposeTeardownReady) == 0
                 || Volatile.Read(ref _workersRemaining) != 0
                 || Interlocked.Exchange(
                     ref _resourcesDisposed,

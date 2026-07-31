@@ -485,6 +485,13 @@ namespace Unity2Foxglove.Ros2Bridge
             return response;
         }
 
+        internal static U2R2Message ValidateAcceptedResponse(
+            U2R2Message response)
+        {
+            ThrowIfError(response);
+            return response;
+        }
+
         private static Ros2BridgeV2Request CreateRequest(
             JObject header,
             byte[] payload,
