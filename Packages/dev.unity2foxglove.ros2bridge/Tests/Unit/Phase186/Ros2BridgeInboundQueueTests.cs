@@ -219,6 +219,50 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.Equal(0, stats.InFlightBytes);
         }
 
+        [Fact]
+        public void RevokingOneContractDropsOnlyItsQueuedAndInFlightOwnership()
+        {
+            var first = Contract(11, "binding-a", "/phase186/a");
+            var second = Contract(12, "binding-b", "/phase186/b");
+            var released = new List<ulong>();
+            using var queue = Queue(
+                new[] { first, second },
+                maxPayloadBytes: 8,
+                maxTotalBytes: 32,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: 16);
+            Assert.True(queue.TryAccept(
+                Frame(first, sequence: 1, released)).IsAccepted);
+            Assert.True(queue.TryBeginApply(out var firstApply));
+            Assert.True(queue.TryAccept(
+                Frame(first, sequence: 2, released)).IsAccepted);
+            Assert.True(queue.TryAccept(
+                Frame(second, sequence: 10, released)).IsAccepted);
+
+            Assert.True(queue.TryRevokeContract(first, out var reason));
+            Assert.Empty(reason);
+            Assert.False(firstApply.CanApply);
+            Assert.Equal(new[] { 2UL }, released);
+            firstApply.MarkDecodeFailure("contract revoked");
+            firstApply.Dispose();
+            Assert.Equal(new[] { 2UL, 1UL }, released);
+
+            Assert.Equal(
+                Ros2BridgeSessionResultState.Faulted,
+                queue.TryAccept(
+                    Frame(first, sequence: 3, released)).State);
+            Assert.True(queue.TryBeginApply(out var secondApply));
+            using (secondApply)
+            {
+                Assert.True(secondApply.CanApply);
+                Assert.Equal(12UL, secondApply.Frame.Contract.ContractId);
+                Assert.Equal(10UL, secondApply.Frame.Sequence);
+                secondApply.MarkApplied();
+            }
+            Assert.False(queue.TryBeginApply(out _));
+            Assert.Equal(new[] { 2UL, 1UL, 3UL, 10UL }, released);
+        }
+
         private static Ros2BridgeInboundQueue Queue(
             Ros2BridgeSessionContract[] contracts,
             int maxPayloadBytes,

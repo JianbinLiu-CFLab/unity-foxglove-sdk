@@ -214,8 +214,15 @@ namespace Unity.FoxgloveSDK.Components
             int topicIndex,
             string topic,
             IReadOnlyList<string> explicitTransportIds,
-            ulong logTimeNs)
+            ulong logTimeNs,
+            string suppressedTransportId = "",
+            ulong suppressedGeneration = 0)
             => default;
+
+        internal bool IsActiveFoxRunPublishTransport(
+            string transportId,
+            ulong generation)
+            => false;
 
         public void RaiseFoxRunPublishSessionChanged()
             => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);

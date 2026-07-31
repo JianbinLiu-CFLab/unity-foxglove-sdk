@@ -9,5 +9,6 @@ namespace Unity2Foxglove.Ros2Bridge
     public static class FoxRunBridgeCustomDtoBudgetPolicy
     {
         public const long MaximumBytes = 4L * 1024L * 1024L;
+        public const int MaximumSequenceItems = 16_384;
     }
 }

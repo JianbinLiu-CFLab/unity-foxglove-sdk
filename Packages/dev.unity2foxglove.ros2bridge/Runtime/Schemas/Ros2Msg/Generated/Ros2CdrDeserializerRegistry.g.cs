@@ -299,6 +299,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         };
 
         private static readonly Dictionary<string, Ros2CdrDeserializerEntry> BySchemaName = BuildSchemaNameMap();
+        private static readonly Dictionary<Type, Ros2CdrDeserializerEntry> ByClrType = BuildClrTypeMap();
 
         public static IReadOnlyList<Ros2CdrDeserializerEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
@@ -310,6 +311,16 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                 return false;
             }
             return BySchemaName.TryGetValue(schemaName, out entry);
+        }
+
+        public static bool TryGetByClrType(Type clrType, out Ros2CdrDeserializerEntry entry)
+        {
+            if (clrType == null)
+            {
+                entry = null;
+                return false;
+            }
+            return ByClrType.TryGetValue(clrType, out entry);
         }
 
         /// <summary>
@@ -347,6 +358,14 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
             var map = new Dictionary<string, Ros2CdrDeserializerEntry>(StringComparer.Ordinal);
             foreach (var entry in EntriesArray)
                 map.Add(entry.SchemaName, entry);
+            return map;
+        }
+
+        private static Dictionary<Type, Ros2CdrDeserializerEntry> BuildClrTypeMap()
+        {
+            var map = new Dictionary<Type, Ros2CdrDeserializerEntry>();
+            foreach (var entry in EntriesArray)
+                map.Add(entry.ClrType, entry);
             return map;
         }
     }

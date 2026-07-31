@@ -49,9 +49,26 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             var topics = topicMap.Keys
                 .OrderBy(topic => topic, StringComparer.Ordinal)
                 .ToList();
-            if (!topics.Any(topic =>
+            var subscribeTopicMap = type.Members
+                .Where(member => member.Mode != 1)
+                .GroupBy(member => member.Topic, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToList(),
+                    StringComparer.Ordinal);
+            var subscribeTopics = subscribeTopicMap.Keys
+                .OrderBy(topic => topic, StringComparer.Ordinal)
+                .ToList();
+            var hasPublish = topics.Any(topic =>
                     topicMap[topic].Count == 1
-                    && IsSupportedCustom(topicMap[topic][0])))
+                    && IsSupportedCustomPublish(topicMap[topic][0]));
+            var subscribeBindings = BuildSubscribeBindings(
+                type,
+                topics,
+                subscribeTopics,
+                subscribeTopicMap);
+            var hasSubscribe = subscribeBindings.Count != 0;
+            if (!hasPublish && !hasSubscribe)
             {
                 return string.Empty;
             }
@@ -70,15 +87,45 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             body.Append(pad)
                 .Append("public partial class ")
                 .Append(EscapeIdentifier(type.ClassName))
-                .AppendLine(" : global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedPublishSource");
+                .Append(" : ");
+            var interfaces = new List<string>();
+            if (hasPublish)
+            {
+                interfaces.Add(
+                    "global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedPublishSource");
+            }
+            if (hasSubscribe)
+            {
+                interfaces.Add(
+                    "global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource");
+            }
+            body.AppendLine(string.Join(", ", interfaces));
             body.Append(pad).AppendLine("{");
-            EmitPublishDispatch(
-                body,
-                type,
-                topics,
-                topicMap,
-                pad);
-            EmitBuilders(body, topics, topicMap, pad);
+            if (hasPublish)
+            {
+                EmitPublishDispatch(
+                    body,
+                    type,
+                    topics,
+                    topicMap,
+                    pad);
+            }
+            if (hasSubscribe)
+            {
+                EmitSubscribeDispatch(
+                    body,
+                    subscribeBindings,
+                    pad);
+            }
+            if (hasPublish)
+                EmitBuilders(body, topics, topicMap, pad);
+            if (hasSubscribe)
+            {
+                EmitReaders(
+                    body,
+                    subscribeBindings,
+                    pad);
+            }
             body.Append(pad).AppendLine("}");
 
             if (!string.IsNullOrEmpty(type.Namespace))
@@ -107,7 +154,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                  topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
-                if (fields.Count != 1 || !IsSupportedCustom(fields[0]))
+                if (fields.Count != 1 || !IsSupportedCustomPublish(fields[0]))
                     continue;
 
                 var member = fields[0];
@@ -124,6 +171,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                                  + shape.PayloadIdentity
                                  + "Envelope";
                 sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine($"{pad}            {{");
                 sb.AppendLine(
                     $"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var payload, out reason))");
                 sb.AppendLine($"{pad}                    return false;");
@@ -152,6 +200,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 sb.AppendLine($"{pad}                    \"cdr\",");
                 sb.AppendLine($"{pad}                    \"ros2msg\");");
                 sb.AppendLine($"{pad}                return true;");
+                sb.AppendLine($"{pad}            }}");
             }
             sb.AppendLine($"{pad}            default:");
             sb.AppendLine(
@@ -159,6 +208,485 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
+        }
+
+        private static IReadOnlyList<SubscribeBindingShape>
+            BuildSubscribeBindings(
+                FoxRunGenerationType type,
+                IReadOnlyList<string> publishTopics,
+                IReadOnlyList<string> subscribeTopics,
+                IReadOnlyDictionary<string, List<FoxRunGenerationMember>>
+                    subscribeTopicMap)
+        {
+            var bindings = new List<SubscribeBindingShape>();
+            for (var topicIndex = 0;
+                 topicIndex < subscribeTopics.Count;
+                 topicIndex++)
+            {
+                var topic = subscribeTopics[topicIndex];
+                var members = subscribeTopicMap[topic];
+                if (members.Count != 1)
+                {
+                    continue;
+                }
+
+                var member = members[0];
+                var isStandard = IsSupportedStandardSubscribe(member);
+                if (!isStandard
+                    && !IsSupportedCustomSubscribe(member))
+                {
+                    continue;
+                }
+
+                var shape = isStandard
+                    ? null
+                    : ProjectShape(member.TypeShape);
+                var schemaContent = isStandard
+                    ? string.Empty
+                    : BuildSchemaContent(
+                        shape,
+                        RosPackageName);
+                var publishTopicIndex = -1;
+                if (member.Mode == 3)
+                {
+                    for (var candidate = 0;
+                         candidate < publishTopics.Count;
+                         candidate++)
+                    {
+                        if (!string.Equals(
+                                publishTopics[candidate],
+                                member.Topic,
+                                StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        publishTopicIndex = candidate;
+                        break;
+                    }
+                }
+
+                bindings.Add(
+                    new SubscribeBindingShape(
+                        bindings.Count,
+                        topicIndex,
+                        publishTopicIndex,
+                        member,
+                        shape,
+                        isStandard
+                            ? string.Empty
+                            : RosPackageName
+                              + "/msg/"
+                              + shape.PayloadIdentity
+                              + "Envelope",
+                        isStandard
+                            ? string.Empty
+                            : Sha256Hex(schemaContent),
+                        isStandard));
+            }
+
+            return bindings;
+        }
+
+        private static void EmitSubscribeDispatch(
+            StringBuilder sb,
+            IReadOnlyList<SubscribeBindingShape> bindings,
+            string pad)
+        {
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    int global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource.FoxRunBridge_SubscribeBindingCount => {bindings.Count};");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    bool global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource.FoxRunBridge_TryGetSubscribeBinding(int bindingIndex, out global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeGeneratedSubscribeBinding binding, out string reason)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        binding = default;");
+            sb.AppendLine($"{pad}        reason = string.Empty;");
+            sb.AppendLine($"{pad}        switch (bindingIndex)");
+            sb.AppendLine($"{pad}        {{");
+            foreach (var binding in bindings)
+            {
+                var member = binding.Member;
+                var decoderEntry = "__foxRunCdrDecoder_" + binding.BindingIndex;
+                var schemaEntry = "__foxRunCdrSchema_" + binding.BindingIndex;
+                var stableId = BuildStableMemberId(
+                    member.DeclaringType,
+                    member.MemberKind,
+                    member.MemberName,
+                    member.Topic,
+                    member.Mode,
+                    member.JsonFieldName);
+                sb.AppendLine($"{pad}            case {binding.BindingIndex}:");
+                if (binding.IsStandard)
+                {
+                    sb.AppendLine(
+                        $"{pad}                if (!global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrDeserializerRegistry.TryGetByClrType(typeof({GlobalTypeName(member.TypeShape.TypeName)}), out var {decoderEntry}))");
+                    sb.AppendLine($"{pad}                {{");
+                    sb.AppendLine(
+                        $"{pad}                    reason = \"The generated Bridge CDR decoder registry has no entry for the declared Foxglove type.\";");
+                    sb.AppendLine($"{pad}                    return false;");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine(
+                        $"{pad}                if (!global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.FoxgloveRos2MsgSchemaCatalog.TryGet({decoderEntry}.SchemaName, out var {schemaEntry}))");
+                    sb.AppendLine($"{pad}                {{");
+                    sb.AppendLine(
+                        $"{pad}                    reason = \"The generated Bridge schema catalog has no entry for the declared Foxglove type.\";");
+                    sb.AppendLine($"{pad}                    return false;");
+                    sb.AppendLine($"{pad}                }}");
+                }
+                sb.AppendLine(
+                    $"{pad}                binding = new global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeGeneratedSubscribeBinding(");
+                sb.AppendLine(
+                    $"{pad}                    {binding.BindingIndex},");
+                sb.AppendLine(
+                    $"{pad}                    {binding.TopicIndex},");
+                sb.AppendLine(
+                    $"{pad}                    {binding.PublishTopicIndex},");
+                sb.AppendLine(
+                    $"{pad}                    \"{CSharpStringLiteral(stableId)}\",");
+                sb.AppendLine(
+                    $"{pad}                    \"{CSharpStringLiteral(member.Topic)}\",");
+                sb.AppendLine(binding.IsStandard
+                    ? $"{pad}                    {decoderEntry}.SchemaName,"
+                    : $"{pad}                    \"{CSharpStringLiteral(binding.CanonicalRosType)}\",");
+                sb.AppendLine(binding.IsStandard
+                    ? $"{pad}                    {schemaEntry}.SourceSha256,"
+                    : $"{pad}                    \"{binding.SchemaSha256}\",");
+                sb.AppendLine(
+                    $"{pad}                    new global::Unity.FoxgloveSDK.Components.FoxRunDeliveryPolicy(");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{ReliabilityLiteral(member.Reliability)},");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{DurabilityLiteral(member.Durability)},");
+                sb.AppendLine(
+                    $"{pad}                        global::Unity.FoxgloveSDK.Components.{HistoryLiteral(member.History)},");
+                sb.AppendLine(
+                    $"{pad}                        {member.Depth}),");
+                sb.AppendLine(binding.IsStandard
+                    ? $"{pad}                    global::Unity2Foxglove.Ros2Bridge.Ros2BridgeFrameWriter.MaxPayloadBytes);"
+                    : $"{pad}                    checked((int)global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeCustomDtoBudgetPolicy.MaximumBytes));");
+                sb.AppendLine($"{pad}                return true;");
+            }
+            sb.AppendLine($"{pad}            default:");
+            sb.AppendLine(
+                $"{pad}                reason = \"The Bridge physical emitter has no subscribe binding for this binding index.\";");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    bool global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource.FoxRunBridge_TryDecodeAndApply(int bindingIndex, global::System.ReadOnlyMemory<byte> payload, string ownershipTransportId, ulong ownershipGeneration, bool markRemoteOwned, out string reason)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        reason = string.Empty;");
+            sb.AppendLine($"{pad}        switch (bindingIndex)");
+            sb.AppendLine($"{pad}        {{");
+            foreach (var binding in bindings)
+            {
+                var root = binding.IsStandard
+                    ? null
+                    : new ShapeRegistry(binding.BindingIndex)
+                        .Get(binding.Shape);
+                var access = "this."
+                             + EscapeIdentifier(
+                                 binding.Member.MemberName);
+                sb.AppendLine($"{pad}            case {binding.BindingIndex}:");
+                sb.AppendLine($"{pad}                try");
+                sb.AppendLine($"{pad}                {{");
+                if (binding.IsStandard)
+                {
+                    var decodedType = GlobalTypeName(
+                        binding.Member.TypeShape.TypeName);
+                    sb.AppendLine(
+                        $"{pad}                    if (payload.Length > global::Unity2Foxglove.Ros2Bridge.Ros2BridgeFrameWriter.MaxPayloadBytes)");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.IO.InvalidDataException(\"Bridge CDR payload exceeds the standard ROS message byte budget.\");");
+                    sb.AppendLine(
+                        $"{pad}                    if (!global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrDeserializerRegistry.TryGetByClrType(typeof({decodedType}), out var __decoder))");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.IO.InvalidDataException(\"The generated Bridge CDR decoder registry has no entry for the declared Foxglove type.\");");
+                    sb.AppendLine(
+                        $"{pad}                    var __decoded = ({decodedType})__decoder.Deserialize(payload.ToArray());");
+                }
+                else
+                {
+                    sb.AppendLine(
+                        $"{pad}                    if (payload.Length > global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeCustomDtoBudgetPolicy.MaximumBytes)");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.IO.InvalidDataException(\"Bridge CDR payload exceeds the custom DTO byte budget.\");");
+                    sb.AppendLine(
+                        $"{pad}                    var __reader = new global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrReader(payload.ToArray());");
+                    sb.AppendLine(
+                        $"{pad}                    var __wireOrigin = __reader.ReadString();");
+                    sb.AppendLine(
+                        $"{pad}                    var __wireSequence = __reader.ReadUInt64();");
+                    sb.AppendLine(
+                        $"{pad}                    var __wireSeconds = __reader.ReadInt32();");
+                    sb.AppendLine(
+                        $"{pad}                    var __wireNanoseconds = __reader.ReadUInt32();");
+                    sb.AppendLine(
+                        $"{pad}                    if (__wireSequence == 0)");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.IO.InvalidDataException(\"Bridge CDR envelope sequence must be non-zero.\");");
+                    sb.AppendLine(
+                        $"{pad}                    if (__wireNanoseconds >= 1000000000U)");
+                    sb.AppendLine(
+                        $"{pad}                        throw new global::System.IO.InvalidDataException(\"Bridge CDR envelope nanoseconds must be below one second.\");");
+                    sb.AppendLine(
+                        $"{pad}                    var __decoded = {root.ReadMethod}(__reader);");
+                    sb.AppendLine(
+                        $"{pad}                    __reader.EnsureFullyConsumed();");
+                }
+                sb.AppendLine(
+                    $"{pad}                    {access} = __decoded;");
+                if (binding.PublishTopicIndex >= 0)
+                {
+                    sb.AppendLine(
+                        $"{pad}                    if (markRemoteOwned)");
+                    sb.AppendLine(
+                        $"{pad}                        ((global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource)this).FoxRunOrigin_MarkRemoteApplied({binding.PublishTopicIndex}, ownershipTransportId, ownershipGeneration);");
+                }
+                sb.AppendLine($"{pad}                    return true;");
+                sb.AppendLine($"{pad}                }}");
+                sb.AppendLine(
+                    $"{pad}                catch (global::System.Exception exception)");
+                sb.AppendLine($"{pad}                {{");
+                sb.AppendLine(
+                    $"{pad}                    reason = exception.Message ?? \"Bridge CDR input failed.\";");
+                sb.AppendLine(
+                    $"{pad}                    if (reason.Length > 512) reason = reason.Substring(0, 512);");
+                sb.AppendLine($"{pad}                    return false;");
+                sb.AppendLine($"{pad}                }}");
+            }
+            sb.AppendLine($"{pad}            default:");
+            sb.AppendLine(
+                $"{pad}                reason = \"The Bridge physical emitter has no subscribe binding for this binding index.\";");
+            sb.AppendLine($"{pad}                return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    void global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource.FoxRunBridge_ReleaseRemoteOwnership(int topicIndex, string ownershipTransportId, ulong ownershipGeneration)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine(
+                $"{pad}        var ownershipSource = this as global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource;");
+            sb.AppendLine(
+                $"{pad}        if (ownershipSource != null)");
+            sb.AppendLine(
+                $"{pad}            ownershipSource.FoxRunOrigin_ClearRemoteApplied(topicIndex, ownershipTransportId, ownershipGeneration);");
+            sb.AppendLine($"{pad}    }}");
+        }
+
+        private static void EmitReaders(
+            StringBuilder sb,
+            IReadOnlyList<SubscribeBindingShape> bindings,
+            string pad)
+        {
+            foreach (var binding in bindings)
+            {
+                if (binding.IsStandard)
+                    continue;
+
+                var registry = new ShapeRegistry(binding.BindingIndex);
+                registry.Get(binding.Shape);
+                for (var shapeIndex = 0;
+                     shapeIndex < registry.Count;
+                     shapeIndex++)
+                {
+                    EmitShapeReader(
+                        sb,
+                        pad,
+                        registry[shapeIndex],
+                        registry);
+                }
+            }
+        }
+
+        private static void EmitShapeReader(
+            StringBuilder sb,
+            string pad,
+            ShapeEntry entry,
+            ShapeRegistry registry)
+        {
+            sb.AppendLine();
+            sb.AppendLine(
+                $"{pad}    private static {GlobalTypeName(entry.Shape.FullyQualifiedTypeName)} {entry.ReadMethod}(");
+            sb.AppendLine(
+                $"{pad}        global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrReader reader)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine(
+                $"{pad}        var source = new {GlobalTypeName(entry.Shape.FullyQualifiedTypeName)}();");
+            var ordinal = 0;
+            foreach (var member in entry.Shape.Members
+                         .OrderBy(
+                             value => value.RosFieldName,
+                             StringComparer.Ordinal)
+                         .ThenBy(value => value.Name, StringComparer.Ordinal))
+            {
+                EmitMemberReader(
+                    sb,
+                    pad + "        ",
+                    member,
+                    registry,
+                    ordinal++);
+            }
+            sb.AppendLine($"{pad}        return source;");
+            sb.AppendLine($"{pad}    }}");
+        }
+
+        private static void EmitMemberReader(
+            StringBuilder sb,
+            string pad,
+            BridgeDtoMemberShape member,
+            ShapeRegistry registry,
+            int ordinal)
+        {
+            var value = "__value_" + ordinal;
+            var access = "source." + EscapeIdentifier(member.Name);
+            switch (member.Kind)
+            {
+                case BridgeDtoMemberKind.NestedDto:
+                    sb.AppendLine(
+                        $"{pad}var {value} = {registry.Get(member.NestedShape).ReadMethod}(reader);");
+                    break;
+                case BridgeDtoMemberKind.Sequence:
+                    EmitSequenceReader(
+                        sb,
+                        pad,
+                        member,
+                        registry,
+                        ordinal,
+                        value);
+                    break;
+                case BridgeDtoMemberKind.String:
+                    sb.AppendLine(
+                        $"{pad}var {value} = reader.ReadString();");
+                    break;
+                case BridgeDtoMemberKind.Enum:
+                    var enumType = member.FullyQualifiedTypeName;
+                    if (TryUnwrapNullable(enumType, out var unwrappedEnum))
+                        enumType = unwrappedEnum;
+                    sb.AppendLine(
+                        $"{pad}var {value} = ({GlobalTypeName(enumType)})reader.ReadInt32();");
+                    break;
+                case BridgeDtoMemberKind.Scalar:
+                    sb.AppendLine(
+                        $"{pad}var {value} = {PrimitiveReadExpression(member.RosType)};");
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        "Unsupported custom ROS 2 DTO member kind: "
+                        + member.Kind
+                        + ".");
+            }
+
+            if (!member.HasPresence)
+            {
+                sb.AppendLine($"{pad}{access} = {value};");
+                return;
+            }
+
+            var hasValue = "__hasValue_" + ordinal;
+            sb.AppendLine($"{pad}var {hasValue} = reader.ReadBool();");
+            if (IsNullable(member.FullyQualifiedTypeName))
+            {
+                sb.AppendLine(
+                    $"{pad}{access} = {hasValue} ? ({GlobalTypeName(member.FullyQualifiedTypeName)}){value} : default({GlobalTypeName(member.FullyQualifiedTypeName)});");
+            }
+            else
+            {
+                sb.AppendLine(
+                    $"{pad}{access} = {hasValue} ? {value} : null;");
+            }
+        }
+
+        private static void EmitSequenceReader(
+            StringBuilder sb,
+            string pad,
+            BridgeDtoMemberShape member,
+            ShapeRegistry registry,
+            int ordinal,
+            string value)
+        {
+            var count = "__count_" + ordinal;
+            sb.AppendLine($"{pad}var {count} = reader.ReadSequenceLength();");
+            sb.AppendLine(
+                $"{pad}if ({count} > global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeCustomDtoBudgetPolicy.MaximumSequenceItems)");
+            sb.AppendLine(
+                $"{pad}    throw new global::System.IO.InvalidDataException(\"Bridge CDR sequence exceeds the custom DTO item budget.\");");
+            var elementType = GlobalTypeName(
+                member.SequenceElementTypeName);
+            if (member.SequenceRepresentation
+                == BridgeSequenceRepresentation.List)
+            {
+                sb.AppendLine(
+                    $"{pad}var {value} = new global::System.Collections.Generic.List<{elementType}>({count});");
+            }
+            else
+            {
+                sb.AppendLine(
+                    $"{pad}var {value} = new {elementType}[{count}];");
+            }
+            sb.AppendLine(
+                $"{pad}for (var __index_{ordinal} = 0; __index_{ordinal} < {count}; __index_{ordinal}++)");
+            sb.AppendLine($"{pad}{{");
+            string item;
+            if (member.NestedShape != null)
+            {
+                item = registry.Get(member.NestedShape).ReadMethod
+                       + "(reader)";
+            }
+            else if (member.SequenceElementIsEnum)
+            {
+                item = "(" + elementType + ")reader.ReadInt32()";
+            }
+            else if (string.Equals(
+                         StripArray(member.RosType),
+                         "string",
+                         StringComparison.Ordinal))
+            {
+                item = "reader.ReadString()";
+            }
+            else
+            {
+                item = PrimitiveReadExpression(
+                    StripArray(member.RosType));
+            }
+            if (member.SequenceRepresentation
+                == BridgeSequenceRepresentation.List)
+            {
+                sb.AppendLine($"{pad}    {value}.Add({item});");
+            }
+            else
+            {
+                sb.AppendLine(
+                    $"{pad}    {value}[__index_{ordinal}] = {item};");
+            }
+            sb.AppendLine($"{pad}}}");
+        }
+
+        private static string PrimitiveReadExpression(string rosType)
+        {
+            switch (StripArray(rosType))
+            {
+                case "bool": return "reader.ReadBool()";
+                case "int8": return "unchecked((global::System.SByte)reader.ReadUInt8())";
+                case "uint8": return "reader.ReadUInt8()";
+                case "int16": return "reader.ReadInt16()";
+                case "uint16": return "reader.ReadUInt16()";
+                case "int32": return "reader.ReadInt32()";
+                case "uint32": return "reader.ReadUInt32()";
+                case "int64": return "reader.ReadInt64()";
+                case "uint64": return "reader.ReadUInt64()";
+                case "float32": return "reader.ReadFloat32()";
+                case "float64": return "reader.ReadFloat64()";
+                default:
+                    throw new InvalidOperationException(
+                        "Unsupported custom ROS 2 CDR primitive: "
+                        + rosType
+                        + ".");
+            }
         }
 
         private static string BuildStableMemberId(
@@ -242,7 +770,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
-                if (fields.Count != 1 || !IsSupportedCustom(fields[0]))
+                if (fields.Count != 1 || !IsSupportedCustomPublish(fields[0]))
                     continue;
 
                 var member = fields[0];
@@ -433,14 +961,73 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             }
         }
 
-        private static bool IsSupportedCustom(FoxRunGenerationMember member)
+        private static bool IsSupportedCustomPublish(
+            FoxRunGenerationMember member)
             => member != null
                && member.Mode != 2
+               && !IsOfficialFoxgloveMessage(member)
                && (member.PublishTransportIds == null
                    || member.PublishTransportIds.Contains(
-                       BridgeProviderId,
-                       StringComparer.Ordinal))
+                        BridgeProviderId,
+                        StringComparer.Ordinal))
                && ProjectShape(member.TypeShape) != null;
+
+        private static bool IsSupportedCustomSubscribe(
+            FoxRunGenerationMember member)
+            => member != null
+               && member.Mode != 1
+               && !IsOfficialFoxgloveMessage(member)
+               && (string.IsNullOrEmpty(member.SubscribeTransportId)
+                   || string.Equals(
+                       member.SubscribeTransportId,
+                       BridgeProviderId,
+                       StringComparison.Ordinal))
+               && ProjectShape(member.TypeShape) != null;
+
+        private static bool IsSupportedStandardSubscribe(
+            FoxRunGenerationMember member)
+            => member != null
+               && member.Mode != 1
+               && (string.IsNullOrEmpty(member.SubscribeTransportId)
+                   || string.Equals(
+                       member.SubscribeTransportId,
+                       BridgeProviderId,
+                       StringComparison.Ordinal))
+               && IsOfficialFoxgloveMessage(member);
+
+        private static bool IsOfficialFoxgloveMessage(
+            FoxRunGenerationMember member)
+        {
+            var shape = member?.TypeShape;
+            if (shape == null || shape.Kind != FoxRunTypeShapeKind.Object)
+                return false;
+
+            var typeName = (shape.TypeName ?? string.Empty).Trim();
+            if (typeName.StartsWith("global::", StringComparison.Ordinal))
+                typeName = typeName.Substring("global::".Length);
+            return typeName.StartsWith("Foxglove.", StringComparison.Ordinal);
+        }
+
+        private static string Sha256Hex(string value)
+        {
+            byte[] digest;
+            using (var sha =
+                   global::System.Security.Cryptography.SHA256.Create())
+            {
+                digest = sha.ComputeHash(
+                    Encoding.UTF8.GetBytes(value ?? string.Empty));
+            }
+
+            var builder = new StringBuilder(digest.Length * 2);
+            foreach (var octet in digest)
+            {
+                builder.Append(
+                    octet.ToString(
+                        "x2",
+                        CultureInfo.InvariantCulture));
+            }
+            return builder.ToString();
+        }
 
         private static string BuildSchemaContent(
             BridgeDtoShape root,
@@ -578,6 +1165,8 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     elementTypeName,
                     nested,
                     hasPresence: true,
+                    sequenceElementIsEnum:
+                        element.Kind == FoxRunTypeShapeKind.Enum,
                     representation);
             }
 
@@ -595,6 +1184,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                         string.Empty,
                         nested,
                         hasPresence: true,
+                        sequenceElementIsEnum: false,
                         BridgeSequenceRepresentation.None);
             }
 
@@ -609,6 +1199,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     string.Empty,
                     null,
                     shape.Nullable || field.IsNullable,
+                    sequenceElementIsEnum: false,
                     BridgeSequenceRepresentation.None);
             }
 
@@ -640,6 +1231,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 string.Empty,
                 null,
                 isString || shape.Nullable || field.IsNullable,
+                sequenceElementIsEnum: false,
                 BridgeSequenceRepresentation.None);
         }
 
@@ -736,6 +1328,9 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 AppendLengthFramed(
                     builder,
                     member.HasPresence ? "1" : "0");
+                AppendLengthFramed(
+                    builder,
+                    member.SequenceElementIsEnum ? "1" : "0");
                 AppendLengthFramed(
                     builder,
                     member.SequenceRepresentation.ToString());
@@ -1032,6 +1627,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 string sequenceElementTypeName,
                 BridgeDtoShape nestedShape,
                 bool hasPresence,
+                bool sequenceElementIsEnum,
                 BridgeSequenceRepresentation sequenceRepresentation)
             {
                 Name = name ?? string.Empty;
@@ -1049,6 +1645,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 NestedShapeIdentity =
                     nestedShape?.CanonicalIdentity ?? string.Empty;
                 HasPresence = hasPresence;
+                SequenceElementIsEnum = sequenceElementIsEnum;
                 SequenceRepresentation = sequenceRepresentation;
             }
 
@@ -1062,6 +1659,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             internal string NestedShapeIdentity { get; }
             internal BridgeDtoShape NestedShape { get; }
             internal bool HasPresence { get; }
+            internal bool SequenceElementIsEnum { get; }
             internal BridgeSequenceRepresentation
                 SequenceRepresentation { get; }
         }
@@ -1086,6 +1684,41 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             internal string CanonicalIdentity { get; }
             internal string PayloadIdentity { get; }
             internal IReadOnlyList<BridgeDtoMemberShape> Members { get; }
+        }
+
+        private sealed class SubscribeBindingShape
+        {
+            internal SubscribeBindingShape(
+                int bindingIndex,
+                int topicIndex,
+                int publishTopicIndex,
+                FoxRunGenerationMember member,
+                BridgeDtoShape shape,
+                string canonicalRosType,
+                string schemaSha256,
+                bool isStandard)
+            {
+                BindingIndex = bindingIndex;
+                TopicIndex = topicIndex;
+                PublishTopicIndex = publishTopicIndex;
+                Member = member
+                         ?? throw new ArgumentNullException(nameof(member));
+                Shape = shape;
+                CanonicalRosType = canonicalRosType ?? string.Empty;
+                SchemaSha256 = schemaSha256 ?? string.Empty;
+                IsStandard = isStandard;
+                if (!IsStandard && Shape == null)
+                    throw new ArgumentNullException(nameof(shape));
+            }
+
+            internal int BindingIndex { get; }
+            internal int TopicIndex { get; }
+            internal int PublishTopicIndex { get; }
+            internal FoxRunGenerationMember Member { get; }
+            internal BridgeDtoShape Shape { get; }
+            internal string CanonicalRosType { get; }
+            internal string SchemaSha256 { get; }
+            internal bool IsStandard { get; }
         }
 
         private sealed class ShapeRegistry
@@ -1121,6 +1754,10 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     "__WriteFoxRunRos2CustomCdr_"
                     + _topicIndex
                     + "_"
+                    + _entries.Count,
+                    "__ReadFoxRunRos2CustomCdr_"
+                    + _topicIndex
+                    + "_"
                     + _entries.Count);
                 _entries.Add(entry);
                 foreach (var member in shape.Members)
@@ -1134,14 +1771,19 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         private sealed class ShapeEntry
         {
-            internal ShapeEntry(BridgeDtoShape shape, string method)
+            internal ShapeEntry(
+                BridgeDtoShape shape,
+                string method,
+                string readMethod)
             {
                 Shape = shape;
                 Method = method;
+                ReadMethod = readMethod;
             }
 
             internal BridgeDtoShape Shape { get; }
             internal string Method { get; }
+            internal string ReadMethod { get; }
         }
     }
 }

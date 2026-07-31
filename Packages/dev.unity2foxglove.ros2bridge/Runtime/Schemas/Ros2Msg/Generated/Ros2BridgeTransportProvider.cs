@@ -5,6 +5,8 @@
 // Purpose: Manager-local FoxRun transport Provider for the ROS 2 sidecar.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
@@ -44,14 +46,26 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private ulong _activeGeneration;
         private Session _activeSession;
+        private readonly Dictionary<
+            IFoxRunBridgeGeneratedSubscribeSource,
+            GeneratedSourceRegistration> _generatedSources =
+                new Dictionary<
+                    IFoxRunBridgeGeneratedSubscribeSource,
+                    GeneratedSourceRegistration>();
+        private readonly Dictionary<
+            IFoxRunBridgeGeneratedSubscribeSource,
+            string> _generatedSourceFailures =
+                new Dictionary<
+                    IFoxRunBridgeGeneratedSubscribeSource,
+                    string>();
+        private float _nextGeneratedSourceScanTime;
 
         public FoxRunTransportId Id { get; } =
             new FoxRunTransportId(ProviderId);
 
-        // Subscribe is intentionally added only after the bounded duplex
-        // runtime lands in Phase186E. Advertising it here would fail open.
         public FoxRunTransportCapabilities Capabilities =>
-            FoxRunTransportCapabilities.Publish;
+            FoxRunTransportCapabilities.Publish
+            | FoxRunTransportCapabilities.Subscribe;
 
         public FoxRunTransportLifecycleState LifecycleState =>
             !isActiveAndEnabled || !_available
@@ -81,12 +95,37 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private void OnDisable()
         {
+            ClearGeneratedSources();
             _manager?.UnregisterFoxRunTransportProvider(this);
         }
 
         private void OnDestroy()
         {
+            ClearGeneratedSources();
             _manager?.UnregisterFoxRunTransportProvider(this);
+        }
+
+        private void Update()
+        {
+            ResolveManager();
+            var session = _activeSession;
+            var selected =
+                session != null
+                && ReferenceEquals(
+                    _manager?.ActiveFoxRunTransportSession
+                        ?.SubscribeTransport,
+                    session);
+            if (!selected)
+            {
+                ClearGeneratedSources();
+                return;
+            }
+
+            session.PumpInbound(maxFrames: 64);
+            if (Time.unscaledTime < _nextGeneratedSourceScanTime)
+                return;
+            _nextGeneratedSourceScanTime = Time.unscaledTime + 0.5f;
+            SynchronizeGeneratedSources(session);
         }
 
         private void OnValidate()
@@ -130,7 +169,8 @@ namespace Unity2Foxglove.Ros2Bridge
                     generation: generation,
                     joinTimeoutMs: Math.Max(
                         1000,
-                        Math.Max(1, _sendTimeoutMs) + 250));
+                        Math.Max(1, _sendTimeoutMs) + 250),
+                    requiresSubscription: true);
                 runtime.Start(enabled: true, autoConnect: _autoConnect);
                 var captured = new Session(
                     this,
@@ -403,9 +443,148 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (_activeGeneration != generation)
                 return;
+            ClearGeneratedSources();
             _activeSession = null;
             _activeGeneration = 0;
         }
+
+        private void SynchronizeGeneratedSources(Session session)
+        {
+            var seen = new HashSet<
+                IFoxRunBridgeGeneratedSubscribeSource>();
+            var behaviours = FindObjectsByType<MonoBehaviour>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            for (var index = 0; index < behaviours.Length; index++)
+            {
+                if (!(behaviours[index]
+                      is IFoxRunBridgeGeneratedSubscribeSource source))
+                {
+                    continue;
+                }
+                seen.Add(source);
+                if (_generatedSources.ContainsKey(source))
+                    continue;
+                GeneratedSourceRegistration registration;
+                string reason;
+                var registered = false;
+                try
+                {
+                    registered = GeneratedSourceRegistration.TryCreate(
+                        session,
+                        source,
+                        out registration,
+                        out reason);
+                }
+                catch (Exception exception)
+                {
+                    registration = null;
+                    reason = Bound(exception.Message);
+                }
+                if (registered)
+                {
+                    _generatedSources.Add(source, registration);
+                    _generatedSourceFailures.Remove(source);
+                }
+                else if (IsHardGeneratedSourceFailure(reason))
+                {
+                    var bounded = Bound(reason);
+                    if (!_generatedSourceFailures.TryGetValue(
+                            source,
+                            out var previous)
+                        || !string.Equals(
+                            previous,
+                            bounded,
+                            StringComparison.Ordinal))
+                    {
+                        _generatedSourceFailures[source] = bounded;
+                        Debug.LogWarning(
+                            "[FoxRun] ROS2 Bridge generated subscription rejected: "
+                            + bounded);
+                    }
+                }
+            }
+
+            var stale = new List<
+                IFoxRunBridgeGeneratedSubscribeSource>();
+            foreach (var pair in _generatedSources)
+            {
+                if (!seen.Contains(pair.Key)
+                    || pair.Key is MonoBehaviour behaviour
+                    && (behaviour == null
+                        || !behaviour.isActiveAndEnabled))
+                {
+                    stale.Add(pair.Key);
+                }
+            }
+            for (var index = 0; index < stale.Count; index++)
+            {
+                var source = stale[index];
+                if (_generatedSources.TryGetValue(
+                        source,
+                        out var registration))
+                {
+                    _generatedSources.Remove(source);
+                    _generatedSourceFailures.Remove(source);
+                    var cleanupError = Ros2BridgeCleanup.RunAll(
+                        1,
+                        _ => registration.Dispose());
+                    if (cleanupError != null)
+                        LogGeneratedSourceCleanupFailure(cleanupError);
+                }
+            }
+            if (_generatedSourceFailures.Count != 0)
+            {
+                var staleFailures = new List<
+                    IFoxRunBridgeGeneratedSubscribeSource>();
+                foreach (var source in _generatedSourceFailures.Keys)
+                {
+                    if (!seen.Contains(source)
+                        || source is MonoBehaviour behaviour
+                        && (behaviour == null
+                            || !behaviour.isActiveAndEnabled))
+                    {
+                        staleFailures.Add(source);
+                    }
+                }
+                for (var index = 0;
+                     index < staleFailures.Count;
+                     index++)
+                {
+                    _generatedSourceFailures.Remove(
+                        staleFailures[index]);
+                }
+            }
+        }
+
+        private void ClearGeneratedSources()
+        {
+            var registrations = new List<GeneratedSourceRegistration>(
+                _generatedSources.Values);
+            _generatedSources.Clear();
+            _generatedSourceFailures.Clear();
+            var cleanupError = Ros2BridgeCleanup.RunAll(
+                registrations.Count,
+                index => registrations[index].Dispose(),
+                reverse: true);
+            if (cleanupError != null)
+                LogGeneratedSourceCleanupFailure(cleanupError);
+        }
+
+        private static void LogGeneratedSourceCleanupFailure(
+            Exception exception)
+            => Debug.LogWarning(
+                "[FoxRun] ROS2 Bridge generated subscription cleanup failed: "
+                + Bound(exception?.Message));
+
+        private static bool IsHardGeneratedSourceFailure(string reason)
+            => !string.IsNullOrWhiteSpace(reason)
+               && reason.IndexOf(
+                   "not ready",
+                   StringComparison.OrdinalIgnoreCase) < 0
+               && reason.IndexOf(
+                   "unavailable",
+                   StringComparison.OrdinalIgnoreCase) < 0;
 
         private sealed class Session :
             IFoxRunTransportSession,
@@ -416,6 +595,8 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             private Ros2BridgeTransportProvider _owner;
             private Ros2BridgeRuntime _runtime;
+            private Ros2BridgeGeneratedSubscriptionRuntime
+                _subscriptions;
             private readonly int _sendTimeoutMs;
 
             internal Session(
@@ -428,6 +609,11 @@ namespace Unity2Foxglove.Ros2Bridge
                 Generation = generation;
                 _runtime = runtime
                            ?? throw new ArgumentNullException(nameof(runtime));
+                _subscriptions =
+                    new Ros2BridgeGeneratedSubscriptionRuntime(
+                        runtime,
+                        Id,
+                        generation);
                 _sendTimeoutMs = sendTimeoutMs;
             }
 
@@ -435,7 +621,8 @@ namespace Unity2Foxglove.Ros2Bridge
                 new FoxRunTransportId(ProviderId);
 
             public FoxRunTransportCapabilities Capabilities =>
-                FoxRunTransportCapabilities.Publish;
+                FoxRunTransportCapabilities.Publish
+                | FoxRunTransportCapabilities.Subscribe;
 
             public ulong Generation { get; }
             public string StableMapperId => ProviderId + "/ordinary-cdr-v1";
@@ -700,27 +887,39 @@ namespace Unity2Foxglove.Ros2Bridge
 
             public FoxRunTransportSubscribeResult Subscribe(
                 in FoxRunTransportSubscribeRoute route)
-                => FoxRunTransportSubscribeResult.Unavailable(
-                    "ROS2 Bridge subscriptions land with the bounded duplex runtime in Phase186E.");
+            {
+                var subscriptions = _subscriptions;
+                return subscriptions == null
+                    ? FoxRunTransportSubscribeResult.Unavailable(
+                        "ROS2 Bridge session has ended.")
+                    : subscriptions.Subscribe(in route);
+            }
+
+            internal int PumpInbound(int maxFrames)
+                => _subscriptions?.Pump(maxFrames) ?? 0;
 
             public void Dispose()
             {
                 var runtime = _runtime;
                 _runtime = null;
+                var subscriptions = _subscriptions;
+                _subscriptions = null;
                 var owner = _owner;
                 _owner = null;
-                if (runtime == null)
-                {
-                    owner?.ReleaseSession(Generation);
-                    return;
-                }
                 try
                 {
-                    runtime.Dispose();
+                    subscriptions?.Dispose();
                 }
                 finally
                 {
-                    owner?.ReleaseSession(Generation);
+                    try
+                    {
+                        runtime?.Dispose();
+                    }
+                    finally
+                    {
+                        owner?.ReleaseSession(Generation);
+                    }
                 }
             }
 
@@ -773,6 +972,202 @@ namespace Unity2Foxglove.Ros2Bridge
                     durability,
                     history,
                     depth);
+            }
+        }
+
+        private sealed class GeneratedSourceRegistration :
+            IDisposable
+        {
+            private IFoxRunBridgeGeneratedSubscribeSource _source;
+            private readonly ulong _generation;
+            private readonly List<
+                IFoxRunTransportSubscriptionLease> _leases;
+            private readonly List<int> _publishTopicIndexes;
+
+            private GeneratedSourceRegistration(
+                IFoxRunBridgeGeneratedSubscribeSource source,
+                ulong generation,
+                List<IFoxRunTransportSubscriptionLease> leases,
+                List<int> publishTopicIndexes)
+            {
+                _source = source;
+                _generation = generation;
+                _leases = leases;
+                _publishTopicIndexes = publishTopicIndexes;
+            }
+
+            internal static bool TryCreate(
+                Session session,
+                IFoxRunBridgeGeneratedSubscribeSource source,
+                out GeneratedSourceRegistration registration,
+                out string reason)
+            {
+                registration = null;
+                reason = string.Empty;
+                if (session == null || source == null)
+                {
+                    reason = "The generated Bridge subscription source is unavailable.";
+                    return false;
+                }
+                var leases = new List<
+                    IFoxRunTransportSubscriptionLease>();
+                var publishTopicIndexes = new List<int>();
+                try
+                {
+                    var bindingCount =
+                        source.FoxRunBridge_SubscribeBindingCount;
+                    if (bindingCount <= 0)
+                    {
+                        reason =
+                            "The generated Bridge subscription source has no bindings.";
+                        return false;
+                    }
+                    if (checked((ulong)bindingCount)
+                        > Protocol.U2R2ProtocolLimits.Default.MaxContracts)
+                    {
+                        reason =
+                            "The generated Bridge subscription source exceeds the contract bound.";
+                        return false;
+                    }
+                    for (var bindingIndex = 0;
+                         bindingIndex
+                         < bindingCount;
+                         bindingIndex++)
+                    {
+                        if (!source.FoxRunBridge_TryGetSubscribeBinding(
+                                bindingIndex,
+                                out var binding,
+                                out reason))
+                        {
+                            return false;
+                        }
+                        if (!IsValidBinding(binding, out reason))
+                            return false;
+                        var capturedBindingIndex = binding.BindingIndex;
+                        var route = new FoxRunTransportSubscribeRoute(
+                            binding.StableMemberId,
+                            binding.Topic,
+                            binding.CanonicalRosType,
+                            binding.MaxPayloadBytes,
+                            binding.DeliveryPolicy,
+                            (payload, receiveTimeNs, sequence) =>
+                            {
+                                if (!source.FoxRunBridge_TryDecodeAndApply(
+                                        capturedBindingIndex,
+                                        payload,
+                                        ProviderId,
+                                        session.Generation,
+                                        markRemoteOwned: true,
+                                        out var decodeReason))
+                                {
+                                    throw new InvalidDataException(
+                                        Bound(decodeReason));
+                                }
+                            },
+                            binding.MessageEncoding);
+                        var result = session.Subscribe(in route);
+                        if (result.State
+                            != FoxRunTransportRouteResultState.Accepted
+                            || result.Lease == null)
+                        {
+                            reason = result.Reason;
+                            return false;
+                        }
+                        leases.Add(result.Lease);
+                        if (binding.PublishTopicIndex >= 0)
+                        {
+                            publishTopicIndexes.Add(
+                                binding.PublishTopicIndex);
+                        }
+                    }
+
+                    registration = new GeneratedSourceRegistration(
+                        source,
+                        session.Generation,
+                        leases,
+                        publishTopicIndexes);
+                    leases = null;
+                    reason = string.Empty;
+                    return true;
+                }
+                finally
+                {
+                    if (leases != null)
+                    {
+                        var cleanupError = Ros2BridgeCleanup.RunAll(
+                            leases.Count,
+                            index => leases[index]?.Dispose(),
+                            reverse: true);
+                        if (cleanupError != null)
+                            reason = Bound(cleanupError.Message);
+                    }
+                }
+            }
+
+            public void Dispose()
+            {
+                var source = _source;
+                _source = null;
+                var first = Ros2BridgeCleanup.RunAll(
+                    _leases.Count,
+                    index => _leases[index]?.Dispose(),
+                    reverse: true);
+                _leases.Clear();
+                if (source != null)
+                {
+                    var ownershipError = Ros2BridgeCleanup.RunAll(
+                        _publishTopicIndexes.Count,
+                        index => source.FoxRunBridge_ReleaseRemoteOwnership(
+                            _publishTopicIndexes[index],
+                            ProviderId,
+                            _generation));
+                    first ??= ownershipError;
+                }
+                _publishTopicIndexes.Clear();
+                if (first != null)
+                    throw first;
+            }
+
+            private static bool IsValidBinding(
+                FoxRunBridgeGeneratedSubscribeBinding binding,
+                out string reason)
+            {
+                if (binding.BindingIndex < 0
+                    || string.IsNullOrWhiteSpace(binding.StableMemberId)
+                    || string.IsNullOrWhiteSpace(binding.Topic)
+                    || string.IsNullOrWhiteSpace(binding.CanonicalRosType)
+                    || !string.Equals(
+                        binding.MessageEncoding,
+                        "cdr",
+                        StringComparison.Ordinal)
+                    || binding.MaxPayloadBytes <= 0
+                    || binding.MaxPayloadBytes
+                    > Ros2BridgeFrameWriter.MaxPayloadBytes
+                    || !IsSha256(binding.SchemaSha256))
+                {
+                    reason =
+                        "The generated Bridge subscription binding is incomplete or invalid.";
+                    return false;
+                }
+                reason = string.Empty;
+                return true;
+            }
+
+            private static bool IsSha256(string value)
+            {
+                if (value == null || value.Length != 64)
+                    return false;
+                for (var index = 0; index < value.Length; index++)
+                {
+                    var character = value[index];
+                    if (character < '0'
+                        || character > '9'
+                        && (character < 'a' || character > 'f'))
+                    {
+                        return false;
+                    }
+                }
+                return true;
             }
         }
 

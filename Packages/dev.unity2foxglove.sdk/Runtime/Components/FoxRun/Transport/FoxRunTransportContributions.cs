@@ -110,7 +110,9 @@ namespace Unity.FoxgloveSDK.Components
             IReadOnlyList<IFoxRunTransportSession> sessions,
             IReadOnlyList<string> explicitTransportIds,
             IReadOnlyList<FoxRunTransportId> inheritedTransportIds,
-            in FoxRunGeneratedTransportPublishRequest request)
+            in FoxRunGeneratedTransportPublishRequest request,
+            string suppressedTransportId = "",
+            ulong suppressedGeneration = 0)
         {
             var matched = 0;
             var accepted = 0;
@@ -120,7 +122,9 @@ namespace Unity.FoxgloveSDK.Components
             var selectedCount = CountSelected(
                 sessions,
                 explicitTransportIds,
-                inheritedTransportIds);
+                inheritedTransportIds,
+                suppressedTransportId,
+                suppressedGeneration);
             if (selectedCount == 0)
             {
                 return new FoxRunGeneratedTransportFanoutResult(
@@ -138,6 +142,10 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var session = sessions[index];
                 if (!(session is IFoxRunGeneratedTransportSession generated)
+                    || IsSuppressed(
+                        session,
+                        suppressedTransportId,
+                        suppressedGeneration)
                     || !Selects(
                         session.Id,
                         explicitTransportIds,
@@ -196,7 +204,9 @@ namespace Unity.FoxgloveSDK.Components
         private static int CountSelected(
             IReadOnlyList<IFoxRunTransportSession> sessions,
             IReadOnlyList<string> explicitTransportIds,
-            IReadOnlyList<FoxRunTransportId> inheritedTransportIds)
+            IReadOnlyList<FoxRunTransportId> inheritedTransportIds,
+            string suppressedTransportId,
+            ulong suppressedGeneration)
         {
             if (sessions == null)
                 return 0;
@@ -206,6 +216,10 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var session = sessions[index];
                 if (session is IFoxRunGeneratedTransportSession
+                    && !IsSuppressed(
+                        session,
+                        suppressedTransportId,
+                        suppressedGeneration)
                     && Selects(
                         session.Id,
                         explicitTransportIds,
@@ -216,6 +230,19 @@ namespace Unity.FoxgloveSDK.Components
             }
             return count;
         }
+
+        private static bool IsSuppressed(
+            IFoxRunTransportSession session,
+            string transportId,
+            ulong generation)
+            => session != null
+               && generation != 0
+               && !string.IsNullOrEmpty(transportId)
+               && session.Generation == generation
+               && string.Equals(
+                   session.Id.Value,
+                   transportId,
+                   StringComparison.Ordinal);
 
         private static bool Selects(
             FoxRunTransportId id,

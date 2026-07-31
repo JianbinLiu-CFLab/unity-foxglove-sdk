@@ -61,6 +61,7 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxglovePublishRecordingSource");
                 interfaces.Add("IFoxRunWebSocketCaptureSource");
                 interfaces.Add("IFoxglovePublishOriginSource");
+                interfaces.Add("IFoxRunRemoteOwnershipSource");
                 if (hasPolicy)
                     interfaces.Add("IFoxgloveLogPolicySource");
                 if (hasConditions)

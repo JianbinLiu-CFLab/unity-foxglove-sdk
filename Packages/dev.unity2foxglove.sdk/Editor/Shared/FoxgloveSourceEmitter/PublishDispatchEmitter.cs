@@ -51,6 +51,8 @@ namespace Unity.FoxgloveSDK.Editor
                     continue;
 
                 sb.AppendLine($"{pad}    private bool __foxRunRemoteOwned_{topicIndex};");
+                sb.AppendLine($"{pad}    private string __foxRunRemoteTransport_{topicIndex};");
+                sb.AppendLine($"{pad}    private ulong __foxRunRemoteGeneration_{topicIndex};");
                 if (NeedsStructuralOriginSnapshot(fields))
                 {
                     sb.AppendLine($"{pad}    private byte[] __foxRunRemoteValue_{topicIndex}_0;");
@@ -202,6 +204,64 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
 
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    void IFoxRunRemoteOwnershipSource.FoxRunOrigin_MarkRemoteApplied(int topicIndex, string transportId, ulong generation)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                if (fields.Any(field => field.Mode == 3))
+                    sb.AppendLine($"{pad}            case {topicIndex}: __FoxRunMarkRemoteApplied_{topicIndex}(transportId, generation); return;");
+            }
+            sb.AppendLine($"{pad}            default: return;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    bool IFoxRunRemoteOwnershipSource.FoxRunOrigin_TryGetRemoteApplied(int topicIndex, out string transportId, out ulong generation)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        transportId = string.Empty;");
+            sb.AppendLine($"{pad}        generation = 0;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                if (!fields.Any(field => field.Mode == 3))
+                    continue;
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine($"{pad}                if (!__foxRunRemoteOwned_{topicIndex}) return false;");
+                sb.AppendLine($"{pad}                transportId = __foxRunRemoteTransport_{topicIndex} ?? string.Empty;");
+                sb.AppendLine($"{pad}                generation = __foxRunRemoteGeneration_{topicIndex};");
+                sb.AppendLine($"{pad}                return true;");
+            }
+            sb.AppendLine($"{pad}            default: return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    void IFoxRunRemoteOwnershipSource.FoxRunOrigin_ClearRemoteApplied(int topicIndex, string transportId, ulong generation)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var fields = topicMap[topics[topicIndex]];
+                if (!fields.Any(field => field.Mode == 3))
+                    continue;
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine($"{pad}                if (__foxRunRemoteOwned_{topicIndex}");
+                sb.AppendLine($"{pad}                    && global::System.String.Equals(__foxRunRemoteTransport_{topicIndex}, transportId ?? string.Empty, global::System.StringComparison.Ordinal)");
+                sb.AppendLine($"{pad}                    && __foxRunRemoteGeneration_{topicIndex} == generation)");
+                sb.AppendLine($"{pad}                    __FoxRunClearRemoteApplied_{topicIndex}();");
+                sb.AppendLine($"{pad}                return;");
+            }
+            sb.AppendLine($"{pad}            default: return;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
@@ -229,7 +289,6 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                 }
                 sb.AppendLine($"{pad}        if (__remoteUnchanged) return false;");
-                sb.AppendLine($"{pad}        __foxRunRemoteOwned_{topicIndex} = false;");
                 if (fields[0].Policy == ChangePolicy)
                 {
                     // The local value may return to the exact value stored by
@@ -238,6 +297,15 @@ namespace Unity.FoxgloveSDK.Editor
                     // snapshot before the hub evaluates ShouldPublish.
                     sb.AppendLine($"{pad}        __hasLast_{topicIndex} = false;");
                 }
+                sb.AppendLine($"{pad}        __FoxRunClearRemoteApplied_{topicIndex}();");
+                sb.AppendLine($"{pad}        return true;");
+                sb.AppendLine($"{pad}    }}");
+                sb.AppendLine();
+                sb.AppendLine($"{pad}    private void __FoxRunClearRemoteApplied_{topicIndex}()");
+                sb.AppendLine($"{pad}    {{");
+                sb.AppendLine($"{pad}        __foxRunRemoteOwned_{topicIndex} = false;");
+                sb.AppendLine($"{pad}        __foxRunRemoteTransport_{topicIndex} = null;");
+                sb.AppendLine($"{pad}        __foxRunRemoteGeneration_{topicIndex} = 0;");
                 if (NeedsStructuralOriginSnapshot(fields))
                 {
                     sb.AppendLine($"{pad}        __foxRunRemoteValue_{topicIndex}_0 = null;");
@@ -247,10 +315,12 @@ namespace Unity.FoxgloveSDK.Editor
                     for (var fieldIndex = 0; fieldIndex < fields.Count; fieldIndex++)
                         sb.AppendLine($"{pad}        __foxRunRemoteValue_{topicIndex}_{fieldIndex} = default;");
                 }
-                sb.AppendLine($"{pad}        return true;");
                 sb.AppendLine($"{pad}    }}");
                 sb.AppendLine();
                 sb.AppendLine($"{pad}    private void __FoxRunMarkRemoteApplied_{topicIndex}()");
+                sb.AppendLine($"{pad}        => __FoxRunMarkRemoteApplied_{topicIndex}(string.Empty, 0);");
+                sb.AppendLine();
+                sb.AppendLine($"{pad}    private void __FoxRunMarkRemoteApplied_{topicIndex}(string transportId, ulong generation)");
                 sb.AppendLine($"{pad}    {{");
                 if (NeedsStructuralOriginSnapshot(fields))
                 {
@@ -264,6 +334,8 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}        __foxRunRemoteValue_{topicIndex}_{fieldIndex} = {access};");
                     }
                 }
+                sb.AppendLine($"{pad}        __foxRunRemoteTransport_{topicIndex} = transportId ?? string.Empty;");
+                sb.AppendLine($"{pad}        __foxRunRemoteGeneration_{topicIndex} = generation;");
                 sb.AppendLine($"{pad}        __foxRunRemoteOwned_{topicIndex} = true;");
                 sb.AppendLine($"{pad}    }}");
             }

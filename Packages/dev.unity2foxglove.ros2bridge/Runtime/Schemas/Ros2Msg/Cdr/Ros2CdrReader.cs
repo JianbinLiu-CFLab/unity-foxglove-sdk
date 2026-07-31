@@ -18,6 +18,10 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
     public sealed class Ros2CdrReader
     {
         private const int AlignmentOrigin = 4;
+        private static readonly UTF8Encoding StrictUtf8 =
+            new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true);
         private readonly byte[] _data;
         private int _offset;
 
@@ -38,6 +42,9 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
 
         /// <summary>Current read offset in bytes from the start of the payload.</summary>
         public int Offset => _offset;
+
+        /// <summary>Unread bytes remaining in this exact CDR payload.</summary>
+        public int RemainingBytes => _data.Length - _offset;
 
         /// <summary>True when the encapsulation header selected little-endian CDR.</summary>
         public bool LittleEndian { get; }
@@ -148,7 +155,20 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
             if (_data[_offset + length - 1] != 0x00)
                 throw new InvalidDataException("ROS2 CDR string is missing the trailing NUL byte.");
 
-            var value = Encoding.UTF8.GetString(_data, _offset, length - 1);
+            string value;
+            try
+            {
+                value = StrictUtf8.GetString(
+                    _data,
+                    _offset,
+                    length - 1);
+            }
+            catch (DecoderFallbackException exception)
+            {
+                throw new InvalidDataException(
+                    "ROS2 CDR string contains invalid UTF-8.",
+                    exception);
+            }
             _offset += length;
             return value;
         }
@@ -205,6 +225,19 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         public int ReadSequenceLength()
         {
             return CheckedLength(ReadUInt32(), "ROS2 CDR sequence length");
+        }
+
+        /// <summary>
+        /// Require that the typed reader consumed the complete wire payload.
+        /// XCDR1 plain structs do not permit an unclaimed trailing suffix.
+        /// </summary>
+        public void EnsureFullyConsumed()
+        {
+            if (_offset != _data.Length)
+            {
+                throw new InvalidDataException(
+                    "ROS2 CDR payload contains trailing data.");
+            }
         }
 
         private int CheckedLength(uint value, string label, int minElementByteCount = 1)

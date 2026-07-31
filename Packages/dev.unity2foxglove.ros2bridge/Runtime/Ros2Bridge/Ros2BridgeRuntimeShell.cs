@@ -44,6 +44,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly FoxRunTransportDirection _direction;
         private readonly ulong _generation;
         private readonly bool _enableDuplexSession;
+        private readonly bool _requiresSubscription;
         private readonly object _lifecycleGate = new object();
 
         private Func<IRos2BridgeSink> _sinkFactory;
@@ -90,7 +91,8 @@ namespace Unity2Foxglove.Ros2Bridge
             FoxRunTransportDirection direction,
             ulong generation,
             int joinTimeoutMs,
-            bool enableDuplexSession = false)
+            bool enableDuplexSession = false,
+            bool requiresSubscription = false)
         {
             Ros2BridgeTcpClient.ValidateLoopbackHost(host);
             if (port <= 0 || port > 65535)
@@ -116,6 +118,9 @@ namespace Unity2Foxglove.Ros2Bridge
             _enableDuplexSession =
                 sinkFactory == null
                 || enableDuplexSession;
+            _requiresSubscription =
+                requiresSubscription
+                || direction == FoxRunTransportDirection.Subscribe;
             _sinkFactory = sinkFactory ?? CreateTcpSink;
             _retirementOwner = retirementOwner
                                ?? throw new ArgumentNullException(nameof(retirementOwner));
@@ -217,9 +222,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         sink,
                         reservation,
                         workerIdentity,
-                        requiresSubscription:
-                            _direction
-                            == FoxRunTransportDirection.Subscribe,
+                        requiresSubscription: _requiresSubscription,
                         enableDuplexSession:
                             _enableDuplexSession,
                         _generation,
@@ -267,6 +270,45 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
                 return _run.PreparePublisher(topic, schemaName, qos, out reason);
             }
+        }
+
+        internal Ros2BridgeSessionResult TryAcquireSubscription(
+            Ros2BridgeSessionContract contract,
+            out IRos2BridgeContractLease lease)
+        {
+            Ros2BridgeWorkerLease run;
+            lock (_lifecycleGate)
+                run = _run;
+            if (run == null)
+            {
+                lease = null;
+                return Ros2BridgeSessionResult.Unavailable(
+                    GetUnavailableReason());
+            }
+            return run.TryAcquireSubscription(contract, out lease);
+        }
+
+        internal bool TryBeginInboundApply(
+            out Ros2BridgeInboundApplyLease lease)
+        {
+            Ros2BridgeWorkerLease run;
+            lock (_lifecycleGate)
+                run = _run;
+            if (run == null)
+            {
+                lease = null;
+                return false;
+            }
+            return run.TryBeginInboundApply(out lease);
+        }
+
+        internal Ros2BridgeInboundStatsSnapshot
+            GetInboundStatsSnapshot()
+        {
+            Ros2BridgeWorkerLease run;
+            lock (_lifecycleGate)
+                run = _run;
+            return run?.GetInboundStatsSnapshot();
         }
 
         public bool TryEnqueue(Ros2BridgeFrame frame, out string reason)

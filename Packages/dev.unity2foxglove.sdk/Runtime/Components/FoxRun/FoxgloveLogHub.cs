@@ -442,18 +442,38 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
 
+                var suppressedTransportId = string.Empty;
+                var suppressedGeneration = 0UL;
                 if (source
                         is IFoxglovePublishOriginSource origin
                     && !origin.FoxgloveLog_CanPublishOrigin(
                         topicIndex,
-                        explicitTrigger))
+                        explicitTrigger)
+                    && (!(source
+                          is IFoxRunRemoteOwnershipSource
+                              remoteOwnership)
+                        || !remoteOwnership
+                            .FoxRunOrigin_TryGetRemoteApplied(
+                                topicIndex,
+                                out suppressedTransportId,
+                                out suppressedGeneration)
+                        || suppressedGeneration == 0
+                        || string.IsNullOrWhiteSpace(
+                            suppressedTransportId)))
                 {
                     return false;
                 }
 
                 var publishWebSocket =
                     _manager?.ActiveFoxRunTransportSession != null
-                    && SelectsWebSocket(info);
+                    && SelectsWebSocket(info)
+                    && !(string.Equals(
+                             suppressedTransportId,
+                             FoxgloveWebSocketTransport.Id,
+                             StringComparison.Ordinal)
+                         && _manager.IsActiveFoxRunPublishTransport(
+                             suppressedTransportId,
+                             suppressedGeneration));
                 if (publishWebSocket
                     && source
                         is IFoxRunWebSocketCaptureSource
@@ -546,7 +566,9 @@ namespace Unity.FoxgloveSDK.Components
                                 topicIndex,
                                 info.Topic,
                                 info.PublishTransportIds,
-                                nowNs);
+                                nowNs,
+                                suppressedTransportId,
+                                suppressedGeneration);
                         if (providerResult.AnyAccepted)
                             published = true;
                         if (providerResult.Rejected > 0

@@ -708,7 +708,9 @@ def generate_deserializers(schemas: list[Schema]) -> str:
                 f"        public static {schema_type(schema.name)} Deserialize{schema.name}(byte[] payload)",
                 "        {",
                 "            var reader = new Ros2CdrReader(payload);",
-                f"            return Read{schema.name}(reader);",
+                f"            var message = Read{schema.name}(reader);",
+                "            reader.EnsureFullyConsumed();",
+                "            return message;",
                 "        }",
                 "",
             ]
@@ -1067,6 +1069,7 @@ namespace {CSHARP_NAMESPACE}
         }};
 
         private static readonly Dictionary<string, Ros2CdrDeserializerEntry> BySchemaName = BuildSchemaNameMap();
+        private static readonly Dictionary<Type, Ros2CdrDeserializerEntry> ByClrType = BuildClrTypeMap();
 
         public static IReadOnlyList<Ros2CdrDeserializerEntry> Entries {{ get; }} = Array.AsReadOnly(EntriesArray);
 
@@ -1078,6 +1081,16 @@ namespace {CSHARP_NAMESPACE}
                 return false;
             }}
             return BySchemaName.TryGetValue(schemaName, out entry);
+        }}
+
+        public static bool TryGetByClrType(Type clrType, out Ros2CdrDeserializerEntry entry)
+        {{
+            if (clrType == null)
+            {{
+                entry = null;
+                return false;
+            }}
+            return ByClrType.TryGetValue(clrType, out entry);
         }}
 
         /// <summary>
@@ -1115,6 +1128,14 @@ namespace {CSHARP_NAMESPACE}
             var map = new Dictionary<string, Ros2CdrDeserializerEntry>(StringComparer.Ordinal);
             foreach (var entry in EntriesArray)
                 map.Add(entry.SchemaName, entry);
+            return map;
+        }}
+
+        private static Dictionary<Type, Ros2CdrDeserializerEntry> BuildClrTypeMap()
+        {{
+            var map = new Dictionary<Type, Ros2CdrDeserializerEntry>();
+            foreach (var entry in EntriesArray)
+                map.Add(entry.ClrType, entry);
             return map;
         }}
     }}

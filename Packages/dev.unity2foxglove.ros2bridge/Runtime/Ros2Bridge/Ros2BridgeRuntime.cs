@@ -41,6 +41,8 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly object _gate = new object();
         private readonly object _retirementGate = new object();
         private readonly Ros2BridgeOutboundScheduler _outbound;
+        private readonly Ros2BridgeSubscriptionPipeline
+            _subscriptionPipeline;
         private readonly Queue<PublisherPreparationKey> _preparationQueue =
             new Queue<PublisherPreparationKey>();
         private readonly Dictionary<PublisherPreparationKey, PublisherPreparationEntry> _preparations =
@@ -133,6 +135,15 @@ namespace Unity2Foxglove.Ros2Bridge
             _outbound = new Ros2BridgeOutboundScheduler(
                 CreateOutboundLimits(queueCapacity),
                 sessionGeneration);
+            if (_requiresSubscription)
+            {
+                _subscriptionPipeline =
+                    new Ros2BridgeSubscriptionPipeline(
+                    _host,
+                    _port,
+                    sessionGeneration,
+                    _protocolLimits);
+            }
             _sentFrames = initialStats.SentFrames;
             _droppedFrames = initialStats.DroppedFrames;
             _failedFrames = initialStats.FailedFrames;
@@ -158,6 +169,37 @@ namespace Unity2Foxglove.Ros2Bridge
                     return _duplexConnection?.HasInboundPipeline ?? false;
             }
         }
+
+        internal Ros2BridgeSessionResult TryAcquireSubscription(
+            Ros2BridgeSessionContract contract,
+            out IRos2BridgeContractLease lease)
+        {
+            lease = null;
+            if (_subscriptionPipeline == null)
+            {
+                return Ros2BridgeSessionResult.Unavailable(
+                    "The ROS2 Bridge runtime has no subscription pipeline.");
+            }
+
+            return _subscriptionPipeline.TryAcquire(
+                contract,
+                out lease);
+        }
+
+        internal bool TryBeginInboundApply(
+            out Ros2BridgeInboundApplyLease lease)
+        {
+            if (_subscriptionPipeline == null)
+            {
+                lease = null;
+                return false;
+            }
+            return _subscriptionPipeline.TryBeginApply(out lease);
+        }
+
+        internal Ros2BridgeInboundStatsSnapshot
+            GetInboundStatsSnapshot()
+            => _subscriptionPipeline?.GetStatsSnapshot();
 
         /// <summary>
         /// Queue or query the exact sidecar publisher contract. A transport
@@ -470,6 +512,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 _lastDisconnectedUnixMs = NowUnixMs();
             }
 
+            _subscriptionPipeline?.Disconnect();
             ExceptionDispatchInfo fatal = null;
             try
             {
@@ -821,6 +864,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private bool EnsureConnected(long generation)
         {
             Ros2BridgeConnection duplexConnection;
+            Ros2BridgeReconnectSnapshot reconnect = null;
             var useDuplex =
                 _enableDuplexSession
                 && !_legacyOnly
@@ -842,6 +886,11 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 if (useDuplex && duplexConnection != null)
                     duplexConnection.ResetAfterFault();
+                if (useDuplex && _requiresSubscription)
+                {
+                    reconnect =
+                        _subscriptionPipeline.BeginReconnect();
+                }
                 _ownedSink.Connect(_host, _port, _sendTimeoutMs);
                 var dialect = U2R2Dialect.V1;
                 Ros2BridgeV2SessionSnapshot v2Session = null;
@@ -858,6 +907,10 @@ namespace Unity2Foxglove.Ros2Bridge
                             checked((ulong)_preparationCapacity),
                             _protocolLimits.MaxOutstandingRequests)),
                         timeoutMs: _sendTimeoutMs,
+                        inboundResolver:
+                            _subscriptionPipeline?.Resolver,
+                        inboundReceiver:
+                            _subscriptionPipeline?.Receiver,
                         retirement: _retirement,
                         readerRetirementIndex: 1,
                         writerRetirementIndex: 2,
@@ -866,6 +919,13 @@ namespace Unity2Foxglove.Ros2Bridge
                     try
                     {
                         v2Session = duplexConnection.Start();
+                        if (_requiresSubscription)
+                        {
+                            _subscriptionPipeline.CompleteReconnect(
+                                reconnect,
+                                duplexConnection,
+                                v2Session);
+                        }
                         v2RequestIds = new U2R2RequestIdCounter();
                         v2MessageIds = new U2R2MonotonicCounter();
                         dialect = U2R2Dialect.V2;
@@ -974,6 +1034,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
                 if (abandon)
                 {
+                    _subscriptionPipeline?.Disconnect();
                     duplexConnection?.Abort(
                         new ObjectDisposedException(
                             nameof(Ros2BridgeWorkerLease)));
@@ -1017,6 +1078,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         _duplexConnection = duplexConnection;
                     ClearProtocolSessionLocked();
                 }
+                _subscriptionPipeline?.Disconnect();
 
                 fatal?.Throw();
                 return false;
@@ -1661,6 +1723,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             try
             {
+                _subscriptionPipeline?.Dispose();
                 duplexConnection?.Dispose();
             }
             catch (Exception exception) when (
@@ -1772,6 +1835,9 @@ namespace Unity2Foxglove.Ros2Bridge
                     ClearProtocolSessionLocked();
                 }
             }
+
+            if (disconnect)
+                _subscriptionPipeline?.Disconnect();
 
             if (duplexConnection != null)
             {

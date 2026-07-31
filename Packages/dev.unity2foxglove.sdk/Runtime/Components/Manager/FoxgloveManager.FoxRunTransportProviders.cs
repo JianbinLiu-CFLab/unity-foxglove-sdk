@@ -287,7 +287,9 @@ namespace Unity.FoxgloveSDK.Components
                 int topicIndex,
                 string topic,
                 IReadOnlyList<string> explicitTransportIds,
-                ulong logTimeNs)
+                ulong logTimeNs,
+                string suppressedTransportId = "",
+                ulong suppressedGeneration = 0)
         {
             var request =
                 new FoxRunGeneratedTransportPublishRequest(
@@ -299,7 +301,34 @@ namespace Unity.FoxgloveSDK.Components
                 _activeFoxRunTransportSession?.PublishTransports,
                 explicitTransportIds,
                 _activeFoxRunTransportSession?.PublishTransportIds,
-                in request);
+                in request,
+                suppressedTransportId,
+                suppressedGeneration);
+        }
+
+        internal bool IsActiveFoxRunPublishTransport(
+            string transportId,
+            ulong generation)
+        {
+            if (generation == 0
+                || string.IsNullOrWhiteSpace(transportId))
+            {
+                return false;
+            }
+            FoxRunTransportId id;
+            try
+            {
+                id = new FoxRunTransportId(transportId);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            return _activeFoxRunTransportSession != null
+                   && _activeFoxRunTransportSession.TryGetPublishTransport(
+                       id,
+                       out var session)
+                   && session.Generation == generation;
         }
 
         /// <summary>Resolve one schema from a frozen Provider session.</summary>

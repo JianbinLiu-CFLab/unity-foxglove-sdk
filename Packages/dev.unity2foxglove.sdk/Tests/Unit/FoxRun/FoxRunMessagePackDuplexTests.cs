@@ -54,6 +54,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 generated,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "IFoxRunRemoteOwnershipSource",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunOrigin_TryGetRemoteApplied",
+                generated,
+                StringComparison.Ordinal);
+            Assert.Contains(
                 "__FoxRunMarkRemoteApplied_0();",
                 generated,
                 StringComparison.Ordinal);
@@ -132,10 +140,52 @@ namespace Demo
                 receiver);
             var origin = Assert.IsAssignableFrom<IFoxglovePublishOriginSource>(
                 receiver);
+            var remote = Assert.IsAssignableFrom<IFoxRunRemoteOwnershipSource>(
+                receiver);
             var value = receiverType.GetField("Value");
             Assert.NotNull(value);
 
             value.SetValue(receiver, 1);
+            Assert.False(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out _,
+                out _));
+            remote.FoxRunOrigin_MarkRemoteApplied(
+                0,
+                "unity2foxglove.ros2bridge",
+                generation: 17);
+            Assert.True(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out var remoteTransport,
+                out var remoteGeneration));
+            Assert.Equal(
+                "unity2foxglove.ros2bridge",
+                remoteTransport);
+            Assert.Equal(17UL, remoteGeneration);
+            remote.FoxRunOrigin_ClearRemoteApplied(
+                0,
+                "unity2foxglove.ros2bridge",
+                generation: 16);
+            Assert.True(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out _,
+                out _));
+            remote.FoxRunOrigin_ClearRemoteApplied(
+                0,
+                "unity2foxglove.r2fu",
+                generation: 17);
+            Assert.True(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out _,
+                out _));
+            remote.FoxRunOrigin_ClearRemoteApplied(
+                0,
+                "unity2foxglove.ros2bridge",
+                generation: 17);
+            Assert.False(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out _,
+                out _));
             Assert.True(origin.FoxgloveLog_CanPublishOrigin(
                 0,
                 explicitTrigger: false));
@@ -151,6 +201,12 @@ namespace Demo
                 error);
             Assert.Equal(1, input.FoxgloveInput_Flush(0.01d, 60));
             Assert.Equal(4, value.GetValue(receiver));
+            Assert.True(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out remoteTransport,
+                out remoteGeneration));
+            Assert.Empty(remoteTransport);
+            Assert.Equal(0UL, remoteGeneration);
 
             Assert.False(origin.FoxgloveLog_CanPublishOrigin(
                 0,
@@ -163,6 +219,10 @@ namespace Demo
             Assert.True(origin.FoxgloveLog_CanPublishOrigin(
                 0,
                 explicitTrigger: false));
+            Assert.False(remote.FoxRunOrigin_TryGetRemoteApplied(
+                0,
+                out _,
+                out _));
             Assert.True(policy.FoxgloveLog_ShouldPublish(0, 0.02d));
             policy.FoxgloveLog_MarkPublished(0, 0.02d);
             Assert.False(policy.FoxgloveLog_ShouldPublish(0, 0.03d));

@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Attributes/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxRun*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/Transport/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />

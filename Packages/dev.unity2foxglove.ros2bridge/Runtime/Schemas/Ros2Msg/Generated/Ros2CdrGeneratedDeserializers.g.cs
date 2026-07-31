@@ -72,247 +72,329 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         public static global::Foxglove.ArrowPrimitive DeserializeArrowPrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadArrowPrimitive(reader);
+            var message = ReadArrowPrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CameraCalibration DeserializeCameraCalibration(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCameraCalibration(reader);
+            var message = ReadCameraCalibration(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CircleAnnotation DeserializeCircleAnnotation(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCircleAnnotation(reader);
+            var message = ReadCircleAnnotation(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Color DeserializeColor(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadColor(reader);
+            var message = ReadColor(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CompressedImage DeserializeCompressedImage(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCompressedImage(reader);
+            var message = ReadCompressedImage(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CompressedPointCloud DeserializeCompressedPointCloud(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCompressedPointCloud(reader);
+            var message = ReadCompressedPointCloud(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CompressedVideo DeserializeCompressedVideo(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCompressedVideo(reader);
+            var message = ReadCompressedVideo(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CubePrimitive DeserializeCubePrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCubePrimitive(reader);
+            var message = ReadCubePrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.CylinderPrimitive DeserializeCylinderPrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadCylinderPrimitive(reader);
+            var message = ReadCylinderPrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.FrameTransform DeserializeFrameTransform(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadFrameTransform(reader);
+            var message = ReadFrameTransform(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.FrameTransforms DeserializeFrameTransforms(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadFrameTransforms(reader);
+            var message = ReadFrameTransforms(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.GeoJSON DeserializeGeoJSON(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadGeoJSON(reader);
+            var message = ReadGeoJSON(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Grid DeserializeGrid(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadGrid(reader);
+            var message = ReadGrid(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.ImageAnnotations DeserializeImageAnnotations(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadImageAnnotations(reader);
+            var message = ReadImageAnnotations(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.JointState DeserializeJointState(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadJointState(reader);
+            var message = ReadJointState(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.JointStates DeserializeJointStates(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadJointStates(reader);
+            var message = ReadJointStates(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.KeyValuePair DeserializeKeyValuePair(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadKeyValuePair(reader);
+            var message = ReadKeyValuePair(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.LaserScan DeserializeLaserScan(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadLaserScan(reader);
+            var message = ReadLaserScan(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.LinePrimitive DeserializeLinePrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadLinePrimitive(reader);
+            var message = ReadLinePrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.LocationFix DeserializeLocationFix(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadLocationFix(reader);
+            var message = ReadLocationFix(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.LocationFixes DeserializeLocationFixes(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadLocationFixes(reader);
+            var message = ReadLocationFixes(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Log DeserializeLog(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadLog(reader);
+            var message = ReadLog(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.ModelPrimitive DeserializeModelPrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadModelPrimitive(reader);
+            var message = ReadModelPrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Odometry DeserializeOdometry(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadOdometry(reader);
+            var message = ReadOdometry(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.PackedElementField DeserializePackedElementField(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPackedElementField(reader);
+            var message = ReadPackedElementField(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Point2 DeserializePoint2(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPoint2(reader);
+            var message = ReadPoint2(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.PointCloud DeserializePointCloud(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPointCloud(reader);
+            var message = ReadPointCloud(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.PointsAnnotation DeserializePointsAnnotation(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPointsAnnotation(reader);
+            var message = ReadPointsAnnotation(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.PoseInFrame DeserializePoseInFrame(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPoseInFrame(reader);
+            var message = ReadPoseInFrame(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.PosesInFrame DeserializePosesInFrame(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadPosesInFrame(reader);
+            var message = ReadPosesInFrame(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.RawAudio DeserializeRawAudio(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadRawAudio(reader);
+            var message = ReadRawAudio(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.RawImage DeserializeRawImage(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadRawImage(reader);
+            var message = ReadRawImage(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.SceneEntity DeserializeSceneEntity(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadSceneEntity(reader);
+            var message = ReadSceneEntity(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.SceneEntityDeletion DeserializeSceneEntityDeletion(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadSceneEntityDeletion(reader);
+            var message = ReadSceneEntityDeletion(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.SceneUpdate DeserializeSceneUpdate(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadSceneUpdate(reader);
+            var message = ReadSceneUpdate(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.SpherePrimitive DeserializeSpherePrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadSpherePrimitive(reader);
+            var message = ReadSpherePrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.TextAnnotation DeserializeTextAnnotation(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadTextAnnotation(reader);
+            var message = ReadTextAnnotation(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.TextPrimitive DeserializeTextPrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadTextPrimitive(reader);
+            var message = ReadTextPrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.TriangleListPrimitive DeserializeTriangleListPrimitive(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadTriangleListPrimitive(reader);
+            var message = ReadTriangleListPrimitive(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.Vector2 DeserializeVector2(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadVector2(reader);
+            var message = ReadVector2(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         public static global::Foxglove.VoxelGrid DeserializeVoxelGrid(byte[] payload)
         {
             var reader = new Ros2CdrReader(payload);
-            return ReadVoxelGrid(reader);
+            var message = ReadVoxelGrid(reader);
+            reader.EnsureFullyConsumed();
+            return message;
         }
 
         internal static global::Foxglove.ArrowPrimitive ReadArrowPrimitive(Ros2CdrReader reader)

@@ -57,6 +57,91 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void MultipleBridgePublishTopicsCompileWithoutSwitchLocalCollisions()
+        {
+            var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase186",
+                    "MultiCdrProbe",
+                    new[]
+                    {
+                        CreateScalarCustomMember(
+                            "StateA",
+                            "/phase186/multi/a",
+                            rawMemberOrder: 0),
+                        CreateScalarCustomMember(
+                            "StateB",
+                            "/phase186/multi/b",
+                            rawMemberOrder: 1),
+                    }));
+            var host = @"
+namespace Phase186
+{
+    public sealed class MultiState
+    {
+        public int Count;
+    }
+
+    public partial class MultiCdrProbe
+    {
+        private readonly string __foxRunOrigin;
+        private readonly MultiState __foxRunCapture_0_0;
+        private readonly MultiState __foxRunCapture_1_0;
+        private readonly ulong __foxRunCaptureSequence_0;
+        private readonly ulong __foxRunCaptureSequence_1;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase186MultiCdrProbe_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(host),
+                    CSharpSyntaxTree.ParseText(emitted),
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+
+            using var stream = new MemoryStream();
+            var result = compilation.Emit(stream);
+
+            Assert.True(
+                result.Success,
+                string.Join(
+                    Environment.NewLine,
+                    result.Diagnostics.Where(
+                        diagnostic =>
+                            diagnostic.Severity
+                            == DiagnosticSeverity.Error)));
+        }
+
+        [Fact]
+        public void BridgeContributionExposesDeterministicTypedSubscribeBindingWithoutReflection()
+        {
+            var source = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase181",
+                    "GeneratedCdrProbe",
+                    new[] { CreateCustomMember(FoxRunFlow.PublishAndSubscribe) }));
+
+            Assert.Contains(
+                "IFoxRunBridgeGeneratedSubscribeSource",
+                source);
+            Assert.Contains(
+                "FoxRunBridge_TryGetSubscribeBinding",
+                source);
+            Assert.Contains(
+                "FoxRunBridge_TryDecodeAndApply",
+                source);
+            Assert.Contains(
+                "EnsureFullyConsumed",
+                source);
+            Assert.DoesNotContain(
+                "System.Reflection",
+                source);
+        }
+
+        [Fact]
         public void GeneratedBuilderMatchesIndependentPhase181StyleOracleExactly()
         {
             const string origin = "phase184-origin-probe";
@@ -67,6 +152,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 Bytes = new byte[] { 0xa5, 0x5a, 0x00 },
                 Count = -123_456_789,
                 Kind = 0xbeef,
+                Kinds = new[] { -1, 0, 1 },
                 Labels = new List<string> { null, string.Empty, "A\u03a9" },
                 Message = "message-\u4e2d",
                 Nested = new NestedValues
@@ -128,6 +214,223 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Envelope",
                 result.Route.LogicalSchemaName);
             Assert.Equal(oracle.Bytes, result.Route.Payload.ToArray());
+        }
+
+        [Fact]
+        public void GeneratedReaderRoundTripsNestedNullableAndSequenceValuesAndMarksExactOriginToken()
+        {
+            const string origin = "phase186-inbound-roundtrip";
+            const ulong sequence = 1862UL;
+            const ulong nowNs = 1_862_000_000UL;
+            var values = new FixtureValues
+            {
+                Bytes = new byte[] { 0, 1, 255 },
+                Count = -17,
+                Kind = 0xbeef,
+                Kinds = new[] { -1, 0, 1 },
+                Labels = new List<string> { string.Empty, "A\u03a9" },
+                Message = "message-\u4e2d",
+                Nested = new NestedValues
+                {
+                    Enabled = true,
+                    Label = "nested-\u03a9",
+                },
+                OptionalCount = int.MinValue,
+                OptionalText = string.Empty,
+                Values = new List<long> { long.MinValue, 0, long.MaxValue },
+            };
+            var payload = Contract.Value.Build(
+                values,
+                origin,
+                sequence,
+                nowNs);
+
+            Assert.True(payload.Success, payload.Reason);
+            var decoded = Contract.Value.Decode(
+                payload.Payload,
+                "unity2foxglove.ros2bridge",
+                generation: 73UL,
+                markRemoteOwned: true);
+
+            Assert.True(decoded.Success, decoded.Reason);
+            Assert.Equal(values.Bytes, decoded.Values.Bytes);
+            Assert.Equal(values.Count, decoded.Values.Count);
+            Assert.Equal(values.Kind, decoded.Values.Kind);
+            Assert.Equal(values.Kinds, decoded.Values.Kinds);
+            Assert.Equal(values.Labels, decoded.Values.Labels);
+            Assert.Equal(values.Message, decoded.Values.Message);
+            Assert.NotNull(decoded.Values.Nested);
+            Assert.Equal(values.Nested.Enabled, decoded.Values.Nested.Enabled);
+            Assert.Equal(values.Nested.Label, decoded.Values.Nested.Label);
+            Assert.Equal(values.OptionalCount, decoded.Values.OptionalCount);
+            Assert.Equal(values.OptionalText, decoded.Values.OptionalText);
+            Assert.Equal(values.Values, decoded.Values.Values);
+            Assert.True(decoded.RemoteOwned);
+            Assert.Equal(
+                "unity2foxglove.ros2bridge",
+                decoded.RemoteTransportId);
+            Assert.Equal(73UL, decoded.RemoteGeneration);
+        }
+
+        [Fact]
+        public void GeneratedReaderRejectsTrailingMalformedAndOversizedPayloadsWithoutApplying()
+        {
+            var built = Contract.Value.Build(
+                new FixtureValues { Count = 42 },
+                "phase186-strict-reader",
+                sequence: 1UL,
+                nowNs: 0UL);
+            Assert.True(built.Success, built.Reason);
+
+            var trailing = built.Payload.Concat(new byte[] { 0xff }).ToArray();
+            var trailingResult = Contract.Value.Decode(
+                trailing,
+                "unity2foxglove.ros2bridge",
+                generation: 1UL,
+                markRemoteOwned: true);
+            Assert.False(trailingResult.Success);
+            Assert.Contains("trailing", trailingResult.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.False(trailingResult.RemoteOwned);
+
+            var malformed = (byte[])built.Payload.Clone();
+            malformed[0] = 0x01;
+            var malformedResult = Contract.Value.Decode(
+                malformed,
+                "unity2foxglove.ros2bridge",
+                generation: 1UL,
+                markRemoteOwned: true);
+            Assert.False(malformedResult.Success);
+            Assert.False(malformedResult.RemoteOwned);
+
+            var oversized = new byte[MaximumPayloadBytes + 1];
+            oversized[0] = 0x00;
+            oversized[1] = 0x01;
+            var oversizedResult = Contract.Value.Decode(
+                oversized,
+                "unity2foxglove.ros2bridge",
+                generation: 1UL,
+                markRemoteOwned: true);
+            Assert.False(oversizedResult.Success);
+            Assert.Contains("budget", oversizedResult.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.False(oversizedResult.RemoteOwned);
+        }
+
+        [Fact]
+        public void StandardDeserializerRegistryResolvesClrTypeAndRejectsTrailingData()
+        {
+            var sample = Ros2CdrSampleFactory.CreateLogSample();
+            var payload = Ros2CdrGeneratedSerializers.Serialize(sample);
+
+            Assert.True(
+                Ros2CdrDeserializerRegistry.TryGetByClrType(
+                    typeof(Foxglove.Log),
+                    out var entry));
+            Assert.Equal("foxglove_msgs/msg/Log", entry.SchemaName);
+            Assert.IsType<Foxglove.Log>(entry.Deserialize(payload));
+
+            var trailing = payload.Concat(new byte[] { 0xff }).ToArray();
+            Assert.Throws<InvalidDataException>(
+                () => entry.Deserialize(trailing));
+            Assert.False(
+                Ros2CdrDeserializerRegistry.TryDeserialize(
+                    entry.SchemaName,
+                    trailing,
+                    out _));
+        }
+
+        [Fact]
+        public void GeneratedStandardSubscriberCompilesAndAppliesExactCatalogCdr()
+        {
+            var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase186",
+                    "StandardCdrProbe",
+                    new[] { CreateStandardSubscribeMember() }));
+            Assert.Contains(
+                "Ros2CdrDeserializerRegistry.TryGetByClrType",
+                emitted,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxgloveRos2MsgSchemaCatalog.TryGet",
+                emitted,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "System.Reflection",
+                emitted,
+                StringComparison.Ordinal);
+
+            var host = @"
+namespace Phase186
+{
+    public partial class StandardCdrProbe
+    {
+        public global::Foxglove.Log Log;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase186StandardCdrProbe_"
+                + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(host),
+                    CSharpSyntaxTree.ParseText(emitted),
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            using var stream = new MemoryStream();
+            var result = compilation.Emit(stream);
+            Assert.True(
+                result.Success,
+                string.Join(
+                    Environment.NewLine,
+                    result.Diagnostics.Where(
+                        diagnostic =>
+                            diagnostic.Severity
+                            == DiagnosticSeverity.Error)));
+            stream.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(stream);
+            var probeType = assembly.GetType(
+                "Phase186.StandardCdrProbe",
+                throwOnError: true);
+            var probe = Activator.CreateInstance(probeType);
+            var source = Assert.IsAssignableFrom<
+                IFoxRunBridgeGeneratedSubscribeSource>(probe);
+            Assert.Equal(1, source.FoxRunBridge_SubscribeBindingCount);
+            Assert.True(
+                source.FoxRunBridge_TryGetSubscribeBinding(
+                    0,
+                    out var binding,
+                    out var bindingReason),
+                bindingReason);
+            Assert.Equal("foxglove_msgs/msg/Log", binding.CanonicalRosType);
+            Assert.Equal("cdr", binding.MessageEncoding);
+            Assert.Equal(
+                Ros2BridgeFrameWriter.MaxPayloadBytes,
+                binding.MaxPayloadBytes);
+            Assert.True(
+                FoxgloveRos2MsgSchemaCatalog.TryGet(
+                    binding.CanonicalRosType,
+                    out var schema));
+            Assert.Equal(schema.SourceSha256, binding.SchemaSha256);
+
+            var expected = Ros2CdrSampleFactory.CreateLogSample();
+            var payload = Ros2CdrGeneratedSerializers.Serialize(expected);
+            Assert.True(
+                source.FoxRunBridge_TryDecodeAndApply(
+                    0,
+                    payload,
+                    "unity2foxglove.ros2bridge",
+                    ownershipGeneration: 17,
+                    markRemoteOwned: true,
+                    out var decodeReason),
+                decodeReason);
+            var actual = Assert.IsType<Foxglove.Log>(
+                probeType.GetField(
+                        "Log",
+                        BindingFlags.Instance | BindingFlags.Public)
+                    .GetValue(probe));
+            Assert.Equal(expected, actual);
         }
 
         [Fact]
@@ -258,7 +561,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static GeneratedContract CompileGeneratedContract()
         {
-            var member = CreateCustomMember();
+            var member = CreateCustomMember(FoxRunFlow.PublishAndSubscribe);
             var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
                 new FoxRunGenerationType(
                 "Phase181",
@@ -270,7 +573,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             source.AppendLine("using System.Collections.Generic;");
             source.AppendLine("namespace Phase181");
             source.AppendLine("{");
-            source.AppendLine("    public enum StateKind { Unknown = 0 }");
+            source.AppendLine("    public enum StateKind { Faulted = -1, Unknown = 0, Ready = 1 }");
             source.AppendLine("    public sealed class NestedState");
             source.AppendLine("    {");
             source.AppendLine("        public bool Enabled;");
@@ -281,6 +584,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             source.AppendLine("        public byte[] Bytes;");
             source.AppendLine("        public int Count;");
             source.AppendLine("        public StateKind Kind;");
+            source.AppendLine("        public StateKind[] Kinds;");
             source.AppendLine("        public List<string> Labels;");
             source.AppendLine("        public string Message;");
             source.AppendLine("        public NestedState Nested;");
@@ -294,16 +598,40 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             source.AppendLine("        }");
             source.AppendLine("        public List<long> Values;");
             source.AppendLine("    }");
-            source.AppendLine("    public sealed partial class GeneratedCdrProbe");
+            source.AppendLine("    public sealed partial class GeneratedCdrProbe : global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource");
             source.AppendLine("    {");
             source.AppendLine("        private readonly string __foxRunOrigin;");
             source.AppendLine("        private readonly State __foxRunCapture_0_0;");
             source.AppendLine("        private readonly ulong __foxRunCaptureSequence_0;");
+            source.AppendLine("        public State State;");
+            source.AppendLine("        public bool RemoteOwned;");
+            source.AppendLine("        public string RemoteTransportId;");
+            source.AppendLine("        public ulong RemoteGeneration;");
             source.AppendLine("        public GeneratedCdrProbe(string origin, State source, ulong sequence)");
             source.AppendLine("        {");
             source.AppendLine("            __foxRunOrigin = origin;");
             source.AppendLine("            __foxRunCapture_0_0 = source;");
             source.AppendLine("            __foxRunCaptureSequence_0 = sequence;");
+            source.AppendLine("            State = source;");
+            source.AppendLine("        }");
+            source.AppendLine("        void global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_MarkRemoteApplied(int topicIndex, string transportId, ulong generation)");
+            source.AppendLine("        {");
+            source.AppendLine("            RemoteOwned = true;");
+            source.AppendLine("            RemoteTransportId = transportId ?? string.Empty;");
+            source.AppendLine("            RemoteGeneration = generation;");
+            source.AppendLine("        }");
+            source.AppendLine("        void global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_ClearRemoteApplied(int topicIndex, string transportId, ulong generation)");
+            source.AppendLine("        {");
+            source.AppendLine("            if (!RemoteOwned || !string.Equals(RemoteTransportId, transportId ?? string.Empty, StringComparison.Ordinal) || RemoteGeneration != generation) return;");
+            source.AppendLine("            RemoteOwned = false;");
+            source.AppendLine("            RemoteTransportId = null;");
+            source.AppendLine("            RemoteGeneration = 0;");
+            source.AppendLine("        }");
+            source.AppendLine("        bool global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_TryGetRemoteApplied(int topicIndex, out string transportId, out ulong generation)");
+            source.AppendLine("        {");
+            source.AppendLine("            transportId = RemoteTransportId ?? string.Empty;");
+            source.AppendLine("            generation = RemoteGeneration;");
+            source.AppendLine("            return RemoteOwned;");
             source.AppendLine("        }");
             source.AppendLine("    }");
             source.AppendLine("}");
@@ -349,7 +677,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 .ToArray();
         }
 
-        private static FoxRunGenerationMember CreateCustomMember()
+        private static FoxRunGenerationMember CreateCustomMember(
+            FoxRunFlow flow = FoxRunFlow.Publish)
         {
             var nested = FoxRunTypeShape.Object(
                 "Phase181.NestedState",
@@ -407,6 +736,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                                 new FoxRunEnumValue("Unknown", 0),
                             })),
                     new FoxRunTypeField(
+                        "kinds",
+                        "Kinds",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.Array,
+                            FoxRunTypeShape.Enum(
+                                "Phase181.StateKind",
+                                new[]
+                                {
+                                    new FoxRunEnumValue("Faulted", -1),
+                                    new FoxRunEnumValue("Unknown", 0),
+                                    new FoxRunEnumValue("Ready", 1),
+                                }))),
+                    new FoxRunTypeField(
                         "bytes",
                         "Bytes",
                         FoxRunTypeShape.Collection(
@@ -444,15 +786,88 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 hostKind: "Field",
                 rawMemberOrder: 0,
                 conditionalSymbols: string.Empty,
-                mode: (int)FoxRunFlow.Publish,
+                mode: (int)flow,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
                 typeShape: state,
                 generatesWebSocketCodec: false,
                 publishTransportIds: new[]
                 {
                     "unity2foxglove.ros2bridge",
-                });
+                },
+                subscribeTransportId:
+                    flow == FoxRunFlow.Publish
+                        ? null
+                        : "unity2foxglove.ros2bridge");
         }
+
+        private static FoxRunGenerationMember CreateScalarCustomMember(
+            string memberName,
+            string topic,
+            int rawMemberOrder)
+            => new FoxRunGenerationMember(
+                "Phase186",
+                "MultiCdrProbe",
+                memberName,
+                "Field",
+                "Phase186.MultiState",
+                isValueType: false,
+                isArray: false,
+                elementTypeName: string.Empty,
+                topic,
+                hz: 10f,
+                schemaName: "phase186.MultiState",
+                policy: (int)FoxRunPolicy.Trigger,
+                tolerance: 0f,
+                hostKind: "Field",
+                rawMemberOrder,
+                conditionalSymbols: string.Empty,
+                mode: (int)FoxRunFlow.Publish,
+                encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                typeShape: FoxRunTypeShape.Object(
+                    "Phase186.MultiState",
+                    new[]
+                    {
+                        new FoxRunTypeField(
+                            "count",
+                            "Count",
+                            FoxRunTypeShape.Canonical("int32")),
+                    },
+                    canConstruct: true),
+                generatesWebSocketCodec: false,
+                publishTransportIds: new[]
+                {
+                    "unity2foxglove.ros2bridge",
+                });
+
+        private static FoxRunGenerationMember
+            CreateStandardSubscribeMember()
+            => new FoxRunGenerationMember(
+                "Phase186",
+                "StandardCdrProbe",
+                "Log",
+                "Field",
+                "Foxglove.Log",
+                isValueType: false,
+                isArray: false,
+                elementTypeName: string.Empty,
+                topic: "/phase186/standard-cdr",
+                hz: 10f,
+                schemaName: "foxglove.Log",
+                policy: (int)FoxRunPolicy.Trigger,
+                tolerance: 0f,
+                hostKind: "Field",
+                rawMemberOrder: 0,
+                conditionalSymbols: string.Empty,
+                mode: (int)FoxRunFlow.Subscribe,
+                encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                typeShape: FoxRunTypeShape.Object(
+                    "Foxglove.Log",
+                    Array.Empty<FoxRunTypeField>(),
+                    canConstruct: true),
+                generatesWebSocketCodec: false,
+                publishTransportIds: Array.Empty<string>(),
+                subscribeTransportId:
+                    "unity2foxglove.ros2bridge");
 
         private static OracleResult BuildOracle(
             FixtureValues values,
@@ -532,6 +947,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             writer.WriteInt32(values.Count);
             writer.WriteInt32(values.Kind);
+
+            writer.WriteSequenceLength(values.Kinds == null ? 0 : values.Kinds.Length);
+            if (values.Kinds != null)
+            {
+                for (var index = 0; index < values.Kinds.Length; index++)
+                    writer.WriteInt32(values.Kinds[index]);
+            }
+            RecordPresence(writer, presenceOffsets, "kinds", values.Kinds != null);
 
             writer.WriteSequenceLength(values.Labels == null ? 0 : values.Labels.Count);
             if (values.Labels != null)
@@ -649,6 +1072,54 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return (success, route, reason);
             }
 
+            public DecodeResult Decode(
+                byte[] payload,
+                string transportId,
+                ulong generation,
+                bool markRemoteOwned)
+            {
+                var fixture = CreateFixture(
+                    new FixtureValues(),
+                    "decode-target",
+                    sequence: 1UL);
+                var source = Assert.IsAssignableFrom<
+                    IFoxRunBridgeGeneratedSubscribeSource>(fixture.Probe);
+                Assert.Equal(1, source.FoxRunBridge_SubscribeBindingCount);
+                Assert.True(
+                    source.FoxRunBridge_TryGetSubscribeBinding(
+                        0,
+                        out var binding,
+                        out var bindingReason),
+                    bindingReason);
+                Assert.Equal(Topic, binding.Topic);
+                Assert.Equal("cdr", binding.MessageEncoding);
+                Assert.Equal(64, binding.SchemaSha256.Length);
+
+                var success = source.FoxRunBridge_TryDecodeAndApply(
+                    0,
+                    payload,
+                    transportId,
+                    generation,
+                    markRemoteOwned,
+                    out var reason);
+                var decodedState = _probeType
+                    .GetField(
+                        "State",
+                        BindingFlags.Instance | BindingFlags.Public)
+                    .GetValue(fixture.Probe);
+                return new DecodeResult(
+                    success,
+                    ReadFixtureValues(decodedState),
+                    reason,
+                    (bool)GetPublicField(fixture.Probe, "RemoteOwned"),
+                    (string)GetPublicField(
+                        fixture.Probe,
+                        "RemoteTransportId"),
+                    (ulong)GetPublicField(
+                        fixture.Probe,
+                        "RemoteGeneration"));
+            }
+
             private (object State, object Probe) CreateFixture(
                 FixtureValues values,
                 string origin,
@@ -658,6 +1129,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 SetField(state, "Bytes", values.Bytes);
                 SetField(state, "Count", values.Count);
                 SetField(state, "Kind", Enum.ToObject(_stateKindType, values.Kind));
+                SetField(state, "Kinds", CreateEnumArray(values.Kinds));
                 SetField(state, "Labels", values.Labels);
                 SetField(state, "Message", values.Message);
                 SetField(state, "OptionalCount", values.OptionalCount);
@@ -681,6 +1153,83 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return (state, probe);
             }
 
+            private FixtureValues ReadFixtureValues(object state)
+            {
+                var nested = GetPublicField(state, "Nested");
+                return new FixtureValues
+                {
+                    Bytes = (byte[])GetPublicField(state, "Bytes"),
+                    Count = (int)GetPublicField(state, "Count"),
+                    Kind = Convert.ToUInt16(
+                        GetPublicField(state, "Kind")),
+                    Kinds = ReadEnumArray(GetPublicField(state, "Kinds")),
+                    Labels = (List<string>)GetPublicField(state, "Labels"),
+                    Message = (string)GetPublicField(state, "Message"),
+                    Nested = nested == null
+                        ? null
+                        : new NestedValues
+                        {
+                            Enabled = (bool)GetPublicField(
+                                nested,
+                                "Enabled"),
+                            Label = (string)GetPublicField(
+                                nested,
+                                "Label"),
+                        },
+                    OptionalCount = (int?)GetPublicField(
+                        state,
+                        "OptionalCount"),
+                    OptionalText = (string)_stateType
+                        .GetProperty(
+                            "OptionalText",
+                            BindingFlags.Instance | BindingFlags.Public)
+                        .GetValue(state),
+                    Values = (List<long>)GetPublicField(state, "Values"),
+                };
+            }
+
+            private Array CreateEnumArray(IReadOnlyList<int> values)
+            {
+                if (values == null)
+                    return null;
+
+                var result = Array.CreateInstance(_stateKindType, values.Count);
+                for (var index = 0; index < values.Count; index++)
+                {
+                    result.SetValue(
+                        Enum.ToObject(_stateKindType, values[index]),
+                        index);
+                }
+                return result;
+            }
+
+            private static int[] ReadEnumArray(object value)
+            {
+                if (value == null)
+                    return null;
+
+                return ((Array)value)
+                    .Cast<object>()
+                    .Select(Convert.ToInt32)
+                    .ToArray();
+            }
+
+            private static object GetPublicField(
+                object target,
+                string name)
+                => target.GetType()
+                       .GetField(
+                           name,
+                           BindingFlags.Instance | BindingFlags.Public)
+                       ?.GetValue(target)
+                   ?? (target.GetType().GetField(
+                           name,
+                           BindingFlags.Instance | BindingFlags.Public)
+                       == null
+                       ? throw new InvalidOperationException(
+                           "Dynamic fixture field was missing: " + name)
+                       : null);
+
             private static void SetField(object target, string name, object value)
             {
                 var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public)
@@ -701,6 +1250,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public byte[] Bytes;
             public int Count;
             public ushort Kind;
+            public int[] Kinds;
             public List<string> Labels;
             public string Message;
             public NestedValues Nested;
@@ -733,6 +1283,32 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public byte[] Payload { get; }
             public string Reason { get; }
             public int OptionalTextReadCount { get; }
+        }
+
+        private readonly struct DecodeResult
+        {
+            public DecodeResult(
+                bool success,
+                FixtureValues values,
+                string reason,
+                bool remoteOwned,
+                string remoteTransportId,
+                ulong remoteGeneration)
+            {
+                Success = success;
+                Values = values;
+                Reason = reason;
+                RemoteOwned = remoteOwned;
+                RemoteTransportId = remoteTransportId;
+                RemoteGeneration = remoteGeneration;
+            }
+
+            public bool Success { get; }
+            public FixtureValues Values { get; }
+            public string Reason { get; }
+            public bool RemoteOwned { get; }
+            public string RemoteTransportId { get; }
+            public ulong RemoteGeneration { get; }
         }
 
         private readonly struct OracleResult

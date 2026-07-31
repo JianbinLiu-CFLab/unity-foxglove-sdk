@@ -16,7 +16,7 @@ using UnityEngine.Scripting;
 using Unity.FoxgloveSDK.Components;
 
 [Preserve]
-partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource, IFoxRunGeneratedTransportSource
+partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource, IFoxRunGeneratedTransportSource
 {
     int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -96,6 +96,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     private int __foxRunCapture_6_0;
     private int __foxRunCapture_6_1;
     private bool __foxRunRemoteOwned_6;
+    private string __foxRunRemoteTransport_6;
+    private ulong __foxRunRemoteGeneration_6;
     private int __foxRunRemoteValue_6_0;
     private int __foxRunRemoteValue_6_1;
 
@@ -347,6 +349,44 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         }
     }
 
+    void IFoxRunRemoteOwnershipSource.FoxRunOrigin_MarkRemoteApplied(int topicIndex, string transportId, ulong generation)
+    {
+        switch (topicIndex)
+        {
+            case 6: __FoxRunMarkRemoteApplied_6(transportId, generation); return;
+            default: return;
+        }
+    }
+
+    bool IFoxRunRemoteOwnershipSource.FoxRunOrigin_TryGetRemoteApplied(int topicIndex, out string transportId, out ulong generation)
+    {
+        transportId = string.Empty;
+        generation = 0;
+        switch (topicIndex)
+        {
+            case 6:
+                if (!__foxRunRemoteOwned_6) return false;
+                transportId = __foxRunRemoteTransport_6 ?? string.Empty;
+                generation = __foxRunRemoteGeneration_6;
+                return true;
+            default: return false;
+        }
+    }
+
+    void IFoxRunRemoteOwnershipSource.FoxRunOrigin_ClearRemoteApplied(int topicIndex, string transportId, ulong generation)
+    {
+        switch (topicIndex)
+        {
+            case 6:
+                if (__foxRunRemoteOwned_6
+                    && global::System.String.Equals(__foxRunRemoteTransport_6, transportId ?? string.Empty, global::System.StringComparison.Ordinal)
+                    && __foxRunRemoteGeneration_6 == generation)
+                    __FoxRunClearRemoteApplied_6();
+                return;
+            default: return;
+        }
+    }
+
     private bool __FoxRunCanPublishOrigin_6()
     {
         if (!__foxRunRemoteOwned_6) return true;
@@ -354,17 +394,29 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         if (__remoteUnchanged) __remoteUnchanged = global::System.Collections.Generic.EqualityComparer<int>.Default.Equals(this._messagePackSequence, __foxRunRemoteValue_6_0);
         if (__remoteUnchanged) __remoteUnchanged = global::System.Collections.Generic.EqualityComparer<int>.Default.Equals(this._messagePackValue, __foxRunRemoteValue_6_1);
         if (__remoteUnchanged) return false;
-        __foxRunRemoteOwned_6 = false;
         __hasLast_6 = false;
-        __foxRunRemoteValue_6_0 = default;
-        __foxRunRemoteValue_6_1 = default;
+        __FoxRunClearRemoteApplied_6();
         return true;
     }
 
+    private void __FoxRunClearRemoteApplied_6()
+    {
+        __foxRunRemoteOwned_6 = false;
+        __foxRunRemoteTransport_6 = null;
+        __foxRunRemoteGeneration_6 = 0;
+        __foxRunRemoteValue_6_0 = default;
+        __foxRunRemoteValue_6_1 = default;
+    }
+
     private void __FoxRunMarkRemoteApplied_6()
+        => __FoxRunMarkRemoteApplied_6(string.Empty, 0);
+
+    private void __FoxRunMarkRemoteApplied_6(string transportId, ulong generation)
     {
         __foxRunRemoteValue_6_0 = this._messagePackSequence;
         __foxRunRemoteValue_6_1 = this._messagePackValue;
+        __foxRunRemoteTransport_6 = transportId ?? string.Empty;
+        __foxRunRemoteGeneration_6 = generation;
         __foxRunRemoteOwned_6 = true;
     }
 

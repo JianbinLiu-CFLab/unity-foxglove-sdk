@@ -299,6 +299,120 @@ namespace Unity2Foxglove.Ros2Bridge
             DisposeFrames(displaced);
         }
 
+        internal bool TryActivateContract(
+            Ros2BridgeSessionContract contract,
+            string sessionId,
+            ulong connectionGeneration,
+            out string reason)
+        {
+            if (contract == null)
+            {
+                reason = "The inbound queue contract is null.";
+                return false;
+            }
+            if (contract.Direction
+                != Unity.FoxgloveSDK.Components
+                    .FoxRunTransportDirection.Subscribe)
+            {
+                reason = "The inbound queue accepts subscription contracts only.";
+                return false;
+            }
+
+            lock (_gate)
+            {
+                if (_disposed || !_running)
+                {
+                    reason = "The inbound queue is stopped.";
+                    return false;
+                }
+                if (!string.Equals(
+                        _sessionId,
+                        sessionId,
+                        StringComparison.Ordinal)
+                    || _connectionGeneration != connectionGeneration)
+                {
+                    reason =
+                        "The inbound queue session changed before contract activation.";
+                    return false;
+                }
+                if (_active.TryGetValue(
+                        contract.ContractId,
+                        out var existing))
+                {
+                    if (!existing.Equals(contract))
+                    {
+                        reason =
+                            "The inbound queue contract ID conflicts with an active contract.";
+                        return false;
+                    }
+                    reason = string.Empty;
+                    return true;
+                }
+
+                _active.Add(contract.ContractId, contract);
+                reason = string.Empty;
+                return true;
+            }
+        }
+
+        internal bool TryRevokeContract(
+            Ros2BridgeSessionContract contract,
+            out string reason)
+        {
+            if (contract == null)
+            {
+                reason = "The inbound queue contract is null.";
+                return false;
+            }
+
+            List<Ros2BridgeInboundFrame> displaced = null;
+            lock (_gate)
+            {
+                if (!_active.TryGetValue(
+                        contract.ContractId,
+                        out var existing))
+                {
+                    reason = string.Empty;
+                    return true;
+                }
+                if (!existing.Equals(contract))
+                {
+                    reason =
+                        "The inbound queue contract ID belongs to another contract.";
+                    return false;
+                }
+
+                _active.Remove(contract.ContractId);
+                _lastSequence.Remove(contract.ContractId);
+                var node = _queued.First;
+                while (node != null)
+                {
+                    var next = node.Next;
+                    if (node.Value.Contract.ContractId
+                        == contract.ContractId)
+                    {
+                        displaced ??= new List<Ros2BridgeInboundFrame>();
+                        displaced.Add(node.Value);
+                        _queued.Remove(node);
+                        ReduceUsageLocked(node.Value);
+                        _queuedBytes = checked(
+                            _queuedBytes - node.Value.PayloadLength);
+                    }
+                    node = next;
+                }
+                _usage.Remove(contract.ContractId);
+                if (_inFlight != null
+                    && _inFlight.Frame.Contract.ContractId
+                    == contract.ContractId)
+                {
+                    IncrementEpochLocked();
+                }
+                reason = string.Empty;
+            }
+            DisposeFrames(displaced);
+            return true;
+        }
+
         public Ros2BridgeSessionResult TryAccept(
             Ros2BridgeInboundFrame frame)
         {

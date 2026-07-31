@@ -442,7 +442,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 if (!_readySubscriptions.Contains(
                         current.ContractId))
                 {
-                    return Ros2BridgeSessionResult.Fault(
+                    return Ros2BridgeSessionResult.Reject(
                         "The inbound Bridge message arrived before subscription_ready.");
                 }
                 contract = current;

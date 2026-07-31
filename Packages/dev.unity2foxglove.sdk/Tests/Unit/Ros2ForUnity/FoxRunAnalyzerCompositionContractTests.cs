@@ -15,15 +15,6 @@ using Unity.FoxgloveSDK.UnitTests.Harness;
 using Unity2Foxglove.Ros2Bridge.Editor;
 using Xunit;
 
-namespace AnalyzerCompositionFixtures
-{
-    public sealed class BridgeState
-    {
-        public int Count;
-        public string Label;
-    }
-}
-
 namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 {
     public sealed class FoxRunAnalyzerCompositionContractTests
@@ -62,12 +53,6 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
 #endif
 namespace AnalyzerCompositionFixtures
 {
-    public sealed class BridgeState
-    {
-        public int Count;
-        public string Label;
-    }
-
     public partial class CompositionHost
     {
         [FoxRun(""/phase186/composition/core"")]
@@ -83,8 +68,11 @@ namespace AnalyzerCompositionFixtures
 #endif
 
         [FoxRun(""/phase186/composition/bridge"",
-            PublishTransportIds = new[] { ""unity2foxglove.ros2bridge"" })]
-        private BridgeState _bridge = new BridgeState();
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            PublishTransportIds = new[] { ""unity2foxglove.ros2bridge"" },
+            SubscribeTransportId = ""unity2foxglove.ros2bridge"")]
+        private global::Unity.FoxgloveSDK.Tests.FoxRun.Fixtures.Phase181State _bridge =
+            new global::Unity.FoxgloveSDK.Tests.FoxRun.Fixtures.Phase181State();
     }
 }";
 
@@ -200,6 +188,19 @@ namespace AnalyzerCompositionFixtures
                 FoxRunBridgeSourceEmitter
                     .EmitBridgeContribution(type),
                 generated[BridgeHint]);
+            Assert.Contains(
+                "IFoxRunBridgeGeneratedSubscribeSource",
+                generated[BridgeHint],
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "unity2foxglove_foxrun_interfaces_v1/msg/"
+                + "Phase181State48D288ED82F1Envelope",
+                generated[BridgeHint],
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "04c0e0d39b4c108bdb86e242f44215e394f5f56175e18a8ab60c682987e8b422",
+                generated[BridgeHint],
+                StringComparison.Ordinal);
         }
 
         private static AnalyzerExecution Run(
@@ -336,10 +337,7 @@ namespace AnalyzerCompositionFixtures
                 typeof(
                     Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
                         .Phase181State);
-            var bridgeType =
-                typeof(
-                    AnalyzerCompositionFixtures
-                        .BridgeState);
+            var bridgeType = r2fuType;
             var members = new[]
             {
                 new FoxRunGenerationMember(
@@ -416,17 +414,23 @@ namespace AnalyzerCompositionFixtures
                     hostKind: "field",
                     rawMemberOrder: 2,
                     conditionalSymbols: string.Empty,
+                    mode: 3,
                     typeShape:
                         FoxRunReflectionTypeShapeBuilder
                             .Build(bridgeType),
                     generatesWebSocketCodec: false,
                     namedArgumentPresence:
-                        FoxRunNamedArgumentPresence
-                            .PublishTransportIds,
+                        FoxRunNamedArgumentPresence.Mode
+                        | FoxRunNamedArgumentPresence
+                            .PublishTransportIds
+                        | FoxRunNamedArgumentPresence
+                            .SubscribeTransportId,
                     publishTransportIds: new[]
                     {
                         "unity2foxglove.ros2bridge",
-                    }),
+                    },
+                    subscribeTransportId:
+                        "unity2foxglove.ros2bridge"),
             };
             return Assert.Single(
                 FoxRunGenerationModel

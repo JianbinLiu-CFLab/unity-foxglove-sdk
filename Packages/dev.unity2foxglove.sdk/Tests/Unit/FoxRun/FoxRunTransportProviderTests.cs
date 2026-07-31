@@ -388,6 +388,63 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void GeneratedFanoutSuppressesOnlyExactRemoteProviderGeneration()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var sessions = new IFoxRunTransportSession[]
+            {
+                new GeneratedSession(
+                    "unity2foxglove.ros2bridge",
+                    calls,
+                    FoxRunTransportPublishResult.Accepted(),
+                    generation: 17),
+                new GeneratedSession(
+                    "unity2foxglove.r2fu",
+                    calls,
+                    FoxRunTransportPublishResult.Accepted(),
+                    generation: 17),
+            };
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(),
+                topicIndex: 0,
+                "/phase186/generated-origin",
+                logTimeNs: 186);
+            var selected = new[]
+            {
+                "unity2foxglove.ros2bridge",
+                "unity2foxglove.r2fu",
+            };
+
+            var exact = FoxRunGeneratedTransportFanout.Publish(
+                sessions,
+                selected,
+                inheritedTransportIds: null,
+                in request,
+                suppressedTransportId:
+                    "unity2foxglove.ros2bridge",
+                suppressedGeneration: 17);
+            Assert.Equal(
+                new[] { "unity2foxglove.r2fu" },
+                calls);
+            Assert.Equal(1, exact.Matched);
+            Assert.Equal(1, exact.Accepted);
+
+            calls.Clear();
+            var staleGeneration =
+                FoxRunGeneratedTransportFanout.Publish(
+                    sessions,
+                    selected,
+                    inheritedTransportIds: null,
+                    in request,
+                    suppressedTransportId:
+                        "unity2foxglove.ros2bridge",
+                    suppressedGeneration: 16);
+            Assert.Equal(selected, calls);
+            Assert.Equal(2, staleGeneration.Matched);
+            Assert.Equal(2, staleGeneration.Accepted);
+        }
+
+        [Fact]
         public void RetirementCapacityIsPreReservedAndTimeoutConversionAllocatesNothing()
         {
             var owner = FoxRunTransportRetirementOwner.CreateForTests(capacity: 2);
@@ -1060,17 +1117,19 @@ namespace Unity.FoxgloveSDK.Tests
             internal GeneratedSession(
                 string id,
                 System.Collections.Generic.IList<string> calls,
-                FoxRunTransportPublishResult result)
+                FoxRunTransportPublishResult result,
+                ulong generation = 186)
             {
                 Id = new FoxRunTransportId(id);
                 _calls = calls;
                 _result = result;
+                Generation = generation;
             }
 
             public FoxRunTransportId Id { get; }
             public FoxRunTransportCapabilities Capabilities =>
                 FoxRunTransportCapabilities.Publish;
-            public ulong Generation => 186;
+            public ulong Generation { get; }
 
             public FoxRunTransportPublishResult PublishGenerated(
                 in FoxRunGeneratedTransportPublishRequest request)
