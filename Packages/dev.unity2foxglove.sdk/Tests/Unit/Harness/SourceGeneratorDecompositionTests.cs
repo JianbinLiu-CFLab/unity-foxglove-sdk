@@ -56,5 +56,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("internal static class FoxServiceRoslynSchemaBuilder", schema, StringComparison.Ordinal);
             Assert.Contains("FoxServiceSchemaModel Build", schema, StringComparison.Ordinal);
         }
+
+        [Fact]
+        public void ProviderAnalyzerSharedSemanticsMatchCoreFallbacks()
+        {
+            foreach (var root in new[]
+                     {
+                         "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor",
+                         "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared",
+                         "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared",
+                     })
+            {
+                var validator = TestSources.Text(root + "/FoxRunGenerationModelValidator.cs");
+                var model = TestSources.Text(root + "/FoxRunGenerationModel.cs");
+
+                Assert.Contains(
+                    "AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic is required.\");",
+                    validator,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "=> !IsNonFinite(value) && value > 0f ? value : 10f;",
+                    model,
+                    StringComparison.Ordinal);
+            }
+        }
     }
 }

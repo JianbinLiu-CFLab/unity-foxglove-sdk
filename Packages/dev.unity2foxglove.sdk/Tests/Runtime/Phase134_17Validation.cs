@@ -76,8 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySourceWiring()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            Check(validator.Contains("Error(\"FOXRUN008\"", StringComparison.Ordinal),
-                "134-17-D1: invalid topic diagnostic is modeled as an error");
+            Check(validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic is required.\")", StringComparison.Ordinal)
+                  && validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic must be absolute and start with '/'.\")", StringComparison.Ordinal)
+                  && !validator.Contains("AddError(diagnostics, \"FOXRUN001\", member", StringComparison.Ordinal),
+                "134-17-D1: blank and relative topic diagnostics use the mapped FOXRUN008 error");
 
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(sourceGenerator.Contains("\"FOXRUN008\", \"FoxRun topic must be absolute\"", StringComparison.Ordinal)
@@ -208,6 +210,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(member.Value<float>("hz") == 10f
                   && member.Value<float>("tolerance") == 0f,
                 "134-17-F2: descriptor JSON writes finite values and resolves the default publish rate");
+            Check(Member("Demo", "RateProbe", "zero", "/rate/zero", "float", 0f).Hz == 10f
+                  && Member("Demo", "RateProbe", "negative", "/rate/negative", "float", -2f).Hz == 10f
+                  && Member("Demo", "RateProbe", "nonFinite", "/rate/nonfinite", "float", float.NegativeInfinity).Hz == 10f
+                  && Member("Demo", "RateProbe", "positive", "/rate/positive", "float", 25f).Hz == 25f,
+                "134-17-F2B: generation model preserves default cadence fallback for non-positive and non-finite rates");
 
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, reread);
@@ -491,7 +498,8 @@ namespace Unity.FoxgloveSDK.Tests
             string className,
             string memberName,
             string topic,
-            string typeName)
+            string typeName,
+            float hz = 1f)
         {
             return new FoxRunGenerationMember(
                 ns,
@@ -503,7 +511,7 @@ namespace Unity.FoxgloveSDK.Tests
                 false,
                 string.Empty,
                 topic,
-                1f,
+                hz,
                 string.Empty,
                 (int)FoxRunPolicy.FixedRate,
                 0f,

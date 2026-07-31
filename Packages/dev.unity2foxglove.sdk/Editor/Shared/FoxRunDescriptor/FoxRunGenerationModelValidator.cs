@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(member.MemberName))
                 AddError(diagnostics, "FOXRUN012", member, "FoxRun member name is required.");
             if (string.IsNullOrWhiteSpace(member.Topic))
-                AddError(diagnostics, "FOXRUN001", member, "FoxRun topic is required.");
+                AddError(diagnostics, "FOXRUN008", member, "FoxRun topic is required.");
             else if (!member.Topic.StartsWith("/", StringComparison.Ordinal))
                 AddError(diagnostics, "FOXRUN008", member, "FoxRun topic must be absolute and start with '/'.");
             if (member.Policy != 1 && member.Policy != 2 && member.Policy != 4)

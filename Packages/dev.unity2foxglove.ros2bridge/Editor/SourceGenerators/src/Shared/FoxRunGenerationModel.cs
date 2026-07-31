@@ -1190,7 +1190,7 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static float NormalizeHz(float value)
-            => IsNonFinite(value) || value < 0f ? 0f : value;
+            => !IsNonFinite(value) && value > 0f ? value : 10f;
 
         private static float NormalizeNonNegative(float value)
             => IsNonFinite(value) || value < 0f ? 0f : value;
