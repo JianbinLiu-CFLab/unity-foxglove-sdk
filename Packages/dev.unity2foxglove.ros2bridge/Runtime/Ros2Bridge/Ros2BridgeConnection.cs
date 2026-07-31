@@ -822,19 +822,22 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private void OnWorkerExited(int workerIndex)
         {
-            CompleteWorkerOwnershipOnExit(workerIndex);
-            if (Interlocked.Decrement(ref _workersRemaining) != 0)
-                return;
-
-            lock (_gate)
+            if (Interlocked.Decrement(ref _workersRemaining) == 0)
             {
-                if (_disposeRequested)
+                lock (_gate)
                 {
-                    _lifecycleState =
-                        Ros2BridgeSessionLifecycleState.Stopped;
+                    if (_disposeRequested)
+                    {
+                        _lifecycleState =
+                            Ros2BridgeSessionLifecycleState.Stopped;
+                    }
                 }
+                TryDisposeResources();
             }
-            TryDisposeResources();
+
+            // The final exclusive slot must remain occupied until the shared
+            // transport and worker resources have actually been released.
+            CompleteWorkerOwnershipOnExit(workerIndex);
         }
 
         public void Dispose()
