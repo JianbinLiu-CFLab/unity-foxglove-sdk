@@ -125,6 +125,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     if (message.Operation == U2R2Operation.Publish)
                     {
                         Assert.Equal(header.Value<ulong>("logTimeNs"), message.LogTimeNs);
+                        Assert.Equal(header.Value<ulong>("sequence"), message.Sequence);
                         Assert.Equal(0UL, message.ReceiveTimeNs);
                     }
                     if (message.Operation == U2R2Operation.Message)
@@ -133,6 +134,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                         Assert.Equal(
                             header.Value<ulong>("receiveTimeNs"),
                             message.ReceiveTimeNs);
+                        Assert.Equal(
+                            header.Value<ulong>("sequence"),
+                            message.Sequence);
                         Assert.Equal(0UL, message.LogTimeNs);
                         Assert.Equal("cdr", message.Encoding);
                         Assert.Equal(
@@ -209,6 +213,45 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     vector.Value<bool>("terminal"),
                     BuildEncodeNegativeAction(vector));
             }
+        }
+
+        [Fact]
+        public void DataOperationsRequireNonzeroSequence()
+        {
+            var vector = Vector("message");
+            var payload = HexToBytes(vector.Value<string>("payloadHex"));
+            var header = (JObject)vector["header"].DeepClone();
+
+            header.Remove("sequence");
+            AssertProtocolError(
+                "invalid_frame",
+                terminal: true,
+                () => U2R2ProtocolCodec.ParseV2(
+                    new U2R2Frame(header, payload)));
+
+            header["sequence"] = 0UL;
+            AssertProtocolError(
+                "invalid_frame",
+                terminal: true,
+                () => U2R2ProtocolCodec.ParseV2(
+                    new U2R2Frame(header, payload)));
+
+            var publish = Vector("publish");
+            var publishHeader = (JObject)publish["header"].DeepClone();
+            var publishPayload = HexToBytes(publish.Value<string>("payloadHex"));
+            publishHeader.Remove("sequence");
+            AssertProtocolError(
+                "invalid_frame",
+                terminal: true,
+                () => U2R2ProtocolCodec.ParseV2(
+                    new U2R2Frame(publishHeader, publishPayload)));
+
+            publishHeader["sequence"] = 0UL;
+            AssertProtocolError(
+                "invalid_frame",
+                terminal: true,
+                () => U2R2ProtocolCodec.ParseV2(
+                    new U2R2Frame(publishHeader, publishPayload)));
         }
 
         [Fact]

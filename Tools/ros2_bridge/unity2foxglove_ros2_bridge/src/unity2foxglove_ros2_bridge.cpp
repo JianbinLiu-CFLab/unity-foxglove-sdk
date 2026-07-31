@@ -31,6 +31,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -1756,6 +1757,85 @@ public:
     }
   }
 
+  std::shared_ptr<void> subscribe(
+    const u2r2::ContractIdentity & identity,
+    bridge_runtime::BridgeSerializedCallback callback)
+  {
+    if (!node_) {
+      throw std::logic_error(
+              "generic subscriptions require the process-owned ROS node");
+    }
+    if (!callback) {
+      throw std::invalid_argument(
+              "generic subscriptions require a serialized callback");
+    }
+    if (identity.qos.depth >
+      static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+      throw std::runtime_error(
+              "subscription QoS depth exceeds the supported integer range");
+    }
+    BridgeFrame contract;
+    contract.topic = identity.topic;
+    contract.schema_name = identity.schema_name;
+    contract.encoding = "cdr";
+    contract.profile = identity.qos.profile;
+    contract.reliability = identity.qos.reliability;
+    contract.durability = identity.qos.durability;
+    contract.history = identity.qos.history;
+    contract.depth = static_cast<int>(identity.qos.depth);
+    auto qos = make_qos(contract);
+    const auto logger = node_->get_logger();
+    auto subscription = node_->create_generic_subscription(
+      identity.topic,
+      identity.schema_name,
+      qos,
+      [callback = std::move(callback), logger](
+        std::shared_ptr<rclcpp::SerializedMessage> message,
+        const rclcpp::MessageInfo &) {
+        if (!message) {
+          return;
+        }
+        const auto & serialized =
+          message->get_rcl_serialized_message();
+        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::system_clock::now().time_since_epoch()).count();
+        try {
+          (void)callback(
+            serialized.buffer,
+            serialized.buffer_length,
+            now < 0 ? 0U : static_cast<uint64_t>(now));
+        } catch (const std::exception & error) {
+          RCLCPP_ERROR(
+            logger,
+            "[unity2foxglove_ros2_bridge] serialized subscription "
+            "callback rejected a sample: %s",
+            error.what());
+        } catch (...) {
+          RCLCPP_ERROR(
+            logger,
+            "[unity2foxglove_ros2_bridge] serialized subscription "
+            "callback rejected a sample with an unknown error");
+        }
+      });
+    if (!subscription) {
+      throw std::runtime_error(
+              "generic subscription factory returned no subscription");
+    }
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[unity2foxglove_ros2_bridge] subscription %s %s "
+      "profile=%s reliability=%s durability=%s history=%s depth=%u",
+      identity.topic.c_str(),
+      identity.schema_name.c_str(),
+      identity.qos.profile.c_str(),
+      identity.qos.reliability.c_str(),
+      identity.qos.durability.c_str(),
+      identity.qos.history.c_str(),
+      identity.qos.depth);
+    return std::static_pointer_cast<void>(subscription);
+  }
+
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
@@ -1999,6 +2079,104 @@ void drain_session_writer(
     write->release();
   }
 }
+
+class SessionSocketWriter final
+{
+public:
+  SessionSocketWriter(
+    SocketHandle socket,
+    bridge_runtime::BridgeSessionProtocol & protocol)
+  : socket_(socket),
+    protocol_(protocol),
+    thread_([this]() {run();})
+  {
+  }
+
+  ~SessionSocketWriter()
+  {
+    stop_and_join();
+  }
+
+  SessionSocketWriter(const SessionSocketWriter &) = delete;
+  SessionSocketWriter & operator=(const SessionSocketWriter &) = delete;
+
+  void stop_and_join() noexcept
+  {
+    bool expected = false;
+    if (stopped_.compare_exchange_strong(expected, true)) {
+      stop_requested_.store(true);
+      try {
+        protocol_.close();
+      } catch (...) {
+      }
+    }
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+
+  void rethrow_failure() const
+  {
+    std::exception_ptr failure;
+    {
+      std::lock_guard<std::mutex> lock(failure_mutex_);
+      failure = failure_;
+    }
+    if (failure) {
+      std::rethrow_exception(failure);
+    }
+  }
+
+private:
+  void run() noexcept
+  {
+    try {
+      while (!stop_requested_.load()) {
+        const auto observed = protocol_.wake_generation();
+        while (!stop_requested_.load()) {
+          auto write = protocol_.try_begin_write();
+          if (!write) {
+            break;
+          }
+          try {
+            write_all_accounted(
+              socket_,
+              write->frame().bytes(),
+              protocol_.limits());
+          } catch (...) {
+            write->release();
+            throw;
+          }
+          write->release();
+        }
+        if (
+          stop_requested_.load() ||
+          protocol_.wake_generation() != observed)
+        {
+          continue;
+        }
+        (void)protocol_.wait_for_writer_change(
+          observed,
+          std::chrono::milliseconds(50));
+      }
+    } catch (...) {
+      {
+        std::lock_guard<std::mutex> lock(failure_mutex_);
+        failure_ = std::current_exception();
+      }
+      stop_requested_.store(true);
+      shutdown_socket_both(socket_);
+    }
+  }
+
+  SocketHandle socket_;
+  bridge_runtime::BridgeSessionProtocol & protocol_;
+  mutable std::mutex failure_mutex_;
+  std::exception_ptr failure_;
+  std::atomic<bool> stop_requested_{false};
+  std::atomic<bool> stopped_{false};
+  std::thread thread_;
+};
 
 std::vector<uint8_t> encode_v2_ok_response(
   const bridge_runtime::BridgeSessionProtocol & protocol,
@@ -2268,13 +2446,32 @@ void run_owned_v2_data_session(
   const RosContextOk & context_ok)
 {
   protocol.bind_v2_identity(authority.allocate_session_identity());
-  drain_session_writer(client_fd, protocol);
-
-  while (context_ok()) {
-    try {
+  SessionSocketWriter writer(client_fd, protocol);
+  try {
+    while (context_ok()) {
       const auto wire =
         read_accounted_wire_frame(client_fd, protocol, context_ok);
       const auto request = protocol.parse_v2_request(wire.bytes);
+      if (request.operation == u2r2::Operation::RegisterSubscription) {
+        (void)protocol.register_subscription(
+          wire.bytes,
+          request,
+          kControlResponseReservationBytes,
+          [&](const u2r2::ContractIdentity & identity,
+            bridge_runtime::BridgeSerializedCallback callback) {
+            return require_bridge().subscribe(
+              identity,
+              std::move(callback));
+          });
+        continue;
+      }
+      if (request.operation == u2r2::Operation::UnregisterSubscription) {
+        (void)protocol.unregister_subscription(
+          wire.bytes,
+          request,
+          kControlResponseReservationBytes);
+        continue;
+      }
       std::optional<BridgeFrame> bridge_frame;
       if (
         request.operation == u2r2::Operation::PreparePublisher ||
@@ -2296,11 +2493,14 @@ void run_owned_v2_data_session(
             protocol,
             require_bridge);
         });
-      drain_session_writer(client_fd, protocol);
-    } catch (const ClientClosedException &) {
-      return;
     }
+  } catch (const ClientClosedException &) {
+  } catch (...) {
+    writer.stop_and_join();
+    throw;
   }
+  writer.stop_and_join();
+  writer.rethrow_failure();
 }
 
 void process_owned_client(

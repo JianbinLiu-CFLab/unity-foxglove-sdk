@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -13,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "unity2foxglove_ros2_bridge/bridge_outbound_queue.hpp"
 #include "unity2foxglove_ros2_bridge/u2r2_protocol.hpp"
 #include "unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp"
 
@@ -41,6 +43,17 @@ struct ReplayMutationResult
   static ReplayMutationResult success(std::vector<uint8_t> exact_response);
   static ReplayMutationResult error(std::vector<uint8_t> exact_response);
 };
+
+enum class BridgeSubscriptionCommand
+{
+  applied = 1,
+  replayed = 2,
+  rejected = 3,
+};
+
+using BridgeSubscriptionFactory = std::function<std::shared_ptr<void>(
+    const u2r2::ContractIdentity &,
+    BridgeSerializedCallback)>;
 
 class BridgeSessionProtocol final
 {
@@ -73,11 +86,26 @@ public:
     uint64_t maximum_response_bytes,
     const std::function<ReplayMutationResult()> & mutation);
 
+  BridgeSubscriptionCommand register_subscription(
+    const std::vector<uint8_t> & request_wire,
+    const u2r2::Message & request,
+    uint64_t maximum_response_bytes,
+    const BridgeSubscriptionFactory & factory);
+  BridgeSubscriptionCommand unregister_subscription(
+    const std::vector<uint8_t> & request_wire,
+    const u2r2::Message & request,
+    uint64_t maximum_response_bytes);
+
   std::optional<u2r2::ControlReservation> try_reserve_control(uint64_t bytes);
   std::optional<u2r2::ByteLease> try_reserve_transient(uint64_t bytes);
   std::optional<u2r2::ByteLease> try_begin_read(uint64_t bytes);
   void enqueue_control(std::string token, std::vector<uint8_t> exact_frame);
   std::optional<u2r2::WriteLease> try_begin_write();
+  uint64_t wake_generation() const;
+  bool wait_for_writer_change(
+    uint64_t observed_generation,
+    std::chrono::milliseconds timeout);
+  void close();
   uint64_t transient_bytes() const;
   uint64_t in_flight_bytes() const;
   const u2r2::ProtocolLimits & limits() const noexcept;

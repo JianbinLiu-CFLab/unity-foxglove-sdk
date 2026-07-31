@@ -331,6 +331,18 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     "messageId is not valid for this U2R2 operation.");
             }
 
+            var sequence = 0UL;
+            if (operation == U2R2Operation.Publish
+                || operation == U2R2Operation.Message)
+            {
+                sequence = RequiredUnsigned(header, "sequence", allowZero: false);
+            }
+            else if (header["sequence"] != null)
+            {
+                throw InvalidFrame(
+                    "sequence is only valid on a U2R2 data operation.");
+            }
+
             var contractId = 0UL;
             var hasContractId =
                 operation == U2R2Operation.RegisterSubscription
@@ -443,6 +455,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 terminal,
                 requestId,
                 messageId,
+                sequence,
                 contractId,
                 sessionId,
                 connectionGeneration,

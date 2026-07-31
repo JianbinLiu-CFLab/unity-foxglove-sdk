@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <array>
+#include <condition_variable>
 #include <exception>
 #include <fstream>
 #include <limits>
@@ -2210,4 +2211,248 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, MakesKeepLastQosWithNonDefaultDepth)
   EXPECT_EQ(RMW_QOS_POLICY_DURABILITY_VOLATILE, qos.durability);
   EXPECT_EQ(RMW_QOS_POLICY_HISTORY_KEEP_LAST, qos.history);
   EXPECT_EQ(37U, qos.depth);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  GenericSubscriptionReceivesExactExternalSerializedCdr)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase186_d_sidecar_subscription_probe",
+    context);
+  BridgeNode bridge(
+    ros_owner.require_node(),
+    PayloadFormat::CdrWithEncapsulation);
+  const u2r2::ContractIdentity identity(
+    u2r2::ContractKey(41U, 7U),
+    u2r2::ContractDirection::subscribe,
+    "/phase186/d/external",
+    "std_msgs/msg/String",
+    u2r2::Qos{
+      "default", "reliable", "volatile", "keep_last", 10U});
+
+  std::mutex received_mutex;
+  std::condition_variable received_changed;
+  std::vector<uint8_t> received;
+  uint64_t receive_time_ns = 0;
+  auto subscription = bridge.subscribe(
+    identity,
+    [&](const uint8_t * data, size_t size, uint64_t time_ns) {
+      {
+        std::lock_guard<std::mutex> lock(received_mutex);
+        received.assign(data, data + size);
+        receive_time_ns = time_ns;
+      }
+      received_changed.notify_all();
+      return bridge_runtime::BridgeSerializedAdmission::accepted;
+    });
+
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto external = std::make_shared<rclcpp::Node>(
+    "phase186_d_external_publisher_probe",
+    options);
+  auto publisher = external->create_generic_publisher(
+    identity.topic,
+    identity.schema_name,
+    rclcpp::QoS(10));
+  const auto discovery_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() == 0 &&
+    std::chrono::steady_clock::now() < discovery_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GT(publisher->get_subscription_count(), 0U);
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  rclcpp::SerializedMessage serialized(payload.size());
+  auto & raw = serialized.get_rcl_serialized_message();
+  ASSERT_GE(raw.buffer_capacity, payload.size());
+  std::memcpy(raw.buffer, payload.data(), payload.size());
+  raw.buffer_length = payload.size();
+  publisher->publish(serialized);
+
+  {
+    std::unique_lock<std::mutex> lock(received_mutex);
+    ASSERT_TRUE(received_changed.wait_for(
+        lock,
+        std::chrono::seconds(5),
+        [&]() {return !received.empty();}));
+  }
+  EXPECT_EQ(payload, received);
+  EXPECT_GT(receive_time_ns, 0U);
+
+  subscription.reset();
+  publisher.reset();
+  external.reset();
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase186-D external subscription probe complete");
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2SubscriptionStreamsExternalCdrThroughTheSingleSocketWriter)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase186_d_owned_subscription_probe",
+    context);
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() {
+      return std::make_unique<BridgeNode>(
+        ros_owner.require_node(),
+        PayloadFormat::CdrWithEncapsulation);
+    };
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186_d_owned_subscription_test"),
+          [context]() {return rclcpp::ok(context);});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "hello"},
+        {"protocolVersion", 2},
+        {"requestId", 1},
+        {"clientName", "phase186-d-subscription"},
+        {"capabilities", nlohmann::json::array({"subscribe"})},
+      },
+      {}));
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  const std::string topic = "/phase186/d/owned_external";
+  const std::string schema = "std_msgs/msg/String";
+  const auto registration = u2r2::encode_frame(
+    {
+      {"op", "register_subscription"},
+      {"protocolVersion", 2},
+      {"requestId", 2},
+      {"sessionId", hello_ack.session_id},
+      {"connectionGeneration", hello_ack.connection_generation},
+      {"contractId", 41},
+      {"topic", topic},
+      {"schemaName", schema},
+      {"encoding", "cdr"},
+      {"qos", {
+          {"profile", "default"},
+          {"reliability", "reliable"},
+          {"durability", "volatile"},
+          {"history", "keep_last"},
+          {"depth", 10},
+        }},
+    },
+    {});
+  write_all(client_socket.get(), registration);
+  const auto ready = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::SubscriptionReady, ready.operation);
+  ASSERT_EQ("ok", ready.status);
+  ASSERT_EQ(41U, ready.contract_id);
+
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto external = std::make_shared<rclcpp::Node>(
+    "phase186_d_owned_external_publisher",
+    options);
+  auto publisher = external->create_generic_publisher(
+    topic,
+    schema,
+    rclcpp::QoS(10));
+  const auto discovery_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() == 0 &&
+    std::chrono::steady_clock::now() < discovery_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GT(publisher->get_subscription_count(), 0U);
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  rclcpp::SerializedMessage serialized(payload.size());
+  auto & raw = serialized.get_rcl_serialized_message();
+  ASSERT_GE(raw.buffer_capacity, payload.size());
+  std::memcpy(raw.buffer, payload.data(), payload.size());
+  raw.buffer_length = payload.size();
+  publisher->publish(serialized);
+
+  const auto message_wire = ReadSocketWireFrame(client_socket.get());
+  const auto message_frame = u2r2::decode_frame(message_wire);
+  const auto message = u2r2::parse_v2(message_frame);
+  EXPECT_EQ(u2r2::Operation::Message, message.operation);
+  EXPECT_EQ(41U, message.contract_id);
+  EXPECT_EQ(1U, message.sequence);
+  EXPECT_EQ(topic, message.topic);
+  EXPECT_EQ(schema, message.schema_name);
+  EXPECT_EQ(payload, message_frame.payload);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "unregister_subscription"},
+        {"protocolVersion", 2},
+        {"requestId", 3},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"contractId", 41},
+      },
+      {}));
+  const auto removed = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::SubscriptionRemoved, removed.operation);
+  EXPECT_EQ("ok", removed.status);
+  EXPECT_EQ(41U, removed.contract_id);
+
+  const auto removal_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() != 0 &&
+    std::chrono::steady_clock::now() < removal_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(0U, publisher->get_subscription_count());
+
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  server.join();
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(0U, authority.classified_count());
+
+  publisher.reset();
+  external.reset();
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase186-D owned subscription probe complete");
 }

@@ -275,6 +275,25 @@ private:
   std::shared_ptr<void> settlement_;
 };
 
+class DataReservation final
+{
+public:
+  DataReservation() = default;
+  ~DataReservation();
+  DataReservation(DataReservation &&) noexcept = default;
+  DataReservation & operator=(DataReservation && other) noexcept;
+  DataReservation(const DataReservation &) = delete;
+  DataReservation & operator=(const DataReservation &) = delete;
+
+  bool try_commit(OutboundFrame frame);
+  bool try_cancel();
+
+private:
+  friend class BoundedOutboundScheduler;
+  explicit DataReservation(std::shared_ptr<void> settlement);
+  std::shared_ptr<void> settlement_;
+};
+
 class ByteLease final
 {
 public:
@@ -322,6 +341,9 @@ public:
   BoundedOutboundScheduler & operator=(const BoundedOutboundScheduler &) = delete;
 
   std::optional<ControlReservation> try_reserve_control(uint64_t bytes);
+  std::optional<DataReservation> try_reserve_data(
+    const ContractKey & key,
+    uint64_t bytes);
   EnqueueDisposition enqueue_data(
     OutboundFrame frame,
     QueueOverflowPolicy policy);

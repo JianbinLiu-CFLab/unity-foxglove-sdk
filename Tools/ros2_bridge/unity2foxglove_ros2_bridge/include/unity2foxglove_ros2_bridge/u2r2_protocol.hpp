@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
@@ -102,6 +103,7 @@ struct Message
   bool terminal{false};
   uint64_t request_id{0};
   uint64_t message_id{0};
+  uint64_t sequence{0};
   uint64_t contract_id{0};
   std::string session_id;
   uint64_t connection_generation{0};
@@ -227,6 +229,15 @@ std::vector<uint8_t> encode_frame(
 std::vector<uint8_t> encode_frame(
   const nlohmann::json & header,
   const std::vector<uint8_t> & payload,
+  const ProtocolLimits & limits);
+uint64_t encoded_frame_size(
+  const nlohmann::json & header,
+  uint64_t payload_size,
+  const ProtocolLimits & limits);
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const uint8_t * payload,
+  size_t payload_size,
   const ProtocolLimits & limits);
 Frame decode_frame(const std::vector<uint8_t> & bytes);
 Frame decode_frame(

@@ -55,6 +55,9 @@ public:
   bool is_closed() const;
 
   std::optional<u2r2::ControlReservation> try_reserve_control(uint64_t bytes);
+  std::optional<u2r2::DataReservation> try_reserve_data(
+    const u2r2::ContractKey & key,
+    uint64_t bytes);
   void enqueue_control(std::string token, std::vector<uint8_t> exact_frame);
   u2r2::EnqueueDisposition enqueue_data(
     u2r2::OutboundFrame frame,

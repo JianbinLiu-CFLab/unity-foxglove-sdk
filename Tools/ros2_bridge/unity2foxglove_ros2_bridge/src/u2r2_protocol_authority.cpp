@@ -241,6 +241,59 @@ private:
   std::function<void()> cancel_;
 };
 
+struct DataSettlement final
+{
+  DataSettlement(
+    ContractKey key,
+    uint64_t reserved_bytes,
+    std::function<bool(OutboundFrame)> commit,
+    std::function<void()> cancel)
+  : key_(key),
+    reserved_bytes_(reserved_bytes),
+    commit_(std::move(commit)),
+    cancel_(std::move(cancel))
+  {
+  }
+
+  bool try_commit(OutboundFrame frame)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (settled_) {
+      return false;
+    }
+    if (frame.is_control()) {
+      throw std::invalid_argument(
+              "a data reservation requires a data frame");
+    }
+    if (frame.contract() != key_ || frame.byte_count() != reserved_bytes_) {
+      throw std::invalid_argument(
+              "a data frame must exactly match its reservation");
+    }
+    const auto committed = commit_(std::move(frame));
+    settled_ = true;
+    return committed;
+  }
+
+  bool try_cancel()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (settled_) {
+      return false;
+    }
+    cancel_();
+    settled_ = true;
+    return true;
+  }
+
+private:
+  std::mutex mutex_;
+  ContractKey key_;
+  uint64_t reserved_bytes_;
+  bool settled_{false};
+  std::function<bool(OutboundFrame)> commit_;
+  std::function<void()> cancel_;
+};
+
 template<typename T>
 std::shared_ptr<T> SettlementAs(const std::shared_ptr<void> & value)
 {
@@ -887,6 +940,46 @@ bool ControlReservation::try_cancel()
   return SettlementAs<ControlSettlement>(settlement_)->try_cancel();
 }
 
+DataReservation::DataReservation(std::shared_ptr<void> settlement)
+: settlement_(std::move(settlement))
+{
+}
+
+DataReservation::~DataReservation()
+{
+  try_cancel();
+}
+
+DataReservation & DataReservation::operator=(DataReservation && other) noexcept
+{
+  if (this != &other) {
+    try {
+      try_cancel();
+    } catch (...) {
+      std::terminate();
+    }
+    settlement_ = std::move(other.settlement_);
+  }
+  return *this;
+}
+
+bool DataReservation::try_commit(OutboundFrame frame)
+{
+  if (!settlement_) {
+    return false;
+  }
+  return SettlementAs<DataSettlement>(settlement_)->try_commit(
+    std::move(frame));
+}
+
+bool DataReservation::try_cancel()
+{
+  if (!settlement_) {
+    return false;
+  }
+  return SettlementAs<DataSettlement>(settlement_)->try_cancel();
+}
+
 ByteLease::ByteLease(std::shared_ptr<void> settlement)
 : settlement_(std::move(settlement))
 {
@@ -985,10 +1078,16 @@ struct BoundedOutboundScheduler::Impl final
   std::unordered_set<ContractKey, ContractKeyHash> active;
   std::unordered_set<ContractKey, ContractKeyHash> revoked;
   std::unordered_set<ContractKey, ContractKeyHash> retire_when_drained;
+  std::unordered_map<ContractKey, uint64_t, ContractKeyHash>
+  data_reserved_depth_by_contract;
+  std::unordered_map<ContractKey, uint64_t, ContractKeyHash>
+  data_reserved_bytes_by_contract;
   uint64_t control_depth_used{0};
   uint64_t control_bytes_used{0};
   uint64_t data_queued_depth{0};
   uint64_t data_queued_bytes{0};
+  uint64_t data_reserved_depth{0};
+  uint64_t data_reserved_bytes{0};
   uint64_t transient_bytes{0};
   uint64_t in_flight_bytes{0};
   uint64_t control_burst{0};
@@ -1016,6 +1115,8 @@ struct BoundedOutboundScheduler::Impl final
   {
     return
       data.find(key) == data.end() &&
+      data_reserved_depth_by_contract.find(key) ==
+      data_reserved_depth_by_contract.end() &&
       (!writer_active ||
       !writer_contract.has_value() ||
       *writer_contract != key);
@@ -1081,7 +1182,54 @@ struct BoundedOutboundScheduler::Impl final
     return result;
   }
 
+  uint64_t reserved_depth(const ContractKey & key) const
+  {
+    const auto found = data_reserved_depth_by_contract.find(key);
+    return
+      found == data_reserved_depth_by_contract.end()
+      ? 0
+      : found->second;
+  }
+
+  uint64_t reserved_bytes(const ContractKey & key) const
+  {
+    const auto found = data_reserved_bytes_by_contract.find(key);
+    return
+      found == data_reserved_bytes_by_contract.end()
+      ? 0
+      : found->second;
+  }
+
+  void release_data_reservation(
+    const ContractKey & key,
+    uint64_t bytes)
+  {
+    const auto depth = data_reserved_depth_by_contract.find(key);
+    const auto byte_count = data_reserved_bytes_by_contract.find(key);
+    if (
+      depth == data_reserved_depth_by_contract.end() ||
+      byte_count == data_reserved_bytes_by_contract.end() ||
+      depth->second == 0 ||
+      byte_count->second < bytes ||
+      data_reserved_depth == 0 ||
+      data_reserved_bytes < bytes)
+    {
+      throw std::logic_error("data reservation accounting underflow");
+    }
+    --depth->second;
+    byte_count->second -= bytes;
+    --data_reserved_depth;
+    data_reserved_bytes -= bytes;
+    if (depth->second == 0) {
+      data_reserved_depth_by_contract.erase(depth);
+    }
+    if (byte_count->second == 0) {
+      data_reserved_bytes_by_contract.erase(byte_count);
+    }
+  }
+
   bool can_fit_data(
+    const ContractKey & key,
     const std::deque<OutboundFrame> & queue,
     uint64_t incoming_bytes,
     uint64_t removing_depth,
@@ -1093,21 +1241,45 @@ struct BoundedOutboundScheduler::Impl final
     {
       throw std::logic_error("U2R2 queue accounting underflow");
     }
-    const auto contract_depth = queue_depth - removing_depth;
+    const auto queued_contract_depth = queue_depth - removing_depth;
+    const auto reserved_contract_depth = reserved_depth(key);
     const auto current_contract_bytes = contract_bytes(queue);
     if (removing_bytes > current_contract_bytes) {
       throw std::logic_error("U2R2 contract queue accounting underflow");
     }
-    const auto retained_contract_bytes =
+    const auto queued_contract_bytes =
       current_contract_bytes - removing_bytes;
+    const auto reserved_contract_bytes = reserved_bytes(key);
     const auto data_depth_limit =
       limits.max_total_queue_depth() -
       limits.reserved_control_queue_depth();
     const auto data_byte_limit =
       limits.max_queued_bytes() -
       limits.reserved_control_queue_bytes();
-    const auto retained_data_depth = data_queued_depth - removing_depth;
-    const auto retained_data_bytes = data_queued_bytes - removing_bytes;
+    const auto queued_data_depth = data_queued_depth - removing_depth;
+    const auto queued_data_bytes = data_queued_bytes - removing_bytes;
+    if (
+      queued_contract_depth > limits.max_per_contract_queue_depth() ||
+      reserved_contract_depth >
+      limits.max_per_contract_queue_depth() - queued_contract_depth ||
+      queued_contract_bytes > limits.max_per_contract_queue_bytes() ||
+      reserved_contract_bytes >
+      limits.max_per_contract_queue_bytes() - queued_contract_bytes ||
+      queued_data_depth > data_depth_limit ||
+      data_reserved_depth > data_depth_limit - queued_data_depth ||
+      queued_data_bytes > data_byte_limit ||
+      data_reserved_bytes > data_byte_limit - queued_data_bytes)
+    {
+      return false;
+    }
+    const auto contract_depth =
+      queued_contract_depth + reserved_contract_depth;
+    const auto retained_contract_bytes =
+      queued_contract_bytes + reserved_contract_bytes;
+    const auto retained_data_depth =
+      queued_data_depth + data_reserved_depth;
+    const auto retained_data_bytes =
+      queued_data_bytes + data_reserved_bytes;
     return
       contract_depth < limits.max_per_contract_queue_depth() &&
       retained_contract_bytes <= limits.max_per_contract_queue_bytes() &&
@@ -1200,6 +1372,67 @@ BoundedOutboundScheduler::try_reserve_control(uint64_t bytes)
   return ControlReservation(settlement);
 }
 
+std::optional<DataReservation>
+BoundedOutboundScheduler::try_reserve_data(
+  const ContractKey & key,
+  uint64_t bytes)
+{
+  if (bytes == 0) {
+    throw std::invalid_argument(
+            "a data reservation must contain a non-empty frame");
+  }
+  auto state = impl_;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (
+      state->closed ||
+      state->revoked.find(key) != state->revoked.end())
+    {
+      return std::nullopt;
+    }
+    static const std::deque<OutboundFrame> empty;
+    const auto found = state->data.find(key);
+    const auto & queue = found == state->data.end() ? empty : found->second;
+    if (!state->can_fit_data(key, queue, bytes, 0, 0)) {
+      return std::nullopt;
+    }
+    ++state->data_reserved_depth;
+    state->data_reserved_bytes += bytes;
+    ++state->data_reserved_depth_by_contract[key];
+    state->data_reserved_bytes_by_contract[key] += bytes;
+  }
+
+  auto settlement = std::make_shared<DataSettlement>(
+    key,
+    bytes,
+    [state, key, bytes](OutboundFrame frame) {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      if (state->closed) {
+        return false;
+      }
+      state->release_data_reservation(key, bytes);
+      if (state->revoked.find(key) != state->revoked.end()) {
+        state->try_forget_retired(key);
+        return false;
+      }
+      auto & queue = state->data[key];
+      queue.push_back(std::move(frame));
+      ++state->data_queued_depth;
+      state->data_queued_bytes += bytes;
+      state->activate(key);
+      return true;
+    },
+    [state, key, bytes]() {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      if (state->closed) {
+        return;
+      }
+      state->release_data_reservation(key, bytes);
+      state->try_forget_retired(key);
+    });
+  return DataReservation(settlement);
+}
+
 EnqueueDisposition BoundedOutboundScheduler::enqueue_data(
   OutboundFrame frame,
   QueueOverflowPolicy policy)
@@ -1225,7 +1458,7 @@ EnqueueDisposition BoundedOutboundScheduler::enqueue_data(
   }
   auto [found, inserted] = state->data.try_emplace(key);
   auto & queue = found->second;
-  if (state->can_fit_data(queue, frame.byte_count(), 0, 0)) {
+  if (state->can_fit_data(key, queue, frame.byte_count(), 0, 0)) {
     queue.push_back(std::move(frame));
     ++state->data_queued_depth;
     state->data_queued_bytes += queue.back().byte_count();
@@ -1244,6 +1477,7 @@ EnqueueDisposition BoundedOutboundScheduler::enqueue_data(
     ? queue.front().byte_count()
     : queue.back().byte_count();
   if (!state->can_fit_data(
+      key,
       queue,
       frame.byte_count(),
       1,
@@ -1452,10 +1686,7 @@ bool BoundedOutboundScheduler::is_contract_revoked_and_drained(
   std::lock_guard<std::mutex> lock(state->mutex);
   return
     state->revoked.find(key) != state->revoked.end() &&
-    state->data.find(key) == state->data.end() &&
-    (!state->writer_active ||
-    !state->writer_contract.has_value() ||
-    *state->writer_contract != key);
+    state->is_drained(key);
 }
 
 void BoundedOutboundScheduler::activate_contract(const ContractKey & key)
@@ -1506,6 +1737,8 @@ void BoundedOutboundScheduler::close()
   state->closed = true;
   state->control.clear();
   state->data.clear();
+  state->data_reserved_depth_by_contract.clear();
+  state->data_reserved_bytes_by_contract.clear();
   state->round_robin.clear();
   state->active.clear();
   state->revoked.clear();
@@ -1514,6 +1747,8 @@ void BoundedOutboundScheduler::close()
   state->control_bytes_used = 0;
   state->data_queued_depth = 0;
   state->data_queued_bytes = 0;
+  state->data_reserved_depth = 0;
+  state->data_reserved_bytes = 0;
   state->control_burst = 0;
 }
 

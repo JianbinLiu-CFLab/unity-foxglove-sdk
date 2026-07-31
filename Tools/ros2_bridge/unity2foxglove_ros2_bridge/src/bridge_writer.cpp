@@ -194,6 +194,18 @@ BridgeWriterCore::try_reserve_control(uint64_t bytes)
   return impl_->scheduler.try_reserve_control(bytes);
 }
 
+std::optional<u2r2::DataReservation>
+BridgeWriterCore::try_reserve_data(
+  const u2r2::ContractKey & key,
+  uint64_t bytes)
+{
+  const std::lock_guard<std::mutex> lock(impl_->state->mutex);
+  if (impl_->state->closed) {
+    return std::nullopt;
+  }
+  return impl_->scheduler.try_reserve_data(key, bytes);
+}
+
 void BridgeWriterCore::enqueue_control(
   std::string token,
   std::vector<uint8_t> exact_frame)

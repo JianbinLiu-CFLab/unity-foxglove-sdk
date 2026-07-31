@@ -814,16 +814,10 @@ void SessionStateMachine::throw_terminal(
   throw ProtocolError(code, message);
 }
 
-std::vector<uint8_t> encode_frame(
-  const nlohmann::json & header,
-  const std::vector<uint8_t> & payload)
+namespace
 {
-  return encode_frame(header, payload, ProtocolLimits::defaults());
-}
-
-std::vector<uint8_t> encode_frame(
+std::string SerializeWireHeader(
   const nlohmann::json & header,
-  const std::vector<uint8_t> & payload,
   const ProtocolLimits & limits)
 {
   if (limits.fixed_frame_bytes() != kFixedHeaderBytes) {
@@ -849,20 +843,78 @@ std::vector<uint8_t> encode_frame(
   if (json.empty() || json.size() > limits.max_header_bytes()) {
     InvalidFrame("the U2R2 JSON header length is out of range");
   }
-  if (payload.size() > limits.max_payload_bytes()) {
+  return json;
+}
+}  // namespace
+
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload)
+{
+  return encode_frame(header, payload, ProtocolLimits::defaults());
+}
+
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const std::vector<uint8_t> & payload,
+  const ProtocolLimits & limits)
+{
+  return encode_frame(
+    header,
+    payload.empty() ? nullptr : payload.data(),
+    payload.size(),
+    limits);
+}
+
+uint64_t encoded_frame_size(
+  const nlohmann::json & header,
+  uint64_t payload_size,
+  const ProtocolLimits & limits)
+{
+  const auto json = SerializeWireHeader(header, limits);
+  try {
+    return FrameSize::create(
+      limits,
+      static_cast<uint64_t>(json.size()),
+      payload_size).total_bytes();
+  } catch (const ProtocolError & error) {
+    if (error.code() == "capacity_exceeded") {
+      InvalidFrame("the U2R2 payload length is out of range");
+    }
+    throw;
+  }
+}
+
+std::vector<uint8_t> encode_frame(
+  const nlohmann::json & header,
+  const uint8_t * payload,
+  size_t payload_size,
+  const ProtocolLimits & limits)
+{
+  if (payload == nullptr && payload_size != 0) {
+    throw std::invalid_argument(
+            "a non-empty U2R2 payload requires a source pointer");
+  }
+  const auto json = SerializeWireHeader(header, limits);
+  if (payload_size > limits.max_payload_bytes()) {
     InvalidFrame("the U2R2 payload length is out of range");
   }
-
-  std::vector<uint8_t> frame(kFixedHeaderBytes + json.size() + payload.size(), 0);
+  const auto total = FrameSize::create(
+    limits,
+    static_cast<uint64_t>(json.size()),
+    static_cast<uint64_t>(payload_size)).total_bytes();
+  std::vector<uint8_t> frame(static_cast<size_t>(total), 0);
   std::copy(kMagic.begin(), kMagic.end(), frame.begin());
   frame[4] = static_cast<uint8_t>(kEnvelopeVersion);
   WriteU32(frame, 8, static_cast<uint32_t>(json.size()));
-  WriteU32(frame, 12, static_cast<uint32_t>(payload.size()));
+  WriteU32(frame, 12, static_cast<uint32_t>(payload_size));
   std::copy(json.begin(), json.end(), frame.begin() + kFixedHeaderBytes);
-  std::copy(
-    payload.begin(),
-    payload.end(),
-    frame.begin() + kFixedHeaderBytes + json.size());
+  if (payload_size != 0) {
+    std::copy_n(
+      payload,
+      payload_size,
+      frame.begin() + kFixedHeaderBytes + json.size());
+  }
   return frame;
 }
 
@@ -962,6 +1014,14 @@ Message parse_v2(const Frame & frame)
     message.message_id = RequiredUnsigned(frame.header, "messageId");
   } else if (frame.header.contains("messageId")) {
     InvalidFrame("messageId is not valid for this U2R2 operation");
+  }
+  if (
+    operation == Operation::Publish ||
+    operation == Operation::Message)
+  {
+    message.sequence = RequiredUnsigned(frame.header, "sequence");
+  } else if (frame.header.contains("sequence")) {
+    InvalidFrame("sequence is only valid on a U2R2 data operation");
   }
   if (HasContractId(operation) && !is_error_response) {
     message.contract_id = RequiredUnsigned(frame.header, "contractId");

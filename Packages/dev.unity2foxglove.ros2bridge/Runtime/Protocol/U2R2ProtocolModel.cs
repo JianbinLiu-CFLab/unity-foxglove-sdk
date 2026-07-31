@@ -187,6 +187,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             bool terminal,
             ulong requestId,
             ulong messageId,
+            ulong sequence,
             ulong contractId,
             string sessionId,
             ulong connectionGeneration,
@@ -209,6 +210,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             Terminal = terminal;
             RequestId = requestId;
             MessageId = messageId;
+            Sequence = sequence;
             ContractId = contractId;
             SessionId = sessionId ?? string.Empty;
             ConnectionGeneration = connectionGeneration;
@@ -239,6 +241,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         public ulong RequestId { get; }
 
         public ulong MessageId { get; }
+
+        public ulong Sequence { get; }
 
         public ulong ContractId { get; }
 

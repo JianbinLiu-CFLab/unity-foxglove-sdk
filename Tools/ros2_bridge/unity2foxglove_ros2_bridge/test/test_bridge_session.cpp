@@ -124,11 +124,12 @@ std::vector<uint8_t> V2Publish(
 std::vector<uint8_t> V2Register(
   const runtime::BridgeSessionProtocol & session,
   uint64_t request_id,
-  uint64_t contract_id = 41)
+  uint64_t contract_id = 41,
+  const std::string & topic = "/phase186/v2/input")
 {
   auto header = SessionHeader(session, "register_subscription", request_id);
   header["contractId"] = contract_id;
-  header["topic"] = "/phase186/v2/input";
+  header["topic"] = topic;
   header["schemaName"] = "std_msgs/msg/String";
   header["encoding"] = "cdr";
   header["qos"] = {
@@ -138,6 +139,16 @@ std::vector<uint8_t> V2Register(
     {"history", "keep_last"},
     {"depth", 10},
   };
+  return Encode(header);
+}
+
+std::vector<uint8_t> V2Unregister(
+  const runtime::BridgeSessionProtocol & session,
+  uint64_t request_id,
+  uint64_t contract_id = 41)
+{
+  auto header = SessionHeader(session, "unregister_subscription", request_id);
+  header["contractId"] = contract_id;
   return Encode(header);
 }
 
@@ -310,6 +321,180 @@ TEST(BridgeV2Session, DuplexSessionAcceptsBothDirectionalOperations)
   EXPECT_EQ(
     u2r2::Operation::RegisterSubscription,
     session.parse_v2_request(V2Register(session, 3)).operation);
+}
+
+TEST(BridgeV2Session, RegistrationReadyReplayMessageAndRemovalAreOneTransaction)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  auto session = ActiveV2Session(
+    process,
+    u2r2::ProtocolLimits::defaults(),
+    nlohmann::json::array({"subscribe"}));
+  const auto registration_wire = V2Register(session, 2);
+  const auto registration =
+    session.parse_v2_request(registration_wire);
+  runtime::BridgeSerializedCallback callback;
+  int factory_calls = 0;
+  int entity_destructions = 0;
+
+  const auto disposition = session.register_subscription(
+    registration_wire,
+    registration,
+    4096U,
+    [&](const u2r2::ContractIdentity & identity,
+      runtime::BridgeSerializedCallback admitted) {
+      ++factory_calls;
+      EXPECT_EQ(41U, identity.key.contract_id);
+      callback = std::move(admitted);
+      EXPECT_EQ(
+        runtime::BridgeSerializedAdmission::inactive,
+        callback(
+          reinterpret_cast<const uint8_t *>("\x00\x01\x00\x00"),
+          4U,
+          1U));
+      return std::shared_ptr<void>(
+        new int(1),
+        [&](void * pointer) {
+          delete static_cast<int *>(pointer);
+          ++entity_destructions;
+        });
+    });
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::applied,
+    disposition);
+  ASSERT_EQ(1, factory_calls);
+
+  auto ready = session.try_begin_write();
+  ASSERT_TRUE(ready.has_value());
+  const auto ready_bytes = ready->frame().bytes();
+  const auto ready_message =
+    u2r2::parse_v2(u2r2::decode_frame(ready_bytes));
+  EXPECT_EQ(u2r2::Operation::SubscriptionReady, ready_message.operation);
+  EXPECT_EQ("ok", ready_message.status);
+  EXPECT_EQ(41U, ready_message.contract_id);
+  ready->release();
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  ASSERT_TRUE(callback);
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::accepted,
+    callback(payload.data(), payload.size(), 186U));
+  auto outbound = session.try_begin_write();
+  ASSERT_TRUE(outbound.has_value());
+  const auto message = u2r2::parse_v2(
+    u2r2::decode_frame(outbound->frame().bytes()));
+  EXPECT_EQ(u2r2::Operation::Message, message.operation);
+  EXPECT_EQ(1U, message.sequence);
+  EXPECT_EQ(payload, u2r2::decode_frame(outbound->frame().bytes()).payload);
+  outbound->release();
+
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::replayed,
+    session.register_subscription(
+      registration_wire,
+      registration,
+      4096U,
+      [&](const u2r2::ContractIdentity &,
+        runtime::BridgeSerializedCallback) -> std::shared_ptr<void> {
+        ++factory_calls;
+        return {};
+      }));
+  EXPECT_EQ(1, factory_calls);
+  auto replayed_ready = session.try_begin_write();
+  ASSERT_TRUE(replayed_ready.has_value());
+  EXPECT_EQ(ready_bytes, replayed_ready->frame().bytes());
+  replayed_ready->release();
+
+  const auto removal_wire = V2Unregister(session, 3);
+  const auto removal = session.parse_v2_request(removal_wire);
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::applied,
+    session.unregister_subscription(
+      removal_wire,
+      removal,
+      4096U));
+  EXPECT_EQ(1, entity_destructions);
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::inactive,
+    callback(payload.data(), payload.size(), 187U));
+  auto removed = session.try_begin_write();
+  ASSERT_TRUE(removed.has_value());
+  const auto removed_bytes = removed->frame().bytes();
+  const auto removed_message =
+    u2r2::parse_v2(u2r2::decode_frame(removed_bytes));
+  EXPECT_EQ(u2r2::Operation::SubscriptionRemoved, removed_message.operation);
+  EXPECT_EQ("ok", removed_message.status);
+  EXPECT_EQ(41U, removed_message.contract_id);
+  removed->release();
+
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::replayed,
+    session.unregister_subscription(
+      removal_wire,
+      removal,
+      4096U));
+  auto replayed_removed = session.try_begin_write();
+  ASSERT_TRUE(replayed_removed.has_value());
+  EXPECT_EQ(removed_bytes, replayed_removed->frame().bytes());
+  replayed_removed->release();
+  EXPECT_EQ(1, entity_destructions);
+}
+
+TEST(BridgeV2Session, SubscriptionCreationFailureIsCorrelatedAndSessionRemainsUsable)
+{
+  runtime::ProcessConnectionAuthority process(
+    u2r2::ProtocolLimits::defaults());
+  auto session = ActiveV2Session(
+    process,
+    u2r2::ProtocolLimits::defaults(),
+    nlohmann::json::array({"subscribe"}));
+  const auto failed_wire =
+    V2Register(session, 2, 50U, "/phase186/v2/unavailable");
+  const auto failed = session.parse_v2_request(failed_wire);
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::rejected,
+    session.register_subscription(
+      failed_wire,
+      failed,
+      4096U,
+      [](const u2r2::ContractIdentity &,
+        runtime::BridgeSerializedCallback) -> std::shared_ptr<void> {
+        throw std::runtime_error(std::string(5000U, 'x'));
+      }));
+  auto error = session.try_begin_write();
+  ASSERT_TRUE(error.has_value());
+  const auto response = u2r2::parse_v2(
+    u2r2::decode_frame(error->frame().bytes()));
+  EXPECT_EQ(u2r2::Operation::SubscriptionReady, response.operation);
+  EXPECT_EQ("error", response.status);
+  EXPECT_EQ("invalid_contract", response.error_code);
+  EXPECT_FALSE(response.terminal);
+  EXPECT_LE(response.error_message.size(), 512U);
+  error->release();
+
+  const auto healthy_wire =
+    V2Register(session, 3, 51U, "/phase186/v2/healthy");
+  const auto healthy = session.parse_v2_request(healthy_wire);
+  EXPECT_EQ(
+    runtime::BridgeSubscriptionCommand::applied,
+    session.register_subscription(
+      healthy_wire,
+      healthy,
+      4096U,
+      [](const u2r2::ContractIdentity &,
+        runtime::BridgeSerializedCallback) {
+        return std::static_pointer_cast<void>(std::make_shared<int>(1));
+      }));
+  auto ready = session.try_begin_write();
+  ASSERT_TRUE(ready.has_value());
+  EXPECT_EQ(
+    "ok",
+    u2r2::parse_v2(
+      u2r2::decode_frame(ready->frame().bytes())).status);
+  ready->release();
 }
 
 TEST(BridgeV2Session, HelloRequestIdIsTheInitialSessionHighWaterMark)

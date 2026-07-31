@@ -8,7 +8,10 @@
 #include "unity2foxglove_ros2_bridge/bridge_writer.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 
@@ -73,8 +76,18 @@ void ValidateSameRequest(
     expected.operation != actual.operation ||
     expected.request_id != actual.request_id ||
     expected.message_id != actual.message_id ||
+    expected.sequence != actual.sequence ||
+    expected.contract_id != actual.contract_id ||
     expected.session_id != actual.session_id ||
-    expected.connection_generation != actual.connection_generation)
+    expected.connection_generation != actual.connection_generation ||
+    expected.capabilities != actual.capabilities ||
+    expected.log_time_ns != actual.log_time_ns ||
+    expected.receive_time_ns != actual.receive_time_ns ||
+    expected.encoding != actual.encoding ||
+    expected.representation != actual.representation ||
+    expected.topic != actual.topic ||
+    expected.schema_name != actual.schema_name ||
+    expected.qos != actual.qos)
   {
     throw u2r2::ProtocolError(
             "invalid_frame",
@@ -105,14 +118,51 @@ nlohmann::json NegotiatedCapabilityNames(
   }
   return result;
 }
+
+const char * ResponseOperationName(u2r2::Operation operation)
+{
+  switch (operation) {
+    case u2r2::Operation::SubscriptionReady:
+      return "subscription_ready";
+    case u2r2::Operation::SubscriptionRemoved:
+      return "subscription_removed";
+    default:
+      throw std::invalid_argument(
+              "the Bridge response operation is unsupported");
+  }
+}
+
+std::string BoundedSessionError(const std::string & message)
+{
+  constexpr size_t kMaximumSessionErrorBytes = 512;
+  return
+    message.size() <= kMaximumSessionErrorBytes
+    ? message
+    : message.substr(0, kMaximumSessionErrorBytes);
+}
 }  // namespace
 
 struct BridgeSessionProtocol::Impl final
 {
+  struct SubscriptionRecord final
+  {
+    u2r2::ContractIdentity identity;
+    std::shared_ptr<BridgeSubscriptionGate> gate;
+    std::shared_ptr<void> entity;
+  };
+
   explicit Impl(const u2r2::ProtocolLimits & value)
   : limits(value),
     writer(value),
-    replay(value)
+    replay(value),
+    contracts(
+      value,
+      [this](
+        u2r2::Operation operation,
+        uint64_t request_id,
+        const u2r2::ProtocolError & error) {
+        return semantic_error_frame(operation, request_id, error);
+      })
   {
     auto lease = writer.try_attach_writer();
     if (!lease) {
@@ -123,7 +173,10 @@ struct BridgeSessionProtocol::Impl final
 
   ~Impl()
   {
-    writer.close();
+    try {
+      close();
+    } catch (...) {
+    }
   }
 
   const u2r2::ProtocolLimits limits;
@@ -131,10 +184,79 @@ struct BridgeSessionProtocol::Impl final
   BridgeWriterCore writer;
   BridgeWriterLease writer_lease;
   u2r2::RequestReplayAuthority replay;
+  u2r2::ContractAuthority contracts;
   std::optional<u2r2::Message> hello;
   std::string session_id;
   uint64_t connection_generation{0};
+  std::unique_ptr<BridgeOutboundQueue> outbound;
+  std::mutex subscriptions_mutex;
+  std::unordered_map<uint64_t, SubscriptionRecord> subscriptions;
   std::unordered_map<std::string, std::string> prepared_publishers;
+  bool closed{false};
+
+  std::vector<uint8_t> response_bytes(
+    u2r2::Operation operation,
+    uint64_t request_id,
+    const std::string & status,
+    uint64_t contract_id,
+    const u2r2::ProtocolError * error = nullptr) const
+  {
+    nlohmann::json header{
+      {"op", ResponseOperationName(operation)},
+      {"protocolVersion", u2r2::kProtocolVersion},
+      {"requestId", request_id},
+      {"status", status},
+      {"sessionId", session_id},
+      {"connectionGeneration", connection_generation},
+    };
+    if (error == nullptr) {
+      header["contractId"] = contract_id;
+    } else {
+      header["errorCode"] = error->code();
+      header["message"] = error->what();
+      header["terminal"] = error->terminal();
+    }
+    return u2r2::encode_frame(header, {}, limits);
+  }
+
+  u2r2::OutboundFrame semantic_error_frame(
+    u2r2::Operation operation,
+    uint64_t request_id,
+    const u2r2::ProtocolError & error) const
+  {
+    return u2r2::OutboundFrame::control(
+      std::string("error:") + std::to_string(request_id),
+      response_bytes(operation, request_id, "error", 0, &error));
+  }
+
+  void close()
+  {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    if (outbound) {
+      outbound->close();
+    }
+    std::vector<SubscriptionRecord> retained;
+    {
+      std::lock_guard<std::mutex> lock(subscriptions_mutex);
+      retained.reserve(subscriptions.size());
+      for (auto & [unused, record] : subscriptions) {
+        (void)unused;
+        retained.push_back(std::move(record));
+      }
+      subscriptions.clear();
+    }
+    for (auto & record : retained) {
+      if (outbound) {
+        outbound->revoke(record.gate);
+      }
+      record.entity.reset();
+    }
+    contracts.close(writer.scheduler(), replay);
+    writer.close();
+  }
 
   void require_capability(u2r2::Operation operation) const
   {
@@ -276,6 +398,12 @@ void BridgeSessionProtocol::bind_v2_identity(u2r2::SessionIdentity identity)
   }
   impl_->session_id = identity.session_id();
   impl_->connection_generation = identity.connection_generation();
+  impl_->outbound = std::make_unique<BridgeOutboundQueue>(
+    impl_->limits,
+    impl_->writer,
+    impl_->contracts,
+    impl_->session_id,
+    impl_->connection_generation);
   const auto response = u2r2::encode_frame(
     {
       {"op", "hello_ack"},
@@ -411,6 +539,249 @@ u2r2::ReplayDecision BridgeSessionProtocol::execute_replayable(
   return admission.decision();
 }
 
+BridgeSubscriptionCommand BridgeSessionProtocol::register_subscription(
+  const std::vector<uint8_t> & request_wire,
+  const u2r2::Message & request,
+  uint64_t maximum_response_bytes,
+  const BridgeSubscriptionFactory & factory)
+{
+  if (!factory) {
+    throw std::invalid_argument(
+            "a Bridge subscription factory is required");
+  }
+  const auto frame = u2r2::decode_frame(request_wire, impl_->limits);
+  const auto parsed = impl_->parse_active_v2_request(frame);
+  ValidateSameRequest(request, parsed);
+  if (
+    parsed.operation != u2r2::Operation::RegisterSubscription ||
+    !parsed.qos ||
+    !impl_->outbound)
+  {
+    throw std::invalid_argument(
+            "register_subscription requires an active parsed contract");
+  }
+  const u2r2::ContractIdentity identity(
+    u2r2::ContractKey(
+      parsed.contract_id,
+      impl_->connection_generation),
+    u2r2::ContractDirection::subscribe,
+    parsed.topic,
+    parsed.schema_name,
+    *parsed.qos);
+  const auto canonical =
+    u2r2::encode_frame(frame.header, frame.payload, impl_->limits);
+  auto response = impl_->replay.admit(
+    parsed.request_id,
+    canonical,
+    maximum_response_bytes,
+    impl_->writer.scheduler());
+  if (response.decision() == u2r2::ReplayDecision::replay_cached) {
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::replayed;
+  }
+
+  u2r2::RegistrationAdmission registration;
+  try {
+    registration = impl_->contracts.begin_registration(
+      identity,
+      impl_->writer.scheduler(),
+      impl_->replay,
+      response);
+  } catch (const u2r2::ProtocolError &) {
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::rejected;
+  }
+
+  std::shared_ptr<BridgeSubscriptionGate> gate;
+  std::shared_ptr<void> entity;
+  try {
+    gate = impl_->outbound->create_gate(identity);
+    entity = factory(identity, impl_->outbound->callback(gate));
+    if (!entity) {
+      throw std::runtime_error(
+              "the ROS 2 subscription factory returned no entity");
+    }
+    {
+      std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+      const auto inserted = impl_->subscriptions.emplace(
+        parsed.contract_id,
+        Impl::SubscriptionRecord{identity, gate, entity});
+      if (!inserted.second) {
+        throw std::logic_error(
+                "the Bridge subscription record already exists");
+      }
+    }
+    auto ready = u2r2::OutboundFrame::control(
+      "subscription_ready:" + std::to_string(parsed.request_id),
+      impl_->response_bytes(
+        u2r2::Operation::SubscriptionReady,
+        parsed.request_id,
+        "ok",
+        parsed.contract_id));
+    impl_->contracts.commit_ready(
+      registration,
+      impl_->replay,
+      response,
+      std::move(ready));
+    impl_->outbound->activate(gate);
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::applied;
+  } catch (const std::exception & error) {
+    if (gate) {
+      impl_->outbound->revoke(gate);
+    }
+    {
+      std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+      impl_->subscriptions.erase(parsed.contract_id);
+    }
+    entity.reset();
+    const u2r2::ProtocolError semantic(
+      "invalid_contract",
+      BoundedSessionError(
+        std::string("the ROS 2 subscription could not be created: ") +
+        error.what()),
+      false);
+    impl_->contracts.abort_registration(
+      registration,
+      impl_->writer.scheduler(),
+      impl_->replay,
+      response,
+      semantic);
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::rejected;
+  } catch (...) {
+    if (gate) {
+      impl_->outbound->revoke(gate);
+    }
+    {
+      std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+      impl_->subscriptions.erase(parsed.contract_id);
+    }
+    entity.reset();
+    const u2r2::ProtocolError semantic(
+      "invalid_contract",
+      "the ROS 2 subscription could not be created",
+      false);
+    impl_->contracts.abort_registration(
+      registration,
+      impl_->writer.scheduler(),
+      impl_->replay,
+      response,
+      semantic);
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::rejected;
+  }
+}
+
+BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
+  const std::vector<uint8_t> & request_wire,
+  const u2r2::Message & request,
+  uint64_t maximum_response_bytes)
+{
+  const auto frame = u2r2::decode_frame(request_wire, impl_->limits);
+  const auto parsed = impl_->parse_active_v2_request(frame);
+  ValidateSameRequest(request, parsed);
+  if (
+    parsed.operation != u2r2::Operation::UnregisterSubscription ||
+    !impl_->outbound)
+  {
+    throw std::invalid_argument(
+            "unregister_subscription requires an active parsed contract");
+  }
+  const auto canonical =
+    u2r2::encode_frame(frame.header, frame.payload, impl_->limits);
+  auto response = impl_->replay.admit(
+    parsed.request_id,
+    canonical,
+    maximum_response_bytes,
+    impl_->writer.scheduler());
+  if (response.decision() == u2r2::ReplayDecision::replay_cached) {
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::replayed;
+  }
+
+  std::optional<Impl::SubscriptionRecord> record;
+  {
+    std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+    const auto found = impl_->subscriptions.find(parsed.contract_id);
+    if (found != impl_->subscriptions.end()) {
+      record = found->second;
+    }
+  }
+  if (!record) {
+    const u2r2::ProtocolError error(
+      "unknown_contract",
+      "the U2R2 unregister request references no live subscription",
+      true);
+    impl_->replay.abort(
+      response,
+      impl_->response_bytes(
+        u2r2::Operation::SubscriptionRemoved,
+        parsed.request_id,
+        "error",
+        0,
+        &error));
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::rejected;
+  }
+
+  impl_->outbound->revoke(record->gate);
+  u2r2::RemovalAdmission removal;
+  try {
+    removal = impl_->contracts.begin_unregister(
+      record->identity,
+      impl_->writer.scheduler(),
+      impl_->replay,
+      response);
+  } catch (const u2r2::ProtocolError &) {
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::rejected;
+  }
+  {
+    std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+    impl_->subscriptions.erase(parsed.contract_id);
+  }
+  record->entity.reset();
+
+  auto removed = u2r2::OutboundFrame::control(
+    "subscription_removed:" + std::to_string(parsed.request_id),
+    impl_->response_bytes(
+      u2r2::Operation::SubscriptionRemoved,
+      parsed.request_id,
+      "ok",
+      parsed.contract_id));
+  const auto deadline =
+    std::chrono::steady_clock::now() +
+    std::chrono::milliseconds(impl_->limits.join_timeout_ms());
+  while (!impl_->contracts.try_commit_removed(
+      removal,
+      impl_->writer.scheduler(),
+      impl_->replay,
+      response,
+      u2r2::OutboundFrame::control(
+        removed.token(),
+        removed.bytes())))
+  {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      const u2r2::ProtocolError error(
+        "invalid_contract",
+        "the removed subscription did not drain before its deadline",
+        false);
+      impl_->contracts.abort_removal(
+        removal,
+        impl_->writer.scheduler(),
+        impl_->replay,
+        response,
+        error);
+      impl_->writer.notify();
+      return BridgeSubscriptionCommand::rejected;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  impl_->writer.notify();
+  return BridgeSubscriptionCommand::applied;
+}
+
 std::optional<u2r2::ControlReservation>
 BridgeSessionProtocol::try_reserve_control(uint64_t bytes)
 {
@@ -441,6 +812,26 @@ void BridgeSessionProtocol::enqueue_control(
 std::optional<u2r2::WriteLease> BridgeSessionProtocol::try_begin_write()
 {
   return impl_->writer.try_begin_write(impl_->writer_lease);
+}
+
+uint64_t BridgeSessionProtocol::wake_generation() const
+{
+  return impl_->writer.wake_generation();
+}
+
+bool BridgeSessionProtocol::wait_for_writer_change(
+  uint64_t observed_generation,
+  std::chrono::milliseconds timeout)
+{
+  return impl_->writer.wait_for_change(
+    impl_->writer_lease,
+    observed_generation,
+    timeout);
+}
+
+void BridgeSessionProtocol::close()
+{
+  impl_->close();
 }
 
 uint64_t BridgeSessionProtocol::transient_bytes() const

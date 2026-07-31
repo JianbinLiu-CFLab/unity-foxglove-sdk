@@ -21,6 +21,7 @@ target_link_libraries(u2r2_protocol PUBLIC
 
 add_library(bridge_runtime STATIC
   src/bridge_lifecycle.cpp
+  src/bridge_outbound_queue.cpp
   src/bridge_process.cpp
   src/bridge_session.cpp
   src/bridge_writer.cpp
@@ -128,6 +129,14 @@ if(BUILD_TESTING)
   )
   target_compile_features(test_bridge_writer PUBLIC cxx_std_20)
   target_link_libraries(test_bridge_writer
+    bridge_runtime
+  )
+
+  ament_add_gtest(test_bridge_outbound_queue
+    test/test_bridge_outbound_queue.cpp
+  )
+  target_compile_features(test_bridge_outbound_queue PUBLIC cxx_std_20)
+  target_link_libraries(test_bridge_outbound_queue
     bridge_runtime
   )
 

@@ -611,6 +611,9 @@ TEST(U2R2ProtocolV2, SharedAuthorityMatchesCanonicalCppFramesAndCorrelation)
         EXPECT_EQ(
           vector.at("header").at("logTimeNs").get<uint64_t>(),
           message.log_time_ns);
+        EXPECT_EQ(
+          vector.at("header").at("sequence").get<uint64_t>(),
+          message.sequence);
         EXPECT_EQ(0U, message.receive_time_ns);
       }
       if (message.operation == Operation::Message) {
@@ -618,6 +621,9 @@ TEST(U2R2ProtocolV2, SharedAuthorityMatchesCanonicalCppFramesAndCorrelation)
         EXPECT_EQ(
           vector.at("header").at("receiveTimeNs").get<uint64_t>(),
           message.receive_time_ns);
+        EXPECT_EQ(
+          vector.at("header").at("sequence").get<uint64_t>(),
+          message.sequence);
         EXPECT_EQ(0U, message.log_time_ns);
         EXPECT_EQ("cdr", message.encoding);
         EXPECT_EQ("xcdr1-le", message.representation);
@@ -681,6 +687,41 @@ TEST(U2R2ProtocolV2, SharedAuthorityMatchesCanonicalCppFramesAndCorrelation)
       vector.at("terminal").get<bool>(),
       [&]() {ExecuteEncodeNegative(vector, authority);});
   }
+}
+
+TEST(U2R2ProtocolV2, DataOperationsRequireNonzeroSequence)
+{
+  const auto authority = LoadFixture().at("v2");
+  auto header = Vector(authority, "message").at("header");
+  const auto payload = HexToBytes(
+    Vector(authority, "message").at("payloadHex").get<std::string>());
+
+  header.erase("sequence");
+  ExpectProtocolError(
+    "invalid_frame",
+    true,
+    [&]() {parse_v2({header, payload});});
+
+  header["sequence"] = 0;
+  ExpectProtocolError(
+    "invalid_frame",
+    true,
+    [&]() {parse_v2({header, payload});});
+
+  auto publish_header = Vector(authority, "publish").at("header");
+  const auto publish_payload = HexToBytes(
+    Vector(authority, "publish").at("payloadHex").get<std::string>());
+  publish_header.erase("sequence");
+  ExpectProtocolError(
+    "invalid_frame",
+    true,
+    [&]() {parse_v2({publish_header, publish_payload});});
+
+  publish_header["sequence"] = 0;
+  ExpectProtocolError(
+    "invalid_frame",
+    true,
+    [&]() {parse_v2({publish_header, publish_payload});});
 }
 
 TEST(
