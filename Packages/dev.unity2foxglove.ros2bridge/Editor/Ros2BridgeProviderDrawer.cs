@@ -32,8 +32,11 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         public string DisplayName =>
             "ROS 2 Bridge";
 
+        public int Order => 300;
+
         public FoxRunTransportCapabilities Capabilities =>
-            FoxRunTransportCapabilities.Publish;
+            FoxRunTransportCapabilities.Publish
+            | FoxRunTransportCapabilities.Subscribe;
 
         public void EnsureProvider(FoxgloveManager manager)
         {

@@ -217,12 +217,12 @@ namespace Unity.FoxgloveSDK.Tests
                           "DrawFoxRunTransportProviderExtensions",
                           "drawer",
                           "EnsureProvider") == 1
-                  && !PhaseValidationSourceHelpers.TypeHasAttribute(
+                  && PhaseValidationSourceHelpers.TypeHasAttribute(
                       allManagerEditorSources,
                       "FoxgloveManagerEditor",
                       "CanEditMultipleObjects")
                   && HasExactLazyProviderGuard(ensureMethod),
-                "146A-D4: one Provider traversal covers publish/subscribe capabilities while the single-object Inspector and its defensive mixed/multi-object guard keep lazy creation fail-closed");
+                "146A-D4: one Provider traversal covers publish/subscribe capabilities while the multi-object Inspector's defensive guard keeps lazy creation fail-closed");
             Check(PhaseValidationSourceHelpers.TypeHasAttribute(
                       "partial class FoxgloveManagerEditor { }\n"
                       + "[UnityEditor.CanEditMultipleObjectsAttribute]\n"

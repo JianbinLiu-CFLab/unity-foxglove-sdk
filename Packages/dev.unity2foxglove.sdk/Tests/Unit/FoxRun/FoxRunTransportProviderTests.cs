@@ -96,10 +96,35 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void SerializedSelectionCanFailClosedWithoutCouplingPublishToSubscribe()
+        {
+            Assert.False(FoxRunTransportSelection.TryCreate(
+                new[] { FoxgloveWebSocketTransport.Id },
+                subscriptionsEnabled: true,
+                subscribeTransportId: string.Empty,
+                out var invalid,
+                out var reason));
+            Assert.Null(invalid);
+            Assert.Contains("requires exactly one transport ID", reason);
+
+            Assert.True(FoxRunTransportSelection.TryCreate(
+                new[] { FoxgloveWebSocketTransport.Id },
+                subscriptionsEnabled: false,
+                subscribeTransportId: null,
+                out var publishOnly,
+                out reason));
+            Assert.Empty(reason);
+            Assert.Equal(
+                FoxgloveWebSocketTransport.TransportId,
+                Assert.Single(publishOnly.PublishTransportIds));
+        }
+
+        [Fact]
         public void RegistryIsManagerLocalIdempotentAndConflictOrderIndependent()
         {
             var registryA = new FoxRunTransportProviderRegistry();
             var registryB = new FoxRunTransportProviderRegistry();
+            var registryC = new FoxRunTransportProviderRegistry();
             var first = new FakeProvider(
                 "unity2foxglove.shared",
                 FoxRunTransportCapabilities.Publish | FoxRunTransportCapabilities.Subscribe);
@@ -112,8 +137,12 @@ namespace Unity.FoxgloveSDK.Tests
             Assert.Equal(FoxRunTransportRegistrationResult.Conflict, registryA.Register(second));
             Assert.Equal(FoxRunTransportProviderResolutionState.Conflicted,
                 registryA.Resolve(first.Id, FoxRunTransportCapabilities.Publish).State);
-            Assert.Equal(FoxRunTransportProviderResolutionState.Absent,
+            Assert.Equal(FoxRunTransportRegistrationResult.Added, registryB.Register(second));
+            Assert.Equal(FoxRunTransportRegistrationResult.Conflict, registryB.Register(first));
+            Assert.Equal(FoxRunTransportProviderResolutionState.Conflicted,
                 registryB.Resolve(first.Id, FoxRunTransportCapabilities.Publish).State);
+            Assert.Equal(FoxRunTransportProviderResolutionState.Absent,
+                registryC.Resolve(first.Id, FoxRunTransportCapabilities.Publish).State);
 
             var conflictedSelection = new FoxRunTransportSelection(
                 new[] { first.Id.Value },
@@ -147,6 +176,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert.Same(first.LastCapturedSession, frozen.PublishTransports.Single());
             frozen.Dispose();
             Assert.True(first.LastCapturedSession.Disposed);
+
+            Assert.True(registryB.Unregister(first));
+            Assert.Equal(FoxRunTransportProviderResolutionState.Sole,
+                registryB.Resolve(second.Id, FoxRunTransportCapabilities.Publish).State);
         }
 
         [Fact]

@@ -33,6 +33,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
         public string DisplayName =>
             "ROS 2 Native (R2FU)";
 
+        public int Order => 200;
+
         public FoxRunTransportCapabilities Capabilities =>
             FoxRunTransportCapabilities.Publish
             | FoxRunTransportCapabilities.Subscribe;

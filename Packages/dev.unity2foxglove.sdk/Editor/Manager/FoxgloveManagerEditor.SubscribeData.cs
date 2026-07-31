@@ -27,9 +27,19 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(
                        !GetBool("_enableFoxRunInbound")))
             {
-                DrawProperty(
-                    "_foxRunSubscribeTransportId",
-                    "Subscribe Source");
+                DrawSubscribeTransportSelection(source, "Source");
+
+                if (GetBool("_enableFoxRunInbound")
+                    && source != null
+                    && !source.hasMultipleDifferentValues
+                    && !IsSelectableTransportId(
+                        source.stringValue,
+                        FoxRunTransportCapabilities.Subscribe))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Configured Provider is unavailable or conflicted. Subscription capture fails closed; no fallback Source is selected.",
+                        MessageType.Error);
+                }
 
                 if (source != null
                     && string.Equals(

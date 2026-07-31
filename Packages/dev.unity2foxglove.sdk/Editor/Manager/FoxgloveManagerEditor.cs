@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// readable sections while preserving the original serialized fields.
     /// </summary>
     [CustomEditor(typeof(Components.FoxgloveManager))]
+    [CanEditMultipleObjects]
     public partial class FoxgloveManagerEditor : UnityEditor.Editor
     {
         private bool _connectionSecurityExpanded;

@@ -144,6 +144,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _manager = manager;
             }
 
+            if (!Application.isPlaying)
+            {
+                Interlocked.Exchange(ref _registered, 0);
+                _manager.UnregisterFoxRunTransportProvider(this);
+                return true;
+            }
+
             _publisherHub ??=
                 GetOrAddOwnedHub<FoxRunRos2CustomPublisherHub>();
             _subscriptionHub ??=

@@ -44,14 +44,18 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Canonical configured publish IDs for the next Manager session.</summary>
         public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds =>
-            CreateConfiguredTransportSelection().PublishTransportIds;
+            new FoxRunTransportSelection(
+                    _foxRunPublishTransportIds
+                    ?? Array.Empty<string>(),
+                    subscriptionsEnabled: false,
+                    subscribeTransportId: null)
+                .PublishTransportIds;
 
         /// <summary>Configured subscribe ID for the next Manager session.</summary>
         public FoxRunTransportId ConfiguredFoxRunSubscribeTransportId =>
-            new FoxRunTransportId(
-                string.IsNullOrWhiteSpace(_foxRunSubscribeTransportId)
-                    ? FoxgloveWebSocketTransport.Id
-                    : _foxRunSubscribeTransportId);
+            string.IsNullOrWhiteSpace(_foxRunSubscribeTransportId)
+                ? default
+                : new FoxRunTransportId(_foxRunSubscribeTransportId);
 
         /// <summary>
         /// Register one same-GameObject Provider. Duplicate instances claiming
@@ -112,33 +116,30 @@ namespace Unity.FoxgloveSDK.Components
                 throw new InvalidOperationException(
                     "FoxRun transport session generation is exhausted.");
 
-            var selection = CreateCapturedTransportSelection();
+            if (!TryCreateCapturedTransportSelection(
+                    out var selection,
+                    out var selectionReason))
+            {
+                var configuredId = default(FoxRunTransportId);
+                FoxRunTransportId.TryCreate(
+                    _foxRunSubscribeTransportId,
+                    out configuredId);
+                return ReportFoxRunTransportSessionCaptureFailure(
+                    new FoxRunTransportSessionCaptureError(
+                        FoxRunTransportSessionCaptureFailure.Missing,
+                        configuredId,
+                        "Configured transport selection is invalid: "
+                        + selectionReason));
+            }
+
             if (!_foxRunTransportProviderRegistry.TryCaptureSession(
                     selection,
                     generation + 1UL,
                     out _activeFoxRunTransportSession,
                     out var failure))
             {
-                var shouldReport =
-                    !_lastFoxRunTransportSessionCaptureError.HasValue
-                    || _lastFoxRunTransportSessionCaptureError.Value.Code
-                        != failure.Code
-                    || _lastFoxRunTransportSessionCaptureError.Value.TransportId
-                        != failure.TransportId
-                    || !string.Equals(
-                        _lastFoxRunTransportSessionCaptureError.Value.Reason,
-                        failure.Reason,
-                        StringComparison.Ordinal);
-                _lastFoxRunTransportSessionCaptureError = failure;
-                if (shouldReport)
-                {
-                    Debug.LogWarning(
-                        "[FoxRun] Transport session capture failed closed for '"
-                        + failure.TransportId.Value
-                        + "': "
-                        + failure.Reason);
-                }
-                return false;
+                return ReportFoxRunTransportSessionCaptureFailure(
+                    failure);
             }
 
             _lastFoxRunTransportSessionCaptureError = null;
@@ -439,19 +440,9 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private FoxRunTransportSelection CreateConfiguredTransportSelection()
-        {
-            var publish = _foxRunPublishTransportIds
-                          ?? Array.Empty<string>();
-            return new FoxRunTransportSelection(
-                publish,
-                _enableFoxRunInbound,
-                _enableFoxRunInbound
-                    ? _foxRunSubscribeTransportId
-                    : null);
-        }
-
-        private FoxRunTransportSelection CreateCapturedTransportSelection()
+        private bool TryCreateCapturedTransportSelection(
+            out FoxRunTransportSelection selection,
+            out string reason)
         {
             var configured = _foxRunPublishTransportIds
                              ?? Array.Empty<string>();
@@ -459,7 +450,16 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunSchemaInfoRegistry
                     .GetExplicitPublishTransportIds();
             if (explicitIds.Count == 0)
-                return CreateConfiguredTransportSelection();
+            {
+                return FoxRunTransportSelection.TryCreate(
+                    configured,
+                    _enableFoxRunInbound,
+                    _enableFoxRunInbound
+                        ? _foxRunSubscribeTransportId
+                        : null,
+                    out selection,
+                    out reason);
+            }
 
             var union = new HashSet<string>(
                 configured,
@@ -474,12 +474,39 @@ namespace Unity.FoxgloveSDK.Components
             var publish = new string[union.Count];
             union.CopyTo(publish);
             Array.Sort(publish, StringComparer.Ordinal);
-            return new FoxRunTransportSelection(
+            return FoxRunTransportSelection.TryCreate(
                 publish,
                 _enableFoxRunInbound,
                 _enableFoxRunInbound
                     ? _foxRunSubscribeTransportId
-                    : null);
+                    : null,
+                out selection,
+                out reason);
+        }
+
+        private bool ReportFoxRunTransportSessionCaptureFailure(
+            FoxRunTransportSessionCaptureError failure)
+        {
+            var shouldReport =
+                !_lastFoxRunTransportSessionCaptureError.HasValue
+                || _lastFoxRunTransportSessionCaptureError.Value.Code
+                    != failure.Code
+                || _lastFoxRunTransportSessionCaptureError.Value.TransportId
+                    != failure.TransportId
+                || !string.Equals(
+                    _lastFoxRunTransportSessionCaptureError.Value.Reason,
+                    failure.Reason,
+                    StringComparison.Ordinal);
+            _lastFoxRunTransportSessionCaptureError = failure;
+            if (shouldReport)
+            {
+                Debug.LogWarning(
+                    "[FoxRun] Transport session capture failed closed for '"
+                    + (failure.TransportId.Value ?? "<unconfigured>")
+                    + "': "
+                    + failure.Reason);
+            }
+            return false;
         }
 
         private void EnsureBuiltInFoxgloveProviderRegistered()

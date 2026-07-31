@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportId.cs";
         private const string ManagerRuntimePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
+        private const string ManagerProvidersPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs";
         private const string ManagerCoordinateMigrationPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs";
         private const string McapRecorderPath =
@@ -93,6 +95,7 @@ namespace Unity.FoxgloveSDK.Tests
                     dataTransport,
                     "DrawDataTransportSubsection"));
             VerifyPublishSelection(
+                publishData,
                 FindMethod(publishData, "DrawPublishDataSection"));
             VerifySubscribeSelection(
                 FindMethod(
@@ -112,6 +115,7 @@ namespace Unity.FoxgloveSDK.Tests
                     publishData,
                     "ShouldEnsureProvider"));
             VerifyFoldoutState(managerEditor);
+            VerifyNeutralSerialization();
             VerifyDirectionalCoordinateRuntimePolicy();
             VerifyValidationRegistryEntry();
 
@@ -226,17 +230,13 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static void VerifyPublishSelection(
+            string publishDataSource,
             MethodDeclarationSyntax publishData)
         {
             var destinationDraws =
-                InvocationsNamed(publishData, "DrawProperty")
-                    .Where(invocation =>
-                        HasStringArgument(
-                            invocation,
-                            "_foxRunPublishTransportIds")
-                        && HasStringArgument(
-                            invocation,
-                            "Publish Destinations"))
+                InvocationsNamed(
+                        publishData,
+                        "DrawPublishTransportSelection")
                     .ToArray();
             var headings =
                 InvocationsNamed(publishData, "Subheader")
@@ -255,14 +255,20 @@ namespace Unity.FoxgloveSDK.Tests
                     .OfType<IfStatementSyntax>()
                     .FirstOrDefault())
                 .SingleOrDefault();
-            var text = publishData.ToFullString();
+            var text = publishDataSource;
 
             Check(headings.Length == 1
                   && destinationDraws.Length == 1
                   && text.Contains(
                       "FindCachedProperty(\"_foxRunPublishTransportIds\")",
+                      StringComparison.Ordinal)
+                  && text.Contains(
+                      "EditorGUILayout.ToggleLeft",
+                      StringComparison.Ordinal)
+                  && text.Contains(
+                      "Unavailable Provider",
                       StringComparison.Ordinal),
-                "180C-1: Publish exposes one authoritative Publish Destinations ID collection");
+                "180C-1: Publish exposes one authoritative selectable destination collection and retains unavailable IDs visibly");
             Check(encoding.Length == 1
                   && encodingGuard != null
                   && encodingGuard.Condition.ToFullString().Contains(
@@ -287,14 +293,9 @@ namespace Unity.FoxgloveSDK.Tests
             MethodDeclarationSyntax subscribeData)
         {
             var sourceDraws =
-                InvocationsNamed(subscribeData, "DrawProperty")
-                    .Where(invocation =>
-                        HasStringArgument(
-                            invocation,
-                            "_foxRunSubscribeTransportId")
-                        && HasStringArgument(
-                            invocation,
-                            "Subscribe Source"))
+                InvocationsNamed(
+                        subscribeData,
+                        "DrawSubscribeTransportSelection")
                     .ToArray();
             var encoding =
                 InvocationsNamed(
@@ -321,8 +322,12 @@ namespace Unity.FoxgloveSDK.Tests
                       .Count(invocation =>
                           HasStringArgument(
                               invocation,
-                              "_enableFoxRunInbound")) == 1,
-                "180D-1: Subscribe exposes one enabled-state control and exactly one Subscribe Source ID");
+                              "_enableFoxRunInbound")) == 1
+                  && text.Contains("\"Source\"", StringComparison.Ordinal)
+                  && text.Contains(
+                      "Configured Provider is unavailable",
+                      StringComparison.Ordinal),
+                "180D-1: Subscribe exposes one enabled-state control and exactly one fail-closed Source selector");
             Check(encoding.Length == 1
                   && encodingGuard != null
                   && encodingGuard.Condition.ToFullString().Contains(
@@ -359,12 +364,15 @@ namespace Unity.FoxgloveSDK.Tests
                       "string DisplayName { get; }",
                       StringComparison.Ordinal)
                   && drawerRegistry.Contains(
+                      "int Order { get; }",
+                      StringComparison.Ordinal)
+                  && drawerRegistry.Contains(
                       "FoxRunTransportCapabilities Capabilities { get; }",
                       StringComparison.Ordinal)
                   && drawerRegistry.Contains(
-                      "OrderBy(pair => pair.Key.Value, StringComparer.Ordinal)",
+                      "FoxRunEditorDefinitionRegistry<",
                       StringComparison.Ordinal),
-                "180E-1: Editor drawer definitions expose stable ID, display name, capabilities, and deterministic ID order");
+                "180E-1: Editor drawer definitions expose stable ID, display name, explicit order, capabilities, and conflict-aware deterministic capture");
             Check(transportId.Contains(
                       "public const string Id = \"foxglove.websocket\"",
                       StringComparison.Ordinal)
@@ -387,9 +395,9 @@ namespace Unity.FoxgloveSDK.Tests
                       "\"ROS 2 Bridge\"",
                       StringComparison.Ordinal)
                   && bridgeDrawer.Contains(
-                      "FoxRunTransportCapabilities.Publish;",
+                      "FoxRunTransportCapabilities.Publish",
                       StringComparison.Ordinal)
-                  && !bridgeDrawer.Contains(
+                  && bridgeDrawer.Contains(
                       "FoxRunTransportCapabilities.Subscribe",
                       StringComparison.Ordinal),
                 "180E-2: built-in, R2FU, and Bridge identities and directional capabilities stay with their owning definitions");
@@ -486,8 +494,8 @@ namespace Unity.FoxgloveSDK.Tests
                                     is LiteralExpressionSyntax literal
                                 && literal.IsKind(
                                     SyntaxKind.FalseLiteralExpression)));
-            var isSingleObjectEditor =
-                !PhaseValidationSourceHelpers.TypeHasAttribute(
+            var isMultiObjectEditor =
+                PhaseValidationSourceHelpers.TypeHasAttribute(
                     managerEditor,
                     "FoxgloveManagerEditor",
                     "CanEditMultipleObjects");
@@ -528,9 +536,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && Count(
                       selectionContext,
                       "hasMultipleDifferentValues") >= 2
-                  && isSingleObjectEditor
+                  && isMultiObjectEditor
                   && multiObjectFalseGate,
-                "180F-1: EnsureProvider is AST-nested only under publish/subscribe capability and ID demand, while the Inspector stays single-object and the helper defensively rejects mixed/multi-object invocation");
+                "180F-1: EnsureProvider is AST-nested only under publish/subscribe capability and ID demand, while multi-object editing never creates companions implicitly");
             Check(drawCalls.Length == 1
                   && drawIsUnconditional,
                 "180F-2: every captured Provider drawer is still offered exactly one unconditional Draw call");
@@ -563,6 +571,41 @@ namespace Unity.FoxgloveSDK.Tests
                       "InspectorFoldoutKey(\"DataTransportSubscribe\")",
                       StringComparison.Ordinal),
                 "180G-1: foldout persistence belongs only to Data Transport and its two neutral directional subsections");
+        }
+
+        private static void VerifyNeutralSerialization()
+        {
+            var source =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    ManagerProvidersPath);
+            Check(source.Contains(
+                      "private string[] _foxRunPublishTransportIds",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "private string _foxRunSubscribeTransportId",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "? default",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "? FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "TryCreateCapturedTransportSelection",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "Configured transport selection is invalid:",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "FormerlySerializedAs",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "_ros2Native",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "_ros2Bridge",
+                      StringComparison.Ordinal),
+                "180G-2: neutral publish/source IDs serialize directly and blank or unknown Source never falls back to WebSocket");
         }
 
         private static void VerifyDirectionalCoordinateRuntimePolicy()

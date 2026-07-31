@@ -53,6 +53,30 @@ namespace Unity.FoxgloveSDK.Components
         public bool SubscriptionsEnabled { get; }
         public FoxRunTransportId? SubscribeTransportId { get; }
 
+        internal static bool TryCreate(
+            IEnumerable<string> publishTransportIds,
+            bool subscriptionsEnabled,
+            string subscribeTransportId,
+            out FoxRunTransportSelection selection,
+            out string reason)
+        {
+            try
+            {
+                selection = new FoxRunTransportSelection(
+                    publishTransportIds,
+                    subscriptionsEnabled,
+                    subscribeTransportId);
+                reason = string.Empty;
+                return true;
+            }
+            catch (ArgumentException exception)
+            {
+                selection = null;
+                reason = exception.Message;
+                return false;
+            }
+        }
+
         public string DeterministicKey
         {
             get

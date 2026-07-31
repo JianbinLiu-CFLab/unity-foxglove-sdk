@@ -4,6 +4,9 @@
 // Module: Editor/Manager
 // Purpose: Provider-neutral publish controls and Provider editor extensions.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using UnityEditor;
 using UnityEngine;
@@ -17,9 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Publish Destinations");
             var destinations =
                 FindCachedProperty("_foxRunPublishTransportIds");
-            DrawProperty(
-                "_foxRunPublishTransportIds",
-                "Publish Destinations");
+            DrawPublishTransportSelection(destinations);
 
             if (SerializedStringArrayContains(
                     destinations,
@@ -77,6 +78,14 @@ namespace Unity.FoxgloveSDK.Editor
                 setupDrawer.Draw(manager, serializedObject);
             }
 
+            if (serializedObject.isEditingMultipleObjects)
+            {
+                EditorGUILayout.HelpBox(
+                    "Provider details are available when inspecting one FoxgloveManager. Mixed selections never create Provider companions.",
+                    MessageType.Info);
+                return;
+            }
+
             var publishTransportIds =
                 FindCachedProperty(
                     "_foxRunPublishTransportIds");
@@ -96,6 +105,216 @@ namespace Unity.FoxgloveSDK.Editor
 
                 drawer.Draw(manager, serializedObject);
             }
+        }
+
+        private void DrawPublishTransportSelection(
+            SerializedProperty destinations)
+        {
+            if (destinations == null)
+                return;
+            if (serializedObject.isEditingMultipleObjects
+                || destinations.hasMultipleDifferentValues)
+            {
+                EditorGUILayout.PropertyField(
+                    destinations,
+                    new GUIContent("Publish Destinations"),
+                    includeChildren: true);
+                return;
+            }
+
+            var selected = ReadSerializedStringSet(destinations);
+            var choices = CaptureProviderChoices(
+                FoxRunTransportCapabilities.Publish);
+            var known = new HashSet<string>(
+                choices.Select(choice => choice.TransportId),
+                StringComparer.Ordinal);
+            var changed = false;
+            foreach (var choice in choices)
+            {
+                var wasSelected = selected.Contains(choice.TransportId);
+                var isSelected = EditorGUILayout.ToggleLeft(
+                    choice.DisplayName + " (" + choice.TransportId + ")",
+                    wasSelected);
+                if (isSelected == wasSelected)
+                    continue;
+                changed = true;
+                if (isSelected)
+                    selected.Add(choice.TransportId);
+                else
+                    selected.Remove(choice.TransportId);
+            }
+
+            var unavailable = selected
+                .Where(id => !known.Contains(id))
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+            foreach (var id in unavailable)
+            {
+                var conflicted =
+                    FoxRunTransportProviderDrawerRegistry
+                        .IsConflicted(id);
+                var keep = EditorGUILayout.ToggleLeft(
+                    (conflicted
+                        ? "Conflicted Provider"
+                        : "Unavailable Provider")
+                    + " ("
+                    + (string.IsNullOrEmpty(id) ? "<empty>" : id)
+                    + ")",
+                    true);
+                if (keep)
+                    continue;
+                selected.Remove(id);
+                changed = true;
+            }
+
+            if (unavailable.Length != 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Configured unavailable or conflicted Provider IDs fail closed. Clear them explicitly or install/repair the owning package; no fallback is selected.",
+                    MessageType.Error);
+            }
+            if (changed)
+                WriteSerializedStringSet(destinations, selected);
+        }
+
+        private void DrawSubscribeTransportSelection(
+            SerializedProperty source,
+            string label)
+        {
+            if (source == null)
+                return;
+            if (serializedObject.isEditingMultipleObjects
+                || source.hasMultipleDifferentValues)
+            {
+                EditorGUILayout.PropertyField(
+                    source,
+                    new GUIContent(label));
+                return;
+            }
+
+            var choices = CaptureProviderChoices(
+                FoxRunTransportCapabilities.Subscribe);
+            var labels = new List<string> { "Not Configured" };
+            var values = new List<string> { string.Empty };
+            for (var index = 0; index < choices.Count; index++)
+            {
+                labels.Add(
+                    choices[index].DisplayName
+                    + " ("
+                    + choices[index].TransportId
+                    + ")");
+                values.Add(choices[index].TransportId);
+            }
+
+            var current = source.stringValue ?? string.Empty;
+            var currentIndex = values.IndexOf(current);
+            if (currentIndex < 0)
+            {
+                var conflicted =
+                    FoxRunTransportProviderDrawerRegistry
+                        .IsConflicted(current);
+                labels.Add(
+                    (conflicted ? "Conflicted" : "Unavailable")
+                    + " ("
+                    + current
+                    + ")");
+                values.Add(current);
+                currentIndex = values.Count - 1;
+            }
+
+            var next = EditorGUILayout.Popup(
+                label,
+                currentIndex,
+                labels.ToArray());
+            if (next != currentIndex)
+                source.stringValue = values[next];
+        }
+
+        private static bool IsSelectableTransportId(
+            string transportId,
+            FoxRunTransportCapabilities capability)
+        {
+            if (string.Equals(
+                    transportId,
+                    FoxgloveWebSocketTransport.Id,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+            return FoxRunTransportProviderDrawerRegistry.Capture()
+                .Any(drawer =>
+                    string.Equals(
+                        drawer.TransportId,
+                        transportId,
+                        StringComparison.Ordinal)
+                    && (drawer.Capabilities & capability) == capability);
+        }
+
+        private static IReadOnlyList<ProviderChoice>
+            CaptureProviderChoices(
+                FoxRunTransportCapabilities capability)
+        {
+            var choices = new List<ProviderChoice>
+            {
+                new ProviderChoice(
+                    FoxgloveWebSocketTransport.Id,
+                    "Foxglove WebSocket")
+            };
+            foreach (var drawer in
+                     FoxRunTransportProviderDrawerRegistry.Capture())
+            {
+                if ((drawer.Capabilities & capability) != capability)
+                    continue;
+                choices.Add(new ProviderChoice(
+                    drawer.TransportId,
+                    drawer.DisplayName));
+            }
+            return choices;
+        }
+
+        private static HashSet<string> ReadSerializedStringSet(
+            SerializedProperty property)
+        {
+            var values = new HashSet<string>(StringComparer.Ordinal);
+            if (!property.isArray)
+                return values;
+            for (var index = 0; index < property.arraySize; index++)
+            {
+                values.Add(
+                    property.GetArrayElementAtIndex(index).stringValue
+                    ?? string.Empty);
+            }
+            return values;
+        }
+
+        private static void WriteSerializedStringSet(
+            SerializedProperty property,
+            IEnumerable<string> values)
+        {
+            var canonical = values
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
+            property.ClearArray();
+            for (var index = 0; index < canonical.Length; index++)
+            {
+                property.InsertArrayElementAtIndex(index);
+                property.GetArrayElementAtIndex(index).stringValue =
+                    canonical[index];
+            }
+        }
+
+        private readonly struct ProviderChoice
+        {
+            internal ProviderChoice(
+                string transportId,
+                string displayName)
+            {
+                TransportId = transportId;
+                DisplayName = displayName;
+            }
+
+            internal string TransportId { get; }
+            internal string DisplayName { get; }
         }
 
         private bool ShouldEnsureProvider(
