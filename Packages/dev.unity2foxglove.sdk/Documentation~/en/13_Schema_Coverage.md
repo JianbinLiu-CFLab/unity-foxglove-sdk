@@ -22,6 +22,12 @@ use. `Off` skips identity checks, `Warn` reports mismatches while continuing,
 and `Strict` blocks replay on confirmed FoxRun hash mismatch and requires
 complete recording evidence.
 
+Recording evidence is stored beside each MCAP file in a sibling directory with
+the same base name and a `.schema` suffix. That sidecar contains the
+`schema-evidence.json` index plus the available FoxRun and Unity2Foxglove schema
+manifests, so replay validation can compare the exact evidence captured for the
+recording without depending on an installed ROS transport Provider.
+
 ## 2. Core Coverage Definition
 
 In the core package, full official schema coverage means every bundled
