@@ -1886,6 +1886,8 @@ class Phase186ProvenanceTests(unittest.TestCase):
             )
 
         def validate_hidden_document(mutated: str) -> list[str]:
+            """Validate one hidden-document mutation against baseline authority."""
+
             payload = {
                 "schemaVersion": 1,
                 "reference": json.loads(json.dumps(ledger["reference"])),

@@ -26,16 +26,19 @@ REPORT = ROOT / "build/phase186/package-matrix/report.json"
 
 
 def fail(message: str) -> int:
+    """Report one stable package-matrix failure."""
     print(f"[FAIL] {message}", file=sys.stderr)
     return 1
 
 
 def load_json(path: Path) -> dict:
+    """Load one UTF-8 JSON package descriptor."""
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def compile_matrix() -> list[dict]:
+    """Compile every supported Phase186 package composition."""
     results: list[dict] = []
     for name, project_name in PROJECTS:
         project = MATRIX_ROOT / project_name
@@ -71,6 +74,7 @@ def compile_matrix() -> list[dict]:
 
 
 def validate_boundaries() -> list[str]:
+    """Validate package dependencies, asmdefs, and analyzer ownership."""
     sdk = ROOT / "Packages/dev.unity2foxglove.sdk"
     r2fu = ROOT / "Packages/dev.unity2foxglove.ros2forunity"
     bridge = ROOT / "Packages/dev.unity2foxglove.ros2bridge"
@@ -147,6 +151,7 @@ def validate_boundaries() -> list[str]:
 
 
 def main() -> int:
+    """Run the package matrix and write its deterministic report."""
     try:
         compile_results = compile_matrix()
         boundary_paths = validate_boundaries()

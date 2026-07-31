@@ -19,6 +19,8 @@ import phase186_bridge_capability_probe as probe
 
 
 def passing_row(row_id: str) -> dict[str, object]:
+    """Build a complete passing capability result for one maintained row."""
+
     row = build.require_row(row_id)
     result: dict[str, object] = {
         "schemaVersion": 1,
@@ -63,13 +65,19 @@ def passing_row(row_id: str) -> dict[str, object]:
 
 
 class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
+    """Regression coverage for the Phase186 Bridge capability matrix."""
+
     def test_exact_good_matrix_selects_one_mechanism(self) -> None:
+        """Accept the exact maintained matrix using one selected mechanism."""
+
         matrix = {row_id: passing_row(row_id) for row_id in build.ROWS}
         validated = probe.validate_matrix(matrix)
         self.assertEqual(probe.SELECTED_MECHANISM, validated["selectedMechanism"])
         self.assertEqual(list(build.ROWS), validated["rows"])
 
     def test_missing_or_renamed_row_is_rejected(self) -> None:
+        """Reject matrices with a missing row or an aliased row identifier."""
+
         matrix = {
             row_id: passing_row(row_id)
             for row_id in tuple(build.ROWS)[:-1]
@@ -79,36 +87,48 @@ class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
             probe.validate_matrix(matrix)
 
     def test_self_report_without_ros_observations_is_rejected(self) -> None:
+        """Reject a passing self-report that lacks observed ROS evidence."""
+
         result = passing_row("jazzy-fastrtps")
         result.pop("rosObservations")
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_row_result(result, build.require_row("jazzy-fastrtps"))
 
     def test_requested_and_observed_rmw_must_match(self) -> None:
+        """Require the observed RMW to equal the requested matrix RMW."""
+
         result = passing_row("jazzy-fastrtps")
         result["observedRmw"] = "rmw_zenoh_cpp"
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_row_result(result, build.require_row("jazzy-fastrtps"))
 
     def test_zenoh_requires_owned_topology(self) -> None:
+        """Require owned Zenoh topology evidence for the Zenoh row."""
+
         result = passing_row("lyrical-zenoh")
         result.pop("zenohTopology")
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_row_result(result, build.require_row("lyrical-zenoh"))
 
     def test_ambient_domain_is_rejected(self) -> None:
+        """Reject evidence collected from an ambient unowned ROS domain."""
+
         result = passing_row("humble-fastrtps")
         result["domainOwned"] = False
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_row_result(result, build.require_row("humble-fastrtps"))
 
     def test_matrix_cannot_change_mechanism_by_rmw(self) -> None:
+        """Reject per-RMW drift from the matrix-wide selected mechanism."""
+
         matrix = {row_id: passing_row(row_id) for row_id in build.ROWS}
         matrix["lyrical-zenoh"]["mechanism"] = "ignore_local_publications_only"
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_matrix(matrix)
 
     def test_not_run_blocks_matrix_completion(self) -> None:
+        """Require every row to pass before the matrix can complete."""
+
         matrix = {row_id: passing_row(row_id) for row_id in build.ROWS}
         blocked = copy.deepcopy(matrix["humble-fastrtps"])
         blocked["verdict"] = "NOT RUN"

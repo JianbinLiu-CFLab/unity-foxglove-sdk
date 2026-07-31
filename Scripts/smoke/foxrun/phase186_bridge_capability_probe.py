@@ -148,6 +148,8 @@ def validate_matrix(
 
 
 def _write_json_atomic(path: pathlib.Path, value: Mapping[str, object]) -> None:
+    """Write one probe evidence object by atomic file replacement."""
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -165,6 +167,8 @@ def _write_json_atomic(path: pathlib.Path, value: Mapping[str, object]) -> None:
 
 
 def _read_json(path: pathlib.Path) -> Mapping[str, object]:
+    """Read a required JSON evidence object or fail closed."""
+
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -175,6 +179,8 @@ def _read_json(path: pathlib.Path) -> Mapping[str, object]:
 
 
 def _load_last_json_line(path: pathlib.Path) -> Mapping[str, object]:
+    """Load the last valid JSON object emitted to an owned probe log."""
+
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
@@ -197,6 +203,8 @@ def _wait_for_marker(
     marker: str,
     timeout_seconds: float,
 ) -> None:
+    """Wait until an owned process emits the required readiness marker."""
+
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if path.is_file() and marker in path.read_text(
@@ -210,6 +218,8 @@ def _wait_for_marker(
 
 
 def _terminate_owned(process: subprocess.Popen[str] | None) -> None:
+    """Best-effort terminate and reap one process owned by this probe."""
+
     if process is None or process.poll() is not None:
         return
     try:
@@ -220,6 +230,8 @@ def _terminate_owned(process: subprocess.Popen[str] | None) -> None:
 
 
 def _process_options() -> dict[str, object]:
+    """Return platform-specific options for an owned process group."""
+
     if os.name == "nt":
         return {
             "creationflags": int(
@@ -234,6 +246,8 @@ def _generate_serialized_payload(
     environment: Mapping[str, str],
     origin_id: str,
 ) -> str:
+    """Generate the canonical serialized Phase181 envelope payload."""
+
     code = (
         "from rclpy.serialization import serialize_message;"
         "from unity2foxglove_foxrun_interfaces_v1.msg import "
@@ -273,6 +287,8 @@ def _runtime_environment(
     overlay: Mapping[str, object],
     domain_id: int,
 ) -> tuple[dict[str, str], pathlib.Path, object]:
+    """Construct the isolated runtime environment for one capability row."""
+
     peer = build._load_phase181_peer(repository)
     ros2_root = pathlib.Path(
         os.environ.get(
@@ -578,6 +594,8 @@ def run_row(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse Bridge capability-probe command-line arguments."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--row", choices=tuple(build.ROWS))
@@ -601,6 +619,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run selected capability rows and validate the resulting matrix."""
+
     args = parse_args(argv)
     if args.timeout_seconds <= 0 or args.timeout_seconds > 300:
         raise SystemExit("--timeout-seconds must be in (0, 300]")

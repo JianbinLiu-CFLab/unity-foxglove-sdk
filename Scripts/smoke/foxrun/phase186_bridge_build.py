@@ -105,6 +105,8 @@ def require_row(row_id: str) -> BridgeRow:
 
 
 def _load_phase181_peer(repository: pathlib.Path):
+    """Import the maintained Phase181 peer helper from the repository."""
+
     ros_scripts = repository / "Scripts" / "smoke" / "ros2"
     if str(ros_scripts) not in sys.path:
         sys.path.insert(0, str(ros_scripts))
@@ -345,6 +347,8 @@ def validate_build_summary(value: Mapping[str, object], row: BridgeRow) -> None:
 
 
 def _write_json_atomic(path: pathlib.Path, value: Mapping[str, object]) -> None:
+    """Write one JSON evidence object by atomic file replacement."""
+
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -363,6 +367,8 @@ def _write_json_atomic(path: pathlib.Path, value: Mapping[str, object]) -> None:
 
 
 def _process_group_options() -> dict[str, object]:
+    """Return platform-specific options for an owned process group."""
+
     if os.name == "nt":
         return {
             "creationflags": int(
@@ -433,6 +439,8 @@ def run_logged(
 
 
 def _find_tool(name: str, env: Mapping[str, str]) -> pathlib.Path:
+    """Resolve one required executable from the supplied environment."""
+
     found = shutil.which(name, path=env.get("PATH"))
     if not found:
         raise LivePrerequisiteMissing(name + " is not available")
@@ -440,6 +448,8 @@ def _find_tool(name: str, env: Mapping[str, str]) -> pathlib.Path:
 
 
 def _ctest_counts(log_path: pathlib.Path) -> tuple[int, int]:
+    """Extract passed and total test counts from a complete CTest log."""
+
     text = pathlib.Path(log_path).read_text(encoding="utf-8", errors="replace")
     match = re.search(
         r"(\d+)% tests passed,\s+(\d+) tests failed out of (\d+)",
@@ -452,6 +462,8 @@ def _ctest_counts(log_path: pathlib.Path) -> tuple[int, int]:
 
 
 def _compiler_identity(cache_path: pathlib.Path, environment: Mapping[str, str]) -> dict[str, object]:
+    """Describe the configured MSVC compiler using cache and environment evidence."""
+
     compiler = ""
     if cache_path.is_file():
         for line in cache_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -470,6 +482,8 @@ def _build_cpp_environment(
     install_prefix: pathlib.Path,
     temporary_directory: pathlib.Path,
 ) -> dict[str, str]:
+    """Build the isolated C++ environment for one Bridge matrix row."""
+
     env = dict(build_environment)
     pixi_library = ros2_root / ".pixi" / "envs" / "default" / "Library"
     prefixes = [str(install_prefix), str(ros2_root), str(pixi_library)]
@@ -764,6 +778,8 @@ def run_row(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse Bridge build-matrix command-line arguments."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--row", choices=tuple(ROWS))
@@ -778,6 +794,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the selected Bridge build rows and write their evidence."""
+
     args = parse_args(argv)
     repository = repository_root()
     output_root = (

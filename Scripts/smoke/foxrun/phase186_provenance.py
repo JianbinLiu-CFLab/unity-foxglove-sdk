@@ -334,6 +334,8 @@ _LIMIT_NAMES = (
 
 
 def _normal_path(value: str) -> str:
+    """Normalize path separators for portable inventory comparisons."""
+
     return value.replace("\\", "/").strip("/")
 
 
@@ -370,6 +372,8 @@ def _canonical_path_list(
     label: str,
     require_nonempty: bool = False,
 ) -> tuple[list[str], list[str]]:
+    """Canonicalize a JSON path list while collecting validation errors."""
+
     errors: list[str] = []
     if not isinstance(values, list):
         return [], [f"{label} must be an array"]
@@ -396,6 +400,8 @@ def _canonical_path_list(
 
 
 def _sha256_bytes(value: bytes) -> str:
+    """Return the lowercase SHA-256 digest of a byte sequence."""
+
     return hashlib.sha256(value).hexdigest()
 
 
@@ -443,6 +449,8 @@ def _strict_json_float(value: str) -> float:
 
 
 def _reject_json_constant(value: str) -> object:
+    """Reject non-finite constants while parsing strict JSON."""
+
     raise ValueError(f"non-finite JSON number: {value}")
 
 
@@ -473,6 +481,8 @@ def _is_reparse_point(stat_result: os.stat_result) -> bool:
 
 
 def _canonical_json_sha256(value: object) -> str:
+    """Hash a JSON value using the repository's canonical encoding."""
+
     encoded = json.dumps(
         value,
         ensure_ascii=False,
@@ -491,6 +501,8 @@ def path_inventory_digest(paths: Iterable[str]) -> str:
 
 
 def _subprocess_lines(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
+    """Run a command and return its UTF-8 stdout as non-empty lines."""
+
     completed = subprocess.run(
         list(command),
         cwd=cwd,
@@ -507,6 +519,8 @@ def _subprocess_lines(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
 
 
 def _substantial_lines(source: str) -> list[str]:
+    """Extract normalized implementation lines suitable for overlap checks."""
+
     lines: list[str] = []
     for raw in source.splitlines():
         line = re.sub(r"\s+", " ", raw.strip())
@@ -524,6 +538,8 @@ def _substantial_lines(source: str) -> list[str]:
 
 
 def _distinctive_windows(source: str) -> set[tuple[str, ...]]:
+    """Return sufficiently substantial consecutive source-line windows."""
+
     lines = _substantial_lines(source)
     windows: set[tuple[str, ...]] = set()
     for index in range(0, len(lines) - _OVERLAP_LINE_COUNT + 1):
@@ -734,6 +750,8 @@ def _markdown_table_rows(
     column_count: int,
     table_name: str,
 ) -> list[list[str]]:
+    """Parse one uniquely headed Markdown table into validated cell rows."""
+
     lines = source.splitlines()
     header_indexes = [index for index, line in enumerate(lines) if line == header]
     if len(header_indexes) != 1:
@@ -1220,6 +1238,8 @@ def validate_ledger_payload(
 
 
 def _read_json(path: pathlib.Path) -> Mapping[str, object]:
+    """Read one strict JSON object from disk."""
+
     payload = _strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path} must contain one JSON object")
@@ -1227,6 +1247,8 @@ def _read_json(path: pathlib.Path) -> Mapping[str, object]:
 
 
 def _subprocess_bytes(command: Sequence[str], cwd: pathlib.Path) -> bytes:
+    """Run a command and return its raw stdout bytes."""
+
     completed = subprocess.run(
         list(command),
         cwd=cwd,
@@ -1242,6 +1264,8 @@ def _subprocess_bytes(command: Sequence[str], cwd: pathlib.Path) -> bytes:
 
 
 def _git_blob(repository: pathlib.Path, revision: str, path: str) -> bytes:
+    """Read one canonical repository path from an immutable Git revision."""
+
     path = _canonical_relative_path(path, label="Git blob path")
     return _subprocess_bytes(
         ["git", "cat-file", "blob", f"{revision}:{path}"],
@@ -1255,6 +1279,8 @@ def _resolve_contained(
     *,
     label: str,
 ) -> pathlib.Path:
+    """Resolve a required path while rejecting escapes from the given root."""
+
     canonical = _canonical_relative_path(relative, label=label)
     candidate = root.joinpath(*pathlib.PurePosixPath(canonical).parts)
     resolved = candidate.resolve(strict=True)
@@ -1297,6 +1323,8 @@ def _resolve_regular_file_contained(
 
 
 def _is_protocol_source_path(path: str) -> bool:
+    """Return whether a canonical path belongs to the protocol source scope."""
+
     pure = pathlib.PurePosixPath(path)
     for root, pattern in _PROTOCOL_SOURCE_ROOTS:
         if pure.parent.as_posix() == root and fnmatch.fnmatchcase(pure.name, pattern):
@@ -1307,6 +1335,8 @@ def _is_protocol_source_path(path: str) -> bool:
 def _discover_protocol_sources(
     repository: pathlib.Path,
 ) -> tuple[set[str], list[str]]:
+    """Discover maintained protocol sources without following unsafe entries."""
+
     discovered: set[str] = set()
     errors: list[str] = []
     for root_relative, pattern in _PROTOCOL_SOURCE_ROOTS:
@@ -1412,6 +1442,8 @@ def _discover_protocol_sources(
 def _phase186b_introduced_sources(
     repository: pathlib.Path,
 ) -> tuple[dict[str, str], list[str]]:
+    """Collect sources introduced by the frozen Phase186B commit sequence."""
+
     introduced: dict[str, str] = {}
     errors: list[str] = []
     for revision, subject, expected_count in _PHASE186B_SOURCE_COMMITS:
@@ -1491,6 +1523,8 @@ def _validate_v1_repository_authority(
     payload: Mapping[str, object],
     implementation_sources: Mapping[str, str],
 ) -> list[str]:
+    """Validate the v1 compatibility record against frozen repository authority."""
+
     errors: list[str] = []
     compatibility = payload.get("v1Compatibility")
     if not isinstance(compatibility, Mapping):
@@ -1900,6 +1934,8 @@ def validate_repository_provenance(
 
 
 def _git_tree_paths(repository: pathlib.Path, revision: str) -> list[str]:
+    """List canonical paths stored in one immutable Git tree."""
+
     output = _subprocess_bytes(
         ["git", "ls-tree", "-r", "--name-only", "-z", revision],
         repository,
@@ -1912,6 +1948,8 @@ def _git_tree_paths(repository: pathlib.Path, revision: str) -> list[str]:
 
 
 def _scope_paths(all_paths: Sequence[str], scope: Mapping[str, object]) -> list[str]:
+    """Select inventory paths using canonical prefixes, exact paths, and globs."""
+
     prefixes = scope.get("prefixes", [])
     exact_paths = scope.get("exactPaths", [])
     globs = scope.get("globs", [])
@@ -2156,6 +2194,8 @@ def validate_pre_move_inventory(
 
 
 def _default_paths(repository: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    """Return default reference, ledger, and inventory paths."""
+
     return (
         repository / "third-party" / "ROS-TCP-Connector",
         repository
@@ -2175,6 +2215,8 @@ def _default_paths(repository: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Validate repository provenance and report a process exit status."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", type=pathlib.Path, default=pathlib.Path.cwd())
     parser.add_argument("--reference-root", type=pathlib.Path)

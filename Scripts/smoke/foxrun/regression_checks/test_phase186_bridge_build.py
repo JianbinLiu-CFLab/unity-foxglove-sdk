@@ -19,7 +19,11 @@ import phase186_bridge_build as build
 
 
 class Phase186BridgeBuildTests(unittest.TestCase):
+    """Regression coverage for the Phase186 Bridge build evidence contract."""
+
     def test_exact_maintained_rows_and_no_fastdds_alias(self) -> None:
+        """Keep the maintained row IDs exact and reject the FastDDS alias."""
+
         self.assertEqual(
             (
                 "humble-fastrtps",
@@ -33,6 +37,8 @@ class Phase186BridgeBuildTests(unittest.TestCase):
             build.require_row("jazzy-fastdds")
 
     def test_tracked_phase181_lock_is_exact(self) -> None:
+        """Require the tracked Phase181 interface authority to match exactly."""
+
         repository = pathlib.Path(__file__).resolve().parents[4]
         authority = build.load_interface_authority(repository)
         self.assertEqual(build.INTERFACE_TYPE, authority["canonicalType"])
@@ -43,6 +49,8 @@ class Phase186BridgeBuildTests(unittest.TestCase):
         )
 
     def test_overlay_authority_rejects_cross_row_and_digest_drift(self) -> None:
+        """Reject overlay evidence copied across rows or carrying digest drift."""
+
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             row_root = root / "jazzy-fastrtps"
@@ -77,6 +85,8 @@ class Phase186BridgeBuildTests(unittest.TestCase):
                 )
 
     def test_missing_live_prerequisite_is_not_run_and_never_pass(self) -> None:
+        """Classify missing live prerequisites as blocking NOT RUN evidence."""
+
         result = build.not_run_summary(
             build.require_row("jazzy-fastrtps"),
             "missing Visual Studio C++ toolchain",
@@ -86,6 +96,8 @@ class Phase186BridgeBuildTests(unittest.TestCase):
         self.assertNotEqual(0, build.verdict_exit_code(result["verdict"]))
 
     def test_result_validator_requires_real_build_and_ctest_evidence(self) -> None:
+        """Require successful configure, build, and CTest evidence for PASS."""
+
         row = build.require_row("jazzy-fastrtps")
         valid = {
             "schemaVersion": 1,
