@@ -271,7 +271,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 payload,
                 0,
                 payload.Length);
-            return new U2R2Frame(header, payload);
+            return U2R2Frame.CreateOwned(header, payload);
         }
 
         public static U2R2Message ParseV2(U2R2Frame frame)
@@ -368,6 +368,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 || operation == U2R2Operation.Message;
             if (!mayDeclareEncoding && header["encoding"] != null)
                 throw InvalidFrame("encoding is not valid for this U2R2 operation.");
+            if (mayDeclareEncoding)
+                encoding = RequiredString(header, "encoding");
             if (operation == U2R2Operation.Publish)
             {
                 logTimeNs = RequiredUnsigned(header, "logTimeNs", allowZero: true);
@@ -378,7 +380,6 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     header,
                     "receiveTimeNs",
                     allowZero: true);
-                encoding = RequiredString(header, "encoding");
                 representation = RequiredString(header, "representation");
                 if (!string.Equals(encoding, "cdr", StringComparison.Ordinal)
                     || !string.Equals(

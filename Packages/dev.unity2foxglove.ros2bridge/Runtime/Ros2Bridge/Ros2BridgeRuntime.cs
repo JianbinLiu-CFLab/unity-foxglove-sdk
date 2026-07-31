@@ -29,10 +29,13 @@ namespace Unity2Foxglove.Ros2Bridge
         private readonly int _preparationCapacity;
         private readonly int _reconnectIntervalMs;
         private readonly int _sendTimeoutMs;
+        private readonly bool _requiresSubscription;
         private readonly IRos2BridgeSink _ownedSink;
         private readonly Components.FoxRunTransportRetirementReservation _retirement;
         private readonly string _workerIdentity;
         private readonly Ros2BridgeStatsSnapshot _initialStats;
+        private readonly U2R2ProtocolLimits _protocolLimits =
+            U2R2ProtocolLimits.Default;
         private readonly object _gate = new object();
         private readonly object _retirementGate = new object();
         private readonly Ros2BridgeOutboundScheduler _outbound;
@@ -57,6 +60,10 @@ namespace Unity2Foxglove.Ros2Bridge
         private long _lastDisconnectedUnixMs;
         private IRos2BridgeSink _sink;
         private long _connectionGeneration;
+        private U2R2Dialect _wireDialect;
+        private Ros2BridgeV2SessionSnapshot _v2Session;
+        private U2R2RequestIdCounter _v2RequestIds;
+        private U2R2MonotonicCounter _v2MessageIds;
         private long _nextConnectAttemptUnixMs;
         private InFlightPreparation _inFlightPreparation;
         private bool _hasInFlightPreparation;
@@ -74,6 +81,7 @@ namespace Unity2Foxglove.Ros2Bridge
             IRos2BridgeSink ownedSink,
             Components.FoxRunTransportRetirementReservation retirement,
             string workerIdentity,
+            bool requiresSubscription,
             ulong sessionGeneration,
             Ros2BridgeStatsSnapshot initialStats)
         {
@@ -94,6 +102,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 checked((int)U2R2ProtocolLimits.Default.MaxContracts));
             _reconnectIntervalMs = reconnectIntervalMs;
             _sendTimeoutMs = sendTimeoutMs;
+            _requiresSubscription = requiresSubscription;
             _ownedSink = ownedSink ?? throw new ArgumentNullException(nameof(ownedSink));
             _retirement = retirement ?? throw new ArgumentNullException(nameof(retirement));
             _workerIdentity = string.IsNullOrWhiteSpace(workerIdentity)
@@ -205,7 +214,44 @@ namespace Unity2Foxglove.Ros2Bridge
         }
 
         public bool TryEnqueue(Ros2BridgeFrame frame, out string reason)
-            => TryEnqueueCore(frame, default, requiresPreparation: false, out reason);
+        {
+            if (!(_ownedSink is IRos2BridgePublisherPreparationTransport)
+                && !(_ownedSink is IRos2BridgeV2SessionTransport))
+            {
+                return TryEnqueueCore(
+                    frame,
+                    default,
+                    requiresPreparation: false,
+                    requireReadyAtAdmission: false,
+                    out reason);
+            }
+            if (!TryValidateFrame(frame, out reason))
+                return false;
+            if (!frame.Qos.HasValue)
+            {
+                reason =
+                    "ROS2 Bridge publisher preparation requires an exact QoS contract.";
+                return false;
+            }
+
+            var readiness = PreparePublisher(
+                frame.Topic,
+                frame.SchemaName,
+                frame.Qos.Value,
+                out reason);
+            if (readiness == Ros2BridgePublisherReadiness.Rejected)
+                return false;
+            var key = new PublisherPreparationKey(
+                frame.Topic,
+                frame.SchemaName,
+                frame.Qos.Value);
+            return TryEnqueueCore(
+                frame,
+                key,
+                requiresPreparation: true,
+                requireReadyAtAdmission: false,
+                out reason);
+        }
 
         internal bool TryEnqueuePrepared(Ros2BridgeFrame frame, out string reason)
         {
@@ -220,13 +266,19 @@ namespace Unity2Foxglove.Ros2Bridge
                 frame.Topic,
                 frame.SchemaName,
                 frame.Qos.Value);
-            return TryEnqueueCore(frame, key, requiresPreparation: true, out reason);
+            return TryEnqueueCore(
+                frame,
+                key,
+                requiresPreparation: true,
+                requireReadyAtAdmission: true,
+                out reason);
         }
 
         private bool TryEnqueueCore(
             Ros2BridgeFrame frame,
             PublisherPreparationKey preparationKey,
             bool requiresPreparation,
+            bool requireReadyAtAdmission,
             out string reason)
         {
             if (!TryValidateFrame(frame, out reason))
@@ -252,12 +304,19 @@ namespace Unity2Foxglove.Ros2Bridge
                         reason = "ROS2 Bridge publisher preparation was not registered.";
                         return false;
                     }
-                    if (entry.Readiness != Ros2BridgePublisherReadiness.Ready
-                        || entry.ReadyConnectionGeneration != _connectionGeneration)
+                    if (entry.Readiness == Ros2BridgePublisherReadiness.Rejected)
                     {
-                        reason = entry.Readiness == Ros2BridgePublisherReadiness.Rejected
-                            ? entry.Reason
-                            : "ROS2 Bridge publisher preparation is pending.";
+                        reason = entry.Reason;
+                        return false;
+                    }
+                    if (requireReadyAtAdmission
+                        && (entry.Readiness
+                                != Ros2BridgePublisherReadiness.Ready
+                            || entry.ReadyConnectionGeneration
+                                != _connectionGeneration))
+                    {
+                        reason =
+                            "ROS2 Bridge publisher preparation is pending.";
                         return false;
                     }
                 }
@@ -377,6 +436,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 _sink = null;
                 _connected = false;
                 _connecting = false;
+                ClearProtocolSessionLocked();
                 _lastDisconnectedUnixMs = NowUnixMs();
             }
 
@@ -505,22 +565,106 @@ namespace Unity2Foxglove.Ros2Bridge
 
                         try
                         {
-                            if (sink is IRos2BridgeRawWireSink rawWireSink)
+                            Ros2BridgeV2SessionSnapshot v2Session;
+                            U2R2RequestIdCounter v2RequestIds;
+                            U2R2MonotonicCounter v2MessageIds;
+                            U2R2Dialect wireDialect;
+                            lock (_gate)
                             {
-                                rawWireSink.SendWire(
-                                    outboundLease.WireBytes,
-                                    _sendTimeoutMs);
+                                v2Session = _v2Session;
+                                v2RequestIds = _v2RequestIds;
+                                v2MessageIds = _v2MessageIds;
+                                wireDialect = _wireDialect;
                             }
-                            else if (outboundLease.SourceFrame != null)
+
+                            if (v2Session != null)
                             {
-                                sink.Send(
-                                    outboundLease.SourceFrame,
-                                    _sendTimeoutMs);
+                                if (wireDialect != U2R2Dialect.V2)
+                                {
+                                    throw new U2R2ProtocolException(
+                                        "dialect_downgrade",
+                                        "The active ROS2 Bridge socket lost its v2 dialect latch.");
+                                }
+                                if (!(sink is IRos2BridgeV2SessionTransport
+                                        v2Transport)
+                                    || outboundLease.SourceFrame == null
+                                    || v2RequestIds == null
+                                    || v2MessageIds == null)
+                                {
+                                    throw new U2R2ProtocolException(
+                                        "invalid_configuration",
+                                        "The active U2R2 v2 publish session is incomplete.");
+                                }
+
+                                var requestId = v2RequestIds.Next();
+                                var messageId = v2MessageIds.Next();
+                                var measurement =
+                                    Ros2BridgeV2SessionCodec.MeasurePublish(
+                                        outboundLease.SourceFrame,
+                                        v2Session,
+                                        requestId,
+                                        messageId);
+                                var responseReserve = U2R2FrameSize.Create(
+                                    v2Session.Limits,
+                                    v2Session.Limits.MaxHeaderBytes,
+                                    payloadBytes: 0);
+                                var transientBytes = checked(
+                                    (ulong)measurement.TotalWireBytes
+                                    + responseReserve.TotalBytes);
+                                U2R2ByteLease transient;
+                                while (!outboundLease.TryReserveTransient(
+                                           transientBytes,
+                                           out transient))
+                                {
+                                    if (ShouldStop(generation))
+                                        return;
+                                    _signal.WaitOne(10);
+                                }
+
+                                using (transient)
+                                {
+                                    var request =
+                                        Ros2BridgeV2SessionCodec.EncodePublish(
+                                            outboundLease.SourceFrame,
+                                            v2Session,
+                                            requestId,
+                                            messageId,
+                                            measurement);
+                                    var response = v2Transport.ExchangeV2(
+                                        request.WireBytes,
+                                        v2Session.Limits,
+                                        _sendTimeoutMs);
+                                    Ros2BridgeV2SessionCodec.ValidateResponse(
+                                        request,
+                                        response,
+                                        v2Session);
+                                }
                             }
                             else
                             {
-                                throw new InvalidOperationException(
-                                    "ROS2 Bridge control frames require a raw-wire sink.");
+                                if (wireDialect != U2R2Dialect.V1)
+                                {
+                                    throw new U2R2ProtocolException(
+                                        "dialect_downgrade",
+                                        "The active ROS2 Bridge socket lost its v1 dialect latch.");
+                                }
+                                if (sink is IRos2BridgeRawWireSink rawWireSink)
+                                {
+                                    rawWireSink.SendWire(
+                                        outboundLease.WireBytes,
+                                        _sendTimeoutMs);
+                                }
+                                else if (outboundLease.SourceFrame != null)
+                                {
+                                    sink.Send(
+                                        outboundLease.SourceFrame,
+                                        _sendTimeoutMs);
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException(
+                                        "ROS2 Bridge control frames require a raw-wire sink.");
+                                }
                             }
 
                             outboundLease.Complete();
@@ -531,6 +675,15 @@ namespace Unity2Foxglove.Ros2Bridge
                                     return;
                                 _lastError = string.Empty;
                             }
+                        }
+                        catch (U2R2ProtocolException ex)
+                            when (!ex.Terminal)
+                        {
+                            if (!outboundLease.IsControl)
+                                outboundLease.Fault(ex);
+                            MarkFailure(
+                                ex.Message,
+                                disconnect: false);
                         }
                         catch (Exception ex) when (IsRecoverableRuntimeException(ex))
                         {
@@ -579,6 +732,63 @@ namespace Unity2Foxglove.Ros2Bridge
             try
             {
                 _ownedSink.Connect(_host, _port, _sendTimeoutMs);
+                var dialect = U2R2Dialect.V1;
+                Ros2BridgeV2SessionSnapshot v2Session = null;
+                U2R2RequestIdCounter v2RequestIds = null;
+                U2R2MonotonicCounter v2MessageIds = null;
+                if (_ownedSink is IRos2BridgeV2SessionTransport v2Transport)
+                {
+                    v2RequestIds = new U2R2RequestIdCounter();
+                    v2MessageIds = new U2R2MonotonicCounter();
+                    try
+                    {
+                        if (!TryReserveSessionTransientUntilAvailable(
+                                generation,
+                                ControlExchangeReservationBytes(
+                                    _protocolLimits),
+                                out var helloTransient))
+                        {
+                            return false;
+                        }
+                        using (helloTransient)
+                        {
+                            var hello =
+                                Ros2BridgeV2SessionCodec.CreateHello(
+                                    v2RequestIds.Next(),
+                                    _requiresSubscription,
+                                    _protocolLimits);
+                            var response = v2Transport.ExchangeV2(
+                                hello.WireBytes,
+                                _protocolLimits,
+                                EffectiveTimeout(
+                                    _sendTimeoutMs,
+                                    _protocolLimits.HandshakeTimeoutMs));
+                            v2Session =
+                                Ros2BridgeV2SessionCodec.AcceptHello(
+                                    hello,
+                                    response,
+                                    _protocolLimits);
+                        }
+                        dialect = U2R2Dialect.V2;
+                    }
+                    catch (Exception exception)
+                        when (!_requiresSubscription
+                              && IsExplicitV2Incompatibility(exception))
+                    {
+                        DisconnectSink(_ownedSink);
+                        if (ShouldStop(generation))
+                            return false;
+                        _ownedSink.Connect(
+                            _host,
+                            _port,
+                            _sendTimeoutMs);
+                        v2RequestIds = null;
+                        v2MessageIds = null;
+                        v2Session = null;
+                        dialect = U2R2Dialect.V1;
+                    }
+                }
+
                 lock (_gate)
                 {
                     if (_stopRequested || !_enabled || generation != _workerGeneration)
@@ -594,6 +804,10 @@ namespace Unity2Foxglove.Ros2Bridge
                     _lastConnectedUnixMs = NowUnixMs();
                     _lastError = string.Empty;
                     _connectionGeneration++;
+                    _wireDialect = dialect;
+                    _v2Session = v2Session;
+                    _v2RequestIds = v2RequestIds;
+                    _v2MessageIds = v2MessageIds;
                     _nextConnectAttemptUnixMs = 0;
                     QueueAllPreparationsLocked();
                 }
@@ -623,6 +837,7 @@ namespace Unity2Foxglove.Ros2Bridge
                     _lastError = BoundRuntimeDiagnostic(ex.Message);
                     InvalidatePreparationsLocked();
                     _sink = null;
+                    ClearProtocolSessionLocked();
                 }
 
                 fatal?.Throw();
@@ -702,6 +917,8 @@ namespace Unity2Foxglove.Ros2Bridge
             IRos2BridgeSink sink;
             long connectionGeneration;
             string requestId;
+            Ros2BridgeV2SessionSnapshot v2Session;
+            U2R2RequestIdCounter v2RequestIds;
             lock (_gate)
             {
                 if (_stopRequested
@@ -722,12 +939,24 @@ namespace Unity2Foxglove.Ros2Bridge
                     return true;
                 sink = _sink;
                 connectionGeneration = _connectionGeneration;
-                requestId = "u2r2-prepare-" + Guid.NewGuid().ToString("N");
+                v2Session = _v2Session;
+                v2RequestIds = _v2RequestIds;
+                requestId = v2Session == null
+                    ? "u2r2-prepare-" + Guid.NewGuid().ToString("N")
+                    : (v2RequestIds
+                       ?? throw new U2R2ProtocolException(
+                           "invalid_configuration",
+                           "The U2R2 v2 request counter is unavailable."))
+                    .Next()
+                    .ToString(
+                        System.Globalization.CultureInfo.InvariantCulture);
                 entry.RequestId = requestId;
                 entry.Reason = "ROS2 Bridge publisher preparation is pending.";
             }
 
-            if (!(sink is IRos2BridgePublisherPreparationTransport transport))
+            var legacyTransport =
+                sink as IRos2BridgePublisherPreparationTransport;
+            if (v2Session == null && legacyTransport == null)
             {
                 lock (_gate)
                 {
@@ -744,13 +973,46 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             byte[] request = null;
+            U2R2ByteLease exchangeTransient = null;
             try
             {
-                request = Ros2BridgePublisherPreparationCodec.WriteRequest(
-                    requestId,
-                    key.Topic,
-                    key.SchemaName,
-                    key.Qos);
+                Ros2BridgeV2Request v2Request = null;
+                if (v2Session != null)
+                {
+                    if (!(sink is IRos2BridgeV2SessionTransport))
+                    {
+                        throw new U2R2ProtocolException(
+                            "invalid_configuration",
+                            "The active U2R2 v2 preparation transport is unavailable.");
+                    }
+                    if (!TryReserveSessionTransientUntilAvailable(
+                            workerGeneration,
+                            ControlExchangeReservationBytes(
+                                v2Session.Limits),
+                            out exchangeTransient))
+                    {
+                        return true;
+                    }
+                    v2Request =
+                        Ros2BridgeV2SessionCodec.CreatePublisherPreparation(
+                            v2Session,
+                            ulong.Parse(
+                                requestId,
+                                System.Globalization.CultureInfo.InvariantCulture),
+                            key.Topic,
+                            key.SchemaName,
+                            key.Qos);
+                    request = v2Request.WireBytes;
+                }
+                else
+                {
+                    request =
+                        Ros2BridgePublisherPreparationCodec.WriteRequest(
+                            requestId,
+                            key.Topic,
+                            key.SchemaName,
+                            key.Qos);
+                }
                 if (!TrySetInFlightPreparation(
                         workerGeneration,
                         connectionGeneration,
@@ -762,24 +1024,57 @@ namespace Unity2Foxglove.Ros2Bridge
                 {
                     return true;
                 }
-                var responseFrame = transport.ExchangePublisherPreparation(
-                    request,
-                    _sendTimeoutMs);
-                var response = Ros2BridgePublisherPreparationCodec.ParseResponse(
-                    responseFrame,
-                    requestId);
+                var accepted = false;
+                string rejectionReason = null;
+                if (v2Session != null)
+                {
+                    var responseFrame =
+                        ((IRos2BridgeV2SessionTransport)sink).ExchangeV2(
+                            request,
+                            v2Session.Limits,
+                            _sendTimeoutMs);
+                    Ros2BridgeV2SessionCodec.ValidateResponse(
+                        v2Request,
+                        responseFrame,
+                        v2Session);
+                    accepted = true;
+                }
+                else
+                {
+                    var responseFrame =
+                        legacyTransport.ExchangePublisherPreparation(
+                            request,
+                            _sendTimeoutMs);
+                    var response =
+                        Ros2BridgePublisherPreparationCodec.ParseResponse(
+                            responseFrame,
+                            requestId);
+                    accepted = string.Equals(
+                        response.Status,
+                        "ok",
+                        StringComparison.Ordinal);
+                    if (!accepted)
+                    {
+                        rejectionReason =
+                            string.IsNullOrWhiteSpace(response.Message)
+                                ? "ROS2 Bridge publisher was rejected: "
+                                  + response.ErrorCode
+                                : response.Message;
+                    }
+                }
                 lock (_gate)
                 {
                     if (!_preparations.TryGetValue(key, out var current)
                         || !ReferenceEquals(current, entry)
                         || connectionGeneration != _connectionGeneration
                         || !ReferenceEquals(sink, _sink)
+                        || !ReferenceEquals(v2Session, _v2Session)
                         || !string.Equals(current.RequestId, requestId, StringComparison.Ordinal))
                     {
                         return true;
                     }
 
-                    if (string.Equals(response.Status, "ok", StringComparison.Ordinal))
+                    if (accepted)
                     {
                         current.Readiness = Ros2BridgePublisherReadiness.Ready;
                         current.ReadyConnectionGeneration = connectionGeneration;
@@ -789,9 +1084,37 @@ namespace Unity2Foxglove.Ros2Bridge
                     {
                         current.Readiness = Ros2BridgePublisherReadiness.Rejected;
                         current.ReadyConnectionGeneration = 0;
-                        current.Reason = string.IsNullOrWhiteSpace(response.Message)
-                            ? "ROS2 Bridge publisher was rejected: " + response.ErrorCode
-                            : response.Message;
+                        current.Reason = rejectionReason;
+                    }
+                }
+            }
+            catch (U2R2ProtocolException exception)
+                when (v2Session != null && exception.Terminal)
+            {
+                MarkFailure(
+                    "ROS2 Bridge v2 publisher preparation failed: "
+                    + exception.Message,
+                    disconnect: true,
+                    countFrameFailure: false);
+            }
+            catch (U2R2ProtocolException exception)
+                when (v2Session != null && !exception.Terminal)
+            {
+                lock (_gate)
+                {
+                    if (_preparations.TryGetValue(key, out var current)
+                        && ReferenceEquals(current, entry)
+                        && connectionGeneration == _connectionGeneration
+                        && ReferenceEquals(sink, _sink)
+                        && ReferenceEquals(v2Session, _v2Session))
+                    {
+                        current.Readiness =
+                            Ros2BridgePublisherReadiness.Rejected;
+                        current.ReadyConnectionGeneration = 0;
+                        current.Reason = BoundRuntimeDiagnostic(
+                            string.IsNullOrWhiteSpace(exception.Message)
+                                ? "ROS2 Bridge publisher preparation was rejected."
+                                : exception.Message);
                     }
                 }
             }
@@ -800,6 +1123,15 @@ namespace Unity2Foxglove.Ros2Bridge
                 || exception is FormatException
                 || exception is OverflowException)
             {
+                if (v2Session != null)
+                {
+                    MarkFailure(
+                        "ROS2 Bridge v2 publisher preparation protocol failed: "
+                        + exception.Message,
+                        disconnect: true,
+                        countFrameFailure: false);
+                    return true;
+                }
                 lock (_gate)
                 {
                     if (_preparations.TryGetValue(key, out var current)
@@ -826,6 +1158,7 @@ namespace Unity2Foxglove.Ros2Bridge
             finally
             {
                 ClearInFlightPreparation(entry, requestId, request);
+                exchangeTransient?.Dispose();
             }
 
             return true;
@@ -963,6 +1296,15 @@ namespace Unity2Foxglove.Ros2Bridge
                     ref retainedResources);
                 CountRetainedResource(
                     _preparations,
+                    ref retainedResources);
+                CountRetainedResource(
+                    _v2Session,
+                    ref retainedResources);
+                CountRetainedResource(
+                    _v2RequestIds,
+                    ref retainedResources);
+                CountRetainedResource(
+                    _v2MessageIds,
                     ref retainedResources);
 
                 var queuedDepth = _outbound.TotalQueuedDepth;
@@ -1178,6 +1520,7 @@ namespace Unity2Foxglove.Ros2Bridge
                     _sink = null;
                     _nextConnectAttemptUnixMs = NowUnixMs() + _reconnectIntervalMs;
                     InvalidatePreparationsLocked();
+                    ClearProtocolSessionLocked();
                 }
             }
 
@@ -1206,6 +1549,59 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private static bool IsRecoverableRuntimeException(Exception exception)
             => Components.FoxRunExceptionPolicy.IsRecoverable(exception);
+
+        private static bool IsExplicitV2Incompatibility(
+            Exception exception)
+            => exception is Ros2BridgeV2IncompatibilityException
+               || exception is U2R2ProtocolException protocol
+               && string.Equals(
+                   protocol.ErrorCode,
+                   "unsupported_protocol",
+                   StringComparison.Ordinal);
+
+        private bool TryReserveSessionTransientUntilAvailable(
+            long workerGeneration,
+            ulong bytes,
+            out U2R2ByteLease lease)
+        {
+            while (!_outbound.TryReserveSessionTransient(
+                       bytes,
+                       out lease))
+            {
+                if (ShouldStop(workerGeneration))
+                {
+                    lease = null;
+                    return false;
+                }
+                _signal.WaitOne(10);
+            }
+            return true;
+        }
+
+        private static ulong ControlExchangeReservationBytes(
+            U2R2ProtocolLimits limits)
+        {
+            var controlFrame = checked(
+                limits.FixedFrameBytes + limits.MaxHeaderBytes);
+            return checked(controlFrame * 2UL);
+        }
+
+        private static int EffectiveTimeout(
+            int configuredTimeoutMs,
+            ulong protocolTimeoutMs)
+            => checked((int)Math.Min(
+                checked((ulong)configuredTimeoutMs),
+                Math.Min(
+                    protocolTimeoutMs,
+                    checked((ulong)int.MaxValue))));
+
+        private void ClearProtocolSessionLocked()
+        {
+            _wireDialect = U2R2Dialect.None;
+            _v2Session = null;
+            _v2RequestIds = null;
+            _v2MessageIds = null;
+        }
 
         private static long NowUnixMs()
             => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

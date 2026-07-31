@@ -13,6 +13,7 @@
 #else
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -20,6 +21,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstddef>
@@ -28,18 +31,28 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/contexts/default_context.hpp>
 #include <rclcpp/serialized_message.hpp>
+
+#include "unity2foxglove_ros2_bridge/bridge_lifecycle.hpp"
+#include "unity2foxglove_ros2_bridge/bridge_process.hpp"
+#include "unity2foxglove_ros2_bridge/bridge_session.hpp"
 
 namespace
 {
+namespace bridge_runtime = unity2foxglove::ros2_bridge::runtime;
+namespace u2r2 = unity2foxglove::ros2_bridge::u2r2;
+
 // U2R2 wire limits shared with the Unity frame writer. Keep these constants
 // in sync before changing the binary frame envelope.
 constexpr uint16_t kVersion = 1;
@@ -52,6 +65,8 @@ constexpr int kHealthProtocolVersion = 1;
 constexpr int kPublisherPreparationProtocolVersion = 1;
 constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
 constexpr const char * kSidecarVersion = "0.1.0";
+constexpr uint64_t kControlResponseReservationBytes = 4096;
+constexpr size_t kMaximumResponseErrorBytes = 512;
 
 #ifdef _WIN32
 using SocketHandle = SOCKET;
@@ -108,6 +123,18 @@ void close_socket(SocketHandle socket)
   ::closesocket(socket);
 #else
   ::close(socket);
+#endif
+}
+
+void shutdown_socket_both(SocketHandle socket)
+{
+  if (socket == kInvalidSocket) {
+    return;
+  }
+#ifdef _WIN32
+  (void)::shutdown(socket, SD_BOTH);
+#else
+  (void)::shutdown(socket, SHUT_RDWR);
 #endif
 }
 
@@ -263,6 +290,13 @@ struct RawFrame
   std::vector<uint8_t> payload;
 };
 
+struct AccountedWireFrame
+{
+  std::vector<uint8_t> bytes;
+  u2r2::ByteLease transient_lease;
+  u2r2::ByteLease read_lease;
+};
+
 struct PayloadView
 {
   const uint8_t * data = nullptr;
@@ -308,6 +342,58 @@ public:
 
 private:
   SocketHandle fd_;
+};
+
+class ScopedNonBlockingSocket final
+{
+public:
+  explicit ScopedNonBlockingSocket(SocketHandle socket)
+  : socket_(socket)
+  {
+#ifdef _WIN32
+    u_long enabled = 1;
+    if (::ioctlsocket(socket_, FIONBIO, &enabled) != 0) {
+      throw std::runtime_error(
+              "failed to enter non-blocking U2R2 write mode: " +
+              socket_error_text(last_socket_error()));
+    }
+#else
+    original_flags_ = ::fcntl(socket_, F_GETFL, 0);
+    if (
+      original_flags_ < 0 ||
+      ::fcntl(socket_, F_SETFL, original_flags_ | O_NONBLOCK) != 0)
+    {
+      throw std::runtime_error(
+              "failed to enter non-blocking U2R2 write mode: " +
+              socket_error_text(last_socket_error()));
+    }
+#endif
+    active_ = true;
+  }
+
+  ~ScopedNonBlockingSocket()
+  {
+    if (!active_) {
+      return;
+    }
+#ifdef _WIN32
+    u_long disabled = 0;
+    (void)::ioctlsocket(socket_, FIONBIO, &disabled);
+#else
+    (void)::fcntl(socket_, F_SETFL, original_flags_);
+#endif
+  }
+
+  ScopedNonBlockingSocket(const ScopedNonBlockingSocket &) = delete;
+  ScopedNonBlockingSocket & operator=(const ScopedNonBlockingSocket &) =
+    delete;
+
+private:
+  SocketHandle socket_;
+#ifndef _WIN32
+  int original_flags_{0};
+#endif
+  bool active_{false};
 };
 
 class ClientClosedException : public std::runtime_error
@@ -803,7 +889,19 @@ SocketHandle create_listen_socket(
   return fd;
 }
 
-SocketHandle accept_with_timeout(SocketHandle listen_fd)
+struct AcceptedSocket
+{
+  SocketHandle fd{kInvalidSocket};
+  sockaddr_storage peer{};
+  SocketLength peer_length{0};
+
+  bool valid() const noexcept
+  {
+    return fd != kInvalidSocket;
+  }
+};
+
+AcceptedSocket accept_with_timeout(SocketHandle listen_fd)
 {
   fd_set read_fds;
   FD_ZERO(&read_fds);
@@ -820,37 +918,122 @@ SocketHandle accept_with_timeout(SocketHandle listen_fd)
   if (ready < 0) {
     const auto error = last_socket_error();
     if (socket_error_is_interrupted(error)) {
-      return kInvalidSocket;
+      return {};
     }
     throw std::runtime_error("select() failed: " + socket_error_text(error));
   }
   if (ready == 0) {
-    return kInvalidSocket;
+    return {};
   }
 
-  sockaddr_in client_address {};
-  SocketLength length = static_cast<SocketLength>(sizeof(client_address));
-  const SocketHandle client_fd = ::accept(
+  AcceptedSocket accepted;
+  accepted.peer_length =
+    static_cast<SocketLength>(sizeof(accepted.peer));
+  accepted.fd = ::accept(
     listen_fd,
-    reinterpret_cast<sockaddr *>(&client_address),
-    &length);
-  if (client_fd == kInvalidSocket) {
+    reinterpret_cast<sockaddr *>(&accepted.peer),
+    &accepted.peer_length);
+  if (accepted.fd == kInvalidSocket) {
     const auto error = last_socket_error();
     if (socket_error_is_interrupted(error)) {
-      return kInvalidSocket;
+      return {};
     }
     throw std::runtime_error("accept() failed: " + socket_error_text(error));
   }
 
-  configure_client_timeouts(client_fd);
-  return client_fd;
+  configure_client_timeouts(accepted.fd);
+  return accepted;
 }
 
 using RosContextOk = std::function<bool()>;
 
-bool read_exact(
+struct AccountedReadClock
+{
+  std::chrono::steady_clock::time_point started{
+    std::chrono::steady_clock::now()};
+  std::optional<std::chrono::steady_clock::time_point> first_byte;
+};
+
+uint64_t elapsed_milliseconds(
+  std::chrono::steady_clock::time_point since)
+{
+  return static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - since).count());
+}
+
+void enforce_accounted_read_timeout(
+  const u2r2::ProtocolLimits & limits,
+  u2r2::TimeoutKind idle_timeout,
+  const AccountedReadClock & clock)
+{
+  u2r2::PureSessionLifecycle lifecycle(limits);
+  lifecycle.timeout(
+    idle_timeout,
+    elapsed_milliseconds(clock.started));
+  if (clock.first_byte) {
+    lifecycle.timeout(
+      u2r2::TimeoutKind::partial_frame,
+      elapsed_milliseconds(*clock.first_byte));
+  }
+}
+
+bool read_exact_accounted(
   SocketHandle fd,
-  std::vector<uint8_t> & buffer,
+  uint8_t * destination,
+  size_t count,
+  const RosContextOk & context_ok,
+  const u2r2::ProtocolLimits & limits,
+  u2r2::TimeoutKind idle_timeout,
+  AccountedReadClock & clock)
+{
+  size_t offset = 0;
+  while (offset < count) {
+    if (!context_ok()) {
+      throw ClientClosedException();
+    }
+    enforce_accounted_read_timeout(
+      limits,
+      idle_timeout,
+      clock);
+    const auto received =
+      receive_socket(fd, destination + offset, count - offset);
+    if (received == 0) {
+      if (offset == 0 && !clock.first_byte) {
+        return false;
+      }
+      throw ClientClosedException();
+    }
+    if (received < 0) {
+      const auto error = last_socket_error();
+      if (socket_error_is_interrupted(error)) {
+        continue;
+      }
+      if (socket_error_is_retryable_timeout(error)) {
+        enforce_accounted_read_timeout(
+          limits,
+          idle_timeout,
+          clock);
+        continue;
+      }
+      throw std::runtime_error(
+              "socket read failed: " + socket_error_text(error));
+    }
+    if (!clock.first_byte) {
+      clock.first_byte = std::chrono::steady_clock::now();
+    }
+    offset += static_cast<size_t>(received);
+    enforce_accounted_read_timeout(
+      limits,
+      idle_timeout,
+      clock);
+  }
+  return true;
+}
+
+bool read_exact_into(
+  SocketHandle fd,
+  uint8_t * destination,
   size_t count,
   const rclcpp::Node::SharedPtr & node,
   const RosContextOk & context_ok)
@@ -858,14 +1041,14 @@ bool read_exact(
   if (!context_ok) {
     throw std::invalid_argument("ROS context predicate is required");
   }
-  buffer.assign(count, 0);
   size_t offset = 0;
   auto stalled_since = std::chrono::steady_clock::time_point {};
   while (offset < count) {
     if (!context_ok()) {
       throw ClientClosedException();
     }
-    const auto received = receive_socket(fd, buffer.data() + offset, count - offset);
+    const auto received =
+      receive_socket(fd, destination + offset, count - offset);
     if (received == 0) {
       if (offset == 0) {
         return false;
@@ -904,6 +1087,22 @@ bool read_exact(
     stalled_since = std::chrono::steady_clock::time_point {};
   }
   return true;
+}
+
+bool read_exact(
+  SocketHandle fd,
+  std::vector<uint8_t> & buffer,
+  size_t count,
+  const rclcpp::Node::SharedPtr & node,
+  const RosContextOk & context_ok)
+{
+  buffer.assign(count, 0);
+  return read_exact_into(
+    fd,
+    buffer.data(),
+    count,
+    node,
+    context_ok);
 }
 
 bool read_exact(
@@ -960,6 +1159,81 @@ void write_all(SocketHandle fd, const std::vector<uint8_t> & bytes)
       throw std::runtime_error("socket write failed: " + socket_error_text(error));
     }
     offset += static_cast<size_t>(sent);
+  }
+}
+
+struct AccountedWriteClock
+{
+  std::chrono::steady_clock::time_point stalled_since{
+    std::chrono::steady_clock::now()};
+};
+
+uint64_t enforce_accounted_write_timeout(
+  const u2r2::ProtocolLimits & limits,
+  const AccountedWriteClock & clock)
+{
+  u2r2::PureSessionLifecycle lifecycle(limits);
+  const auto elapsed = elapsed_milliseconds(clock.stalled_since);
+  lifecycle.timeout(u2r2::TimeoutKind::write, elapsed);
+  return lifecycle.limit_for(u2r2::TimeoutKind::write) - elapsed;
+}
+
+void write_all_accounted(
+  SocketHandle fd,
+  const std::vector<uint8_t> & bytes,
+  const u2r2::ProtocolLimits & limits)
+{
+  ScopedNonBlockingSocket non_blocking(fd);
+  AccountedWriteClock clock;
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    (void)enforce_accounted_write_timeout(limits, clock);
+    const auto sent =
+      send_socket(fd, bytes.data() + offset, bytes.size() - offset);
+    if (sent > 0) {
+      (void)enforce_accounted_write_timeout(limits, clock);
+      offset += static_cast<size_t>(sent);
+      clock.stalled_since = std::chrono::steady_clock::now();
+      continue;
+    }
+
+    const auto error = last_socket_error();
+    if (socket_error_is_interrupted(error)) {
+      continue;
+    }
+    if (socket_error_is_retryable_timeout(error)) {
+      const auto remaining_ms =
+        enforce_accounted_write_timeout(limits, clock);
+      fd_set write_fds;
+      FD_ZERO(&write_fds);
+      FD_SET(fd, &write_fds);
+      const auto poll_ms =
+        static_cast<uint32_t>(std::min<uint64_t>(remaining_ms, 250U));
+      timeval timeout {};
+      timeout.tv_sec = static_cast<long>(poll_ms / 1000U);
+      timeout.tv_usec = static_cast<long>((poll_ms % 1000U) * 1000U);
+      const int ready = ::select(
+        socket_select_width(fd),
+        nullptr,
+        &write_fds,
+        nullptr,
+        &timeout);
+      (void)enforce_accounted_write_timeout(limits, clock);
+      if (ready > 0) {
+        continue;
+      }
+      if (ready < 0 && socket_error_is_interrupted(last_socket_error())) {
+        continue;
+      }
+      if (ready < 0) {
+        throw std::runtime_error(
+                "socket write select failed: " +
+                socket_error_text(last_socket_error()));
+      }
+      continue;
+    }
+    throw std::runtime_error(
+            "socket write failed: " + socket_error_text(error));
   }
 }
 
@@ -1037,6 +1311,90 @@ RawFrame read_raw_frame(SocketHandle fd, const rclcpp::Node::SharedPtr & node)
   raw.header = std::move(header);
   raw.payload = std::move(payload);
   return raw;
+}
+
+AccountedWireFrame read_accounted_wire_frame(
+  SocketHandle fd,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const RosContextOk & context_ok,
+  u2r2::TimeoutKind idle_timeout = u2r2::TimeoutKind::read)
+{
+  const auto fixed_size =
+    static_cast<size_t>(protocol.limits().fixed_frame_bytes());
+  if (fixed_size != 16U) {
+    throw u2r2::ProtocolError(
+            "invalid_frame",
+            "the U2R2 fixed frame size is unsupported",
+            true);
+  }
+
+  std::array<uint8_t, 16> fixed_header{};
+  AccountedReadClock read_clock;
+  if (!read_exact_accounted(
+      fd,
+      fixed_header.data(),
+      fixed_header.size(),
+      context_ok,
+      protocol.limits(),
+      idle_timeout,
+      read_clock))
+  {
+    throw ClientClosedException();
+  }
+
+  const auto frame_size = u2r2::FrameSize::create(
+    protocol.limits(),
+    read_u32_le(&fixed_header[8]),
+    read_u32_le(&fixed_header[12]));
+  auto read_lease = protocol.try_begin_read(frame_size.total_bytes());
+  if (!read_lease) {
+    throw u2r2::ProtocolError(
+            "capacity_exceeded",
+            "no in-flight read capacity remains for the U2R2 frame",
+            false);
+  }
+  const auto transient_bytes = u2r2::checked_add(
+    frame_size.total_bytes(),
+    frame_size.total_bytes(),
+    protocol.limits().max_transient_bytes(),
+    "sidecar frame parsing");
+  auto transient_lease =
+    protocol.try_reserve_transient(transient_bytes);
+  if (!transient_lease) {
+    throw u2r2::ProtocolError(
+            "capacity_exceeded",
+            "no transient capacity remains for U2R2 frame parsing",
+            false);
+  }
+
+  std::vector<uint8_t> wire(
+    static_cast<size_t>(frame_size.total_bytes()));
+  std::copy(fixed_header.begin(), fixed_header.end(), wire.begin());
+  const auto remainder_size = wire.size() - fixed_header.size();
+  if (remainder_size > 0 &&
+    !read_exact_accounted(
+      fd,
+      wire.data() + fixed_header.size(),
+      remainder_size,
+      context_ok,
+      protocol.limits(),
+      idle_timeout,
+      read_clock))
+  {
+    throw ClientClosedException();
+  }
+  return AccountedWireFrame{
+    std::move(wire),
+    std::move(*transient_lease),
+    std::move(*read_lease)};
+}
+
+RawFrame raw_frame_from_wire(
+  const std::vector<uint8_t> & wire,
+  const u2r2::ProtocolLimits & limits)
+{
+  auto decoded = u2r2::decode_frame(wire, limits);
+  return RawFrame{std::move(decoded.header), std::move(decoded.payload)};
 }
 
 BridgeFrame parse_publish_frame(const RawFrame & raw)
@@ -1263,11 +1621,20 @@ using GenericPublisherFactory =
 class BridgeNode
 {
 public:
-  explicit BridgeNode(rclcpp::Node::SharedPtr node, PayloadFormat payload_format)
-  : node_(std::move(node)), payload_format_(payload_format)
+  explicit BridgeNode(
+    rclcpp::Node::SharedPtr node,
+    PayloadFormat payload_format,
+    uint64_t maximum_publishers =
+    u2r2::ProtocolLimits::defaults().max_contracts())
+  : node_(std::move(node)),
+    payload_format_(payload_format),
+    maximum_publishers_(maximum_publishers)
   {
     if (!node_) {
       throw std::invalid_argument("bridge node is required");
+    }
+    if (maximum_publishers_ == 0) {
+      throw std::invalid_argument("publisher capacity must be positive");
     }
 
     const auto publisher_node = node_;
@@ -1289,11 +1656,20 @@ public:
       };
   }
 
-  BridgeNode(PayloadFormat payload_format, GenericPublisherFactory publisher_factory)
-  : payload_format_(payload_format), publisher_factory_(std::move(publisher_factory))
+  BridgeNode(
+    PayloadFormat payload_format,
+    GenericPublisherFactory publisher_factory,
+    uint64_t maximum_publishers =
+    u2r2::ProtocolLimits::defaults().max_contracts())
+  : payload_format_(payload_format),
+    publisher_factory_(std::move(publisher_factory)),
+    maximum_publishers_(maximum_publishers)
   {
     if (!publisher_factory_) {
       throw std::invalid_argument("generic publisher factory is required");
+    }
+    if (maximum_publishers_ == 0) {
+      throw std::invalid_argument("publisher capacity must be positive");
     }
   }
 
@@ -1302,6 +1678,11 @@ public:
     const auto disposition = publisher_contracts_.register_or_validate(frame);
     auto publisher_it = publishers_.find(frame.topic);
     if (disposition == PublisherContractDisposition::CreatePublisher) {
+      if (publishers_.size() >= maximum_publishers_) {
+        publisher_contracts_.rollback_create(frame.topic);
+        throw std::runtime_error(
+                "bridge publisher capacity is exhausted");
+      }
       try {
         auto qos = make_qos(frame);
         auto publisher = publisher_factory_(frame.topic, frame.schema_name, qos);
@@ -1344,6 +1725,11 @@ public:
   void publish(const BridgeFrame & frame)
   {
     prepare(frame);
+    publish_prepared(frame);
+  }
+
+  void publish_prepared(const BridgeFrame & frame)
+  {
     const auto publisher_it = publishers_.find(frame.topic);
     if (publisher_it == publishers_.end()) {
       throw std::runtime_error(
@@ -1374,6 +1760,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
   GenericPublisherFactory publisher_factory_;
+  uint64_t maximum_publishers_;
   PublisherContractRegistry publisher_contracts_;
   std::unordered_map<std::string, SerializedPublishCallback> publishers_;
   std::unordered_map<std::string, size_t> counts_;
@@ -1584,6 +1971,449 @@ void process_deferred_client(
   }
 }
 
+using BridgeGenerationFactory =
+  std::function<std::unique_ptr<BridgeNode>()>;
+
+std::string bounded_response_message(const std::string & message)
+{
+  if (message.size() <= kMaximumResponseErrorBytes) {
+    return message;
+  }
+  return message.substr(0, kMaximumResponseErrorBytes);
+}
+
+void drain_session_writer(
+  SocketHandle client_fd,
+  bridge_runtime::BridgeSessionProtocol & protocol)
+{
+  while (auto write = protocol.try_begin_write()) {
+    try {
+      write_all_accounted(
+        client_fd,
+        write->frame().bytes(),
+        protocol.limits());
+    } catch (...) {
+      write->release();
+      throw;
+    }
+    write->release();
+  }
+}
+
+std::vector<uint8_t> encode_v2_ok_response(
+  const bridge_runtime::BridgeSessionProtocol & protocol,
+  const u2r2::Message & request,
+  const char * operation)
+{
+  nlohmann::json header = {
+    {"op", operation},
+    {"protocolVersion", 2},
+    {"requestId", request.request_id},
+    {"status", "ok"},
+    {"sessionId", protocol.session_id()},
+    {"connectionGeneration", protocol.connection_generation()},
+  };
+  if (request.operation == u2r2::Operation::Publish) {
+    header["messageId"] = request.message_id;
+  }
+  return u2r2::encode_frame(header, {}, protocol.limits());
+}
+
+std::vector<uint8_t> encode_v2_error_response(
+  const bridge_runtime::BridgeSessionProtocol & protocol,
+  const u2r2::Message & request,
+  const char * operation,
+  const char * error_code,
+  const std::string & message)
+{
+  bool terminal = false;
+  if (!u2r2::try_get_stable_error_terminal(error_code, terminal)) {
+    throw std::invalid_argument("v2 response requires a stable error code");
+  }
+  return u2r2::encode_frame(
+    {
+      {"op", operation},
+      {"protocolVersion", 2},
+      {"requestId", request.request_id},
+      {"status", "error"},
+      {"sessionId", protocol.session_id()},
+      {"connectionGeneration", protocol.connection_generation()},
+      {"errorCode", error_code},
+      {"message", bounded_response_message(message)},
+      {"terminal", terminal},
+    },
+    {},
+    protocol.limits());
+}
+
+BridgeFrame bridge_frame_from_v2_wire(
+  const std::vector<uint8_t> & wire,
+  u2r2::Operation operation,
+  const u2r2::ProtocolLimits & limits)
+{
+  auto raw = raw_frame_from_wire(wire, limits);
+  if (operation == u2r2::Operation::PreparePublisher) {
+    raw.header["logTimeNs"] = 0;
+    raw.header["sequence"] = 0;
+    raw.payload = {0};
+  }
+  return parse_publish_frame(raw);
+}
+
+void schedule_legacy_health_response(
+  const bridge_runtime::FirstFrameClassification & first,
+  bridge_runtime::BridgeSessionProtocol & protocol)
+{
+  const auto & request = *first.legacy_message;
+  protocol.enqueue_control(
+    "v1-health:" + request.request_id,
+    u2r2::encode_frame(
+      {
+        {"op", "health_pong"},
+        {"requestId", request.request_id},
+        {"protocolVersion", kHealthProtocolVersion},
+        {"status", "ok"},
+        {"sidecarName", kSidecarName},
+        {"sidecarVersion", kSidecarVersion},
+      },
+      {},
+      protocol.limits()));
+}
+
+void schedule_legacy_preparation(
+  const std::vector<uint8_t> & wire,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const std::function<BridgeNode &()> & require_bridge)
+{
+  auto reservation =
+    protocol.try_reserve_control(kControlResponseReservationBytes);
+  if (!reservation) {
+    throw u2r2::ProtocolError(
+            "capacity_exceeded",
+            "no response capacity remains for legacy publisher preparation",
+            false);
+  }
+
+  auto raw = raw_frame_from_wire(wire, protocol.limits());
+  const auto request_id = publisher_request_id(raw);
+  nlohmann::json response;
+  try {
+    const auto request = parse_prepare_publisher_frame(raw);
+    try {
+      require_bridge().prepare(request.frame);
+      response = publisher_ready_ok(request.request_id);
+    } catch (const PublisherContractConflictException & ex) {
+      response = publisher_ready_error(
+        request.request_id,
+        "publisher_contract_conflict",
+        bounded_response_message(ex.what()));
+    } catch (const std::exception & ex) {
+      response = publisher_ready_error(
+        request.request_id,
+        "publisher_unavailable",
+        bounded_response_message(ex.what()));
+    }
+  } catch (const std::exception & ex) {
+    response = publisher_ready_error(
+      request_id,
+      "invalid_contract",
+      bounded_response_message(ex.what()));
+  }
+
+  auto exact = u2r2::encode_frame(response, {}, protocol.limits());
+  reservation->commit(
+    u2r2::OutboundFrame::control(
+      "v1-prepare:" + request_id,
+      std::move(exact)));
+}
+
+void dispatch_owned_legacy_data_frame(
+  const std::vector<uint8_t> & wire,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const std::function<BridgeNode &()> & require_bridge,
+  const rclcpp::Logger & logger)
+{
+  const auto legacy = u2r2::parse_legacy_v1_first_frame(wire);
+  if (legacy.operation == "health_ping") {
+    throw u2r2::ProtocolError(
+            "invalid_frame",
+            "legacy health probes require a dedicated one-shot connection",
+            true);
+  }
+  if (legacy.operation == "prepare_publisher") {
+    schedule_legacy_preparation(wire, protocol, require_bridge);
+    return;
+  }
+
+  try {
+    const auto frame =
+      parse_publish_frame(raw_frame_from_wire(wire, protocol.limits()));
+    require_bridge().publish(frame);
+  } catch (const std::exception & ex) {
+    RCLCPP_WARN(
+      logger,
+      "[unity2foxglove_ros2_bridge] dropped legacy publish frame: %s",
+      ex.what());
+  }
+}
+
+void run_owned_legacy_data_session(
+  SocketHandle client_fd,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const std::function<BridgeNode &()> & require_bridge,
+  const rclcpp::Logger & logger,
+  const RosContextOk & context_ok)
+{
+  while (context_ok()) {
+    try {
+      const auto wire =
+        read_accounted_wire_frame(client_fd, protocol, context_ok);
+      dispatch_owned_legacy_data_frame(
+        wire.bytes,
+        protocol,
+        require_bridge,
+        logger);
+      drain_session_writer(client_fd, protocol);
+    } catch (const ClientClosedException &) {
+      return;
+    }
+  }
+}
+
+bridge_runtime::ReplayMutationResult dispatch_owned_v2_request(
+  const u2r2::Message & request,
+  const BridgeFrame * bridge_frame,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const std::function<BridgeNode &()> & require_bridge)
+{
+  if (request.operation == u2r2::Operation::HealthPing) {
+    return bridge_runtime::ReplayMutationResult::success(
+      encode_v2_ok_response(protocol, request, "health_pong"));
+  }
+
+  if (request.operation == u2r2::Operation::PreparePublisher) {
+    if (!bridge_frame) {
+      throw std::logic_error("publisher preparation frame is required");
+    }
+    try {
+      protocol.require_publisher_capacity(request);
+      require_bridge().prepare(*bridge_frame);
+      protocol.mark_publisher_ready(request);
+      return bridge_runtime::ReplayMutationResult::success(
+        encode_v2_ok_response(protocol, request, "publisher_ready"));
+    } catch (const u2r2::ProtocolError & ex) {
+      if (!u2r2::is_stable_error_allowed_for_response(
+          ex.code(),
+          u2r2::Operation::PublisherReady))
+      {
+        throw;
+      }
+      return bridge_runtime::ReplayMutationResult::error(
+        encode_v2_error_response(
+          protocol,
+          request,
+          "publisher_ready",
+          ex.code().c_str(),
+          ex.what()));
+    } catch (const PublisherContractConflictException & ex) {
+      return bridge_runtime::ReplayMutationResult::error(
+        encode_v2_error_response(
+          protocol,
+          request,
+          "publisher_ready",
+          "invalid_contract",
+          ex.what()));
+    } catch (const std::exception & ex) {
+      return bridge_runtime::ReplayMutationResult::error(
+        encode_v2_error_response(
+          protocol,
+          request,
+          "publisher_ready",
+          "publisher_unavailable",
+          ex.what()));
+    }
+  }
+
+  if (request.operation == u2r2::Operation::Publish) {
+    if (!bridge_frame) {
+      throw std::logic_error("publish frame is required");
+    }
+    protocol.require_publisher_ready(request);
+    try {
+      require_bridge().publish_prepared(*bridge_frame);
+      return bridge_runtime::ReplayMutationResult::success(
+        encode_v2_ok_response(protocol, request, "publish_result"));
+    } catch (const std::exception & ex) {
+      return bridge_runtime::ReplayMutationResult::error(
+        encode_v2_error_response(
+          protocol,
+          request,
+          "publish_result",
+          "invalid_contract",
+          ex.what()));
+    }
+  }
+
+  throw u2r2::ProtocolError(
+          "invalid_frame",
+          "the U2R2 operation is not supported by the publish sidecar",
+          true);
+}
+
+void run_owned_v2_data_session(
+  SocketHandle client_fd,
+  bridge_runtime::ProcessConnectionAuthority & authority,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const std::function<BridgeNode &()> & require_bridge,
+  const RosContextOk & context_ok)
+{
+  protocol.bind_v2_identity(authority.allocate_session_identity());
+  drain_session_writer(client_fd, protocol);
+
+  while (context_ok()) {
+    try {
+      const auto wire =
+        read_accounted_wire_frame(client_fd, protocol, context_ok);
+      const auto request = protocol.parse_v2_request(wire.bytes);
+      std::optional<BridgeFrame> bridge_frame;
+      if (
+        request.operation == u2r2::Operation::PreparePublisher ||
+        request.operation == u2r2::Operation::Publish)
+      {
+        bridge_frame.emplace(bridge_frame_from_v2_wire(
+            wire.bytes,
+            request.operation,
+            protocol.limits()));
+      }
+      (void)protocol.execute_replayable(
+        wire.bytes,
+        request,
+        kControlResponseReservationBytes,
+        [&]() {
+          return dispatch_owned_v2_request(
+            request,
+            bridge_frame ? &*bridge_frame : nullptr,
+            protocol,
+            require_bridge);
+        });
+      drain_session_writer(client_fd, protocol);
+    } catch (const ClientClosedException &) {
+      return;
+    }
+  }
+}
+
+void process_owned_client(
+  SocketHandle client_fd,
+  bridge_runtime::ProcessConnectionAuthority & authority,
+  const BridgeGenerationFactory & generation_factory,
+  const rclcpp::Logger & logger,
+  const RosContextOk & context_ok)
+{
+  if (!generation_factory) {
+    throw std::invalid_argument("bridge generation factory is required");
+  }
+  if (!context_ok) {
+    throw std::invalid_argument("ROS context predicate is required");
+  }
+
+  bridge_runtime::BridgeSessionProtocol protocol(authority.limits());
+  std::optional<AccountedWireFrame> first_wire(
+    read_accounted_wire_frame(
+      client_fd,
+      protocol,
+      context_ok,
+      u2r2::TimeoutKind::handshake));
+  const auto first =
+    protocol.accept_first_frame(first_wire->bytes);
+
+  if (first.role == bridge_runtime::FirstFrameRole::probe) {
+    auto probe_lease =
+      authority.try_acquire_role(u2r2::ConnectionRole::probe);
+    if (!probe_lease) {
+      RCLCPP_WARN(
+        logger,
+        "[unity2foxglove_ros2_bridge] busy: legacy v1 probe capacity exhausted");
+      return;
+    }
+    schedule_legacy_health_response(first, protocol);
+    drain_session_writer(client_fd, protocol);
+    probe_lease->release();
+    return;
+  }
+
+  auto data_lease =
+    authority.try_acquire_role(u2r2::ConnectionRole::data_session);
+  if (!data_lease) {
+    if (first.dialect == u2r2::Dialect::V2) {
+      protocol.enqueue_control(
+        "v2-busy",
+        bridge_runtime::make_v2_busy_response(
+          first.v2_message->request_id,
+          protocol.limits()));
+      drain_session_writer(client_fd, protocol);
+    } else if (first.legacy_message->operation == "prepare_publisher") {
+      protocol.enqueue_control(
+        "v1-busy:" + first.legacy_message->request_id,
+        u2r2::encode_frame(
+          publisher_ready_error(
+            first.legacy_message->request_id,
+            "publisher_unavailable",
+            "data session already leased"),
+          {},
+          protocol.limits()));
+      drain_session_writer(client_fd, protocol);
+    } else {
+      RCLCPP_WARN(
+        logger,
+        "[unity2foxglove_ros2_bridge] %s",
+        bridge_runtime::kLegacyPublishBusyLog);
+    }
+    return;
+  }
+
+  bridge_runtime::GenerationOwnership generation(std::move(*data_lease));
+  BridgeNode * bridge = nullptr;
+  const auto require_bridge =
+    [&]() -> BridgeNode & {
+      if (!bridge) {
+        bridge =
+          &generation.adopt_entities(generation_factory());
+      }
+      return *bridge;
+    };
+
+  try {
+    if (first.dialect == u2r2::Dialect::V2) {
+      first_wire.reset();
+      run_owned_v2_data_session(
+        client_fd,
+        authority,
+        protocol,
+        require_bridge,
+        context_ok);
+    } else {
+      dispatch_owned_legacy_data_frame(
+        first_wire->bytes,
+        protocol,
+        require_bridge,
+        logger);
+      drain_session_writer(client_fd, protocol);
+      first_wire.reset();
+      run_owned_legacy_data_session(
+        client_fd,
+        protocol,
+        require_bridge,
+        logger,
+        context_ok);
+    }
+  } catch (...) {
+    generation.release();
+    throw;
+  }
+  generation.release();
+}
+
 void process_client(
   SocketHandle client_fd,
   BridgeNode & bridge,
@@ -1647,6 +2477,83 @@ void process_client(
   BridgeNode bridge(node, payload_format);
   process_client(client_fd, bridge, node);
 }
+
+class ConnectionWorkerSet final
+{
+public:
+  explicit ConnectionWorkerSet(uint64_t maximum_workers)
+  {
+    workers_.reserve(static_cast<size_t>(maximum_workers));
+  }
+
+  ~ConnectionWorkerSet()
+  {
+    stop_and_join_all();
+  }
+
+  ConnectionWorkerSet(const ConnectionWorkerSet &) = delete;
+  ConnectionWorkerSet & operator=(const ConnectionWorkerSet &) = delete;
+
+  template<typename Work>
+  void start(std::shared_ptr<ScopedFd> socket, Work work)
+  {
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    workers_.push_back(Worker{socket, done, std::thread {}});
+    try {
+      workers_.back().thread = std::thread(
+        [socket = std::move(socket),
+        done,
+        work = std::move(work)]() mutable {
+          try {
+            work();
+          } catch (...) {
+          }
+          done->store(true);
+        });
+    } catch (...) {
+      workers_.pop_back();
+      throw;
+    }
+  }
+
+  void reap_completed()
+  {
+    auto worker = workers_.begin();
+    while (worker != workers_.end()) {
+      if (!worker->done->load()) {
+        ++worker;
+        continue;
+      }
+      if (worker->thread.joinable()) {
+        worker->thread.join();
+      }
+      worker = workers_.erase(worker);
+    }
+  }
+
+  void stop_and_join_all()
+  {
+    for (const auto & worker : workers_) {
+      shutdown_socket_both(worker.socket->get());
+    }
+    for (auto & worker : workers_) {
+      if (worker.thread.joinable()) {
+        worker.thread.join();
+      }
+    }
+    workers_.clear();
+  }
+
+private:
+  struct Worker
+  {
+    std::shared_ptr<ScopedFd> socket;
+    std::shared_ptr<std::atomic<bool>> done;
+    std::thread thread;
+  };
+
+  std::vector<Worker> workers_;
+};
 }  // namespace
 
 #ifndef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
@@ -1667,10 +2574,23 @@ int main(int argc, char ** argv)
 
   auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
   auto logger = rclcpp::get_logger(kSidecarName);
-  rclcpp::Node::SharedPtr node;
 
   try {
     const auto options = parse_args(non_ros_args);
+    const auto limits = u2r2::ProtocolLimits::defaults();
+    bridge_runtime::ProcessConnectionAuthority authority(limits);
+    const auto context = rclcpp::contexts::get_global_default_context();
+    bridge_runtime::ProcessRosOwner ros_owner(kSidecarName, context);
+    ConnectionWorkerSet workers(limits.max_connections());
+    const BridgeGenerationFactory generation_factory =
+      [&ros_owner,
+      payload_format = options.payload_format,
+      maximum_publishers = limits.max_contracts()]() {
+        return std::make_unique<BridgeNode>(
+          ros_owner.require_node(),
+          payload_format,
+          maximum_publishers);
+      };
     ScopedFd listen_fd(create_listen_socket(options.host, options.port, logger));
 
     RCLCPP_INFO(
@@ -1680,39 +2600,81 @@ int main(int argc, char ** argv)
       options.port);
 
     while (rclcpp::ok()) {
-      ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
-      if (!client_fd.valid()) {
-        if (node) {
-          rclcpp::spin_some(node);
-        }
+      workers.reap_completed();
+      auto accepted = accept_with_timeout(listen_fd.get());
+      if (!accepted.valid()) {
         continue;
       }
 
-      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client connected");
-      try {
-        DeferredBridgeSession session(
-          options.payload_format,
-          node,
-          [&node]()
-          {
-            if (!node) {
-              node = std::make_shared<rclcpp::Node>(kSidecarName);
-            }
-            return node;
-          });
-        process_deferred_client(client_fd.get(), session);
-      } catch (const std::exception & ex) {
+      ScopedFd candidate(accepted.fd);
+      const auto peer_length = accepted.peer_length > 0
+        ? static_cast<size_t>(accepted.peer_length)
+        : 0U;
+      if (!bridge_runtime::is_ipv4_loopback_peer(
+          reinterpret_cast<const sockaddr *>(&accepted.peer),
+          peer_length))
+      {
         RCLCPP_WARN(
           logger,
-          "[unity2foxglove_ros2_bridge] client session escaped: %s",
-          ex.what());
-      } catch (...) {
-        RCLCPP_WARN(
-          logger,
-          "[unity2foxglove_ros2_bridge] client session escaped with an unknown exception");
+          "[unity2foxglove_ros2_bridge] rejected non-IPv4-loopback peer after accept");
+        continue;
       }
-      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client disconnected");
+
+      auto accepted_lease = authority.try_acquire_accepted();
+      if (!accepted_lease) {
+        RCLCPP_WARN(
+          logger,
+          "[unity2foxglove_ros2_bridge] busy: preclassification connection capacity exhausted");
+        continue;
+      }
+
+      auto client =
+        std::make_shared<ScopedFd>(candidate.release());
+      RCLCPP_INFO(logger, "[unity2foxglove_ros2_bridge] client connected");
+      workers.start(
+        client,
+        [client,
+        accepted_lease = std::move(*accepted_lease),
+        &authority,
+        generation_factory,
+        logger,
+        context]() mutable {
+          try {
+            process_owned_client(
+              client->get(),
+              authority,
+              generation_factory,
+              logger,
+              [context]() {return rclcpp::ok(context);});
+          } catch (const ClientReadTimeoutException & ex) {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] %s",
+              ex.what());
+          } catch (const u2r2::ProtocolError & ex) {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] protocol %s: %s",
+              ex.code().c_str(),
+              ex.what());
+          } catch (const std::exception & ex) {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] client session escaped: %s",
+              ex.what());
+          } catch (...) {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] client session escaped with an unknown exception");
+          }
+          accepted_lease.release();
+          RCLCPP_INFO(
+            logger,
+            "[unity2foxglove_ros2_bridge] client disconnected");
+        });
     }
+    workers.stop_and_join_all();
+    ros_owner.stop();
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(logger, "[unity2foxglove_ros2_bridge] %s", ex.what());
     rclcpp::shutdown();

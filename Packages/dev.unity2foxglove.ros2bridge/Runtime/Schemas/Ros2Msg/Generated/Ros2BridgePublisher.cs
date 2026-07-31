@@ -35,13 +35,37 @@ namespace Unity2Foxglove.Ros2Bridge
         /// <exception cref="ArgumentException">Thrown when the topic, schema, encoding, or serialized payload is invalid.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the sink rejects the frame or is disconnected.</exception>
         public void Publish(string topic, string schemaName, IMessage message, ulong logTimeNs)
+            => Publish(
+                topic,
+                schemaName,
+                message,
+                logTimeNs,
+                FoxRunResolvedQos.Default);
+
+        /// <summary>
+        /// Serialize one generated Foxglove protobuf message with an exact
+        /// portable QoS contract and enqueue it for the bridge sidecar.
+        /// </summary>
+        public void Publish(
+            string topic,
+            string schemaName,
+            IMessage message,
+            ulong logTimeNs,
+            FoxRunResolvedQos qos)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
             var payload = Ros2CdrSerializerRegistry.Serialize(schemaName, message);
             Ros2CdrPayloadValidator.Validate(payload);
             var sequence = unchecked((ulong)Interlocked.Increment(ref _sequence));
-            var frame = Ros2BridgeFrame.CreateOwned(topic, schemaName, Ros2BridgeFrame.CdrEncoding, logTimeNs, sequence, payload);
+            var frame = Ros2BridgeFrame.CreateOwned(
+                topic,
+                schemaName,
+                Ros2BridgeFrame.CdrEncoding,
+                logTimeNs,
+                sequence,
+                payload,
+                qos);
             _sink.Send(frame, DefaultSendTimeoutMs);
         }
     }

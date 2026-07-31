@@ -128,6 +128,23 @@ namespace Unity2Foxglove.Ros2Bridge
         internal long EnqueueConnectionGeneration =>
             _entry?.EnqueueConnectionGeneration ?? 0;
 
+        internal bool TryReserveTransient(
+            ulong bytes,
+            out U2R2ByteLease lease)
+        {
+            if (Volatile.Read(ref _settled) != 0)
+            {
+                lease = null;
+                return false;
+            }
+            return _owner.TryReserveTransient(this, bytes, out lease);
+        }
+
+        internal bool IsActiveFor(Ros2BridgeOutboundScheduler owner)
+            => ReferenceEquals(_owner, owner)
+               && Volatile.Read(ref _settled) == 0
+               && Volatile.Read(ref _inner) != null;
+
         internal void Complete()
         {
             var inner = TakeForSettlement();
@@ -548,6 +565,35 @@ namespace Unity2Foxglove.Ros2Bridge
                        && _inner.TryReserveControl(
                            bytes,
                            out reservation);
+            }
+        }
+
+        internal bool TryReserveTransient(
+            Ros2BridgeOutboundWriteLease write,
+            ulong bytes,
+            out U2R2ByteLease lease)
+        {
+            lock (_gate)
+            {
+                lease = null;
+                return write != null
+                       && write.IsActiveFor(this)
+                       && !_closed
+                       && _terminalFault == null
+                       && _inner.TryReserveTransient(bytes, out lease);
+            }
+        }
+
+        internal bool TryReserveSessionTransient(
+            ulong bytes,
+            out U2R2ByteLease lease)
+        {
+            lock (_gate)
+            {
+                lease = null;
+                return !_closed
+                       && _terminalFault == null
+                       && _inner.TryReserveTransient(bytes, out lease);
             }
         }
 

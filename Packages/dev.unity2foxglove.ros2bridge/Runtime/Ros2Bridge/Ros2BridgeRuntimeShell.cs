@@ -199,6 +199,9 @@ namespace Unity2Foxglove.Ros2Bridge
                         sink,
                         reservation,
                         workerIdentity,
+                        requiresSubscription:
+                            _direction
+                            == FoxRunTransportDirection.Subscribe,
                         _generation,
                         _lastSnapshot);
                     sink = null;

@@ -19,12 +19,28 @@ target_link_libraries(u2r2_protocol PUBLIC
   nlohmann_json::nlohmann_json
 )
 
+add_library(bridge_runtime STATIC
+  src/bridge_lifecycle.cpp
+  src/bridge_process.cpp
+  src/bridge_session.cpp
+)
+target_compile_features(bridge_runtime PUBLIC cxx_std_20)
+target_include_directories(bridge_runtime PUBLIC include)
+target_link_libraries(bridge_runtime PUBLIC
+  u2r2_protocol
+  rclcpp::rclcpp
+)
+if(WIN32)
+  target_link_libraries(bridge_runtime PUBLIC ws2_32)
+endif()
+
 add_executable(unity2foxglove_ros2_bridge
   src/unity2foxglove_ros2_bridge.cpp
 )
 
 target_compile_features(unity2foxglove_ros2_bridge PUBLIC cxx_std_20)
 target_link_libraries(unity2foxglove_ros2_bridge
+  bridge_runtime
   rclcpp::rclcpp
   nlohmann_json::nlohmann_json
 )
@@ -52,6 +68,7 @@ if(BUILD_TESTING)
   )
   target_compile_features(test_bridge_smoke PUBLIC cxx_std_20)
   target_link_libraries(test_bridge_smoke
+    bridge_runtime
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
   )
@@ -81,6 +98,25 @@ if(BUILD_TESTING)
   target_include_directories(test_u2r2_protocol_authority PRIVATE include)
   target_link_libraries(test_u2r2_protocol_authority
     u2r2_protocol
+  )
+
+  ament_add_gtest(test_bridge_lifecycle
+    test/test_bridge_lifecycle.cpp
+  )
+  target_compile_features(test_bridge_lifecycle PUBLIC cxx_std_20)
+  target_link_libraries(test_bridge_lifecycle
+    bridge_runtime
+  )
+  if(WIN32)
+    target_link_libraries(test_bridge_lifecycle ws2_32)
+  endif()
+
+  ament_add_gtest(test_bridge_session
+    test/test_bridge_session.cpp
+  )
+  target_compile_features(test_bridge_session PUBLIC cxx_std_20)
+  target_link_libraries(test_bridge_session
+    bridge_runtime
   )
   target_compile_definitions(test_u2r2_protocol_authority PRIVATE
     U2R2_PROTOCOL_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/u2r2_protocol_vectors.json"

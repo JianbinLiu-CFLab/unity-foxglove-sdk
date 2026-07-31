@@ -5,6 +5,7 @@
 // Purpose: Transport boundary for the experimental Unity-to-ROS2 bridge.
 
 using System;
+using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
@@ -49,5 +50,26 @@ namespace Unity2Foxglove.Ros2Bridge
     internal interface IRos2BridgeRawWireSink
     {
         void SendWire(ReadOnlyMemory<byte> wireBytes, int timeoutMs);
+    }
+
+    /// <summary>
+    /// Internal synchronous request/response seam for the publish-only U2R2
+    /// v2 session. Phase186E owns the later duplex reader lane.
+    /// </summary>
+    internal interface IRos2BridgeV2SessionTransport
+    {
+        byte[] ExchangeV2(
+            ReadOnlyMemory<byte> request,
+            U2R2ProtocolLimits limits,
+            int timeoutMs);
+    }
+
+    internal sealed class Ros2BridgeV2IncompatibilityException :
+        InvalidOperationException
+    {
+        internal Ros2BridgeV2IncompatibilityException(string message)
+            : base(message)
+        {
+        }
     }
 }

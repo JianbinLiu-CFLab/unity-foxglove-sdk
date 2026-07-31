@@ -182,10 +182,23 @@ namespace Unity2Foxglove.Ros2Bridge
         }
 
         internal static byte[] ReadFrame(Stream stream)
+            => ReadFrame(
+                stream,
+                remainingTimeoutMs: null,
+                markReadProgress: null);
+
+        internal static byte[] ReadFrame(
+            Stream stream,
+            Func<int> remainingTimeoutMs,
+            Action markReadProgress)
         {
             if (stream == null)
                 throw new ArgumentNullException(nameof(stream));
-            var fixedHeader = ReadExact(stream, 16);
+            var fixedHeader = ReadExact(
+                stream,
+                16,
+                remainingTimeoutMs,
+                markReadProgress);
             ValidateFixedHeader(fixedHeader);
             var headerLength = ReadUInt32LE(fixedHeader, 8);
             var payloadLength = ReadUInt32LE(fixedHeader, 12);
@@ -195,7 +208,11 @@ namespace Unity2Foxglove.Ros2Bridge
                 throw new FormatException("U2R2 publisher response payload must be empty.");
             var frame = new byte[checked(16 + (int)headerLength)];
             Buffer.BlockCopy(fixedHeader, 0, frame, 0, fixedHeader.Length);
-            var header = ReadExact(stream, checked((int)headerLength));
+            var header = ReadExact(
+                stream,
+                checked((int)headerLength),
+                remainingTimeoutMs,
+                markReadProgress);
             Buffer.BlockCopy(header, 0, frame, 16, header.Length);
             return frame;
         }
@@ -392,16 +409,23 @@ namespace Unity2Foxglove.Ros2Bridge
                 : value.Substring(0, maxChars);
         }
 
-        private static byte[] ReadExact(Stream stream, int count)
+        private static byte[] ReadExact(
+            Stream stream,
+            int count,
+            Func<int> remainingTimeoutMs,
+            Action markReadProgress)
         {
             var bytes = new byte[count];
             var offset = 0;
             while (offset < count)
             {
+                if (remainingTimeoutMs != null && stream.CanTimeout)
+                    stream.ReadTimeout = remainingTimeoutMs();
                 var read = stream.Read(bytes, offset, count - offset);
                 if (read <= 0)
                     throw new EndOfStreamException("ROS2 Bridge sidecar closed during publisher preparation.");
                 offset += read;
+                markReadProgress?.Invoke();
             }
             return bytes;
         }

@@ -76,7 +76,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
-      "sha256": "2e8a1161ab84bd82ccacaf8c537447c8e1d8321cbc15784ec6e46111f036c7be",
+      "sha256": "f79deeefc0bd4c392b3e7a99a6bf4d90791808a1218c79166774466801aedd6a",
       "classification": "original",
       "influence": "Original strict C# U2R2 v2 frame codec.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -90,7 +90,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolModel.cs",
-      "sha256": "10e1024b93ce9444e0ff8435e86471412ee80348fadd7bc7e632866e06a458be",
+      "sha256": "cedc2872b60dfcf678f2a3acbc1370bde036555e17b8cc493f3321ddac593237",
       "classification": "original",
       "influence": "Original C# U2R2 v2 protocol and error model.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -124,13 +124,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance.py",
-      "sha256": "bddc4329723f6e5938c50eb9721ff8e7b832e63e407bd1a73e9288c189e0e342",
+      "sha256": "d4795792149aa0b9d81e71981192299bc4918f729e2c4751422a2fdfd6d08f81",
       "classification": "original",
       "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance.py",
-      "sha256": "15dfd33b27791190306198a3489c3746990b0c25a288b50bb59537de36c99bbd",
+      "sha256": "7f99c9cfc0dd4155f2a5d0102d225f246abe115ebfd858f066ec0f3809d15a0d",
       "classification": "original",
       "influence": "Original negative and repository integration tests for the provenance gate."
     },

@@ -13,6 +13,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Protocol;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.FoxRun
@@ -24,6 +26,27 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             .Ros2BridgeNetworkTimingSerialCollection.Name)]
     public sealed class Ros2BridgePublisherPreparationTests
     {
+        [Fact]
+        public void GeneratedPublisherCarriesDefaultQosForV2Preparation()
+        {
+            using var transport = new LegacyTransport();
+            transport.Connect("127.0.0.1", 19484, 1000);
+            var publisher = new Ros2BridgePublisher(transport);
+
+            publisher.Publish(
+                "/phase186/generated/default_qos",
+                Ros2PublisherSchemaNames.FrameTransform,
+                new global::Foxglove.FrameTransform
+                {
+                    Translation = new global::Foxglove.Vector3(),
+                    Rotation = new global::Foxglove.Quaternion(),
+                },
+                logTimeNs: 186UL);
+
+            var frame = Assert.Single(transport.SentFrames);
+            Assert.Equal(FoxRunResolvedQos.Default, frame.Qos);
+        }
+
         [Fact]
         public void FirstProbeIsPendingUntilCorrelatedExactContractAck()
         {
@@ -714,20 +737,72 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     accepted.SendTimeout = 3000;
                     using var stream = accepted.GetStream();
 
-                    preparationFrame = ReadWireFrame(stream);
-                    var request =
-                        Ros2BridgePublisherPreparationCodec.ParseRequest(preparationFrame);
-                    var response =
-                        Ros2BridgePublisherPreparationCodec.WriteResponseForTests(
-                            request.RequestId,
-                            "ok");
+                    var helloFrame = ReadWireFrame(stream);
+                    var hello = U2R2ProtocolCodec.ParseV2(
+                        U2R2ProtocolCodec.DecodeFrame(helloFrame));
+                    Assert.Equal(U2R2Operation.Hello, hello.Operation);
+                    const string sessionId =
+                        "5e7c4e90-b5b2-4db4-b27f-5a30e8086e1b";
+                    const ulong connectionGeneration = 7;
+                    var response = U2R2ProtocolCodec.EncodeFrame(
+                        new JObject
+                        {
+                            ["op"] = "hello_ack",
+                            ["protocolVersion"] = 2,
+                            ["requestId"] = hello.RequestId,
+                            ["status"] = "ok",
+                            ["sessionId"] = sessionId,
+                            ["connectionGeneration"] =
+                                connectionGeneration,
+                            ["capabilities"] = new JArray("publish"),
+                        },
+                        Array.Empty<byte>());
                     stream.Write(response, 0, response.Length);
                     stream.Flush();
 
-                    // This second frame must arrive through the same accepted
+                    preparationFrame = ReadWireFrame(stream);
+                    var request = U2R2ProtocolCodec.ParseV2(
+                        U2R2ProtocolCodec.DecodeFrame(preparationFrame));
+                    Assert.Equal(
+                        U2R2Operation.PreparePublisher,
+                        request.Operation);
+                    response = U2R2ProtocolCodec.EncodeFrame(
+                        new JObject
+                        {
+                            ["op"] = "publisher_ready",
+                            ["protocolVersion"] = 2,
+                            ["requestId"] = request.RequestId,
+                            ["status"] = "ok",
+                            ["sessionId"] = sessionId,
+                            ["connectionGeneration"] =
+                                connectionGeneration,
+                        },
+                        Array.Empty<byte>());
+                    stream.Write(response, 0, response.Length);
+                    stream.Flush();
+
+                    // The publish request must arrive through the same accepted
                     // NetworkStream. A reconnect would leave this read at EOF
                     // or timeout and queue a second connection on the listener.
                     publishFrame = ReadWireFrame(stream);
+                    var publish = U2R2ProtocolCodec.ParseV2(
+                        U2R2ProtocolCodec.DecodeFrame(publishFrame));
+                    Assert.Equal(U2R2Operation.Publish, publish.Operation);
+                    response = U2R2ProtocolCodec.EncodeFrame(
+                        new JObject
+                        {
+                            ["op"] = "publish_result",
+                            ["protocolVersion"] = 2,
+                            ["requestId"] = publish.RequestId,
+                            ["status"] = "ok",
+                            ["sessionId"] = sessionId,
+                            ["connectionGeneration"] =
+                                connectionGeneration,
+                            ["messageId"] = publish.MessageId,
+                        },
+                        Array.Empty<byte>());
+                    stream.Write(response, 0, response.Length);
+                    stream.Flush();
                     Thread.Sleep(100);
                     secondConnectionPending = listener.Pending();
                 }

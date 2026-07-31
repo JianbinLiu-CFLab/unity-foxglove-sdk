@@ -145,12 +145,31 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         private readonly JObject _header;
 
         public U2R2Frame(JObject header, byte[] payload)
+            : this(header, payload, clone: true)
+        {
+        }
+
+        internal static U2R2Frame CreateOwned(
+            JObject header,
+            byte[] payload)
+            => new U2R2Frame(header, payload, clone: false);
+
+        private U2R2Frame(
+            JObject header,
+            byte[] payload,
+            bool clone)
         {
             _header = header == null
                 ? throw new ArgumentNullException(nameof(header))
-                : (JObject)header.DeepClone();
+                : clone
+                    ? (JObject)header.DeepClone()
+                    : header;
             Payload = new ReadOnlyMemory<byte>(
-                payload == null ? Array.Empty<byte>() : (byte[])payload.Clone());
+                payload == null
+                    ? Array.Empty<byte>()
+                    : clone
+                        ? (byte[])payload.Clone()
+                        : payload);
         }
 
         public JObject Header => (JObject)_header.DeepClone();
@@ -321,6 +340,21 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 request.ContractId,
                 request.MessageId);
         }
+
+        internal static U2R2ResponseExpectation FromKnownRequest(
+            U2R2Operation operation,
+            ulong requestId,
+            string sessionId = "",
+            ulong connectionGeneration = 0,
+            ulong contractId = 0,
+            ulong messageId = 0)
+            => new U2R2ResponseExpectation(
+                operation,
+                requestId,
+                sessionId,
+                connectionGeneration,
+                contractId,
+                messageId);
 
         public U2R2Operation RequestOperation { get; }
 
