@@ -488,9 +488,7 @@ namespace Unity2Foxglove
             {
                 if (!topic.StartsWith(
                         "/foxrun/phase186/" + token + "/",
-                        StringComparison.Ordinal)
-                    || topic.IndexOf("phase181", StringComparison.OrdinalIgnoreCase) >= 0
-                    || topic.IndexOf("phase184", StringComparison.OrdinalIgnoreCase) >= 0)
+                        StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("Phase186 topic is stale or foreign.");
                 }

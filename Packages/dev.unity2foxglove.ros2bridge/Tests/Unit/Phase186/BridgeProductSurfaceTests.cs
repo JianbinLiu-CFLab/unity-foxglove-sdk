@@ -257,6 +257,27 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("_enableFoxRunInbound: 1", scene, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void Phase186TopicGuardUsesCurrentRunPrefixInsteadOfHistoricalSubstrings()
+        {
+            var probe = File.ReadAllText(PathOf(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase186BatchModeRos2BridgeProbe.cs"));
+
+            Assert.Contains(
+                "\"/foxrun/phase186/\" + token + \"/\"",
+                probe,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "topic.IndexOf(\"phase181\"",
+                probe,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "topic.IndexOf(\"phase184\"",
+                probe,
+                StringComparison.Ordinal);
+        }
+
         private static string PathOf(string relative)
             => Path.Combine(
                 RepoRoot,
