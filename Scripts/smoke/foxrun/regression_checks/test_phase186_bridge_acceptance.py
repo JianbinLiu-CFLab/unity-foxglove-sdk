@@ -506,6 +506,18 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
             fanout_source = acceptance.render_unity_run_binding(fanout_config)
             self.assertEqual(3, fanout_source.count('"unity2foxglove.r2fu"'))
             self.assertEqual(3, fanout_source.count("unity-local-b-"))
+            self.assertEqual(
+                ("custom_publish", "custom_publish", "custom_publish"),
+                protocol.CASE_CONTRACT_KINDS["fanout-fairness-health"],
+            )
+            self.assertEqual(
+                3,
+                fanout_source.count("[SerializeField] private Phase181State"),
+            )
+            self.assertNotIn(
+                "[SerializeField] private Foxglove.Log",
+                fanout_source,
+            )
 
 
 if __name__ == "__main__":

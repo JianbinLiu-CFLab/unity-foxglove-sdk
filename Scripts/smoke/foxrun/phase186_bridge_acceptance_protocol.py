@@ -260,9 +260,9 @@ CASE_CONTRACT_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "bridge-source": ("standard_subscribe", "custom_subscribe"),
         "full-duplex": ("custom_duplex",),
         "fanout-fairness-health": (
-            "standard_publish",
-            "standard_publish",
-            "standard_publish",
+            "custom_publish",
+            "custom_publish",
+            "custom_publish",
         ),
         "reconnect-degraded-recovery": ("custom_duplex", "standard_subscribe"),
         "bounds-hostile-peer": ("standard_publish", "custom_publish"),
