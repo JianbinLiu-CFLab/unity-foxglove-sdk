@@ -157,7 +157,7 @@ def _wait_until(predicate, timeout_seconds: float, code: str, message: str) -> N
 def _wait_for_unity_ready(config: Mapping[str, Any]) -> None:
     _wait_until(
         lambda: _has_unity_marker(config, "PHASE186_ACCEPTANCE_READY"),
-        180.0,
+        protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
         "FAIL_TERMINAL",
         "current-run Unity readiness marker expired",
     )

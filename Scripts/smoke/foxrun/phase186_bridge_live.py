@@ -561,7 +561,9 @@ def _manual_marker_in_log(config: Mapping[str, Any]) -> bool:
 
 
 def _wait_unity_ready(
-    config: Mapping[str, Any], owner: OwnedLiveProcesses, timeout_seconds: float = 240.0
+    config: Mapping[str, Any],
+    owner: OwnedLiveProcesses,
+    timeout_seconds: float = protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
 ) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:

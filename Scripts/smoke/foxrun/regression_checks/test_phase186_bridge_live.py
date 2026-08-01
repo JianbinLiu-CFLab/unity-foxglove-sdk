@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
+from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as live_protocol
 from Scripts.smoke.foxrun import phase186_bridge_live as live
 from Scripts.smoke.foxrun import phase186_bridge_live_peer as live_peer
 
@@ -38,6 +39,12 @@ class _ChunkSocket:
 
 
 class Phase186BridgeLiveTests(unittest.TestCase):
+    def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
+        self.assertGreater(
+            live_protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
+            live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
+        )
+
     def test_hostile_frames_encode_the_exact_declared_lengths(self) -> None:
         mutations = live_peer._hostile_mutations()
         unknown = mutations["unknown-op"]
