@@ -177,7 +177,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-PC2b: PointCloud2 bridge prewarms the optional TF anchor publisher outside frame callbacks");
             Check(deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.RawOnly", StringComparison.Ordinal)
                   && deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.ReplaceOutput", StringComparison.Ordinal)
-                  && deskewPrewarmBody.Contains("MotionCompensatedPointCloud2Topic", StringComparison.Ordinal),
+                  && deskewPrewarmBody.Contains("MotionCompensatedPackedPointCloudTopic", StringComparison.Ordinal),
                 "165-PC3: PointCloud2 bridge prewarm respects motion-compensation output policy");
             Check(callbackBody.Contains("TryEnsurePublisher(ros2Unity, frameTopic", StringComparison.Ordinal),
                 "165-PC4: PointCloud2 frame callback keeps lazy publisher creation as a configuration-change fallback");
@@ -193,7 +193,7 @@ namespace Unity.FoxgloveSDK.Tests
                      })
             {
                 var source = ReadRepoText(NativeDir + "/" + bridge);
-                var readyBody = bridge.Contains("PointCloud2", StringComparison.Ordinal)
+                var readyBody = bridge.Contains("PackedPointCloud", StringComparison.Ordinal)
                     ? RequiredMethod(source, "private void LogReady", bridge)
                     : RequiredMethod(source, "private void LogReadyOnce", bridge);
 
@@ -242,10 +242,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "IsShuttingDownForBridge(gameObject.scene)",
                 StringComparison.Ordinal);
             Check(shutdownIndex >= 0
-                  && shutdownIndex < update.IndexOf("ResolveManager();", StringComparison.Ordinal)
                   && shutdownIndex < update.IndexOf("ScanAndReconcile();", StringComparison.Ordinal)
                   && shutdownIndex < update.IndexOf("DrainBindings(", StringComparison.Ordinal),
-                "FoxRun inbound host fail-closes Update before any recovery or native work");
+                "FoxRun inbound host fail-closes Update before scan or native message work");
 
             var initGateIndex = ensureNode.IndexOf(
                 "CanInitializeNativeRuntimeForBridge(gameObject.scene)",

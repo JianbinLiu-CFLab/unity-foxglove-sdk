@@ -32,6 +32,7 @@
     <Compile Include="../../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
     <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxRun*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/Transport/*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
