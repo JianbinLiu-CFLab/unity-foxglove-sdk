@@ -362,7 +362,7 @@ namespace Phase186
             var host = @"
 namespace Phase186
 {
-    public partial class StandardCdrProbe
+    public sealed partial class StandardCdrProbe
     {
         public global::Foxglove.Log Log;
     }

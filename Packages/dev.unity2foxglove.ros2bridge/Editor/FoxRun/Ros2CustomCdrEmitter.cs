@@ -470,7 +470,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 $"{pad}    void global::Unity2Foxglove.Ros2Bridge.IFoxRunBridgeGeneratedSubscribeSource.FoxRunBridge_ReleaseRemoteOwnership(int topicIndex, string ownershipTransportId, ulong ownershipGeneration)");
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine(
-                $"{pad}        var ownershipSource = this as global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource;");
+                $"{pad}        var ownershipSource = ((object)this) as global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource;");
             sb.AppendLine(
                 $"{pad}        if (ownershipSource != null)");
             sb.AppendLine(
