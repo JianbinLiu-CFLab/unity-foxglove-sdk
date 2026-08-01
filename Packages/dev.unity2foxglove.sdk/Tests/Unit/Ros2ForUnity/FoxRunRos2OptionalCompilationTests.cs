@@ -197,6 +197,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var hub = Text(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
                 + "FoxRunRos2CustomPublisherHub.cs");
+            var updateStart = hub.IndexOf(
+                "private void Update()",
+                StringComparison.Ordinal);
+            var lifecycleRead = updateStart < 0
+                ? -1
+                : hub.IndexOf(
+                    "IsShuttingDownForBridge(",
+                    updateStart,
+                    StringComparison.Ordinal);
+            var lifecycleRefresh = lifecycleRead < 0
+                ? -1
+                : hub.IndexOf(
+                    "CanInitializeNativeRuntimeForBridge(",
+                    lifecycleRead,
+                    StringComparison.Ordinal);
+            var publishStop = lifecycleRead < 0
+                ? -1
+                : hub.IndexOf(
+                    "ShouldStopFoxRunPublishing(",
+                    lifecycleRead,
+                    StringComparison.Ordinal);
 
             Assert.Contains(
                 "_manager.FoxRunPublishSessionChanged += OnPublishSessionChanged;",
@@ -218,6 +239,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "_publishSessionTracker.AllowsPublishing,",
                 hub,
                 StringComparison.Ordinal);
+            Assert.True(
+                lifecycleRead >= 0
+                && lifecycleRefresh > lifecycleRead
+                && publishStop > lifecycleRefresh,
+                "The custom publisher Hub must refresh a dirty lifecycle cache before treating its cached shutdown state as permanent.");
         }
 
         [Fact]

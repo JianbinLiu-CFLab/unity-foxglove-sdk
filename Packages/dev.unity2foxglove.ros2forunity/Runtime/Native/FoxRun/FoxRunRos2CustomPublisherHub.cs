@@ -124,14 +124,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             ApplyPublishSessionPolicy(
                 _manager.ActiveFoxRunPublishSessionPolicy);
 
+            // Hierarchy notifications deliberately make the cheap shutdown
+            // read fail closed without rebuilding the scene cache. Refresh
+            // that dirty cache before deciding the window is still unsafe,
+            // otherwise one recoverable hierarchy change can stop native
+            // publishers for the remainder of Play Mode.
+            var bridgeLifecycleIsShuttingDown =
+                Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
+                    gameObject.scene)
+                && !Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
+                    gameObject.scene);
+
             // Output policy is independent from the captured subscription
             // session. A Publish custom endpoint must stay available while
             // subscriptions or the legacy component-output switch are disabled.
             if (ShouldStopFoxRunPublishing(
                     _publishSessionTracker.AllowsPublishing,
                     legacyComponentNativeOutputEnabled: true,
-                    Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
-                        gameObject.scene)))
+                    bridgeLifecycleIsShuttingDown))
             {
                 StopBindings();
                 return;
