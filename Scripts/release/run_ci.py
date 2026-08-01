@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
+import hashlib
 import os
 import subprocess
 import sys
@@ -25,6 +26,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
+
+
+def phase186_certification_run_id(head: str) -> str:
+    identity = hashlib.sha256(RUN_ID.encode("utf-8")).hexdigest()[:6]
+    return f"phase186h-cert-{head[:6]}{identity}"
 
 PASS = "[PASS]"
 FAIL = "[FAIL]"
@@ -986,7 +992,7 @@ def main() -> int:
     # --- specifically provisioned Windows Unity + ROS/RMW live certification ---
     if args.only == "phase186-bridge-windows-live":
         head = current_git_head()
-        certification_run_id = f"phase186h-cert-ci-{head[:8]}-{RUN_ID}"
+        certification_run_id = phase186_certification_run_id(head)
         results["phase186-bridge-windows-live"] = run(
             [
                 sys.executable,

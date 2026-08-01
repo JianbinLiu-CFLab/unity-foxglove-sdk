@@ -18,11 +18,11 @@ import time
 from collections.abc import Mapping
 
 
-PROJECT_DIRECTORY_NAME = "bridge-only-unity"
+PROJECT_DIRECTORY_NAME = "u"
 OWNERSHIP_MARKER = ".phase186-owned-project.json"
 PROJECT_SCHEMA_VERSION = 1
 MAX_WINDOWS_UNITY_LMDB_PATH = 240
-_UNITY_LMDB_RELATIVE_PATH = pathlib.Path("Library") / "SourceAssetDB"
+_UNITY_LMDB_RELATIVE_PATH = pathlib.Path("Library") / "Search" / ("x" * 80)
 
 _ASSET_PATHS = (
     "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs",

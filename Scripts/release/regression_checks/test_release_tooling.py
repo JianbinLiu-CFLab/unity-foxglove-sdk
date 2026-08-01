@@ -950,7 +950,7 @@ class RunCiTests(unittest.TestCase):
                 "--output-root",
                 "build/phase186/windows-live",
                 "--run-id",
-                f"phase186h-cert-ci-{head[:8]}-{self.run_ci.RUN_ID}",
+                self.run_ci.phase186_certification_run_id(head),
             ],
             command,
         )

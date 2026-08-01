@@ -518,7 +518,7 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
     if not _is_below(output, owned_root) or output.name != run_id:
         raise _fail("FAIL_PREFLIGHT", "run output is not the exact owned Phase186 run directory")
     repository_project = (root / "Unity2Foxglove").resolve()
-    bridge_only_project = (output / "bridge-only-unity").resolve()
+    bridge_only_project = (output / "u").resolve()
     if project not in {repository_project, bridge_only_project}:
         raise _fail(
             "FAIL_PREFLIGHT",

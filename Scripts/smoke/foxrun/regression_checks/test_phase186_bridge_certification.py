@@ -13,6 +13,7 @@ import unittest
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_certification as certification
+from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
 
 
 HEAD = "a" * 40
@@ -55,28 +56,27 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
     def test_certification_ids_are_bounded_and_head_correlated(self) -> None:
         run_id = certification.certification_run_id(HEAD)
         self.assertRegex(run_id, certification._CERT_RUN_ID)
-        self.assertIn(HEAD[:10], run_id)
+        self.assertIn(HEAD[:6], run_id)
         with self.assertRaises(certification.CertificationFailure):
             certification.certification_run_id(HEAD, "unsafe")
 
-    def test_serial_case_paths_leave_windows_unity_lmdb_headroom(self) -> None:
+    def test_serial_case_paths_leave_windows_unity_search_lmdb_headroom(self) -> None:
         certification_root = pathlib.Path(
             r"D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox"
             r"\build\phase186\windows-live"
-            r"\phase186h-cert-ci-aaaaaaaa-phase186h-live-aaaaaaaa-r1"
+            r"\phase186h-cert-aaaaaaaaaaaa"
         )
         invocations = certification.live_invocations(certification_root, HEAD)
         for item in invocations:
-            source_asset_db = (
+            search_asset_db = (
                 item.output_root
-                / "bridge-only-unity"
-                / "Library"
-                / "SourceAssetDB"
+                / bridge_project.PROJECT_DIRECTORY_NAME
+                / bridge_project._UNITY_LMDB_RELATIVE_PATH
             )
             self.assertLessEqual(
-                len(str(source_asset_db)),
-                240,
-                str(source_asset_db),
+                len(str(search_asset_db)),
+                bridge_project.MAX_WINDOWS_UNITY_LMDB_PATH,
+                str(search_asset_db),
             )
 
 

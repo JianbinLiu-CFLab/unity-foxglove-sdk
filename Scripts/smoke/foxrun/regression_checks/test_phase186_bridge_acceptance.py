@@ -280,7 +280,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
     def test_owned_bridge_only_project_rejects_unsafe_windows_lmdb_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()
-            output = repository / "build" / "phase186" / ("x" * 180)
+            output = repository / "build" / "phase186" / ("x" * 120)
             with mock.patch.object(bridge_project.sys, "platform", "win32"):
                 with self.assertRaisesRegex(
                     bridge_project.BridgeOnlyProjectFailure,

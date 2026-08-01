@@ -329,7 +329,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             repo = pathlib.Path(temp).resolve()
             (repo / "Unity2Foxglove").mkdir()
             output = repo / "build" / "phase186" / RUN_ID
-            project = output / "bridge-only-unity"
+            project = output / "u"
             project.mkdir(parents=True)
             config = protocol.make_run_config(
                 repository=repo,

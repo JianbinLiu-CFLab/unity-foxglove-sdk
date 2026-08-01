@@ -76,8 +76,8 @@ def certification_run_id(head: str, requested: str | None = None) -> str:
         if _CERT_RUN_ID.fullmatch(requested) is None:
             raise CertificationFailure("certification run ID is malformed")
         return requested
-    nonce = f"{os.getpid():x}{time.time_ns():x}"[-16:]
-    return f"phase186h-cert-{head[:10]}-{nonce}"
+    nonce = f"{os.getpid():x}{time.time_ns():x}"[-6:]
+    return f"phase186h-cert-{head[:6]}{nonce}"
 
 
 def live_invocations(
