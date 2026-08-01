@@ -404,6 +404,40 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertIn("ros-base", paths)
             self.assertNotIn("ambient", paths)
 
+    def test_unity_environment_binds_only_all_provider_fanout_to_run_domain(
+        self,
+    ) -> None:
+        source = {
+            "PATH": "ambient",
+            "ROS_DOMAIN_ID": "7",
+            "ROS_DISTRO": "ambient-distro",
+            "RMW_IMPLEMENTATION": "ambient-rmw",
+            "AMENT_PREFIX_PATH": "ambient-prefix",
+        }
+
+        bridge_only = live._build_unity_environment(
+            source,
+            {"caseId": "full-duplex", "domainId": 161},
+        )
+        fanout = live._build_unity_environment(
+            source,
+            {"caseId": "fanout-fairness-health", "domainId": 162},
+        )
+
+        self.assertNotIn("ROS_DOMAIN_ID", bridge_only)
+        self.assertEqual("162", fanout["ROS_DOMAIN_ID"])
+        self.assertEqual(
+            "LOCALHOST",
+            fanout["ROS_AUTOMATIC_DISCOVERY_RANGE"],
+        )
+        self.assertNotIn("ROS_AUTOMATIC_DISCOVERY_RANGE", bridge_only)
+        for environment in (bridge_only, fanout):
+            self.assertNotIn("ROS_DISTRO", environment)
+            self.assertNotIn("RMW_IMPLEMENTATION", environment)
+            self.assertNotIn("AMENT_PREFIX_PATH", environment)
+            self.assertEqual("ambient", environment["PATH"])
+        self.assertEqual("7", source["ROS_DOMAIN_ID"])
+
 
 if __name__ == "__main__":
     unittest.main()

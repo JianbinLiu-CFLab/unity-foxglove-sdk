@@ -258,6 +258,29 @@ def _clean_unity_environment(source: Mapping[str, str]) -> dict[str, str]:
     return environment
 
 
+def _build_unity_environment(
+    source: Mapping[str, str],
+    config: Mapping[str, Any],
+) -> dict[str, str]:
+    """Keep Bridge-only Unity ROS-free and bind all-Provider fanout exactly."""
+
+    environment = _clean_unity_environment(source)
+    if config.get("caseId") != "fanout-fairness-health":
+        return environment
+
+    domain_id = config.get("domainId")
+    if type(domain_id) is not int or not (
+        0 <= domain_id <= protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX
+    ):
+        raise LiveFailure(
+            "FAIL_PROTOCOL",
+            "all-Provider Unity run has an invalid ROS domain",
+        )
+    environment["ROS_DOMAIN_ID"] = str(domain_id)
+    environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] = "LOCALHOST"
+    return environment
+
+
 def _build_runtime_environment(
     source: Mapping[str, str],
     ros2_root: pathlib.Path,
@@ -930,7 +953,7 @@ def run_live(
                 "unity",
                 _unity_command(unity_editor, config),
                 cwd=repository,
-                environment=_clean_unity_environment(os.environ),
+                environment=_build_unity_environment(os.environ, config),
                 output_root=output,
             )
             _wait_unity_ready(config, owner)
