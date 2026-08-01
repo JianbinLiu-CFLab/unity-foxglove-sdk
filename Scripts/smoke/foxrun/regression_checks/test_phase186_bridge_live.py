@@ -40,6 +40,10 @@ class _ChunkSocket:
 
 class Phase186BridgeLiveTests(unittest.TestCase):
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
+        self.assertGreaterEqual(
+            live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
+            480.0,
+        )
         self.assertGreater(
             live_protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
