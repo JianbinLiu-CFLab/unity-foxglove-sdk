@@ -72,6 +72,9 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
 
+      - name: Run Phase186 Bridge tooling and package-composition gate
+        run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
+
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
 
