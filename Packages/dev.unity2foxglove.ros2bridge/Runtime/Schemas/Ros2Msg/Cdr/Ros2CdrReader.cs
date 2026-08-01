@@ -228,16 +228,24 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         }
 
         /// <summary>
-        /// Require that the typed reader consumed the complete wire payload.
-        /// XCDR1 plain structs do not permit an unclaimed trailing suffix.
+        /// Require that the typed reader consumed the complete wire payload,
+        /// apart from the exact zero-to-three-byte suffix needed to align an
+        /// RMW serialized payload to its four-octet transport boundary.
         /// </summary>
         public void EnsureFullyConsumed()
         {
-            if (_offset != _data.Length)
+            if (_offset == _data.Length)
+                return;
+
+            var requiredTransportPadding = (4 - (_offset & 3)) & 3;
+            if (_data.Length - _offset == requiredTransportPadding)
             {
-                throw new InvalidDataException(
-                    "ROS2 CDR payload contains trailing data.");
+                _offset = _data.Length;
+                return;
             }
+
+            throw new InvalidDataException(
+                "ROS2 CDR payload contains trailing data.");
         }
 
         private int CheckedLength(uint value, string label, int minElementByteCount = 1)

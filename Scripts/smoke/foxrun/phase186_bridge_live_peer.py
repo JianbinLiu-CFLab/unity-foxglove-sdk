@@ -275,6 +275,7 @@ def _custom_message(
     nested = nested_type()
     nested.enabled = True
     nested.label = "external-a"
+    nested.foxrun_has_label = True
     payload.nested = nested
     payload.foxrun_has_nested = True
     payload.optional_count = sequence

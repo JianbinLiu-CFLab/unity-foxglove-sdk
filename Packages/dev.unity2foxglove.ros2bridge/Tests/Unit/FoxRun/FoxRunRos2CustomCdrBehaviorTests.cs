@@ -26,6 +26,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         private const string Topic = "/phase184/custom-cdr";
         private static readonly Lazy<GeneratedContract> Contract =
             new Lazy<GeneratedContract>(CompileGeneratedContract);
+        private static readonly Lazy<GeneratedContract> ArtifactContract =
+            new Lazy<GeneratedContract>(
+                () => CompileGeneratedContract(
+                    CreateArtifactCustomMember(
+                        FoxRunFlow.PublishAndSubscribe)));
 
         [Fact]
         public void BridgeContributionExposesOneTypedProviderPublishRoute()
@@ -273,6 +278,47 @@ namespace Phase186
         }
 
         [Fact]
+        public void GeneratedReaderConsumesRclpyEnvelopeWithFourOctetRmwPadding()
+        {
+            var serialized = Convert.FromBase64String(
+                "AAEAACMAAABwaGFzZTE4Ni1leHRlcm5hbC0zYjc1ZDIwZDRhZjMyMjA1AAABAAAAAAAAALoAAAAVzVsHAwAAAAGGAQEBAAAAAQBjACMAAABwaGFzZTE4NjozYjc1ZDIwZDRhZjM6MTpleHRlcm5hbC1hAAEBAGQACwAAAGV4dGVybmFsLWEAAQEAagABAAAAAQB5AAsAAABleHRlcm5hbC1hAAECAAAAYQBrAAEAAAAAAAAAAgAAAAAAAAAB");
+            var payload = serialized
+                .Concat(new byte[] { 0xa5, 0x5a, 0xc3 })
+                .ToArray();
+
+            var decoded = ArtifactContract.Value.Decode(
+                payload,
+                "unity2foxglove.ros2bridge",
+                generation: 186UL,
+                markRemoteOwned: true);
+
+            Assert.True(decoded.Success, decoded.Reason);
+            Assert.Equal(new byte[] { 0x01, 0x86, 0x01 }, decoded.Values.Bytes);
+            Assert.Equal(1, decoded.Values.Count);
+            Assert.Equal((ushort)1, decoded.Values.Kind);
+            Assert.Equal(
+                "phase186:3b75d20d4af3:1:external-a",
+                decoded.Values.Message);
+            Assert.NotNull(decoded.Values.Nested);
+            Assert.True(decoded.Values.Nested.Enabled);
+            Assert.Equal("external-a", decoded.Values.Nested.Label);
+            Assert.Equal(1, decoded.Values.OptionalCount);
+            Assert.Equal("external-a", decoded.Values.OptionalText);
+            Assert.Equal(new long[] { 1L, 2L }, decoded.Values.Values);
+
+            var unclaimed = ArtifactContract.Value.Decode(
+                payload.Concat(new byte[] { 0x7e }).ToArray(),
+                "unity2foxglove.ros2bridge",
+                generation: 187UL,
+                markRemoteOwned: true);
+            Assert.False(unclaimed.Success);
+            Assert.Contains(
+                "trailing",
+                unclaimed.Reason,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void GeneratedReaderRejectsTrailingMalformedAndOversizedPayloadsWithoutApplying()
         {
             var built = Contract.Value.Build(
@@ -336,6 +382,25 @@ namespace Phase186
                     entry.SchemaName,
                     trailing,
                     out _));
+        }
+
+        [Fact]
+        public void StandardDeserializerConsumesRclpySerializedLogWithoutTrailingData()
+        {
+            var payload = Convert.FromBase64String(
+                "AAEAALoAAAAVzVsHAgBvACMAAABwaGFzZTE4NjozYjc1ZDIwZDRhZjM6MTpleHRlcm5hbC1hAAAVAAAAUGhhc2UxODZFeHRlcm5hbFBlZXIAAG8AHQAAAHBoYXNlMTg2X2JyaWRnZV9saXZlX3BlZXIucHkAAGMAugAAAA==");
+
+            Assert.True(
+                Ros2CdrDeserializerRegistry.TryGetByClrType(
+                    typeof(Foxglove.Log),
+                    out var entry));
+            var decoded = Assert.IsType<Foxglove.Log>(entry.Deserialize(payload));
+
+            Assert.Equal(
+                "phase186:3b75d20d4af3:1:external-a",
+                decoded.Message);
+            Assert.Equal("Phase186ExternalPeer", decoded.Name);
+            Assert.Equal(186U, decoded.Line);
         }
 
         [Fact]
@@ -561,7 +626,13 @@ namespace Phase186
 
         private static GeneratedContract CompileGeneratedContract()
         {
-            var member = CreateCustomMember(FoxRunFlow.PublishAndSubscribe);
+            return CompileGeneratedContract(
+                CreateCustomMember(FoxRunFlow.PublishAndSubscribe));
+        }
+
+        private static GeneratedContract CompileGeneratedContract(
+            FoxRunGenerationMember member)
+        {
             var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
                 new FoxRunGenerationType(
                 "Phase181",
@@ -769,7 +840,90 @@ namespace Phase186
                         isNullable: true),
                 },
                 canConstruct: true);
-            return new FoxRunGenerationMember(
+            return CreateCustomMember(flow, state);
+        }
+
+        private static FoxRunGenerationMember CreateArtifactCustomMember(
+            FoxRunFlow flow)
+        {
+            var nested = FoxRunTypeShape.Object(
+                "Phase181.NestedState",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "label",
+                        "Label",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "enabled",
+                        "Enabled",
+                        FoxRunTypeShape.Canonical("bool")),
+                },
+                canConstruct: true);
+            var state = FoxRunTypeShape.Object(
+                "Phase181.State",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "values",
+                        "Values",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.List,
+                            FoxRunTypeShape.Canonical("int64"))),
+                    new FoxRunTypeField(
+                        "optionalText",
+                        "OptionalText",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "nested",
+                        "Nested",
+                        nested.WithNullable()),
+                    new FoxRunTypeField(
+                        "count",
+                        "Count",
+                        FoxRunTypeShape.Canonical("int32")),
+                    new FoxRunTypeField(
+                        "kind",
+                        "Kind",
+                        FoxRunTypeShape.Enum(
+                            "Phase181.StateKind",
+                            new[]
+                            {
+                                new FoxRunEnumValue("Unknown", 0),
+                            },
+                            underlyingCanonicalType: "uint16")),
+                    new FoxRunTypeField(
+                        "bytes",
+                        "Bytes",
+                        FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.Binary,
+                            FoxRunTypeShape.Canonical("uint8"))),
+                    new FoxRunTypeField(
+                        "message",
+                        "Message",
+                        FoxRunTypeShape.Canonical(
+                            "string",
+                            nullable: true)),
+                    new FoxRunTypeField(
+                        "optionalCount",
+                        "OptionalCount",
+                        FoxRunTypeShape.Canonical(
+                            "int32",
+                            nullable: true),
+                        isNullable: true),
+                },
+                canConstruct: true);
+            return CreateCustomMember(flow, state);
+        }
+
+        private static FoxRunGenerationMember CreateCustomMember(
+            FoxRunFlow flow,
+            FoxRunTypeShape state)
+            => new FoxRunGenerationMember(
                 "Phase181",
                 "GeneratedCdrProbe",
                 "State",
@@ -798,7 +952,6 @@ namespace Phase186
                     flow == FoxRunFlow.Publish
                         ? null
                         : "unity2foxglove.ros2bridge");
-        }
 
         private static FoxRunGenerationMember CreateScalarCustomMember(
             string memberName,

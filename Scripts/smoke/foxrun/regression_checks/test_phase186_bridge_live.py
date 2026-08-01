@@ -40,6 +40,33 @@ class _ChunkSocket:
 
 
 class Phase186BridgeLiveTests(unittest.TestCase):
+    def test_custom_peer_sets_nested_string_presence(self) -> None:
+        class Envelope:
+            pass
+
+        class Payload:
+            pass
+
+        class Nested:
+            def __init__(self) -> None:
+                self.foxrun_has_label = False
+
+        node = mock.Mock()
+        stamp = object()
+        node.get_clock.return_value.now.return_value.to_msg.return_value = stamp
+
+        value = live_peer._custom_message(
+            Envelope,
+            Payload,
+            Nested,
+            node,
+            {"tokenHash": "a" * 64},
+            sequence=1,
+        )
+
+        self.assertEqual("external-a", value.payload.nested.label)
+        self.assertTrue(value.payload.nested.foxrun_has_label)
+
     def test_source_publish_keeps_ros_peer_alive_for_bounded_delivery(self) -> None:
         ros = mock.Mock()
         node = object()
