@@ -1124,8 +1124,8 @@ def validate_ledger_payload(
             ("no implementation code or comments were copied", "no implementation code"),
             ("PROVENANCE.json", "PROVENANCE.json"),
             (
-                "not yet wired into the production runtime",
-                "not yet wired into the production runtime",
+                "production Bridge runtime consumes this v2 session",
+                "production Bridge runtime consumes this v2 session",
             ),
         )
         for anchor, diagnostic in required_anchors:

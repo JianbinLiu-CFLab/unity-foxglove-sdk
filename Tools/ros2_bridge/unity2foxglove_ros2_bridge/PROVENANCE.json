@@ -56,7 +56,7 @@
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
-      "sha256": "e096b3b727df296fe597bba2f8d61f9e77b34b76a2bd61ab94ef3af19f050f9f",
+      "sha256": "1f0b0aaf100baca20c343ba38aaed2afd57fa71b4db8ea123456de86f5fa7ebc",
       "classification": "original",
       "influence": "Original package-facing protocol, limits, compatibility, and clean-room documentation."
     },
@@ -124,7 +124,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance.py",
-      "sha256": "d4795792149aa0b9d81e71981192299bc4918f729e2c4751422a2fdfd6d08f81",
+      "sha256": "edeb862b919ba4147de58c3699aa308177205628501437810ba284d4fe56f36a",
       "classification": "original",
       "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
     },
@@ -136,7 +136,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",
-      "sha256": "56b0ab581c960613d6201072d4267a87724961d273e26a6802db228ec0b5d816",
+      "sha256": "7a91d3d8aeead8ebbe2e5cc4ff09ca823d4df4c6b7d64de618692d5a71f87efc",
       "classification": "original",
       "influence": "Original sidecar protocol, limits, compatibility, and clean-room documentation."
     },
