@@ -82,6 +82,24 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertAlmostEqual(0.05, timeouts[0])
         self.assertAlmostEqual(0.02, timeouts[1])
 
+    def test_duplex_origin_check_excludes_the_peer_own_publisher_gid(self) -> None:
+        direct_external = object()
+        bridge_echo = object()
+        bridge_local = object()
+        peer_gid = b"peer-gid"
+        bridge_gid = b"bridge-gid"
+
+        actual = live_peer._without_owned_publisher_samples(
+            [
+                (direct_external, peer_gid),
+                (bridge_echo, bridge_gid),
+                (bridge_local, bridge_gid),
+            ],
+            {peer_gid},
+        )
+
+        self.assertEqual([bridge_echo, bridge_local], actual)
+
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
         self.assertGreaterEqual(
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,

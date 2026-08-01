@@ -294,6 +294,25 @@ def _message_text(value: object, kind: str) -> str:
     return str(getattr(value, "message", ""))
 
 
+def _gid_bytes(value: object, source: str) -> bytes:
+    try:
+        result = bytes(value)
+    except (TypeError, ValueError) as exc:
+        raise LiveActorFailure("FAIL_PEER", f"{source} GID is malformed") from exc
+    if not result or len(result) > 64:
+        raise LiveActorFailure("FAIL_PEER", f"{source} GID is outside bounds")
+    return result
+
+
+def _without_owned_publisher_samples(
+    samples: Sequence[tuple[object, bytes]],
+    owned_publisher_gids: set[bytes],
+) -> list[object]:
+    """Exclude the ROS peer's direct self-delivery from Bridge observations."""
+
+    return [value for value, gid in samples if gid not in owned_publisher_gids]
+
+
 def _spin_until(rclpy_module, node, predicate, timeout_seconds: float, message: str) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -333,7 +352,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     node = rclpy.create_node("phase186_peer_" + str(config["tokenHash"])[:12])
     publishers: dict[str, Any] = {}
     subscriptions: dict[str, Any] = {}
-    received: dict[str, list[object]] = {}
+    received: dict[str, list[tuple[object, bytes]]] = {}
     kinds: dict[str, str] = {}
     try:
         for topic, kind in _layout(config):
@@ -344,8 +363,12 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
             if _is_publish(kind):
                 received[topic] = []
 
-                def capture(value, *, selected=topic):
-                    received[selected].append(value)
+                def capture(value, message_info, *, selected=topic):
+                    publisher_gid = _gid_bytes(
+                        getattr(message_info, "publisher_gid", None),
+                        "message publisher",
+                    )
+                    received[selected].append((value, publisher_gid))
                     if len(received[selected]) > 4096:
                         del received[selected][:-4096]
 
@@ -379,6 +402,21 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 _observe_graph(rclpy, node, config),
             )
 
+        owned_publisher_gids: dict[str, set[bytes]] = {}
+        for topic in publishers:
+            topic_gids = {
+                _gid_bytes(getattr(info, "endpoint_gid", None), "publisher endpoint")
+                for info in node.get_publishers_info_by_topic(topic)
+                if str(getattr(info, "node_name", "")) == node.get_name()
+                and str(getattr(info, "node_namespace", "")) == node.get_namespace()
+            }
+            if len(topic_gids) != 1:
+                raise LiveActorFailure(
+                    "FAIL_PEER",
+                    "exact ROS peer publisher GID was not uniquely observable",
+                )
+            owned_publisher_gids[topic] = topic_gids
+
         offered = 1280 if config["caseId"] == "slow-main-thread-640hz" else 8
         started = time.perf_counter()
         for sequence in range(1, offered + 1):
@@ -410,7 +448,11 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         def outbound_ready() -> bool:
             for topic in expected_outbound:
                 kind = kinds[topic]
-                texts = [_message_text(value, kind) for value in received[topic]]
+                values = _without_owned_publisher_samples(
+                    received[topic],
+                    owned_publisher_gids.get(topic, set()),
+                )
+                texts = [_message_text(value, kind) for value in values]
                 if kind.endswith("duplex"):
                     if not any("unity-local-b" in text for text in texts):
                         return False
@@ -438,8 +480,12 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
         outbound: dict[str, list[str]] = {}
         same_origin_republished = 0
-        for topic, values in received.items():
+        for topic, samples in received.items():
             kind = kinds[topic]
+            values = _without_owned_publisher_samples(
+                samples,
+                owned_publisher_gids.get(topic, set()),
+            )
             texts = [_message_text(value, kind) for value in values]
             outbound[topic] = texts[-32:]
             if kind.endswith("duplex"):
