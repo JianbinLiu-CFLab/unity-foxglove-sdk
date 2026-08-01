@@ -205,6 +205,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     HelloAck(
                         hello.RequestId,
                         includeSubscribe: true));
+
+                var prepare = Parse(ReadWireFrame(stream));
+                Assert.Equal(
+                    U2R2Operation.PreparePublisher,
+                    prepare.Operation);
+                WriteFrame(
+                    stream,
+                    Response(
+                        "publisher_ready",
+                        prepare.RequestId,
+                        prepare.SessionId,
+                        prepare.ConnectionGeneration));
                 Assert.True(
                     releasePeer.Wait(TimeSpan.FromSeconds(3)));
             });
@@ -229,8 +241,38 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Ros2BridgeSessionLifecycleState.Ready,
                 connection.LifecycleState);
 
-            releasePeer.Set();
+            Exception exchangeFailure = null;
+            U2R2Operation? responseOperation = null;
+            try
+            {
+                var response = connection.Exchange(
+                    (requestId, active) =>
+                        Ros2BridgeV2SessionCodec
+                            .CreatePublisherPreparation(
+                                active,
+                                requestId,
+                                "/phase186/idle_gap",
+                                "phase186_msgs/msg/IdleGap",
+                                FoxRunResolvedQos.Default),
+                    timeoutMs: 1000);
+                responseOperation = response.Operation;
+            }
+            catch (Exception exception)
+            {
+                exchangeFailure = exception;
+            }
+            finally
+            {
+                releasePeer.Set();
+                if (exchangeFailure != null)
+                    connection.Dispose();
+            }
+
             peer.AssertCompleted();
+            Assert.Null(exchangeFailure);
+            Assert.Equal(
+                U2R2Operation.PublisherReady,
+                responseOperation);
         }
 
         [Fact]
@@ -578,6 +620,71 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             connection.Dispose();
             peer.AssertCompleted();
+        }
+
+        [Fact]
+        public void SubscriptionControlResponseUsesProtocolDeadlineNotSocketSendTimeout()
+        {
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+
+                var register = Parse(ReadWireFrame(stream));
+                Assert.Equal(
+                    U2R2Operation.RegisterSubscription,
+                    register.Operation);
+                Thread.Sleep(250);
+                try
+                {
+                    WriteFrame(
+                        stream,
+                        ContractResponse(
+                            "subscription_ready",
+                            register.RequestId,
+                            register.ContractId));
+                }
+                catch (IOException)
+                {
+                    // The RED behavior closes the socket at the configured
+                    // send timeout before the protocol response deadline.
+                }
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+            var contract = new Ros2BridgeSessionContract(
+                new FoxRunTransportId(
+                    "unity2foxglove.ros2bridge"),
+                FoxRunTransportDirection.Subscribe,
+                "/phase186/delayed_control",
+                "phase186_msgs/msg/DelayedControl",
+                FoxRunResolvedQos.Default,
+                "binding-delayed-control",
+                contractId: 12,
+                generation: 7);
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 100);
+            connection.Start();
+            var controller =
+                (IRos2BridgeContractWireController)connection;
+
+            var result = controller.Register(contract);
+
+            releasePeer.Set();
+            peer.AssertCompleted();
+            Assert.True(result.IsAccepted, result.Reason);
         }
 
         [Fact]

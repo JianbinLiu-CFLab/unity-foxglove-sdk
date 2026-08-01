@@ -459,8 +459,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 var response = Exchange(
                     requestFactory,
-                    EffectiveTimeout(
-                        _timeoutMs,
+                    ProtocolTimeout(
                         _limits.WriteTimeoutMs));
                 if (response.Operation == expectedResponse
                     && string.Equals(
