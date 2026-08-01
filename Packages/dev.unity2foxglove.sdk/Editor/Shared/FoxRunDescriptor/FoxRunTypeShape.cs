@@ -928,4 +928,22 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
     }
+
+    internal static class FoxRunLogicalSchemaNameResolver
+    {
+        internal static string ResolveMember(
+            string schemaName,
+            FoxRunTypeShape shape)
+        {
+            var explicitName = (schemaName ?? string.Empty).Trim();
+            if (explicitName.Length > 0)
+                return explicitName;
+            while (shape != null
+                   && shape.Kind == FoxRunTypeShapeKind.Collection)
+            {
+                shape = shape.ElementShape;
+            }
+            return (shape?.TypeName ?? string.Empty).Trim();
+        }
+    }
 }

@@ -432,8 +432,8 @@ _UNITY_BINDING_RELATIVE_PATH = pathlib.Path(
 
 def _render_unity_contract(
     index: int, topic: str, kind: str
-) -> tuple[str, str, str, str]:
-    """Render one declaration, observation, initialization, and mutation arm."""
+) -> tuple[str, str, str, str, str]:
+    """Render one declaration, observation, initialization, mutation, and warm-up arm."""
 
     field = f"_phase186GeneratedValue{index}"
     observed = f"_phase186GeneratedObserved{index}"
@@ -510,6 +510,7 @@ def _render_unity_contract(
         )
 
     mutation = ""
+    warmup = ""
     if kind in {"custom_duplex", "custom_publish"}:
         mutation = (
             f"            {field} = CreatePhase186State("
@@ -518,6 +519,11 @@ def _render_unity_contract(
             "checked((int)global::System.Math.Min(int.MaxValue, "
             "evidence.LocalMutations)));"
         )
+        if kind == "custom_duplex":
+            warmup = (
+                f"            {field} = CreatePhase186State("
+                '"unity-publisher-warmup", 0);'
+            )
     elif kind in {"standard_duplex", "standard_publish"}:
         mutation = (
             f"            {field} = CreatePhase186Log("
@@ -525,7 +531,12 @@ def _render_unity_contract(
             "global::System.Globalization.CultureInfo.InvariantCulture), "
             "evidence.LocalMutations);"
         )
-    return declaration, observe, initialization, mutation
+        if kind == "standard_duplex":
+            warmup = (
+                f"            {field} = CreatePhase186Log("
+                '"unity-publisher-warmup", 0);'
+            )
+    return declaration, observe, initialization, mutation, warmup
 
 
 def render_unity_run_binding(config: Mapping[str, Any]) -> str:
@@ -547,10 +558,15 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
     initializations: list[str] = []
     mutation = ""
     fanout_mutations: list[str] = []
+    warmup_mutations: list[str] = []
     for index, (topic, kind) in enumerate(zip(topics, layout, strict=True)):
-        declaration, observation, initialization, candidate_mutation = (
-            _render_unity_contract(index, topic, kind)
-        )
+        (
+            declaration,
+            observation,
+            initialization,
+            candidate_mutation,
+            candidate_warmup,
+        ) = _render_unity_contract(index, topic, kind)
         if case_id == "fanout-fairness-health" and kind.endswith("publish"):
             declaration = declaration.replace(
                 "                Ros2BridgeTransportProvider.ProviderId\n            })]",
@@ -567,6 +583,8 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
             fanout_mutations.append(candidate_mutation)
         if not mutation and candidate_mutation:
             mutation = candidate_mutation
+        if candidate_warmup:
+            warmup_mutations.append(candidate_warmup)
 
     if case_id == "fanout-fairness-health":
         mutation = "\n".join(fanout_mutations)
@@ -594,6 +612,11 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
         + mutation
         + "\n            published = true;"
         if mutation
+        else "            published = false;"
+    )
+    warmup_body = (
+        "\n".join(warmup_mutations) + "\n            published = true;"
+        if warmup_mutations
         else "            published = false;"
     )
     observation_body = "\n".join(observations)
@@ -658,6 +681,11 @@ namespace Unity2Foxglove.ManualAcceptance
             evidence.SlowMainThread = {str(slow).lower()};
 {observation_body}
             evidence.CanComplete = {can_complete};
+        }}
+
+        partial void Phase186Generated_WarmPublishers(ref bool published)
+        {{
+{warmup_body}
         }}
 
         partial void Phase186Generated_PublishLocalMutation(

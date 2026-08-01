@@ -38,6 +38,12 @@ MANUAL_POINTER = pathlib.Path(
     "Unity2Foxglove/Library/Phase186Acceptance/current-run.json"
 )
 MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
+# The worker owns a full 300-second operation window.  The coordinator must
+# outlive that window so a terminal actor document written at the boundary is
+# not misclassified as expired.
+LIVE_ACTOR_RESULT_TIMEOUT_SECONDS = (
+    live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS + 30.0
+)
 
 
 class LiveFailure(protocol.ProtocolFailure):
@@ -250,12 +256,24 @@ def _clean_unity_environment(source: Mapping[str, str]) -> dict[str, str]:
             "ROS_LOCALHOST_ONLY",
             "ROS_AUTOMATIC_DISCOVERY_RANGE",
             "ROS_DISCOVERY_SERVER",
+            "FASTDDS_BUILTIN_TRANSPORTS",
             "ZENOH_ROUTER_CONFIG_URI",
             "ZENOH_SESSION_CONFIG_URI",
             "ZENOH_CONFIG_OVERRIDE",
         }:
             environment.pop(key, None)
     return environment
+
+
+def _live_discovery_range(config: Mapping[str, Any]) -> str:
+    """Match the packaged FastDDS policy already certified by Phase184."""
+
+    if (
+        config.get("caseId") == "fanout-fairness-health"
+        and config.get("rmw") == "rmw_fastrtps_cpp"
+    ):
+        return "SUBNET"
+    return "LOCALHOST"
 
 
 def _build_unity_environment(
@@ -277,7 +295,13 @@ def _build_unity_environment(
             "all-Provider Unity run has an invalid ROS domain",
         )
     environment["ROS_DOMAIN_ID"] = str(domain_id)
-    environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] = "LOCALHOST"
+    environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] = _live_discovery_range(config)
+    if config.get("rmw") == "rmw_fastrtps_cpp":
+        # Keep the packaged R2FU participant on the same proven Windows
+        # transport policy as every repository-owned FastDDS live runner.
+        # FastDDS shared-memory setup can otherwise block rcl_node_init before
+        # the first Unity publisher exists.
+        environment["FASTDDS_BUILTIN_TRANSPORTS"] = "UDPv4"
     return environment
 
 
@@ -289,6 +313,7 @@ def _build_runtime_environment(
     distro: str,
     rmw: str,
     domain_id: int,
+    discovery_range: str,
     topology_id: str,
     zenoh_session_config: pathlib.Path | None,
 ) -> dict[str, str]:
@@ -301,7 +326,7 @@ def _build_runtime_environment(
     environment = phase181_peer.ros2env.build_ros_env(
         ros2_root,
         rmw,
-        "LOCALHOST",
+        discovery_range,
         str(domain_id),
         distro,
     )
@@ -398,10 +423,10 @@ def prepare_runtime(
         distro=row.distro,
         rmw=row.rmw,
         domain_id=int(config["domainId"]),
+        discovery_range=_live_discovery_range(config),
         topology_id="phase186h-" + str(config["tokenHash"])[:12],
         zenoh_session_config=zenoh_session,
     )
-    environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] = "LOCALHOST"
     bridge_executable = (
         build_root / row_id / "cpp-build" / "unity2foxglove_ros2_bridge.exe"
     ).resolve(strict=True)
@@ -617,6 +642,90 @@ def _wait_unity_ready(
             raise LiveFailure("FAIL_PROCESS_EXIT", "Unity exited before readiness")
         time.sleep(0.05)
     raise LiveFailure("FAIL_TERMINAL", "Unity readiness expired")
+
+
+def _unity_progress_documents(config: Mapping[str, Any]) -> tuple[Mapping[str, str], ...]:
+    prefix = "PHASE186_ACCEPTANCE_PROGRESS "
+    documents: list[Mapping[str, str]] = []
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+        ):
+            documents.append(fields)
+    return tuple(documents)
+
+
+def _unity_progress_count(config: Mapping[str, Any]) -> int:
+    return len(_unity_progress_documents(config))
+
+
+def _wait_unity_progress_after(
+    config: Mapping[str, Any],
+    owner: OwnedLiveProcesses,
+    checkpoint: int,
+    required: Mapping[str, str],
+) -> None:
+    deadline = time.monotonic() + live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        documents = _unity_progress_documents(config)
+        if any(
+            all(document.get(key) == value for key, value in required.items())
+            for document in documents[checkpoint:]
+        ):
+            return
+        if owner.poll("unity") is not None:
+            raise LiveFailure(
+                "FAIL_PROCESS_EXIT",
+                "Unity exited before the reconnect transition was observed",
+            )
+        time.sleep(0.05)
+    state = ",".join(f"{key}={value}" for key, value in sorted(required.items()))
+    raise LiveFailure(
+        "FAIL_TERMINAL",
+        "Unity reconnect transition expired: " + state,
+    )
+
+
+def _restart_sidecar_after_observed_disconnect(
+    owner: OwnedLiveProcesses,
+    runtime: PreparedRuntime,
+    config: Mapping[str, Any],
+    health_generations: list[Mapping[str, Any]],
+) -> None:
+    disconnect_checkpoint = _unity_progress_count(config)
+    owner.stop("sidecar-1")
+    _wait_until_port_released(str(config["bridgeHost"]), int(config["bridgePort"]))
+    _wait_unity_progress_after(
+        config,
+        owner,
+        disconnect_checkpoint,
+        {"ready": "false", "connected": "false"},
+    )
+
+    recovery_checkpoint = _unity_progress_count(config)
+    _sidecar, health = _launch_sidecar(owner, runtime, config, "sidecar-2")
+    health_generations.append(health)
+    _wait_unity_progress_after(
+        config,
+        owner,
+        recovery_checkpoint,
+        {
+            "ready": "true",
+            "connected": "true",
+            "publish": "Ready",
+            "subscribe": "Ready",
+        },
+    )
+    _write_exercise_gate(config)
 
 
 def _write_identity_gate(config: Mapping[str, Any], key: str) -> pathlib.Path:
@@ -959,10 +1068,12 @@ def run_live(
             _wait_unity_ready(config, owner)
             if config["caseId"] in {"reconnect-degraded-recovery", "lifecycle"}:
                 time.sleep(0.75)
-                owner.stop("sidecar-1")
-                _wait_until_port_released(str(config["bridgeHost"]), int(config["bridgePort"]))
-                _sidecar, health = _launch_sidecar(owner, runtime, config, "sidecar-2")
-                health_generations.append(health)
+                _restart_sidecar_after_observed_disconnect(
+                    owner,
+                    runtime,
+                    config,
+                    health_generations,
+                )
             roles = _worker_roles(config)
             if config["caseId"] == "fanout-fairness-health":
                 worker_results["graph-observer"] = _wait_actor_document(
@@ -970,7 +1081,7 @@ def run_live(
                     owner,
                     "graph-observer",
                     "result",
-                    240.0,
+                    LIVE_ACTOR_RESULT_TIMEOUT_SECONDS,
                     owner_role="ros-peer",
                 )
                 _write_exercise_gate(config)
@@ -982,7 +1093,7 @@ def run_live(
                     owner,
                     role,
                     "result",
-                    240.0,
+                    LIVE_ACTOR_RESULT_TIMEOUT_SECONDS,
                     owner_role=_owner_role_for_document(config, role),
                 )
             _write_gate(config)

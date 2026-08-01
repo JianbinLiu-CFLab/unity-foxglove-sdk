@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -570,30 +571,95 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private void WriterLoop()
         {
+            var heartbeatIntervalTicks =
+                HeartbeatIntervalTicks(_limits.ReadTimeoutMs);
+            var lastWriteTimestamp = Stopwatch.GetTimestamp();
             while (true)
             {
                 PendingRequest request = null;
-                lock (_gate)
+                PendingRequest heartbeat = null;
+                Ros2BridgeV2SessionSnapshot heartbeatSnapshot = null;
+                var waitMilliseconds = 50;
+                try
                 {
-                    if (_stopRequested)
-                        return;
-                    if (_writerQueue.Count != 0)
-                        request = _writerQueue.Dequeue();
+                    lock (_gate)
+                    {
+                        if (_stopRequested)
+                            return;
+                        if (_writerQueue.Count != 0)
+                        {
+                            request = _writerQueue.Dequeue();
+                        }
+                        else if (_lifecycleState
+                                 == Ros2BridgeSessionLifecycleState.Ready
+                                 && _snapshot != null)
+                        {
+                            waitMilliseconds =
+                                HeartbeatWaitMilliseconds(
+                                    lastWriteTimestamp,
+                                    heartbeatIntervalTicks);
+                            if (waitMilliseconds == 0
+                                && _pending.Count < _pendingCapacity)
+                            {
+                                heartbeatSnapshot = _snapshot;
+                                var heartbeatRequest =
+                                    Ros2BridgeV2SessionCodec
+                                        .CreateHealthPing(
+                                            heartbeatSnapshot,
+                                            _requestIds.Next());
+                                heartbeat = new PendingRequest(
+                                    heartbeatRequest);
+                                _pending.Add(
+                                    heartbeatRequest.Expectation.RequestId,
+                                    heartbeat);
+                            }
+                            else if (waitMilliseconds == 0)
+                            {
+                                // Existing correlated work owns the bounded
+                                // request table and takes precedence.
+                                waitMilliseconds = 50;
+                            }
+                        }
+                    }
                 }
-                if (request == null)
+                catch (Exception exception)
                 {
-                    _writerSignal.WaitOne(50);
+                    heartbeat?.Dispose();
+                    Fault(exception);
+                    return;
+                }
+                if (request == null && heartbeat == null)
+                {
+                    _writerSignal.WaitOne(waitMilliseconds);
                     continue;
                 }
 
                 try
                 {
                     _transport.WriteV2(
-                        request.Request.WireBytes,
+                        (request ?? heartbeat).Request.WireBytes,
                         _limits,
                         EffectiveTimeout(
                             _timeoutMs,
                             _limits.WriteTimeoutMs));
+                    lastWriteTimestamp = Stopwatch.GetTimestamp();
+                    if (heartbeat != null)
+                    {
+                        if (!heartbeat.Wait(
+                                EffectiveTimeout(
+                                    _timeoutMs,
+                                    _limits.ReadTimeoutMs)))
+                        {
+                            throw new U2R2ProtocolException(
+                                "timeout",
+                                "The Bridge health response exceeded its absolute deadline.",
+                                terminal: true);
+                        }
+                        Ros2BridgeV2SessionCodec.AcceptHealthPong(
+                            heartbeat.Request,
+                            heartbeat.GetResponse(),
+                            heartbeatSnapshot);
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -601,6 +667,25 @@ namespace Unity2Foxglove.Ros2Bridge
                         exception,
                         "The Bridge writer failed."));
                     return;
+                }
+                finally
+                {
+                    if (heartbeat != null)
+                    {
+                        lock (_gate)
+                        {
+                            var requestId =
+                                heartbeat.Request.Expectation.RequestId;
+                            if (_pending.TryGetValue(
+                                    requestId,
+                                    out var current)
+                                && ReferenceEquals(current, heartbeat))
+                            {
+                                _pending.Remove(requestId);
+                            }
+                        }
+                        heartbeat.Dispose();
+                    }
                 }
             }
         }
@@ -1116,6 +1201,39 @@ namespace Unity2Foxglove.Ros2Bridge
             => checked((int)Math.Min(
                 protocolTimeoutMs,
                 checked((ulong)int.MaxValue)));
+
+        private static long HeartbeatIntervalTicks(
+            ulong readTimeoutMs)
+        {
+            var intervalMilliseconds = Math.Max(
+                1,
+                ProtocolTimeout(readTimeoutMs) / 2);
+            return Math.Max(
+                1L,
+                checked((long)Math.Ceiling(
+                    intervalMilliseconds
+                    * (double)Stopwatch.Frequency
+                    / 1000d)));
+        }
+
+        private static int HeartbeatWaitMilliseconds(
+            long lastWriteTimestamp,
+            long heartbeatIntervalTicks)
+        {
+            var elapsedTicks =
+                Stopwatch.GetTimestamp() - lastWriteTimestamp;
+            if (elapsedTicks >= heartbeatIntervalTicks)
+                return 0;
+            var remainingMilliseconds = Math.Ceiling(
+                (heartbeatIntervalTicks - elapsedTicks)
+                * 1000d
+                / Stopwatch.Frequency);
+            return Math.Max(
+                1,
+                Math.Min(
+                    50,
+                    checked((int)remainingMilliseconds)));
+        }
 
         private static Exception NormalizeTransportFault(
             Exception exception,

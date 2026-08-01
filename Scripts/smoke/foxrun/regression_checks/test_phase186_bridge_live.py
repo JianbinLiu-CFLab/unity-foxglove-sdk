@@ -40,6 +40,51 @@ class _ChunkSocket:
 
 
 class Phase186BridgeLiveTests(unittest.TestCase):
+    def test_ros_graph_gate_requires_exact_bridge_publisher(self) -> None:
+        config = {
+            "caseId": "slow-main-thread-640hz",
+            "topics": ("/phase186/slow_ingress", "/phase186/slow_control"),
+        }
+
+        def endpoint(node_name: str, topic_type: str) -> object:
+            return types.SimpleNamespace(
+                node_name=node_name,
+                topic_type=topic_type,
+            )
+
+        bridge_custom = endpoint(
+            live_peer.BRIDGE_NODE_NAME,
+            live_protocol.INTERFACE_TYPE,
+        )
+        bridge_standard = endpoint(
+            live_peer.BRIDGE_NODE_NAME,
+            "foxglove_msgs/msg/Log",
+        )
+        peer_standard = endpoint(
+            "phase186_peer_self",
+            "foxglove_msgs/msg/Log",
+        )
+        node = mock.Mock()
+        node.get_subscriptions_info_by_topic.side_effect = lambda topic: (
+            [bridge_custom]
+            if topic.endswith("slow_ingress")
+            else [bridge_standard]
+        )
+        node.get_publishers_info_by_topic.side_effect = lambda topic: (
+            []
+            if topic.endswith("slow_ingress")
+            else [peer_standard]
+        )
+
+        self.assertFalse(live_peer._bridge_endpoints_ready(node, config))
+
+        node.get_publishers_info_by_topic.side_effect = lambda topic: (
+            []
+            if topic.endswith("slow_ingress")
+            else [peer_standard, bridge_standard]
+        )
+        self.assertTrue(live_peer._bridge_endpoints_ready(node, config))
+
     def test_custom_peer_sets_nested_string_presence(self) -> None:
         class Envelope:
             pass
@@ -176,6 +221,148 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
         )
 
+    def test_live_actor_operation_budget_allows_slow_unity_and_ros_startup(self) -> None:
+        self.assertEqual(300.0, live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS)
+        self.assertGreater(
+            live.LIVE_ACTOR_RESULT_TIMEOUT_SECONDS,
+            live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
+        )
+
+    def test_slow_sequence_flood_waits_for_current_unity_baseline(self) -> None:
+        windows = live_peer._sequence_windows(
+            "slow-main-thread-640hz",
+            offered=6,
+        )
+        self.assertEqual(
+            ((1,), (2, 3, 4, 5, 6)),
+            tuple(tuple(window) for window in windows),
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            unity_log = pathlib.Path(temp) / "unity.log"
+            config = {
+                "caseId": "slow-main-thread-640hz",
+                "runId": "phase186h-slow-baseline-test",
+                "unityLog": str(unity_log),
+            }
+            unity_log.write_text(
+                "PHASE186_ACCEPTANCE_PROGRESS "
+                "run=phase186h-stale-baseline case=slow-main-thread-640hz "
+                "generated=true received=1 applied=1\n"
+                "PHASE186_ACCEPTANCE_PROGRESS "
+                "run=phase186h-slow-baseline-test case=slow-main-thread-640hz "
+                "generated=true received=0 applied=0\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(live_peer._slow_unity_baseline_ready(config))
+            with unity_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "PHASE186_ACCEPTANCE_PROGRESS "
+                    "run=phase186h-slow-baseline-test "
+                    "case=slow-main-thread-640hz "
+                    "generated=true received=1 applied=1\n"
+                )
+            self.assertTrue(live_peer._slow_unity_baseline_ready(config))
+
+    def test_reconnect_peer_waits_for_identity_bound_exercise_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            gate = pathlib.Path(temp) / "exercise.json"
+            config = {
+                "caseId": "reconnect-degraded-recovery",
+                "runId": "phase186h-reconnect-test",
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+                "exerciseGate": str(gate),
+            }
+            self.assertFalse(live_peer._identity_gate_ready(config, "exerciseGate"))
+            gate.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "runId": config["runId"],
+                        "caseId": config["caseId"],
+                        "tokenHash": config["tokenHash"],
+                        "head": "c" * 40,
+                        "ready": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertFalse(live_peer._identity_gate_ready(config, "exerciseGate"))
+            gate.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "runId": config["runId"],
+                        "caseId": config["caseId"],
+                        "tokenHash": config["tokenHash"],
+                        "head": config["head"],
+                        "ready": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(live_peer._identity_gate_ready(config, "exerciseGate"))
+            with mock.patch.object(live_peer, "_wait_for_unity_ready") as unity_ready, \
+                 mock.patch.object(live_peer, "_wait_for_exercise_gate") as exercise_ready:
+                live_peer._wait_for_ros_exercise_window(config)
+            unity_ready.assert_called_once_with(config)
+            exercise_ready.assert_called_once_with(config)
+
+    def test_reconnect_restart_waits_for_observed_disconnect_and_recovery(self) -> None:
+        owner = mock.Mock()
+        runtime = object()
+        config = {"bridgeHost": "127.0.0.1", "bridgePort": 18605}
+        health_generations: list[object] = []
+        health = {"status": "ok", "generation": 2}
+        with mock.patch.object(
+            live,
+            "_unity_progress_count",
+            side_effect=(3, 4),
+        ), mock.patch.object(
+            live,
+            "_wait_until_port_released",
+        ) as port_released, mock.patch.object(
+            live,
+            "_wait_unity_progress_after",
+        ) as progress, mock.patch.object(
+            live,
+            "_launch_sidecar",
+            return_value=(object(), health),
+        ) as launch, mock.patch.object(
+            live,
+            "_write_exercise_gate",
+        ) as write_gate:
+            live._restart_sidecar_after_observed_disconnect(
+                owner,
+                runtime,
+                config,
+                health_generations,
+            )
+
+        owner.stop.assert_called_once_with("sidecar-1")
+        port_released.assert_called_once_with("127.0.0.1", 18605)
+        self.assertEqual(
+            [
+                mock.call(config, owner, 3, {"ready": "false", "connected": "false"}),
+                mock.call(
+                    config,
+                    owner,
+                    4,
+                    {
+                        "ready": "true",
+                        "connected": "true",
+                        "publish": "Ready",
+                        "subscribe": "Ready",
+                    },
+                ),
+            ],
+            progress.call_args_list,
+        )
+        launch.assert_called_once_with(owner, runtime, config, "sidecar-2")
+        write_gate.assert_called_once_with(config)
+        self.assertEqual([health], health_generations)
+
     def test_hostile_frames_encode_the_exact_declared_lengths(self) -> None:
         mutations = live_peer._hostile_mutations()
         unknown = mutations["unknown-op"]
@@ -186,6 +373,38 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual(
             {"op": "phase186_unknown_op"},
             json.loads(unknown[16 : 16 + header_size].decode("utf-8")),
+        )
+
+    def test_busy_response_uses_the_stable_protocol_error_code_field(self) -> None:
+        self.assertTrue(
+            live_peer._is_busy_response(
+                {
+                    "op": "busy",
+                    "status": "error",
+                    "errorCode": "busy",
+                    "terminal": True,
+                }
+            )
+        )
+        self.assertFalse(
+            live_peer._is_busy_response(
+                {
+                    "op": "busy",
+                    "status": "error",
+                    "code": "busy",
+                    "terminal": True,
+                }
+            )
+        )
+        self.assertFalse(
+            live_peer._is_busy_response(
+                {
+                    "op": "busy",
+                    "status": "error",
+                    "errorCode": "busy",
+                    "terminal": False,
+                }
+            )
         )
 
     def test_optional_rejection_response_reassembles_fragmented_error_frame(self) -> None:
@@ -388,7 +607,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                     "CMAKE_PREFIX_PATH": str(root),
                     "COLCON_PREFIX_PATH": str(root),
                 },
-            ):
+            ) as build_ros_env:
                 environment = live._build_runtime_environment(
                     {"PATH": "ambient"},
                     root,
@@ -396,9 +615,17 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                     distro="jazzy",
                     rmw="rmw_fastrtps_cpp",
                     domain_id=161,
+                    discovery_range="SUBNET",
                     topology_id="phase186h-test",
                     zenoh_session_config=None,
                 )
+            build_ros_env.assert_called_once_with(
+                root,
+                "rmw_fastrtps_cpp",
+                "SUBNET",
+                "161",
+                "jazzy",
+            )
             paths = environment["PATH"].split(";")
             self.assertIn(str(pixi_bin), paths)
             self.assertIn("ros-base", paths)
@@ -421,15 +648,21 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
         fanout = live._build_unity_environment(
             source,
-            {"caseId": "fanout-fairness-health", "domainId": 162},
+            {
+                "caseId": "fanout-fairness-health",
+                "domainId": 162,
+                "rmw": "rmw_fastrtps_cpp",
+            },
         )
 
         self.assertNotIn("ROS_DOMAIN_ID", bridge_only)
+        self.assertNotIn("FASTDDS_BUILTIN_TRANSPORTS", bridge_only)
         self.assertEqual("162", fanout["ROS_DOMAIN_ID"])
         self.assertEqual(
-            "LOCALHOST",
+            "SUBNET",
             fanout["ROS_AUTOMATIC_DISCOVERY_RANGE"],
         )
+        self.assertEqual("UDPv4", fanout["FASTDDS_BUILTIN_TRANSPORTS"])
         self.assertNotIn("ROS_AUTOMATIC_DISCOVERY_RANGE", bridge_only)
         for environment in (bridge_only, fanout):
             self.assertNotIn("ROS_DISTRO", environment)

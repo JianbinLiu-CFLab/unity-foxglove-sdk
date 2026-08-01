@@ -321,7 +321,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             var ros2Unity = _ros2Unity ?? GetComponent<ROS2.ROS2UnityComponent>();
             if (ros2Unity == null)
-                ros2Unity = gameObject.AddComponent<ROS2.ROS2UnityComponent>();
+            {
+                // Adding a MonoBehaviour invokes Awake synchronously. Do not
+                // re-enter the freshly attached R2FU component and create its
+                // first native node from that AddComponent call stack. Let
+                // Unity run Start first, then retry on the next bounded scan.
+                _ros2Unity = gameObject.AddComponent<ROS2.ROS2UnityComponent>();
+                return null;
+            }
+            _ros2Unity = ros2Unity;
             if (!ros2Unity.Ok())
                 return null;
 
@@ -329,7 +337,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (node == null)
                 return null;
 
-            _ros2Unity = ros2Unity;
             return new Ros2ForUnityFoxRunNodeOwner(
                 new Ros2ForUnityFoxRunR2fuNodeDriver(ros2Unity, node),
                 () => !_stopping

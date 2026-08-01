@@ -19,6 +19,28 @@ using UnityEngine;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
+    internal static class Ros2BridgeOrdinaryLogicalSchema
+    {
+        internal static bool Matches(
+            string logicalSchemaName,
+            IMessage message)
+        {
+            if (message == null)
+                return false;
+
+            var clrTypeName = message.GetType().FullName ?? string.Empty;
+            var descriptorName = message.Descriptor?.FullName ?? string.Empty;
+            return string.Equals(
+                       logicalSchemaName,
+                       clrTypeName,
+                       StringComparison.Ordinal)
+                   || string.Equals(
+                       logicalSchemaName,
+                       descriptorName,
+                       StringComparison.Ordinal);
+        }
+    }
+
 #if UNITY_5_3_OR_NEWER
     /// <summary>
     /// Optional same-GameObject companion that contributes the ROS 2 Bridge
@@ -340,21 +362,9 @@ namespace Unity2Foxglove.Ros2Bridge
             else if (request.Value is IMessage message)
             {
                 var descriptorName = message.Descriptor?.FullName ?? string.Empty;
-                if (!string.Equals(
-                        request.LogicalSchemaName,
-                        descriptorName,
-                        StringComparison.Ordinal))
-                {
-                    contribution = default;
-                    reason = "Logical schema '"
-                             + request.LogicalSchemaName
-                             + "' does not match protobuf value '"
-                             + descriptorName
-                             + "'.";
-                    return false;
-                }
-
-                if (!TryMapFoxgloveSchema(descriptorName, out schemaName))
+                if (!Ros2CdrSerializerRegistry.TryGetByClrType(
+                        message.GetType(),
+                        out var serializer))
                 {
                     contribution = default;
                     reason = "ROS2 Bridge has no ordinary mapping for protobuf schema '"
@@ -363,9 +373,23 @@ namespace Unity2Foxglove.Ros2Bridge
                     return false;
                 }
 
-                payload = Ros2CdrSerializerRegistry.Serialize(
-                    schemaName,
-                    message);
+                if (!Ros2BridgeOrdinaryLogicalSchema.Matches(
+                        request.LogicalSchemaName,
+                        message))
+                {
+                    contribution = default;
+                    reason = "Logical schema '"
+                             + request.LogicalSchemaName
+                             + "' does not match protobuf CLR type '"
+                             + serializer.ClrType.FullName
+                             + "' or descriptor '"
+                             + descriptorName
+                             + "'.";
+                    return false;
+                }
+
+                schemaName = serializer.SchemaName;
+                payload = serializer.Serialize(message);
             }
             else
             {
@@ -383,39 +407,6 @@ namespace Unity2Foxglove.Ros2Bridge
                 Ros2BridgeMcapCodecs.SchemaEncoding);
             reason = string.Empty;
             return true;
-        }
-
-        private static bool TryMapFoxgloveSchema(
-            string logicalSchemaName,
-            out string schemaName)
-        {
-            switch (logicalSchemaName)
-            {
-                case "foxglove.FrameTransform":
-                    schemaName = Ros2PublisherSchemaNames.FrameTransform;
-                    return true;
-                case "foxglove.SceneUpdate":
-                    schemaName = Ros2PublisherSchemaNames.SceneUpdate;
-                    return true;
-                case "foxglove.CompressedImage":
-                    schemaName = Ros2PublisherSchemaNames.CompressedImage;
-                    return true;
-                case "foxglove.CameraCalibration":
-                    schemaName = Ros2PublisherSchemaNames.CameraCalibration;
-                    return true;
-                case "foxglove.LaserScan":
-                    schemaName = Ros2PublisherSchemaNames.LaserScan;
-                    return true;
-                case "foxglove.PointCloud":
-                    schemaName = Ros2PublisherSchemaNames.PointCloud;
-                    return true;
-                case "foxglove.CompressedPointCloud":
-                    schemaName = Ros2PublisherSchemaNames.CompressedPointCloud;
-                    return true;
-                default:
-                    schemaName = string.Empty;
-                    return false;
-            }
         }
 
         private static bool MatchesLogicalType<T>(string logicalSchemaName)
@@ -876,8 +867,6 @@ namespace Unity2Foxglove.Ros2Bridge
                         out var reason);
                     if (readiness == Ros2BridgePublisherReadiness.Rejected)
                         return FoxRunTransportPublishResult.Rejected(reason);
-                    if (readiness != Ros2BridgePublisherReadiness.Ready)
-                        return FoxRunTransportPublishResult.Unavailable(reason);
 
                     var frame = Ros2BridgeFrame.CreateOwned(
                         route.Topic,
@@ -887,7 +876,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         route.Sequence,
                         payload,
                         qos);
-                    return runtime.TryEnqueuePrepared(frame, out reason)
+                    return runtime.TryEnqueue(frame, out reason)
                         ? FoxRunTransportPublishResult.Accepted()
                         : FoxRunTransportPublishResult.Unavailable(reason);
                 }

@@ -102,6 +102,98 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void BridgeOrdinaryGeneratedPublishUsesCompleteSerializerRegistry()
+        {
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var method = CSharpSyntaxTree.ParseText(
+                    provider,
+                    new CSharpParseOptions(
+                        preprocessorSymbols: new[] { "UNITY_5_3_OR_NEWER" }))
+                .GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(candidate =>
+                    candidate.Identifier.ValueText == "TryMapOrdinary");
+            var source = method.ToFullString();
+
+            Assert.Contains(
+                "Ros2CdrSerializerRegistry.TryGetByClrType",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "serializer.SchemaName",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "serializer.Serialize(message)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Ros2BridgeOrdinaryLogicalSchema.Matches",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "TryMapFoxgloveSchema",
+                provider,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BridgeProviderQueuesFirstSampleWhilePublisherPreparationIsPending()
+        {
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var method = CSharpSyntaxTree.ParseText(
+                    provider,
+                    new CSharpParseOptions(
+                        preprocessorSymbols: new[] { "UNITY_5_3_OR_NEWER" }))
+                .GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(candidate =>
+                    candidate.Identifier.ValueText == "Publish"
+                    && candidate.ToFullString().Contains("runtime.PreparePublisher"));
+            var source = method.ToFullString();
+
+            Assert.Contains(
+                "runtime.TryEnqueue(frame, out reason)",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "TryEnqueuePrepared",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "readiness != Ros2BridgePublisherReadiness.Ready",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BridgeOrdinaryLogicalSchemaAcceptsClrAndDescriptorNamesOnly()
+        {
+            var message = new Foxglove.Log();
+
+            Assert.True(
+                Ros2BridgeOrdinaryLogicalSchema.Matches(
+                    "Foxglove.Log",
+                    message));
+            Assert.True(
+                Ros2BridgeOrdinaryLogicalSchema.Matches(
+                    "foxglove.Log",
+                    message));
+            Assert.False(
+                Ros2BridgeOrdinaryLogicalSchema.Matches(
+                    "Foxglove.FrameTransform",
+                    message));
+            Assert.False(
+                Ros2BridgeOrdinaryLogicalSchema.Matches(
+                    "FOXGLOVE.LOG",
+                    message));
+        }
+
+        [Fact]
         public void EndingBridgeSessionAlwaysReleasesProviderOwnership()
         {
             var provider = ReadRepoText(

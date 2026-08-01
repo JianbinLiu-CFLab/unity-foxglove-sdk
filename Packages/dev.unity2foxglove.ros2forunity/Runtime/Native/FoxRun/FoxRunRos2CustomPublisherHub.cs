@@ -39,6 +39,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new List<IFoxRunRos2CustomPublisherHostedBinding>();
         private readonly HashSet<string> _existing = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _nativeDemand = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _warnings = new HashSet<string>(StringComparer.Ordinal);
         private readonly FoxRunRos2CustomPublisherSessionTracker _publishSessionTracker =
             new FoxRunRos2CustomPublisherSessionTracker();
@@ -47,6 +48,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private float _scanCooldown;
         private bool _stopping;
         private bool _providerSessionActive;
+        private bool _scanCompleted;
+        private int _observedNativeContractCount;
 
         internal void BindProviderOwner(
             FoxgloveManager manager,
@@ -68,7 +71,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal FoxRunTransportDirectionStatus CaptureTransportStatus()
         {
-            if (!_providerSessionActive || _stopping)
+            var ready = 0;
+            for (var index = 0; index < _bindings.Count; index++)
+                if (!_bindings[index].IsStopped)
+                    ready++;
+            var failed = _bindings.Count - ready;
+            var observed = Math.Max(_observedNativeContractCount, _bindings.Count);
+            return BuildTransportStatus(
+                _providerSessionActive,
+                _stopping,
+                _scanCompleted,
+                observed,
+                ready,
+                failed);
+        }
+
+        internal static FoxRunTransportDirectionStatus BuildTransportStatus(
+            bool sessionActive,
+            bool stopping,
+            bool scanCompleted,
+            int observedContracts,
+            int readyContracts,
+            int failedContracts)
+        {
+            if (!sessionActive || stopping)
             {
                 return new FoxRunTransportDirectionStatus(
                     FoxRunTransportDirection.Publish,
@@ -79,27 +105,33 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     0);
             }
 
-            var ready = 0;
-            for (var index = 0; index < _bindings.Count; index++)
-                if (!_bindings[index].IsStopped)
-                    ready++;
-            var failed = _bindings.Count - ready;
+            var pending = observedContracts - readyContracts - failedContracts;
+            var state = failedContracts != 0
+                ? readyContracts == 0
+                    ? FoxRunTransportObservedState.Failed
+                    : FoxRunTransportObservedState.Degraded
+                : !scanCompleted || pending != 0
+                    ? readyContracts == 0
+                        ? FoxRunTransportObservedState.Starting
+                        : FoxRunTransportObservedState.Degraded
+                    : FoxRunTransportObservedState.Ready;
+            FoxRunTransportDiagnostic? diagnostic = failedContracts != 0
+                ? new FoxRunTransportDiagnostic(
+                    "R2FU002",
+                    "One or more native publisher bindings stopped.")
+                : !scanCompleted || pending != 0
+                    ? new FoxRunTransportDiagnostic(
+                        "R2FU001",
+                        "Native publisher bindings are waiting for runtime readiness.")
+                    : (FoxRunTransportDiagnostic?)null;
             return new FoxRunTransportDirectionStatus(
                 FoxRunTransportDirection.Publish,
                 selected: true,
-                failed == 0
-                    ? FoxRunTransportObservedState.Ready
-                    : ready == 0
-                        ? FoxRunTransportObservedState.Failed
-                        : FoxRunTransportObservedState.Degraded,
-                _bindings.Count,
-                ready,
-                failed,
-                failed == 0
-                    ? (FoxRunTransportDiagnostic?)null
-                    : new FoxRunTransportDiagnostic(
-                        "R2FU002",
-                        "One or more native publisher bindings stopped."));
+                state,
+                observedContracts,
+                readyContracts,
+                failedContracts,
+                diagnostic);
         }
 
         private void OnEnable()
@@ -216,6 +248,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RouteEndpoint defaultSource,
             FoxRunRos2RouteEndpoint defaultTargets)
         {
+            _scanCompleted = false;
+            _nativeDemand.Clear();
             _seen.Clear();
             _existing.Clear();
             for (var index = 0; index < _bindings.Count; index++)
@@ -267,6 +301,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "stale|" + exception.GetType().FullName + "|" + exception.Message,
                     "Custom native ROS2 publisher teardown failed: "
                     + exception.GetType().Name));
+            _observedNativeContractCount = Math.Max(
+                _nativeDemand.Count,
+                _bindings.Count);
+            _scanCompleted = true;
         }
 
         private void AddBinding<TDto, TEnvelope>(
@@ -285,7 +323,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             var identity = source.GetInstanceID() + "|" + contract.Id;
             _seen.Add(identity);
-            if (_existing.Contains(identity) || _bindings.Count >= MaximumBindings)
+            if (_existing.Contains(identity))
+            {
+                _nativeDemand.Add(identity);
+                return;
+            }
+            if (_bindings.Count >= MaximumBindings)
                 return;
             if (!contract.SupportsNativeOutput)
             {
@@ -317,6 +360,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 return;
             }
+            _nativeDemand.Add(identity);
 
             if (!TryGetAcceptedSourceOrigin(
                     source as IFoxgloveLogSource,
@@ -454,6 +498,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _stale.Clear();
                 _existing.Clear();
                 _seen.Clear();
+                _nativeDemand.Clear();
+                _observedNativeContractCount = 0;
+                _scanCompleted = false;
             }
         }
 

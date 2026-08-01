@@ -106,6 +106,44 @@ namespace Unity.FoxgloveSDK.Components
 
     internal static class FoxRunGeneratedTransportFanout
     {
+        private const int MaximumFailureReasonLength = 512;
+
+        internal static string FormatFailure(
+            in FoxRunGeneratedTransportFanoutResult result)
+        {
+            var message = "Generated Provider fanout failed: "
+                          + result.Rejected
+                          + " rejected, "
+                          + result.Unavailable
+                          + " unavailable, "
+                          + result.Failed
+                          + " failed.";
+            var targetResults = result.TargetResults;
+            for (var index = 0; index < targetResults.Count; index++)
+            {
+                var target = targetResults[index];
+                if (target.State == FoxRunTransportRouteResultState.Accepted
+                    || string.IsNullOrWhiteSpace(target.Reason))
+                {
+                    continue;
+                }
+
+                var reason = target.Reason.Length
+                             <= MaximumFailureReasonLength
+                    ? target.Reason
+                    : target.Reason.Substring(
+                        0,
+                        MaximumFailureReasonLength);
+                return message
+                       + " First failure: "
+                       + target.TransportId
+                       + ": "
+                       + reason;
+            }
+
+            return message;
+        }
+
         internal static FoxRunGeneratedTransportFanoutResult Publish(
             IReadOnlyList<IFoxRunTransportSession> sessions,
             IReadOnlyList<string> explicitTransportIds,

@@ -112,6 +112,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private GeneratedRunIdentity _generatedIdentity;
         private bool _readyMarkerEmitted;
+        private bool _publisherWarmupRequested;
         private bool _localMutationRequested;
         private bool _hasObservedConnection;
         private bool _lastConnected;
@@ -146,6 +147,8 @@ namespace Unity2Foxglove.ManualAcceptance
 
         partial void Phase186Generated_Tick(
             ref GeneratedEvidence evidence);
+
+        partial void Phase186Generated_WarmPublishers(ref bool published);
 
         partial void Phase186Generated_PublishLocalMutation(
             ref GeneratedEvidence evidence,
@@ -245,6 +248,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _fanoutSentFramesBeforeFailure = 0;
             _progressFingerprint = string.Empty;
             _nextExternalGateCheckAt = 0f;
+            _publisherWarmupRequested = false;
             _localMutationRequested = false;
             _hasObservedConnection = false;
             _lastConnected = false;
@@ -298,8 +302,12 @@ namespace Unity2Foxglove.ManualAcceptance
                 Debug.Log(FormatIdentityMarker("PHASE186_ACCEPTANCE_READY", "READY"));
             }
 
+            if (_ready && !_publisherWarmupRequested)
+                WarmPublishersForDiscovery();
+
             if (!_manual
                 && _generatedEvidence.Applied > 0
+                && HasObservedExternalInput()
                 && _generatedEvidence.LocalMutations == 0
                 && !_localMutationRequested)
             {
@@ -310,6 +318,24 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_manual && CanComplete)
                 CompleteAutomaticAcceptance();
         }
+
+        private void WarmPublishersForDiscovery()
+        {
+            _publisherWarmupRequested = true;
+            var published = false;
+            Phase186Generated_WarmPublishers(ref published);
+            Debug.Log(
+                "PHASE186_PUBLISHER_WARMUP run=" + _runId
+                + " case=" + _caseId
+                + " tokenHash=" + _tokenHash
+                + " published=" + (published ? "true" : "false"));
+        }
+
+        private bool HasObservedExternalInput()
+            => (_generatedEvidence.LastStandardMessage ?? string.Empty)
+                   .IndexOf(":external-a", StringComparison.Ordinal) >= 0
+               || (_generatedEvidence.LastCustomMessage ?? string.Empty)
+                   .IndexOf(":external-a", StringComparison.Ordinal) >= 0;
 
         private void EmitProgressIfChanged()
         {

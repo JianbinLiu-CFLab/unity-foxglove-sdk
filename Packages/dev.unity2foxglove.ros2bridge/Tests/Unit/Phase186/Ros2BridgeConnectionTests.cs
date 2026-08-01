@@ -194,6 +194,69 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void ReadyConnectionSendsSessionBoundHeartbeatBeforeReadLeaseExpires()
+        {
+            using var heartbeatSeen = new ManualResetEventSlim(false);
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+
+                var heartbeat = Parse(ReadWireFrame(stream));
+                Assert.Equal(
+                    U2R2Operation.HealthPing,
+                    heartbeat.Operation);
+                Assert.Equal(
+                    "phase186-session",
+                    heartbeat.SessionId);
+                Assert.Equal(
+                    19UL,
+                    heartbeat.ConnectionGeneration);
+                WriteFrame(
+                    stream,
+                    Response(
+                        "health_pong",
+                        heartbeat.RequestId,
+                        heartbeat.SessionId,
+                        heartbeat.ConnectionGeneration));
+                heartbeatSeen.Set();
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+
+            var limits = U2R2ProtocolLimits.Default.With(
+                ("readTimeoutMs", 1000UL));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect(
+                "127.0.0.1",
+                peer.Port,
+                timeoutMs: 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                limits,
+                requiresSubscription: true,
+                writerCapacity: 4,
+                pendingCapacity: 4,
+                timeoutMs: 1000);
+
+            connection.Start();
+
+            Assert.True(
+                heartbeatSeen.Wait(
+                    TimeSpan.FromMilliseconds(750)));
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Ready,
+                connection.LifecycleState);
+            releasePeer.Set();
+            peer.AssertCompleted();
+        }
+
+        [Fact]
         public void ProtocolReadDeadlineSurvivesIdleGapBeyondSendTimeout()
         {
             using var releasePeer = new ManualResetEventSlim(false);

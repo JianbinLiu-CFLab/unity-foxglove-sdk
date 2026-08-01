@@ -519,6 +519,37 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 fanout_source,
             )
 
+    def test_duplex_binding_warms_publisher_without_claiming_local_mutation(self) -> None:
+        token = "p186h_0123456789abcdef01234567"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            project.mkdir()
+            output = repository / "build" / "phase186" / "phase186h-warmup-check"
+            output.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=output,
+                run_id="phase186h-warmup-check",
+                token=token,
+                case_id="slow-main-thread-640hz",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=161,
+            )
+
+            source = acceptance.render_unity_run_binding(config)
+            warmup_method = source.split(
+                "partial void Phase186Generated_WarmPublishers", 1
+            )[1].split(
+                "partial void Phase186Generated_PublishLocalMutation", 1
+            )[0]
+
+            self.assertIn("unity-publisher-warmup", warmup_method)
+            self.assertIn("published = true;", warmup_method)
+            self.assertNotIn("evidence.LocalMutations++", warmup_method)
+
 
 if __name__ == "__main__":
     unittest.main()

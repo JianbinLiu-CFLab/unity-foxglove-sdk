@@ -579,13 +579,9 @@ namespace Unity.FoxgloveSDK.Components
                                 source,
                                 topicIndex,
                                 new InvalidOperationException(
-                                    "Generated Provider fanout failed: "
-                                    + providerResult.Rejected
-                                    + " rejected, "
-                                    + providerResult.Unavailable
-                                    + " unavailable, "
-                                    + providerResult.Failed
-                                    + " failed."));
+                                    FoxRunGeneratedTransportFanout
+                                        .FormatFailure(
+                                            in providerResult)));
                         }
                     }
 

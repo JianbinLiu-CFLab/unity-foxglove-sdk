@@ -332,13 +332,6 @@ namespace Unity.FoxgloveSDK.Editor
                 includeProtobufMetadata ? member.ProtobufMetadata : null);
         }
 
-        private static string LogicalTypeName(FoxRunTypeShape shape)
-        {
-            while (shape != null && shape.Kind == FoxRunTypeShapeKind.Collection)
-                shape = shape.ElementShape;
-            return shape?.TypeName ?? string.Empty;
-        }
-
         private static string ResolveLogicalSchemaName(
             string declaringType,
             IReadOnlyList<FoxRunManifestMember> members)
@@ -355,7 +348,9 @@ namespace Unity.FoxgloveSDK.Editor
                 return declaringType;
 
             var shapeNames = members
-                .Select(member => (LogicalTypeName(member.TypeShape) ?? string.Empty).Trim())
+                .Select(member => FoxRunLogicalSchemaNameResolver.ResolveMember(
+                    string.Empty,
+                    member.TypeShape))
                 .Where(name => name.Length > 0)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)

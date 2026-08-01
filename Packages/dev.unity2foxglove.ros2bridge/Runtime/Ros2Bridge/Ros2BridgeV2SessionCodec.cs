@@ -251,6 +251,50 @@ namespace Unity2Foxglove.Ros2Bridge
                 limits);
         }
 
+        internal static Ros2BridgeV2Request CreateHealthPing(
+            Ros2BridgeV2SessionSnapshot snapshot,
+            ulong requestId)
+        {
+            ValidateSnapshot(snapshot);
+            var header = new JObject
+            {
+                ["connectionGeneration"] =
+                    snapshot.ConnectionGeneration,
+                ["op"] = "health_ping",
+                ["protocolVersion"] =
+                    U2R2ProtocolCodec.ProtocolVersion,
+                ["requestId"] = requestId,
+                ["sessionId"] = snapshot.SessionId,
+            };
+            return CreateRequest(
+                header,
+                Array.Empty<byte>(),
+                snapshot.Limits,
+                U2R2ResponseExpectation.FromKnownRequest(
+                    U2R2Operation.HealthPing,
+                    requestId,
+                    snapshot.SessionId,
+                    snapshot.ConnectionGeneration));
+        }
+
+        internal static U2R2Message AcceptHealthPong(
+            Ros2BridgeV2Request request,
+            byte[] responseWireBytes,
+            Ros2BridgeV2SessionSnapshot snapshot)
+        {
+            var response = ValidateResponse(
+                request,
+                responseWireBytes,
+                snapshot);
+            if (response.Operation != U2R2Operation.HealthPong)
+            {
+                throw new U2R2ProtocolException(
+                    "response_mismatch",
+                    "The U2R2 health response is not health_pong.");
+            }
+            return response;
+        }
+
         internal static Ros2BridgeV2Request CreatePublisherPreparation(
             Ros2BridgeV2SessionSnapshot snapshot,
             ulong requestId,

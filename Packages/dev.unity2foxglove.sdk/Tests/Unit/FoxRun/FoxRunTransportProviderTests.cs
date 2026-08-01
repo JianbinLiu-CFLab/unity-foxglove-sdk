@@ -421,6 +421,40 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void GeneratedProviderFailureDiagnosticPreservesTargetReason()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var sessions = new IFoxRunTransportSession[]
+            {
+                new GeneratedSession(
+                    "unity2foxglove.ros2bridge",
+                    calls,
+                    FoxRunTransportPublishResult.Rejected(
+                        "logical schema mismatch"))
+            };
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(),
+                topicIndex: 0,
+                "/phase186/generated",
+                logTimeNs: 186);
+            var result = FoxRunGeneratedTransportFanout.Publish(
+                sessions,
+                explicitTransportIds: new[]
+                {
+                    "unity2foxglove.ros2bridge"
+                },
+                inheritedTransportIds: Array.Empty<FoxRunTransportId>(),
+                in request);
+            var diagnostic = FoxRunGeneratedTransportFanout.FormatFailure(
+                in result);
+            Assert.Contains("1 rejected", diagnostic);
+            Assert.Contains(
+                "unity2foxglove.ros2bridge: logical schema mismatch",
+                diagnostic,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedFanoutSuppressesOnlyExactRemoteProviderGeneration()
         {
             var calls = new System.Collections.Generic.List<string>();
@@ -1062,6 +1096,60 @@ namespace Unity.FoxgloveSDK.Tests
             Assert.DoesNotContain("System.Reflection", source);
             Assert.DoesNotContain("GetField(", source);
             Assert.DoesNotContain("GetProperty(", source);
+        }
+
+        [Fact]
+        public void GeneratedProviderAccessUsesTheManifestLogicalSchemaFallback()
+        {
+            var member = new FoxRunGenerationMember(
+                ns: "Demo",
+                className: "Source",
+                memberName: "_log",
+                memberKind: "field",
+                rawObservedTypeName: "Foxglove.Log",
+                emissionTypeName: "global::Foxglove.Log",
+                isValueType: false,
+                isArray: false,
+                elementTypeName: string.Empty,
+                topic: "/phase186/log",
+                hz: 10f,
+                schemaName: string.Empty,
+                policy: (int)FoxRunPolicy.Change,
+                tolerance: 0f,
+                hostKind: "UnitTest",
+                rawMemberOrder: 0,
+                conditionalSymbols: string.Empty,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
+                typeShape: FoxRunTypeShape.Object(
+                    "Foxglove.Log",
+                    Array.Empty<FoxRunTypeField>()),
+                generatesWebSocketCodec: true,
+                publishTransportIds: new[]
+                {
+                    FoxgloveWebSocketTransport.Id,
+                    "unity2foxglove.ros2bridge"
+                },
+                subscribeTransportId: "unity2foxglove.ros2bridge");
+            var model = FoxRunGenerationModel.FromMembers(new[] { member });
+            var type = Assert.Single(model.Types);
+            var manifest = FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    FoxRunManifestMember.FromGenerationMember(member)
+                },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+            var contracts = Assert.Single(
+                manifest.Sections.FoxRun.Types).Contracts;
+
+            Assert.All(
+                contracts,
+                contract => Assert.Equal(
+                    "Foxglove.Log",
+                    contract.LogicalSchemaName));
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+            Assert.Matches(
+                @"new FoxRunGeneratedMemberAccess<(?:global::)?Foxglove\.Log>\s*\(\s*""[^""]+"",\s*""/phase186/log"",\s*""Foxglove\.Log"",\s*\(FoxRunFlow\)3,",
+                source);
         }
 
         [Fact]

@@ -37,6 +37,30 @@ class Phase186BridgeBuildTests(unittest.TestCase):
         with self.assertRaises(build.BridgeBuildFailure):
             build.require_row("jazzy-fastdds")
 
+    def test_generated_duplex_uses_modern_rosidl_targets_with_legacy_fallback(self) -> None:
+        """Keep Lyrical target exports and older ament dependency macros buildable."""
+
+        repository = pathlib.Path(__file__).resolve().parents[4]
+        cmake = (
+            repository
+            / "Tools"
+            / "ros2_bridge"
+            / "unity2foxglove_ros2_bridge"
+            / "CMakeLists.txt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "if(TARGET foxglove_msgs::foxglove_msgs AND TARGET "
+            "unity2foxglove_foxrun_interfaces_v1::"
+            "unity2foxglove_foxrun_interfaces_v1)",
+            cmake,
+        )
+        self.assertIn("elseif(COMMAND ament_target_dependencies)", cmake)
+        self.assertIn(
+            'message(FATAL_ERROR "No supported ROS interface dependency target API")',
+            cmake,
+        )
+
     def test_tracked_phase181_lock_is_exact(self) -> None:
         """Require the tracked Phase181 interface authority to match exactly."""
 

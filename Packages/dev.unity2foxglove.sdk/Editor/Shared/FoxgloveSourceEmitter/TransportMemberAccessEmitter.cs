@@ -108,7 +108,9 @@ namespace Unity.FoxgloveSDK.Editor
                 var topic = StringLiteralEmitter.CSharpStringLiteral(
                     member.Topic);
                 var schema = StringLiteralEmitter.CSharpStringLiteral(
-                    member.SchemaName);
+                    FoxRunLogicalSchemaNameResolver.ResolveMember(
+                        member.SchemaName,
+                        member.TypeShape));
                 var read = member.Mode == 1 || member.Mode == 3
                     ? $"__FoxRunRead_{suffix}"
                     : "null";

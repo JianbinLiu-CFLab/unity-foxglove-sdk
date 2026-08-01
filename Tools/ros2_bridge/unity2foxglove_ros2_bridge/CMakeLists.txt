@@ -166,10 +166,19 @@ if(BUILD_TESTING)
       rclcpp::rclcpp
       nlohmann_json::nlohmann_json
     )
-    ament_target_dependencies(test_generated_duplex
-      foxglove_msgs
-      unity2foxglove_foxrun_interfaces_v1
-    )
+    if(TARGET foxglove_msgs::foxglove_msgs AND TARGET unity2foxglove_foxrun_interfaces_v1::unity2foxglove_foxrun_interfaces_v1)
+      target_link_libraries(test_generated_duplex
+        foxglove_msgs::foxglove_msgs
+        unity2foxglove_foxrun_interfaces_v1::unity2foxglove_foxrun_interfaces_v1
+      )
+    elseif(COMMAND ament_target_dependencies)
+      ament_target_dependencies(test_generated_duplex
+        foxglove_msgs
+        unity2foxglove_foxrun_interfaces_v1
+      )
+    else()
+      message(FATAL_ERROR "No supported ROS interface dependency target API")
+    endif()
     if(WIN32)
       target_link_libraries(test_generated_duplex ws2_32)
     endif()

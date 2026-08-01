@@ -50,6 +50,13 @@ FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 FOXGLOVE_MESSAGE_OPCODE = 1
 BRIDGE_NODE_NAME = "unity2foxglove_ros2_bridge"
 SOURCE_DELIVERY_SETTLE_SECONDS = 0.75
+LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS = 300.0
+POST_RECONNECT_EXERCISE_CASES = frozenset(
+    {"reconnect-degraded-recovery", "lifecycle"}
+)
+IDENTITY_GATE_KEYS = frozenset(
+    {"schemaVersion", "runId", "caseId", "tokenHash", "head", "ready"}
+)
 
 
 class LiveActorFailure(protocol.ProtocolFailure):
@@ -196,6 +203,76 @@ def _wait_for_unity_ready(config: Mapping[str, Any]) -> None:
     )
 
 
+def _identity_gate_ready(config: Mapping[str, Any], key: str) -> bool:
+    try:
+        path = pathlib.Path(str(config[key]))
+        if path.stat().st_size <= 0 or path.stat().st_size > MAX_DOCUMENT_BYTES:
+            return False
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (KeyError, OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(value, Mapping)
+        and set(value) == IDENTITY_GATE_KEYS
+        and type(value.get("schemaVersion")) is int
+        and value.get("schemaVersion") == 1
+        and value.get("runId") == config.get("runId")
+        and value.get("caseId") == config.get("caseId")
+        and value.get("tokenHash") == config.get("tokenHash")
+        and value.get("head") == config.get("head")
+        and value.get("ready") is True
+    )
+
+
+def _wait_for_exercise_gate(config: Mapping[str, Any]) -> None:
+    _wait_until(
+        lambda: _identity_gate_ready(config, "exerciseGate"),
+        protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
+        "FAIL_TERMINAL",
+        "post-reconnect exercise gate expired",
+    )
+
+
+def _wait_for_ros_exercise_window(config: Mapping[str, Any]) -> None:
+    _wait_for_unity_ready(config)
+    if str(config["caseId"]) in POST_RECONNECT_EXERCISE_CASES:
+        _wait_for_exercise_gate(config)
+
+
+def _slow_unity_baseline_ready(config: Mapping[str, Any]) -> bool:
+    prefix = "PHASE186_ACCEPTANCE_PROGRESS "
+    for line in _read_log(pathlib.Path(str(config["unityLog"]))).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") != str(config["runId"])
+            or fields.get("case") != str(config["caseId"])
+            or fields.get("generated") != "true"
+        ):
+            continue
+        try:
+            received = int(fields.get("received", "0"))
+            applied = int(fields.get("applied", "0"))
+        except ValueError:
+            continue
+        if received >= 1 and applied >= 1:
+            return True
+    return False
+
+
+def _sequence_windows(case_id: str, offered: int) -> tuple[range, ...]:
+    if offered <= 0:
+        raise ValueError("offered sequence count must be positive")
+    if case_id == "slow-main-thread-640hz":
+        return (range(1, 2), range(2, offered + 1))
+    return (range(1, offered + 1),)
+
+
 def _layout(config: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
     kinds = protocol.CASE_CONTRACT_KINDS[str(config["caseId"])]
     topics = tuple(str(value) for value in config["topics"])
@@ -208,6 +285,40 @@ def _is_publish(kind: str) -> bool:
 
 def _is_subscribe(kind: str) -> bool:
     return kind.endswith("subscribe") or kind.endswith("duplex")
+
+
+def _bridge_endpoints_ready(node: Any, config: Mapping[str, Any]) -> bool:
+    """Require exact Bridge-owned endpoints, never the peer's duplex endpoint."""
+
+    for topic, kind in _layout(config):
+        expected_type = (
+            protocol.INTERFACE_TYPE
+            if kind.startswith("custom_")
+            else "foxglove_msgs/msg/Log"
+        )
+        publishers = node.get_publishers_info_by_topic(topic)
+        subscriptions = node.get_subscriptions_info_by_topic(topic)
+        if _is_publish(kind):
+            matching_publishers = [
+                info for info in publishers if info.topic_type == expected_type
+            ]
+            bridge_publishers = [
+                info
+                for info in matching_publishers
+                if str(getattr(info, "node_name", "")) == BRIDGE_NODE_NAME
+            ]
+            required_publishers = (
+                2 if config["caseId"] == "fanout-fairness-health" else 1
+            )
+            if not bridge_publishers or len(matching_publishers) < required_publishers:
+                return False
+        if _is_subscribe(kind) and not any(
+            info.topic_type == expected_type
+            and str(getattr(info, "node_name", "")) == BRIDGE_NODE_NAME
+            for info in subscriptions
+        ):
+            return False
+    return True
 
 
 def _load_ros_types():
@@ -420,13 +531,12 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         )
         if "graph-observer" in set(config["requiredActors"]):
             _write_cohosted_graph_ready(config)
-        _wait_for_unity_ready(config)
+        _wait_for_ros_exercise_window(config)
         _spin_until(
             rclpy,
             node,
-            lambda: all(pub.get_subscription_count() > 0 for pub in publishers.values())
-            and all(sub.get_publisher_count() > 0 for sub in subscriptions.values()),
-            90.0,
+            lambda: _bridge_endpoints_ready(node, config),
+            LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
             "Bridge ROS graph endpoints did not match the live peer",
         )
         if "graph-observer" in set(config["requiredActors"]):
@@ -435,25 +545,44 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 _observe_graph(rclpy, node, config),
             )
 
-        offered = 1280 if config["caseId"] == "slow-main-thread-640hz" else 8
+        slow_case = config["caseId"] == "slow-main-thread-640hz"
+        offered = 1280 if slow_case else 8
         token_hash = str(config["tokenHash"])
-        started = time.perf_counter()
-        for sequence in range(1, offered + 1):
-            for topic, publisher in publishers.items():
-                kind = kinds[topic]
-                value = (
-                    _custom_message(envelope, payload, nested, node, config, sequence)
-                    if kind.startswith("custom_")
-                    else _standard_message(standard, node, config, sequence)
-                )
-                publisher.publish(value)
-            if offered > 100:
-                deadline = started + sequence / 640.0
-                remaining = deadline - time.perf_counter()
-                if remaining > 0:
-                    time.sleep(remaining)
-            if sequence % 16 == 0:
+        sequence_windows = _sequence_windows(str(config["caseId"]), offered)
+        for window_index, sequences in enumerate(sequence_windows):
+            started = time.perf_counter()
+            for window_offset, sequence in enumerate(sequences, start=1):
+                for topic, publisher in publishers.items():
+                    kind = kinds[topic]
+                    value = (
+                        _custom_message(
+                            envelope,
+                            payload,
+                            nested,
+                            node,
+                            config,
+                            sequence,
+                        )
+                        if kind.startswith("custom_")
+                        else _standard_message(standard, node, config, sequence)
+                    )
+                    publisher.publish(value)
+                if slow_case and window_index == 1:
+                    deadline = started + window_offset / 640.0
+                    remaining = deadline - time.perf_counter()
+                    if remaining > 0:
+                        time.sleep(remaining)
+                if sequence % 16 == 0:
+                    rclpy.spin_once(node, timeout_sec=0.0)
+
+            if slow_case and window_index == 0:
                 rclpy.spin_once(node, timeout_sec=0.0)
+                _wait_until(
+                    lambda: _slow_unity_baseline_ready(config),
+                    LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
+                    "FAIL_TERMINAL",
+                    "Unity did not apply the identity-bound slow-case baseline",
+                )
 
         if publishers:
             _settle_source_delivery(
@@ -493,7 +622,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 rclpy,
                 node,
                 outbound_ready,
-                90.0,
+                LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
                 "Unity Bridge outbound sample did not reach the exact ROS peer",
             )
             duplicate_deadline = time.monotonic() + 0.75
@@ -607,7 +736,7 @@ def _observe_graph(
         rclpy_module,
         node,
         graph_ready,
-        90.0,
+        LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
         "independent graph observer did not find every exact Bridge endpoint",
     )
     return {"source": "rclpy-graph-api", "topics": observed}
@@ -647,7 +776,7 @@ async def _run_foxglove_async(config: Mapping[str, Any]) -> Mapping[str, Any]:
     )
     await asyncio.to_thread(_wait_for_unity_ready, config)
     url = f"ws://{config['foxgloveHost']}:{config['foxglovePort']}"
-    deadline = time.monotonic() + 90.0
+    deadline = time.monotonic() + LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS
     websocket = None
     while websocket is None:
         try:
@@ -873,6 +1002,15 @@ def _hostile_mutations() -> Mapping[str, bytes]:
     }
 
 
+def _is_busy_response(header: Mapping[str, Any]) -> bool:
+    return (
+        header.get("op") == "busy"
+        and header.get("status") == "error"
+        and header.get("errorCode") == "busy"
+        and header.get("terminal") is True
+    )
+
+
 def run_hostile_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     _write_actor_document(
         config,
@@ -896,7 +1034,7 @@ def run_hostile_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         connection.settimeout(3.0)
         connection.sendall(bytes.fromhex(hello["frameHex"]))
         busy, _payload = _decode_frame(_read_frame(connection))
-    if busy.get("status") != "error" or busy.get("code") != "busy":
+    if not _is_busy_response(busy):
         raise LiveActorFailure("FAIL_BRIDGE", "second data client did not receive busy")
     _health(config, str(config["token"]) + "-post-busy")
     return {

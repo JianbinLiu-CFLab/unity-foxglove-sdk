@@ -93,6 +93,42 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void PublisherStatusCannotReportReadyBeforeObservedDemandIsBound()
+        {
+            var beforeScan = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: false,
+                observedContracts: 0,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Starting, beforeScan.State);
+            Assert.Equal("R2FU001", beforeScan.Diagnostic?.Code);
+
+            var missingBinding = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: true,
+                observedContracts: 1,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Starting, missingBinding.State);
+            Assert.Equal(1, missingBinding.ObservedContractCount);
+            Assert.Equal(0, missingBinding.ReadyContractCount);
+            Assert.Equal("R2FU001", missingBinding.Diagnostic?.Code);
+
+            var noDemand = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: true,
+                observedContracts: 0,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Ready, noDemand.State);
+            Assert.Null(noDemand.Diagnostic);
+        }
+
+        [Fact]
         public void StopAllBindingsContinuesAfterOneBindingThrows()
         {
             var stopOrder = new List<string>();
