@@ -22,7 +22,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 
-RUN_CONFIG_SCHEMA_VERSION = 1
+RUN_CONFIG_SCHEMA_VERSION = 3
 TERMINAL_SCHEMA_VERSION = 1
 INTERFACE_TYPE = (
     "unity2foxglove_foxrun_interfaces_v1/msg/"
@@ -221,7 +221,7 @@ CASES: Mapping[str, CaseContract] = MappingProxyType(
             "product-inspector",
             row_id=None,
             manual=False,
-            actors={"unity"},
+            actors={"unity", "sidecar"},
             topics=("product_publish", "product_subscribe"),
             observations={"unity", "resources", "packages"},
         ),
@@ -241,6 +241,44 @@ CASES: Mapping[str, CaseContract] = MappingProxyType(
         ),
     }
 )
+
+
+# One shared declaration authority is consumed by the generated Unity partial,
+# the external ROS peer, and the graph observer.  Keeping this beside CASES
+# prevents the three live actors from silently testing different contracts.
+CASE_CONTRACT_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "frozen-v1": ("standard_publish", "standard_publish"),
+        "bridge-source": ("standard_subscribe", "custom_subscribe"),
+        "full-duplex": ("custom_duplex",),
+        "fanout-fairness-health": (
+            "standard_publish",
+            "standard_publish",
+            "standard_publish",
+        ),
+        "reconnect-degraded-recovery": ("custom_duplex", "standard_subscribe"),
+        "bounds-hostile-peer": ("standard_publish", "custom_publish"),
+        "lifecycle": ("custom_duplex",),
+        "slow-main-thread-640hz": ("custom_subscribe", "standard_duplex"),
+        "product-inspector": ("standard_publish", "standard_publish"),
+        "manual-jazzy-fastrtps-duplex": (
+            "custom_duplex",
+            "standard_duplex",
+            "custom_subscribe",
+        ),
+        "manual-lyrical-zenoh-duplex": (
+            "custom_duplex",
+            "standard_duplex",
+            "custom_subscribe",
+        ),
+    }
+)
+
+if set(CASE_CONTRACT_KINDS) != set(CASES) or any(
+    len(CASE_CONTRACT_KINDS[case_id]) != len(contract.topic_stems)
+    for case_id, contract in CASES.items()
+):  # pragma: no cover - import-time authority invariant.
+    raise RuntimeError("Phase186 case declarations differ from topic authority")
 
 
 def timestamp() -> str:
@@ -341,6 +379,7 @@ _RUN_CONFIG_KEYS = {
     "tokenHash",
     "caseId",
     "rowId",
+    "runtimeRowId",
     "distro",
     "rmw",
     "manual",
@@ -350,11 +389,16 @@ _RUN_CONFIG_KEYS = {
     "outputRoot",
     "bridgeHost",
     "bridgePort",
+    "foxgloveHost",
+    "foxglovePort",
     "domainId",
     "interfaceType",
     "interfaceDigest",
     "topics",
     "requiredActors",
+    "unityLog",
+    "externalGate",
+    "exerciseGate",
     "createdAt",
 }
 
@@ -370,18 +414,29 @@ def make_run_config(
     head: str,
     bridge_port: int,
     domain_id: int,
+    foxglove_port: int = 8765,
+    runtime_row_id: str | None = None,
 ) -> dict[str, Any]:
     """Build one immutable run authority object."""
 
     contract = require_case(case_id)
-    row = require_row(contract.row_id) if contract.row_id is not None else None
+    if contract.row_id is not None:
+        row = require_row(contract.row_id)
+        if runtime_row_id is not None and runtime_row_id != row.row_id:
+            raise _fail(
+                "FAIL_RUNTIME_SELECTION",
+                "manual case runtime row differs from case authority",
+            )
+    else:
+        row = require_row(runtime_row_id) if runtime_row_id is not None else None
     return {
         "schemaVersion": RUN_CONFIG_SCHEMA_VERSION,
         "runId": require_run_id(run_id),
         "token": require_token(token),
         "tokenHash": token_sha256(token),
         "caseId": contract.case_id,
-        "rowId": row.row_id if row is not None else None,
+        "rowId": contract.row_id,
+        "runtimeRowId": row.row_id if row is not None else None,
         "distro": row.distro if row is not None else None,
         "rmw": row.rmw if row is not None else None,
         "manual": contract.manual,
@@ -391,11 +446,20 @@ def make_run_config(
         "outputRoot": str(pathlib.Path(output_root).resolve()),
         "bridgeHost": "127.0.0.1",
         "bridgePort": bridge_port,
+        "foxgloveHost": "127.0.0.1",
+        "foxglovePort": foxglove_port,
         "domainId": domain_id,
         "interfaceType": INTERFACE_TYPE,
         "interfaceDigest": INTERFACE_DIGEST,
         "topics": list(topics_for_case(case_id, token)),
         "requiredActors": sorted(contract.required_actors),
+        "unityLog": str((pathlib.Path(output_root) / "unity.log").resolve()),
+        "externalGate": str(
+            (pathlib.Path(output_root) / "unity-external-gate.json").resolve()
+        ),
+        "exerciseGate": str(
+            (pathlib.Path(output_root) / "unity-exercise-gate.json").resolve()
+        ),
         "createdAt": timestamp(),
     }
 
@@ -413,16 +477,25 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
     if value["tokenHash"] != token_sha256(token):
         raise _fail("FAIL_PROTOCOL", "run config token hash differs")
     contract = require_case(value["caseId"])
-    if contract.row_id is None:
-        if value["rowId"] is not None or value["distro"] is not None or value["rmw"] is not None:
+    if value["rowId"] != contract.row_id:
+        raise _fail("FAIL_RUNTIME_SELECTION", "run config row differs from case authority")
+    runtime_row_id = value["runtimeRowId"]
+    if contract.row_id is not None:
+        if runtime_row_id != contract.row_id:
             raise _fail(
                 "FAIL_RUNTIME_SELECTION",
-                "row-independent run config cannot select a ROS/RMW alias",
+                "manual run config runtime row differs from case authority",
+            )
+        row = require_row(runtime_row_id)
+    else:
+        row = require_row(runtime_row_id) if runtime_row_id is not None else None
+    if row is None:
+        if value["distro"] is not None or value["rmw"] is not None:
+            raise _fail(
+                "FAIL_RUNTIME_SELECTION",
+                "row-independent preflight cannot retain ROS/RMW aliases",
             )
     else:
-        if value["rowId"] != contract.row_id:
-            raise _fail("FAIL_RUNTIME_SELECTION", "run config row differs from case authority")
-        row = require_row(value["rowId"])
         if value["distro"] != row.distro or value["rmw"] != row.rmw:
             raise _fail("FAIL_RUNTIME_SELECTION", "run config ROS/RMW differs from row authority")
     if value["manual"] is not contract.manual:
@@ -432,18 +505,33 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
     if _absolute_path(value["repository"], "repository") != root:
         raise _fail("FAIL_PREFLIGHT", "run config repository differs from current repository")
     project = _absolute_path(value["projectPath"], "projectPath")
-    if project != (root / "Unity2Foxglove").resolve():
-        raise _fail("FAIL_PREFLIGHT", "run config project is not the repository Unity project")
     output = _absolute_path(value["outputRoot"], "outputRoot")
     owned_root = (root / "build" / "phase186").resolve()
     if not _is_below(output, owned_root) or output.name != run_id:
         raise _fail("FAIL_PREFLIGHT", "run output is not the exact owned Phase186 run directory")
+    repository_project = (root / "Unity2Foxglove").resolve()
+    bridge_only_project = (output / "bridge-only-unity").resolve()
+    if project not in {repository_project, bridge_only_project}:
+        raise _fail(
+            "FAIL_PREFLIGHT",
+            "run config project is neither the repository project nor its exact owned Bridge-only project",
+        )
     if value["bridgeHost"] != "127.0.0.1":
         raise _fail("FAIL_PREFLIGHT", "Bridge must use IPv4 loopback")
     port = value["bridgePort"]
+    foxglove_port = value["foxglovePort"]
     domain = value["domainId"]
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise _fail("FAIL_PREFLIGHT", "Bridge port is outside 1..65535")
+    if value["foxgloveHost"] != "127.0.0.1":
+        raise _fail("FAIL_PREFLIGHT", "Foxglove must use IPv4 loopback")
+    if (
+        isinstance(foxglove_port, bool)
+        or not isinstance(foxglove_port, int)
+        or not 1 <= foxglove_port <= 65535
+        or foxglove_port == port
+    ):
+        raise _fail("FAIL_PREFLIGHT", "Foxglove port is invalid or collides with Bridge")
     if isinstance(domain, bool) or not isinstance(domain, int) or not 0 <= domain <= 232:
         raise _fail("FAIL_PREFLIGHT", "ROS domain ID is outside 0..232")
     if value["interfaceType"] != INTERFACE_TYPE or value["interfaceDigest"] != INTERFACE_DIGEST:
@@ -452,11 +540,21 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
         raise _fail("FAIL_PREFLIGHT", "run topic set differs from current token authority")
     if tuple(value["requiredActors"]) != tuple(sorted(contract.required_actors)):
         raise _fail("FAIL_PREFLIGHT", "run actor set differs from case authority")
+    expected_unity_log = (output / "unity.log").resolve()
+    expected_gate = (output / "unity-external-gate.json").resolve()
+    expected_exercise_gate = (output / "unity-exercise-gate.json").resolve()
+    if _absolute_path(value["unityLog"], "unityLog") != expected_unity_log:
+        raise _fail("FAIL_PREFLIGHT", "Unity log path differs from run authority")
+    if _absolute_path(value["externalGate"], "externalGate") != expected_gate:
+        raise _fail("FAIL_PREFLIGHT", "Unity external gate path differs from run authority")
+    if _absolute_path(value["exerciseGate"], "exerciseGate") != expected_exercise_gate:
+        raise _fail("FAIL_PREFLIGHT", "Unity exercise gate path differs from run authority")
     return value
 
 
 _CLEANUP_KEYS = {
     "complete",
+    "cleanupErrors",
     "residualProcesses",
     "residualPorts",
     "residualOverlays",
@@ -467,6 +565,7 @@ _CLEANUP_KEYS = {
 def clean_cleanup_evidence() -> dict[str, Any]:
     return {
         "complete": True,
+        "cleanupErrors": [],
         "residualProcesses": [],
         "residualPorts": [],
         "residualOverlays": [],
@@ -599,6 +698,7 @@ def _actor_for_tests(index: int) -> dict[str, Any]:
         "identityVerified": True,
         "exited": True,
         "exitCode": 0,
+        "termination": "self",
     }
 
 
@@ -628,6 +728,42 @@ def make_pass_summary_for_tests(
         }
         for name in sorted(contract.required_observations)
     }
+    return make_pass_summary(
+        run_id=run_id,
+        token=token,
+        case_id=case_id,
+        head=head,
+        evidence_root=evidence_root,
+        actors=result["actors"],
+        observations=result["observations"],
+        cleanup=result["cleanup"],
+    )
+
+
+def make_pass_summary(
+    *,
+    run_id: str,
+    token: str,
+    case_id: str,
+    head: str,
+    evidence_root: str,
+    actors: Mapping[str, Any],
+    observations: Mapping[str, Any],
+    cleanup: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Create a live PASS only from complete exact actor/observation evidence."""
+
+    result = _base_terminal(
+        run_id=run_id,
+        token=token,
+        case_id=case_id,
+        head=head,
+        evidence_root=evidence_root,
+    )
+    result["verdict"] = "PASS"
+    result["actors"] = deep_copy_json(actors)
+    result["observations"] = deep_copy_json(observations)
+    result["cleanup"] = deep_copy_json(cleanup)
     validate_terminal_summary(result)
     return result
 
@@ -662,6 +798,7 @@ def _validate_actor(actor: object, label: str) -> None:
         "identityVerified",
         "exited",
         "exitCode",
+        "termination",
     }
     _exact_keys(actor, expected, label)
     pid = actor["pid"]
@@ -671,8 +808,23 @@ def _validate_actor(actor: object, label: str) -> None:
     for key in ("started", "ready", "identityVerified", "exited"):
         if actor[key] is not True:
             raise _fail("FAIL_PROCESS_IDENTITY", f"{label} did not prove {key}")
-    if actor["exitCode"] != 0:
+    termination = actor["termination"]
+    if termination not in {"self", "owner-requested"}:
+        raise _fail("FAIL_PROCESS_EXIT", f"{label} termination is invalid")
+    exit_code = actor["exitCode"]
+    if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+        raise _fail("FAIL_PROCESS_EXIT", f"{label} exit code is invalid")
+    if termination == "self" and exit_code != 0:
         raise _fail("FAIL_PROCESS_EXIT", f"{label} did not exit zero")
+    if termination == "owner-requested" and exit_code not in {
+        0,
+        1,
+        -1073741510,  # CTRL+C / CTRL+BREAK on Windows
+        3221225786,  # Unsigned 32-bit STATUS_CONTROL_C_EXIT
+        -1073741515,  # loader teardown after owned Job close
+        3221225781,  # Unsigned 32-bit STATUS_DLL_NOT_FOUND
+    }:
+        raise _fail("FAIL_PROCESS_EXIT", f"{label} owned termination is unexpected")
 
 
 def _validate_observation(value: object, label: str) -> None:

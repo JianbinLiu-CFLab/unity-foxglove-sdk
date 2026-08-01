@@ -121,6 +121,23 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
         with self.assertRaises(protocol.ProtocolFailure):
             protocol.validate_terminal_summary(value)
 
+    def test_owner_requested_windows_exit_codes_accept_signed_and_unsigned_forms(self) -> None:
+        for exit_code in (-1073741510, 3221225786, -1073741515, 3221225781):
+            with self.subTest(exit_code=exit_code):
+                value = protocol.make_pass_summary_for_tests(
+                    run_id=RUN_ID,
+                    token=TOKEN,
+                    case_id="manual-jazzy-fastrtps-duplex",
+                    head=HEAD,
+                    evidence_root=r"D:\repo\build\phase186\acceptance\run",
+                )
+                value["actors"]["sidecar"]["termination"] = "owner-requested"
+                value["actors"]["sidecar"]["exitCode"] = exit_code
+                self.assertEqual(
+                    "PASS",
+                    protocol.validate_terminal_summary(value)["verdict"],
+                )
+
     def test_pass_rejects_cached_or_configuration_only_evidence(self) -> None:
         value = protocol.make_pass_summary_for_tests(
             run_id=RUN_ID,
@@ -171,6 +188,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             failure_message="owned sidecar remained live",
             cleanup={
                 "complete": False,
+                "cleanupErrors": ["owner close failed"],
                 "residualProcesses": [1234],
                 "residualPorts": [18767],
                 "residualOverlays": [],
@@ -244,6 +262,34 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 protocol.validate_run_config(config, repo)["rowId"],
             )
             config["outputRoot"] = str(repo / "outside")
+            with self.assertRaises(protocol.ProtocolFailure):
+                protocol.validate_run_config(config, repo)
+
+    def test_run_config_accepts_only_the_exact_owned_bridge_only_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = pathlib.Path(temp).resolve()
+            (repo / "Unity2Foxglove").mkdir()
+            output = repo / "build" / "phase186" / RUN_ID
+            project = output / "bridge-only-unity"
+            project.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repo,
+                project=project,
+                output_root=output,
+                run_id=RUN_ID,
+                token=TOKEN,
+                case_id="full-duplex",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=186,
+            )
+            self.assertEqual(
+                project,
+                pathlib.Path(
+                    protocol.validate_run_config(config, repo)["projectPath"]
+                ),
+            )
+            config["projectPath"] = str(output / "foreign-project")
             with self.assertRaises(protocol.ProtocolFailure):
                 protocol.validate_run_config(config, repo)
 

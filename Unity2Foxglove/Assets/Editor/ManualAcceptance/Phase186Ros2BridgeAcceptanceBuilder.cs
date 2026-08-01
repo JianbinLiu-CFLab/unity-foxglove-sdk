@@ -59,7 +59,7 @@ namespace Unity2Foxglove
             var manager = host.AddComponent<FoxgloveManager>();
             var provider = host.AddComponent<Ros2BridgeTransportProvider>();
             var acceptance = host.AddComponent<Phase186Ros2BridgeAcceptance>();
-            ConfigureManager(manager);
+            ConfigureManager(manager, null, 8765);
             ConfigureProvider(provider, 8767);
             acceptance.ConfigureSceneReferences(manager, provider);
 
@@ -142,7 +142,8 @@ namespace Unity2Foxglove
             var manager = RequireExactlyOne<FoxgloveManager>(scene);
             var provider = RequireExactlyOne<Ros2BridgeTransportProvider>(scene);
             var acceptance = RequireExactlyOne<Phase186Ros2BridgeAcceptance>(scene);
-            ConfigureManager(manager);
+            EnsureFanoutProvider(manager, config.CaseId);
+            ConfigureManager(manager, config.CaseId, config.FoxglovePort);
             ConfigureProvider(provider, config.BridgePort);
             acceptance.ConfigureSceneReferences(manager, provider);
             acceptance.ConfigureForRun(
@@ -152,26 +153,69 @@ namespace Unity2Foxglove
                 config.Head,
                 config.Topics,
                 config.Manual,
-                config.SlowMainThread ? 12 : 0);
+                config.SlowMainThread ? 12 : 0,
+                config.OutputRoot,
+                config.ExternalGate,
+                config.ExerciseGate);
             EditorUtility.SetDirty(manager);
             EditorUtility.SetDirty(provider);
             EditorUtility.SetDirty(acceptance);
         }
 
-        private static void ConfigureManager(FoxgloveManager manager)
+        private static void ConfigureManager(
+            FoxgloveManager manager,
+            string caseId,
+            int foxglovePort)
         {
             var serialized = new SerializedObject(manager);
             var publishIds = RequireProperty(
                 serialized,
                 "_foxRunPublishTransportIds");
-            publishIds.arraySize = 1;
-            publishIds.GetArrayElementAtIndex(0).stringValue =
-                Ros2BridgeTransportProvider.ProviderId;
+            var fanout = string.Equals(
+                caseId,
+                "fanout-fairness-health",
+                StringComparison.Ordinal);
+            publishIds.arraySize = fanout ? 3 : 1;
+            publishIds.GetArrayElementAtIndex(0).stringValue = fanout
+                ? FoxgloveWebSocketTransport.Id
+                : Ros2BridgeTransportProvider.ProviderId;
+            if (fanout)
+            {
+                publishIds.GetArrayElementAtIndex(1).stringValue =
+                    "unity2foxglove.r2fu";
+                publishIds.GetArrayElementAtIndex(2).stringValue =
+                    Ros2BridgeTransportProvider.ProviderId;
+            }
             RequireProperty(serialized, "_foxRunSubscribeTransportId")
                 .stringValue = Ros2BridgeTransportProvider.ProviderId;
             RequireProperty(serialized, "_enableFoxRunInbound").boolValue = true;
             RequireProperty(serialized, "_startOnEnable").boolValue = true;
+            RequireProperty(serialized, "_port").intValue = foxglovePort;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void EnsureFanoutProvider(
+            FoxgloveManager manager,
+            string caseId)
+        {
+            if (!string.Equals(
+                    caseId,
+                    "fanout-fairness-health",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+            var type = Type.GetType(
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2TransportProvider, "
+                + "Unity2Foxglove.Ros2ForUnity.Native",
+                throwOnError: false);
+            if (type == null || !typeof(Component).IsAssignableFrom(type))
+            {
+                throw new InvalidOperationException(
+                    "The all-Providers fanout case requires the R2FU Provider package.");
+            }
+            if (manager.GetComponent(type) == null)
+                manager.gameObject.AddComponent(type);
         }
 
         private static void ConfigureProvider(

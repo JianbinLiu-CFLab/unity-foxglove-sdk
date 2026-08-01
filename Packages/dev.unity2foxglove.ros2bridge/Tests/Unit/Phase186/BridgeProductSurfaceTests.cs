@@ -217,9 +217,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("CaptureFoxRunTransportStatuses", runtime, StringComparison.Ordinal);
             Assert.Contains("PublishLocalMutation", runtime, StringComparison.Ordinal);
             Assert.Contains("slowMainThread", runtime, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ProviderDirectionsReady", runtime, StringComparison.Ordinal);
+            Assert.Contains(
+                "if (!_hasObservedConnection && stats.Connected)",
+                runtime,
+                StringComparison.Ordinal);
+            Assert.Contains("PHASE186_FANOUT_FAILURE_INJECTED", runtime, StringComparison.Ordinal);
+            Assert.Contains("unity-exercise-gate.json", runtime, StringComparison.Ordinal);
 
             var builder = File.ReadAllText(PathOf(builderRelative));
             Assert.Contains("EditorSceneManager.SaveScene", builder, StringComparison.Ordinal);
+            Assert.Contains("EnsureFanoutProvider", builder, StringComparison.Ordinal);
+            Assert.Contains("unity2foxglove.r2fu", builder, StringComparison.Ordinal);
             Assert.Contains("Ros2BridgeTransportProvider", builder, StringComparison.Ordinal);
             Assert.Contains("_foxRunPublishTransportIds", builder, StringComparison.Ordinal);
             Assert.Contains("_foxRunSubscribeTransportId", builder, StringComparison.Ordinal);

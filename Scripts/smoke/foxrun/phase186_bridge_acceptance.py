@@ -36,8 +36,10 @@ if str(SCRIPT_DIRECTORY) not in sys.path:
 
 try:
     from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
+    from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
 except ImportError:  # Direct script execution from outside the repository root.
     import phase186_bridge_acceptance_protocol as protocol
+    import phase186_bridge_project as bridge_project
 
 
 EXIT_PASS = 0
@@ -46,6 +48,15 @@ EXIT_USAGE = 2
 EXIT_NOT_RUN = 3
 MAX_RESCUE_LOG_BYTES = 4 * 1024 * 1024
 _UNITY_VERSION = re.compile(r"\A[0-9]+\.[0-9]+\.[0-9]+[a-z][0-9]+\Z")
+UNITY_COMPOSITIONS = ("repository-all-providers", "bridge-only")
+_ALL_PROVIDER_CASES = frozenset(
+    {
+        "frozen-v1",
+        "fanout-fairness-health",
+        "product-inspector",
+        *protocol.MANUAL_CASE_IDS,
+    }
+)
 
 
 class AcceptanceFailure(protocol.ProtocolFailure):
@@ -110,7 +121,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--unity-editor", type=pathlib.Path)
     parser.add_argument("--run-id")
     parser.add_argument("--bridge-port", type=int)
+    parser.add_argument("--foxglove-port", type=int)
     parser.add_argument("--domain-id", type=int)
+    parser.add_argument("--runtime-row", choices=tuple(protocol.ROWS))
+    parser.add_argument("--unity-composition", choices=UNITY_COMPOSITIONS)
     parser.add_argument(
         "--preflight-only",
         action="store_true",
@@ -128,6 +142,14 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
     """Reject contradictory modes and unsafe identifiers before I/O."""
 
     contract = protocol.require_case(args.case)
+    expected_composition = unity_composition_for_case(contract.case_id)
+    if args.unity_composition is None:
+        args.unity_composition = expected_composition
+    elif args.unity_composition != expected_composition:
+        raise protocol.ProtocolFailure(
+            "FAIL_PACKAGE_COMPOSITION",
+            "Unity composition differs from the locked case authority",
+        )
     protocol.require_head(args.expected_head)
     if bool(args.manual) is not contract.manual:
         raise protocol.ProtocolFailure(
@@ -138,6 +160,20 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
         protocol.require_run_id(args.run_id)
     if args.bridge_port is not None and not 1 <= args.bridge_port <= 65535:
         raise protocol.ProtocolFailure("FAIL_PREFLIGHT", "bridge port is outside 1..65535")
+    if args.foxglove_port is not None and not 1 <= args.foxglove_port <= 65535:
+        raise protocol.ProtocolFailure("FAIL_PREFLIGHT", "Foxglove port is outside 1..65535")
+    if (
+        args.bridge_port is not None
+        and args.foxglove_port is not None
+        and args.bridge_port == args.foxglove_port
+    ):
+        raise protocol.ProtocolFailure(
+            "FAIL_PREFLIGHT", "Bridge and Foxglove ports must be distinct"
+        )
+    if contract.row_id is not None and args.runtime_row not in {None, contract.row_id}:
+        raise protocol.ProtocolFailure(
+            "FAIL_RUNTIME_SELECTION", "manual case runtime row differs from authority"
+        )
     if args.domain_id is not None and not 0 <= args.domain_id <= 232:
         raise protocol.ProtocolFailure("FAIL_PREFLIGHT", "domain ID is outside 0..232")
     if not isinstance(args.manual_timeout_seconds, (int, float)) or not 1 <= float(
@@ -147,6 +183,15 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
             "FAIL_PREFLIGHT", "manual timeout must be in [1, 7200] seconds"
         )
     return args
+
+
+def unity_composition_for_case(case_id: str) -> str:
+    protocol.require_case(case_id)
+    return (
+        "repository-all-providers"
+        if case_id in _ALL_PROVIDER_CASES
+        else "bridge-only"
+    )
 
 
 def git_head(repository: pathlib.Path) -> str:
@@ -312,6 +357,66 @@ def validate_package_manifests(repository: pathlib.Path) -> dict[str, Any]:
     }
 
 
+def validate_unity_project_composition(
+    repository: pathlib.Path,
+    project: pathlib.Path,
+    composition: str,
+) -> dict[str, Any]:
+    """Prove the exact Unity package composition used by this live case."""
+
+    root = pathlib.Path(repository).resolve()
+    selected = pathlib.Path(project).resolve()
+    if composition == "bridge-only":
+        expected = selected.parent / bridge_project.PROJECT_DIRECTORY_NAME
+        if selected != expected.resolve():
+            raise AcceptanceFailure(
+                "FAIL_PACKAGE_COMPOSITION",
+                "Bridge-only project path differs from current-run ownership",
+            )
+        try:
+            return dict(bridge_project.validate_bridge_only_manifest(selected))
+        except bridge_project.BridgeOnlyProjectFailure as exc:
+            raise AcceptanceFailure("FAIL_PACKAGE_COMPOSITION", str(exc)) from exc
+    if composition != "repository-all-providers":
+        raise AcceptanceFailure(
+            "FAIL_PACKAGE_COMPOSITION", "unknown Unity package composition"
+        )
+    if selected != (root / "Unity2Foxglove").resolve():
+        raise AcceptanceFailure(
+            "FAIL_PACKAGE_COMPOSITION",
+            "all-Providers case is not using the repository Unity project",
+        )
+    manifest = _read_json_object(
+        selected / "Packages" / "manifest.json",
+        "repository Unity manifest",
+    )
+    dependencies = manifest.get("dependencies")
+    if not isinstance(dependencies, Mapping):
+        raise AcceptanceFailure(
+            "FAIL_PACKAGE_COMPOSITION", "repository Unity dependencies are malformed"
+        )
+    required = {
+        "dev.unity2foxglove.sdk",
+        "dev.unity2foxglove.ros2bridge",
+        "dev.unity2foxglove.ros2forunity",
+    }
+    if not required.issubset(dependencies):
+        raise AcceptanceFailure(
+            "FAIL_PACKAGE_COMPOSITION",
+            "all-Providers Unity project lacks one required Provider package",
+        )
+    return {
+        "composition": "all-providers",
+        "productPackages": sorted(
+            key
+            for key in dependencies
+            if key.startswith("dev.unity2foxglove.")
+        ),
+        "manifest": str((selected / "Packages" / "manifest.json").resolve()),
+        "manifestSha256": sha256_file(selected / "Packages" / "manifest.json"),
+    }
+
+
 def sha256_file(path: pathlib.Path) -> str:
     digest = hashlib.sha256()
     with pathlib.Path(path).open("rb") as stream:
@@ -323,33 +428,6 @@ def sha256_file(path: pathlib.Path) -> str:
 _UNITY_BINDING_RELATIVE_PATH = pathlib.Path(
     "Assets/Scripts/Generated/Phase186AcceptanceRun.cs"
 )
-
-_UNITY_CASE_LAYOUTS: Mapping[str, tuple[str, ...]] = {
-    "frozen-v1": ("standard_publish", "standard_publish"),
-    "bridge-source": ("standard_subscribe", "custom_subscribe"),
-    "full-duplex": ("custom_duplex",),
-    "fanout-fairness-health": (
-        "standard_publish",
-        "standard_publish",
-        "standard_publish",
-    ),
-    "reconnect-degraded-recovery": ("custom_duplex", "standard_subscribe"),
-    "bounds-hostile-peer": ("standard_subscribe", "custom_subscribe"),
-    "lifecycle": ("custom_duplex",),
-    "slow-main-thread-640hz": ("custom_subscribe", "standard_duplex"),
-    "product-inspector": ("standard_publish", "standard_subscribe"),
-    "manual-jazzy-fastrtps-duplex": (
-        "custom_duplex",
-        "standard_duplex",
-        "custom_subscribe",
-    ),
-    "manual-lyrical-zenoh-duplex": (
-        "custom_duplex",
-        "standard_duplex",
-        "custom_subscribe",
-    ),
-}
-
 
 def _render_unity_contract(
     index: int, topic: str, kind: str
@@ -364,7 +442,7 @@ def _render_unity_contract(
         type_name = "Phase181State"
         initializer = (
             f'CreatePhase186State("bootstrap-{index}", {index})'
-            if kind == "custom_duplex"
+            if kind in {"custom_duplex", "custom_publish"}
             else "null"
         )
         observe = (
@@ -457,7 +535,7 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
     protocol.validate_run_config(config, pathlib.Path(str(config["repository"])))
     case_id = str(config["caseId"])
     topics = tuple(str(topic) for topic in config["topics"])
-    layout = _UNITY_CASE_LAYOUTS.get(case_id)
+    layout = protocol.CASE_CONTRACT_KINDS.get(case_id)
     if layout is None or len(layout) != len(topics):
         raise AcceptanceFailure(
             "FAIL_PROTOCOL", "Unity contract layout differs from case topic authority"
@@ -467,17 +545,30 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
     observations: list[str] = []
     initializations: list[str] = []
     mutation = ""
+    fanout_mutations: list[str] = []
     for index, (topic, kind) in enumerate(zip(topics, layout, strict=True)):
         declaration, observation, initialization, candidate_mutation = (
             _render_unity_contract(index, topic, kind)
         )
+        if case_id == "fanout-fairness-health" and kind.endswith("publish"):
+            declaration = declaration.replace(
+                "                Ros2BridgeTransportProvider.ProviderId\n            })]",
+                "                FoxgloveWebSocketTransport.Id,\n"
+                "                \"unity2foxglove.r2fu\",\n"
+                "                Ros2BridgeTransportProvider.ProviderId\n            })]",
+            )
         declarations.append(declaration)
         if kind.endswith("subscribe") or kind.endswith("duplex"):
             observations.append(observation)
         if initialization:
             initializations.append(initialization)
+        if candidate_mutation:
+            fanout_mutations.append(candidate_mutation)
         if not mutation and candidate_mutation:
             mutation = candidate_mutation
+
+    if case_id == "fanout-fairness-health":
+        mutation = "\n".join(fanout_mutations)
 
     topic_constants = "\n".join(
         f'        public const string Phase186GeneratedTopic{index} = "{topic}";'
@@ -816,6 +907,7 @@ def validate_cleanup_evidence(value: Mapping[str, Any]) -> None:
 
     expected = {
         "complete",
+        "cleanupErrors",
         "residualProcesses",
         "residualPorts",
         "residualOverlays",
@@ -828,6 +920,24 @@ def validate_cleanup_evidence(value: Mapping[str, Any]) -> None:
     for key in expected - {"complete"}:
         if not isinstance(value[key], list) or value[key]:
             raise AcceptanceFailure("FAIL_CLEANUP", f"cleanup retained {key}")
+
+
+def load_cleanup_evidence_if_present(
+    output: pathlib.Path,
+) -> Mapping[str, Any] | None:
+    """Load bounded live cleanup evidence without assuming it is clean."""
+
+    target = pathlib.Path(output) / "cleanup.json"
+    if not target.is_file():
+        return None
+    value = _read_json_object(target, "cleanup evidence")
+    expected = set(protocol.clean_cleanup_evidence())
+    if set(value) != expected or not isinstance(value.get("complete"), bool):
+        raise AcceptanceFailure("FAIL_CLEANUP", "cleanup evidence shape differs")
+    for key in expected - {"complete"}:
+        if not isinstance(value[key], list) or len(value[key]) > 256:
+            raise AcceptanceFailure("FAIL_CLEANUP", f"cleanup {key} is invalid")
+    return value
 
 
 def promote_build_to_live_summary(_build_summary: Mapping[str, Any]) -> None:
@@ -885,6 +995,21 @@ def persist_not_run(
     return result
 
 
+def persist_terminal(
+    output: pathlib.Path,
+    result: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Persist one already validated PASS or FAIL terminal result."""
+
+    validated = protocol.validate_terminal_summary(result)
+    root = pathlib.Path(output).resolve()
+    write_json_atomic(root / "terminal-summary.json", validated)
+    (root / "terminal-marker.txt").write_text(
+        protocol.format_terminal_line(validated) + "\n", encoding="utf-8"
+    )
+    return validated
+
+
 def _new_run_identity(case_id: str, requested_run_id: str | None) -> tuple[str, str]:
     token = "p186h_" + secrets.token_hex(16)
     if requested_run_id is not None:
@@ -915,20 +1040,28 @@ def _owned_run_root(repository: pathlib.Path, requested: pathlib.Path, run_id: s
 
 def _preflight(
     repository: pathlib.Path,
+    project: pathlib.Path,
+    unity_composition: str,
     args: argparse.Namespace,
     run_root: pathlib.Path,
     run_id: str,
     token: str,
     bridge_port: int,
+    foxglove_port: int,
 ) -> dict[str, Any]:
     head = require_exact_head(repository, args.expected_head)
     require_clean_tracked_tree(repository)
-    project = repository / "Unity2Foxglove"
     unity = resolve_unity_editor(project, args.unity_editor)
     packages = validate_package_manifests(repository)
+    project_packages = validate_unity_project_composition(
+        repository,
+        project,
+        unity_composition,
+    )
     authority = validate_static_authority(repository)
     contract = protocol.require_case(args.case)
-    row = protocol.require_row(contract.row_id) if contract.row_id else None
+    runtime_row_id = args.runtime_row or contract.row_id or "jazzy-fastrtps"
+    row = protocol.require_row(runtime_row_id)
     domain_id = args.domain_id if args.domain_id is not None else (row.domain_id if row else 186)
     config = protocol.make_run_config(
         repository=repository,
@@ -939,7 +1072,9 @@ def _preflight(
         case_id=contract.case_id,
         head=head,
         bridge_port=bridge_port,
+        foxglove_port=foxglove_port,
         domain_id=domain_id,
+        runtime_row_id=row.row_id,
     )
     protocol.validate_run_config(config, repository)
     write_json_atomic(run_root / "run-config.json", config)
@@ -948,12 +1083,15 @@ def _preflight(
         "runId": run_id,
         "caseId": contract.case_id,
         "rowId": contract.row_id,
+        "runtimeRowId": row.row_id,
         "tokenHash": protocol.token_sha256(token),
         "head": head,
         "unity": {"path": str(unity.path), "version": unity.version},
         "bridgeEndpoint": {"host": "127.0.0.1", "port": bridge_port},
+        "foxgloveEndpoint": {"host": "127.0.0.1", "port": foxglove_port},
         "domainId": domain_id,
         "packages": packages,
+        "unityComposition": project_packages,
         "authority": authority,
         "verdict": "PREFLIGHT PASS",
         "liveVerdict": "NOT CLAIMED",
@@ -961,26 +1099,106 @@ def _preflight(
     }
 
 
+def _create_owned_unity_project(
+    repository: pathlib.Path,
+    run_root: pathlib.Path,
+    run_id: str,
+    composition: str,
+) -> bridge_project.OwnedBridgeOnlyProject | None:
+    if composition == "repository-all-providers":
+        return None
+    if composition != "bridge-only":
+        raise AcceptanceFailure(
+            "FAIL_PACKAGE_COMPOSITION", "unknown Unity package composition"
+        )
+    try:
+        return bridge_project.create_bridge_only_project(
+            repository,
+            run_root,
+            run_id,
+        )
+    except bridge_project.BridgeOnlyProjectFailure as exc:
+        raise AcceptanceFailure("FAIL_PACKAGE_COMPOSITION", str(exc)) from exc
+
+
+def _remove_owned_unity_project(
+    owned: bridge_project.OwnedBridgeOnlyProject | None,
+) -> None:
+    if owned is None:
+        return
+    try:
+        bridge_project.cleanup_bridge_only_project(owned)
+    except bridge_project.BridgeOnlyProjectFailure as exc:
+        raise AcceptanceFailure("FAIL_CLEANUP", str(exc)) from exc
+
+
+def _record_temporary_project_cleanup_failure(
+    run_root: pathlib.Path,
+    cleanup: Mapping[str, Any] | None,
+    project: pathlib.Path,
+    error: BaseException,
+) -> Mapping[str, Any]:
+    value = dict(
+        cleanup
+        or load_cleanup_evidence_if_present(run_root)
+        or protocol.clean_cleanup_evidence()
+    )
+    residual = list(value.get("residualTemporaryProjects", []))
+    project_text = str(pathlib.Path(project).resolve())
+    if project_text not in residual:
+        residual.append(project_text)
+    errors = list(value.get("cleanupErrors", []))
+    errors.append(str(error)[:512] or type(error).__name__)
+    value["residualTemporaryProjects"] = residual
+    value["cleanupErrors"] = errors
+    value["complete"] = False
+    write_json_atomic(run_root / "cleanup.json", value)
+    return value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run preflight or stop honestly before unimplemented live execution."""
+    """Run one preflight-only, automatic, or blocking manual acceptance case."""
 
     args = validate_arguments(parse_args(argv))
     repository = repository_root()
     run_id, token = _new_run_identity(args.case, args.run_id)
     run_root: pathlib.Path | None = None
+    owned_project: bridge_project.OwnedBridgeOnlyProject | None = None
     try:
         run_root = _owned_run_root(repository, args.output_root, run_id)
-        with reserve_loopback_port(args.bridge_port) as reservation:
+        owned_project = _create_owned_unity_project(
+            repository,
+            run_root,
+            run_id,
+            args.unity_composition,
+        )
+        project = (
+            owned_project.path
+            if owned_project is not None
+            else repository / "Unity2Foxglove"
+        )
+        with reserve_loopback_port(args.bridge_port) as reservation, reserve_loopback_port(
+            args.foxglove_port
+        ) as foxglove_reservation:
+            if reservation.port == foxglove_reservation.port:
+                raise AcceptanceFailure(
+                    "FAIL_PREFLIGHT", "reserved Bridge and Foxglove ports collide"
+                )
             preflight = _preflight(
                 repository,
+                project,
+                args.unity_composition,
                 args,
                 run_root,
                 run_id,
                 token,
                 reservation.port,
+                foxglove_reservation.port,
             )
             write_json_atomic(run_root / "preflight.json", preflight)
         if args.preflight_only:
+            _remove_owned_unity_project(owned_project)
+            owned_project = None
             print(
                 "PHASE186_PREFLIGHT_PASS"
                 + f" run={run_id} case={args.case} tokenHash={protocol.token_sha256(token)}"
@@ -988,17 +1206,111 @@ def main(argv: Sequence[str] | None = None) -> int:
                 flush=True,
             )
             return EXIT_PASS
-        result = persist_not_run(
-            run_root,
+        from Scripts.smoke.foxrun import phase186_bridge_live as live
+
+        config = _read_json_object(run_root / "run-config.json", "run config")
+        installed: InstalledUnityRunBinding | None = None
+        live_error: BaseException | None = None
+        actors: Mapping[str, Any] | None = None
+        observations: Mapping[str, Any] | None = None
+        cleanup: Mapping[str, Any] | None = None
+        try:
+            if args.case != "frozen-v1":
+                installed = install_unity_run_binding(
+                    project,
+                    config,
+                )
+            actors, observations, cleanup = live.run_live(
+                repository,
+                config,
+                unity_editor=pathlib.Path(str(preflight["unity"]["path"])),
+                manual_timeout_seconds=float(args.manual_timeout_seconds),
+            )
+        except BaseException as exc:
+            live_error = exc
+        finally:
+            if installed is not None:
+                try:
+                    cleanup_unity_run_binding(installed)
+                except BaseException as exc:
+                    live_error = exc
+            if owned_project is not None:
+                project_path = owned_project.path
+                try:
+                    _remove_owned_unity_project(owned_project)
+                    owned_project = None
+                except BaseException as exc:
+                    cleanup = _record_temporary_project_cleanup_failure(
+                        run_root,
+                        cleanup,
+                        project_path,
+                        exc,
+                    )
+                    live_error = exc
+
+        if live_error is not None:
+            if isinstance(live_error, live.LiveNotRun):
+                result = persist_not_run(
+                    run_root,
+                    run_id=run_id,
+                    token=token,
+                    case_id=args.case,
+                    head=args.expected_head,
+                    prerequisite=live_error.prerequisite,
+                )
+                print(protocol.format_terminal_line(result), flush=True)
+                return EXIT_NOT_RUN
+            failure_code = (
+                live_error.code
+                if isinstance(live_error, protocol.ProtocolFailure)
+                and str(live_error.code).startswith("FAIL_")
+                else "FAIL_RUNTIME"
+            )
+            failure_cleanup = (
+                cleanup
+                if cleanup is not None
+                else load_cleanup_evidence_if_present(run_root)
+                or protocol.clean_cleanup_evidence()
+            )
+            result = protocol.make_failure_summary(
+                run_id=run_id,
+                token=token,
+                case_id=args.case,
+                head=args.expected_head,
+                evidence_root=str(run_root),
+                failure_code=failure_code,
+                failure_message=str(live_error)[:512] or type(live_error).__name__,
+                cleanup=failure_cleanup,
+            )
+            persist_terminal(run_root, result)
+            print(protocol.format_terminal_line(result), flush=True)
+            return EXIT_FAIL
+
+        if actors is None or observations is None or cleanup is None:
+            raise AcceptanceFailure(
+                "FAIL_EVIDENCE", "live runner returned no terminal evidence"
+            )
+        result = protocol.make_pass_summary(
             run_id=run_id,
             token=token,
             case_id=args.case,
             head=args.expected_head,
-            prerequisite="controlled Unity/sidecar live actor phase is not active",
+            evidence_root=str(run_root),
+            actors=actors,
+            observations=observations,
+            cleanup=cleanup,
         )
+        persist_terminal(run_root, result)
         print(protocol.format_terminal_line(result), flush=True)
-        return EXIT_NOT_RUN
+        return EXIT_PASS
     except LivePrerequisiteMissing as exc:
+        if owned_project is not None:
+            try:
+                _remove_owned_unity_project(owned_project)
+                owned_project = None
+            except protocol.ProtocolFailure as cleanup_error:
+                print(str(cleanup_error), file=sys.stderr)
+                return EXIT_FAIL
         if run_root is None:
             print(str(exc), file=sys.stderr)
             return EXIT_NOT_RUN
@@ -1013,6 +1325,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(protocol.format_terminal_line(result), flush=True)
         return EXIT_NOT_RUN
     except protocol.ProtocolFailure as exc:
+        if owned_project is not None:
+            try:
+                _remove_owned_unity_project(owned_project)
+                owned_project = None
+            except protocol.ProtocolFailure as cleanup_error:
+                print(str(cleanup_error), file=sys.stderr)
+                return EXIT_FAIL
         print(str(exc), file=sys.stderr)
         return EXIT_FAIL
 

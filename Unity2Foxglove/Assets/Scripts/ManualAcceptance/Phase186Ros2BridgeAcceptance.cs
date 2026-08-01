@@ -6,7 +6,10 @@
 
 using System;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Threading;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 using Unity2Foxglove.Ros2Bridge;
@@ -68,6 +71,9 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private string _featureHead = string.Empty;
         [SerializeField] private string[] _topics = Array.Empty<string>();
         [SerializeField] private bool _manual;
+        [SerializeField] private string _outputRoot = string.Empty;
+        [SerializeField] private string _externalGate = string.Empty;
+        [SerializeField] private string _exerciseGate = string.Empty;
         [SerializeField, Range(0, MaximumSlowMainThreadDelayMs)]
         private int _slowMainThreadDelayMs = 12;
 
@@ -76,6 +82,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField] private string _status = "Run is not configured.";
         [SerializeField] private bool _contextValid;
         [SerializeField] private bool _ready;
+        [SerializeField] private bool _externalGateReady;
         [SerializeField] private bool _terminal;
 
         [Header("Provider/session evidence")]
@@ -110,6 +117,13 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _lastConnected;
         private bool _hasObservedGeneration;
         private ulong _lastSessionGeneration;
+        private float _nextExternalGateCheckAt;
+        private bool _externalGateFailureLogged;
+        private bool _exerciseGateReady;
+        private bool _exerciseGateFailureLogged;
+        private bool _fanoutFailureInjected;
+        private bool _fanoutFailedProviderObserved;
+        private long _fanoutSentFramesBeforeFailure;
 
         public string RunId => _runId;
         public string CaseId => _caseId;
@@ -118,7 +132,11 @@ namespace Unity2Foxglove.ManualAcceptance
         public bool ContextValid => _contextValid;
         public bool Ready => _ready;
         public bool CanComplete =>
-            _contextValid && _ready && _generatedEvidence.CanComplete;
+            _contextValid
+            && _ready
+            && _externalGateReady
+            && _generatedEvidence.CanComplete
+            && HasCaseSpecificEvidence();
 
         partial void Phase186Generated_Describe(
             ref GeneratedRunIdentity identity);
@@ -156,7 +174,10 @@ namespace Unity2Foxglove.ManualAcceptance
             string featureHead,
             string[] topics,
             bool manual,
-            int slowMainThreadDelayMs)
+            int slowMainThreadDelayMs,
+            string outputRoot,
+            string externalGate,
+            string exerciseGate)
         {
             if (!IsRunId(runId))
                 throw new ArgumentException("Run ID is malformed.", nameof(runId));
@@ -167,6 +188,29 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!IsLowerHex(featureHead, 40))
                 throw new ArgumentException("Feature SHA is malformed.", nameof(featureHead));
             ValidateTopics(topics);
+            var normalizedOutput = Path.GetFullPath(outputRoot ?? string.Empty);
+            var normalizedGate = Path.GetFullPath(externalGate ?? string.Empty);
+            var normalizedExerciseGate = Path.GetFullPath(
+                exerciseGate ?? string.Empty);
+            if (!Path.IsPathRooted(normalizedOutput)
+                || !string.Equals(
+                    normalizedGate,
+                    Path.Combine(normalizedOutput, "unity-external-gate.json"),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    "External gate is outside the current run output.",
+                    nameof(externalGate));
+            }
+            if (!string.Equals(
+                    normalizedExerciseGate,
+                    Path.Combine(normalizedOutput, "unity-exercise-gate.json"),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    "Exercise gate is outside the current run output.",
+                    nameof(exerciseGate));
+            }
 
             _runId = runId;
             _caseId = caseId;
@@ -174,6 +218,9 @@ namespace Unity2Foxglove.ManualAcceptance
             _featureHead = featureHead;
             _topics = (string[])topics.Clone();
             _manual = manual;
+            _outputRoot = normalizedOutput;
+            _externalGate = normalizedGate;
+            _exerciseGate = normalizedExerciseGate;
             _slowMainThreadDelayMs = Mathf.Clamp(
                 slowMainThreadDelayMs,
                 0,
@@ -188,6 +235,14 @@ namespace Unity2Foxglove.ManualAcceptance
             _ready = false;
             _terminal = false;
             _readyMarkerEmitted = false;
+            _externalGateReady = false;
+            _externalGateFailureLogged = false;
+            _exerciseGateReady = false;
+            _exerciseGateFailureLogged = false;
+            _fanoutFailureInjected = false;
+            _fanoutFailedProviderObserved = false;
+            _fanoutSentFramesBeforeFailure = 0;
+            _nextExternalGateCheckAt = 0f;
             _localMutationRequested = false;
             _hasObservedConnection = false;
             _lastConnected = false;
@@ -224,6 +279,8 @@ namespace Unity2Foxglove.ManualAcceptance
 
             Phase186Generated_Tick(ref _generatedEvidence);
             CaptureProviderEvidence();
+            RefreshExerciseGate();
+            RefreshExternalGate();
             if (_generatedEvidence.SlowMainThread
                 && _slowMainThreadDelayMs > 0)
             {
@@ -231,9 +288,7 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
             _ready = _generatedEvidence.Generated
-                     && _connected
-                     && string.Equals(_publishState, "Ready", StringComparison.Ordinal)
-                     && string.Equals(_subscribeState, "Ready", StringComparison.Ordinal);
+                     && ProviderDirectionsReady();
             if (_ready && !_readyMarkerEmitted)
             {
                 _readyMarkerEmitted = true;
@@ -248,6 +303,7 @@ namespace Unity2Foxglove.ManualAcceptance
             {
                 PublishLocalMutation();
             }
+            InjectFanoutFailureIfRequested();
             if (!_manual && CanComplete)
                 CompleteAutomaticAcceptance();
         }
@@ -309,7 +365,215 @@ namespace Unity2Foxglove.ManualAcceptance
                 + " localMutations=" + _generatedEvidence.LocalMutations.ToString(CultureInfo.InvariantCulture)
                 + " accepted=" + _acceptedFrames.ToString(CultureInfo.InvariantCulture)
                 + " sent=" + _sentFrames.ToString(CultureInfo.InvariantCulture)
-                + " failed=" + _failedFrames.ToString(CultureInfo.InvariantCulture));
+                + " failed=" + _failedFrames.ToString(CultureInfo.InvariantCulture)
+                + " connectTransitions=" + _connectTransitions.ToString(CultureInfo.InvariantCulture)
+                + " disconnectTransitions=" + _disconnectTransitions.ToString(CultureInfo.InvariantCulture)
+                + " generationChanges=" + _sessionGenerationChanges.ToString(CultureInfo.InvariantCulture)
+                + " dropped=" + _droppedFrames.ToString(CultureInfo.InvariantCulture)
+                + " providerReplaced=" + _replacedFrames.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private bool HasCaseSpecificEvidence()
+        {
+            var kinds = _generatedIdentity.ContractKinds ?? Array.Empty<string>();
+            var hasPublish = kinds.Any(kind =>
+                kind.EndsWith("publish", StringComparison.Ordinal)
+                || kind.EndsWith("duplex", StringComparison.Ordinal));
+            if (hasPublish && _sentFrames <= 0)
+                return false;
+            if (string.Equals(
+                    _caseId,
+                    "slow-main-thread-640hz",
+                    StringComparison.Ordinal)
+                && _generatedEvidence.Replaced <= 0)
+            {
+                return false;
+            }
+            if ((string.Equals(
+                     _caseId,
+                     "reconnect-degraded-recovery",
+                     StringComparison.Ordinal)
+                 || string.Equals(_caseId, "lifecycle", StringComparison.Ordinal))
+                && (_disconnectTransitions <= 0 || _connectTransitions < 2))
+            {
+                return false;
+            }
+            if (string.Equals(
+                    _caseId,
+                    "fanout-fairness-health",
+                    StringComparison.Ordinal)
+                && (!_fanoutFailureInjected
+                    || !_fanoutFailedProviderObserved
+                    || _sentFrames <= _fanoutSentFramesBeforeFailure))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private void InjectFanoutFailureIfRequested()
+        {
+            if (_fanoutFailureInjected
+                || !_exerciseGateReady
+                || !string.Equals(
+                    _caseId,
+                    "fanout-fairness-health",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var type = Type.GetType(
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2TransportProvider, "
+                + "Unity2Foxglove.Ros2ForUnity.Native",
+                throwOnError: false);
+            var component = type == null || _manager == null
+                ? null
+                : _manager.GetComponent(type) as Behaviour;
+            if (component == null || !component.enabled)
+            {
+                _status = "Fail closed: fanout R2FU Provider is absent before injection.";
+                return;
+            }
+            _fanoutSentFramesBeforeFailure = _sentFrames;
+            component.enabled = false;
+            _fanoutFailureInjected = true;
+            PublishLocalMutation();
+            Debug.Log(
+                "PHASE186_FANOUT_FAILURE_INJECTED run=" + _runId
+                + " tokenHash=" + _tokenHash
+                + " provider=unity2foxglove.r2fu");
+        }
+
+        private void RefreshExerciseGate()
+        {
+            if (_exerciseGateReady
+                || !string.Equals(
+                    _caseId,
+                    "fanout-fairness-health",
+                    StringComparison.Ordinal)
+                || string.IsNullOrEmpty(_exerciseGate)
+                || !File.Exists(_exerciseGate))
+            {
+                return;
+            }
+            try
+            {
+                ValidateGate(_exerciseGate, "exercise");
+                _exerciseGateReady = true;
+                Debug.Log(
+                    "PHASE186_EXERCISE_GATE_READY run=" + _runId
+                    + " case=" + _caseId
+                    + " tokenHash=" + _tokenHash);
+            }
+            catch (Exception exception)
+            {
+                if (_exerciseGateFailureLogged)
+                    return;
+                _exerciseGateFailureLogged = true;
+                Debug.LogError(
+                    "PHASE186_EXERCISE_GATE_FAIL run=" + _runId
+                    + " reason=" + Phase186Bound(exception.GetType().Name));
+            }
+        }
+
+        private bool ProviderDirectionsReady()
+        {
+            var kinds = _generatedIdentity.ContractKinds ?? Array.Empty<string>();
+            var needsPublish = kinds.Any(kind =>
+                kind.EndsWith("publish", StringComparison.Ordinal)
+                || kind.EndsWith("duplex", StringComparison.Ordinal));
+            var needsSubscribe = kinds.Any(kind =>
+                kind.EndsWith("subscribe", StringComparison.Ordinal)
+                || kind.EndsWith("duplex", StringComparison.Ordinal));
+            return _connected
+                   && (!needsPublish
+                       || string.Equals(
+                           _publishState,
+                           "Ready",
+                           StringComparison.Ordinal))
+                   && (!needsSubscribe
+                       || string.Equals(
+                           _subscribeState,
+                           "Ready",
+                           StringComparison.Ordinal));
+        }
+
+        private void RefreshExternalGate()
+        {
+            if (_externalGateReady || Time.realtimeSinceStartup < _nextExternalGateCheckAt)
+                return;
+            _nextExternalGateCheckAt = Time.realtimeSinceStartup + 0.25f;
+            if (string.IsNullOrEmpty(_externalGate) || !File.Exists(_externalGate))
+                return;
+            try
+            {
+                var json = JObject.Parse(File.ReadAllText(_externalGate));
+                var expectedKeys = new[]
+                {
+                    "schemaVersion", "runId", "caseId", "tokenHash", "head", "ready"
+                };
+                var actualKeys = json.Properties()
+                    .Select(property => property.Name)
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToArray();
+                if (!actualKeys.SequenceEqual(
+                        expectedKeys.OrderBy(value => value, StringComparer.Ordinal),
+                        StringComparer.Ordinal)
+                    || (int?)json["schemaVersion"] != 1
+                    || (bool?)json["ready"] != true
+                    || !string.Equals((string)json["runId"], _runId, StringComparison.Ordinal)
+                    || !string.Equals((string)json["caseId"], _caseId, StringComparison.Ordinal)
+                    || !string.Equals((string)json["tokenHash"], _tokenHash, StringComparison.Ordinal)
+                    || !string.Equals((string)json["head"], _featureHead, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException(
+                        "External live evidence gate differs from current run authority.");
+                }
+                _externalGateReady = true;
+                _status = "External live actors passed; waiting for final Unity evidence.";
+                Debug.Log(
+                    "PHASE186_EXTERNAL_GATE_READY run=" + _runId
+                    + " case=" + _caseId
+                    + " tokenHash=" + _tokenHash
+                    + " head=" + _featureHead);
+            }
+            catch (Exception exception)
+            {
+                if (_externalGateFailureLogged)
+                    return;
+                _externalGateFailureLogged = true;
+                _status = "Fail closed: external live evidence gate is invalid.";
+                Debug.LogError(
+                    "PHASE186_EXTERNAL_GATE_FAIL run=" + _runId
+                    + " reason=" + Phase186Bound(exception.GetType().Name));
+            }
+        }
+
+        private void ValidateGate(string path, string stage)
+        {
+            var json = JObject.Parse(File.ReadAllText(path));
+            var expectedKeys = new[]
+            {
+                "schemaVersion", "runId", "caseId", "tokenHash", "head", "ready"
+            };
+            var actualKeys = json.Properties()
+                .Select(property => property.Name)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
+            if (!actualKeys.SequenceEqual(
+                    expectedKeys.OrderBy(value => value, StringComparer.Ordinal),
+                    StringComparer.Ordinal)
+                || (int?)json["schemaVersion"] != 1
+                || (bool?)json["ready"] != true
+                || !string.Equals((string)json["runId"], _runId, StringComparison.Ordinal)
+                || !string.Equals((string)json["caseId"], _caseId, StringComparison.Ordinal)
+                || !string.Equals((string)json["tokenHash"], _tokenHash, StringComparison.Ordinal)
+                || !string.Equals((string)json["head"], _featureHead, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Unity " + stage + " gate differs from current run authority.");
+            }
         }
 
         private void CaptureProviderEvidence()
@@ -317,7 +581,13 @@ namespace Unity2Foxglove.ManualAcceptance
             if (_provider != null)
             {
                 var stats = _provider.GetStatsSnapshot();
-                if (_hasObservedConnection && stats.Connected != _lastConnected)
+                if (!_hasObservedConnection && stats.Connected)
+                {
+                    _connectTransitions = SaturatingIncrement(
+                        _connectTransitions);
+                }
+                else if (_hasObservedConnection
+                         && stats.Connected != _lastConnected)
                 {
                     if (stats.Connected)
                     {
@@ -350,6 +620,21 @@ namespace Unity2Foxglove.ManualAcceptance
             for (var i = 0; i < statuses.Count; i++)
             {
                 var status = statuses[i];
+                if (string.Equals(
+                        status.ProviderId.Value,
+                        "unity2foxglove.r2fu",
+                        StringComparison.Ordinal))
+                {
+                    if (_fanoutFailureInjected
+                        && !string.Equals(
+                            status.Publish.State.ToString(),
+                            "Ready",
+                            StringComparison.Ordinal))
+                    {
+                        _fanoutFailedProviderObserved = true;
+                    }
+                    continue;
+                }
                 if (!string.Equals(
                         status.ProviderId.Value,
                         Ros2BridgeTransportProvider.ProviderId,
@@ -375,7 +660,6 @@ namespace Unity2Foxglove.ManualAcceptance
                     _lastDiagnostic = Phase186Bound(
                         diagnostic.Code + ":" + diagnostic.Message);
                 }
-                return;
             }
         }
 

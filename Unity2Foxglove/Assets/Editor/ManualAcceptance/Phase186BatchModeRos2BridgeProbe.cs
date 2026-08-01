@@ -336,10 +336,11 @@ namespace Unity2Foxglove
             new HashSet<string>(StringComparer.Ordinal)
             {
                 "schemaVersion", "runId", "token", "tokenHash", "caseId",
-                "rowId", "distro", "rmw", "manual", "head", "repository",
+                "rowId", "runtimeRowId", "distro", "rmw", "manual", "head", "repository",
                 "projectPath", "outputRoot", "bridgeHost", "bridgePort",
+                "foxgloveHost", "foxglovePort",
                 "domainId", "interfaceType", "interfaceDigest", "topics",
-                "requiredActors", "createdAt",
+                "requiredActors", "unityLog", "externalGate", "exerciseGate", "createdAt",
             };
 
         private Phase186RunConfiguration()
@@ -353,6 +354,10 @@ namespace Unity2Foxglove
         internal string[] Topics { get; private set; }
         internal bool Manual { get; private set; }
         internal int BridgePort { get; private set; }
+        internal int FoxglovePort { get; private set; }
+        internal string OutputRoot { get; private set; }
+        internal string ExternalGate { get; private set; }
+        internal string ExerciseGate { get; private set; }
         internal bool SlowMainThread =>
             string.Equals(
                 CaseId,
@@ -369,7 +374,7 @@ namespace Unity2Foxglove
                 StringComparer.Ordinal);
             if (!actualKeys.SetEquals(ExpectedKeys))
                 throw new InvalidDataException("Phase186 run config keys differ.");
-            if (RequireInt(json, "schemaVersion") != 1)
+            if (RequireInt(json, "schemaVersion") != 3)
                 throw new InvalidDataException("Phase186 run config schema differs.");
 
             var token = RequireString(json, "token");
@@ -382,6 +387,10 @@ namespace Unity2Foxglove
                 Topics = RequireStringArray(json, "topics", 1, 3),
                 Manual = RequireBool(json, "manual"),
                 BridgePort = RequireInt(json, "bridgePort"),
+                FoxglovePort = RequireInt(json, "foxglovePort"),
+                OutputRoot = RequireString(json, "outputRoot"),
+                ExternalGate = RequireString(json, "externalGate"),
+                ExerciseGate = RequireString(json, "exerciseGate"),
             };
             if (!configuration.RunId.StartsWith("phase186h-", StringComparison.Ordinal)
                 || configuration.RunId.Length > 80
@@ -404,6 +413,16 @@ namespace Unity2Foxglove
                     StringComparison.Ordinal))
             {
                 throw new InvalidDataException("Phase186 Bridge endpoint is invalid.");
+            }
+            if (configuration.FoxglovePort < 1
+                || configuration.FoxglovePort > 65535
+                || configuration.FoxglovePort == configuration.BridgePort
+                || !string.Equals(
+                    RequireString(json, "foxgloveHost"),
+                    "127.0.0.1",
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("Phase186 Foxglove endpoint is invalid.");
             }
             if (!string.Equals(
                     RequireString(json, "interfaceDigest"),
@@ -438,6 +457,25 @@ namespace Unity2Foxglove
                     StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidDataException("Phase186 run paths differ from authority.");
+            }
+            if (!string.Equals(
+                    Normalize(RequireString(json, "unityLog")),
+                    Normalize(Path.Combine(output, "unity.log")),
+                    StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(
+                    Normalize(configuration.ExternalGate),
+                    Normalize(Path.Combine(output, "unity-external-gate.json")),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Phase186 live evidence paths differ from authority.");
+            }
+            if (!string.Equals(
+                    Normalize(configuration.ExerciseGate),
+                    Normalize(Path.Combine(output, "unity-exercise-gate.json")),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    "Phase186 exercise evidence path differs from authority.");
             }
             if (!string.Equals(
                     ReadGitHead(repository),

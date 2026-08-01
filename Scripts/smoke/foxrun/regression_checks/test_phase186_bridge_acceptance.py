@@ -15,6 +15,7 @@ from unittest import mock
 
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
+from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
 
 
 HEAD = "a" * 40
@@ -63,6 +64,49 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
         )
         with self.assertRaises(protocol.ProtocolFailure):
             acceptance.validate_arguments(args)
+
+    def test_live_cases_lock_their_unity_package_composition(self) -> None:
+        full_duplex = acceptance.validate_arguments(
+            acceptance.parse_args(
+                [
+                    "--case",
+                    "full-duplex",
+                    "--expected-head",
+                    HEAD,
+                    "--output-root",
+                    r"D:\evidence",
+                ]
+            )
+        )
+        fanout = acceptance.validate_arguments(
+            acceptance.parse_args(
+                [
+                    "--case",
+                    "fanout-fairness-health",
+                    "--expected-head",
+                    HEAD,
+                    "--output-root",
+                    r"D:\evidence",
+                ]
+            )
+        )
+        self.assertEqual("bridge-only", full_duplex.unity_composition)
+        self.assertEqual("repository-all-providers", fanout.unity_composition)
+        with self.assertRaises(protocol.ProtocolFailure):
+            acceptance.validate_arguments(
+                acceptance.parse_args(
+                    [
+                        "--case",
+                        "full-duplex",
+                        "--expected-head",
+                        HEAD,
+                        "--output-root",
+                        r"D:\evidence",
+                        "--unity-composition",
+                        "repository-all-providers",
+                    ]
+                )
+            )
 
     def test_expected_head_must_be_full_lowercase_sha(self) -> None:
         args = acceptance.parse_args(
@@ -161,6 +205,64 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
             with self.assertRaises(protocol.ProtocolFailure):
                 acceptance.validate_package_manifests(repo)
 
+    def test_owned_bridge_only_project_contains_no_r2fu_or_typesupport_package(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            base = repository / "Unity2Foxglove"
+            (base / "ProjectSettings").mkdir(parents=True)
+            (base / "ProjectSettings" / "ProjectVersion.txt").write_text(
+                "m_EditorVersion: 6000.3.14f1\n",
+                encoding="utf-8",
+            )
+            (base / "Packages").mkdir()
+            (base / "Packages" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "dependencies": {
+                            "com.unity.modules.jsonserialize": "1.0.0",
+                            "dev.unity2foxglove.sdk": "file:../../Packages/dev.unity2foxglove.sdk",
+                            "dev.unity2foxglove.ros2bridge": "file:../../Packages/dev.unity2foxglove.ros2bridge",
+                            "dev.unity2foxglove.ros2forunity": "file:../../Packages/dev.unity2foxglove.ros2forunity",
+                            "dev.unity2foxglove.foxrun.ros2.interfaces": "file:../../Packages/dev.unity2foxglove.foxrun.ros2.interfaces",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for package in (
+                "dev.unity2foxglove.sdk",
+                "dev.unity2foxglove.ros2bridge",
+            ):
+                (repository / "Packages" / package).mkdir(parents=True)
+            for relative_text in bridge_project._ASSET_PATHS:
+                source = repository / relative_text
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_text(relative_text, encoding="utf-8")
+            output = repository / "build" / "phase186" / "run"
+            output.mkdir(parents=True)
+
+            owned = bridge_project.create_bridge_only_project(
+                repository,
+                output,
+                "phase186h-test-owner",
+            )
+            evidence = bridge_project.validate_bridge_only_manifest(owned.path)
+            self.assertEqual(
+                [
+                    "dev.unity2foxglove.ros2bridge",
+                    "dev.unity2foxglove.sdk",
+                ],
+                evidence["productPackages"],
+            )
+            self.assertTrue(
+                (
+                    owned.path
+                    / "Assets/Scripts/ManualAcceptance/Phase181AcceptanceDto.cs"
+                ).is_file()
+            )
+            bridge_project.cleanup_bridge_only_project(owned)
+            self.assertFalse(owned.path.exists())
+
     def test_find_current_run_marker_rejects_stale_and_accepts_exact(self) -> None:
         token = "p186h_0123456789abcdef01234567"
         run_id = "phase186h-run-0123456789ab"
@@ -197,6 +299,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
     def test_owned_cleanup_requires_no_process_port_or_temp_residue(self) -> None:
         clean = {
             "complete": True,
+            "cleanupErrors": [],
             "residualProcesses": [],
             "residualPorts": [],
             "residualOverlays": [],
@@ -204,6 +307,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
         }
         acceptance.validate_cleanup_evidence(clean)
         for key in (
+            "cleanupErrors",
             "residualProcesses",
             "residualPorts",
             "residualOverlays",
@@ -362,6 +466,23 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
             )[1].split("private static Foxglove.Log", 1)[0]
             self.assertIn("published = false;", mutation_method)
             self.assertNotIn("evidence.LocalMutations++", mutation_method)
+
+            fanout_output = repository / "build" / "phase186" / "phase186h-fanout-check-012345"
+            fanout_output.mkdir(parents=True)
+            fanout_config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=fanout_output,
+                run_id="phase186h-fanout-check-012345",
+                token=token,
+                case_id="fanout-fairness-health",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=187,
+            )
+            fanout_source = acceptance.render_unity_run_binding(fanout_config)
+            self.assertEqual(3, fanout_source.count('"unity2foxglove.r2fu"'))
+            self.assertEqual(3, fanout_source.count("unity-local-b-"))
 
 
 if __name__ == "__main__":
