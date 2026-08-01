@@ -109,12 +109,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
-        public void SequenceGapStaleAndOversizeAreBoundedAndObservable()
+        public void SequenceFaultIsStickyContractLocalAndObservable()
         {
             var contract = Contract(11, "binding-a");
+            var healthy = Contract(12, "binding-b");
             var released = new List<ulong>();
             using var queue = Queue(
-                new[] { contract },
+                new[] { contract, healthy },
                 maxPayloadBytes: 5,
                 maxTotalBytes: 20,
                 maxPerContractDepth: 4,
@@ -122,8 +123,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             Assert.True(queue.TryAccept(
                 Frame(contract, sequence: 1, released)).IsAccepted);
-            Assert.True(queue.TryAccept(
-                Frame(contract, sequence: 3, released)).IsAccepted);
+            Assert.Equal(
+                Ros2BridgeSessionResultState.Rejected,
+                queue.TryAccept(
+                    Frame(contract, sequence: 3, released)).State);
             Assert.Equal(
                 Ros2BridgeSessionResultState.Rejected,
                 queue.TryAccept(
@@ -132,18 +135,37 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Ros2BridgeSessionResultState.Rejected,
                 queue.TryAccept(
                     Frame(
-                        contract,
-                        sequence: 4,
+                        healthy,
+                        sequence: 1,
                         released,
                         payloadLength: 6)).State);
+            Assert.True(queue.TryAccept(
+                Frame(healthy, sequence: 1, released)).IsAccepted);
+            Assert.Equal(3, released.Count);
+
+            Assert.True(queue.TryBeginApply(out var firstApply));
+            using (firstApply)
+            {
+                Assert.Equal(11UL, firstApply.Frame.Contract.ContractId);
+                Assert.Equal(1UL, firstApply.Frame.Sequence);
+                firstApply.MarkApplied();
+            }
+            Assert.True(queue.TryBeginApply(out var healthyApply));
+            using (healthyApply)
+            {
+                Assert.Equal(12UL, healthyApply.Frame.Contract.ContractId);
+                Assert.Equal(1UL, healthyApply.Frame.Sequence);
+                healthyApply.MarkApplied();
+            }
+            Assert.False(queue.TryBeginApply(out _));
 
             var stats = queue.GetStatsSnapshot();
-            Assert.Equal(4, stats.Received);
+            Assert.Equal(5, stats.Received);
             Assert.Equal(2, stats.Accepted);
             Assert.Equal(1, stats.SequenceGaps);
             Assert.Equal(1, stats.StaleSequences);
             Assert.Equal(1, stats.Oversize);
-            Assert.Equal(2, released.Count);
+            Assert.Equal(5, released.Count);
         }
 
         [Fact]
@@ -237,7 +259,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(queue.TryAccept(
                 Frame(first, sequence: 2, released)).IsAccepted);
             Assert.True(queue.TryAccept(
-                Frame(second, sequence: 10, released)).IsAccepted);
+                Frame(second, sequence: 1, released)).IsAccepted);
 
             Assert.True(queue.TryRevokeContract(first, out var reason));
             Assert.Empty(reason);
@@ -256,11 +278,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             {
                 Assert.True(secondApply.CanApply);
                 Assert.Equal(12UL, secondApply.Frame.Contract.ContractId);
-                Assert.Equal(10UL, secondApply.Frame.Sequence);
+                Assert.Equal(1UL, secondApply.Frame.Sequence);
                 secondApply.MarkApplied();
             }
             Assert.False(queue.TryBeginApply(out _));
-            Assert.Equal(new[] { 2UL, 1UL, 3UL, 10UL }, released);
+            Assert.Equal(new[] { 2UL, 1UL, 3UL, 1UL }, released);
         }
 
         private static Ros2BridgeInboundQueue Queue(

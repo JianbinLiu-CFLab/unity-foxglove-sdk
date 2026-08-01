@@ -27,6 +27,24 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class Ros2BridgePublisherPreparationTests
     {
         [Fact]
+        public void TopicAdmissionEnforcesFinalRosNameLength()
+        {
+            var maximum = "/" + new string('a', 254);
+            var oversized = "/" + new string('a', 255);
+            Assert.True(Ros2BridgeTopicProfile.IsValidRos2TopicName(maximum));
+            Assert.False(Ros2BridgeTopicProfile.IsValidRos2TopicName(oversized));
+
+            Assert.False(
+                Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic(
+                    "/" + new string('n', 127),
+                    "/" + new string('p', 127),
+                    string.Empty,
+                    out _,
+                    out var error));
+            Assert.Contains("255", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedPublisherCarriesDefaultQosForV2Preparation()
         {
             using var transport = new LegacyTransport();
@@ -373,7 +391,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void OversizedPreparationHeaderIsRejectedBeforeItConsumesRegistryCapacity()
+        public void OversizedTopicIsRejectedBeforeItConsumesRegistryCapacity()
         {
             var transport = new PreparationTransport("ok");
             using var runtime = Runtime(() => transport, queueCapacity: 1);
@@ -387,7 +405,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "phase184_msgs/msg/Oversized",
                     FoxRunResolvedQos.Default,
                     out var rejectedReason));
-            Assert.Contains("header", rejectedReason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                "topic is invalid",
+                rejectedReason,
+                StringComparison.OrdinalIgnoreCase);
 
             Assert.Equal(
                 Ros2BridgePublisherReadiness.Pending,
@@ -706,6 +727,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "peer_close"
             };
             var negativeVectors = Assert.IsType<JArray>(fixture["negativeVectors"]);
+            // Phase186-A froze these v1 entries as a documented case catalog.
+            // Executable negative bytes/actions live under v2.negativeVectors
+            // and are driven by U2R2ProtocolV2Tests in both languages.
             Assert.Equal(
                 expectedNegativeIds,
                 negativeVectors

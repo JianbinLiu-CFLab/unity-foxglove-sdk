@@ -5,6 +5,7 @@
 // Purpose: Topic normalization helpers for the optional ROS2 Bridge output.
 
 using System;
+using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
@@ -141,12 +142,20 @@ namespace Unity2Foxglove.Ros2Bridge
             effectiveTopic = string.IsNullOrEmpty(normalizedNamespace)
                 ? normalizedPublisherTopic
                 : CollapseSlashes(normalizedNamespace + "/" + normalizedPublisherTopic.TrimStart('/'));
+            if (!IsValidRos2TopicName(effectiveTopic))
+            {
+                effectiveTopic = string.Empty;
+                error = "ROS2 Bridge effective topic must not exceed 255 characters.";
+                return false;
+            }
             return true;
         }
 
         public static bool IsValidRos2TopicName(string value)
         {
-            if (string.IsNullOrEmpty(value) || value[0] != '/')
+            if (string.IsNullOrEmpty(value)
+                || value.Length > U2R2ProtocolLimits.MaximumRosTopicNameLength
+                || value[0] != '/')
                 return false;
 
             var tokenHasCharacters = false;

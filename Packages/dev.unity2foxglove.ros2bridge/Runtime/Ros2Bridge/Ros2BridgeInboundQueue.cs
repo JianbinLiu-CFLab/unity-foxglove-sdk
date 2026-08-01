@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
@@ -218,8 +219,8 @@ namespace Unity2Foxglove.Ros2Bridge
             new LinkedList<Ros2BridgeInboundFrame>();
         private readonly Dictionary<ulong, ContractUsage> _usage =
             new Dictionary<ulong, ContractUsage>();
-        private readonly Dictionary<ulong, ulong> _lastSequence =
-            new Dictionary<ulong, ulong>();
+        private readonly Dictionary<ulong, U2R2ContractSequence> _sequences =
+            new Dictionary<ulong, U2R2ContractSequence>();
         private readonly Dictionary<
             ulong,
             Ros2BridgeSessionContract> _active =
@@ -277,6 +278,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 ThrowIfDisposedLocked();
                 displaced = DrainQueuedLocked();
                 _active.Clear();
+                _sequences.Clear();
                 foreach (var contract in contracts.Contracts)
                 {
                     if (contract.Direction
@@ -288,9 +290,11 @@ namespace Unity2Foxglove.Ros2Bridge
                             nameof(contracts));
                     }
                     _active.Add(contract.ContractId, contract);
+                    _sequences.Add(
+                        contract.ContractId,
+                        new U2R2ContractSequence());
                 }
                 _usage.Clear();
-                _lastSequence.Clear();
                 _sessionId = sessionId.Trim();
                 _connectionGeneration = connectionGeneration;
                 _running = true;
@@ -350,6 +354,9 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
 
                 _active.Add(contract.ContractId, contract);
+                _sequences.Add(
+                    contract.ContractId,
+                    new U2R2ContractSequence());
                 reason = string.Empty;
                 return true;
             }
@@ -383,7 +390,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
 
                 _active.Remove(contract.ContractId);
-                _lastSequence.Remove(contract.ContractId);
+                _sequences.Remove(contract.ContractId);
                 var node = _queued.First;
                 while (node != null)
                 {
@@ -477,23 +484,44 @@ namespace Unity2Foxglove.Ros2Bridge
                         result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
                     }
-                    else if (_lastSequence.TryGetValue(
+                    else if (!_sequences.TryGetValue(
                                  expected.ContractId,
-                                 out var last)
-                             && frame.Sequence <= last)
+                                 out var sequence))
                     {
-                        Increment(ref _staleSequences);
                         SetDiagnosticLocked(
-                            "The inbound frame sequence is stale.");
-                        result = Ros2BridgeSessionResult.Reject(
+                            "The inbound contract sequence authority is missing.");
+                        result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
                     }
                     else
                     {
-                        result = AdmitLocked(
-                            frame,
-                            expected,
-                            out displaced);
+                        var lastAccepted = sequence.LastAccepted;
+                        try
+                        {
+                            sequence.Admit(frame.Sequence);
+                            result = AdmitLocked(
+                                frame,
+                                expected,
+                                out displaced);
+                        }
+                        catch (U2R2ProtocolException exception)
+                        {
+                            if (lastAccepted != ulong.MaxValue
+                                && frame.Sequence > lastAccepted + 1)
+                            {
+                                Add(
+                                    ref _sequenceGaps,
+                                    frame.Sequence - lastAccepted - 1);
+                            }
+                            else
+                            {
+                                Increment(ref _staleSequences);
+                            }
+                            SetDiagnosticLocked(
+                                exception.ErrorCode + ": " + exception.Message);
+                            result = Ros2BridgeSessionResult.Reject(
+                                _lastDiagnostic);
+                        }
                     }
                 }
                 finally
@@ -576,17 +604,6 @@ namespace Unity2Foxglove.Ros2Bridge
             _usage[contract.ContractId] = usage;
             _queuedBytes = checked(
                 _queuedBytes + frame.PayloadLength);
-            if (_lastSequence.TryGetValue(
-                    contract.ContractId,
-                    out var lastSequence)
-                && frame.Sequence > lastSequence + 1)
-            {
-                Add(
-                    ref _sequenceGaps,
-                    frame.Sequence - lastSequence - 1);
-            }
-            _lastSequence[contract.ContractId] =
-                frame.Sequence;
             Increment(ref _accepted);
             return Ros2BridgeSessionResult.Accepted();
         }
@@ -723,7 +740,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 _connectionGeneration = 0;
                 _active.Clear();
                 _usage.Clear();
-                _lastSequence.Clear();
+                _sequences.Clear();
                 IncrementEpochLocked();
                 displaced = DrainQueuedLocked();
             }
@@ -744,7 +761,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 _connectionGeneration = 0;
                 _active.Clear();
                 _usage.Clear();
-                _lastSequence.Clear();
+                _sequences.Clear();
                 IncrementEpochLocked();
                 displaced = DrainQueuedLocked();
                 if (_inFlight != null)
