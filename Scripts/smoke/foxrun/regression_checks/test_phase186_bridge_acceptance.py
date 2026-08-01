@@ -277,6 +277,17 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
             bridge_project.cleanup_bridge_only_project(owned)
             self.assertFalse(owned.path.exists())
 
+    def test_owned_bridge_only_project_rejects_unsafe_windows_lmdb_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            output = repository / "build" / "phase186" / ("x" * 180)
+            with mock.patch.object(bridge_project.sys, "platform", "win32"):
+                with self.assertRaisesRegex(
+                    bridge_project.BridgeOnlyProjectFailure,
+                    "Windows path budget",
+                ):
+                    bridge_project._owned_project_path(repository, output)
+
     def test_find_current_run_marker_rejects_stale_and_accepts_exact(self) -> None:
         token = "p186h_0123456789abcdef01234567"
         run_id = "phase186h-run-0123456789ab"

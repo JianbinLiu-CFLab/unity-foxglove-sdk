@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import shutil
+import sys
 import tempfile
 import time
 from collections.abc import Mapping
@@ -20,6 +21,8 @@ from collections.abc import Mapping
 PROJECT_DIRECTORY_NAME = "bridge-only-unity"
 OWNERSHIP_MARKER = ".phase186-owned-project.json"
 PROJECT_SCHEMA_VERSION = 1
+MAX_WINDOWS_UNITY_LMDB_PATH = 240
+_UNITY_LMDB_RELATIVE_PATH = pathlib.Path("Library") / "SourceAssetDB"
 
 _ASSET_PATHS = (
     "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs",
@@ -120,7 +123,16 @@ def _owned_project_path(
         raise BridgeOnlyProjectFailure(
             "owned Unity project output is outside build/phase186"
         ) from exc
-    return output / PROJECT_DIRECTORY_NAME
+    target = output / PROJECT_DIRECTORY_NAME
+    if (
+        sys.platform == "win32"
+        and len(str(target / _UNITY_LMDB_RELATIVE_PATH))
+        > MAX_WINDOWS_UNITY_LMDB_PATH
+    ):
+        raise BridgeOnlyProjectFailure(
+            "owned Unity project exceeds the Windows path budget"
+        )
+    return target
 
 
 def _bridge_only_manifest(repository: pathlib.Path) -> bytes:

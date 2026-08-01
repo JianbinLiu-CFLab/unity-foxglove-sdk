@@ -92,18 +92,14 @@ def live_invocations(
     )
     result: list[LiveInvocation] = []
     for ordinal, (case_id, row_id) in enumerate(rows, start=1):
-        compact_case = case_id.replace("-", "")[:18]
-        compact_row = row_id.replace("-", "")[:16]
-        run_id = (
-            f"phase186h-{ordinal:02d}-{compact_case}-{compact_row}-{head[:8]}"
-        )
+        run_id = f"phase186h-c{ordinal:02d}-{head[:8]}"
         result.append(
             LiveInvocation(
                 ordinal,
                 case_id,
                 row_id,
                 run_id,
-                certification_root / "cases" / f"{ordinal:02d}-{case_id}-{row_id}",
+                certification_root / "c" / f"{ordinal:02d}",
             )
         )
     return tuple(result)
