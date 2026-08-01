@@ -154,7 +154,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                     overlay,
                     distro="jazzy",
                     rmw="rmw_fastrtps_cpp",
-                    domain_id=187,
+                    domain_id=161,
                     topology_id="phase186h-test",
                     zenoh_session_config=None,
                 )

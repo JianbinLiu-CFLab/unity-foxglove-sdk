@@ -1062,7 +1062,7 @@ def _preflight(
     contract = protocol.require_case(args.case)
     runtime_row_id = args.runtime_row or contract.row_id or "jazzy-fastrtps"
     row = protocol.require_row(runtime_row_id)
-    domain_id = args.domain_id if args.domain_id is not None else (row.domain_id if row else 186)
+    domain_id = args.domain_id if args.domain_id is not None else row.domain_id
     config = protocol.make_run_config(
         repository=repository,
         project=project,

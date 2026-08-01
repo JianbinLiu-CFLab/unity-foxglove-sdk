@@ -27,6 +27,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
 
 SCRIPT_DIRECTORY = pathlib.Path(__file__).resolve().parent
@@ -34,16 +35,14 @@ if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
 import phase186_bridge_build as build
+import phase186_bridge_acceptance_protocol as acceptance_protocol
 
 
 SELECTED_MECHANISM = "publisher_gid_take_serialized"
 SUMMARY_SCHEMA_VERSION = 1
-DOMAIN_IDS = {
-    "humble-fastrtps": 186,
-    "jazzy-fastrtps": 187,
-    "lyrical-fastrtps": 188,
-    "lyrical-zenoh": 189,
-}
+DOMAIN_IDS: Mapping[str, int] = MappingProxyType(
+    {row_id: row.domain_id for row_id, row in acceptance_protocol.ROWS.items()}
+)
 
 
 class ProbeFailure(RuntimeError):

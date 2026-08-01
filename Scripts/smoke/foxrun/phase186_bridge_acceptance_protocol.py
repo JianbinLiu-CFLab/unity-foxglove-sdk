@@ -41,6 +41,7 @@ COORDINATOR_UNITY_READY_TIMEOUT_SECONDS = 480.0
 ACTOR_UNITY_READY_TIMEOUT_SECONDS = (
     COORDINATOR_UNITY_READY_TIMEOUT_SECONDS + 60.0
 )
+WINDOWS_SAFE_ROS_DOMAIN_ID_MAX = 166
 
 _HEAD = re.compile(r"\A[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
@@ -90,16 +91,16 @@ class CaseContract:
 ROWS: Mapping[str, RowContract] = MappingProxyType(
     {
         "humble-fastrtps": RowContract(
-            "humble-fastrtps", "humble", "rmw_fastrtps_cpp", 186
+            "humble-fastrtps", "humble", "rmw_fastrtps_cpp", 160
         ),
         "jazzy-fastrtps": RowContract(
-            "jazzy-fastrtps", "jazzy", "rmw_fastrtps_cpp", 187
+            "jazzy-fastrtps", "jazzy", "rmw_fastrtps_cpp", 161
         ),
         "lyrical-fastrtps": RowContract(
-            "lyrical-fastrtps", "lyrical", "rmw_fastrtps_cpp", 188
+            "lyrical-fastrtps", "lyrical", "rmw_fastrtps_cpp", 162
         ),
         "lyrical-zenoh": RowContract(
-            "lyrical-zenoh", "lyrical", "rmw_zenoh_cpp", 189
+            "lyrical-zenoh", "lyrical", "rmw_zenoh_cpp", 163
         ),
     }
 )
@@ -539,8 +540,12 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
         or foxglove_port == port
     ):
         raise _fail("FAIL_PREFLIGHT", "Foxglove port is invalid or collides with Bridge")
-    if isinstance(domain, bool) or not isinstance(domain, int) or not 0 <= domain <= 232:
-        raise _fail("FAIL_PREFLIGHT", "ROS domain ID is outside 0..232")
+    if (
+        isinstance(domain, bool)
+        or not isinstance(domain, int)
+        or not 0 <= domain <= WINDOWS_SAFE_ROS_DOMAIN_ID_MAX
+    ):
+        raise _fail("FAIL_PREFLIGHT", "Windows ROS domain ID is outside 0..166")
     if value["interfaceType"] != INTERFACE_TYPE or value["interfaceDigest"] != INTERFACE_DIGEST:
         raise _fail("FAIL_PREFLIGHT", "Phase181 interface identity differs from authority")
     if tuple(value["topics"]) != topics_for_case(contract.case_id, token):

@@ -377,7 +377,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 case_id="manual-jazzy-fastrtps-duplex",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=187,
+                domain_id=161,
             )
 
             source = acceptance.render_unity_run_binding(config)
@@ -412,7 +412,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 case_id="manual-jazzy-fastrtps-duplex",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=187,
+                domain_id=161,
             )
 
             installed = acceptance.install_unity_run_binding(project, config)
@@ -448,7 +448,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                     case_id=case_id,
                     head=HEAD,
                     bridge_port=18767,
-                    domain_id=187,
+                    domain_id=161,
                 )
                 source = acceptance.render_unity_run_binding(config)
                 with self.subTest(case_id=case_id):
@@ -472,7 +472,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 case_id="bridge-source",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=187,
+                domain_id=161,
             )
             bridge_source = acceptance.render_unity_run_binding(bridge_config)
             mutation_method = bridge_source.split(
@@ -492,7 +492,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 case_id="fanout-fairness-health",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=187,
+                domain_id=161,
             )
             fanout_source = acceptance.render_unity_run_binding(fanout_config)
             self.assertEqual(3, fanout_source.count('"unity2foxglove.r2fu"'))

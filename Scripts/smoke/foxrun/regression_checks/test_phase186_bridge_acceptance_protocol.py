@@ -38,6 +38,21 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             ),
             protocol.MANUAL_CASE_IDS,
         )
+        self.assertEqual(
+            {
+                "humble-fastrtps": 160,
+                "jazzy-fastrtps": 161,
+                "lyrical-fastrtps": 162,
+                "lyrical-zenoh": 163,
+            },
+            {row_id: row.domain_id for row_id, row in protocol.ROWS.items()},
+        )
+        self.assertTrue(
+            all(
+                0 <= row.domain_id <= protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX
+                for row in protocol.ROWS.values()
+            )
+        )
         with self.assertRaises(TypeError):
             protocol.ROWS["other"] = protocol.ROWS["jazzy-fastrtps"]
 
@@ -255,7 +270,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 case_id="manual-jazzy-fastrtps-duplex",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=186,
+                domain_id=161,
             )
             self.assertEqual(
                 "jazzy-fastrtps",
@@ -281,7 +296,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 case_id="full-duplex",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=186,
+                domain_id=161,
             )
             self.assertEqual(
                 project,
@@ -309,7 +324,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 case_id="bridge-source",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=186,
+                domain_id=161,
             )
             validated = protocol.validate_run_config(config, repo)
             self.assertIsNone(validated["rowId"])
@@ -335,9 +350,14 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 case_id="manual-jazzy-fastrtps-duplex",
                 head=HEAD,
                 bridge_port=18767,
-                domain_id=186,
+                domain_id=161,
             )
-            for key, value in (("bridgePort", 0), ("bridgePort", 65536), ("domainId", 233)):
+            for key, value in (
+                ("bridgePort", 0),
+                ("bridgePort", 65536),
+                ("domainId", 167),
+                ("domainId", 233),
+            ):
                 with self.subTest(key=key, value=value):
                     candidate = protocol.deep_copy_json(base)
                     candidate[key] = value

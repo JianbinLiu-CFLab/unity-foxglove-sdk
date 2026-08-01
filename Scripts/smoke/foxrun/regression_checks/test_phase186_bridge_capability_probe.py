@@ -15,6 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import phase186_bridge_build as build
+import phase186_bridge_acceptance_protocol as acceptance_protocol
 import phase186_bridge_capability_probe as probe
 
 
@@ -70,6 +71,13 @@ class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
     def test_exact_good_matrix_selects_one_mechanism(self) -> None:
         """Accept the exact maintained matrix using one selected mechanism."""
 
+        self.assertEqual(
+            {
+                row_id: row.domain_id
+                for row_id, row in acceptance_protocol.ROWS.items()
+            },
+            probe.DOMAIN_IDS,
+        )
         matrix = {row_id: passing_row(row_id) for row_id in build.ROWS}
         validated = probe.validate_matrix(matrix)
         self.assertEqual(probe.SELECTED_MECHANISM, validated["selectedMechanism"])
