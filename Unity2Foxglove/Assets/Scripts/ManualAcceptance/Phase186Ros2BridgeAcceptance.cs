@@ -124,6 +124,7 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _fanoutFailureInjected;
         private bool _fanoutFailedProviderObserved;
         private long _fanoutSentFramesBeforeFailure;
+        private string _progressFingerprint = string.Empty;
 
         public string RunId => _runId;
         public string CaseId => _caseId;
@@ -242,6 +243,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _fanoutFailureInjected = false;
             _fanoutFailedProviderObserved = false;
             _fanoutSentFramesBeforeFailure = 0;
+            _progressFingerprint = string.Empty;
             _nextExternalGateCheckAt = 0f;
             _localMutationRequested = false;
             _hasObservedConnection = false;
@@ -304,9 +306,49 @@ namespace Unity2Foxglove.ManualAcceptance
                 PublishLocalMutation();
             }
             InjectFanoutFailureIfRequested();
+            EmitProgressIfChanged();
             if (!_manual && CanComplete)
                 CompleteAutomaticAcceptance();
         }
+
+        private void EmitProgressIfChanged()
+        {
+            var caseSpecific = HasCaseSpecificEvidence();
+            var fingerprint = ProgressFingerprint(caseSpecific);
+            if (string.Equals(
+                    fingerprint,
+                    _progressFingerprint,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+            _progressFingerprint = fingerprint;
+            Debug.Log(
+                "PHASE186_ACCEPTANCE_PROGRESS run=" + _runId
+                + " case=" + _caseId
+                + " ready=" + (_ready ? "true" : "false")
+                + " external=" + (_externalGateReady ? "true" : "false")
+                + " generated=" + (_generatedEvidence.CanComplete ? "true" : "false")
+                + " caseSpecific=" + (caseSpecific ? "true" : "false")
+                + " connected=" + (_connected ? "true" : "false")
+                + " publish=" + _publishState
+                + " subscribe=" + _subscribeState
+                + " received=" + _generatedEvidence.Received.ToString(
+                    CultureInfo.InvariantCulture)
+                + " applied=" + _generatedEvidence.Applied.ToString(
+                    CultureInfo.InvariantCulture)
+                + " diagnostic=" + Phase186Bound(_lastDiagnostic));
+        }
+
+        private string ProgressFingerprint(bool caseSpecific)
+            => (_ready ? "1" : "0")
+               + (_externalGateReady ? "1" : "0")
+               + (_generatedEvidence.CanComplete ? "1" : "0")
+               + (caseSpecific ? "1" : "0")
+               + (_connected ? "1" : "0")
+               + ":" + _publishState
+               + ":" + _subscribeState
+               + ":" + Phase186Bound(_lastDiagnostic);
 
         /// <summary>Publishes one causally distinct local B after remote A.</summary>
         public void PublishLocalMutation()

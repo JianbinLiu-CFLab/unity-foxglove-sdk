@@ -212,6 +212,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("partial void Phase186Generated_Tick", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_ACCEPTANCE_PASS", runtime, StringComparison.Ordinal);
+            Assert.Contains("PHASE186_ACCEPTANCE_PROGRESS", runtime, StringComparison.Ordinal);
+            Assert.Contains("ProgressFingerprint", runtime, StringComparison.Ordinal);
             Assert.Contains("tokenHash=", runtime, StringComparison.Ordinal);
             Assert.Contains("head=", runtime, StringComparison.Ordinal);
             Assert.Contains("CaptureFoxRunTransportStatuses", runtime, StringComparison.Ordinal);
