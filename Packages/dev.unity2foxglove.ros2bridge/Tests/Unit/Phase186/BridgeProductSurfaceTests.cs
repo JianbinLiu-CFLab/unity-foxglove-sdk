@@ -263,6 +263,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             var probe = File.ReadAllText(PathOf(
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
                 + "Phase186BatchModeRos2BridgeProbe.cs"));
+            var runtime = File.ReadAllText(PathOf(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase186Ros2BridgeAcceptance.cs"));
 
             Assert.Contains(
                 "\"/foxrun/phase186/\" + token + \"/\"",
@@ -275,6 +278,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.DoesNotContain(
                 "topic.IndexOf(\"phase184\"",
                 probe,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "topic.StartsWith(\"/foxrun/phase186/p186h_\"",
+                runtime,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "topic.IndexOf(\"phase181\"",
+                runtime,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "topic.IndexOf(\"phase184\"",
+                runtime,
                 StringComparison.Ordinal);
         }
 

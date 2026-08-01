@@ -811,9 +811,7 @@ namespace Unity2Foxglove.ManualAcceptance
             {
                 var topic = topics[i];
                 if (string.IsNullOrWhiteSpace(topic)
-                    || !topic.StartsWith("/foxrun/phase186/p186h_", StringComparison.Ordinal)
-                    || topic.IndexOf("phase181", StringComparison.OrdinalIgnoreCase) >= 0
-                    || topic.IndexOf("phase184", StringComparison.OrdinalIgnoreCase) >= 0)
+                    || !topic.StartsWith("/foxrun/phase186/p186h_", StringComparison.Ordinal))
                 {
                     throw new ArgumentException("Topic is outside Phase186 run authority.", nameof(topics));
                 }
