@@ -17,8 +17,12 @@ import tempfile
 import time
 from collections.abc import Mapping
 
+try:
+    from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
+except ImportError:  # Imported by the direct acceptance entry point.
+    import phase186_bridge_acceptance_protocol as protocol
 
-PROJECT_DIRECTORY_NAME = "u"
+
 OWNERSHIP_MARKER = ".phase186-owned-project.json"
 PROJECT_SCHEMA_VERSION = 1
 MAX_WINDOWS_UNITY_LMDB_PATH = 240
@@ -112,18 +116,13 @@ def _write_atomic(path: pathlib.Path, value: bytes) -> None:
 
 def _owned_project_path(
     repository: pathlib.Path,
-    output_root: pathlib.Path,
+    owner_token: str,
 ) -> pathlib.Path:
     root = pathlib.Path(repository).resolve()
-    output = pathlib.Path(output_root).resolve()
-    phase_root = (root / "build" / "phase186").resolve()
     try:
-        output.relative_to(phase_root)
-    except ValueError as exc:
-        raise BridgeOnlyProjectFailure(
-            "owned Unity project output is outside build/phase186"
-        ) from exc
-    target = output / PROJECT_DIRECTORY_NAME
+        target = protocol.owned_unity_project_path(root, owner_token)
+    except protocol.ProtocolFailure as exc:
+        raise BridgeOnlyProjectFailure("owned Unity project token is malformed") from exc
     if (
         sys.platform == "win32"
         and len(str(target / _UNITY_LMDB_RELATIVE_PATH))
@@ -210,13 +209,10 @@ def validate_bridge_only_manifest(path: pathlib.Path) -> dict[str, object]:
 
 def create_bridge_only_project(
     repository: pathlib.Path,
-    output_root: pathlib.Path,
     owner_token: str,
 ) -> OwnedBridgeOnlyProject:
     root = pathlib.Path(repository).resolve()
-    target = _owned_project_path(root, output_root)
-    if not owner_token or len(owner_token) > 128:
-        raise BridgeOnlyProjectFailure("owned Unity project token is malformed")
+    target = _owned_project_path(root, owner_token)
     if target.exists():
         raise BridgeOnlyProjectFailure("owned Unity project already exists")
     target.mkdir(parents=True)

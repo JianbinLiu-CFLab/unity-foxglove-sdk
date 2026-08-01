@@ -320,6 +320,19 @@ def require_run_id(value: object) -> str:
     return value
 
 
+def owned_unity_project_path(
+    repository: pathlib.Path,
+    run_id: str,
+) -> pathlib.Path:
+    """Return the short, deterministic project path owned by one live run."""
+
+    root = pathlib.Path(repository).resolve()
+    identity = hashlib.sha256(
+        require_run_id(run_id).encode("utf-8")
+    ).hexdigest()[:16]
+    return (root / "build" / "phase186" / "u" / identity).resolve()
+
+
 def require_token(value: object) -> str:
     if not isinstance(value, str) or _TOKEN.fullmatch(value) is None:
         raise _fail("FAIL_PREFLIGHT", "run token is unsafe or outside the fixed bound")
@@ -518,7 +531,7 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
     if not _is_below(output, owned_root) or output.name != run_id:
         raise _fail("FAIL_PREFLIGHT", "run output is not the exact owned Phase186 run directory")
     repository_project = (root / "Unity2Foxglove").resolve()
-    bridge_only_project = (output / "u").resolve()
+    bridge_only_project = owned_unity_project_path(root, run_id)
     if project not in {repository_project, bridge_only_project}:
         raise _fail(
             "FAIL_PREFLIGHT",

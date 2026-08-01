@@ -239,13 +239,9 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                 source = repository / relative_text
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_text(relative_text, encoding="utf-8")
-            output = repository / "build" / "phase186" / "run"
-            output.mkdir(parents=True)
-
             owned = bridge_project.create_bridge_only_project(
                 repository,
-                output,
-                "phase186h-test-owner",
+                "phase186h-test-0123456789ab",
             )
             evidence = bridge_project.validate_bridge_only_manifest(owned.path)
             self.assertEqual(
@@ -279,14 +275,16 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
 
     def test_owned_bridge_only_project_rejects_unsafe_windows_lmdb_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            repository = pathlib.Path(temp).resolve()
-            output = repository / "build" / "phase186" / ("x" * 120)
+            repository = pathlib.Path(temp).resolve() / ("x" * 120)
             with mock.patch.object(bridge_project.sys, "platform", "win32"):
                 with self.assertRaisesRegex(
                     bridge_project.BridgeOnlyProjectFailure,
                     "Windows path budget",
                 ):
-                    bridge_project._owned_project_path(repository, output)
+                    bridge_project._owned_project_path(
+                        repository,
+                        "phase186h-test-0123456789ab",
+                    )
 
     def test_find_current_run_marker_rejects_stale_and_accepts_exact(self) -> None:
         token = "p186h_0123456789abcdef01234567"

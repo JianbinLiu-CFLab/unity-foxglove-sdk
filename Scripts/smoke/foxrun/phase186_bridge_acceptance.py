@@ -361,13 +361,14 @@ def validate_unity_project_composition(
     repository: pathlib.Path,
     project: pathlib.Path,
     composition: str,
+    run_id: str,
 ) -> dict[str, Any]:
     """Prove the exact Unity package composition used by this live case."""
 
     root = pathlib.Path(repository).resolve()
     selected = pathlib.Path(project).resolve()
     if composition == "bridge-only":
-        expected = selected.parent / bridge_project.PROJECT_DIRECTORY_NAME
+        expected = protocol.owned_unity_project_path(root, run_id)
         if selected != expected.resolve():
             raise AcceptanceFailure(
                 "FAIL_PACKAGE_COMPOSITION",
@@ -1057,6 +1058,7 @@ def _preflight(
         repository,
         project,
         unity_composition,
+        run_id,
     )
     authority = validate_static_authority(repository)
     contract = protocol.require_case(args.case)
@@ -1101,7 +1103,6 @@ def _preflight(
 
 def _create_owned_unity_project(
     repository: pathlib.Path,
-    run_root: pathlib.Path,
     run_id: str,
     composition: str,
 ) -> bridge_project.OwnedBridgeOnlyProject | None:
@@ -1114,7 +1115,6 @@ def _create_owned_unity_project(
     try:
         return bridge_project.create_bridge_only_project(
             repository,
-            run_root,
             run_id,
         )
     except bridge_project.BridgeOnlyProjectFailure as exc:
@@ -1168,7 +1168,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_root = _owned_run_root(repository, args.output_root, run_id)
         owned_project = _create_owned_unity_project(
             repository,
-            run_root,
             run_id,
             args.unity_composition,
         )

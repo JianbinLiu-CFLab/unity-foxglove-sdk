@@ -329,8 +329,13 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             repo = pathlib.Path(temp).resolve()
             (repo / "Unity2Foxglove").mkdir()
             output = repo / "build" / "phase186" / RUN_ID
-            project = output / "u"
+            project = protocol.owned_unity_project_path(repo, RUN_ID)
             project.mkdir(parents=True)
+            self.assertEqual(
+                repo / "build" / "phase186" / "u",
+                project.parent,
+            )
+            self.assertNotEqual(output, project.parent)
             config = protocol.make_run_config(
                 repository=repo,
                 project=project,

@@ -61,16 +61,20 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
             certification.certification_run_id(HEAD, "unsafe")
 
     def test_serial_case_paths_leave_windows_unity_search_lmdb_headroom(self) -> None:
-        certification_root = pathlib.Path(
+        repository = pathlib.Path(
             r"D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox"
-            r"\build\phase186\windows-live"
-            r"\phase186h-cert-aaaaaaaaaaaa"
+        )
+        certification_root = (
+            repository
+            / "build"
+            / "phase186"
+            / "windows-live"
+            / "phase186h-cert-aaaaaaaaaaaa"
         )
         invocations = certification.live_invocations(certification_root, HEAD)
         for item in invocations:
             search_asset_db = (
-                item.output_root
-                / bridge_project.PROJECT_DIRECTORY_NAME
+                protocol.owned_unity_project_path(repository, item.run_id)
                 / bridge_project._UNITY_LMDB_RELATIVE_PATH
             )
             self.assertLessEqual(
