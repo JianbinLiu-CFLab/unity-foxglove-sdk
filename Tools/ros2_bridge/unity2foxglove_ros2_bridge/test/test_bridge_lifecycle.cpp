@@ -149,6 +149,8 @@ TEST(BridgeProcessOwnership, NodeExecutorAndSpinThreadRemainProcessOwned)
   context->init(0, nullptr);
   runtime::ProcessRosOwner owner("phase186c_process_owner_test", context);
 
+  EXPECT_TRUE(owner.current_node());
+  EXPECT_TRUE(owner.spin_thread_running());
   auto first = owner.require_node();
   auto second = owner.require_node();
   EXPECT_EQ(first.get(), second.get());

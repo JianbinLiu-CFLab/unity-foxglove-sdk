@@ -50,6 +50,7 @@ ProcessRosOwner::ProcessRosOwner(
       std::move(node_name),
       std::move(context)))
 {
+  (void)require_node();
 }
 
 ProcessRosOwner::~ProcessRosOwner()
