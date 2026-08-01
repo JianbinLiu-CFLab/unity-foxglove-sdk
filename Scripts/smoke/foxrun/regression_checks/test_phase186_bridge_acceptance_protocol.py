@@ -136,6 +136,50 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
         with self.assertRaises(protocol.ProtocolFailure):
             protocol.validate_terminal_summary(value)
 
+    def test_pass_binds_the_graph_actor_to_its_ros_peer_process(self) -> None:
+        value = protocol.make_pass_summary_for_tests(
+            run_id=RUN_ID,
+            token=TOKEN,
+            case_id="manual-jazzy-fastrtps-duplex",
+            head=HEAD,
+            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+        )
+        for actor_name, actor in value["actors"].items():
+            actor["processRole"] = actor_name
+            actor["cohosted"] = False
+        peer = value["actors"]["ros-peer"]
+        graph = value["actors"]["graph-observer"]
+        for key in (
+            "pid",
+            "executable",
+            "started",
+            "ready",
+            "identityVerified",
+            "exited",
+            "exitCode",
+            "termination",
+        ):
+            graph[key] = peer[key]
+        graph["processRole"] = "ros-peer"
+        graph["cohosted"] = True
+
+        try:
+            verdict = protocol.validate_terminal_summary(value)["verdict"]
+        except protocol.ProtocolFailure as exc:
+            self.fail(f"cohosted graph evidence was rejected: {exc}")
+        self.assertEqual("PASS", verdict)
+
+        invalid = protocol.deep_copy_json(value)
+        invalid["actors"]["sidecar"]["processRole"] = "ros-peer"
+        invalid["actors"]["sidecar"]["cohosted"] = True
+        with self.assertRaises(protocol.ProtocolFailure):
+            protocol.validate_terminal_summary(invalid)
+
+        mismatched = protocol.deep_copy_json(value)
+        mismatched["actors"]["graph-observer"]["pid"] += 1
+        with self.assertRaises(protocol.ProtocolFailure):
+            protocol.validate_terminal_summary(mismatched)
+
     def test_owner_requested_windows_exit_codes_accept_signed_and_unsigned_forms(self) -> None:
         for exit_code in (-1073741510, 3221225786, -1073741515, 3221225781):
             with self.subTest(exit_code=exit_code):

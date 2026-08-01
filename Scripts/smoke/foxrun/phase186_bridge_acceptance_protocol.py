@@ -701,7 +701,7 @@ def make_failure_summary(
     return result
 
 
-def _actor_for_tests(index: int) -> dict[str, Any]:
+def _actor_for_tests(index: int, logical_role: str) -> dict[str, Any]:
     return {
         "pid": 1000 + index,
         "executable": rf"C:\owned\actor{index}.exe",
@@ -711,6 +711,8 @@ def _actor_for_tests(index: int) -> dict[str, Any]:
         "exited": True,
         "exitCode": 0,
         "termination": "self",
+        "processRole": logical_role,
+        "cohosted": False,
     }
 
 
@@ -728,10 +730,15 @@ def make_pass_summary_for_tests(
     )
     contract = require_case(case_id)
     result["verdict"] = "PASS"
-    result["actors"] = {
-        actor: _actor_for_tests(index)
+    actors = {
+        actor: _actor_for_tests(index, actor)
         for index, actor in enumerate(sorted(contract.required_actors), start=1)
     }
+    if "graph-observer" in actors and "ros-peer" in actors:
+        actors["graph-observer"] = deep_copy_json(actors["ros-peer"])
+        actors["graph-observer"]["processRole"] = "ros-peer"
+        actors["graph-observer"]["cohosted"] = True
+    result["actors"] = actors
     result["observations"] = {
         name: {
             "observed": True,
@@ -799,7 +806,8 @@ def _require_clean_cleanup(value: Mapping[str, Any]) -> None:
             raise _fail("FAIL_CLEANUP", f"cleanup retained {key}")
 
 
-def _validate_actor(actor: object, label: str) -> None:
+def _validate_actor(actor: object, logical_role: str) -> None:
+    label = "actor " + logical_role
     if not isinstance(actor, Mapping):
         raise _fail("FAIL_PROCESS_IDENTITY", f"{label} evidence must be an object")
     expected = {
@@ -811,6 +819,8 @@ def _validate_actor(actor: object, label: str) -> None:
         "exited",
         "exitCode",
         "termination",
+        "processRole",
+        "cohosted",
     }
     _exact_keys(actor, expected, label)
     pid = actor["pid"]
@@ -837,6 +847,21 @@ def _validate_actor(actor: object, label: str) -> None:
         3221225781,  # Unsigned 32-bit STATUS_DLL_NOT_FOUND
     }:
         raise _fail("FAIL_PROCESS_EXIT", f"{label} owned termination is unexpected")
+    process_role = actor["processRole"]
+    cohosted = actor["cohosted"]
+    if not isinstance(process_role, str) or not isinstance(cohosted, bool):
+        raise _fail("FAIL_PROCESS_IDENTITY", f"{label} process ownership is invalid")
+    if logical_role == "graph-observer":
+        if process_role != "ros-peer" or cohosted is not True:
+            raise _fail(
+                "FAIL_PROCESS_IDENTITY",
+                "graph observer must be explicitly cohosted by the ROS peer",
+            )
+    elif process_role != logical_role or cohosted is not False:
+        raise _fail(
+            "FAIL_PROCESS_IDENTITY",
+            f"{label} cannot alias another process role",
+        )
 
 
 def _validate_observation(value: object, label: str) -> None:
@@ -916,7 +941,30 @@ def validate_terminal_summary(value: Mapping[str, Any]) -> Mapping[str, Any]:
     if not isinstance(actors, Mapping) or set(actors) != set(contract.required_actors):
         raise _fail("FAIL_PROCESS_IDENTITY", "PASS actor set differs from case authority")
     for actor_name, actor in actors.items():
-        _validate_actor(actor, "actor " + actor_name)
+        _validate_actor(actor, actor_name)
+    if "graph-observer" in actors:
+        graph_actor = actors["graph-observer"]
+        peer_actor = actors.get("ros-peer")
+        if not isinstance(peer_actor, Mapping):
+            raise _fail(
+                "FAIL_PROCESS_IDENTITY",
+                "cohosted graph observer lacks its ROS peer process",
+            )
+        shared_identity = {
+            "pid",
+            "executable",
+            "started",
+            "ready",
+            "identityVerified",
+            "exited",
+            "exitCode",
+            "termination",
+        }
+        if any(graph_actor[key] != peer_actor[key] for key in shared_identity):
+            raise _fail(
+                "FAIL_PROCESS_IDENTITY",
+                "cohosted graph observer differs from its ROS peer process",
+            )
     observations = value["observations"]
     if not isinstance(observations, Mapping) or set(observations) != set(contract.required_observations):
         raise _fail("FAIL_EVIDENCE", "PASS observation set differs from case authority")

@@ -48,6 +48,7 @@ MAX_FRAME_HEADER_BYTES = 65_536
 MAX_FRAME_PAYLOAD_BYTES = 67_108_864
 FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 FOXGLOVE_MESSAGE_OPCODE = 1
+BRIDGE_NODE_NAME = "unity2foxglove_ros2_bridge"
 
 
 class LiveActorFailure(protocol.ProtocolFailure):
@@ -121,6 +122,37 @@ def _write_actor_document(
     target = _actor_path(config, role, kind)
     _write_json_atomic(target, document)
     return target
+
+
+def _write_cohosted_graph_ready(config: Mapping[str, Any]) -> pathlib.Path:
+    """Declare that the independent ROS peer also owns the graph API view."""
+
+    return _write_actor_document(
+        config,
+        "graph-observer",
+        "ready",
+        {
+            "state": "independent-graph-api-ready",
+            "processRole": "ros-peer",
+            "cohosted": True,
+        },
+    )
+
+
+def _write_cohosted_graph_result(
+    config: Mapping[str, Any], evidence: Mapping[str, Any]
+) -> pathlib.Path:
+    """Write graph evidence without creating a third FastDDS participant."""
+
+    value = dict(evidence)
+    value["processRole"] = "ros-peer"
+    value["cohosted"] = True
+    return _write_actor_document(
+        config,
+        "graph-observer",
+        "result",
+        value,
+    )
 
 
 def _read_log(path: pathlib.Path) -> str:
@@ -315,6 +347,8 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 "interfaceDigest": protocol.INTERFACE_DIGEST,
             },
         )
+        if "graph-observer" in set(config["requiredActors"]):
+            _write_cohosted_graph_ready(config)
         _wait_for_unity_ready(config)
         _spin_until(
             rclpy,
@@ -324,6 +358,11 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
             90.0,
             "Bridge ROS graph endpoints did not match the live peer",
         )
+        if "graph-observer" in set(config["requiredActors"]):
+            _write_cohosted_graph_result(
+                config,
+                _observe_graph(rclpy, node, config),
+            )
 
         offered = 1280 if config["caseId"] == "slow-main-thread-640hz" else 8
         started = time.perf_counter()
@@ -422,6 +461,65 @@ def _endpoint_document(info: object) -> dict[str, Any]:
     }
 
 
+def _observe_graph(
+    rclpy_module: Any,
+    node: Any,
+    config: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Capture exact Bridge endpoint and QoS evidence through rclpy graph APIs."""
+
+    observed: dict[str, Any] = {}
+
+    def graph_ready() -> bool:
+        observed.clear()
+        for topic, kind in _layout(config):
+            publishers = node.get_publishers_info_by_topic(topic)
+            subscriptions = node.get_subscriptions_info_by_topic(topic)
+            expected_type = (
+                protocol.INTERFACE_TYPE
+                if kind.startswith("custom_")
+                else "foxglove_msgs/msg/Log"
+            )
+            if _is_publish(kind):
+                matching_publishers = [
+                    info for info in publishers if info.topic_type == expected_type
+                ]
+                bridge_publishers = [
+                    info
+                    for info in matching_publishers
+                    if str(getattr(info, "node_name", "")) == BRIDGE_NODE_NAME
+                ]
+                required_publishers = (
+                    2 if config["caseId"] == "fanout-fairness-health" else 1
+                )
+                if (
+                    not bridge_publishers
+                    or len(matching_publishers) < required_publishers
+                ):
+                    return False
+            if _is_subscribe(kind) and not any(
+                info.topic_type == expected_type
+                and str(getattr(info, "node_name", "")) == BRIDGE_NODE_NAME
+                for info in subscriptions
+            ):
+                return False
+            observed[topic] = {
+                "expectedType": expected_type,
+                "publishers": [_endpoint_document(info) for info in publishers],
+                "subscriptions": [_endpoint_document(info) for info in subscriptions],
+            }
+        return True
+
+    _spin_until(
+        rclpy_module,
+        node,
+        graph_ready,
+        90.0,
+        "independent graph observer did not find every exact Bridge endpoint",
+    )
+    return {"source": "rclpy-graph-api", "topics": observed}
+
+
 def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     try:
         import rclpy
@@ -437,48 +535,7 @@ def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
             {"state": "independent-graph-api-ready"},
         )
         _wait_for_unity_ready(config)
-        observed: dict[str, Any] = {}
-
-        def graph_ready() -> bool:
-            observed.clear()
-            for topic, kind in _layout(config):
-                publishers = node.get_publishers_info_by_topic(topic)
-                subscriptions = node.get_subscriptions_info_by_topic(topic)
-                expected_type = (
-                    protocol.INTERFACE_TYPE
-                    if kind.startswith("custom_")
-                    else "foxglove_msgs/msg/Log"
-                )
-                if _is_publish(kind):
-                    matching_publishers = [
-                        info for info in publishers if info.topic_type == expected_type
-                    ]
-                    required_publishers = (
-                        2
-                        if config["caseId"] == "fanout-fairness-health"
-                        else 1
-                    )
-                    if len(matching_publishers) < required_publishers:
-                        return False
-                if _is_subscribe(kind) and not any(
-                    info.topic_type == expected_type for info in subscriptions
-                ):
-                    return False
-                observed[topic] = {
-                    "expectedType": expected_type,
-                    "publishers": [_endpoint_document(info) for info in publishers],
-                    "subscriptions": [_endpoint_document(info) for info in subscriptions],
-                }
-            return True
-
-        _spin_until(
-            rclpy,
-            node,
-            graph_ready,
-            90.0,
-            "independent graph observer did not find every exact Bridge endpoint",
-        )
-        return {"source": "rclpy-graph-api", "topics": observed}
+        return _observe_graph(rclpy, node, config)
     finally:
         node.destroy_node()
         rclpy.shutdown()

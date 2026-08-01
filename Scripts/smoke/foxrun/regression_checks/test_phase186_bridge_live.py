@@ -10,6 +10,7 @@ import json
 import pathlib
 import struct
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -129,6 +130,120 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         owner._records = {"sidecar-2": object()}
         self.assertTrue(owner.has_record("sidecar-2"))
         self.assertFalse(owner.has_record("sidecar-1"))
+
+    def test_ros_peer_cohosts_graph_observer_to_bound_fastdds_participants(self) -> None:
+        config = {
+            "requiredActors": [
+                "graph-observer",
+                "ros-peer",
+                "sidecar",
+                "unity",
+            ]
+        }
+
+        self.assertEqual(("ros-peer",), live._worker_process_roles(config))
+        self.assertEqual(
+            "ros-peer",
+            live._owner_role_for_document(config, "graph-observer"),
+        )
+        self.assertEqual(
+            "ros-peer",
+            live._owner_role_for_document(config, "ros-peer"),
+        )
+
+    def test_cohosted_graph_process_evidence_names_the_ros_peer_owner(self) -> None:
+        process = mock.Mock()
+        process.pid = 18602
+        process.poll.return_value = 0
+        owner = object.__new__(live.OwnedLiveProcesses)
+        owner._records = {
+            "ros-peer": types.SimpleNamespace(
+                key="ros-peer",
+                logical_role="ros-peer",
+                executable=pathlib.Path("python.exe"),
+                process=process,
+                identity_verified=True,
+                owner_requested=False,
+            )
+        }
+
+        evidence = owner.actor_evidence(
+            "graph-observer",
+            preferred_key="ros-peer",
+            allow_role_alias=True,
+        )
+
+        self.assertEqual("ros-peer", evidence["processRole"])
+        self.assertTrue(evidence["cohosted"])
+        self.assertEqual(18602, evidence["pid"])
+
+    def test_cohosted_graph_documents_are_identity_bound_and_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = pathlib.Path(temp)
+            config = {
+                "outputRoot": str(output),
+                "schemaVersion": 3,
+                "runId": "phase186h-test-cohosted-graph",
+                "caseId": "full-duplex",
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+                "runtimeRowId": "jazzy-fastrtps",
+            }
+            live_peer._write_cohosted_graph_ready(config)
+            live_peer._write_cohosted_graph_result(
+                config,
+                {"source": "rclpy-graph-api", "topics": {"/topic": {}}},
+            )
+
+            ready = json.loads(
+                (output / "actors" / "graph-observer-ready.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            result = json.loads(
+                (output / "actors" / "graph-observer-result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual("ros-peer", ready["evidence"]["processRole"])
+            self.assertTrue(ready["evidence"]["cohosted"])
+            self.assertEqual("ros-peer", result["evidence"]["processRole"])
+            self.assertTrue(result["evidence"]["cohosted"])
+
+    def test_graph_observation_requires_the_exact_bridge_node(self) -> None:
+        expected_type = live_protocol.INTERFACE_TYPE
+        config = {"caseId": "full-duplex", "topics": ["/phase186/duplex"]}
+
+        def endpoint(node_name: str) -> types.SimpleNamespace:
+            return types.SimpleNamespace(
+                node_name=node_name,
+                node_namespace="/",
+                topic_type=expected_type,
+                qos_profile=types.SimpleNamespace(
+                    reliability=types.SimpleNamespace(name="RELIABLE"),
+                    durability=types.SimpleNamespace(name="VOLATILE"),
+                    history=types.SimpleNamespace(name="KEEP_LAST"),
+                    depth=10,
+                ),
+            )
+
+        def observe(node_name: str) -> bool:
+            info = endpoint(node_name)
+            node = mock.Mock()
+            node.get_publishers_info_by_topic.return_value = [info]
+            node.get_subscriptions_info_by_topic.return_value = [info]
+            ready: list[bool] = []
+
+            def spin_once(_rclpy, _node, predicate, _timeout, _message) -> None:
+                ready.append(bool(predicate()))
+
+            with mock.patch.object(live_peer, "_spin_until", side_effect=spin_once):
+                live_peer._observe_graph(mock.Mock(), node, config)
+            self.assertEqual(1, len(ready))
+            return ready[0]
+
+        self.assertFalse(observe("phase186_peer_deadbeef"))
+        self.assertTrue(observe("unity2foxglove_ros2_bridge"))
 
     def test_runtime_environment_includes_ros_pixi_dll_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

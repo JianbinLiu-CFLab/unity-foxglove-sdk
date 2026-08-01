@@ -179,11 +179,20 @@ class OwnedLiveProcesses:
     def poll(self, key: str) -> int | None:
         return self._records[key].process.poll()
 
-    def actor_evidence(self, logical_role: str, *, preferred_key: str | None = None) -> dict[str, Any]:
+    def actor_evidence(
+        self,
+        logical_role: str,
+        *,
+        preferred_key: str | None = None,
+        allow_role_alias: bool = False,
+    ) -> dict[str, Any]:
         candidates = [
             record for record in self._records.values() if record.logical_role == logical_role
         ]
-        if preferred_key is not None:
+        if preferred_key is not None and allow_role_alias:
+            selected = self._records.get(preferred_key)
+            candidates = [] if selected is None else [selected]
+        elif preferred_key is not None:
             candidates = [record for record in candidates if record.key == preferred_key]
         if not candidates:
             raise LiveFailure("FAIL_PROCESS_IDENTITY", f"{logical_role} process is absent")
@@ -200,6 +209,8 @@ class OwnedLiveProcesses:
             "exited": True,
             "exitCode": int(exit_code),
             "termination": "owner-requested" if record.owner_requested else "self",
+            "processRole": record.logical_role,
+            "cohosted": record.logical_role != logical_role,
         }
 
     def residual_pids(self) -> list[int]:
@@ -507,16 +518,26 @@ def _wait_actor_document(
     role: str,
     kind: str,
     timeout_seconds: float,
+    *,
+    owner_role: str | None = None,
 ) -> Mapping[str, Any]:
+    process_role = owner_role or role
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         document = _read_actor_document(config, role, kind)
         if document is not None:
             return document
-        if owner.poll(role) is not None:
-            failure = pathlib.Path(str(config["outputRoot"])) / "actors" / f"{role}-failure.json"
+        if owner.poll(process_role) is not None:
+            failure = (
+                pathlib.Path(str(config["outputRoot"]))
+                / "actors"
+                / f"{process_role}-failure.json"
+            )
             detail = failure.read_text(encoding="utf-8")[:512] if failure.is_file() else ""
-            raise LiveFailure("FAIL_PROCESS_EXIT", f"{role} exited before {kind}: {detail}")
+            raise LiveFailure(
+                "FAIL_PROCESS_EXIT",
+                f"{role} exited before {kind}: {detail}",
+            )
         time.sleep(0.05)
     raise LiveFailure("FAIL_TERMINAL", f"{role} {kind} evidence expired")
 
@@ -717,6 +738,24 @@ def _worker_roles(config: Mapping[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _worker_process_roles(config: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return physical workers, cohosting graph APIs in the external ROS peer."""
+
+    roles = _worker_roles(config)
+    if "ros-peer" in roles and "graph-observer" in roles:
+        return tuple(role for role in roles if role != "graph-observer")
+    return roles
+
+
+def _owner_role_for_document(config: Mapping[str, Any], role: str) -> str:
+    """Resolve the owned process that is responsible for one logical document."""
+
+    roles = _worker_roles(config)
+    if role == "graph-observer" and "ros-peer" in roles:
+        return "ros-peer"
+    return role
+
+
 def _observation_path(
     config: Mapping[str, Any], worker_results: Mapping[str, Mapping[str, Any]], name: str
 ) -> pathlib.Path:
@@ -817,7 +856,7 @@ def run_live(
         _sidecar, health = _launch_sidecar(owner, runtime, config, "sidecar-1")
         health_generations.append(health)
 
-        for role in _worker_roles(config):
+        for role in _worker_process_roles(config):
             python = (
                 runtime.python_executable
                 if role in {"ros-peer", "graph-observer"}
@@ -837,6 +876,15 @@ def run_live(
                 output_root=output,
             )
             _wait_actor_document(config, owner, role, "ready", 180.0)
+            if role == "ros-peer" and "graph-observer" in _worker_roles(config):
+                _wait_actor_document(
+                    config,
+                    owner,
+                    "graph-observer",
+                    "ready",
+                    180.0,
+                    owner_role="ros-peer",
+                )
 
         if config["caseId"] == "frozen-v1":
             for role in _worker_roles(config):
@@ -900,13 +948,19 @@ def run_live(
                     "graph-observer",
                     "result",
                     240.0,
+                    owner_role="ros-peer",
                 )
                 _write_exercise_gate(config)
             for role in roles:
                 if role in worker_results:
                     continue
                 worker_results[role] = _wait_actor_document(
-                    config, owner, role, "result", 240.0
+                    config,
+                    owner,
+                    role,
+                    "result",
+                    240.0,
+                    owner_role=_owner_role_for_document(config, role),
                 )
             _write_gate(config)
             unity = owner.record("unity").process
@@ -973,6 +1027,12 @@ def run_live(
         if role == "sidecar":
             preferred = "sidecar-2" if owner.has_record("sidecar-2") else "sidecar-1"
             actors[role] = owner.actor_evidence(role, preferred_key=preferred)
+        elif role == "graph-observer" and "ros-peer" in required:
+            actors[role] = owner.actor_evidence(
+                role,
+                preferred_key="ros-peer",
+                allow_role_alias=True,
+            )
         else:
             actors[role] = owner.actor_evidence(role)
     observations = {
