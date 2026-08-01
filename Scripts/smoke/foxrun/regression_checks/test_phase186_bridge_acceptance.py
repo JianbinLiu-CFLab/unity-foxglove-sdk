@@ -220,6 +220,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                     {
                         "dependencies": {
                             "com.unity.modules.jsonserialize": "1.0.0",
+                            "com.unity.inputsystem": "1.19.0",
                             "dev.unity2foxglove.sdk": "file:../../Packages/dev.unity2foxglove.sdk",
                             "dev.unity2foxglove.ros2bridge": "file:../../Packages/dev.unity2foxglove.ros2bridge",
                             "dev.unity2foxglove.ros2forunity": "file:../../Packages/dev.unity2foxglove.ros2forunity",
@@ -253,6 +254,19 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
                     "dev.unity2foxglove.sdk",
                 ],
                 evidence["productPackages"],
+            )
+            manifest = json.loads(
+                (owned.path / "Packages" / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertNotIn(
+                "com.unity.inputsystem",
+                manifest["dependencies"],
+            )
+            self.assertEqual(
+                "1.0.0",
+                manifest["dependencies"]["com.unity.modules.jsonserialize"],
             )
             self.assertTrue(
                 (

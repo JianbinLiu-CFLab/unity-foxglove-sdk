@@ -136,7 +136,7 @@ def _bridge_only_manifest(repository: pathlib.Path) -> bytes:
     filtered = {
         key: item
         for key, item in dependencies.items()
-        if not key.startswith("dev.unity2foxglove.")
+        if key.startswith("com.unity.modules.")
     }
     for package_id, relative in (
         ("dev.unity2foxglove.sdk", "Packages/dev.unity2foxglove.sdk"),
@@ -172,6 +172,15 @@ def validate_bridge_only_manifest(path: pathlib.Path) -> dict[str, object]:
     if product != expected:
         raise BridgeOnlyProjectFailure(
             "Bridge-only Unity project contains unexpected product packages"
+        )
+    unexpected = sorted(
+        key
+        for key in dependencies
+        if key not in expected and not key.startswith("com.unity.modules.")
+    )
+    if unexpected:
+        raise BridgeOnlyProjectFailure(
+            "Bridge-only Unity project contains unrelated feature packages"
         )
     for key in expected:
         value_text = dependencies.get(key)
