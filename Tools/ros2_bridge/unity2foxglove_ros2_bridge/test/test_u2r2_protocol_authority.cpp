@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -27,6 +28,13 @@
 namespace
 {
 namespace u2r2 = unity2foxglove::ros2_bridge::u2r2;
+
+static_assert(!std::is_copy_constructible_v<u2r2::ReplayAdmission>);
+static_assert(!std::is_copy_assignable_v<u2r2::ReplayAdmission>);
+static_assert(!std::is_copy_constructible_v<u2r2::RegistrationAdmission>);
+static_assert(!std::is_copy_assignable_v<u2r2::RegistrationAdmission>);
+static_assert(!std::is_copy_constructible_v<u2r2::RemovalAdmission>);
+static_assert(!std::is_copy_assignable_v<u2r2::RemovalAdmission>);
 
 #ifndef U2R2_PROTOCOL_FIXTURE_PATH
 #error "U2R2_PROTOCOL_FIXTURE_PATH must identify the shared U2R2 authority fixture"
@@ -374,13 +382,61 @@ void RegisterReady(
   (void)DrainOne(scheduler);
 }
 
+TEST(U2R2ProtocolAuthority, DroppedAdmissionsRollbackEveryOwnedBoundedResource)
+{
+  const auto limits = u2r2::ProtocolLimits::defaults();
+  u2r2::BoundedOutboundScheduler scheduler(limits);
+  u2r2::RequestReplayAuthority replay(limits);
+  {
+    auto response = replay.admit(1, Bytes("01"), 1, scheduler);
+  }
+  EXPECT_EQ(0U, replay.outstanding_requests());
+  EXPECT_EQ(0U, replay.replay_bytes());
+  EXPECT_EQ(0U, scheduler.total_queued_depth());
+
+  u2r2::ContractAuthority contracts(limits, DefaultSemanticErrorFrame);
+  const auto identity = Identity({41, 7});
+  auto register_response = replay.admit(
+    2, RequestBytes("register_subscription", identity), 1, scheduler);
+  {
+    auto registration = contracts.begin_registration(
+      identity, scheduler, replay, register_response);
+  }
+  EXPECT_EQ(0U, contracts.contract_count());
+  EXPECT_EQ(0U, replay.outstanding_requests());
+  EXPECT_EQ(0U, scheduler.total_queued_depth());
+
+  auto ready_response = replay.admit(
+    3, RequestBytes("register_subscription", identity), 1, scheduler);
+  {
+    auto registration = contracts.begin_registration(
+      identity, scheduler, replay, ready_response);
+    contracts.commit_ready(
+      registration,
+      replay,
+      ready_response,
+      u2r2::OutboundFrame::control("subscription_ready", Bytes("01")));
+  }
+  (void)DrainOne(scheduler);
+
+  auto remove_response = replay.admit(
+    4, RequestBytes("unregister_subscription", identity), 1, scheduler);
+  {
+    auto removal = contracts.begin_unregister(
+      identity, scheduler, replay, remove_response);
+  }
+  EXPECT_EQ(0U, contracts.contract_count());
+  EXPECT_EQ(0U, replay.outstanding_requests());
+  EXPECT_EQ(0U, scheduler.total_queued_depth());
+}
+
 TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenario)
 {
   const auto authority_json = LoadAuthority();
   const auto limits_json = authority_json.at("limits");
   const auto limits = LimitsFrom(limits_json);
   const auto & scenarios = authority_json.at("scenarios");
-  ASSERT_EQ(56U, scenarios.size());
+  ASSERT_EQ(57U, scenarios.size());
 
   std::unordered_set<std::string> consumed;
   for (const auto & scenario : scenarios) {
@@ -1290,6 +1346,17 @@ TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenar
       EXPECT_EQ(ParseU64(scenario.at("lastRequestId")), counter.next());
       ExpectProtocolError(scenario, [&]() {(void)counter.next();});
       EXPECT_TRUE(counter.is_faulted());
+    } else if (id == "request_high_water_faults_before_saturation") {
+      u2r2::BoundedOutboundScheduler scheduler(limits);
+      u2r2::RequestReplayAuthority replay(limits);
+      ExpectProtocolError(scenario, [&]() {
+        (void)replay.admit(
+          ParseU64(scenario.at("requestId")), Bytes("01"), 1, scheduler);
+      });
+      EXPECT_EQ(
+        scenario.at("expectedHighWater").get<uint64_t>(),
+        replay.high_water_mark());
+      EXPECT_EQ(0U, replay.outstanding_requests());
     } else if (id == "request_counter_is_thread_safe") {
       const auto workers = scenario.at("workerCount").get<size_t>();
       const auto iterations = scenario.at("iterationsPerWorker").get<size_t>();
@@ -1501,8 +1568,9 @@ TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenar
         {"maxOutstandingRequests", 2}, {"reservedControlQueueDepth", 3}});
       u2r2::BoundedOutboundScheduler replay_scheduler(replay_limits);
       u2r2::RequestReplayAuthority replay(replay_limits);
-      (void)replay.admit(1, Bytes("01"), 1, replay_scheduler);
-      (void)replay.admit(2, Bytes("02"), 1, replay_scheduler);
+      std::vector<u2r2::ReplayAdmission> pending;
+      pending.push_back(replay.admit(1, Bytes("01"), 1, replay_scheduler));
+      pending.push_back(replay.admit(2, Bytes("02"), 1, replay_scheduler));
       ExpectProtocolError(scenario, [&]() {
         (void)replay.admit(3, Bytes("03"), 1, replay_scheduler);
       });
@@ -1575,6 +1643,23 @@ TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenar
         } else if (mutation == "revoked_bound_overflow") {
           values["maxContracts"] = std::numeric_limits<uint64_t>::max();
           values["maxTombstones"] = 1;
+          ExpectProtocolError(scenario, [&]() {
+            (void)u2r2::ProtocolLimits::from_diagnostic_snapshot(values);
+          });
+        } else if (mutation == "header_above_uint32") {
+          values["maxHeaderBytes"] =
+            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+          ExpectProtocolError(scenario, [&]() {
+            (void)u2r2::ProtocolLimits::from_diagnostic_snapshot(values);
+          });
+        } else if (mutation == "payload_above_uint32") {
+          values["maxPayloadBytes"] =
+            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+          ExpectProtocolError(scenario, [&]() {
+            (void)u2r2::ProtocolLimits::from_diagnostic_snapshot(values);
+          });
+        } else if (mutation == "json_depth_above_protocol_max") {
+          values["maxJsonDepth"] = 65;
           ExpectProtocolError(scenario, [&]() {
             (void)u2r2::ProtocolLimits::from_diagnostic_snapshot(values);
           });

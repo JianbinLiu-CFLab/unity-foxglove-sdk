@@ -56,13 +56,13 @@
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
-      "sha256": "1f0b0aaf100baca20c343ba38aaed2afd57fa71b4db8ea123456de86f5fa7ebc",
+      "sha256": "1965fc38f1e9c075c68f6e62298f8a76d87bb1e0488db0ca521d51b076ef61ed",
       "classification": "original",
       "influence": "Original package-facing protocol, limits, compatibility, and clean-room documentation."
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
-      "sha256": "b6e1f699ada4bd789fdec0cf08886a9c94a15ea9ee8b3da96d94d442b9a5e888",
+      "sha256": "3081ab330d186d184859187a548415bb6acbb2b83e18c69b03b247c26afea517",
       "classification": "original",
       "influence": "Original C# contract identity and ordering authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -76,14 +76,14 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
-      "sha256": "e6489fcb5836e7ab1d820b471b886a85c559a8c1f0278ac11c293f9db36d79c9",
+      "sha256": "1edbb788c63196b782b889e85981482a51f49a295abea00dbafb5e72ff662e72",
       "classification": "original",
       "influence": "Original strict C# U2R2 v2 frame codec.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sha256": "ac2df77e664005af2fdbbb46cc9adad8b0c5de2ee6c610cc6e89902f72a41909",
+      "sha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
       "classification": "original",
       "influence": "Original immutable C# protocol limit snapshot.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -97,21 +97,21 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ReplayAuthority.cs",
-      "sha256": "394a106515f56dba8be63717d9ba9b7f1add0c98e00f08991386ba5cddd6ace4",
+      "sha256": "12e2ef23ca4910c3ff6f3d6a0c8c728d30338dcf20f8888769672ef9001ce6c2",
       "classification": "original",
       "influence": "Original C# request replay and correlation authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "b57547897e3bb45c486e87909c6dfd2b548de1459cc0dfee95b18934f57c1709",
+      "sha256": "46ecbd1b0906bb89f9dffced4abf6c423e35a683a1ed628b03564498474f5183",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "5492901e18e7ecfbb773f9c7eba8303f767322814f8a44282931ff91c7319a38",
+      "sha256": "12eb7205c766e9f1973572707b27e7170bdb7bb27a4b2944c748a728a3bec280",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -136,7 +136,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",
-      "sha256": "7a91d3d8aeead8ebbe2e5cc4ff09ca823d4df4c6b7d64de618692d5a71f87efc",
+      "sha256": "0a543ca57641c63c2978f8bc7303fc39149db9b10c8347296beb99965bff3cf3",
       "classification": "original",
       "influence": "Original sidecar protocol, limits, compatibility, and clean-room documentation."
     },
@@ -149,7 +149,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp",
-      "sha256": "811b1ec65431680db2eeb18b5136e48b438e1b912ee7e2f6c342acbdea2a3b0d",
+      "sha256": "4d4581afaa6bb7d11b15b37acdca11ef715bbd86aae1d79444010f19b6394611",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority declarations.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -163,27 +163,27 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
-      "sha256": "aed0643dbc71f17578fb34da0b64441c462c4e1e9f062b7d78e35baa49205202",
+      "sha256": "7cb016b14a1ab63cdbb28d76688e0e95d0b894e566873b162eaf4b7708636e25",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority implementation.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json",
-      "sha256": "a2058e0065ea3ef5dca81a8469813a6777910c13cf5dd1268b90643efdfd1653",
+      "sha256": "fcd39ccda5759817d854a9ea5ab5214a22b362e5e7653bfeb8deb8dc7544edfd",
       "classification": "original",
       "influence": "Original shared v1 compatibility and v2 byte/state authority fixture."
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "edbfd88f47685caecea80e72f84549b12bb1fdf8464e7d928dd485322b77c757",
+      "sha256": "5d8476f86eb54661c8b54cf4e2f0e28ca1092680842fb64d8b4f46fbd65216c4",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority.cpp",
-      "sha256": "b1c8be0902ee019f2c7942da8f292097d3c02d8b40af1d562b6ed143316ba2c0",
+      "sha256": "67f7bc94a6ca76d23eedb3b5cef732d6f1c9750ebda529307f13b7079e92a98b",
       "classification": "original",
       "influence": "Original C++ behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"

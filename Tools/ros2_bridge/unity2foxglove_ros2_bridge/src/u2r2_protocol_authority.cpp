@@ -96,6 +96,17 @@ void ValidateLimits(const std::map<std::string, uint64_t> & values)
         "the U2R2 limit snapshot must contain exactly the named limits");
     }
   }
+  if (
+    values.at("maxHeaderBytes") > std::numeric_limits<uint32_t>::max() ||
+    values.at("maxPayloadBytes") > std::numeric_limits<uint32_t>::max())
+  {
+    InvalidConfiguration(
+      "U2R2 wire header and payload limits must fit unsigned 32-bit lengths");
+  }
+  if (values.at("maxJsonDepth") > 64) {
+    InvalidConfiguration(
+      "U2R2 JSON depth cannot exceed the protocol maximum of 64");
+  }
   if (values.at("maxDataSessions") != 1) {
     InvalidConfiguration("maxDataSessions must be exactly one");
   }
@@ -178,6 +189,41 @@ struct LeaseSettlement final
     }
     callback_();
     return true;
+  }
+
+private:
+  std::atomic<bool> settled_{false};
+  std::function<void()> callback_;
+};
+
+struct RollbackSettlement final
+{
+  explicit RollbackSettlement(std::function<void()> callback)
+  : callback_(std::move(callback))
+  {
+  }
+
+  ~RollbackSettlement()
+  {
+    abandon();
+  }
+
+  void disarm() noexcept
+  {
+    settled_.store(true);
+  }
+
+  void abandon() noexcept
+  {
+    bool expected = false;
+    if (!settled_.compare_exchange_strong(expected, true)) {
+      return;
+    }
+    try {
+      callback_();
+    } catch (...) {
+      // Admission destruction is a last-resort rollback and cannot throw.
+    }
   }
 
 private:
@@ -300,6 +346,15 @@ std::shared_ptr<T> SettlementAs(const std::shared_ptr<void> & value)
   return std::static_pointer_cast<T>(value);
 }
 
+void DisarmRollback(std::shared_ptr<void> & value) noexcept
+{
+  if (!value) {
+    return;
+  }
+  SettlementAs<RollbackSettlement>(value)->disarm();
+  value.reset();
+}
+
 struct ContractKeyHash final
 {
   size_t operator()(const ContractKey & key) const noexcept
@@ -331,6 +386,9 @@ bool IsAsciiAlnumOrUnderscore(char value)
 
 void ValidateTopic(const std::string & topic)
 {
+  if (topic.size() > 255) {
+    InvalidContract("a U2R2 topic cannot exceed 255 ASCII characters");
+  }
   if (topic.size() < 2 || topic.front() != '/' || topic.back() == '/') {
     InvalidContract("a U2R2 topic must be a canonical absolute name");
   }
@@ -763,7 +821,10 @@ RequestIdCounter::RequestIdCounter(uint64_t current) noexcept
 uint64_t RequestIdCounter::next()
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (faulted_ || current_ == std::numeric_limits<uint64_t>::max()) {
+  if (
+    faulted_ ||
+    current_ >= std::numeric_limits<uint64_t>::max() - 1)
+  {
     faulted_ = true;
     throw ProtocolError(
             "request_id_exhausted",
@@ -1798,13 +1859,17 @@ ReplayAdmission::ReplayAdmission(
   std::shared_ptr<void> owner,
   uint64_t request_id,
   ReplayDecision decision,
-  std::vector<uint8_t> cached_response)
+  std::vector<uint8_t> cached_response,
+  std::shared_ptr<void> rollback)
 : owner_(std::move(owner)),
   request_id_(request_id),
   decision_(decision),
-  cached_response_(std::move(cached_response))
+  cached_response_(std::move(cached_response)),
+  rollback_(std::move(rollback))
 {
 }
+
+ReplayAdmission::~ReplayAdmission() = default;
 
 ReplayDecision ReplayAdmission::decision() const noexcept
 {
@@ -1884,6 +1949,12 @@ ReplayAdmission RequestReplayAuthority::admit(
     throw ProtocolError(
             "invalid_request_id",
             "a U2R2 request ID must be nonzero",
+            true);
+  }
+  if (request_id == std::numeric_limits<uint64_t>::max()) {
+    throw ProtocolError(
+            "request_id_exhausted",
+            "the U2R2 request ID space exhausted before the session high-water mark could wrap",
             true);
   }
   auto state = impl_;
@@ -2005,11 +2076,17 @@ ReplayAdmission RequestReplayAuthority::admit(
   state->replay_bytes += requested_replay_bytes;
   ++state->outstanding_requests;
   state->high_water_mark = request_id;
+  auto rollback = std::make_shared<RollbackSettlement>(
+    [state, request_id]() {
+      (void)RequestReplayAuthority::try_abandon(
+        state, request_id, false);
+    });
   return ReplayAdmission(
     state,
     request_id,
     ReplayDecision::begin_mutation,
-    {});
+    {},
+    std::move(rollback));
 }
 
 void RequestReplayAuthority::complete(
@@ -2097,6 +2174,7 @@ void RequestReplayAuthority::finish(
   --state->outstanding_requests;
   state->completed_order.push_back(admission.request_id_);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 void RequestReplayAuthority::cancel_pending(ReplayAdmission & admission)
@@ -2143,6 +2221,61 @@ void RequestReplayAuthority::cancel(
   --state->outstanding_requests;
   state->entries.erase(found);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
+}
+
+bool RequestReplayAuthority::try_abandon(
+  ReplayAdmission & admission,
+  bool require_claimed) noexcept
+{
+  if (
+    admission.owner_.get() != impl_.get() ||
+    admission.decision_ != ReplayDecision::begin_mutation ||
+    admission.settled_)
+  {
+    return false;
+  }
+  if (!try_abandon(impl_, admission.request_id_, require_claimed)) {
+    return false;
+  }
+  admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
+  return true;
+}
+
+bool RequestReplayAuthority::try_abandon(
+  const std::shared_ptr<Impl> & state,
+  uint64_t request_id,
+  bool require_claimed) noexcept
+{
+  try {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    const auto found = state->entries.find(request_id);
+    if (
+      found == state->entries.end() ||
+      found->second.completed ||
+      found->second.claimed != require_claimed)
+    {
+      return false;
+    }
+    auto & entry = found->second;
+    entry.reservation->try_cancel();
+    const auto reserved =
+      static_cast<uint64_t>(entry.request.size()) +
+      entry.reserved_response_bytes;
+    if (
+      state->replay_bytes < reserved ||
+      state->outstanding_requests == 0)
+    {
+      return false;
+    }
+    state->replay_bytes -= reserved;
+    --state->outstanding_requests;
+    state->entries.erase(found);
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 bool RequestReplayAuthority::try_claim_for_contract(
@@ -2313,14 +2446,18 @@ RegistrationAdmission::RegistrationAdmission(
   ContractIdentity identity,
   std::shared_ptr<void> scheduler,
   std::shared_ptr<void> replay,
-  uint64_t response_request_id)
+  uint64_t response_request_id,
+  std::shared_ptr<void> rollback)
 : owner_(std::move(owner)),
   identity_(std::move(identity)),
   scheduler_(std::move(scheduler)),
   replay_(std::move(replay)),
+  rollback_(std::move(rollback)),
   response_request_id_(response_request_id)
 {
 }
+
+RegistrationAdmission::~RegistrationAdmission() = default;
 
 bool RegistrationAdmission::replayed() const noexcept
 {
@@ -2332,14 +2469,18 @@ RemovalAdmission::RemovalAdmission(
   ContractIdentity identity,
   std::shared_ptr<void> scheduler,
   std::shared_ptr<void> replay,
-  uint64_t response_request_id)
+  uint64_t response_request_id,
+  std::shared_ptr<void> rollback)
 : owner_(std::move(owner)),
   identity_(std::move(identity)),
   scheduler_(std::move(scheduler)),
   replay_(std::move(replay)),
+  rollback_(std::move(rollback)),
   response_request_id_(response_request_id)
 {
 }
+
+RemovalAdmission::~RemovalAdmission() = default;
 
 bool RemovalAdmission::replayed() const noexcept
 {
@@ -2480,72 +2621,110 @@ RegistrationAdmission ContractAuthority::begin_registration(
             "registration requires the pending command response transaction");
   }
   state->bind_authority_pair(scheduler.impl_, replay.impl_);
-  if (identity.direction != ContractDirection::subscribe) {
-    const ProtocolError error(
-      "invalid_contract",
-      "a register_subscription command requires subscribe direction",
-      false);
-    auto frame = state->semantic_error_frame_factory(
-      Operation::SubscriptionReady,
-      response.request_id(),
-      error);
-    if (!frame.is_control()) {
-      throw std::logic_error(
-              "the semantic error factory must return a control frame");
+  bool inserted = false;
+  std::shared_ptr<void> rollback;
+  try {
+    if (identity.direction != ContractDirection::subscribe) {
+      const ProtocolError error(
+        "invalid_contract",
+        "a register_subscription command requires subscribe direction",
+        false);
+      auto frame = state->semantic_error_frame_factory(
+        Operation::SubscriptionReady,
+        response.request_id(),
+        error);
+      if (!frame.is_control()) {
+        throw std::logic_error(
+                "the semantic error factory must return a control frame");
+      }
+      replay.finish(response, std::move(frame), false, true);
+      throw error;
     }
-    replay.finish(response, std::move(frame), false, true);
-    throw error;
-  }
-  const auto active = state->contracts.find(identity.key);
-  const auto removed = state->tombstones.find(identity.key);
-  if (active != state->contracts.end() || removed != state->tombstones.end()) {
-    const ProtocolError error(
-      "invalid_contract",
-      "the U2R2 contract ID and generation are already bound",
-      false);
-    auto frame = state->semantic_error_frame_factory(
-      Operation::SubscriptionReady,
-      response.request_id(),
-      error);
-    if (!frame.is_control()) {
-      throw std::logic_error(
-              "the semantic error factory must return a control frame");
+    const auto active = state->contracts.find(identity.key);
+    const auto removed = state->tombstones.find(identity.key);
+    if (active != state->contracts.end() || removed != state->tombstones.end()) {
+      const ProtocolError error(
+        "invalid_contract",
+        "the U2R2 contract ID and generation are already bound",
+        false);
+      auto frame = state->semantic_error_frame_factory(
+        Operation::SubscriptionReady,
+        response.request_id(),
+        error);
+      if (!frame.is_control()) {
+        throw std::logic_error(
+                "the semantic error factory must return a control frame");
+      }
+      replay.finish(response, std::move(frame), false, true);
+      throw error;
     }
-    replay.finish(response, std::move(frame), false, true);
-    throw error;
-  }
-  if (
-    static_cast<uint64_t>(state->contracts.size()) ==
-    state->limits.max_contracts())
-  {
-    const ProtocolError error(
-      "capacity_exceeded",
-      "the U2R2 contract limit is exhausted",
-      false);
-    auto frame = state->semantic_error_frame_factory(
-      Operation::SubscriptionReady,
-      response.request_id(),
-      error);
-    if (!frame.is_control()) {
-      throw std::logic_error(
-              "the semantic error factory must return a control frame");
+    if (
+      static_cast<uint64_t>(state->contracts.size()) ==
+      state->limits.max_contracts())
+    {
+      const ProtocolError error(
+        "capacity_exceeded",
+        "the U2R2 contract limit is exhausted",
+        false);
+      auto frame = state->semantic_error_frame_factory(
+        Operation::SubscriptionReady,
+        response.request_id(),
+        error);
+      if (!frame.is_control()) {
+        throw std::logic_error(
+                "the semantic error factory must return a control frame");
+      }
+      replay.finish(response, std::move(frame), false, true);
+      throw error;
     }
-    replay.finish(response, std::move(frame), false, true);
-    throw error;
-  }
-  state->contracts.emplace(
-    identity.key,
-    typename Impl::Entry{
+    state->contracts.emplace(
+      identity.key,
+      typename Impl::Entry{
+        identity,
+        Impl::State::registering,
+        ContractSequence()});
+    inserted = true;
+    scheduler.activate_contract(identity.key);
+    rollback = std::make_shared<RollbackSettlement>(
+      [state,
+      replay_state = replay.impl_,
+      scheduler_state = scheduler.impl_,
+      key = identity.key,
+      request_id = response.request_id()]() {
+        std::lock_guard<std::mutex> contract_lock(state->mutex);
+        const auto found = state->contracts.find(key);
+        if (
+          found == state->contracts.end() ||
+          found->second.state != Impl::State::registering)
+        {
+          return;
+        }
+        (void)RequestReplayAuthority::try_abandon(
+          replay_state, request_id, true);
+        state->contracts.erase(found);
+        std::lock_guard<std::mutex> scheduler_lock(scheduler_state->mutex);
+        if (!scheduler_state->closed) {
+          scheduler_state->revoke(key);
+          scheduler_state->retire_when_drained.insert(key);
+          scheduler_state->try_forget_retired(key);
+        }
+      });
+    return RegistrationAdmission(
+      state,
       identity,
-      Impl::State::registering,
-      ContractSequence()});
-  scheduler.activate_contract(identity.key);
-  return RegistrationAdmission(
-    state,
-    identity,
-    scheduler.impl_,
-    replay.impl_,
-    response.request_id());
+      scheduler.impl_,
+      replay.impl_,
+      response.request_id(),
+      rollback);
+  } catch (...) {
+    DisarmRollback(rollback);
+    if (inserted) {
+      state->contracts.erase(identity.key);
+      scheduler.retire_contract(identity.key);
+    }
+    (void)replay.try_abandon(response, true);
+    throw;
+  }
 }
 
 void ContractAuthority::commit_ready(
@@ -2595,6 +2774,7 @@ void ContractAuthority::commit_ready(
     admission.identity_->key);
   found->second.state = Impl::State::ready;
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 void ContractAuthority::cancel_registration(
@@ -2638,6 +2818,7 @@ void ContractAuthority::cancel_registration(
   state->contracts.erase(found);
   scheduler.retire_contract(admission.identity_->key);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 void ContractAuthority::abort_registration(
@@ -2690,6 +2871,7 @@ void ContractAuthority::abort_registration(
   state->contracts.erase(found);
   scheduler.retire_contract(admission.identity_->key);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 MessageAdmission ContractAuthority::admit_message(
@@ -2766,55 +2948,88 @@ RemovalAdmission ContractAuthority::begin_unregister(
             "unregister requires the pending command response transaction");
   }
   state->bind_authority_pair(scheduler.impl_, replay.impl_);
-  const auto found = state->contracts.find(identity.key);
-  if (
-    found == state->contracts.end() ||
-    found->second.state != Impl::State::ready)
-  {
-    const ProtocolError error(
-      "unknown_contract",
-      "the U2R2 unregister request references no ready contract",
-      true);
-    auto frame = state->semantic_error_frame_factory(
-      Operation::SubscriptionRemoved,
-      response.request_id(),
-      error);
-    if (!frame.is_control()) {
-      throw std::logic_error(
-              "the semantic error factory must return a control frame");
-    }
-    replay.finish(response, std::move(frame), false, true);
-    throw error;
-  }
-  if (found->second.identity != identity) {
-    const ProtocolError error(
-      "invalid_contract",
-      "the U2R2 unregister identity conflicts with the registered contract",
-      false);
-    auto frame = state->semantic_error_frame_factory(
-      Operation::SubscriptionRemoved,
-      response.request_id(),
-      error);
-    if (!frame.is_control()) {
-      throw std::logic_error(
-              "the semantic error factory must return a control frame");
-    }
-    replay.finish(response, std::move(frame), false, true);
-    throw error;
-  }
+  bool removing = false;
+  std::shared_ptr<void> rollback;
   try {
+    const auto found = state->contracts.find(identity.key);
+    if (
+      found == state->contracts.end() ||
+      found->second.state != Impl::State::ready)
+    {
+      const ProtocolError error(
+        "unknown_contract",
+        "the U2R2 unregister request references no ready contract",
+        true);
+      auto frame = state->semantic_error_frame_factory(
+        Operation::SubscriptionRemoved,
+        response.request_id(),
+        error);
+      if (!frame.is_control()) {
+        throw std::logic_error(
+                "the semantic error factory must return a control frame");
+      }
+      replay.finish(response, std::move(frame), false, true);
+      throw error;
+    }
+    if (found->second.identity != identity) {
+      const ProtocolError error(
+        "invalid_contract",
+        "the U2R2 unregister identity conflicts with the registered contract",
+        false);
+      auto frame = state->semantic_error_frame_factory(
+        Operation::SubscriptionRemoved,
+        response.request_id(),
+        error);
+      if (!frame.is_control()) {
+        throw std::logic_error(
+                "the semantic error factory must return a control frame");
+      }
+      replay.finish(response, std::move(frame), false, true);
+      throw error;
+    }
     scheduler.revoke_contract(identity.key);
+    found->second.state = Impl::State::removing;
+    removing = true;
+    rollback = std::make_shared<RollbackSettlement>(
+      [state,
+      replay_state = replay.impl_,
+      scheduler_state = scheduler.impl_,
+      key = identity.key,
+      request_id = response.request_id()]() {
+        std::lock_guard<std::mutex> contract_lock(state->mutex);
+        const auto found = state->contracts.find(key);
+        if (
+          found == state->contracts.end() ||
+          found->second.state != Impl::State::removing)
+        {
+          return;
+        }
+        (void)RequestReplayAuthority::try_abandon(
+          replay_state, request_id, true);
+        state->contracts.erase(found);
+        std::lock_guard<std::mutex> scheduler_lock(scheduler_state->mutex);
+        if (!scheduler_state->closed) {
+          scheduler_state->revoke(key);
+          scheduler_state->retire_when_drained.insert(key);
+          scheduler_state->try_forget_retired(key);
+        }
+      });
+    return RemovalAdmission(
+      state,
+      identity,
+      scheduler.impl_,
+      replay.impl_,
+      response.request_id(),
+      rollback);
   } catch (...) {
-    replay.release_contract_claim(response, scheduler);
+    DisarmRollback(rollback);
+    if (removing) {
+      state->contracts.erase(identity.key);
+      scheduler.retire_contract(identity.key);
+    }
+    (void)replay.try_abandon(response, true);
     throw;
   }
-  found->second.state = Impl::State::removing;
-  return RemovalAdmission(
-    state,
-    identity,
-    scheduler.impl_,
-    replay.impl_,
-    response.request_id());
 }
 
 bool ContractAuthority::try_commit_removed(
@@ -2872,6 +3087,7 @@ bool ContractAuthority::try_commit_removed(
   state->contracts.erase(found);
   state->add_tombstone(identity, scheduler);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
   return true;
 }
 
@@ -2916,6 +3132,7 @@ void ContractAuthority::cancel_removal(
   state->contracts.erase(found);
   scheduler.retire_contract(admission.identity_->key);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 void ContractAuthority::abort_removal(
@@ -2968,6 +3185,7 @@ void ContractAuthority::abort_removal(
   state->contracts.erase(found);
   scheduler.retire_contract(admission.identity_->key);
   admission.settled_ = true;
+  DisarmRollback(admission.rollback_);
 }
 
 void ContractAuthority::close(

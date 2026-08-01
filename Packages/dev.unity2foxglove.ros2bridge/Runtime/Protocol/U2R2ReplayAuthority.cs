@@ -16,7 +16,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         ReplayCached = 2,
     }
 
-    public sealed class U2R2ReplayAdmission
+    public sealed class U2R2ReplayAdmission : IDisposable
     {
         private readonly byte[] _cachedResponse;
 
@@ -42,6 +42,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         internal U2R2RequestReplayAuthority Owner { get; }
         internal U2R2ControlReservation ResponseReservation { get; }
         internal bool IsSettled { get; set; }
+
+        public void Dispose()
+            => Owner.TryAbandon(this, requireClaimed: false);
     }
 
     public sealed class U2R2RequestReplayAuthority
@@ -142,6 +145,13 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 throw new U2R2ProtocolException(
                     "invalid_request_id",
                     "A U2R2 request ID must be nonzero.",
+                    terminal: true);
+            }
+            if (requestId == ulong.MaxValue)
+            {
+                throw new U2R2ProtocolException(
+                    "request_id_exhausted",
+                    "The U2R2 request ID space exhausted before the session high-water mark could wrap.",
                     terminal: true);
             }
             if (canonicalRequest == null)
@@ -374,6 +384,40 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
         internal void CancelClaimed(U2R2ReplayAdmission admission)
             => Cancel(admission, requireClaimed: true);
+
+        internal bool TryAbandonClaimed(U2R2ReplayAdmission admission)
+            => TryAbandon(admission, requireClaimed: true);
+
+        internal bool TryAbandon(
+            U2R2ReplayAdmission admission,
+            bool requireClaimed)
+        {
+            if (admission == null)
+                return false;
+            lock (_gate)
+            {
+                if (!ReferenceEquals(admission.Owner, this)
+                    || admission.IsSettled)
+                {
+                    return false;
+                }
+                if (admission.Decision != U2R2ReplayDecision.BeginMutation
+                    || !_entries.TryGetValue(admission.RequestId, out var entry)
+                    || entry.IsCompleted
+                    || entry.IsClaimed != requireClaimed)
+                {
+                    return false;
+                }
+                entry.Reservation.Dispose();
+                _entries.Remove(admission.RequestId);
+                _replayBytes -= checked(
+                    (ulong)entry.Request.LongLength
+                    + entry.ReservedResponseBytes);
+                _outstandingRequests--;
+                admission.IsSettled = true;
+                return true;
+            }
+        }
 
         private void Cancel(
             U2R2ReplayAdmission admission,

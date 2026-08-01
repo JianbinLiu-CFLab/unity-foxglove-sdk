@@ -39,14 +39,86 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                 .Values<JObject>()
                 .ToArray();
 
-            Assert.Equal(56, scenarios.Length);
-            Assert.Equal(56, scenarios
+            Assert.Equal(57, scenarios.Length);
+            Assert.Equal(57, scenarios
                 .Select(scenario => scenario.Value<string>("id"))
                 .Distinct(StringComparer.Ordinal)
                 .Count());
 
             foreach (var scenario in scenarios)
                 RunScenario(scenario, limits, limitsJson);
+        }
+
+        [Fact]
+        public void DroppedAdmissionsRollbackEveryOwnedBoundedResource()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+
+            using (replay.Admit(1, Bytes("01"), 1, scheduler))
+            {
+            }
+            Assert.Equal(0UL, replay.OutstandingRequests);
+            Assert.Equal(0UL, replay.ReplayBytes);
+            Assert.Equal(0UL, scheduler.TotalQueuedDepth);
+
+            var contracts = new U2R2ContractAuthority(
+                limits,
+                DefaultSemanticErrorFrame);
+            var identity = Identity(new U2R2ContractKey(41, 7));
+            var registerResponse = replay.Admit(
+                2,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler);
+            using (contracts.BeginRegistration(
+                       identity,
+                       scheduler,
+                       replay,
+                       registerResponse))
+            {
+            }
+            registerResponse.Dispose();
+            Assert.Equal(0UL, contracts.ContractCount);
+            Assert.Equal(0UL, replay.OutstandingRequests);
+            Assert.Equal(0UL, scheduler.TotalQueuedDepth);
+
+            var readyResponse = replay.Admit(
+                3,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler);
+            using (var registration = contracts.BeginRegistration(
+                       identity,
+                       scheduler,
+                       replay,
+                       readyResponse))
+            {
+                contracts.CommitReady(
+                    registration,
+                    replay,
+                    readyResponse,
+                    U2R2OutboundFrame.Control("subscription_ready", Bytes("01")));
+            }
+            DrainOne(scheduler);
+
+            var removeResponse = replay.Admit(
+                4,
+                RequestBytes("unregister_subscription", identity),
+                1,
+                scheduler);
+            using (contracts.BeginUnregister(
+                       identity,
+                       scheduler,
+                       replay,
+                       removeResponse))
+            {
+            }
+            removeResponse.Dispose();
+            Assert.Equal(0UL, contracts.ContractCount);
+            Assert.Equal(0UL, replay.OutstandingRequests);
+            Assert.Equal(0UL, scheduler.TotalQueuedDepth);
         }
 
         private static void RunScenario(
@@ -148,6 +220,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     return;
                 case "request_counter_exhausts_before_wrap":
                     RequestCounterExhaustsBeforeWrap(scenario);
+                    return;
+                case "request_high_water_faults_before_saturation":
+                    RequestHighWaterFaultsBeforeSaturation(scenario, limits);
                     return;
                 case "request_counter_is_thread_safe":
                     RequestCounterIsThreadSafe(scenario);
@@ -1319,6 +1394,25 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             Assert.True(counter.IsFaulted);
         }
 
+        private static void RequestHighWaterFaultsBeforeSaturation(
+            JObject scenario,
+            U2R2ProtocolLimits limits)
+        {
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            AssertProtocolError(
+                scenario,
+                () => replay.Admit(
+                    ParseUlong(scenario["requestId"]),
+                    Bytes("01"),
+                    1,
+                    scheduler));
+            Assert.Equal(
+                scenario.Value<ulong>("expectedHighWater"),
+                replay.HighWaterMark);
+            Assert.Equal(0UL, replay.OutstandingRequests);
+        }
+
         private static void RequestCounterIsThreadSafe(JObject scenario)
         {
             var workers = scenario.Value<int>("workerCount");
@@ -1705,6 +1799,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     case "revoked_bound_overflow":
                         values["maxContracts"] = ulong.MaxValue;
                         values["maxTombstones"] = 1;
+                        action = () => U2R2ProtocolLimits.FromDiagnosticSnapshot(values);
+                        break;
+                    case "header_above_uint32":
+                        values["maxHeaderBytes"] = (ulong)uint.MaxValue + 1;
+                        action = () => U2R2ProtocolLimits.FromDiagnosticSnapshot(values);
+                        break;
+                    case "payload_above_uint32":
+                        values["maxPayloadBytes"] = (ulong)uint.MaxValue + 1;
+                        action = () => U2R2ProtocolLimits.FromDiagnosticSnapshot(values);
+                        break;
+                    case "json_depth_above_protocol_max":
+                        values["maxJsonDepth"] = 65;
                         action = () => U2R2ProtocolLimits.FromDiagnosticSnapshot(values);
                         break;
                     case "unknown_with_field":

@@ -472,6 +472,17 @@ void ExecuteNegative(
       HexToBytes(source.at("payloadHex").get<std::string>())});
     return;
   }
+  if (action == "oversized_topic") {
+    const auto & source =
+      Vector(authority, negative.at("baseVector").get<std::string>());
+    auto header = source.at("header");
+    const auto topic_length = negative.at("topicLength").get<size_t>();
+    header["topic"] = "/" + std::string(topic_length - 1, 'a');
+    parse_v2(Frame{
+      std::move(header),
+      HexToBytes(source.at("payloadHex").get<std::string>())});
+    return;
+  }
   if (action == "raw_header_json") {
     const auto raw = negative.at("rawHeaderJson").get<std::string>();
     parse_v2(decode_frame(BuildFrame(
@@ -1064,7 +1075,7 @@ TEST(U2R2ProtocolV2, SharedLedgersExecuteEveryErrorTransitionAndNegativeVector)
     std::runtime_error);
 
   std::unordered_set<std::string> seen_negatives;
-  ASSERT_EQ(49U, authority.at("negativeVectors").size());
+  ASSERT_EQ(51U, authority.at("negativeVectors").size());
   for (const auto & negative : authority.at("negativeVectors")) {
     ASSERT_TRUE(
       seen_negatives.insert(negative.at("id").get<std::string>()).second);

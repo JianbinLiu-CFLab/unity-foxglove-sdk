@@ -14,6 +14,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 {
     public sealed class U2R2ProtocolLimits
     {
+        internal const int MaximumRosTopicNameLength = 255;
+        internal const ulong MaximumJsonDepth = 64;
+
         private static readonly string[] Names =
         {
             "maxConnections",
@@ -170,6 +173,17 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             }
             if (values.Values.Any(value => value == 0))
                 ThrowInvalid("Every U2R2 limit must be nonzero.");
+            if (values["maxHeaderBytes"] > uint.MaxValue
+                || values["maxPayloadBytes"] > uint.MaxValue)
+            {
+                ThrowInvalid(
+                    "U2R2 wire header and payload limits must fit unsigned 32-bit lengths.");
+            }
+            if (values["maxJsonDepth"] > MaximumJsonDepth)
+            {
+                ThrowInvalid(
+                    "U2R2 JSON depth cannot exceed the protocol maximum of 64.");
+            }
             if (values["maxDataSessions"] != 1)
                 ThrowInvalid("maxDataSessions must be exactly one.");
 
@@ -494,7 +508,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         {
             lock (_gate)
             {
-                if (_isFaulted || _current == ulong.MaxValue)
+                if (_isFaulted || _current >= ulong.MaxValue - 1)
                 {
                     _isFaulted = true;
                     throw new U2R2ProtocolException(

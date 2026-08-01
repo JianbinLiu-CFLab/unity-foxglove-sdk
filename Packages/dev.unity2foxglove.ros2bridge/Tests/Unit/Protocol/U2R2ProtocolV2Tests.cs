@@ -630,7 +630,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             var negatives = Assert.IsType<JArray>(authority["negativeVectors"])
                 .Values<JObject>()
                 .ToArray();
-            Assert.Equal(49, negatives.Length);
+            Assert.Equal(51, negatives.Length);
             Assert.Equal(
                 negatives.Length,
                 negatives.Select(item => item.Value<string>("id"))
@@ -684,6 +684,16 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                         var source = Vector(negative.Value<string>("baseVector"));
                         var header = (JObject)Assert.IsType<JObject>(source["header"]).DeepClone();
                         header.Remove(negative.Value<string>("field"));
+                        ParseHeader(header, HexToBytes(source.Value<string>("payloadHex")));
+                    };
+                case "oversized_topic":
+                    return () =>
+                    {
+                        var source = Vector(negative.Value<string>("baseVector"));
+                        var header = (JObject)Assert.IsType<JObject>(source["header"]).DeepClone();
+                        header["topic"] = "/" + new string(
+                            'a',
+                            negative.Value<int>("topicLength") - 1);
                         ParseHeader(header, HexToBytes(source.Value<string>("payloadHex")));
                     };
                 case "raw_header_json":

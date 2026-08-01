@@ -380,8 +380,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 || operation == U2R2Operation.Message;
             if (!mayDeclareEncoding && header["encoding"] != null)
                 throw InvalidFrame("encoding is not valid for this U2R2 operation.");
-            if (mayDeclareEncoding)
+            if (operation == U2R2Operation.Message)
                 encoding = RequiredString(header, "encoding");
+            else if (mayDeclareEncoding && header["encoding"]?.Type == JTokenType.String)
+                encoding = header.Value<string>("encoding") ?? string.Empty;
             if (operation == U2R2Operation.Publish)
             {
                 logTimeNs = RequiredUnsigned(header, "logTimeNs", allowZero: true);

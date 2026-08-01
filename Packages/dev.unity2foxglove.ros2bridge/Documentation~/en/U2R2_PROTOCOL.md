@@ -67,8 +67,11 @@ nonzero `connectionGeneration`. The identity accompanies all later
 session-bound operations.
 
 Requests and correlated responses use nonzero unsigned 64-bit `requestId`.
-Data frames use a nonzero unsigned 64-bit `messageId`. Counters fault with
-`counter_exhausted` before wrap. A socket has exactly one dialect: after v2
+Data frames use a nonzero unsigned 64-bit `messageId`. Request-ID counters
+fault with `request_id_exhausted` before emitting the reserved `2^64 - 1`
+request ID; data counters fault with `counter_exhausted` before wrap. A
+received `2^64 - 1` request ID is terminally rejected before the replay
+high-water mark changes. A socket has exactly one dialect: after v2
 `hello`, a v1 retry requires a new socket.
 
 Field applicability is fail-closed. `requestId` appears only on requests and
@@ -79,6 +82,7 @@ both IDs. `logTimeNs` is publish-only, while `receiveTimeNs` and
 `representation` are inbound-message-only. `encoding` is allowed only on
 publisher preparation, publish, subscription registration, and inbound
 message operations.
+Contract topics are canonical ASCII ROS names no longer than 255 characters.
 
 Response expectations are constructed only from requests. Each request
 allows its mapped success response plus `busy` and `fault`; a response cannot
@@ -188,7 +192,12 @@ The Phase186-B authority freezes exactly 27 positive limits:
 | `shutdownTimeoutMs` | 10000 |
 | `maxJsonDepth` | 64 |
 
+Configured header and payload limits must fit the unsigned 32-bit envelope
+lengths, and configured JSON depth cannot exceed 64.
+
 The production Bridge runtime consumes this v2 session, lease, replay, and
 queue authority. C# and C++ tests consume the same frozen limits, errors, and
 scenario fixtures; successful parsing alone is not treated as runtime
-enforcement evidence.
+enforcement evidence. The JSON fixture is a test oracle, not runtime
+configuration or generated production source; both implementations retain
+reviewed constants and the cross-language gates detect drift.

@@ -333,6 +333,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
 
         private static void ValidateTopic(string topic)
         {
+            if (topic.Length > U2R2ProtocolLimits.MaximumRosTopicNameLength)
+            {
+                ThrowInvalid("A U2R2 topic cannot exceed 255 ASCII characters.");
+            }
             if (topic.Length < 2
                 || topic[0] != '/'
                 || topic[topic.Length - 1] == '/')
@@ -467,20 +471,20 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         }
     }
 
-    public sealed class U2R2RegistrationAdmission
+    public sealed class U2R2RegistrationAdmission : IDisposable
     {
         internal U2R2RegistrationAdmission(
             U2R2ContractAuthority owner,
             U2R2ContractIdentity identity,
             U2R2BoundedOutboundScheduler scheduler,
             U2R2RequestReplayAuthority replay,
-            ulong responseRequestId)
+            U2R2ReplayAdmission response)
         {
             Owner = owner;
             Identity = identity;
             Scheduler = scheduler;
             Replay = replay;
-            ResponseRequestId = responseRequestId;
+            Response = response ?? throw new ArgumentNullException(nameof(response));
         }
 
         public bool Replayed { get; internal set; }
@@ -488,24 +492,28 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         internal U2R2ContractIdentity Identity { get; }
         internal U2R2BoundedOutboundScheduler Scheduler { get; }
         internal U2R2RequestReplayAuthority Replay { get; }
-        internal ulong ResponseRequestId { get; }
+        internal U2R2ReplayAdmission Response { get; }
+        internal ulong ResponseRequestId => Response.RequestId;
         internal bool IsSettled { get; set; }
+
+        public void Dispose()
+            => Owner.AbandonRegistration(this);
     }
 
-    public sealed class U2R2RemovalAdmission
+    public sealed class U2R2RemovalAdmission : IDisposable
     {
         internal U2R2RemovalAdmission(
             U2R2ContractAuthority owner,
             U2R2ContractIdentity identity,
             U2R2BoundedOutboundScheduler scheduler,
             U2R2RequestReplayAuthority replay,
-            ulong responseRequestId)
+            U2R2ReplayAdmission response)
         {
             Owner = owner;
             Identity = identity;
             Scheduler = scheduler;
             Replay = replay;
-            ResponseRequestId = responseRequestId;
+            Response = response ?? throw new ArgumentNullException(nameof(response));
         }
 
         public bool Replayed { get; internal set; }
@@ -513,8 +521,12 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         internal U2R2ContractIdentity Identity { get; }
         internal U2R2BoundedOutboundScheduler Scheduler { get; }
         internal U2R2RequestReplayAuthority Replay { get; }
-        internal ulong ResponseRequestId { get; }
+        internal U2R2ReplayAdmission Response { get; }
+        internal ulong ResponseRequestId => Response.RequestId;
         internal bool IsSettled { get; set; }
+
+        public void Dispose()
+            => Owner.AbandonRemoval(this);
     }
 
     public sealed class U2R2ContractAuthority
@@ -620,7 +632,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         identity,
                         scheduler,
                         replay,
-                        response.RequestId)
+                        response)
                     {
                         Replayed = true,
                         IsSettled = true,
@@ -633,54 +645,69 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 }
                 BindAuthorityPair(scheduler, replay);
 
-                if (identity.Direction != U2R2ContractDirection.Subscribe)
+                var inserted = false;
+                try
                 {
-                    throw CommitSemanticRejection(
-                        replay,
-                        response,
-                        U2R2Operation.SubscriptionReady,
-                        new U2R2ProtocolException(
-                            "invalid_contract",
-                            "A register_subscription command requires subscribe direction.",
-                            terminal: false));
-                }
-                if (_contracts.ContainsKey(identity.Key)
-                    || _tombstones.ContainsKey(identity.Key))
-                {
-                    throw CommitSemanticRejection(
-                        replay,
-                        response,
-                        U2R2Operation.SubscriptionReady,
-                        new U2R2ProtocolException(
-                            "invalid_contract",
-                            "The U2R2 contract ID and generation are already bound.",
-                            terminal: false));
-                }
-                if (checked((ulong)_contracts.Count) == _limits.MaxContracts)
-                {
-                    throw CommitSemanticRejection(
-                        replay,
-                        response,
-                        U2R2Operation.SubscriptionReady,
-                        new U2R2ProtocolException(
-                            "capacity_exceeded",
-                            "The U2R2 contract limit is exhausted.",
-                            terminal: false));
-                }
-                _contracts.Add(
-                    identity.Key,
-                    new ContractEntry
+                    if (identity.Direction != U2R2ContractDirection.Subscribe)
                     {
-                        Identity = identity,
-                        State = ContractState.Registering,
-                    });
-                scheduler.ActivateContract(identity.Key);
-                return new U2R2RegistrationAdmission(
-                    this,
-                    identity,
-                    scheduler,
-                    replay,
-                    response.RequestId);
+                        throw CommitSemanticRejection(
+                            replay,
+                            response,
+                            U2R2Operation.SubscriptionReady,
+                            new U2R2ProtocolException(
+                                "invalid_contract",
+                                "A register_subscription command requires subscribe direction.",
+                                terminal: false));
+                    }
+                    if (_contracts.ContainsKey(identity.Key)
+                        || _tombstones.ContainsKey(identity.Key))
+                    {
+                        throw CommitSemanticRejection(
+                            replay,
+                            response,
+                            U2R2Operation.SubscriptionReady,
+                            new U2R2ProtocolException(
+                                "invalid_contract",
+                                "The U2R2 contract ID and generation are already bound.",
+                                terminal: false));
+                    }
+                    if (checked((ulong)_contracts.Count) == _limits.MaxContracts)
+                    {
+                        throw CommitSemanticRejection(
+                            replay,
+                            response,
+                            U2R2Operation.SubscriptionReady,
+                            new U2R2ProtocolException(
+                                "capacity_exceeded",
+                                "The U2R2 contract limit is exhausted.",
+                                terminal: false));
+                    }
+                    _contracts.Add(
+                        identity.Key,
+                        new ContractEntry
+                        {
+                            Identity = identity,
+                            State = ContractState.Registering,
+                        });
+                    inserted = true;
+                    scheduler.ActivateContract(identity.Key);
+                    return new U2R2RegistrationAdmission(
+                        this,
+                        identity,
+                        scheduler,
+                        replay,
+                        response);
+                }
+                catch
+                {
+                    if (inserted)
+                    {
+                        _contracts.Remove(identity.Key);
+                        scheduler.RetireContract(identity.Key);
+                    }
+                    replay.TryAbandonClaimed(response);
+                    throw;
+                }
             }
         }
 
@@ -898,7 +925,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         identity,
                         scheduler,
                         replay,
-                        response.RequestId)
+                        response)
                     {
                         Replayed = true,
                         IsSettled = true,
@@ -911,45 +938,106 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 }
                 BindAuthorityPair(scheduler, replay);
 
-                if (!_contracts.TryGetValue(identity.Key, out var entry)
-                    || entry.State != ContractState.Ready)
-                {
-                    throw CommitSemanticRejection(
-                        replay,
-                        response,
-                        U2R2Operation.SubscriptionRemoved,
-                        new U2R2ProtocolException(
-                            "unknown_contract",
-                            "The U2R2 unregister request references no ready contract.",
-                            terminal: true));
-                }
-                if (!entry.Identity.Equals(identity))
-                {
-                    throw CommitSemanticRejection(
-                        replay,
-                        response,
-                        U2R2Operation.SubscriptionRemoved,
-                        new U2R2ProtocolException(
-                            "invalid_contract",
-                            "The U2R2 unregister identity conflicts with the registered contract.",
-                            terminal: false));
-                }
+                var removing = false;
                 try
                 {
+                    if (!_contracts.TryGetValue(identity.Key, out var entry)
+                        || entry.State != ContractState.Ready)
+                    {
+                        throw CommitSemanticRejection(
+                            replay,
+                            response,
+                            U2R2Operation.SubscriptionRemoved,
+                            new U2R2ProtocolException(
+                                "unknown_contract",
+                                "The U2R2 unregister request references no ready contract.",
+                                terminal: true));
+                    }
+                    if (!entry.Identity.Equals(identity))
+                    {
+                        throw CommitSemanticRejection(
+                            replay,
+                            response,
+                            U2R2Operation.SubscriptionRemoved,
+                            new U2R2ProtocolException(
+                                "invalid_contract",
+                                "The U2R2 unregister identity conflicts with the registered contract.",
+                                terminal: false));
+                    }
                     scheduler.RevokeContract(identity.Key);
+                    entry.State = ContractState.Removing;
+                    removing = true;
+                    return new U2R2RemovalAdmission(
+                        this,
+                        identity,
+                        scheduler,
+                        replay,
+                        response);
                 }
                 catch
                 {
-                    replay.ReleaseContractClaim(response, scheduler);
+                    if (removing)
+                    {
+                        _contracts.Remove(identity.Key);
+                        scheduler.RetireContract(identity.Key);
+                    }
+                    replay.TryAbandonClaimed(response);
                     throw;
                 }
-                entry.State = ContractState.Removing;
-                return new U2R2RemovalAdmission(
-                    this,
-                    identity,
-                    scheduler,
-                    replay,
-                    response.RequestId);
+            }
+        }
+
+        internal void AbandonRegistration(U2R2RegistrationAdmission admission)
+        {
+            if (admission == null)
+                return;
+            lock (_gate)
+            {
+                if (!ReferenceEquals(admission.Owner, this)
+                    || admission.IsSettled
+                    || admission.Replayed)
+                {
+                    return;
+                }
+                admission.Replay.TryAbandonClaimed(admission.Response);
+                _contracts.Remove(admission.Identity.Key);
+                try
+                {
+                    admission.Scheduler.RetireContract(admission.Identity.Key);
+                }
+                catch
+                {
+                    // Dispose is a last-resort rollback and must not mask the
+                    // exception that abandoned the transaction.
+                }
+                admission.IsSettled = true;
+            }
+        }
+
+        internal void AbandonRemoval(U2R2RemovalAdmission admission)
+        {
+            if (admission == null)
+                return;
+            lock (_gate)
+            {
+                if (!ReferenceEquals(admission.Owner, this)
+                    || admission.IsSettled
+                    || admission.Replayed)
+                {
+                    return;
+                }
+                admission.Replay.TryAbandonClaimed(admission.Response);
+                _contracts.Remove(admission.Identity.Key);
+                try
+                {
+                    admission.Scheduler.RetireContract(admission.Identity.Key);
+                }
+                catch
+                {
+                    // Dispose is a last-resort rollback and must not mask the
+                    // exception that abandoned the transaction.
+                }
+                admission.IsSettled = true;
             }
         }
 

@@ -56,6 +56,8 @@ namespace Unity.FoxgloveSDK.Tests
             var fixture = LoadJson(ProtocolFixture);
             var limits = (JObject)fixture["limits"];
             var negativeVectors = (JArray)fixture["negativeVectors"];
+            var executableV2Negatives =
+                (JArray)fixture["v2"]?["negativeVectors"];
 
             Check(
                 (int?)fixture["fixtureVersion"] == 1
@@ -83,8 +85,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(
                 negativeVectors.Count == 19
                 && negativeIds.All(id => !string.IsNullOrWhiteSpace(id))
-                && negativeIds.Distinct(StringComparer.Ordinal).Count() == negativeIds.Length,
-                "186-A3: nineteen unique fail-closed protocol vectors remain shared across C# and C++");
+                && negativeIds.Distinct(StringComparer.Ordinal).Count()
+                    == negativeIds.Length
+                && negativeVectors.All(
+                    vector => (string)vector["expected"] == "reject")
+                && executableV2Negatives != null
+                && executableV2Negatives.Count == 51
+                && executableV2Negatives.All(
+                    vector => !string.IsNullOrWhiteSpace(
+                                  (string)vector["action"])
+                              && !string.IsNullOrWhiteSpace(
+                                  (string)vector["expectedErrorCode"])
+                              && vector["terminal"]?.Type
+                                  == JTokenType.Boolean),
+                "186-A3: the frozen v1 negative case catalog remains documented, while all 51 v2 negatives carry executable cross-language actions and exact errors");
         }
 
         private static void VerifyPreMoveBehaviorAuthority()

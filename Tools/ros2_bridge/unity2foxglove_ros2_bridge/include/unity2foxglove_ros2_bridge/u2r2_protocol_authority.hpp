@@ -382,6 +382,11 @@ class ReplayAdmission final
 {
 public:
   ReplayAdmission() = default;
+  ~ReplayAdmission();
+  ReplayAdmission(ReplayAdmission &&) noexcept = default;
+  ReplayAdmission & operator=(ReplayAdmission &&) noexcept = default;
+  ReplayAdmission(const ReplayAdmission &) = delete;
+  ReplayAdmission & operator=(const ReplayAdmission &) = delete;
 
   ReplayDecision decision() const noexcept;
   uint64_t request_id() const noexcept;
@@ -393,12 +398,14 @@ private:
     std::shared_ptr<void> owner,
     uint64_t request_id,
     ReplayDecision decision,
-    std::vector<uint8_t> cached_response);
+    std::vector<uint8_t> cached_response,
+    std::shared_ptr<void> rollback = {});
 
   std::shared_ptr<void> owner_;
   uint64_t request_id_{0};
   ReplayDecision decision_{ReplayDecision::begin_mutation};
   std::vector<uint8_t> cached_response_;
+  std::shared_ptr<void> rollback_;
   bool settled_{false};
 };
 
@@ -450,6 +457,13 @@ private:
   bool is_cached_for(
     const ReplayAdmission & admission,
     const BoundedOutboundScheduler & scheduler) const;
+  bool try_abandon(
+    ReplayAdmission & admission,
+    bool require_claimed) noexcept;
+  static bool try_abandon(
+    const std::shared_ptr<Impl> & state,
+    uint64_t request_id,
+    bool require_claimed) noexcept;
   void close();
   std::shared_ptr<Impl> impl_;
 };
@@ -477,6 +491,11 @@ class RegistrationAdmission final
 {
 public:
   RegistrationAdmission() = default;
+  ~RegistrationAdmission();
+  RegistrationAdmission(RegistrationAdmission &&) noexcept = default;
+  RegistrationAdmission & operator=(RegistrationAdmission &&) noexcept = default;
+  RegistrationAdmission(const RegistrationAdmission &) = delete;
+  RegistrationAdmission & operator=(const RegistrationAdmission &) = delete;
   bool replayed() const noexcept;
 
 private:
@@ -486,11 +505,13 @@ private:
     ContractIdentity identity,
     std::shared_ptr<void> scheduler,
     std::shared_ptr<void> replay,
-    uint64_t response_request_id);
+    uint64_t response_request_id,
+    std::shared_ptr<void> rollback = {});
   std::shared_ptr<void> owner_;
   std::optional<ContractIdentity> identity_;
   std::shared_ptr<void> scheduler_;
   std::shared_ptr<void> replay_;
+  std::shared_ptr<void> rollback_;
   uint64_t response_request_id_{0};
   bool replayed_{false};
   bool settled_{false};
@@ -500,6 +521,11 @@ class RemovalAdmission final
 {
 public:
   RemovalAdmission() = default;
+  ~RemovalAdmission();
+  RemovalAdmission(RemovalAdmission &&) noexcept = default;
+  RemovalAdmission & operator=(RemovalAdmission &&) noexcept = default;
+  RemovalAdmission(const RemovalAdmission &) = delete;
+  RemovalAdmission & operator=(const RemovalAdmission &) = delete;
   bool replayed() const noexcept;
 
 private:
@@ -509,11 +535,13 @@ private:
     ContractIdentity identity,
     std::shared_ptr<void> scheduler,
     std::shared_ptr<void> replay,
-    uint64_t response_request_id);
+    uint64_t response_request_id,
+    std::shared_ptr<void> rollback = {});
   std::shared_ptr<void> owner_;
   std::optional<ContractIdentity> identity_;
   std::shared_ptr<void> scheduler_;
   std::shared_ptr<void> replay_;
+  std::shared_ptr<void> rollback_;
   uint64_t response_request_id_{0};
   bool replayed_{false};
   bool settled_{false};

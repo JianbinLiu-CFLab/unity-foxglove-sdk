@@ -1333,6 +1333,24 @@
         "terminal": true
       },
       {
+        "id": "v2_register_missing_encoding",
+        "action": "remove_header",
+        "baseVector": "register_subscription",
+        "field": "encoding",
+        "mutation": "remove subscription contract encoding",
+        "expectedErrorCode": "invalid_contract",
+        "terminal": false
+      },
+      {
+        "id": "v2_topic_above_ros_limit",
+        "action": "oversized_topic",
+        "baseVector": "register_subscription",
+        "topicLength": 256,
+        "mutation": "send a ROS topic above 255 ASCII characters",
+        "expectedErrorCode": "invalid_contract",
+        "terminal": false
+      },
+      {
         "id": "v2_message_wrong_encoding",
         "action": "mutate_header",
         "baseVector": "message",
@@ -1706,8 +1724,15 @@
         },
         {
           "id": "request_counter_exhausts_before_wrap",
-          "startingRequestId": "18446744073709551614",
-          "lastRequestId": "18446744073709551615",
+          "startingRequestId": "18446744073709551613",
+          "lastRequestId": "18446744073709551614",
+          "expectedErrorCode": "request_id_exhausted",
+          "terminal": true
+        },
+        {
+          "id": "request_high_water_faults_before_saturation",
+          "requestId": "18446744073709551615",
+          "expectedHighWater": 0,
           "expectedErrorCode": "request_id_exhausted",
           "terminal": true
         },
@@ -1804,6 +1829,9 @@
             "control_depth_exceeds_total",
             "control_burst_exceeds_depth",
             "revoked_bound_overflow",
+            "header_above_uint32",
+            "payload_above_uint32",
+            "json_depth_above_protocol_max",
             "unknown_with_field"
           ],
           "expectedErrorCode": "invalid_configuration",

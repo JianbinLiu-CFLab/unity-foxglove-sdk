@@ -340,6 +340,9 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
     HexToBytes(publish.at("payloadHex").get<std::string>()),
     publish_frame.payload);
 
+  // Phase186-A froze these v1 entries as a documented case catalog.
+  // Executable negative actions live under v2.negativeVectors and are driven
+  // by test_u2r2_protocol.cpp in both language implementations.
   const std::array<std::string, 19> expected_negative_ids = {
     "bad_magic",
     "bad_version",
