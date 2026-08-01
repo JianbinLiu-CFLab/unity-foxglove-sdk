@@ -49,6 +49,7 @@ MAX_FRAME_PAYLOAD_BYTES = 67_108_864
 FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 FOXGLOVE_MESSAGE_OPCODE = 1
 BRIDGE_NODE_NAME = "unity2foxglove_ros2_bridge"
+SOURCE_DELIVERY_SETTLE_SECONDS = 0.75
 
 
 class LiveActorFailure(protocol.ProtocolFailure):
@@ -301,6 +302,19 @@ def _spin_until(rclpy_module, node, predicate, timeout_seconds: float, message: 
     raise LiveActorFailure("FAIL_PEER", message)
 
 
+def _settle_source_delivery(rclpy_module, node, timeout_seconds: float) -> None:
+    """Keep source publishers alive while reliable samples reach the Bridge."""
+
+    if timeout_seconds <= 0:
+        raise ValueError("source delivery timeout must be positive")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        rclpy_module.spin_once(node, timeout_sec=min(0.05, remaining))
+
+
 def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     try:
         import rclpy
@@ -382,6 +396,13 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                     time.sleep(remaining)
             if sequence % 16 == 0:
                 rclpy.spin_once(node, timeout_sec=0.0)
+
+        if publishers:
+            _settle_source_delivery(
+                rclpy,
+                node,
+                SOURCE_DELIVERY_SETTLE_SECONDS,
+            )
 
         expected_outbound = set(subscriptions)
 

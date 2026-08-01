@@ -40,6 +40,21 @@ class _ChunkSocket:
 
 
 class Phase186BridgeLiveTests(unittest.TestCase):
+    def test_source_publish_keeps_ros_peer_alive_for_bounded_delivery(self) -> None:
+        ros = mock.Mock()
+        node = object()
+        with mock.patch.object(
+            live_peer.time,
+            "monotonic",
+            side_effect=(10.0, 10.0, 10.03, 10.06),
+        ):
+            live_peer._settle_source_delivery(ros, node, 0.05)
+
+        self.assertEqual(2, ros.spin_once.call_count)
+        timeouts = [call.kwargs["timeout_sec"] for call in ros.spin_once.call_args_list]
+        self.assertAlmostEqual(0.05, timeouts[0])
+        self.assertAlmostEqual(0.02, timeouts[1])
+
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
         self.assertGreaterEqual(
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
