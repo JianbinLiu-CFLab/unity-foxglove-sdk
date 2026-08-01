@@ -62,6 +62,44 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void ReadyDuplexStateOwnsLivenessWhenSocketProbeRacesReader()
+        {
+            var transport = new DuplexTransport(
+                DuplexMode.FalseNegativeHealthProbeAfterHello);
+            using var runtime = CreateRuntime(
+                transport,
+                FoxRunTransportRetirementOwner.CreateForTests(3),
+                FoxRunTransportDirection.Publish,
+                reconnectIntervalMs: 10);
+
+            runtime.Start(enabled: true, autoConnect: true);
+            WaitUntil(
+                () => transport.Requests.Any(item =>
+                    item.Message.Operation == U2R2Operation.Hello),
+                "the duplex hello did not complete");
+            Assert.False(
+                transport.IsConnected,
+                "the transport probe did not reproduce its concurrent-reader false negative");
+            Assert.False(
+                SpinWait.SpinUntil(
+                    () => transport.ConnectCount > 1,
+                    TimeSpan.FromMilliseconds(250)),
+                "a ready duplex state was discarded because of a racy socket probe");
+            Assert.True(runtime.IsConnected);
+
+            WaitForPublisherReady(runtime);
+            Assert.True(
+                runtime.TryEnqueuePrepared(
+                    Frame(sequence: 4),
+                    out var reason),
+                reason);
+            WaitUntil(
+                () => runtime.GetStatsSnapshot().SentFrames == 1,
+                "the ready duplex state did not retain its writer lane");
+            Assert.Equal(1, transport.ConnectCount);
+        }
+
+        [Fact]
         public void PublishOnlyIncompatibilityUsesFreshLegacySocket()
         {
             var transport = new DuplexTransport(
@@ -298,6 +336,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Happy = 1,
             V2Incompatible = 2,
             DisconnectAfterFirstPreparation = 3,
+            FalseNegativeHealthProbeAfterHello = 4,
         }
 
         private sealed class CapturedRequest
@@ -354,6 +393,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             private int _connected;
             private int _connectCount;
             private int _legacyV2ExchangeCount;
+            private int _healthProbeUnavailable;
 
             internal DuplexTransport(DuplexMode mode)
             {
@@ -361,7 +401,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             }
 
             public bool IsConnected
-                => Volatile.Read(ref _connected) != 0;
+                => Volatile.Read(ref _connected) != 0
+                   && Volatile.Read(
+                       ref _healthProbeUnavailable) == 0;
 
             internal int ConnectCount
                 => Volatile.Read(ref _connectCount);
@@ -536,6 +578,16 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                             connection,
                             limits),
                         null));
+                if (_mode
+                        == DuplexMode
+                            .FalseNegativeHealthProbeAfterHello
+                    && request.Operation
+                    == U2R2Operation.Hello)
+                {
+                    Volatile.Write(
+                        ref _healthProbeUnavailable,
+                        1);
+                }
                 if (_mode
                         == DuplexMode
                             .DisconnectAfterFirstPreparation

@@ -946,10 +946,28 @@ namespace Unity2Foxglove.Ros2Bridge
                     return false;
                 if (_nextConnectAttemptUnixMs > NowUnixMs())
                     return false;
-                if (_connected && _sink != null && _sink.IsConnected)
-                    return true;
-                _connecting = true;
                 duplexConnection = _duplexConnection;
+                if (_connected && _sink != null)
+                {
+                    // A duplex reader owns peer-close detection. Polling the
+                    // same socket here races that reader between Poll and
+                    // Available and can misclassify a consumed response as
+                    // EOF. Once the handshake is complete, the connection
+                    // lifecycle is the authoritative liveness state.
+                    if (useDuplex && duplexConnection != null)
+                    {
+                        if (duplexConnection.LifecycleState
+                            == Ros2BridgeSessionLifecycleState.Ready)
+                        {
+                            return true;
+                        }
+                    }
+                    else if (_sink.IsConnected)
+                    {
+                        return true;
+                    }
+                }
+                _connecting = true;
             }
 
             try
