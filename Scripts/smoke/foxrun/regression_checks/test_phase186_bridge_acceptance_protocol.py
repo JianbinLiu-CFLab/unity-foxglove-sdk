@@ -247,6 +247,32 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             with self.assertRaises(protocol.ProtocolFailure):
                 protocol.validate_run_config(config, repo)
 
+    def test_row_independent_automatic_config_has_no_synthetic_ros_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = pathlib.Path(temp).resolve()
+            project = repo / "Unity2Foxglove"
+            project.mkdir()
+            output = repo / "build" / "phase186" / "acceptance" / RUN_ID
+            output.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repo,
+                project=project,
+                output_root=output,
+                run_id=RUN_ID,
+                token=TOKEN,
+                case_id="bridge-source",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=186,
+            )
+            validated = protocol.validate_run_config(config, repo)
+            self.assertIsNone(validated["rowId"])
+            self.assertIsNone(validated["distro"])
+            self.assertIsNone(validated["rmw"])
+            config["rowId"] = "jazzy-fastrtps"
+            with self.assertRaises(protocol.ProtocolFailure):
+                protocol.validate_run_config(config, repo)
+
     def test_run_config_rejects_invalid_ports_domains_and_extra_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp).resolve()

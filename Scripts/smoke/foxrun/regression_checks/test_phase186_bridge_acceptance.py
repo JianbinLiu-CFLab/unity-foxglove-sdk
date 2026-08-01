@@ -241,6 +241,128 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
             with self.assertRaises(protocol.ProtocolFailure):
                 acceptance.require_exact_head(pathlib.Path("D:/repo"), HEAD)
 
+    def test_generated_unity_binding_is_token_scoped_and_uses_real_cdr_shapes(self) -> None:
+        token = "p186h_0123456789abcdef01234567"
+        run_id = "phase186h-manual-0123456789ab"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            project.mkdir()
+            output = repository / "build" / "phase186" / "acceptance" / run_id
+            output.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=output,
+                run_id=run_id,
+                token=token,
+                case_id="manual-jazzy-fastrtps-duplex",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=187,
+            )
+
+            source = acceptance.render_unity_run_binding(config)
+            for topic in config["topics"]:
+                self.assertIn(topic, source)
+            self.assertIn("Foxglove.Log", source)
+            self.assertIn("Phase181State", source)
+            self.assertIn(protocol.INTERFACE_DIGEST, source)
+            self.assertIn("Mode = FoxRunFlow.PublishAndSubscribe", source)
+            self.assertIn(
+                "SubscribeTransportId = Ros2BridgeTransportProvider.ProviderId",
+                source,
+            )
+            self.assertNotIn("/foxrun/phase181/", source)
+            self.assertNotIn("/foxrun/phase184/", source)
+
+    def test_generated_unity_binding_install_and_cleanup_are_content_owned(self) -> None:
+        token = "p186h_0123456789abcdef01234567"
+        run_id = "phase186h-source-0123456789ab"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            project.mkdir()
+            output = repository / "build" / "phase186" / "acceptance" / run_id
+            output.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=output,
+                run_id=run_id,
+                token=token,
+                case_id="manual-jazzy-fastrtps-duplex",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=187,
+            )
+
+            installed = acceptance.install_unity_run_binding(project, config)
+            self.assertEqual(
+                project
+                / "Assets"
+                / "Scripts"
+                / "Generated"
+                / "Phase186AcceptanceRun.cs",
+                installed.path,
+            )
+            self.assertEqual(installed.sha256, acceptance.sha256_file(installed.path))
+            installed.path.write_text("foreign", encoding="utf-8")
+            with self.assertRaises(protocol.ProtocolFailure):
+                acceptance.cleanup_unity_run_binding(installed)
+
+    def test_every_case_has_an_exact_generated_unity_contract_layout(self) -> None:
+        token = "p186h_0123456789abcdef01234567"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            project.mkdir()
+            for case_id in protocol.CASES:
+                run_id = "phase186h-" + case_id + "-012345"
+                output = repository / "build" / "phase186" / run_id
+                output.mkdir(parents=True)
+                config = protocol.make_run_config(
+                    repository=repository,
+                    project=project,
+                    output_root=output,
+                    run_id=run_id,
+                    token=token,
+                    case_id=case_id,
+                    head=HEAD,
+                    bridge_port=18767,
+                    domain_id=187,
+                )
+                source = acceptance.render_unity_run_binding(config)
+                with self.subTest(case_id=case_id):
+                    self.assertEqual(
+                        len(config["topics"]),
+                        source.count("public const string Phase186GeneratedTopic"),
+                    )
+                    for topic in config["topics"]:
+                        self.assertEqual(1, source.count(f'= "{topic}";'))
+                    self.assertIn("partial void Phase186Generated_Tick", source)
+                    self.assertIn("Phase186GeneratedInterfaceDigest", source)
+
+            bridge_output = repository / "build" / "phase186" / "phase186h-bridge-source-check"
+            bridge_output.mkdir(parents=True)
+            bridge_config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=bridge_output,
+                run_id="phase186h-bridge-source-check",
+                token=token,
+                case_id="bridge-source",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=187,
+            )
+            bridge_source = acceptance.render_unity_run_binding(bridge_config)
+            mutation_method = bridge_source.split(
+                "partial void Phase186Generated_PublishLocalMutation", 1
+            )[1].split("private static Foxglove.Log", 1)[0]
+            self.assertIn("published = false;", mutation_method)
+            self.assertNotIn("evidence.LocalMutations++", mutation_method)
+
 
 if __name__ == "__main__":
     unittest.main()

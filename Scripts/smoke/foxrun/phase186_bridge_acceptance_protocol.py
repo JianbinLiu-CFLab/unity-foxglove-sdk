@@ -374,18 +374,16 @@ def make_run_config(
     """Build one immutable run authority object."""
 
     contract = require_case(case_id)
-    if contract.row_id is None:
-        raise _fail("FAIL_RUNTIME_SELECTION", "run config requires one exact row-bound case")
-    row = require_row(contract.row_id)
+    row = require_row(contract.row_id) if contract.row_id is not None else None
     return {
         "schemaVersion": RUN_CONFIG_SCHEMA_VERSION,
         "runId": require_run_id(run_id),
         "token": require_token(token),
         "tokenHash": token_sha256(token),
         "caseId": contract.case_id,
-        "rowId": row.row_id,
-        "distro": row.distro,
-        "rmw": row.rmw,
+        "rowId": row.row_id if row is not None else None,
+        "distro": row.distro if row is not None else None,
+        "rmw": row.rmw if row is not None else None,
         "manual": contract.manual,
         "head": require_head(head),
         "repository": str(pathlib.Path(repository).resolve()),
@@ -415,11 +413,18 @@ def validate_run_config(value: Mapping[str, Any], repository: pathlib.Path) -> M
     if value["tokenHash"] != token_sha256(token):
         raise _fail("FAIL_PROTOCOL", "run config token hash differs")
     contract = require_case(value["caseId"])
-    if contract.row_id is None or value["rowId"] != contract.row_id:
-        raise _fail("FAIL_RUNTIME_SELECTION", "run config row differs from case authority")
-    row = require_row(value["rowId"])
-    if value["distro"] != row.distro or value["rmw"] != row.rmw:
-        raise _fail("FAIL_RUNTIME_SELECTION", "run config ROS/RMW differs from row authority")
+    if contract.row_id is None:
+        if value["rowId"] is not None or value["distro"] is not None or value["rmw"] is not None:
+            raise _fail(
+                "FAIL_RUNTIME_SELECTION",
+                "row-independent run config cannot select a ROS/RMW alias",
+            )
+    else:
+        if value["rowId"] != contract.row_id:
+            raise _fail("FAIL_RUNTIME_SELECTION", "run config row differs from case authority")
+        row = require_row(value["rowId"])
+        if value["distro"] != row.distro or value["rmw"] != row.rmw:
+            raise _fail("FAIL_RUNTIME_SELECTION", "run config ROS/RMW differs from row authority")
     if value["manual"] is not contract.manual:
         raise _fail("FAIL_PROTOCOL", "run config execution mode differs from case authority")
     require_head(value["head"])

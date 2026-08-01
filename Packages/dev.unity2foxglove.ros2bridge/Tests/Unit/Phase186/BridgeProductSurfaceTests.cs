@@ -72,6 +72,14 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 scene,
                 StringComparison.Ordinal);
             Assert.Contains("_enableFoxRunInbound: 1", scene, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "/foxrun/phase186/p186h_",
+                scene,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "phase186h-",
+                scene,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -174,6 +182,70 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 protocol,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("not yet wired", protocol, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase186AcceptanceHarnessIsUnityOwnedAndFailClosed()
+        {
+            const string runtimeRelative =
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs";
+            const string builderRelative =
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186Ros2BridgeAcceptanceBuilder.cs";
+            const string probeRelative =
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs";
+            const string sceneRelative =
+                "Unity2Foxglove/Assets/Scenes/ManualAcceptance/Phase186Ros2BridgeAcceptance.unity";
+
+            foreach (var relative in new[]
+                     {
+                         runtimeRelative,
+                         builderRelative,
+                         probeRelative,
+                         sceneRelative,
+                     })
+            {
+                Assert.True(File.Exists(PathOf(relative)), relative);
+            }
+
+            var runtime = File.ReadAllText(PathOf(runtimeRelative));
+            Assert.Contains("partial void Phase186Generated_Describe", runtime, StringComparison.Ordinal);
+            Assert.Contains("partial void Phase186Generated_Tick", runtime, StringComparison.Ordinal);
+            Assert.Contains("PHASE186_MANUAL_COMPLETE", runtime, StringComparison.Ordinal);
+            Assert.Contains("PHASE186_ACCEPTANCE_PASS", runtime, StringComparison.Ordinal);
+            Assert.Contains("tokenHash=", runtime, StringComparison.Ordinal);
+            Assert.Contains("head=", runtime, StringComparison.Ordinal);
+            Assert.Contains("CaptureFoxRunTransportStatuses", runtime, StringComparison.Ordinal);
+            Assert.Contains("PublishLocalMutation", runtime, StringComparison.Ordinal);
+            Assert.Contains("slowMainThread", runtime, StringComparison.OrdinalIgnoreCase);
+
+            var builder = File.ReadAllText(PathOf(builderRelative));
+            Assert.Contains("EditorSceneManager.SaveScene", builder, StringComparison.Ordinal);
+            Assert.Contains("Ros2BridgeTransportProvider", builder, StringComparison.Ordinal);
+            Assert.Contains("_foxRunPublishTransportIds", builder, StringComparison.Ordinal);
+            Assert.Contains("_foxRunSubscribeTransportId", builder, StringComparison.Ordinal);
+            Assert.Contains("_enableFoxRunInbound", builder, StringComparison.Ordinal);
+            Assert.DoesNotContain("WriteAllText", builder, StringComparison.Ordinal);
+
+            var probe = File.ReadAllText(PathOf(probeRelative));
+            Assert.Contains("-phase186RunConfig", probe, StringComparison.Ordinal);
+            Assert.Contains("Application.logMessageReceived", probe, StringComparison.Ordinal);
+            Assert.Contains("SessionState", probe, StringComparison.Ordinal);
+            Assert.Contains("PHASE186_ACCEPTANCE_PASS", probe, StringComparison.Ordinal);
+            Assert.Contains("PHASE186_MANUAL_COMPLETE", probe, StringComparison.Ordinal);
+            Assert.Contains("EditorApplication.EnterPlaymode", probe, StringComparison.Ordinal);
+
+            var runtimeMeta = File.ReadAllText(PathOf(runtimeRelative + ".meta"));
+            var guidLine = Array.Find(
+                runtimeMeta.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries),
+                line => line.StartsWith("guid: ", StringComparison.Ordinal));
+            Assert.False(string.IsNullOrWhiteSpace(guidLine));
+            var scene = File.ReadAllText(PathOf(sceneRelative));
+            Assert.Contains(guidLine, scene, StringComparison.Ordinal);
+            Assert.Contains(
+                "_foxRunSubscribeTransportId: unity2foxglove.ros2bridge",
+                scene,
+                StringComparison.Ordinal);
+            Assert.Contains("_enableFoxRunInbound: 1", scene, StringComparison.Ordinal);
         }
 
         private static string PathOf(string relative)
