@@ -636,8 +636,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 {
                     wireBytes = _transport.ReadV2(
                         _limits,
-                        EffectiveTimeout(
-                            _timeoutMs,
+                        ProtocolTimeout(
                             _limits.ReadTimeoutMs));
                 }
                 catch (Exception exception)
@@ -1109,11 +1108,15 @@ namespace Unity2Foxglove.Ros2Bridge
         private static int EffectiveTimeout(
             int configuredTimeoutMs,
             ulong protocolTimeoutMs)
+            => Math.Min(
+                configuredTimeoutMs,
+                ProtocolTimeout(protocolTimeoutMs));
+
+        private static int ProtocolTimeout(
+            ulong protocolTimeoutMs)
             => checked((int)Math.Min(
-                checked((ulong)configuredTimeoutMs),
-                Math.Min(
-                    protocolTimeoutMs,
-                    checked((ulong)int.MaxValue))));
+                protocolTimeoutMs,
+                checked((ulong)int.MaxValue)));
 
         private static Exception NormalizeTransportFault(
             Exception exception,

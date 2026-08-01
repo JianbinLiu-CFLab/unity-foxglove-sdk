@@ -194,6 +194,46 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void ProtocolReadDeadlineSurvivesIdleGapBeyondSendTimeout()
+        {
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect(
+                "127.0.0.1",
+                peer.Port,
+                timeoutMs: 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 4,
+                pendingCapacity: 4,
+                timeoutMs: 100);
+
+            connection.Start();
+            Thread.Sleep(250);
+
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Ready,
+                connection.LifecycleState);
+
+            releasePeer.Set();
+            peer.AssertCompleted();
+        }
+
+        [Fact]
         public void NormalWorkIsRejectedUntilCorrelatedHelloAck()
         {
             using var helloSeen = new ManualResetEventSlim(false);
