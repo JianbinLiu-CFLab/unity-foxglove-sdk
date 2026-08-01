@@ -294,23 +294,60 @@ def _message_text(value: object, kind: str) -> str:
     return str(getattr(value, "message", ""))
 
 
-def _gid_bytes(value: object, source: str) -> bytes:
-    try:
-        result = bytes(value)
-    except (TypeError, ValueError) as exc:
-        raise LiveActorFailure("FAIL_PEER", f"{source} GID is malformed") from exc
-    if not result or len(result) > 64:
-        raise LiveActorFailure("FAIL_PEER", f"{source} GID is outside bounds")
-    return result
+def _direct_peer_sequence(
+    value: object,
+    kind: str,
+    token_hash: str,
+    offered: int,
+) -> int | None:
+    """Return the exact current-run sequence for a peer-authored sample."""
+
+    text = _message_text(value, kind)
+    prefix = "phase186:" + token_hash[:12] + ":"
+    suffix = ":external-a"
+    if not text.startswith(prefix) or not text.endswith(suffix):
+        return None
+    encoded = text[len(prefix) : -len(suffix)]
+    if not encoded or any(character < "0" or character > "9" for character in encoded):
+        return None
+    if len(encoded) > len(str(offered)):
+        return None
+    sequence = int(encoded)
+    if str(sequence) != encoded or sequence < 1 or sequence > offered:
+        return None
+    if kind.startswith("custom_"):
+        envelope_sequence = getattr(value, "foxrun_sequence", None)
+        if type(envelope_sequence) is not int or envelope_sequence != sequence:
+            return None
+    return sequence
 
 
-def _without_owned_publisher_samples(
-    samples: Sequence[tuple[object, bytes]],
-    owned_publisher_gids: set[bytes],
+def _without_direct_peer_samples(
+    samples: Sequence[object],
+    kind: str,
+    token_hash: str,
+    offered: int,
+    *,
+    consume_direct: bool,
 ) -> list[object]:
-    """Exclude the ROS peer's direct self-delivery from Bridge observations."""
+    """Consume one peer self-delivery per exact current-run sequence.
 
-    return [value for value, gid in samples if gid not in owned_publisher_gids]
+    Jazzy rclpy does not expose the publisher GID in subscription callback
+    message metadata.  A second copy of the same peer-authored sequence is
+    therefore retained as evidence that the Bridge mirrored external input.
+    """
+
+    if not consume_direct:
+        return list(samples)
+    consumed: set[int] = set()
+    remaining: list[object] = []
+    for value in samples:
+        sequence = _direct_peer_sequence(value, kind, token_hash, offered)
+        if sequence is not None and sequence not in consumed:
+            consumed.add(sequence)
+            continue
+        remaining.append(value)
+    return remaining
 
 
 def _spin_until(rclpy_module, node, predicate, timeout_seconds: float, message: str) -> None:
@@ -352,7 +389,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     node = rclpy.create_node("phase186_peer_" + str(config["tokenHash"])[:12])
     publishers: dict[str, Any] = {}
     subscriptions: dict[str, Any] = {}
-    received: dict[str, list[tuple[object, bytes]]] = {}
+    received: dict[str, list[object]] = {}
     kinds: dict[str, str] = {}
     try:
         for topic, kind in _layout(config):
@@ -363,12 +400,8 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
             if _is_publish(kind):
                 received[topic] = []
 
-                def capture(value, message_info, *, selected=topic):
-                    publisher_gid = _gid_bytes(
-                        getattr(message_info, "publisher_gid", None),
-                        "message publisher",
-                    )
-                    received[selected].append((value, publisher_gid))
+                def capture(value, *, selected=topic):
+                    received[selected].append(value)
                     if len(received[selected]) > 4096:
                         del received[selected][:-4096]
 
@@ -402,22 +435,8 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 _observe_graph(rclpy, node, config),
             )
 
-        owned_publisher_gids: dict[str, set[bytes]] = {}
-        for topic in publishers:
-            topic_gids = {
-                _gid_bytes(getattr(info, "endpoint_gid", None), "publisher endpoint")
-                for info in node.get_publishers_info_by_topic(topic)
-                if str(getattr(info, "node_name", "")) == node.get_name()
-                and str(getattr(info, "node_namespace", "")) == node.get_namespace()
-            }
-            if len(topic_gids) != 1:
-                raise LiveActorFailure(
-                    "FAIL_PEER",
-                    "exact ROS peer publisher GID was not uniquely observable",
-                )
-            owned_publisher_gids[topic] = topic_gids
-
         offered = 1280 if config["caseId"] == "slow-main-thread-640hz" else 8
+        token_hash = str(config["tokenHash"])
         started = time.perf_counter()
         for sequence in range(1, offered + 1):
             for topic, publisher in publishers.items():
@@ -448,9 +467,12 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         def outbound_ready() -> bool:
             for topic in expected_outbound:
                 kind = kinds[topic]
-                values = _without_owned_publisher_samples(
+                values = _without_direct_peer_samples(
                     received[topic],
-                    owned_publisher_gids.get(topic, set()),
+                    kind,
+                    token_hash,
+                    offered,
+                    consume_direct=topic in publishers,
                 )
                 texts = [_message_text(value, kind) for value in values]
                 if kind.endswith("duplex"):
@@ -482,9 +504,12 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         same_origin_republished = 0
         for topic, samples in received.items():
             kind = kinds[topic]
-            values = _without_owned_publisher_samples(
+            values = _without_direct_peer_samples(
                 samples,
-                owned_publisher_gids.get(topic, set()),
+                kind,
+                token_hash,
+                offered,
+                consume_direct=topic in publishers,
             )
             texts = [_message_text(value, kind) for value in values]
             outbound[topic] = texts[-32:]

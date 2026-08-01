@@ -82,23 +82,89 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertAlmostEqual(0.05, timeouts[0])
         self.assertAlmostEqual(0.02, timeouts[1])
 
-    def test_duplex_origin_check_excludes_the_peer_own_publisher_gid(self) -> None:
-        direct_external = object()
-        bridge_echo = object()
-        bridge_local = object()
-        peer_gid = b"peer-gid"
-        bridge_gid = b"bridge-gid"
+    def test_duplex_origin_check_consumes_one_direct_sample_per_sequence(self) -> None:
+        token_hash = "a" * 64
 
-        actual = live_peer._without_owned_publisher_samples(
-            [
-                (direct_external, peer_gid),
-                (bridge_echo, bridge_gid),
-                (bridge_local, bridge_gid),
-            ],
-            {peer_gid},
+        def sample(sequence: int, label: str = "external-a") -> object:
+            payload = types.SimpleNamespace(
+                message=f"phase186:{token_hash[:12]}:{sequence}:{label}"
+            )
+            return types.SimpleNamespace(
+                foxrun_sequence=sequence,
+                payload=payload,
+            )
+
+        direct_one = sample(1)
+        direct_two = sample(2)
+        bridge_echo_one = sample(1)
+        bridge_local = sample(9, "unity-local-b")
+
+        actual = live_peer._without_direct_peer_samples(
+            [direct_two, direct_one, bridge_local, bridge_echo_one],
+            "custom_duplex",
+            token_hash,
+            offered=8,
+            consume_direct=True,
         )
 
-        self.assertEqual([bridge_echo, bridge_local], actual)
+        self.assertEqual([bridge_local, bridge_echo_one], actual)
+
+    def test_direct_sample_filter_keeps_malformed_or_out_of_run_samples(self) -> None:
+        token_hash = "b" * 64
+        wrong_envelope_sequence = types.SimpleNamespace(
+            foxrun_sequence=2,
+            payload=types.SimpleNamespace(
+                message=f"phase186:{token_hash[:12]}:1:external-a"
+            ),
+        )
+        other_run = types.SimpleNamespace(
+            foxrun_sequence=1,
+            payload=types.SimpleNamespace(
+                message="phase186:cccccccccccc:1:external-a"
+            ),
+        )
+        oversized_sequence = types.SimpleNamespace(
+            foxrun_sequence=1,
+            payload=types.SimpleNamespace(
+                message=(
+                    f"phase186:{token_hash[:12]}:"
+                    + "9" * 5000
+                    + ":external-a"
+                )
+            ),
+        )
+
+        actual = live_peer._without_direct_peer_samples(
+            [wrong_envelope_sequence, other_run, oversized_sequence],
+            "custom_duplex",
+            token_hash,
+            offered=8,
+            consume_direct=True,
+        )
+
+        self.assertEqual(
+            [wrong_envelope_sequence, other_run, oversized_sequence],
+            actual,
+        )
+
+    def test_direct_sample_filter_uses_standard_message_sequence(self) -> None:
+        token_hash = "d" * 64
+        direct = types.SimpleNamespace(
+            message=f"phase186:{token_hash[:12]}:7:external-a"
+        )
+        duplicate = types.SimpleNamespace(
+            message=f"phase186:{token_hash[:12]}:7:external-a"
+        )
+
+        actual = live_peer._without_direct_peer_samples(
+            [direct, duplicate],
+            "standard_duplex",
+            token_hash,
+            offered=8,
+            consume_direct=True,
+        )
+
+        self.assertEqual([duplicate], actual)
 
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
         self.assertGreaterEqual(
