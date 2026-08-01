@@ -1,52 +1,64 @@
-# ROS2 Bridge Sample
+# ROS2 Bridge Provider and Sample
 
-The ROS2 Bridge Sample is a guided path for publishing Unity data into a local ROS2 graph through the optional `unity2foxglove_ros2_bridge` sidecar.
+`dev.unity2foxglove.ros2bridge` is the optional localhost sidecar transport
+Provider. It depends directly on `dev.unity2foxglove.sdk` and has no package or
+assembly dependency on `dev.unity2foxglove.ros2forunity`.
 
-Unity does not launch the sidecar. Keep Unity, ROS2, and the sidecar as separate processes so the bridge is easy to inspect and stop.
+## Installation combinations
 
-## 1. What This Sample Covers
-
-Required ROS2 Bridge topics:
-
-| Topic | ROS2 schema |
+| Goal | Unity packages |
 | --- | --- |
-| `/unity2foxglove/tf` | `foxglove_msgs/msg/FrameTransform` |
-| `/unity2foxglove/scene` | `foxglove_msgs/msg/SceneUpdate` |
-| `/unity2foxglove/camera` | `foxglove_msgs/msg/CompressedImage` |
-| `/unity2foxglove/camera_calibration` | `foxglove_msgs/msg/CameraCalibration` |
-| `/unity2foxglove/laser_scan` | `foxglove_msgs/msg/LaserScan` |
-| `/unity2foxglove/point_cloud` | `foxglove_msgs/msg/PointCloud` |
+| Foxglove WebSocket, MCAP, replay, core FoxRun | `dev.unity2foxglove.sdk` |
+| Sidecar ROS2 publish and subscribe | SDK + `dev.unity2foxglove.ros2bridge` |
+| Direct in-process ROS2 | SDK + `dev.unity2foxglove.ros2forunity` + one matching runtime |
+| Independent Bridge and native fanout | SDK + Bridge + R2FU + one matching R2FU runtime |
 
-Optional topic:
+Bridge never needs an R2FU runtime or custom-typesupport binary inside Unity.
+R2FU never needs the Bridge package. Installing both adds two independent
+Providers; it does not merge their lifecycle or wire representation.
 
-| Topic | ROS2 schema |
-| --- | --- |
-| `/unity2foxglove/point_cloud_draco` | `foxglove_msgs/msg/CompressedPointCloud` |
+## One Manager, stable Provider IDs
 
-The Draco topic is skipped when the bundled native Draco plugin is unavailable.
+The one `FoxgloveManager` Inspector owns routing:
 
-## 2. Optional Preflight
+- Publish selects zero or more stable Provider IDs;
+- Subscribe selects exactly one Provider when subscriptions are enabled;
+- a configured unavailable Provider fails closed with no fallback;
+- uninstalled and unconfigured Providers are silent.
 
-The sample can be accepted without pressing a health button. The primary acceptance signal is live ROS2 topic output plus Unity bridge status: `Connected`, increasing `Sent Frames`, and zero dropped/failed frames.
+The stable IDs are:
 
-The optional Manager Inspector **ROS2 Bridge Health** check can help diagnose ROS2 CLI, `foxglove_msgs`, bundled interfaces, or local sidecar health ping issues when topics do not appear. It is a troubleshooting aid, not a required publish step.
-
-In a ROS2 shell:
-
-```bash
-source /opt/ros/$ROS_DISTRO/setup.bash
-ros2 interface show foxglove_msgs/msg/FrameTransform
-ros2 interface show foxglove_msgs/msg/SceneUpdate
-ros2 interface show foxglove_msgs/msg/CompressedImage
-ros2 interface show foxglove_msgs/msg/CameraCalibration
-ros2 interface show foxglove_msgs/msg/LaserScan
-ros2 interface show foxglove_msgs/msg/PointCloud
-ros2 interface show foxglove_msgs/msg/CompressedPointCloud
+```text
+foxglove.websocket
+unity2foxglove.r2fu
+unity2foxglove.ros2bridge
 ```
 
-## 3. Build The Sidecar
+Foxglove Publish Encoding and Subscribe Encoding are independent and apply
+only to `foxglove.websocket`. Bridge always uses Provider-owned ROS type
+mapping plus XCDR1 little-endian CDR. R2FU uses its own typed ROS path. Neither
+ROS Provider consumes `FoxRunEncoding`.
 
-Create or reuse a ROS2 workspace:
+## What the sample proves
+
+The imported **ROS2 Bridge Sample** keeps ordinary sensor publishers and adds
+three `foxglove_msgs/msg/Log` FoxRun contracts:
+
+| Direction | Topic | Expected observation |
+| --- | --- | --- |
+| Publish | `/ros2_bridge_sample/publish` | ROS2 receives changing Unity values |
+| Subscribe | `/ros2_bridge_sample/subscribe` | Unity displays remote A on the main thread |
+| `PublishAndSubscribe` | `/ros2_bridge_sample/duplex` | Remote A is not immediately echoed; a later local B publishes once |
+
+The sample scene is saved by `Ros2BridgeSampleSceneBuilder`, not handwritten
+YAML. `Scripts/samples/sync_ros2_bridge_sample.py --dry-run` proves the package
+sample and checked-in demo import are byte-identical, including Unity meta
+files.
+
+## Sidecar preflight and launch
+
+Unity does not install, launch, restart, or update the sidecar. Build and
+source it in a separate ROS2 shell:
 
 ```bash
 source /opt/ros/$ROS_DISTRO/setup.bash
@@ -56,69 +68,65 @@ ln -s <repo>/Tools/ros2_bridge/unity2foxglove_ros2_bridge unity2foxglove_ros2_br
 cd ~/u2f_ros2_ws
 colcon build --packages-select unity2foxglove_ros2_bridge --symlink-install
 source install/setup.bash
+ros2 pkg prefix unity2foxglove_ros2_bridge
+ros2 interface show foxglove_msgs/msg/Log
 ```
 
-Replace `<repo>` with the repository path on your machine.
-
-## 4. Start The Sidecar
-
-Recommended launch command:
+Then launch it explicitly:
 
 ```bash
 ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=127.0.0.1 port:=8767 payload_format:=cdr-with-encapsulation
 ```
 
-Equivalent direct command:
+Phase186 is IPv4-loopback-only (`127.0.0.1`). The sidecar validates the
+accepted peer family and address. Arbitrary remote hosts, wildcard/LAN/public
+peers, TLS, ROS services, ROS actions, and ROS parameters are outside this
+product boundary.
 
-```bash
-ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 --payload-format cdr-with-encapsulation
-```
+## Protocol, CDR, and bounds
 
-## 5. Run Unity
+The package and C++ sidecar consume the same U2R2 v1/v2 byte authority. v1
+publish and health compatibility remains frozen. v2 adds correlated publisher
+and subscription operations, one data-session lease, bounded concurrent
+health/provenance probes, fair per-contract data queues, reserved control
+capacity, replay high-water marks, removal tombstones, and immutable reconnect
+lease snapshots.
 
-1. Import **ROS2 Bridge Sample** from Package Manager.
-2. Open `Scenes/Ros2BridgeSample.unity`.
-3. Press Play.
-4. Select the `Foxglove` object and confirm the ROS2 Bridge status shows `Connected`, increasing `Sent Frames`, and zero dropped/failed frames.
-5. Keep the sidecar terminal open.
+Inbound messages require exact `encoding: "cdr"`, representation
+`xcdr1-le`, and the `00 01 00 00` encapsulation prefix. Official Foxglove ROS2
+messages use generated registries; supported FoxRun DTOs use the Bridge
+physical emitter and an exact generated ROS interface identity. Unsupported
+types or representations are rejected rather than reinterpreted.
 
-The sample Manager uses bridge namespace `/unity2foxglove`, so publisher topics such as `/tf` become ROS2 Bridge topics such as `/unity2foxglove/tf`.
+All header, payload, queue, contract, replay, tombstone, transient/in-flight,
+handshake, read/write, join, and shutdown limits are immutable and listed in
+[U2R2_PROTOCOL.md](U2R2_PROTOCOL.md).
 
-## 6. Verify ROS2 Topics
+## Lifecycle and diagnostics
 
-```bash
-ros2 topic list | grep unity2foxglove
-ros2 topic info /unity2foxglove/tf
-ros2 topic info /unity2foxglove/scene
-ros2 topic info /unity2foxglove/camera
-ros2 topic info /unity2foxglove/point_cloud
-ros2 topic echo --once /unity2foxglove/tf
-ros2 topic echo --once /unity2foxglove/laser_scan
-ros2 topic echo --once /unity2foxglove/point_cloud
-ros2 topic hz /unity2foxglove/tf
-```
+The hidden serialized `Ros2BridgeTransportProvider` companion is created only
+after explicit setup/selection. The Manager freezes selection into the next
+session; Play Mode edits do not mutate the active session.
 
-Expected schema names are ROS2 schema names, for example `foxglove_msgs/msg/FrameTransform`. They are not protobuf names such as `foxglove.FrameTransform`.
+Observed neutral states are `Starting`, `Ready`, `Degraded`, `Reconnecting`,
+`Failed`, and `Stopped`. Publish and Subscribe readiness are separate. A
+connected socket cannot manufacture Subscribe readiness. Stable bounded
+diagnostics expose contract/queue/resource counters and retired worker exits;
+configuration alone is never reported as runtime success.
 
-RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` compatibility is outside this sample and belongs to later compatibility work.
+Shutdown stops admission, cancels reconnect/read work, closes the socket,
+invalidates the generation, and joins workers while worker-reachable resources
+remain alive. A delayed worker moves into the bounded retirement owner rather
+than having its resources disposed underneath it.
 
-## 7. Foxglove Layout
+## Provenance boundary
 
-Open Foxglove and import:
+U2R2 and its implementation are original. The project reviewed architectural
+ideas from Unity-Technologies/ROS-TCP-Connector; no implementation code or
+comments were copied. The exact inspected revision, files, license blob, and
+`materialCopied: false` result are frozen in
+`Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json`. No additional
+third-party notice is claimed for material that was not reused.
 
-```text
-FoxgloveRos2BridgeLayout.json
-```
-
-The layout references the direct Unity WebSocket topics (`/tf`, `/scene`, `/camera`, `/laser_scan`, `/point_cloud`) and Foxglove schema names. The `/unity2foxglove` namespace is only used by the ROS2 sidecar topics inspected with `ros2 topic ...`.
-
-## 8. Troubleshooting
-
-| Symptom | Action |
-| --- | --- |
-| Sidecar does not start | Source the ROS2 workspace and run `ros2 pkg prefix unity2foxglove_ros2_bridge`. |
-| Health check says ROS2 CLI missing | Choose a Windows `ros2` executable only when you want Inspector CLI checks. A WSL sidecar can still be valid when the sidecar is connected and ROS2 topics echo in WSL. |
-| Health check says sidecar is not running | Start the sidecar on `127.0.0.1:8767` and retry. |
-| Topics appear but values decode incorrectly | Restart with `payload_format:=cdr-with-encapsulation`; record the result for your ROS2 distro and RMW. |
-| Draco topic does not appear | Use raw `/unity2foxglove/point_cloud`; Draco is optional. |
-| RViz2 does not show native markers | This sample publishes `foxglove_msgs`; native ROS2 visualization messages are covered by later compatibility work. |
+See [PHASE186_BREAKING_UPGRADE.md](PHASE186_BREAKING_UPGRADE.md) before opening
+pre-Phase186 scenes or rebuilding scripts.

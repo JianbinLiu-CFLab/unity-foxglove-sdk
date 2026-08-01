@@ -18,6 +18,8 @@
 # Unity text assets.
 *.meta text eol=lf
 *.unity text eol=lf
+# Unity writes empty scalar values as `key: ` when rebuilding this sample.
+Ros2BridgeSample.unity whitespace=-blank-at-eol
 *.prefab text eol=lf
 *.asset text eol=lf
 *.inputactions text eol=lf

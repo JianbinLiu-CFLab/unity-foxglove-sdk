@@ -121,6 +121,46 @@ class ValidatePackageTests(unittest.TestCase):
 
         self.assertTrue(results[-1].ok)
 
+    def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
+        """A distributable Bridge sample includes its behavior, builder, and guide."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            package.mkdir()
+            (package / "package.json").write_text(
+                '{"name":"dev.unity2foxglove.ros2bridge",'
+                '"version":"0.1.0-preview.1",'
+                '"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"},'
+                '"samples":[{"displayName":"ROS2 Bridge Sample",'
+                '"path":"Samples~/Ros2BridgeSample"}]}',
+                encoding="utf-8",
+            )
+            old_required = (
+                "Runtime/Unity2Foxglove.Ros2Bridge.asmdef",
+                "Editor/Unity2Foxglove.Ros2Bridge.Editor.asmdef",
+                "Tests/Unity2Foxglove.Ros2Bridge.Tests.asmdef",
+                "Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity",
+                "Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef",
+                "Editor/SourceGenerators/analyzers/dotnet/cs/Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll",
+            )
+            for relative in old_required:
+                asset = package / relative
+                asset.parent.mkdir(parents=True, exist_ok=True)
+                asset.write_bytes(b"{}")
+                Path(str(asset) + ".meta").write_text("guid: test\n", encoding="utf-8")
+
+            self.validator.ROS2_BRIDGE_PACKAGE = package
+            results = []
+            self.validator.check_ros2_bridge_package(results)
+
+        required = next(
+            item for item in results
+            if item.name == "ROS2 Bridge required assets and metas"
+        )
+        self.assertFalse(required.ok)
+        self.assertIn("Ros2BridgeSampleDuplex.cs", required.detail)
+        self.assertIn("Ros2BridgeSampleSceneBuilder.cs", required.detail)
+        self.assertIn("PHASE186_BREAKING_UPGRADE.md", required.detail)
+
     def test_optional_package_boundaries_reject_remote_gateway_publish_sentinel(self) -> None:
         """Preview native packages should not carry stale publish-blocker sentinel text."""
         with tempfile.TemporaryDirectory() as temp:

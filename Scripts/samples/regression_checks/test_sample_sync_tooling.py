@@ -39,6 +39,112 @@ def load_module(name: str, relative: str):
 class SampleSyncToolingTests(unittest.TestCase):
     """Regression coverage for sample sync tooling."""
 
+    def test_ros2_bridge_sample_has_dedicated_sync_tool(self) -> None:
+        """The Bridge sample must not rely on an untracked manual copy step."""
+        script = ROOT / "Scripts/samples/sync_ros2_bridge_sample.py"
+
+        self.assertTrue(script.is_file(), script)
+
+    def test_ros2_bridge_sample_import_root_tracks_package_version(self) -> None:
+        """The checked-in imported copy must follow the Bridge manifest version."""
+        module = load_module(
+            "sync_ros2_bridge_sample_version_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "default_imported_root"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.ros2bridge"
+                / "package.json"
+            )
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps({"version": "7.6.5-preview.4"}),
+                encoding="utf-8",
+            )
+
+            imported = module.default_imported_root(root)
+
+        self.assertTrue(
+            imported.as_posix().endswith(
+                "Unity2Foxglove ROS2 Bridge/7.6.5-preview.4/ROS2 Bridge Sample"
+            )
+        )
+
+    def test_ros2_bridge_sample_sync_includes_meta_files(self) -> None:
+        """New sample assets and their GUID-bearing meta files move together."""
+        module = load_module(
+            "sync_ros2_bridge_sample_meta_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "compare_roots"))
+        self.assertTrue(hasattr(module, "apply_sync"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            imported = root / "imported"
+            package.mkdir()
+            imported.mkdir()
+            (package / "Duplex.cs").write_text("current\n", encoding="utf-8")
+            (package / "Duplex.cs.meta").write_text(
+                "guid: 0123456789abcdef0123456789abcdef\n",
+                encoding="utf-8",
+            )
+
+            drift = module.compare_roots(package, imported)
+            module.apply_sync(package, imported, drift)
+            self.assertEqual([], module.compare_roots(package, imported))
+
+    def test_ros2_bridge_sample_capture_updates_only_generated_scene(self) -> None:
+        """Unity owns scene generation while package source remains canonical."""
+        module = load_module(
+            "sync_ros2_bridge_sample_scene_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "capture_generated_scene"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            imported = root / "imported"
+            for sample_root in (package, imported):
+                (sample_root / "Scenes").mkdir(parents=True)
+                (sample_root / "Scripts").mkdir(parents=True)
+            (package / "Scenes/Ros2BridgeSample.unity").write_text(
+                "old scene\n",
+                encoding="utf-8",
+            )
+            (imported / "Scenes/Ros2BridgeSample.unity").write_text(
+                "unity generated scene\n",
+                encoding="utf-8",
+            )
+            (package / "Scripts/Duplex.cs").write_text(
+                "package source\n",
+                encoding="utf-8",
+            )
+            (imported / "Scripts/Duplex.cs").write_text(
+                "local drift\n",
+                encoding="utf-8",
+            )
+
+            module.capture_generated_scene(package, imported)
+
+            self.assertEqual(
+                "unity generated scene\n",
+                (package / "Scenes/Ros2BridgeSample.unity").read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertEqual(
+                "package source\n",
+                (package / "Scripts/Duplex.cs").read_text(encoding="utf-8"),
+            )
+
     def test_full_demo_messagepack_source_and_meta_have_canonical_mappings(self) -> None:
         """The controlled MessagePack partial must sync live -> package -> imported."""
         module = load_module(

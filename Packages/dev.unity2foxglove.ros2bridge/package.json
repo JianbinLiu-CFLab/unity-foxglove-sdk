@@ -11,7 +11,7 @@
   "samples": [
     {
       "displayName": "ROS2 Bridge Sample",
-      "description": "Guided Unity-to-ROS2 Bridge sample with sidecar health and Foxglove layout.",
+      "description": "Guided Bridge publish, subscribe, and full-duplex sample with explicit sidecar preflight.",
       "path": "Samples~/Ros2BridgeSample"
     }
   ],

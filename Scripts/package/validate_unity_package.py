@@ -273,24 +273,39 @@ def check_ros2_bridge_package(results: list[CheckResult]) -> None:
     )
 
     required = (
-        "Runtime/Unity2Foxglove.Ros2Bridge.asmdef",
-        "Editor/Unity2Foxglove.Ros2Bridge.Editor.asmdef",
-        "Tests/Unity2Foxglove.Ros2Bridge.Tests.asmdef",
-        "Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity",
-        "Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef",
-        "Editor/SourceGenerators/analyzers/dotnet/cs/Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll",
+        ("Runtime/Unity2Foxglove.Ros2Bridge.asmdef", True),
+        ("Editor/Unity2Foxglove.Ros2Bridge.Editor.asmdef", True),
+        ("Tests/Unity2Foxglove.Ros2Bridge.Tests.asmdef", True),
+        ("Documentation~/en/PHASE186_BREAKING_UPGRADE.md", False),
+        ("Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", True),
+        ("Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef", True),
+        ("Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleDuplex.cs", True),
+        ("Samples~/Ros2BridgeSample/Editor/Unity2Foxglove.Ros2Bridge.Sample.Editor.asmdef", True),
+        ("Samples~/Ros2BridgeSample/Editor/Ros2BridgeSampleSceneBuilder.cs", True),
+        ("Editor/SourceGenerators/analyzers/dotnet/cs/Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll", True),
     )
     missing = [
         path
-        for path in required
+        for path, requires_meta in required
         if not (ROS2_BRIDGE_PACKAGE / path).is_file()
-        or not Path(str(ROS2_BRIDGE_PACKAGE / path) + ".meta").is_file()
+        or (
+            requires_meta
+            and not Path(str(ROS2_BRIDGE_PACKAGE / path) + ".meta").is_file()
+        )
     ]
     add(
         results,
         "ROS2 Bridge required assets and metas",
         not missing,
         "complete" if not missing else f"missing={missing}",
+    )
+
+    sample_sync = ROOT / "Scripts" / "samples" / "sync_ros2_bridge_sample.py"
+    add(
+        results,
+        "ROS2 Bridge dedicated sample sync tool",
+        sample_sync.is_file(),
+        rel(sample_sync),
     )
 
     cross_references = []

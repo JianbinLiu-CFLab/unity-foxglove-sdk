@@ -188,7 +188,7 @@ The Phase186-B authority freezes exactly 27 positive limits:
 | `shutdownTimeoutMs` | 10000 |
 | `maxJsonDepth` | 64 |
 
-The codecs and authority objects enforce and test this model, but the v2
-session/lease/queue authority is not yet wired into the production runtime.
-Phase186-C owns that wiring. Successful parsing must not be reported as
-production enforcement.
+The production Bridge runtime consumes this v2 session, lease, replay, and
+queue authority. C# and C++ tests consume the same frozen limits, errors, and
+scenario fixtures; successful parsing alone is not treated as runtime
+enforcement evidence.
