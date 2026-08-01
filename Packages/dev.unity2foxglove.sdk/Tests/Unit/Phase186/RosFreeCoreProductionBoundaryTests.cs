@@ -235,6 +235,44 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
         }
 
         [Fact]
+        public void ManagerSelectionUsesLoadedSceneDeclarationsNotGlobalManifest()
+        {
+            var providers = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs"));
+            var schemaRegistry = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs"));
+            var loadedSceneProbe = File.ReadAllText(
+                PathOf(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunLoadedSceneContractProbe.cs"));
+
+            Assert.DoesNotContain(
+                "GetExplicitPublishTransportIds",
+                providers,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "GetExplicitPublishTransportIds",
+                schemaRegistry,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxRunLoadedSceneContractProbe.CaptureLoadedScenes()",
+                providers,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "loaded.ExplicitPublishTransportIds",
+                providers,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "internal IEnumerable<string> ExplicitPublishTransportIds",
+                loadedSceneProbe,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "FoxRunSchemaInfoRegistry",
+                providers);
+        }
+
+        [Fact]
         public void R2fuProviderDoesNotRegisterWhileDisabled()
         {
             var source = File.ReadAllText(

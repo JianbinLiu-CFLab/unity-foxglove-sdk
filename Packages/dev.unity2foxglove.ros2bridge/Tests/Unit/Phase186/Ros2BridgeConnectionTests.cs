@@ -349,6 +349,44 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void PrepareForReconnectAbortsReadyConnectionBeforeReset()
+        {
+            using var peerWaiting = new ManualResetEventSlim(false);
+            using var peerClosed = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(stream, HelloAck(hello.RequestId));
+                peerWaiting.Set();
+                Assert.Equal(-1, stream.ReadByte());
+                peerClosed.Set();
+            });
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: false,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 1000);
+            connection.Start();
+            Assert.True(peerWaiting.Wait(TimeSpan.FromSeconds(2)));
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Ready,
+                connection.LifecycleState);
+
+            connection.PrepareForReconnect();
+
+            Assert.True(peerClosed.Wait(TimeSpan.FromSeconds(2)));
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Stopped,
+                connection.LifecycleState);
+            Assert.Null(connection.LastFault);
+            peer.AssertCompleted();
+        }
+
+        [Fact]
         public void OversizedHeaderFaultsBeforePeerSendsDeclaredBody()
         {
             using var releaseMalformed =

@@ -955,7 +955,7 @@ namespace Unity2Foxglove.Ros2Bridge
             try
             {
                 if (useDuplex && duplexConnection != null)
-                    duplexConnection.ResetAfterFault();
+                    duplexConnection.PrepareForReconnect();
                 if (useDuplex && _requiresSubscription)
                 {
                     reconnect =

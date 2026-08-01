@@ -284,6 +284,33 @@ namespace Unity2Foxglove.Ros2Bridge
                 ?? new IOException(
                     "The Bridge connection was aborted for reconnect."));
 
+        internal void PrepareForReconnect()
+        {
+            var abortActiveConnection = false;
+            lock (_gate)
+            {
+                ThrowIfDisposedLocked();
+                abortActiveConnection =
+                    _lifecycleState
+                    != Ros2BridgeSessionLifecycleState.Faulted
+                    && _lifecycleState
+                    != Ros2BridgeSessionLifecycleState.Stopped;
+            }
+
+            // The transport can report a closed socket before the dedicated
+            // reader observes that close and transitions this connection to
+            // Faulted. Drive the still-active state through the same bounded
+            // abort path before joining and resetting its workers.
+            if (abortActiveConnection)
+            {
+                Abort(
+                    new IOException(
+                        "The Bridge transport disconnected before the connection observed the fault."));
+            }
+
+            ResetAfterFault();
+        }
+
         internal void ResetAfterFault()
         {
             Thread reader;

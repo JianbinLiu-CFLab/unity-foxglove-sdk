@@ -62,6 +62,9 @@ namespace Unity.FoxgloveSDK.Components
             => !string.IsNullOrWhiteSpace(transportId)
                && _publishTransportIds.Contains(transportId.Trim());
 
+        internal IEnumerable<string> ExplicitPublishTransportIds =>
+            _publishTransportIds;
+
         public bool HasExplicitSubscribeTransport(string transportId)
             => !string.IsNullOrWhiteSpace(transportId)
                && _subscribeTransportIds.Contains(transportId.Trim());

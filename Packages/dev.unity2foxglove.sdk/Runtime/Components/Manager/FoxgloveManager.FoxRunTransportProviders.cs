@@ -464,33 +464,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             var configured = _foxRunPublishTransportIds
                              ?? Array.Empty<string>();
-            var explicitIds =
-                FoxRunSchemaInfoRegistry
-                    .GetExplicitPublishTransportIds();
-            if (explicitIds.Count == 0)
-            {
-                return FoxRunTransportSelection.TryCreate(
-                    configured,
-                    _enableFoxRunInbound,
-                    _enableFoxRunInbound
-                        ? _foxRunSubscribeTransportId
-                        : null,
-                    out selection,
-                    out reason);
-            }
-
-            var union = new HashSet<string>(
+            var publishIds = new HashSet<string>(
                 configured,
                 StringComparer.Ordinal);
-            for (var index = 0;
-                 index < explicitIds.Count;
-                 index++)
-            {
-                union.Add(explicitIds[index]);
-            }
+            var loaded =
+                FoxRunLoadedSceneContractProbe.CaptureLoadedScenes();
+            foreach (var id in loaded.ExplicitPublishTransportIds)
+                publishIds.Add(id);
 
-            var publish = new string[union.Count];
-            union.CopyTo(publish);
+            var publish = new string[publishIds.Count];
+            publishIds.CopyTo(publish);
             Array.Sort(publish, StringComparer.Ordinal);
             return FoxRunTransportSelection.TryCreate(
                 publish,
