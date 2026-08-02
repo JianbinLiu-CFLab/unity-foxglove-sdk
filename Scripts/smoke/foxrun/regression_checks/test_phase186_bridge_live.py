@@ -338,6 +338,112 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual("FAIL_UNITY_CONTEXT", failure.exception.code)
         owner.close.assert_called_once_with()
 
+    def test_manual_wait_fails_immediately_when_live_actor_exits(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = pathlib.Path(temp)
+            actors = output / "actors"
+            actors.mkdir()
+            (actors / "ros-peer-failure.json").write_text(
+                json.dumps(
+                    {
+                        "failureCode": "FAIL_PEER",
+                        "failureMessage": (
+                            "FAIL_PEER: Unity Bridge outbound sample did not reach "
+                            "the exact ROS peer"
+                        ),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = {
+                "outputRoot": str(output),
+                "runtimeRowId": "jazzy-fastrtps",
+                "bridgeHost": "127.0.0.1",
+                "bridgePort": 18767,
+                "foxgloveHost": "127.0.0.1",
+                "foxglovePort": 18768,
+                "externalGate": str(output / "external-gate.json"),
+                "exerciseGate": str(output / "exercise-gate.json"),
+                "caseId": "manual-jazzy-fastrtps-duplex",
+                "manual": True,
+                "requiredActors": ["ros-peer"],
+                "runId": "phase186h-current-0123456789ab",
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+                "unityLog": str(output / "unity.log"),
+            }
+            runtime = types.SimpleNamespace(
+                zenoh_router=None,
+                zenoh_endpoint=None,
+                row_id="jazzy-fastrtps",
+                distro="jazzy",
+                rmw="rmw_fastrtps_cpp",
+                python_executable=pathlib.Path("python.exe"),
+                environment={},
+            )
+            owner = mock.Mock()
+            owner.poll.return_value = 1
+            owner.residual_pids.return_value = []
+            cleanup = {
+                "complete": True,
+                "cleanupErrors": [],
+                "residualProcesses": [],
+                "residualPorts": [],
+                "residualOverlays": [],
+                "residualTemporaryProjects": [],
+            }
+
+            with mock.patch.object(live, "prepare_runtime", return_value=runtime), \
+                    mock.patch.object(live, "OwnedLiveProcesses", return_value=owner), \
+                    mock.patch.object(live, "_launch_sidecar", return_value=(mock.Mock(), {})), \
+                    mock.patch.object(live, "_wait_actor_document", return_value={}), \
+                    mock.patch.object(live, "_write_manual_pointer", return_value=output / "pointer.json"), \
+                    mock.patch.object(live, "_mirror_manual_log"), \
+                    mock.patch.object(live, "_manual_scene_prepare_failure", return_value=None), \
+                    mock.patch.object(live, "_manual_context_failure", return_value=None), \
+                    mock.patch.object(live, "_manual_scene_preparing_in_log", return_value=False), \
+                    mock.patch.object(live, "_manual_scene_ready_in_log", return_value=False), \
+                    mock.patch.object(live, "_report_manual_progress"), \
+                    mock.patch.object(live, "_remove_manual_pointer"), \
+                    mock.patch.object(live, "_cleanup_document", return_value=cleanup), \
+                    mock.patch.object(live.time, "monotonic", side_effect=(0.0, 0.0, 31.0)), \
+                    mock.patch.object(live.time, "sleep"), \
+                    self.assertRaises(live.LiveFailure) as failure:
+                live.run_live(
+                    pathlib.Path("D:/repo"),
+                    config,
+                    unity_editor=pathlib.Path("Unity.exe"),
+                    manual_timeout_seconds=30.0,
+                    reporter=mock.Mock(),
+                )
+
+        self.assertEqual("FAIL_PROCESS_EXIT", failure.exception.code)
+        self.assertIn("FAIL_PEER", str(failure.exception))
+        self.assertIn("Unity Bridge outbound sample", str(failure.exception))
+        owner.close.assert_called_once_with()
+
+    def test_manual_wait_accepts_actor_exit_after_all_owned_results_exist(self) -> None:
+        config = {
+            "outputRoot": "unused",
+            "requiredActors": ["graph-observer", "ros-peer"],
+        }
+        owner = mock.Mock()
+        owner.poll.return_value = 0
+
+        with mock.patch.object(live, "_read_actor_document", return_value={}) as read:
+            try:
+                live._raise_if_worker_process_exited(config, owner)
+            except live.LiveFailure as exc:
+                self.fail(f"completed actor was misreported as failed: {exc}")
+
+        self.assertEqual(
+            [
+                mock.call(config, "graph-observer", "result"),
+                mock.call(config, "ros-peer", "result"),
+            ],
+            read.call_args_list,
+        )
+
     def test_manual_scene_ready_requires_exact_identity_and_stable_schema(self) -> None:
         config = {
             "unityLog": "unity.log",
@@ -516,6 +622,28 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertAlmostEqual(0.05, timeouts[0])
         self.assertAlmostEqual(0.02, timeouts[1])
 
+    def test_spin_timeout_builds_failure_detail_from_final_observations(self) -> None:
+        observed: list[str] = []
+
+        def predicate() -> bool:
+            observed.append("duplex:none")
+            return False
+
+        with mock.patch.object(
+            live_peer.time,
+            "monotonic",
+            side_effect=(10.0, 10.0, 11.0),
+        ), self.assertRaises(live_peer.LiveActorFailure) as failure:
+            live_peer._spin_until(
+                mock.Mock(),
+                object(),
+                predicate,
+                0.5,
+                lambda: "missing outbound; observed=" + ",".join(observed),
+            )
+
+        self.assertIn("missing outbound; observed=duplex:none", str(failure.exception))
+
     def test_duplex_origin_check_consumes_one_direct_sample_per_sequence(self) -> None:
         token_hash = "a" * 64
 
@@ -599,6 +727,45 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
         self.assertEqual([duplicate], actual)
+
+    def test_outbound_timeout_detail_names_missing_topic_and_observed_samples(self) -> None:
+        token_hash = "e" * 64
+        custom_topic = "/phase186/custom"
+        standard_topic = "/phase186/standard"
+        direct_custom = types.SimpleNamespace(
+            foxrun_sequence=1,
+            payload=types.SimpleNamespace(
+                message=f"phase186:{token_hash[:12]}:1:external-a"
+            ),
+        )
+        direct_standard = types.SimpleNamespace(
+            message=f"phase186:{token_hash[:12]}:1:external-a"
+        )
+        standard_local = types.SimpleNamespace(
+            message=f"phase186:{token_hash[:12]}:9:unity-local-b-1"
+        )
+        describe = getattr(live_peer, "_outbound_wait_detail", None)
+
+        self.assertIsNotNone(describe)
+        detail = describe(
+            "manual-jazzy-fastrtps-duplex",
+            {custom_topic, standard_topic},
+            {
+                custom_topic: [direct_custom],
+                standard_topic: [direct_standard, standard_local],
+            },
+            {
+                custom_topic: "custom_duplex",
+                standard_topic: "standard_duplex",
+            },
+            token_hash,
+            8,
+            {custom_topic: object(), standard_topic: object()},
+        )
+
+        self.assertIn(f'missing=["{custom_topic}"]', detail)
+        self.assertIn(f'"{custom_topic}":[]', detail)
+        self.assertIn("unity-local-b-1", detail)
 
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
         self.assertEqual(

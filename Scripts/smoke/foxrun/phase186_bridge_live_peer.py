@@ -22,7 +22,7 @@ import struct
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 
@@ -461,13 +461,82 @@ def _without_direct_peer_samples(
     return remaining
 
 
-def _spin_until(rclpy_module, node, predicate, timeout_seconds: float, message: str) -> None:
+def _outbound_texts(
+    topic: str,
+    received: Mapping[str, Sequence[object]],
+    kinds: Mapping[str, str],
+    token_hash: str,
+    offered: int,
+    publishers: Mapping[str, object],
+) -> list[str]:
+    kind = kinds[topic]
+    values = _without_direct_peer_samples(
+        received[topic],
+        kind,
+        token_hash,
+        offered,
+        consume_direct=topic in publishers,
+    )
+    return [_message_text(value, kind) for value in values]
+
+
+def _outbound_topic_ready(
+    case_id: str,
+    kind: str,
+    texts: Sequence[str],
+    token_hash: str,
+) -> bool:
+    if kind.endswith("duplex") or case_id == "fanout-fairness-health":
+        return any("unity-local-b" in text for text in texts)
+    prefix = "phase186:" + token_hash[:12] + ":"
+    return any(text.startswith(prefix) for text in texts)
+
+
+def _outbound_wait_detail(
+    case_id: str,
+    expected_outbound: set[str],
+    received: Mapping[str, Sequence[object]],
+    kinds: Mapping[str, str],
+    token_hash: str,
+    offered: int,
+    publishers: Mapping[str, object],
+) -> str:
+    missing: list[str] = []
+    observed: dict[str, list[str]] = {}
+    for topic in sorted(expected_outbound):
+        texts = _outbound_texts(
+            topic,
+            received,
+            kinds,
+            token_hash,
+            offered,
+            publishers,
+        )
+        observed[topic] = [text[:160] for text in texts[-8:]]
+        if not _outbound_topic_ready(case_id, kinds[topic], texts, token_hash):
+            missing.append(topic)
+    return (
+        "Unity Bridge outbound sample did not reach the exact ROS peer; missing="
+        + json.dumps(missing, separators=(",", ":"))
+        + " observed="
+        + json.dumps(observed, separators=(",", ":"), sort_keys=True)
+    )
+
+
+def _spin_until(
+    rclpy_module,
+    node,
+    predicate,
+    timeout_seconds: float,
+    message: str | Callable[[], str],
+) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if predicate():
             return
         rclpy_module.spin_once(node, timeout_sec=0.05)
-    raise LiveActorFailure("FAIL_PEER", message)
+    detail = message() if callable(message) else message
+    raise LiveActorFailure("FAIL_PEER", detail)
 
 
 def _settle_source_delivery(rclpy_module, node, timeout_seconds: float) -> None:
@@ -596,23 +665,16 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         def outbound_ready() -> bool:
             for topic in expected_outbound:
                 kind = kinds[topic]
-                values = _without_direct_peer_samples(
-                    received[topic],
-                    kind,
+                texts = _outbound_texts(
+                    topic,
+                    received,
+                    kinds,
                     token_hash,
                     offered,
-                    consume_direct=topic in publishers,
+                    publishers,
                 )
-                texts = [_message_text(value, kind) for value in values]
-                if kind.endswith("duplex"):
-                    if not any("unity-local-b" in text for text in texts):
-                        return False
-                elif config["caseId"] == "fanout-fairness-health":
-                    if not any("unity-local-b" in text for text in texts):
-                        return False
-                elif not any(
-                    text.startswith("phase186:" + str(config["tokenHash"])[:12] + ":")
-                    for text in texts
+                if not _outbound_topic_ready(
+                    str(config["caseId"]), kind, texts, token_hash
                 ):
                     return False
             return True
@@ -623,7 +685,15 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 node,
                 outbound_ready,
                 LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS,
-                "Unity Bridge outbound sample did not reach the exact ROS peer",
+                lambda: _outbound_wait_detail(
+                    str(config["caseId"]),
+                    expected_outbound,
+                    received,
+                    kinds,
+                    token_hash,
+                    offered,
+                    publishers,
+                ),
             )
             duplicate_deadline = time.monotonic() + 0.75
             while time.monotonic() < duplicate_deadline:

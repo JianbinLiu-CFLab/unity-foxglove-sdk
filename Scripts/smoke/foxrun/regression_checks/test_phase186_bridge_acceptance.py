@@ -995,6 +995,35 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertIn("published = true;", warmup_method)
             self.assertNotIn("evidence.LocalMutations++", warmup_method)
 
+    def test_manual_binding_mutates_every_duplex_contract(self) -> None:
+        token = "p186h_0123456789abcdef01234567"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            project.mkdir()
+            output = repository / "build" / "phase186" / "phase186h-manual-duplex-check"
+            output.mkdir(parents=True)
+            config = protocol.make_run_config(
+                repository=repository,
+                project=project,
+                output_root=output,
+                run_id="phase186h-manual-duplex-check",
+                token=token,
+                case_id="manual-jazzy-fastrtps-duplex",
+                head=HEAD,
+                bridge_port=18767,
+                domain_id=161,
+            )
+
+            source = acceptance.render_unity_run_binding(config)
+            mutation_method = source.split(
+                "partial void Phase186Generated_PublishLocalMutation", 1
+            )[1].split("private static Foxglove.Log", 1)[0]
+
+            self.assertEqual(2, mutation_method.count("unity-local-b-"))
+            self.assertIn("_phase186GeneratedValue0 = CreatePhase186State", mutation_method)
+            self.assertIn("_phase186GeneratedValue1 = CreatePhase186Log", mutation_method)
+
 
 if __name__ == "__main__":
     unittest.main()

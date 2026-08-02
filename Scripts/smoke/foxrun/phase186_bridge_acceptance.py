@@ -579,6 +579,7 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
     initializations: list[str] = []
     mutation = ""
     fanout_mutations: list[str] = []
+    duplex_mutations: list[str] = []
     warmup_mutations: list[str] = []
     for index, (topic, kind) in enumerate(zip(topics, layout, strict=True)):
         (
@@ -602,6 +603,8 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
             initializations.append(initialization)
         if candidate_mutation:
             fanout_mutations.append(candidate_mutation)
+            if kind.endswith("duplex"):
+                duplex_mutations.append(candidate_mutation)
         if not mutation and candidate_mutation:
             mutation = candidate_mutation
         if candidate_warmup:
@@ -609,6 +612,8 @@ def render_unity_run_binding(config: Mapping[str, Any]) -> str:
 
     if case_id == "fanout-fairness-health":
         mutation = "\n".join(fanout_mutations)
+    elif len(duplex_mutations) > 1:
+        mutation = "\n".join(duplex_mutations)
 
     topic_constants = "\n".join(
         f'        public const string Phase186GeneratedTopic{index} = "{topic}";'

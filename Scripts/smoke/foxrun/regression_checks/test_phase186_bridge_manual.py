@@ -192,6 +192,46 @@ class ManualStatusReporterTests(unittest.TestCase):
         self.assertTrue(all(len(action) < 120 for action in actions))
         self.assertTrue(any("detail Waiting for the token-bound" in line for line in emitted))
 
+    def test_detail_updates_the_stage_heartbeat_message(self) -> None:
+        clock = FakeClock()
+        emitted: list[str] = []
+        first_wait = threading.Event()
+        release = threading.Event()
+
+        def wait(stop: threading.Event, _seconds: float) -> bool:
+            if stop.is_set():
+                return True
+            first_wait.set()
+            release.wait(1.0)
+            if stop.is_set():
+                return True
+            clock.advance(10.0)
+            return False
+
+        reporter = status.ManualStatusReporter(
+            clock=clock,
+            sink=emitted.append,
+            heartbeat_seconds=10.0,
+            wait=wait,
+        )
+        reporter.transition("4/5", "Unity scene compiled; Play Mode is now ready")
+        self.assertTrue(first_wait.wait(1.0))
+        reporter.detail("local B published; waiting for peer verification")
+        release.set()
+        for _ in range(100):
+            if any("heartbeat stage=4/5" in line for line in emitted):
+                break
+            threading.Event().wait(0.005)
+        reporter.close()
+
+        self.assertTrue(
+            any(
+                "heartbeat stage=4/5 elapsed=10s "
+                "message=local B published; waiting for peer verification" in line
+                for line in emitted
+            )
+        )
+
     def test_terminal_handoff_has_verdict_evidence_and_exact_next_action(self) -> None:
         emitted: list[str] = []
         reporter = status.ManualStatusReporter(

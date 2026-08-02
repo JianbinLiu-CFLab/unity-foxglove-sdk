@@ -100,6 +100,9 @@ class ManualStatusReporter:
 
         clean_message = str(message).strip()
         if clean_message:
+            with self._lock:
+                if self._stage is not None:
+                    self._message = clean_message
             self._emit("detail", clean_message)
 
     def terminal(self, verdict: str, reason: str, evidence_root: str) -> None:

@@ -1022,6 +1022,40 @@ def _worker_process_roles(config: Mapping[str, Any]) -> tuple[str, ...]:
     return roles
 
 
+def _raise_if_worker_process_exited(
+    config: Mapping[str, Any], owner: OwnedLiveProcesses
+) -> None:
+    """Surface an owned actor failure during the manual wait immediately."""
+
+    output = pathlib.Path(str(config["outputRoot"]))
+    for role in _worker_process_roles(config):
+        return_code = owner.poll(role)
+        if return_code is None:
+            continue
+        logical_roles = tuple(
+            logical_role
+            for logical_role in _worker_roles(config)
+            if _owner_role_for_document(config, logical_role) == role
+        )
+        if logical_roles and all(
+            _read_actor_document(config, logical_role, "result") is not None
+            for logical_role in logical_roles
+        ):
+            continue
+        failure = output / "actors" / f"{role}-failure.json"
+        detail = ""
+        if failure.is_file():
+            try:
+                detail = failure.read_text(encoding="utf-8")[:512]
+            except (OSError, UnicodeError):
+                detail = ""
+        suffix = f": {detail}" if detail else ""
+        raise LiveFailure(
+            "FAIL_PROCESS_EXIT",
+            f"{role} exited with code {return_code}{suffix}",
+        )
+
+
 def _owner_role_for_document(config: Mapping[str, Any], role: str) -> str:
     """Resolve the owned process that is responsible for one logical document."""
 
@@ -1212,6 +1246,7 @@ def run_live(
                         "FAIL_UNITY_CONTEXT",
                         "Unity acceptance context failed: " + context_failure,
                     )
+                _raise_if_worker_process_exited(config, owner)
                 if (
                     not scene_preparing_reported
                     and _manual_scene_preparing_in_log(config)
