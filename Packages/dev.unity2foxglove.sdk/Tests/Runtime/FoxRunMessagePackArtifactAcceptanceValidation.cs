@@ -125,8 +125,6 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyGeneratedArtifacts()
         {
             var generatedSource = Read("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs");
-            var descriptor = Read("Unity2Foxglove/Assets/Generated/FoxRun/foxrun.generation-descriptor.json");
-            var manifest = Read("Unity2Foxglove/Assets/Generated/FoxRun/foxrun.manifest.json");
             Check(
                 generatedSource.Contains("/phase185/messagepack/full-duplex", StringComparison.Ordinal)
                 && generatedSource.Contains("__BuildFoxRunMessagePack_", StringComparison.Ordinal)
@@ -134,6 +132,38 @@ namespace Unity.FoxgloveSDK.Tests
                 && generatedSource.Contains("__FoxRunFlushMessagePackTransactions", StringComparison.Ordinal)
                 && Exists("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs.meta"),
                 "185E-5: controlled generated source/meta contains duplex MessagePack output and input");
+
+            var evidenceRoot = Environment.GetEnvironmentVariable("PHASE185_EVIDENCE_ROOT");
+            if (string.IsNullOrWhiteSpace(evidenceRoot))
+            {
+                var ignore = Read(".gitignore").Replace('\\', '/');
+                var descriptorConstants = Read(
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/"
+                    + "FoxRunGenerationDescriptorConstants.cs");
+                var manifestWriter = Read(
+                    "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs");
+                var batchCommand = Read(
+                    "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/"
+                    + "FoxRunMessagePackArtifactBatchCommand.cs");
+                Check(
+                    ignore.Contains(
+                        "Unity2Foxglove/Assets/Generated/FoxRun/",
+                        StringComparison.Ordinal)
+                    && descriptorConstants.Contains(
+                        "DescriptorFileName = \"foxrun.generation-descriptor.json\"",
+                        StringComparison.Ordinal)
+                    && manifestWriter.Contains(
+                        "ManifestJsonFileName = \"foxrun.manifest.json\"",
+                        StringComparison.Ordinal)
+                    && batchCommand.Contains(
+                        "FoxrunCodeGenerator.GenerateSourceFiles",
+                        StringComparison.Ordinal),
+                    "185E-6: clean checkout delegates ignored descriptor and manifest proof to the required Unity batch gate");
+                return;
+            }
+
+            var descriptor = Read("Unity2Foxglove/Assets/Generated/FoxRun/foxrun.generation-descriptor.json");
+            var manifest = Read("Unity2Foxglove/Assets/Generated/FoxRun/foxrun.manifest.json");
             Check(
                 descriptor.Contains("\"descriptorVersion\":6", StringComparison.Ordinal)
                 && descriptor.Contains("\"generatorVersion\":\"6.0.0\"", StringComparison.Ordinal)
