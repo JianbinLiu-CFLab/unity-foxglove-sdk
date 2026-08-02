@@ -113,13 +113,17 @@ def repository_root() -> pathlib.Path:
     raise AcceptanceFailure("FAIL_PREFLIGHT", "repository root could not be located")
 
 
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+def parse_args(
+    argv: Sequence[str] | None = None,
+    *,
+    expected_head_required: bool = True,
+) -> argparse.Namespace:
     """Parse the bounded parent/worker surface."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", choices=tuple(protocol.CASES), required=True)
     parser.add_argument("--manual", action="store_true")
-    parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--expected-head", required=expected_head_required)
     parser.add_argument("--output-root", type=pathlib.Path, required=True)
     parser.add_argument("--unity-editor", type=pathlib.Path)
     parser.add_argument("--run-id")
@@ -141,7 +145,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
+def validate_arguments(
+    args: argparse.Namespace,
+    *,
+    allow_missing_expected_head: bool = False,
+) -> argparse.Namespace:
     """Reject contradictory modes and unsafe identifiers before I/O."""
 
     contract = protocol.require_case(args.case)
@@ -153,7 +161,13 @@ def validate_arguments(args: argparse.Namespace) -> argparse.Namespace:
             "FAIL_PACKAGE_COMPOSITION",
             "Unity composition differs from the locked case authority",
         )
-    protocol.require_head(args.expected_head)
+    if args.expected_head is None:
+        if not allow_missing_expected_head or not bool(args.manual):
+            raise protocol.ProtocolFailure(
+                "FAIL_PREFLIGHT", "--expected-head is required"
+            )
+    else:
+        protocol.require_head(args.expected_head)
     if bool(args.manual) is not contract.manual:
         raise protocol.ProtocolFailure(
             "FAIL_PREFLIGHT",
@@ -1172,7 +1186,9 @@ def _record_temporary_project_cleanup_failure(
     value = dict(
         cleanup
         or load_cleanup_evidence_if_present(run_root)
-        or protocol.clean_cleanup_evidence()
+        or _incomplete_cleanup_evidence(
+            "temporary Unity project cleanup before live cleanup evidence"
+        )
     )
     residual = list(value.get("residualTemporaryProjects", []))
     project_text = str(pathlib.Path(project).resolve())
@@ -1187,16 +1203,107 @@ def _record_temporary_project_cleanup_failure(
     return value
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _incomplete_cleanup_evidence(stage: str) -> dict[str, Any]:
+    """Describe cleanup that was not reached or observed; never claim it clean."""
+
+    return {
+        "complete": False,
+        "cleanupErrors": [
+            f"interrupted during {str(stage)[:384]}; owned live cleanup was not observed"
+        ],
+        "residualProcesses": [],
+        "residualPorts": [],
+        "residualOverlays": [],
+        "residualTemporaryProjects": [],
+    }
+
+
+def _persist_interrupted(
+    run_root: pathlib.Path,
+    *,
+    run_id: str,
+    token: str,
+    case_id: str,
+    head: str | None,
+    stage: str,
+    cleanup: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Persist one stable Ctrl+C result with honest cleanup observability."""
+
+    if head is None:
+        evidence_path = (run_root / "terminal-interrupted.json").resolve()
+        result = {
+            "schemaVersion": 1,
+            "runId": protocol.require_run_id(run_id),
+            "tokenHash": protocol.token_sha256(token),
+            "caseId": protocol.require_case(case_id).case_id,
+            "head": None,
+            "headObserved": False,
+            "verdict": "FAIL",
+            "failureCode": "FAIL_INTERRUPTED",
+            "stage": stage,
+            "failureMessage": f"interrupted during {stage}",
+            "cleanup": _incomplete_cleanup_evidence(stage),
+        }
+        write_json_atomic(evidence_path, result)
+        print(
+            "PHASE186_INTERRUPTED_FAIL"
+            + f" run={run_id} case={case_id} headObserved=false"
+            + f" evidence={evidence_path}",
+            flush=True,
+        )
+        return result
+
+    result = protocol.make_failure_summary(
+        run_id=run_id,
+        token=token,
+        case_id=case_id,
+        head=head,
+        evidence_root=str(run_root),
+        failure_code="FAIL_INTERRUPTED",
+        failure_message=f"interrupted during {stage}",
+        cleanup=cleanup or _incomplete_cleanup_evidence(stage),
+    )
+    persist_terminal(run_root, result)
+    print(protocol.format_terminal_line(result), flush=True)
+    return result
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    status: Any | None = None,
+    resolve_current_head: bool = False,
+) -> int:
     """Run one preflight-only, automatic, or blocking manual acceptance case."""
 
-    args = validate_arguments(parse_args(argv))
+    args = validate_arguments(
+        parse_args(
+            argv,
+            expected_head_required=not resolve_current_head,
+        ),
+        allow_missing_expected_head=resolve_current_head,
+    )
+    if resolve_current_head and (
+        not bool(args.manual) or args.expected_head is not None
+    ):
+        raise protocol.ProtocolFailure(
+            "FAIL_PREFLIGHT",
+            "coordinator-owned HEAD resolution requires manual mode without --expected-head",
+        )
     repository = repository_root()
     run_id, token = _new_run_identity(args.case, args.run_id)
     run_root: pathlib.Path | None = None
     owned_project: bridge_project.OwnedBridgeOnlyProject | None = None
+    interruption_stage = "repository/HEAD/Unity/ports preflight"
     try:
         run_root = _owned_run_root(repository, args.output_root, run_id)
+        if status is not None:
+            status.transition(
+                "1/5", "checking repository, HEAD, Unity, and ports"
+            )
+        if resolve_current_head:
+            args.expected_head = protocol.require_head(git_head(repository))
         owned_project = _create_owned_unity_project(
             repository,
             run_id,
@@ -1238,6 +1345,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_PASS
         from Scripts.smoke.foxrun import phase186_bridge_live as live
 
+        interruption_stage = "runtime/build, live startup, or manual wait"
         config = _read_json_object(run_root / "run-config.json", "run config")
         installed: InstalledUnityRunBinding | None = None
         live_error: BaseException | None = None
@@ -1255,6 +1363,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 config,
                 unity_editor=pathlib.Path(str(preflight["unity"]["path"])),
                 manual_timeout_seconds=float(args.manual_timeout_seconds),
+                reporter=status,
             )
         except BaseException as exc:
             live_error = exc
@@ -1291,6 +1400,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(protocol.format_terminal_line(result), flush=True)
                 return EXIT_NOT_RUN
             failure_code = (
+                "FAIL_INTERRUPTED"
+                if isinstance(live_error, KeyboardInterrupt)
+                else
                 live_error.code
                 if isinstance(live_error, protocol.ProtocolFailure)
                 and str(live_error.code).startswith("FAIL_")
@@ -1300,7 +1412,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cleanup
                 if cleanup is not None
                 else load_cleanup_evidence_if_present(run_root)
-                or protocol.clean_cleanup_evidence()
+                or _incomplete_cleanup_evidence(interruption_stage)
+            )
+            failure_message = (
+                f"interrupted during {interruption_stage}"
+                if isinstance(live_error, KeyboardInterrupt)
+                else str(live_error)[:512] or type(live_error).__name__
             )
             result = protocol.make_failure_summary(
                 run_id=run_id,
@@ -1309,7 +1426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 head=args.expected_head,
                 evidence_root=str(run_root),
                 failure_code=failure_code,
-                failure_message=str(live_error)[:512] or type(live_error).__name__,
+                failure_message=failure_message,
                 cleanup=failure_cleanup,
             )
             persist_terminal(run_root, result)
@@ -1333,6 +1450,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         persist_terminal(run_root, result)
         print(protocol.format_terminal_line(result), flush=True)
         return EXIT_PASS
+    except KeyboardInterrupt:
+        if status is not None:
+            status.transition(
+                "5/5", "validating completion and cleaning owned resources"
+            )
+        if owned_project is not None:
+            try:
+                _remove_owned_unity_project(owned_project)
+                owned_project = None
+            except protocol.ProtocolFailure:
+                pass
+        if run_root is None:
+            print(
+                f"FAIL_INTERRUPTED: interrupted during {interruption_stage}",
+                file=sys.stderr,
+            )
+            return EXIT_FAIL
+        _persist_interrupted(
+            run_root,
+            run_id=run_id,
+            token=token,
+            case_id=args.case,
+            head=args.expected_head,
+            stage=interruption_stage,
+        )
+        return EXIT_FAIL
     except LivePrerequisiteMissing as exc:
         if owned_project is not None:
             try:

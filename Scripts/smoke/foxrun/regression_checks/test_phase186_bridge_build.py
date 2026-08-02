@@ -10,6 +10,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1]
@@ -36,6 +37,76 @@ class Phase186BridgeBuildTests(unittest.TestCase):
         )
         with self.assertRaises(build.BridgeBuildFailure):
             build.require_row("jazzy-fastdds")
+
+    def test_run_logged_interrupt_terminates_owned_tree_and_retains_partial_log(self) -> None:
+        process = mock.Mock()
+        process.pid = 18602
+        process.communicate.side_effect = [KeyboardInterrupt(), ("partial output\n", None)]
+        owner = mock.Mock()
+        job = mock.Mock()
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(build.subprocess, "Popen", return_value=process), \
+                mock.patch.object(build, "_new_process_owner", return_value=(job, owner)):
+            log = pathlib.Path(temp) / "owned.log"
+            with self.assertRaises(KeyboardInterrupt):
+                build.run_logged(
+                    ["fake.exe", "--work"],
+                    cwd=pathlib.Path(temp),
+                    env={},
+                    log_path=log,
+                    timeout_seconds=30.0,
+                )
+            retained = log.read_text(encoding="utf-8")
+
+        owner.register.assert_called_once_with("command", process)
+        owner.close.assert_called_once_with()
+        self.assertEqual("partial output\n", retained)
+
+    def test_direct_script_bootstrap_can_import_process_owner(self) -> None:
+        probe = """
+import importlib
+import pathlib
+import sys
+
+script_directory = pathlib.Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(script_directory))
+importlib.import_module("phase186_bridge_build")
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            completed = build.subprocess.run(
+                [sys.executable, "-I", "-c", probe, str(SCRIPT_DIR)],
+                cwd=temp,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_run_logged_interrupt_during_registration_still_retains_output(self) -> None:
+        process = mock.Mock()
+        process.pid = 18603
+        process.communicate.return_value = ("registration output\n", None)
+        owner = mock.Mock()
+        owner.register.side_effect = KeyboardInterrupt
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(build.subprocess, "Popen", return_value=process), \
+                mock.patch.object(build, "_new_process_owner", return_value=(mock.Mock(), owner)):
+            log = pathlib.Path(temp) / "owned.log"
+            with self.assertRaises(KeyboardInterrupt):
+                build.run_logged(
+                    ["fake.exe"],
+                    cwd=pathlib.Path(temp),
+                    env={},
+                    log_path=log,
+                    timeout_seconds=30.0,
+                )
+
+            self.assertEqual(
+                "registration output\n",
+                log.read_text(encoding="utf-8"),
+            )
+        owner.close.assert_called_once_with()
 
     def test_generated_duplex_uses_modern_rosidl_targets_with_legacy_fallback(self) -> None:
         """Keep Lyrical target exports and older ament dependency macros buildable."""

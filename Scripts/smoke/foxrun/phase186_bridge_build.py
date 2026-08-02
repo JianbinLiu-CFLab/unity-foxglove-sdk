@@ -31,6 +31,11 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 
+try:
+    from Scripts.smoke.foxrun import phase184_profile_acceptance as process_support
+except ImportError:  # Direct script execution from outside the repository root.
+    import phase184_profile_acceptance as process_support
+
 
 INTERFACE_TYPE = (
     "unity2foxglove_foxrun_interfaces_v1/msg/"
@@ -589,6 +594,16 @@ def _process_group_options() -> dict[str, object]:
     return {"start_new_session": True}
 
 
+def _new_process_owner() -> tuple[
+    process_support.WindowsKillOnCloseJob,
+    process_support.OwnedProcessSet,
+]:
+    """Create one exact process-tree owner for a logged command."""
+
+    job = process_support.WindowsKillOnCloseJob()
+    return job, process_support.OwnedProcessSet(job)
+
+
 def run_logged(
     command: Sequence[str],
     *,
@@ -604,35 +619,62 @@ def run_logged(
     started = timestamp()
     start_clock = time.monotonic()
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    process: subprocess.Popen[str] | None = None
+    job: process_support.WindowsKillOnCloseJob | None = None
+    owner: process_support.OwnedProcessSet | None = None
+    owner_closed = False
     try:
         with log_path.open("w", encoding="utf-8", newline="\n") as log:
-            process = subprocess.Popen(
-                [str(part) for part in command],
-                cwd=str(cwd),
-                env=dict(env),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                errors="replace",
-                bufsize=1,
-                shell=False,
-                **_process_group_options(),
-            )
+            job, owner = _new_process_owner()
             try:
+                process = subprocess.Popen(
+                    [str(part) for part in command],
+                    cwd=str(cwd),
+                    env=dict(env),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    errors="replace",
+                    bufsize=1,
+                    shell=False,
+                    **_process_group_options(),
+                )
+                owner.register("command", process)
                 output, _ = process.communicate(timeout=timeout_seconds)
             except subprocess.TimeoutExpired:
-                process.kill()
-                output, _ = process.communicate(timeout=10)
+                with contextlib.suppress(BaseException):
+                    owner.close()
+                owner_closed = True
+                output = ""
+                if process is not None:
+                    with contextlib.suppress(OSError, subprocess.SubprocessError):
+                        output, _ = process.communicate(timeout=10)
                 log.write(output or "")
                 raise BridgeBuildFailure(
                     "owned command exceeded its bounded timeout: "
                     + pathlib.Path(str(command[0])).name
                 )
+            except BaseException:
+                with contextlib.suppress(BaseException):
+                    owner.close()
+                owner_closed = True
+                output = ""
+                if process is not None:
+                    with contextlib.suppress(OSError, subprocess.SubprocessError):
+                        output, _ = process.communicate(timeout=10)
+                log.write(output or "")
+                raise
             log.write(output or "")
     except OSError as exc:
         raise LivePrerequisiteMissing(
             "command unavailable: " + pathlib.Path(str(command[0])).name
         ) from exc
+    finally:
+        if owner is not None and not owner_closed:
+            owner.close()
+        elif job is not None:
+            job.close()
+    assert process is not None
     finished = timestamp()
     result = {
         "exitCode": process.returncode,

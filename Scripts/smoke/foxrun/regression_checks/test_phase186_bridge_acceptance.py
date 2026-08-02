@@ -7,11 +7,15 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import inspect
+import io
 import pathlib
 import socket
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -55,6 +59,196 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             )
 
         self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_direct_cli_still_requires_expected_head(self) -> None:
+        with self.assertRaises(SystemExit):
+            acceptance.parse_args(
+                [
+                    "--case",
+                    "manual-jazzy-fastrtps-duplex",
+                    "--manual",
+                    "--output-root",
+                    r"D:\evidence",
+                ]
+            )
+
+    def test_automatic_preflight_stdout_and_stderr_remain_exact_without_status(self) -> None:
+        args = types.SimpleNamespace(
+            case="full-duplex",
+            manual=False,
+            expected_head=HEAD,
+            output_root=pathlib.Path("build/phase186/test-automatic"),
+            unity_editor=None,
+            run_id=None,
+            bridge_port=None,
+            foxglove_port=None,
+            domain_id=None,
+            runtime_row=None,
+            unity_composition="bridge-only",
+            preflight_only=True,
+            manual_timeout_seconds=1800.0,
+        )
+
+        class Reservation:
+            def __init__(self, port: int) -> None:
+                self.port = port
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_unused) -> None:
+                return None
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            (repository / "build" / "phase186").mkdir(parents=True)
+            reservations = iter((Reservation(18767), Reservation(18768)))
+            with mock.patch.object(acceptance, "parse_args", return_value=args), \
+                    mock.patch.object(acceptance, "validate_arguments", return_value=args), \
+                    mock.patch.object(acceptance, "repository_root", return_value=repository), \
+                    mock.patch.object(
+                        acceptance,
+                        "_new_run_identity",
+                        return_value=(
+                            "phase186h-full-duplex-0123456789ab",
+                            "p186h_0123456789abcdef01234567",
+                        ),
+                    ), \
+                    mock.patch.object(acceptance, "_create_owned_unity_project", return_value=None), \
+                    mock.patch.object(acceptance, "reserve_loopback_port", side_effect=lambda *_: next(reservations)), \
+                    mock.patch.object(
+                        acceptance,
+                        "_preflight",
+                        return_value={"unity": {"path": "Unity.exe"}},
+                    ), \
+                    mock.patch.object(acceptance, "_remove_owned_unity_project"), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = acceptance.main([])
+
+        self.assertEqual(acceptance.EXIT_PASS, result)
+        self.assertEqual(
+            "PHASE186_PREFLIGHT_PASS run=phase186h-full-duplex-0123456789ab "
+            "case=full-duplex tokenHash="
+            + protocol.token_sha256("p186h_0123456789abcdef01234567")
+            + f" head={HEAD}\n",
+            stdout.getvalue(),
+        )
+        self.assertEqual("", stderr.getvalue())
+
+    def test_interrupted_coordinator_head_resolution_persists_incomplete_fail(self) -> None:
+        args = types.SimpleNamespace(
+            case="manual-jazzy-fastrtps-duplex",
+            manual=True,
+            expected_head=None,
+            output_root=pathlib.Path("build/phase186/test-manual"),
+            unity_editor=None,
+            run_id=None,
+            bridge_port=None,
+            foxglove_port=None,
+            domain_id=None,
+            runtime_row=None,
+            unity_composition="repository-all-providers",
+            preflight_only=False,
+            manual_timeout_seconds=1800.0,
+        )
+        reporter = mock.Mock()
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            (repository / "build" / "phase186").mkdir(parents=True)
+            with mock.patch.object(acceptance, "parse_args", return_value=args), \
+                    mock.patch.object(acceptance, "validate_arguments", return_value=args), \
+                    mock.patch.object(acceptance, "repository_root", return_value=repository), \
+                    mock.patch.object(
+                        acceptance,
+                        "_new_run_identity",
+                        return_value=(
+                            "phase186h-jazzy-fastrtps-012345",
+                            "p186h_0123456789abcdef01234567",
+                        ),
+                    ), \
+                    mock.patch.object(acceptance, "git_head", side_effect=KeyboardInterrupt), \
+                    mock.patch.object(
+                        protocol,
+                        "make_failure_summary",
+                        side_effect=AssertionError("unknown HEAD entered terminal protocol"),
+                    ), \
+                    contextlib.redirect_stdout(stdout):
+                result = acceptance.main(
+                    [],
+                    status=reporter,
+                    resolve_current_head=True,
+                )
+
+            run_root = next((repository / "build" / "phase186" / "test-manual").iterdir())
+            interrupted_path = run_root / "terminal-interrupted.json"
+            terminal = json.loads(
+                interrupted_path.read_text(encoding="utf-8")
+            )
+            terminal_summary_exists = (run_root / "terminal-summary.json").exists()
+            terminal_marker_exists = (run_root / "terminal-marker.txt").exists()
+
+            observed_root = repository / "build" / "phase186" / "observed-head"
+            observed_root.mkdir()
+            with contextlib.redirect_stdout(io.StringIO()):
+                observed = acceptance._persist_interrupted(
+                    observed_root,
+                    run_id="phase186h-observed-head-012345",
+                    token="p186h_0123456789abcdef01234567",
+                    case_id="manual-jazzy-fastrtps-duplex",
+                    head=HEAD,
+                    stage="manual wait",
+                )
+            observed_persisted = json.loads(
+                (observed_root / "terminal-summary.json").read_text(encoding="utf-8")
+            )
+            observed_interrupted_exists = (
+                observed_root / "terminal-interrupted.json"
+            ).exists()
+
+        self.assertEqual(acceptance.EXIT_FAIL, result)
+        self.assertEqual(
+            {
+                "schemaVersion",
+                "runId",
+                "tokenHash",
+                "caseId",
+                "head",
+                "headObserved",
+                "verdict",
+                "failureCode",
+                "stage",
+                "failureMessage",
+                "cleanup",
+            },
+            set(terminal),
+        )
+        self.assertEqual("FAIL_INTERRUPTED", terminal["failureCode"])
+        self.assertIsNone(terminal["head"])
+        self.assertFalse(terminal["headObserved"])
+        self.assertIn("repository/HEAD/Unity/ports", terminal["failureMessage"])
+        self.assertFalse(terminal["cleanup"]["complete"])
+        self.assertTrue(
+            any("not observed" in value for value in terminal["cleanup"]["cleanupErrors"])
+        )
+        self.assertNotIn(
+            "or protocol.clean_cleanup_evidence()",
+            inspect.getsource(acceptance.main),
+        )
+        reporter.transition.assert_any_call(
+            "1/5", "checking repository, HEAD, Unity, and ports"
+        )
+        reporter.close.assert_not_called()
+        self.assertIn("headObserved=false", stdout.getvalue())
+        self.assertIn(str(interrupted_path), stdout.getvalue())
+        self.assertFalse(terminal_summary_exists)
+        self.assertFalse(terminal_marker_exists)
+        self.assertEqual(HEAD, observed["head"])
+        self.assertEqual(observed, observed_persisted)
+        self.assertEqual(observed, protocol.validate_terminal_summary(observed))
+        self.assertFalse(observed_interrupted_exists)
 
     def test_manual_flag_is_limited_to_the_two_manual_cases(self) -> None:
         args = acceptance.parse_args(

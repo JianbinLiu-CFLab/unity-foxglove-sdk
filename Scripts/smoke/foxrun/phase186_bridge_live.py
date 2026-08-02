@@ -363,7 +363,13 @@ def _build_runtime_environment(
 def prepare_runtime(
     repository: pathlib.Path,
     config: Mapping[str, Any],
+    *,
+    reporter: Any | None = None,
 ) -> PreparedRuntime:
+    if reporter is not None:
+        reporter.transition(
+            "2/5", "preparing exact runtime and Bridge build"
+        )
     row_id = str(config["runtimeRowId"] or "")
     if not row_id:
         raise LiveNotRun("an exact Phase186 ROS/RMW runtime row")
@@ -659,9 +665,52 @@ def _unity_progress_documents(config: Mapping[str, Any]) -> tuple[Mapping[str, s
         if (
             fields.get("run") == str(config["runId"])
             and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
         ):
             documents.append(fields)
     return tuple(documents)
+
+
+def _report_manual_progress(
+    config: Mapping[str, Any],
+    reporter: Any,
+    emitted: set[str],
+) -> None:
+    """Translate exact current-run Editor progress into concise operator detail."""
+
+    transitions = (
+        (
+            "provider-ready",
+            lambda value: value.get("ready") == "true"
+            and value.get("connected") == "true"
+            and value.get("publish") == "Ready"
+            and value.get("subscribe") == "Ready",
+            "provider directions ready",
+        ),
+        (
+            "external-a",
+            lambda value: value.get("externalA") == "true",
+            "external A observed",
+        ),
+        (
+            "local-b",
+            lambda value: value.get("generated") == "true",
+            "local B published; waiting for peer verification",
+        ),
+        (
+            "completion",
+            lambda value: value.get("external") == "true"
+            and value.get("generated") == "true"
+            and value.get("caseSpecific") == "true",
+            "peer verification complete; Complete enabled",
+        ),
+    )
+    for document in _unity_progress_documents(config):
+        for key, predicate, message in transitions:
+            if key not in emitted and predicate(document):
+                emitted.add(key)
+                reporter.detail(message)
 
 
 def _unity_progress_count(config: Mapping[str, Any]) -> int:
@@ -961,12 +1010,24 @@ def run_live(
     *,
     unity_editor: pathlib.Path,
     manual_timeout_seconds: float,
+    reporter: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Run one exact live case and return terminal actor/observation/cleanup sections."""
 
     output = pathlib.Path(str(config["outputRoot"]))
     config_path = output / "run-config.json"
-    runtime = prepare_runtime(repository, config)
+    try:
+        runtime = prepare_runtime(repository, config, reporter=reporter)
+    except BaseException:
+        if reporter is not None:
+            reporter.transition(
+                "5/5", "validating completion and cleaning owned resources"
+            )
+        raise
+    if reporter is not None:
+        reporter.transition(
+            "3/5", "starting and proving sidecar, peer, observer, and router"
+        )
     owner = OwnedLiveProcesses()
     pointer: pathlib.Path | None = None
     worker_results: dict[str, Mapping[str, Any]] = {}
@@ -1025,17 +1086,24 @@ def run_live(
                 )
         elif bool(config["manual"]):
             pointer = _write_manual_pointer(repository, config)
-            print(
-                "PHASE186_MANUAL_READY"
-                + f" case={config['caseId']} run={config['runId']}"
-                + f" tokenHash={config['tokenHash']} head={config['head']}"
-                + f" pointer={pointer}",
-                flush=True,
-            )
+            if reporter is None:
+                print(
+                    "PHASE186_MANUAL_READY"
+                    + f" case={config['caseId']} run={config['runId']}"
+                    + f" tokenHash={config['tokenHash']} head={config['head']}"
+                    + f" pointer={pointer}",
+                    flush=True,
+                )
+            else:
+                reporter.transition("4/5", "manual Unity run is ready")
+                reporter.unity_ready("the Phase186 ROS2 Bridge acceptance scene")
             deadline = time.monotonic() + manual_timeout_seconds
             gate_written = False
+            reported_progress: set[str] = set()
             while time.monotonic() < deadline:
                 _mirror_manual_log(config)
+                if reporter is not None:
+                    _report_manual_progress(config, reporter, reported_progress)
                 for role in _worker_roles(config):
                     if role not in worker_results:
                         document = _read_actor_document(config, role, "result")
@@ -1124,6 +1192,10 @@ def run_live(
     except BaseException as exc:
         failure = exc
     finally:
+        if reporter is not None:
+            reporter.transition(
+                "5/5", "validating completion and cleaning owned resources"
+            )
         try:
             _remove_manual_pointer(pointer, config)
         except BaseException as exc:
