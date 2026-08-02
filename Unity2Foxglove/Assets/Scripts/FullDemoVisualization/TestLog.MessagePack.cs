@@ -26,30 +26,26 @@ public partial class TestLog
         MessagePackProbeTopic,
         Mode = FoxRunFlow.PublishAndSubscribe,
         Encoding = FoxRunEncoding.MessagePack,
-        Policy = FoxRunPolicy.Change,
-        Hz = 20f)]
+        Policy = FoxRunPolicy.Change)]
     private int _messagePackSequence;
 
     [FoxRun(
         MessagePackProbeTopic,
         Mode = FoxRunFlow.PublishAndSubscribe,
         Encoding = FoxRunEncoding.MessagePack,
-        Policy = FoxRunPolicy.Change,
-        Hz = 20f)]
+        Policy = FoxRunPolicy.Change)]
     private int _messagePackValue;
 
     [FoxRun(
         MessagePackApplyEvidenceTopic,
         Encoding = FoxRunEncoding.JSON,
-        Policy = FoxRunPolicy.Change,
-        Hz = 20f)]
+        Policy = FoxRunPolicy.Change)]
     private int _messagePackAppliedSequence;
 
     [FoxRun(
         MessagePackApplyEvidenceTopic,
         Encoding = FoxRunEncoding.JSON,
-        Policy = FoxRunPolicy.Change,
-        Hz = 20f)]
+        Policy = FoxRunPolicy.Change)]
     private int _messagePackAppliedValue;
 
     private int _messagePackLastObservedSequence;

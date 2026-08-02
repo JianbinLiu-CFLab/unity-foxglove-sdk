@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -19,6 +20,21 @@ PROBE_PATH = (
     / "smoke"
     / "websocket"
     / "phase185_foxrun_messagepack_probe.py"
+)
+ACCEPTANCE_SOURCES = (
+    ROOT
+    / "Unity2Foxglove"
+    / "Assets"
+    / "Scripts"
+    / "FullDemoVisualization"
+    / "TestLog.MessagePack.cs",
+    ROOT
+    / "Packages"
+    / "dev.unity2foxglove.sdk"
+    / "Samples~"
+    / "FullDemoVisualization"
+    / "Scripts"
+    / "TestLog.MessagePack.cs",
 )
 
 
@@ -138,6 +154,31 @@ class Phase185FoxRunMessagePackProbeTests(unittest.TestCase):
             report["canonicalOutput"]["payloadHex"],
         )
         self.assertTrue(report["noImmediateMirror"]["complete"])
+
+    def test_exactly_once_acceptance_topics_do_not_enable_change_heartbeats(self) -> None:
+        """The controlled B and evidence values stay quiet after their change."""
+        declaration_pattern = re.compile(
+            r"\[FoxRun\((?P<arguments>.*?)\)\]\s*"
+            r"private int _messagePack(?:Sequence|Value|AppliedSequence|AppliedValue);",
+            re.DOTALL,
+        )
+        heartbeat_pattern = re.compile(
+            r"\bHz\s*=\s*(?P<hz>[+-]?(?:\d+(?:\.\d*)?|\.\d+))f?\b"
+        )
+
+        for source_path in ACCEPTANCE_SOURCES:
+            source = source_path.read_text(encoding="utf-8")
+            declarations = declaration_pattern.findall(source)
+            self.assertEqual(4, len(declarations), source_path)
+            for arguments in declarations:
+                heartbeat = heartbeat_pattern.search(arguments)
+                if heartbeat is not None:
+                    self.assertLessEqual(
+                        float(heartbeat.group("hz")),
+                        0.0,
+                        f"{source_path} enables a Change heartbeat incompatible "
+                        "with the probe's exactly-once quiet windows.",
+                    )
 
 
 if __name__ == "__main__":
