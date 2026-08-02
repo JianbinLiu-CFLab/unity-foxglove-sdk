@@ -774,6 +774,34 @@ def cpp_runtime_paths(
     )
 
 
+def reset_cmake_build_for_runtime_alias(
+    physical_build: pathlib.Path,
+    runtime_build: pathlib.Path,
+) -> bool:
+    """Discard an owned CMake tree when its temporary subst drive changed."""
+
+    physical = pathlib.Path(physical_build)
+    runtime = pathlib.Path(runtime_build)
+    if physical.name.casefold() != "cpp-build" or runtime.name.casefold() != "cpp-build":
+        raise BridgeBuildFailure("CMake cache reset target is not cpp-build")
+    cache = physical / "CMakeCache.txt"
+    if not cache.is_file():
+        return False
+    cached_directory: str | None = None
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("CMAKE_CACHEFILE_DIR:INTERNAL="):
+            cached_directory = line.split("=", 1)[1].strip()
+            break
+    if cached_directory and pathlib.PureWindowsPath(
+        cached_directory
+    ) == pathlib.PureWindowsPath(str(runtime)):
+        return False
+    if physical.is_symlink():
+        raise BridgeBuildFailure("CMake cache reset target must not be a symlink")
+    shutil.rmtree(physical)
+    return True
+
+
 def run_row(
     repository: pathlib.Path,
     row: BridgeRow,
@@ -932,6 +960,7 @@ def run_row(
             cpp_build, runtime_cpp_build, runtime_install_prefix = (
                 cpp_runtime_paths(physical_cpp_root, runtime_cpp_root)
             )
+            reset_cmake_build_for_runtime_alias(cpp_build, runtime_cpp_build)
             cpp_temp = runtime_cpp_root / "tmp"
             cpp_environment = _build_cpp_environment(
                 build_environment,

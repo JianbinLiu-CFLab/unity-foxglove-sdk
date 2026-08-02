@@ -228,6 +228,47 @@ importlib.import_module("phase186_bridge_build")
             runtime_install,
         )
 
+    def test_cmake_build_is_reset_when_subst_alias_changes(self) -> None:
+        """A reusable CMake tree must not retain a different temporary drive."""
+
+        with tempfile.TemporaryDirectory() as temp:
+            physical_build = pathlib.Path(temp) / "row" / "cpp-build"
+            physical_build.mkdir(parents=True)
+            (physical_build / "CMakeCache.txt").write_text(
+                "CMAKE_CACHEFILE_DIR:INTERNAL=Y:/cpp-build\n",
+                encoding="utf-8",
+            )
+            (physical_build / "stale.obj").write_bytes(b"stale")
+
+            changed = build.reset_cmake_build_for_runtime_alias(
+                physical_build,
+                pathlib.Path("Z:/cpp-build"),
+            )
+
+            self.assertTrue(changed)
+            self.assertFalse(physical_build.exists())
+
+    def test_cmake_build_is_reused_for_same_alias_ignoring_case_and_slashes(self) -> None:
+        """Do not rebuild an already valid row merely for path spelling."""
+
+        with tempfile.TemporaryDirectory() as temp:
+            physical_build = pathlib.Path(temp) / "row" / "cpp-build"
+            physical_build.mkdir(parents=True)
+            (physical_build / "CMakeCache.txt").write_text(
+                "CMAKE_CACHEFILE_DIR:INTERNAL=z:/cpp-build\n",
+                encoding="utf-8",
+            )
+            sentinel = physical_build / "compiled.exe"
+            sentinel.write_bytes(b"compiled")
+
+            changed = build.reset_cmake_build_for_runtime_alias(
+                physical_build,
+                pathlib.Path(r"Z:\cpp-build"),
+            )
+
+            self.assertFalse(changed)
+            self.assertEqual(b"compiled", sentinel.read_bytes())
+
     def test_overlay_authority_rejects_cross_row_and_digest_drift(self) -> None:
         """Reject overlay evidence copied across rows or carrying digest drift."""
 
