@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Concise, stoppable operator status for a Phase186-H manual run."""
+
+from __future__ import annotations
+
+import threading
+import time
+from collections.abc import Callable
+
+
+Clock = Callable[[], float]
+Sink = Callable[[str], None]
+Wait = Callable[[threading.Event, float], bool]
+
+
+def _default_wait(stop: threading.Event, seconds: float) -> bool:
+    return stop.wait(seconds)
+
+
+class ManualStatusReporter:
+    """Emit one transition, then bounded heartbeats for the current stage."""
+
+    def __init__(
+        self,
+        *,
+        clock: Clock = time.monotonic,
+        sink: Sink = print,
+        heartbeat_seconds: float = 10.0,
+        wait: Wait = _default_wait,
+    ) -> None:
+        if heartbeat_seconds <= 0:
+            raise ValueError("heartbeat_seconds must be positive")
+        self._clock = clock
+        self._sink = sink
+        self._heartbeat_seconds = heartbeat_seconds
+        self._wait = wait
+        self._started = clock()
+        self._stage: str | None = None
+        self._last_transition: tuple[str, str] | None = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run_heartbeats,
+            name="phase186-manual-status",
+            daemon=True,
+        )
+        self._thread.start()
+
+    @property
+    def is_alive(self) -> bool:
+        """Expose the worker state for deterministic regression checks."""
+
+        return self._thread.is_alive()
+
+    def _elapsed(self) -> str:
+        return f"{int(max(0.0, self._clock() - self._started))}s"
+
+    def _emit(self, event: str, text: str) -> None:
+        self._sink(f"PHASE186_MANUAL_STATUS {event} {text}")
+
+    def transition(self, stage: str, message: str) -> None:
+        """Announce one coordinator transition and make it the heartbeat stage."""
+
+        clean_stage = str(stage).strip()
+        clean_message = str(message).strip()
+        if not clean_stage or not clean_message:
+            raise ValueError("manual status transitions require a stage and message")
+        with self._lock:
+            if self._last_transition == (clean_stage, clean_message):
+                return
+            self._stage = clean_stage
+            self._last_transition = (clean_stage, clean_message)
+        self._emit(
+            "transition",
+            f"stage={clean_stage} elapsed={self._elapsed()} message={clean_message}",
+        )
+
+    def unity_ready(self, label: str) -> None:
+        """Give the operator exactly two short Unity actions."""
+
+        clean_label = str(label).strip() or "the prepared manual scene"
+        self._sink(f"UNITY ACTION 1: open {clean_label}.")
+        self._sink("UNITY ACTION 2: enter Play Mode once.")
+
+    def detail(self, message: str) -> None:
+        """Emit concise supplemental context without changing the stage."""
+
+        clean_message = str(message).strip()
+        if clean_message:
+            self._emit("detail", clean_message)
+
+    def _run_heartbeats(self) -> None:
+        while not self._wait(self._stop, self._heartbeat_seconds):
+            with self._lock:
+                stage = self._stage
+            if stage is not None:
+                self._emit(
+                    "heartbeat",
+                    f"stage={stage} elapsed={self._elapsed()}",
+                )
+
+    def close(self) -> None:
+        """Stop and join the heartbeat worker; safe to invoke repeatedly."""
+
+        self._stop.set()
+        if self._thread is not threading.current_thread():
+            self._thread.join()
+
+    def __enter__(self) -> "ManualStatusReporter":
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
+
+
+class NullManualStatusReporter:
+    """A status-compatible reporter for quiet noninteractive callers."""
+
+    def transition(self, _stage: str, _message: str) -> None:
+        return None
+
+    def unity_ready(self, _label: str) -> None:
+        return None
+
+    def detail(self, _message: str) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+    def __enter__(self) -> "NullManualStatusReporter":
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
