@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import pathlib
 import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -23,6 +25,36 @@ HEAD = "a" * 40
 
 class Phase186BridgeAcceptanceTests(unittest.TestCase):
     """Prove orchestration boundaries without launching live prerequisites."""
+
+    def test_direct_script_bootstrap_can_import_deferred_live_runner(self) -> None:
+        repository = pathlib.Path(__file__).resolve().parents[4]
+        script_directory = repository / "Scripts" / "smoke" / "foxrun"
+        probe = """
+import importlib
+import pathlib
+import sys
+
+script_directory = pathlib.Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(script_directory))
+importlib.import_module("phase186_bridge_acceptance")
+importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-c",
+                    probe,
+                    str(script_directory),
+                ],
+                cwd=temp,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
 
     def test_manual_flag_is_limited_to_the_two_manual_cases(self) -> None:
         args = acceptance.parse_args(

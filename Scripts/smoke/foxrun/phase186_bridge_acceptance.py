@@ -31,6 +31,9 @@ from typing import Any
 
 
 SCRIPT_DIRECTORY = pathlib.Path(__file__).resolve().parent
+REPOSITORY_ROOT = SCRIPT_DIRECTORY.parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
