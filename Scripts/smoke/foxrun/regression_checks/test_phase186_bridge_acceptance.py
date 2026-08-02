@@ -896,10 +896,13 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                     ):
                         if kind.endswith("subscribe"):
                             self.assertIn(
-                                f"_phase186GeneratedIncoming{index}", source
+                                f"_incomingPhase186Generated{index}", source
                             )
                             self.assertNotIn(
                                 f"_phase186GeneratedValue{index}", source
+                            )
+                            self.assertNotIn(
+                                f"_phase186GeneratedIncoming{index}", source
                             )
                     self.assertIn("partial void Phase186Generated_Tick", source)
                     self.assertIn("Phase186GeneratedInterfaceDigest", source)

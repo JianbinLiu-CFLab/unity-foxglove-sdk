@@ -164,7 +164,8 @@ class ManualStatusReporterTests(unittest.TestCase):
             sink=emitted.append,
             heartbeat_seconds=60.0,
         )
-        reporter.unity_ready("Phase186 Bridge Manual")
+        reporter.unity_prepare("Phase186 Bridge Manual")
+        reporter.unity_play_ready("Phase186 Bridge Manual")
         reporter.detail("Waiting for the token-bound completion marker.")
         reporter.close()
         reporter.close()
@@ -214,7 +215,8 @@ class ManualStatusReporterTests(unittest.TestCase):
         with mock.patch("builtins.print") as sink:
             reporter = status.NullManualStatusReporter()
             reporter.transition("READY", "unused")
-            reporter.unity_ready("unused")
+            reporter.unity_prepare("unused")
+            reporter.unity_play_ready("unused")
             reporter.detail("unused")
             reporter.terminal("FAIL", "unused", "unused")
             reporter.close()

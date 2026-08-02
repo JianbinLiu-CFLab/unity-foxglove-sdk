@@ -326,15 +326,53 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("SessionState", probe, StringComparison.Ordinal);
             Assert.Contains("PHASE186_ACCEPTANCE_PASS", probe, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", probe, StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE186_MANUAL_SCENE_PREPARE_FAIL run=",
+                probe,
+                StringComparison.Ordinal);
             Assert.Contains("EditorApplication.EnterPlaymode", probe, StringComparison.Ordinal);
-            var manualSchemaRefresh = probe.IndexOf(
-                "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+            var manualPrepare = Slice(
+                probe,
+                "public static void PrepareCurrentManualRun()",
+                "private static void ResumePendingManualPreparation()");
+            Assert.Contains(
+                "SessionState.SetBool(Key(\"manual-prepare-pending\"), true);",
+                manualPrepare,
                 StringComparison.Ordinal);
-            var manualReadyMarker = probe.IndexOf(
+            Assert.DoesNotContain(
                 "PHASE186_MANUAL_SCENE_READY",
+                manualPrepare,
                 StringComparison.Ordinal);
-            Assert.True(manualSchemaRefresh >= 0);
-            Assert.True(manualSchemaRefresh < manualReadyMarker);
+
+            var manualStabilization = Slice(
+                probe,
+                "private static void ContinueManualPreparation()",
+                "private static void CompleteManualPreparation(");
+            Assert.Contains(
+                "EditorApplication.isCompiling || EditorApplication.isUpdating",
+                manualStabilization,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+                manualStabilization,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (manifestRefresh.SchemaInfoChanged)",
+                manualStabilization,
+                StringComparison.Ordinal);
+
+            var manualCompletion = Slice(
+                probe,
+                "private static void CompleteManualPreparation(",
+                "private static void ValidateManualPreparationIdentity(");
+            Assert.Contains(
+                "PHASE186_MANUAL_SCENE_READY",
+                manualCompletion,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "schemaInfoChanged=false",
+                manualCompletion,
+                StringComparison.Ordinal);
             Assert.Contains(
                 "AssetDatabase.Refresh(",
                 probe,

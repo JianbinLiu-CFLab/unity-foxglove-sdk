@@ -265,8 +265,8 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                 mock.call.transition(
                     "3/5", "starting and proving sidecar, peer, observer, and router"
                 ),
-                mock.call.transition("4/5", "manual Unity run is ready"),
-                mock.call.unity_ready(
+                mock.call.transition("4/5", "prepare the Unity scene"),
+                mock.call.unity_prepare(
                     "the Phase186 ROS2 Bridge acceptance scene"
                 ),
                 mock.call.transition(
@@ -275,6 +275,52 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             ],
             reporter.mock_calls,
         )
+
+    def test_manual_scene_ready_requires_exact_identity_and_stable_schema(self) -> None:
+        config = {
+            "unityLog": "unity.log",
+            "runId": "phase186h-current-0123456789ab",
+            "caseId": "manual-jazzy-fastrtps-duplex",
+            "tokenHash": "a" * 64,
+            "head": "b" * 40,
+        }
+        prefix = "PHASE186_MANUAL_SCENE_READY "
+        stale = (
+            prefix
+            + "run=phase186h-stale-0123456789ab "
+            + f"case={config['caseId']} tokenHash={config['tokenHash']} "
+            + f"head={config['head']} schemaInfoChanged=false"
+        )
+        changing = (
+            prefix
+            + f"run={config['runId']} case={config['caseId']} "
+            + f"tokenHash={config['tokenHash']} head={config['head']} "
+            + "schemaInfoChanged=true"
+        )
+        exact = (
+            prefix
+            + f"run={config['runId']} case={config['caseId']} "
+            + f"tokenHash={config['tokenHash']} head={config['head']} "
+            + "manifest=abc schemaInfoChanged=false"
+        )
+
+        with mock.patch.object(live_peer, "_read_log", return_value=stale + "\n" + changing):
+            self.assertFalse(live._manual_scene_ready_in_log(config))
+        with mock.patch.object(live_peer, "_read_log", return_value=stale + "\n" + exact):
+            self.assertTrue(live._manual_scene_ready_in_log(config))
+
+        failed = (
+            "PHASE186_MANUAL_SCENE_PREPARE_FAIL "
+            + f"run={config['runId']} case={config['caseId']} "
+            + f"tokenHash={config['tokenHash']} head={config['head']} "
+            + "reason=InvalidOperationException"
+        )
+        with mock.patch.object(live_peer, "_read_log", return_value=stale + "\n" + failed):
+            self.assertEqual(
+                "InvalidOperationException",
+                live._manual_scene_prepare_failure(config),
+            )
+
     def test_ros_graph_gate_requires_exact_bridge_publisher(self) -> None:
         config = {
             "caseId": "slow-main-thread-640hz",

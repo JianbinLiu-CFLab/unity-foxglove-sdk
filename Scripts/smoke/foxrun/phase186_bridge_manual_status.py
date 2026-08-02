@@ -78,14 +78,19 @@ class ManualStatusReporter:
             f"stage={clean_stage} elapsed={self._elapsed()} message={clean_message}",
         )
 
-    def unity_ready(self, label: str) -> None:
-        """Give the operator exactly two short Unity actions."""
+    def unity_prepare(self, label: str) -> None:
+        """Request scene preparation without implying Play is safe yet."""
 
         del label
         self._sink(
             "UNITY ACTION 1: Foxglove > Manual Acceptance > Phase186 > "
             "Prepare Current Bridge Run"
         )
+
+    def unity_play_ready(self, label: str) -> None:
+        """Request Play only after Unity reports a stable generated schema."""
+
+        del label
         self._sink("UNITY ACTION 2: Enter Play Mode once")
 
     def detail(self, message: str) -> None:
@@ -151,7 +156,10 @@ class NullManualStatusReporter:
     def transition(self, _stage: str, _message: str) -> None:
         return None
 
-    def unity_ready(self, _label: str) -> None:
+    def unity_prepare(self, _label: str) -> None:
+        return None
+
+    def unity_play_ready(self, _label: str) -> None:
         return None
 
     def detail(self, _message: str) -> None:

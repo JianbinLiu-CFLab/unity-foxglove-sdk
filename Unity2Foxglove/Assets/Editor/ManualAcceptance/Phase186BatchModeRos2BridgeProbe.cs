@@ -28,17 +28,24 @@ namespace Unity2Foxglove
         private const double TimeoutSeconds = 900d;
         private const string ManualPointerRelativePath =
             "Library/Phase186Acceptance/current-run.json";
+        private const int ManualPreparationMaxSchemaRefreshes = 3;
         private static readonly string SessionPrefix =
             "Unity2Foxglove.Phase186BatchModeRos2BridgeProbe."
             + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture)
             + ".";
 
         private static bool _handlersAttached;
+        private static bool _manualPreparationQueued;
         private static Phase186RunConfiguration _configuration;
 
         [InitializeOnLoadMethod]
         private static void Register()
         {
+            if (!Application.isBatchMode)
+            {
+                ResumePendingManualPreparation();
+                return;
+            }
             if (!Application.isBatchMode || !HasArgument(RunConfigArgument))
                 return;
             AttachHandlers();
@@ -79,35 +86,205 @@ namespace Unity2Foxglove
             "Foxglove/Manual Acceptance/Phase186/Prepare Current Bridge Run")]
         public static void PrepareCurrentManualRun()
         {
-            if (Application.isBatchMode || EditorApplication.isPlayingOrWillChangePlaymode)
+            if (Application.isBatchMode
+                || EditorApplication.isPlayingOrWillChangePlaymode
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating)
                 throw new InvalidOperationException(
-                    "Prepare the Phase186 manual run in Edit Mode.");
+                    "Prepare the Phase186 manual run in idle Edit Mode.");
             var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
             var configuration = Phase186RunConfiguration.Load(pointer);
             if (!configuration.Manual)
                 throw new InvalidDataException(
                     "The current run pointer does not name a manual case.");
-            EditorSceneManager.OpenScene(
-                Phase186Ros2BridgeAcceptanceBuilder.AcceptanceSceneAssetPath,
-                OpenSceneMode.Single);
-            Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(
-                configuration);
-            var manifestRefresh =
-                FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
-            AssetDatabase.SaveAssets();
-            if (manifestRefresh.SchemaInfoChanged)
+            BeginManualPreparation(configuration);
+            try
             {
-                AssetDatabase.Refresh(
-                    ImportAssetOptions.ForceSynchronousImport);
+                EditorSceneManager.OpenScene(
+                    Phase186Ros2BridgeAcceptanceBuilder.AcceptanceSceneAssetPath,
+                    OpenSceneMode.Single);
+                Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(
+                    configuration);
+                Debug.Log(
+                    "PHASE186_MANUAL_SCENE_PREPARING run=" + configuration.RunId
+                    + " case=" + configuration.CaseId
+                    + " tokenHash=" + configuration.TokenHash
+                    + " head=" + configuration.Head);
+                SceneView.RepaintAll();
+                QueueManualPreparation();
             }
+            catch (Exception exception)
+            {
+                FailManualPreparation(exception);
+            }
+        }
+
+        private static void BeginManualPreparation(
+            Phase186RunConfiguration configuration)
+        {
+            SessionState.SetBool(Key("manual-prepare-pending"), true);
+            SessionState.SetString(Key("manual-prepare-run"), configuration.RunId);
+            SessionState.SetString(Key("manual-prepare-case"), configuration.CaseId);
+            SessionState.SetString(
+                Key("manual-prepare-token-hash"),
+                configuration.TokenHash);
+            SessionState.SetString(Key("manual-prepare-head"), configuration.Head);
+            SessionState.SetInt(Key("manual-prepare-refreshes"), 0);
+        }
+
+        private static void ResumePendingManualPreparation()
+        {
+            if (SessionState.GetBool(Key("manual-prepare-pending"), false))
+                QueueManualPreparation();
+        }
+
+        private static void QueueManualPreparation()
+        {
+            if (_manualPreparationQueued)
+                return;
+            _manualPreparationQueued = true;
+            EditorApplication.delayCall += ContinueManualPreparation;
+        }
+
+        private static void ContinueManualPreparation()
+        {
+            _manualPreparationQueued = false;
+            if (!SessionState.GetBool(Key("manual-prepare-pending"), false))
+                return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating)
+            {
+                QueueManualPreparation();
+                return;
+            }
+
+            try
+            {
+                var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
+                var configuration = Phase186RunConfiguration.Load(pointer);
+                ValidateManualPreparationIdentity(configuration);
+                var manifestRefresh =
+                    FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
+                AssetDatabase.SaveAssets();
+                if (manifestRefresh.SchemaInfoChanged)
+                {
+                    var refreshes = SessionState.GetInt(
+                        Key("manual-prepare-refreshes"),
+                        0);
+                    if (refreshes >= ManualPreparationMaxSchemaRefreshes)
+                    {
+                        throw new InvalidOperationException(
+                            "Phase186 manual schema generation did not stabilize after "
+                            + ManualPreparationMaxSchemaRefreshes.ToString(
+                                CultureInfo.InvariantCulture)
+                            + " refreshes.");
+                    }
+                    refreshes++;
+                    SessionState.SetInt(
+                        Key("manual-prepare-refreshes"),
+                        refreshes);
+                    Debug.Log(
+                        "PHASE186_MANUAL_SCENE_PREPARING run=" + configuration.RunId
+                        + " case=" + configuration.CaseId
+                        + " tokenHash=" + configuration.TokenHash
+                        + " head=" + configuration.Head
+                        + " schemaRefresh=" + refreshes.ToString(
+                            CultureInfo.InvariantCulture));
+                    QueueManualPreparation();
+                    AssetDatabase.Refresh(
+                        ImportAssetOptions.ForceSynchronousImport);
+                    return;
+                }
+
+                if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+                {
+                    QueueManualPreparation();
+                    return;
+                }
+                CompleteManualPreparation(configuration, manifestRefresh);
+            }
+            catch (Exception exception)
+            {
+                FailManualPreparation(exception);
+            }
+        }
+
+        private static void CompleteManualPreparation(
+            Phase186RunConfiguration configuration,
+            FoxrunCodeGenerator.FoxRunManifestRefreshResult manifestRefresh)
+        {
+            ClearManualPreparation();
             Debug.Log(
                 "PHASE186_MANUAL_SCENE_READY run=" + configuration.RunId
                 + " case=" + configuration.CaseId
                 + " tokenHash=" + configuration.TokenHash
                 + " head=" + configuration.Head
                 + " manifest=" + manifestRefresh.Manifest.GlobalManifestHash
-                + " schemaInfoChanged=" + manifestRefresh.SchemaInfoChanged);
+                + " schemaInfoChanged=false");
             SceneView.RepaintAll();
+        }
+
+        private static void ValidateManualPreparationIdentity(
+            Phase186RunConfiguration configuration)
+        {
+            if (!configuration.Manual
+                || !string.Equals(
+                    SessionState.GetString(Key("manual-prepare-run"), string.Empty),
+                    configuration.RunId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    SessionState.GetString(Key("manual-prepare-case"), string.Empty),
+                    configuration.CaseId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    SessionState.GetString(
+                        Key("manual-prepare-token-hash"),
+                        string.Empty),
+                    configuration.TokenHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    SessionState.GetString(Key("manual-prepare-head"), string.Empty),
+                    configuration.Head,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "The pending Phase186 manual preparation identity changed.");
+            }
+        }
+
+        private static void ClearManualPreparation()
+        {
+            SessionState.SetBool(Key("manual-prepare-pending"), false);
+            SessionState.SetString(Key("manual-prepare-run"), string.Empty);
+            SessionState.SetString(Key("manual-prepare-case"), string.Empty);
+            SessionState.SetString(Key("manual-prepare-token-hash"), string.Empty);
+            SessionState.SetString(Key("manual-prepare-head"), string.Empty);
+            SessionState.SetInt(Key("manual-prepare-refreshes"), 0);
+        }
+
+        private static void FailManualPreparation(Exception exception)
+        {
+            var runId = SessionState.GetString(
+                Key("manual-prepare-run"),
+                string.Empty);
+            var caseId = SessionState.GetString(
+                Key("manual-prepare-case"),
+                string.Empty);
+            var tokenHash = SessionState.GetString(
+                Key("manual-prepare-token-hash"),
+                string.Empty);
+            var head = SessionState.GetString(
+                Key("manual-prepare-head"),
+                string.Empty);
+            ClearManualPreparation();
+            Debug.LogError(
+                "PHASE186_MANUAL_SCENE_PREPARE_FAIL run=" + runId
+                + " case=" + caseId
+                + " tokenHash=" + tokenHash
+                + " head=" + head
+                + " reason=" + exception.GetType().Name);
+            Debug.LogException(exception);
         }
 
         [MenuItem(
@@ -116,6 +293,9 @@ namespace Unity2Foxglove
         private static bool CanPrepareCurrentManualRun()
             => !Application.isBatchMode
                && !EditorApplication.isPlayingOrWillChangePlaymode
+               && !EditorApplication.isCompiling
+               && !EditorApplication.isUpdating
+               && !SessionState.GetBool(Key("manual-prepare-pending"), false)
                && File.Exists(Path.Combine(ProjectRoot(), ManualPointerRelativePath));
 
         private static void AttachHandlers()

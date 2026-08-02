@@ -452,8 +452,11 @@ def _render_unity_contract(
 ) -> tuple[str, str, str, str, str]:
     """Render one declaration, observation, initialization, mutation, and warm-up arm."""
 
-    field_role = "Incoming" if kind.endswith("subscribe") else "Value"
-    field = f"_phase186Generated{field_role}{index}"
+    field = (
+        f"_incomingPhase186Generated{index}"
+        if kind.endswith("subscribe")
+        else f"_phase186GeneratedValue{index}"
+    )
     observed = f"_phase186GeneratedObserved{index}"
     sequence = f"_phase186GeneratedSequence{index}"
     topic_name = f"Phase186GeneratedTopic{index}"

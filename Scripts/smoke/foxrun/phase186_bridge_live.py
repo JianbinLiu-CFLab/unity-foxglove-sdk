@@ -635,6 +635,49 @@ def _manual_marker_in_log(config: Mapping[str, Any]) -> bool:
     return False
 
 
+def _manual_scene_ready_in_log(config: Mapping[str, Any]) -> bool:
+    prefix = "PHASE186_MANUAL_SCENE_READY "
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
+            and fields.get("schemaInfoChanged") == "false"
+        ):
+            return True
+    return False
+
+
+def _manual_scene_prepare_failure(config: Mapping[str, Any]) -> str | None:
+    prefix = "PHASE186_MANUAL_SCENE_PREPARE_FAIL "
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
+        ):
+            return fields.get("reason") or "unknown"
+    return None
+
+
 def _wait_unity_ready(
     config: Mapping[str, Any],
     owner: OwnedLiveProcesses,
@@ -1101,13 +1144,42 @@ def run_live(
                     flush=True,
                 )
             else:
-                reporter.transition("4/5", "manual Unity run is ready")
-                reporter.unity_ready("the Phase186 ROS2 Bridge acceptance scene")
+                reporter.transition("4/5", "prepare the Unity scene")
+                reporter.unity_prepare(
+                    "the Phase186 ROS2 Bridge acceptance scene"
+                )
             deadline = time.monotonic() + manual_timeout_seconds
             gate_written = False
+            scene_ready_reported = False
             reported_progress: set[str] = set()
             while time.monotonic() < deadline:
                 _mirror_manual_log(config)
+                prepare_failure = _manual_scene_prepare_failure(config)
+                if prepare_failure is not None:
+                    raise LiveFailure(
+                        "FAIL_UNITY_PREPARE",
+                        "Unity scene preparation failed: " + prepare_failure,
+                    )
+                if (
+                    not scene_ready_reported
+                    and _manual_scene_ready_in_log(config)
+                ):
+                    scene_ready_reported = True
+                    if reporter is not None:
+                        reporter.transition(
+                            "4/5",
+                            "Unity scene compiled; Play Mode is now ready",
+                        )
+                        reporter.unity_play_ready(
+                            "the Phase186 ROS2 Bridge acceptance scene"
+                        )
+                    else:
+                        print(
+                            "PHASE186_MANUAL_PLAY_READY"
+                            + f" case={config['caseId']} run={config['runId']}"
+                            + f" tokenHash={config['tokenHash']} head={config['head']}",
+                            flush=True,
+                        )
                 if reporter is not None:
                     _report_manual_progress(config, reporter, reported_progress)
                 for role in _worker_roles(config):
