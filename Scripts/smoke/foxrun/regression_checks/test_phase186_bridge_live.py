@@ -52,6 +52,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                 "unityLog": str(log),
                 "runId": "phase186h-current-0123456789ab",
                 "caseId": "manual-jazzy-fastrtps-duplex",
+                "manual": True,
                 "tokenHash": "a" * 64,
                 "head": "b" * 40,
             }
@@ -91,6 +92,48 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             ],
             reporter.detail.call_args_list,
         )
+
+    def test_automatic_progress_accepts_real_marker_without_manual_identity_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            log = pathlib.Path(temp) / "unity.log"
+            config = {
+                "unityLog": str(log),
+                "runId": "phase186h-auto-reconnect-012345",
+                "caseId": "reconnect-degraded-recovery",
+                "manual": False,
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+            }
+            marker = (
+                "PHASE186_ACCEPTANCE_PROGRESS "
+                "run=phase186h-auto-reconnect-012345 "
+                "case=reconnect-degraded-recovery "
+                "ready=true external=false generated=false caseSpecific=false "
+                "connected=true publish=Ready subscribe=Ready "
+                "received=0 applied=0 diagnostic="
+            )
+            log.write_text(
+                marker.replace("phase186h-auto-reconnect", "phase186h-foreign")
+                + "\n"
+                + marker
+                + "\n",
+                encoding="utf-8",
+            )
+
+            documents = live._unity_progress_documents(config)
+            self.assertEqual(1, len(documents))
+            owner = mock.Mock()
+            with mock.patch.object(live.time, "monotonic", side_effect=(10.0, 10.0)), \
+                    mock.patch.object(live.time, "sleep") as sleep:
+                live._wait_unity_progress_after(
+                    config,
+                    owner,
+                    0,
+                    {"ready": "true", "connected": "true"},
+                )
+
+        owner.poll.assert_not_called()
+        sleep.assert_not_called()
 
     def test_live_startup_interrupt_closes_owner_and_writes_real_cleanup(self) -> None:
         config = {

@@ -662,12 +662,18 @@ def _unity_progress_documents(config: Mapping[str, Any]) -> tuple[Mapping[str, s
             if "=" in part:
                 key, value = part.split("=", 1)
                 fields[key] = value
-        if (
+        identity_matches = (
             fields.get("run") == str(config["runId"])
             and fields.get("case") == str(config["caseId"])
-            and fields.get("tokenHash") == str(config["tokenHash"])
-            and fields.get("head") == str(config["head"])
-        ):
+        )
+        manual_identity_matches = (
+            not bool(config.get("manual"))
+            or (
+                fields.get("tokenHash") == str(config["tokenHash"])
+                and fields.get("head") == str(config["head"])
+            )
+        )
+        if identity_matches and manual_identity_matches:
             documents.append(fields)
     return tuple(documents)
 
