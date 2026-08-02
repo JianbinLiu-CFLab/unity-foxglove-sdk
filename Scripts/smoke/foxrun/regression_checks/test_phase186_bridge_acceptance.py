@@ -630,6 +630,14 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                 acceptance.validate_package_manifests(repo)
 
     def test_owned_bridge_only_project_contains_no_r2fu_or_typesupport_package(self) -> None:
+        self.assertIn(
+            "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs",
+            bridge_project._ASSET_PATHS,
+        )
+        self.assertIn(
+            "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs.meta",
+            bridge_project._ASSET_PATHS,
+        )
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()
             base = repository / "Unity2Foxglove"

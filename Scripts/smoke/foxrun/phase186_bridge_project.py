@@ -29,6 +29,8 @@ MAX_WINDOWS_UNITY_LMDB_PATH = 240
 _UNITY_LMDB_RELATIVE_PATH = pathlib.Path("Library") / "Search" / ("x" * 80)
 
 _ASSET_PATHS = (
+    "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs",
+    "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs.meta",
     "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs",
     "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs.meta",
     "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs",
