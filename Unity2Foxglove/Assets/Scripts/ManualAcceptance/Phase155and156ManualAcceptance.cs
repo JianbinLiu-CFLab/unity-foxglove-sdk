@@ -32,7 +32,7 @@ using Unity2Foxglove.Ros2ForUnity.Native;
 /// </remarks>
 [DisallowMultipleComponent]
 [AddComponentMenu("Foxglove/Manual Acceptance/Phase155 and 156")]
-[FoxRunMessage("/phase155/vehicle", SchemaName = "ManualAcceptance.Phase155and156.VehicleTelemetry", Hz = 2f)]
+[FoxRunMessage("/phase155/vehicle", SchemaName = "ManualAcceptance.Phase155and156VehicleTelemetry", Hz = 2f)]
 public sealed partial class Phase155and156ManualAcceptance : MonoBehaviour
 {
     private const string VehicleTopic = "/phase155/vehicle";

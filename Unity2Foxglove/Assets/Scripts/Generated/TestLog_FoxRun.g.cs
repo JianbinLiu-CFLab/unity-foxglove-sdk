@@ -1387,7 +1387,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_0 ??= new FoxRunGeneratedMemberAccess<int>(
                     "TestLog\nfield\nconditionalHealth\n/debug/conditional_health\n1\nconditionalHealth",
                     "/debug/conditional_health",
-                    "",
+                    "int32",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1403,7 +1403,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_1 ??= new FoxRunGeneratedMemberAccess<UnityEngine.Vector3>(
                     "TestLog\nfield\nconditionalPosition\n/debug/conditional_position\n1\nconditionalPosition",
                     "/debug/conditional_position",
-                    "",
+                    "UnityEngine.Vector3",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1419,7 +1419,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_2 ??= new FoxRunGeneratedMemberAccess<float>(
                     "TestLog\nfield\n_health\n/debug/health\n1\nhealth",
                     "/debug/health",
-                    "",
+                    "float32",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1435,7 +1435,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_3 ??= new FoxRunGeneratedMemberAccess<UnityEngine.Vector3>(
                     "TestLog\nfield\n_pos\n/debug/position\n1\npos",
                     "/debug/position",
-                    "",
+                    "UnityEngine.Vector3",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1451,7 +1451,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_4 ??= new FoxRunGeneratedMemberAccess<UnityEngine.Vector3>(
                     "TestLog\nfield\n_position2\n/debug/position2\n1\nposition2",
                     "/debug/position2",
-                    "",
+                    "UnityEngine.Vector3",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1467,7 +1467,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_5 ??= new FoxRunGeneratedMemberAccess<int>(
                     "TestLog\nfield\n_messagePackAppliedSequence\n/phase185/messagepack/apply-evidence\n1\nmessagePackAppliedSequence",
                     "/phase185/messagepack/apply-evidence",
-                    "",
+                    "int32",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1483,7 +1483,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_6 ??= new FoxRunGeneratedMemberAccess<int>(
                     "TestLog\nfield\n_messagePackAppliedValue\n/phase185/messagepack/apply-evidence\n1\nmessagePackAppliedValue",
                     "/phase185/messagepack/apply-evidence",
-                    "",
+                    "int32",
                     (FoxRunFlow)1,
                     null,
                     null,
@@ -1499,7 +1499,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_7 ??= new FoxRunGeneratedMemberAccess<int>(
                     "TestLog\nfield\n_messagePackSequence\n/phase185/messagepack/full-duplex\n3\nmessagePackSequence",
                     "/phase185/messagepack/full-duplex",
-                    "",
+                    "int32",
                     (FoxRunFlow)3,
                     null,
                     null,
@@ -1515,7 +1515,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 return __foxRunTransportMember_8 ??= new FoxRunGeneratedMemberAccess<int>(
                     "TestLog\nfield\n_messagePackValue\n/phase185/messagepack/full-duplex\n3\nmessagePackValue",
                     "/phase185/messagepack/full-duplex",
-                    "",
+                    "int32",
                     (FoxRunFlow)3,
                     null,
                     null,

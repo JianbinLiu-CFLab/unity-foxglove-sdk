@@ -235,6 +235,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "186-H")]
+        public void ShippedManualAggregateSchemasUseDistinctProtobufRegistrationKeys()
+        {
+            var phase154Source = TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase153and154ManualAcceptance.cs");
+            var phase155Source = TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase155and156ManualAcceptance.cs");
+
+            var phase154Schema = ExtractAggregateSchemaName(phase154Source);
+            var phase155Schema = ExtractAggregateSchemaName(phase155Source);
+            var phase154WireName = FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                phase154Schema,
+                "Phase153and154ManualAcceptance",
+                "/phase154/vehicle");
+            var phase155WireName = FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                phase155Schema,
+                "Phase155and156ManualAcceptance",
+                "/phase155/vehicle");
+
+            Assert.NotEqual(phase154WireName, phase155WireName);
+        }
+
+        [Fact]
         public void ManifestUsesTheDescriptorSchemaNameForImplicitProtobufContracts()
         {
             var manifest = FoxRunManifestBuilder.Build(new[]
@@ -1068,6 +1091,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("true", creation.ArgumentList.Arguments[3].Expression.ToString());
             Assert.Equal("false", creation.ArgumentList.Arguments[8].Expression.ToString());
             Assert.Equal("false", creation.ArgumentList.Arguments[9].Expression.ToString());
+        }
+
+        private static string ExtractAggregateSchemaName(string source)
+        {
+            var match = Regex.Match(
+                source ?? string.Empty,
+                @"\[FoxRunMessage\([^\]]*SchemaName\s*=\s*""(?<schema>[^""]+)""",
+                RegexOptions.Singleline);
+            Assert.True(match.Success, "Expected a FoxRunMessage SchemaName declaration.");
+            return match.Groups["schema"].Value;
         }
 
         private static FoxRunProtobufContractInput CreateContract()

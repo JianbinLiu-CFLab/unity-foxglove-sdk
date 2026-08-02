@@ -28,7 +28,7 @@ using UnityEditor;
 /// </remarks>
 [DisallowMultipleComponent]
 [AddComponentMenu("Foxglove/Manual Acceptance/Phase153 and 154")]
-[FoxRunMessage("/phase154/vehicle", SchemaName = "ManualAcceptance.Phase153and154.VehicleTelemetry", Hz = 2f)]
+[FoxRunMessage("/phase154/vehicle", SchemaName = "ManualAcceptance.Phase153and154VehicleTelemetry", Hz = 2f)]
 public sealed partial class Phase153and154ManualAcceptance : MonoBehaviour
 {
     private const string VehicleTopic = "/phase154/vehicle";
