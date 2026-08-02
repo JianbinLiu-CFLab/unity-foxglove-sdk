@@ -320,6 +320,11 @@ namespace Unity2Foxglove.ManualAcceptance
             if (_ready && !_publisherWarmupRequested)
                 WarmPublishersForDiscovery();
 
+#if UNITY_EDITOR
+            DriveBatchManualAcceptance();
+            if (_terminal)
+                return;
+#endif
             if (!_manual
                 && _generatedEvidence.Applied > 0
                 && HasObservedExternalInput()
@@ -333,6 +338,22 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_manual && CanComplete)
                 CompleteAutomaticAcceptance();
         }
+
+#if UNITY_EDITOR
+        private void DriveBatchManualAcceptance()
+        {
+            if (!_manual || !Application.isBatchMode)
+                return;
+            var interaction = EvaluateManualInteraction();
+            if (interaction.CanRequestLocalB)
+            {
+                PublishLocalMutation();
+                return;
+            }
+            if (interaction.CanRequestComplete)
+                CompleteManualAcceptance();
+        }
+#endif
 
         private void WarmPublishersForDiscovery()
         {
@@ -471,6 +492,9 @@ namespace Unity2Foxglove.ManualAcceptance
                 + " head=" + _featureHead
                 + " verdict=PASS");
             EmitEvidenceMarker();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.ExitPlaymode();
+#endif
         }
 
         private void CompleteAutomaticAcceptance()
@@ -919,7 +943,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 case Phase186ManualStep.ReadyToComplete:
                     return "Ready to complete.";
                 case Phase186ManualStep.CompletedKeepPlayRunning:
-                    return "Completed; keep Play Mode running.";
+                    return "Complete accepted; exiting Play Mode.";
                 default:
                     return "Waiting for Provider Publish/Subscribe readiness and external A.";
             }

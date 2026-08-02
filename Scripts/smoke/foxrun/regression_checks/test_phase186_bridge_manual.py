@@ -247,8 +247,8 @@ class ManualStatusReporterTests(unittest.TestCase):
             [
                 "PHASE186 MANUAL VERDICT: PASS - cleanup complete",
                 r"PHASE186 MANUAL EVIDENCE: D:\evidence\pass",
-                "PHASE186 MANUAL NEXT: Exit Play Mode only after terminal cleanup "
-                "finished; move to the next suite.",
+                "PHASE186 MANUAL NEXT: Play Mode exited automatically; move to "
+                "the next suite.",
                 "PHASE186 MANUAL VERDICT: FAIL - FAIL_RUNTIME: peer stopped",
                 r"PHASE186 MANUAL EVIDENCE: D:\evidence\fail",
                 "PHASE186 MANUAL NEXT: Review the evidence, fix the named cause, "

@@ -121,8 +121,7 @@ class ManualStatusReporter:
         self._sink(f"PHASE186 MANUAL EVIDENCE: {clean_evidence}")
         if clean_verdict == "PASS":
             next_action = (
-                "Exit Play Mode only after terminal cleanup finished; "
-                "move to the next suite."
+                "Play Mode exited automatically; move to the next suite."
             )
         else:
             next_action = (

@@ -422,6 +422,118 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertIn("Unity Bridge outbound sample", str(failure.exception))
         owner.close.assert_called_once_with()
 
+    def test_manual_completion_waits_for_editor_release_before_pointer_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = pathlib.Path(temp)
+            config = {
+                "outputRoot": str(output),
+                "runtimeRowId": "jazzy-fastrtps",
+                "bridgeHost": "127.0.0.1",
+                "bridgePort": 18767,
+                "foxgloveHost": "127.0.0.1",
+                "foxglovePort": 18768,
+                "externalGate": str(output / "external-gate.json"),
+                "exerciseGate": str(output / "exercise-gate.json"),
+                "caseId": "manual-jazzy-fastrtps-duplex",
+                "manual": True,
+                "requiredActors": [],
+                "runId": "phase186h-current-0123456789ab",
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+                "unityLog": str(output / "unity.log"),
+            }
+            runtime = types.SimpleNamespace(
+                zenoh_router=None,
+                zenoh_endpoint=None,
+                row_id="jazzy-fastrtps",
+                distro="jazzy",
+                rmw="rmw_fastrtps_cpp",
+            )
+            owner = mock.Mock()
+            owner.residual_pids.return_value = []
+            pointer = output / "current-run.json"
+            cleanup = {
+                "complete": True,
+                "cleanupErrors": [],
+                "residualProcesses": [],
+                "residualPorts": [],
+                "residualOverlays": [],
+                "residualTemporaryProjects": [],
+            }
+            events: list[str] = []
+
+            with mock.patch.object(live, "prepare_runtime", return_value=runtime), \
+                    mock.patch.object(live, "OwnedLiveProcesses", return_value=owner), \
+                    mock.patch.object(live, "_launch_sidecar", return_value=(mock.Mock(), {})), \
+                    mock.patch.object(live, "_write_manual_pointer", return_value=pointer), \
+                    mock.patch.object(live, "_mirror_manual_log"), \
+                    mock.patch.object(live, "_manual_scene_prepare_failure", return_value=None), \
+                    mock.patch.object(live, "_manual_context_failure", return_value=None), \
+                    mock.patch.object(live, "_manual_scene_preparing_in_log", return_value=False), \
+                    mock.patch.object(live, "_manual_scene_ready_in_log", return_value=True), \
+                    mock.patch.object(live, "_report_manual_progress"), \
+                    mock.patch.object(live, "_manual_marker_in_log", return_value=True), \
+                    mock.patch.object(
+                        live,
+                        "_wait_manual_editor_release",
+                        side_effect=lambda *_args, **_kwargs: events.append("editor-release"),
+                        create=True,
+                    ), \
+                    mock.patch.object(
+                        live,
+                        "_remove_manual_pointer",
+                        side_effect=lambda *_args, **_kwargs: events.append("pointer-cleanup"),
+                    ), \
+                    mock.patch.object(live, "_cleanup_document", return_value=cleanup), \
+                    mock.patch.object(
+                        live,
+                        "_observation_path",
+                        return_value=output / "observation.json",
+                    ):
+                live.run_live(
+                    pathlib.Path("D:/repo"),
+                    config,
+                    unity_editor=pathlib.Path("Unity.exe"),
+                    manual_timeout_seconds=30.0,
+                    reporter=mock.Mock(),
+                )
+
+        self.assertEqual(["editor-release", "pointer-cleanup"], events)
+
+    def test_manual_editor_release_marker_requires_exact_run_identity(self) -> None:
+        self.assertTrue(
+            hasattr(live, "_manual_editor_released_in_log"),
+            "manual completion needs an identity-bound EnteredEditMode marker",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            log = pathlib.Path(temp) / "unity.log"
+            config = {
+                "unityLog": str(log),
+                "runId": "phase186h-current-0123456789ab",
+                "caseId": "manual-jazzy-fastrtps-duplex",
+                "tokenHash": "a" * 64,
+                "head": "b" * 40,
+            }
+            exact = (
+                "PHASE186_MANUAL_PLAY_EXITED "
+                "run=phase186h-current-0123456789ab "
+                "case=manual-jazzy-fastrtps-duplex "
+                f"tokenHash={'a' * 64} head={'b' * 40}"
+            )
+            log.write_text(
+                exact.replace("phase186h-current", "phase186h-foreign") + "\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(live._manual_editor_released_in_log(config))
+            log.write_text(
+                exact.replace("phase186h-current", "phase186h-foreign")
+                + "\n"
+                + exact
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(live._manual_editor_released_in_log(config))
+
     def test_manual_wait_accepts_actor_exit_after_all_owned_results_exist(self) -> None:
         config = {
             "outputRoot": "unused",

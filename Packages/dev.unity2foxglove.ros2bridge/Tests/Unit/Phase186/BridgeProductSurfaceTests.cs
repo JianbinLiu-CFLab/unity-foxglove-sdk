@@ -223,6 +223,20 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("PHASE186_MANUAL_COMPLETE", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_ACCEPTANCE_PASS", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_ACCEPTANCE_PROGRESS", runtime, StringComparison.Ordinal);
+            var manualCompletionExit = Slice(
+                runtime,
+                "public void CompleteManualAcceptance()",
+                "private void CompleteAutomaticAcceptance()");
+            Assert.Contains(
+                "UnityEditor.EditorApplication.ExitPlaymode();",
+                manualCompletionExit,
+                StringComparison.Ordinal);
+            Assert.True(
+                manualCompletionExit.IndexOf("EmitEvidenceMarker();", StringComparison.Ordinal)
+                < manualCompletionExit.IndexOf(
+                    "UnityEditor.EditorApplication.ExitPlaymode();",
+                    StringComparison.Ordinal),
+                "Manual evidence must be emitted before Play Mode exits.");
             Assert.Contains("ProgressFingerprint", runtime, StringComparison.Ordinal);
             Assert.Contains("tokenHash=", runtime, StringComparison.Ordinal);
             Assert.Contains("head=", runtime, StringComparison.Ordinal);
@@ -257,6 +271,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("EvaluateManualInteraction", runtime, StringComparison.Ordinal);
             Assert.Contains("_manualInteraction.TryRequestLocalB", runtime, StringComparison.Ordinal);
             Assert.Contains("_manualInteraction.TryRequestComplete", runtime, StringComparison.Ordinal);
+            Assert.Contains("DriveBatchManualAcceptance", runtime, StringComparison.Ordinal);
+            Assert.Contains(
+                "if (!_manual || !Application.isBatchMode)",
+                runtime,
+                StringComparison.Ordinal);
             Assert.Contains(
                 "var appliedBeforeTick = _generatedEvidence.Applied;\n"
                 + "            Phase186Generated_Tick(ref _generatedEvidence);\n"
@@ -350,6 +369,26 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("SessionState", probe, StringComparison.Ordinal);
             Assert.Contains("PHASE186_ACCEPTANCE_PASS", probe, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", probe, StringComparison.Ordinal);
+            Assert.Contains(
+                "EditorApplication.playModeStateChanged += OnManualPlayModeStateChanged;",
+                probe,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE186_MANUAL_PLAY_EXITED run=",
+                probe,
+                StringComparison.Ordinal);
+            var registration = Slice(
+                probe,
+                "private static void Register()",
+                "public static void Run()");
+            Assert.True(
+                registration.IndexOf(
+                    "EditorApplication.playModeStateChanged += OnManualPlayModeStateChanged;",
+                    StringComparison.Ordinal)
+                < registration.IndexOf(
+                    "if (!Application.isBatchMode)",
+                    StringComparison.Ordinal),
+                "The manual Play exit marker must also be available to Batch diagnostics.");
             Assert.Contains(
                 "PHASE186_MANUAL_SCENE_PREPARE_FAIL run=",
                 probe,

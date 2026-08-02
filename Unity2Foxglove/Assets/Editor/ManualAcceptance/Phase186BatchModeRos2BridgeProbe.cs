@@ -41,6 +41,8 @@ namespace Unity2Foxglove
         [InitializeOnLoadMethod]
         private static void Register()
         {
+            EditorApplication.playModeStateChanged -= OnManualPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnManualPlayModeStateChanged;
             if (!Application.isBatchMode)
             {
                 ResumePendingManualPreparation();
@@ -154,6 +156,27 @@ namespace Unity2Foxglove
         {
             if (SessionState.GetBool(Key("manual-prepare-pending"), false))
                 QueueManualPreparation();
+        }
+
+        private static void OnManualPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state != PlayModeStateChange.EnteredEditMode)
+                return;
+            var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
+            if (!Phase186RunConfiguration.TryReadManualPointerIdentity(
+                    pointer,
+                    out var runId,
+                    out var caseId,
+                    out var tokenHash,
+                    out var head))
+            {
+                return;
+            }
+            Debug.Log(
+                "PHASE186_MANUAL_PLAY_EXITED run=" + runId
+                + " case=" + caseId
+                + " tokenHash=" + tokenHash
+                + " head=" + head);
         }
 
         private static void QueueManualPreparation()

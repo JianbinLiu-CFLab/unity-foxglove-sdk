@@ -44,6 +44,7 @@ MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
 LIVE_ACTOR_RESULT_TIMEOUT_SECONDS = (
     live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS + 30.0
 )
+MANUAL_EDITOR_RELEASE_TIMEOUT_SECONDS = 300.0
 
 
 class LiveFailure(protocol.ProtocolFailure):
@@ -633,6 +634,50 @@ def _manual_marker_in_log(config: Mapping[str, Any]) -> bool:
         except protocol.ProtocolFailure:
             continue
     return False
+
+
+def _manual_editor_released_in_log(config: Mapping[str, Any]) -> bool:
+    prefix = "PHASE186_MANUAL_PLAY_EXITED "
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
+        ):
+            return True
+    return False
+
+
+def _wait_manual_editor_release(
+    config: Mapping[str, Any],
+    reporter: Any | None,
+    timeout_seconds: float = MANUAL_EDITOR_RELEASE_TIMEOUT_SECONDS,
+) -> None:
+    if reporter is not None:
+        reporter.transition(
+            "4/5", "Complete accepted; Unity is exiting Play Mode"
+        )
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        _mirror_manual_log(config)
+        if _manual_editor_released_in_log(config):
+            if reporter is not None:
+                reporter.detail("Unity entered Edit Mode; cleanup can begin")
+            return
+        time.sleep(0.1)
+    raise LiveFailure(
+        "FAIL_TERMINAL",
+        "Unity did not enter Edit Mode within the 300-second cleanup window",
+    )
 
 
 def _manual_scene_ready_in_log(config: Mapping[str, Any]) -> bool:
@@ -1288,6 +1333,7 @@ def run_live(
                     _write_gate(config)
                     gate_written = True
                 if _manual_marker_in_log(config):
+                    _wait_manual_editor_release(config, reporter)
                     break
                 time.sleep(0.1)
             else:
