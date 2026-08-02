@@ -26,7 +26,7 @@ namespace Unity2Foxglove
     {
         private const string RunConfigArgument = "-phase186RunConfig";
         private const double TimeoutSeconds = 900d;
-        private const string ManualPointerRelativePath =
+        internal const string ManualPointerRelativePath =
             "Library/Phase186Acceptance/current-run.json";
         private const int ManualPreparationMaxSchemaRefreshes = 3;
         private static readonly string SessionPrefix =
@@ -82,6 +82,25 @@ namespace Unity2Foxglove
             EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
         }
 
+        /// <summary>Batch proof for the exact manual-pointer authority path.</summary>
+        public static void ValidateManualPointerInBatch()
+        {
+            if (!Application.isBatchMode)
+                throw new InvalidOperationException(
+                    "Phase186 manual pointer validation requires Batch mode.");
+            var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
+            var configuration =
+                Phase186RunConfiguration.LoadManualPointer(pointer);
+            if (!configuration.Manual)
+                throw new InvalidDataException(
+                    "The current run pointer does not name a manual case.");
+            Debug.Log(
+                "PHASE186_MANUAL_POINTER_BATCH_PASS run=" + configuration.RunId
+                + " case=" + configuration.CaseId
+                + " tokenHash=" + configuration.TokenHash
+                + " head=" + configuration.Head);
+        }
+
         [MenuItem(
             "Foxglove/Manual Acceptance/Phase186/Prepare Current Bridge Run")]
         public static void PrepareCurrentManualRun()
@@ -93,13 +112,14 @@ namespace Unity2Foxglove
                 throw new InvalidOperationException(
                     "Prepare the Phase186 manual run in idle Edit Mode.");
             var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
-            var configuration = Phase186RunConfiguration.Load(pointer);
-            if (!configuration.Manual)
-                throw new InvalidDataException(
-                    "The current run pointer does not name a manual case.");
-            BeginManualPreparation(configuration);
             try
             {
+                var configuration =
+                    Phase186RunConfiguration.LoadManualPointer(pointer);
+                if (!configuration.Manual)
+                    throw new InvalidDataException(
+                        "The current run pointer does not name a manual case.");
+                BeginManualPreparation(configuration);
                 EditorSceneManager.OpenScene(
                     Phase186Ros2BridgeAcceptanceBuilder.AcceptanceSceneAssetPath,
                     OpenSceneMode.Single);
@@ -113,7 +133,7 @@ namespace Unity2Foxglove
             }
             catch (Exception exception)
             {
-                FailManualPreparation(exception);
+                FailManualPreparation(pointer, exception);
             }
         }
 
@@ -160,7 +180,8 @@ namespace Unity2Foxglove
             try
             {
                 var pointer = Path.Combine(ProjectRoot(), ManualPointerRelativePath);
-                var configuration = Phase186RunConfiguration.Load(pointer);
+                var configuration =
+                    Phase186RunConfiguration.LoadManualPointer(pointer);
                 ValidateManualPreparationIdentity(configuration);
                 var manifestRefresh =
                     FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
@@ -206,7 +227,9 @@ namespace Unity2Foxglove
             }
             catch (Exception exception)
             {
-                FailManualPreparation(exception);
+                FailManualPreparation(
+                    Path.Combine(ProjectRoot(), ManualPointerRelativePath),
+                    exception);
             }
         }
 
@@ -263,7 +286,9 @@ namespace Unity2Foxglove
             SessionState.SetInt(Key("manual-prepare-refreshes"), 0);
         }
 
-        private static void FailManualPreparation(Exception exception)
+        private static void FailManualPreparation(
+            string pointer,
+            Exception exception)
         {
             var runId = SessionState.GetString(
                 Key("manual-prepare-run"),
@@ -277,6 +302,22 @@ namespace Unity2Foxglove
             var head = SessionState.GetString(
                 Key("manual-prepare-head"),
                 string.Empty);
+            if ((string.IsNullOrWhiteSpace(runId)
+                 || string.IsNullOrWhiteSpace(caseId)
+                 || string.IsNullOrWhiteSpace(tokenHash)
+                 || string.IsNullOrWhiteSpace(head))
+                && Phase186RunConfiguration.TryReadManualPointerIdentity(
+                    pointer,
+                    out var pointerRunId,
+                    out var pointerCaseId,
+                    out var pointerTokenHash,
+                    out var pointerHead))
+            {
+                runId = pointerRunId;
+                caseId = pointerCaseId;
+                tokenHash = pointerTokenHash;
+                head = pointerHead;
+            }
             ClearManualPreparation();
             Debug.LogError(
                 "PHASE186_MANUAL_SCENE_PREPARE_FAIL run=" + runId
@@ -555,6 +596,101 @@ namespace Unity2Foxglove
                 "slow-main-thread-640hz",
                 StringComparison.Ordinal)
             || CaseId.StartsWith("manual-", StringComparison.Ordinal);
+
+        internal static Phase186RunConfiguration LoadManualPointer(string path)
+        {
+            var fullPath = Path.GetFullPath(path ?? string.Empty);
+            var currentProject = Normalize(
+                Path.GetDirectoryName(Application.dataPath)
+                ?? throw new DirectoryNotFoundException());
+            var expectedPointer = Normalize(
+                Path.Combine(
+                    currentProject,
+                    "Library",
+                    "Phase186Acceptance",
+                    "current-run.json"));
+            if (!string.Equals(
+                    Normalize(fullPath),
+                    expectedPointer,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    "Phase186 manual pointer path differs from authority.");
+            }
+
+            var pointerBytes = File.ReadAllBytes(fullPath);
+            var pointerJson = JObject.Parse(
+                Encoding.UTF8.GetString(pointerBytes));
+            var project = Normalize(RequireString(pointerJson, "projectPath"));
+            var repository = Normalize(RequireString(pointerJson, "repository"));
+            var output = Normalize(RequireString(pointerJson, "outputRoot"));
+            var ownedRoot = Normalize(Path.Combine(repository, "build", "phase186"));
+            if (!string.Equals(
+                    project,
+                    currentProject,
+                    StringComparison.OrdinalIgnoreCase)
+                || !IsBelow(output, ownedRoot))
+            {
+                throw new InvalidDataException(
+                    "Phase186 manual pointer paths differ from authority.");
+            }
+
+            var authorityPath = Path.Combine(output, "run-config.json");
+            var authorityBytes = File.ReadAllBytes(authorityPath);
+            if (!pointerBytes.SequenceEqual(authorityBytes))
+            {
+                throw new InvalidDataException(
+                    "Phase186 manual pointer differs from its run config.");
+            }
+            return Load(authorityPath);
+        }
+
+        internal static bool TryReadManualPointerIdentity(
+            string path,
+            out string runId,
+            out string caseId,
+            out string tokenHash,
+            out string head)
+        {
+            runId = string.Empty;
+            caseId = string.Empty;
+            tokenHash = string.Empty;
+            head = string.Empty;
+            try
+            {
+                var fullPath = Path.GetFullPath(path ?? string.Empty);
+                var file = new FileInfo(fullPath);
+                if (!file.Exists || file.Length <= 0 || file.Length > 64 * 1024)
+                    return false;
+                var json = JObject.Parse(
+                    File.ReadAllText(fullPath, Encoding.UTF8));
+                var candidateRunId = RequireString(json, "runId");
+                var candidateCaseId = RequireString(json, "caseId");
+                var candidateTokenHash = RequireString(json, "tokenHash");
+                var candidateHead = RequireString(json, "head");
+                if (!candidateRunId.StartsWith(
+                        "phase186h-",
+                        StringComparison.Ordinal)
+                    || candidateRunId.Length > 80
+                    || !candidateCaseId.StartsWith(
+                        "manual-",
+                        StringComparison.Ordinal)
+                    || !IsLowerHex(candidateTokenHash, 64)
+                    || !IsLowerHex(candidateHead, 40))
+                {
+                    return false;
+                }
+                runId = candidateRunId;
+                caseId = candidateCaseId;
+                tokenHash = candidateTokenHash;
+                head = candidateHead;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         internal static Phase186RunConfiguration Load(string path)
         {

@@ -354,11 +354,36 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "PHASE186_MANUAL_SCENE_PREPARE_FAIL run=",
                 probe,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "public static void ValidateManualPointerInBatch()",
+                probe,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PHASE186_MANUAL_POINTER_BATCH_PASS run=",
+                probe,
+                StringComparison.Ordinal);
             Assert.Contains("EditorApplication.EnterPlaymode", probe, StringComparison.Ordinal);
             var manualPrepare = Slice(
                 probe,
                 "public static void PrepareCurrentManualRun()",
                 "private static void ResumePendingManualPreparation()");
+            Assert.Contains(
+                "Phase186RunConfiguration.LoadManualPointer(pointer)",
+                manualPrepare,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Phase186RunConfiguration.Load(pointer)",
+                manualPrepare,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "FailManualPreparation(pointer, exception)",
+                manualPrepare,
+                StringComparison.Ordinal);
+            Assert.True(
+                manualPrepare.IndexOf("try", StringComparison.Ordinal)
+                < manualPrepare.IndexOf(
+                    "Phase186RunConfiguration.LoadManualPointer(pointer)",
+                    StringComparison.Ordinal));
             Assert.Contains(
                 "SessionState.SetBool(Key(\"manual-prepare-pending\"), true);",
                 manualPrepare,
@@ -382,6 +407,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 StringComparison.Ordinal);
             Assert.Contains(
                 "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+                manualStabilization,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Phase186RunConfiguration.LoadManualPointer(pointer)",
                 manualStabilization,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -419,6 +448,31 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 StringComparison.Ordinal);
             Assert.Contains(
                 "ImportAssetOptions.ForceSynchronousImport",
+                probe,
+                StringComparison.Ordinal);
+
+            var manualPointerLoader = Slice(
+                probe,
+                "internal static Phase186RunConfiguration LoadManualPointer(string path)",
+                "internal static Phase186RunConfiguration Load(string path)");
+            Assert.Contains(
+                "current-run.json",
+                manualPointerLoader,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Path.Combine(output, \"run-config.json\")",
+                manualPointerLoader,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SequenceEqual",
+                manualPointerLoader,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "return Load(authorityPath);",
+                manualPointerLoader,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "TryReadManualPointerIdentity",
                 probe,
                 StringComparison.Ordinal);
 
