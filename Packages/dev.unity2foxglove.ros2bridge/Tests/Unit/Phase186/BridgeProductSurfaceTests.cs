@@ -327,6 +327,22 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("PHASE186_ACCEPTANCE_PASS", probe, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", probe, StringComparison.Ordinal);
             Assert.Contains("EditorApplication.EnterPlaymode", probe, StringComparison.Ordinal);
+            var manualSchemaRefresh = probe.IndexOf(
+                "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
+                StringComparison.Ordinal);
+            var manualReadyMarker = probe.IndexOf(
+                "PHASE186_MANUAL_SCENE_READY",
+                StringComparison.Ordinal);
+            Assert.True(manualSchemaRefresh >= 0);
+            Assert.True(manualSchemaRefresh < manualReadyMarker);
+            Assert.Contains(
+                "AssetDatabase.Refresh(",
+                probe,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ImportAssetOptions.ForceSynchronousImport",
+                probe,
+                StringComparison.Ordinal);
 
             var runtimeMeta = File.ReadAllText(PathOf(runtimeRelative + ".meta"));
             var guidLine = Array.Find(

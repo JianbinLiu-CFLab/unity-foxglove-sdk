@@ -14,6 +14,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Editor;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -91,11 +92,21 @@ namespace Unity2Foxglove
                 OpenSceneMode.Single);
             Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(
                 configuration);
+            var manifestRefresh =
+                FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
+            AssetDatabase.SaveAssets();
+            if (manifestRefresh.SchemaInfoChanged)
+            {
+                AssetDatabase.Refresh(
+                    ImportAssetOptions.ForceSynchronousImport);
+            }
             Debug.Log(
                 "PHASE186_MANUAL_SCENE_READY run=" + configuration.RunId
                 + " case=" + configuration.CaseId
                 + " tokenHash=" + configuration.TokenHash
-                + " head=" + configuration.Head);
+                + " head=" + configuration.Head
+                + " manifest=" + manifestRefresh.Manifest.GlobalManifestHash
+                + " schemaInfoChanged=" + manifestRefresh.SchemaInfoChanged);
             SceneView.RepaintAll();
         }
 

@@ -891,6 +891,16 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                     )
                     for topic in config["topics"]:
                         self.assertEqual(1, source.count(f'= "{topic}";'))
+                    for index, kind in enumerate(
+                        protocol.CASE_CONTRACT_KINDS[case_id]
+                    ):
+                        if kind.endswith("subscribe"):
+                            self.assertIn(
+                                f"_phase186GeneratedIncoming{index}", source
+                            )
+                            self.assertNotIn(
+                                f"_phase186GeneratedValue{index}", source
+                            )
                     self.assertIn("partial void Phase186Generated_Tick", source)
                     self.assertIn("Phase186GeneratedInterfaceDigest", source)
 
