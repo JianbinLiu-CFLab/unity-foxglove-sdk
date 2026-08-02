@@ -39,6 +39,7 @@ class Phase186BridgeBuildTests(unittest.TestCase):
             build.require_row("jazzy-fastdds")
 
     def test_run_logged_interrupt_terminates_owned_tree_and_retains_partial_log(self) -> None:
+        """Verify that run logged interrupt terminates owned tree and retains partial log."""
         process = mock.Mock()
         process.pid = 18602
         process.communicate.side_effect = [KeyboardInterrupt(), ("partial output\n", None)]
@@ -63,6 +64,7 @@ class Phase186BridgeBuildTests(unittest.TestCase):
         self.assertEqual("partial output\n", retained)
 
     def test_direct_script_bootstrap_can_import_process_owner(self) -> None:
+        """Verify that direct script bootstrap can import process owner."""
         probe = """
 import importlib
 import pathlib
@@ -84,6 +86,7 @@ importlib.import_module("phase186_bridge_build")
         self.assertEqual(0, completed.returncode, completed.stderr)
 
     def test_run_logged_interrupt_during_registration_still_retains_output(self) -> None:
+        """Verify that run logged interrupt during registration still retains output."""
         process = mock.Mock()
         process.pid = 18603
         process.communicate.return_value = ("registration output\n", None)

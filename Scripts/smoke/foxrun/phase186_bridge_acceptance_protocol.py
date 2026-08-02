@@ -60,11 +60,13 @@ class ProtocolFailure(RuntimeError):
     """A stable, bounded acceptance protocol failure."""
 
     def __init__(self, code: str, message: str):
+        """Initialize the helper state."""
         self.code = str(code)
         super().__init__(f"{self.code}: {message}")
 
 
 def _fail(code: str, message: str) -> ProtocolFailure:
+    """Handle fail for Phase186 acceptance."""
     return ProtocolFailure(code, message)
 
 
@@ -147,6 +149,7 @@ def _case(
     topics: tuple[str, ...],
     observations: set[str] | None = None,
 ) -> CaseContract:
+    """Handle case for Phase186 acceptance."""
     return CaseContract(
         case_id=case_id,
         row_id=row_id,
@@ -311,12 +314,14 @@ def deep_copy_json(value: Any) -> Any:
 
 
 def require_head(value: object) -> str:
+    """Require head."""
     if not isinstance(value, str) or _HEAD.fullmatch(value) is None:
         raise _fail("FAIL_PREFLIGHT", "feature HEAD must be a full lowercase Git SHA-1")
     return value
 
 
 def require_run_id(value: object) -> str:
+    """Require run id."""
     if not isinstance(value, str) or _RUN_ID.fullmatch(value) is None:
         raise _fail("FAIL_PREFLIGHT", "run ID is unsafe or outside the fixed bound")
     return value
@@ -336,12 +341,14 @@ def owned_unity_project_path(
 
 
 def require_token(value: object) -> str:
+    """Require token."""
     if not isinstance(value, str) or _TOKEN.fullmatch(value) is None:
         raise _fail("FAIL_PREFLIGHT", "run token is unsafe or outside the fixed bound")
     return value
 
 
 def require_case(case_id: object) -> CaseContract:
+    """Require case."""
     if not isinstance(case_id, str) or _CASE_ID.fullmatch(case_id) is None:
         raise _fail("FAIL_PREFLIGHT", "case ID is malformed")
     contract = CASES.get(case_id)
@@ -351,6 +358,7 @@ def require_case(case_id: object) -> CaseContract:
 
 
 def require_row(row_id: object) -> RowContract:
+    """Require row."""
     if not isinstance(row_id, str) or row_id not in ROWS:
         raise _fail("FAIL_RUNTIME_SELECTION", "row must be one exact maintained ROS/RMW row")
     return ROWS[row_id]
@@ -370,6 +378,7 @@ def topics_for_case(case_id: str, token: str) -> tuple[str, ...]:
 
 
 def _absolute_path(value: object, label: str) -> pathlib.Path:
+    """Handle absolute path for Phase186 acceptance."""
     if not isinstance(value, str) or not value:
         raise _fail("FAIL_PREFLIGHT", f"{label} must be a non-empty absolute path")
     path = pathlib.Path(value)
@@ -382,10 +391,12 @@ def _absolute_path(value: object, label: str) -> pathlib.Path:
 
 
 def _is_below(path: pathlib.Path, parent: pathlib.Path) -> bool:
+    """Return whether below."""
     return path != parent and parent in path.parents
 
 
 def _exact_keys(value: Mapping[str, Any], expected: set[str], label: str) -> None:
+    """Handle exact keys for Phase186 acceptance."""
     actual = set(value)
     if actual != expected:
         raise _fail(
@@ -590,6 +601,7 @@ _CLEANUP_KEYS = {
 
 
 def clean_cleanup_evidence() -> dict[str, Any]:
+    """Clean cleanup evidence."""
     return {
         "complete": True,
         "cleanupErrors": [],
@@ -623,6 +635,7 @@ _TERMINAL_KEYS = {
 def _base_terminal(
     *, run_id: str, token: str, case_id: str, head: str, evidence_root: str
 ) -> dict[str, Any]:
+    """Handle base terminal for Phase186 acceptance."""
     contract = require_case(case_id)
     now = timestamp()
     return {
@@ -717,6 +730,7 @@ def make_failure_summary(
 
 
 def _actor_for_tests(index: int, logical_role: str) -> dict[str, Any]:
+    """Handle actor for tests for Phase186 acceptance."""
     return {
         "pid": 1000 + index,
         "executable": rf"C:\owned\actor{index}.exe",
@@ -803,6 +817,7 @@ def make_pass_summary(
 
 
 def _validate_cleanup_shape(value: object) -> None:
+    """Validate cleanup shape."""
     if not isinstance(value, Mapping):
         raise _fail("FAIL_CLEANUP", "cleanup evidence must be an object")
     _exact_keys(value, _CLEANUP_KEYS, "cleanup")
@@ -814,6 +829,7 @@ def _validate_cleanup_shape(value: object) -> None:
 
 
 def _require_clean_cleanup(value: Mapping[str, Any]) -> None:
+    """Require clean cleanup."""
     if value["complete"] is not True:
         raise _fail("FAIL_CLEANUP", "cleanup is not complete")
     for key in _CLEANUP_KEYS - {"complete"}:
@@ -822,6 +838,7 @@ def _require_clean_cleanup(value: Mapping[str, Any]) -> None:
 
 
 def _validate_actor(actor: object, logical_role: str) -> None:
+    """Validate actor."""
     label = "actor " + logical_role
     if not isinstance(actor, Mapping):
         raise _fail("FAIL_PROCESS_IDENTITY", f"{label} evidence must be an object")
@@ -880,6 +897,7 @@ def _validate_actor(actor: object, logical_role: str) -> None:
 
 
 def _validate_observation(value: object, label: str) -> None:
+    """Validate observation."""
     if not isinstance(value, Mapping):
         raise _fail("FAIL_EVIDENCE", f"{label} observation must be an object")
     _exact_keys(value, {"observed", "source", "path"}, label)
@@ -989,11 +1007,13 @@ def validate_terminal_summary(value: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def verdict_exit_code(value: Mapping[str, Any] | str) -> int:
+    """Handle verdict exit code for Phase186 acceptance."""
     verdict = value.get("verdict") if isinstance(value, Mapping) else value
     return {"PASS": 0, "FAIL": 1, "NOT RUN": 3}.get(str(verdict), 2)
 
 
 def _marker_fields(line: str, prefix: str) -> dict[str, str]:
+    """Handle marker fields for Phase186 acceptance."""
     if not isinstance(line, str) or not line.startswith(prefix + " "):
         raise _fail("FAIL_TERMINAL", "terminal marker prefix is absent")
     fields: dict[str, str] = {}
@@ -1008,6 +1028,7 @@ def _marker_fields(line: str, prefix: str) -> dict[str, str]:
 
 
 def format_terminal_line(value: Mapping[str, Any]) -> str:
+    """Format terminal line."""
     validated = validate_terminal_summary(value)
     verdict_token = str(validated["verdict"]).replace(" ", "_")
     return (
@@ -1027,6 +1048,7 @@ def format_terminal_line(value: Mapping[str, Any]) -> str:
 
 
 def parse_terminal_line(line: str, run_id: str, token: str, head: str) -> dict[str, str]:
+    """Parse terminal line."""
     require_run_id(run_id)
     require_token(token)
     require_head(head)
@@ -1064,6 +1086,7 @@ def parse_terminal_line(line: str, run_id: str, token: str, head: str) -> dict[s
 def format_manual_completion_marker(
     *, case_id: str, run_id: str, token: str, head: str, verdict: str
 ) -> str:
+    """Format manual completion marker."""
     contract = require_case(case_id)
     if not contract.manual:
         raise _fail("FAIL_PREFLIGHT", "manual completion marker requires a manual case")
@@ -1083,6 +1106,7 @@ def parse_manual_completion_marker(
     token: str,
     head: str,
 ) -> dict[str, str]:
+    """Parse manual completion marker."""
     contract = require_case(case_id)
     if not contract.manual:
         raise _fail("FAIL_PREFLIGHT", "manual marker parser requires a manual case")

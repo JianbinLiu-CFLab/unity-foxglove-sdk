@@ -20,7 +20,9 @@ HEAD = "a" * 40
 
 
 class Phase186BridgeCertificationTests(unittest.TestCase):
+    """Group checks for phase186 bridge certification tests."""
     def test_serial_matrix_runs_nine_cases_and_all_four_full_duplex_rows(self) -> None:
+        """Verify that serial matrix runs nine cases and all four full duplex rows."""
         with tempfile.TemporaryDirectory() as temp:
             invocations = certification.live_invocations(pathlib.Path(temp), HEAD)
         self.assertEqual(12, len(invocations))
@@ -39,6 +41,7 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
         self.assertEqual(len(invocations), len({item.run_id for item in invocations}))
 
     def test_exact_rows_use_bridge_only_unity_and_fanout_uses_all_providers(self) -> None:
+        """Verify that exact rows use bridge only unity and fanout uses all providers."""
         with tempfile.TemporaryDirectory() as temp:
             invocations = certification.live_invocations(pathlib.Path(temp), HEAD)
         for item in invocations:
@@ -54,6 +57,7 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
         )
 
     def test_certification_ids_are_bounded_and_head_correlated(self) -> None:
+        """Verify that certification ids are bounded and head correlated."""
         run_id = certification.certification_run_id(HEAD)
         self.assertRegex(run_id, certification._CERT_RUN_ID)
         self.assertIn(HEAD[:6], run_id)
@@ -61,6 +65,7 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
             certification.certification_run_id(HEAD, "unsafe")
 
     def test_serial_case_paths_leave_windows_unity_search_lmdb_headroom(self) -> None:
+        """Verify that serial case paths leave windows unity search lmdb headroom."""
         repository = pathlib.Path(
             r"D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox"
         )

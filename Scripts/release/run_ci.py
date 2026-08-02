@@ -29,6 +29,7 @@ ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
 
 
 def phase186_certification_run_id(head: str) -> str:
+    """Return a run identifier bound to both the current HEAD and CI invocation."""
     identity = hashlib.sha256(RUN_ID.encode("utf-8")).hexdigest()[:6]
     return f"phase186h-cert-{head[:6]}{identity}"
 

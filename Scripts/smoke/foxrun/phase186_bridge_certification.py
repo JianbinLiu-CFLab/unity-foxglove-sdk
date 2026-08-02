@@ -36,6 +36,7 @@ _CERT_RUN_ID = re.compile(r"\Aphase186h-cert-[A-Za-z0-9][A-Za-z0-9._-]{11,79}\Z"
 
 @dataclasses.dataclass(frozen=True)
 class LiveInvocation:
+    """Represent live invocation."""
     ordinal: int
     case_id: str
     row_id: str
@@ -44,6 +45,7 @@ class LiveInvocation:
 
     @property
     def output_root(self) -> pathlib.Path:
+        """Handle output root for Phase186 acceptance."""
         return self.output_parent / self.run_id
 
 
@@ -52,10 +54,12 @@ class CertificationFailure(RuntimeError):
 
 
 def timestamp() -> str:
+    """Handle timestamp for Phase186 acceptance."""
     return _datetime.datetime.now().astimezone().isoformat(timespec="milliseconds")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse args."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-head", required=True)
     parser.add_argument("--output-root", type=pathlib.Path, required=True)
@@ -65,6 +69,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Validate args."""
     protocol.require_head(args.expected_head)
     if args.run_id is not None and _CERT_RUN_ID.fullmatch(args.run_id) is None:
         raise CertificationFailure("certification run ID is malformed")
@@ -72,6 +77,7 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def certification_run_id(head: str, requested: str | None = None) -> str:
+    """Handle certification run id for Phase186 acceptance."""
     if requested is not None:
         if _CERT_RUN_ID.fullmatch(requested) is None:
             raise CertificationFailure("certification run ID is malformed")
@@ -84,6 +90,7 @@ def live_invocations(
     certification_root: pathlib.Path,
     head: str,
 ) -> tuple[LiveInvocation, ...]:
+    """Handle live invocations for Phase186 acceptance."""
     rows = [(case_id, PRIMARY_ROW) for case_id in protocol.AUTOMATIC_CASE_IDS]
     rows.extend(
         ("full-duplex", row_id)
@@ -110,6 +117,7 @@ def _owned_root(
     requested: pathlib.Path,
     run_id: str,
 ) -> pathlib.Path:
+    """Handle owned root for Phase186 acceptance."""
     root = pathlib.Path(requested)
     if not root.is_absolute():
         root = repository / root
@@ -129,6 +137,7 @@ def _owned_root(
 
 
 def _write_json_atomic(path: pathlib.Path, value: Mapping[str, Any]) -> None:
+    """Write json atomic."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: pathlib.Path | None = None
     try:
@@ -157,6 +166,7 @@ def _run_logged(
     log: pathlib.Path,
     timeout_seconds: float,
 ) -> int:
+    """Run logged."""
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w", encoding="utf-8", newline="\n") as stream:
         process = subprocess.Popen(
@@ -181,6 +191,7 @@ def _run_package_matrix(
     repository: pathlib.Path,
     output: pathlib.Path,
 ) -> Mapping[str, Any]:
+    """Run package matrix."""
     exit_code = _run_logged(
         [sys.executable, "Scripts/package/validate_phase186_package_matrix.py"],
         repository=repository,
@@ -218,6 +229,7 @@ def _acceptance_command(
     head: str,
     unity_editor: pathlib.Path | None,
 ) -> list[str]:
+    """Handle acceptance command for Phase186 acceptance."""
     command = [
         sys.executable,
         "-m",
@@ -239,6 +251,7 @@ def _acceptance_command(
 
 
 def _load_case_summary(invocation: LiveInvocation) -> Mapping[str, Any]:
+    """Load case summary."""
     path = invocation.output_root / "terminal-summary.json"
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -258,6 +271,7 @@ def _load_case_summary(invocation: LiveInvocation) -> Mapping[str, Any]:
 
 
 def _validate_case_package_evidence(invocation: LiveInvocation) -> Mapping[str, Any]:
+    """Validate case package evidence."""
     path = invocation.output_root / "preflight.json"
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -291,6 +305,7 @@ def _aggregate(
     failure: str = "",
     started_at: str,
 ) -> dict[str, Any]:
+    """Handle aggregate for Phase186 acceptance."""
     return {
         "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,
@@ -309,6 +324,7 @@ def _aggregate(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     try:
         args = validate_args(parse_args(argv))
         repository = acceptance.repository_root()

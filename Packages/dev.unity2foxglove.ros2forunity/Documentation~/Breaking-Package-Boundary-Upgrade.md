@@ -1,6 +1,6 @@
-# Phase186A Breaking Upgrade
+# Breaking Package-Boundary Upgrade
 
-Phase186A removes ROS-specific endpoint, QoS, schema, CDR, and runtime concepts
+This package boundary removes ROS-specific endpoint, QoS, schema, CDR, and runtime concepts
 from `dev.unity2foxglove.sdk`. FoxRun declarations now select transports by
 stable Provider ID and express only portable delivery intent.
 

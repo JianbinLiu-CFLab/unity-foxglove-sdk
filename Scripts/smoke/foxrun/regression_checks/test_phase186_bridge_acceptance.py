@@ -31,6 +31,7 @@ class Phase186BridgeAcceptanceTests(unittest.TestCase):
     """Prove orchestration boundaries without launching live prerequisites."""
 
     def test_direct_script_bootstrap_can_import_deferred_live_runner(self) -> None:
+        """Verify that direct script bootstrap can import deferred live runner."""
         repository = pathlib.Path(__file__).resolve().parents[4]
         script_directory = repository / "Scripts" / "smoke" / "foxrun"
         probe = """
@@ -61,6 +62,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         self.assertEqual(0, completed.returncode, completed.stderr)
 
     def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
+        """Verify that reporter handoff precedes pass fail not run machine markers."""
         for verdict, reason in (
             ("PASS", "cleanup complete"),
             ("FAIL", "FAIL_RUNTIME: peer stopped"),
@@ -99,6 +101,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                 )
 
     def test_direct_cli_still_requires_expected_head(self) -> None:
+        """Verify that direct cli still requires expected head."""
         with self.assertRaises(SystemExit):
             acceptance.parse_args(
                 [
@@ -111,6 +114,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             )
 
     def test_automatic_preflight_stdout_and_stderr_remain_exact_without_status(self) -> None:
+        """Verify that automatic preflight stdout and stderr remain exact without status."""
         args = types.SimpleNamespace(
             case="full-duplex",
             manual=False,
@@ -128,13 +132,17 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         )
 
         class Reservation:
+            """Represent reservation."""
             def __init__(self, port: int) -> None:
+                """Initialize the helper state."""
                 self.port = port
 
             def __enter__(self):
+                """Enter the managed acceptance context."""
                 return self
 
             def __exit__(self, *_unused) -> None:
+                """Exit the managed acceptance context."""
                 return None
 
         stdout = io.StringIO()
@@ -176,6 +184,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         self.assertEqual("", stderr.getvalue())
 
     def test_interrupted_coordinator_head_resolution_persists_incomplete_fail(self) -> None:
+        """Verify that interrupted coordinator head resolution persists incomplete fail."""
         args = types.SimpleNamespace(
             case="manual-jazzy-fastrtps-duplex",
             manual=True,
@@ -296,6 +305,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         self.assertFalse(observed_interrupted_exists)
 
     def test_reporter_preflight_failure_with_head_uses_validated_terminal(self) -> None:
+        """Verify that reporter preflight failure with head uses validated terminal."""
         args = types.SimpleNamespace(
             case="manual-jazzy-fastrtps-duplex",
             manual=True,
@@ -313,13 +323,17 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         )
 
         class Reservation:
+            """Represent reservation."""
             def __init__(self, port: int) -> None:
+                """Initialize the helper state."""
                 self.port = port
 
             def __enter__(self):
+                """Enter the managed acceptance context."""
                 return self
 
             def __exit__(self, *_unused) -> None:
+                """Exit the managed acceptance context."""
                 return None
 
         reporter = mock.Mock()
@@ -382,6 +396,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         )
 
     def test_reporter_preauthority_failure_persists_null_head_before_machine(self) -> None:
+        """Verify that reporter preauthority failure persists null head before machine."""
         args = types.SimpleNamespace(
             case="manual-jazzy-fastrtps-duplex",
             manual=True,
@@ -449,6 +464,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         self.assertIn(str(evidence_path), stdout.getvalue())
 
     def test_manual_flag_is_limited_to_the_two_manual_cases(self) -> None:
+        """Verify that manual flag is limited to the two manual cases."""
         args = acceptance.parse_args(
             [
                 "--case",
@@ -476,6 +492,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             acceptance.validate_arguments(args)
 
     def test_automatic_cases_reject_manual_case_without_manual_flag(self) -> None:
+        """Verify that automatic cases reject manual case without manual flag."""
         args = acceptance.parse_args(
             [
                 "--case",
@@ -490,6 +507,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             acceptance.validate_arguments(args)
 
     def test_live_cases_lock_their_unity_package_composition(self) -> None:
+        """Verify that live cases lock their unity package composition."""
         full_duplex = acceptance.validate_arguments(
             acceptance.parse_args(
                 [
@@ -533,6 +551,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             )
 
     def test_expected_head_must_be_full_lowercase_sha(self) -> None:
+        """Verify that expected head must be full lowercase sha."""
         args = acceptance.parse_args(
             [
                 "--case",
@@ -547,6 +566,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             acceptance.validate_arguments(args)
 
     def test_resolve_unity_editor_locks_project_version(self) -> None:
+        """Verify that resolve unity editor locks project version."""
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             project = root / "Unity2Foxglove"
@@ -563,6 +583,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertEqual("6000.3.14f1", resolved.version)
 
     def test_resolve_unity_editor_rejects_missing_or_malformed_version(self) -> None:
+        """Verify that resolve unity editor rejects missing or malformed version."""
         with tempfile.TemporaryDirectory() as temp:
             project = pathlib.Path(temp) / "Unity2Foxglove"
             (project / "ProjectSettings").mkdir(parents=True)
@@ -578,6 +599,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                 acceptance.resolve_unity_editor(project, editor)
 
     def test_reserve_loopback_port_returns_owned_ipv4_socket(self) -> None:
+        """Verify that reserve loopback port returns owned ipv4 socket."""
         reservation = acceptance.reserve_loopback_port()
         try:
             self.assertEqual("127.0.0.1", reservation.host)
@@ -592,6 +614,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             reservation.close()
 
     def test_package_preflight_rejects_wrong_ids_or_r2fu_dependency(self) -> None:
+        """Verify that package preflight rejects wrong ids or r2fu dependency."""
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp)
             sdk = repo / "Packages" / "dev.unity2foxglove.sdk"
@@ -630,6 +653,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                 acceptance.validate_package_manifests(repo)
 
     def test_owned_bridge_only_project_contains_no_r2fu_or_typesupport_package(self) -> None:
+        """Verify that owned bridge only project contains no r2fu or typesupport package."""
         self.assertIn(
             "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs",
             bridge_project._ASSET_PATHS,
@@ -706,6 +730,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertFalse(owned.path.exists())
 
     def test_owned_bridge_only_project_rejects_unsafe_windows_lmdb_path(self) -> None:
+        """Verify that owned bridge only project rejects unsafe windows lmdb path."""
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve() / ("x" * 120)
             with mock.patch.object(bridge_project.sys, "platform", "win32"):
@@ -719,6 +744,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                     )
 
     def test_find_current_run_marker_rejects_stale_and_accepts_exact(self) -> None:
+        """Verify that find current run marker rejects stale and accepts exact."""
         token = "p186h_0123456789abcdef01234567"
         run_id = "phase186h-run-0123456789ab"
         exact = protocol.format_manual_completion_marker(
@@ -752,6 +778,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             )
 
     def test_owned_cleanup_requires_no_process_port_or_temp_residue(self) -> None:
+        """Verify that owned cleanup requires no process port or temp residue."""
         clean = {
             "complete": True,
             "cleanupErrors": [],
@@ -775,11 +802,13 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                     acceptance.validate_cleanup_evidence(dirty)
 
     def test_live_pass_cannot_be_derived_from_build_summary(self) -> None:
+        """Verify that live pass cannot be derived from build summary."""
         build = {"verdict": "PASS", "rowId": "jazzy-fastrtps"}
         with self.assertRaises(protocol.ProtocolFailure):
             acceptance.promote_build_to_live_summary(build)
 
     def test_missing_prerequisite_persists_not_run_and_returns_blocking_code(self) -> None:
+        """Verify that missing prerequisite persists not run and returns blocking code."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             result = acceptance.persist_not_run(
@@ -796,11 +825,13 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertEqual(result, persisted)
 
     def test_preflight_checks_current_git_head_not_only_requested_text(self) -> None:
+        """Verify that preflight checks current git head not only requested text."""
         with mock.patch.object(acceptance, "git_head", return_value="b" * 40):
             with self.assertRaises(protocol.ProtocolFailure):
                 acceptance.require_exact_head(pathlib.Path("D:/repo"), HEAD)
 
     def test_generated_unity_binding_is_token_scoped_and_uses_real_cdr_shapes(self) -> None:
+        """Verify that generated unity binding is token scoped and uses real cdr shapes."""
         token = "p186h_0123456789abcdef01234567"
         run_id = "phase186h-manual-0123456789ab"
         with tempfile.TemporaryDirectory() as temp:
@@ -836,6 +867,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertNotIn("/foxrun/phase184/", source)
 
     def test_generated_unity_binding_install_and_cleanup_are_content_owned(self) -> None:
+        """Verify that generated unity binding install and cleanup are content owned."""
         token = "p186h_0123456789abcdef01234567"
         run_id = "phase186h-source-0123456789ab"
         with tempfile.TemporaryDirectory() as temp:
@@ -871,6 +903,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                 acceptance.cleanup_unity_run_binding(installed)
 
     def test_every_case_has_an_exact_generated_unity_contract_layout(self) -> None:
+        """Verify that every case has an exact generated unity contract layout."""
         token = "p186h_0123456789abcdef01234567"
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()
@@ -965,6 +998,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             )
 
     def test_duplex_binding_warms_publisher_without_claiming_local_mutation(self) -> None:
+        """Verify that duplex binding warms publisher without claiming local mutation."""
         token = "p186h_0123456789abcdef01234567"
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()
@@ -996,6 +1030,7 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             self.assertNotIn("evidence.LocalMutations++", warmup_method)
 
     def test_manual_binding_mutates_every_duplex_contract(self) -> None:
+        """Verify that manual binding mutates every duplex contract."""
         token = "p186h_0123456789abcdef01234567"
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()

@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     [Preserve]
-    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxgloveLogPolicySource
+    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxRunGeneratedTransportSource
     {
         int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -327,6 +327,32 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 5: return true;
                 case 6: return true;
                 default: return false;
+            }
+        }
+
+        void IFoxRunRemoteOwnershipSource.FoxRunOrigin_MarkRemoteApplied(int topicIndex, string transportId, ulong generation)
+        {
+            switch (topicIndex)
+            {
+                default: return;
+            }
+        }
+
+        bool IFoxRunRemoteOwnershipSource.FoxRunOrigin_TryGetRemoteApplied(int topicIndex, out string transportId, out ulong generation)
+        {
+            transportId = string.Empty;
+            generation = 0;
+            switch (topicIndex)
+            {
+                default: return false;
+            }
+        }
+
+        void IFoxRunRemoteOwnershipSource.FoxRunOrigin_ClearRemoteApplied(int topicIndex, string transportId, ulong generation)
+        {
+            switch (topicIndex)
+            {
+                default: return;
             }
         }
 
@@ -869,6 +895,24 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         }
 
         [Preserve]
+        bool IFoxgloveTopicBusDemandSource.FoxgloveLog_HasBusSubscribers(int topicIndex, FoxTopicBus bus)
+        {
+            if (bus == null)
+                return false;
+            switch (topicIndex)
+            {
+                case 0: return bus.HasSubscribers("/debug/array");
+                case 1: return bus.HasSubscribers("/debug/extra");
+                case 2: return bus.HasSubscribers("/debug/list");
+                case 3: return bus.HasSubscribers("/debug/nullable");
+                case 4: return bus.HasSubscribers("/debug/trigger");
+                case 5: return bus.HasSubscribers("/debug/value");
+                case 6: return bus.HasSubscribers("/debug/vector");
+                default: return false;
+            }
+        }
+
+        [Preserve]
         bool IFoxgloveTopicObserverSource.FoxgloveLog_HasObservers(int topicIndex, FoxTopicBus bus)
         {
             if (bus == null)
@@ -1189,6 +1233,168 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private float __FoxRunRead_valueMirror_a81a546626512ef6() => __foxRunCapture_5_1;
 
         private UnityEngine.Vector3 __FoxRunRead_position_fa1c12bd59505221() => __foxRunCapture_6_0;
+
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_0;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_1;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_2;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_3;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_4;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_5;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_6;
+        private IFoxRunGeneratedMemberAccess __foxRunTransportMember_7;
+
+        int IFoxRunGeneratedTransportSource.FoxRunTransport_MemberCount => 8;
+
+        IFoxRunGeneratedMemberAccess IFoxRunGeneratedTransportSource.FoxRunTransport_GetMember(int index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return __foxRunTransportMember_0 ??= new FoxRunGeneratedMemberAccess<float[]>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_samples\n/debug/array\n1\nsamples",
+                        "/debug/array",
+                        "float32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_samples_ee5552edf7db96a9,
+                        null);
+                case 1:
+                    return __foxRunTransportMember_1 ??= new FoxRunGeneratedMemberAccess<string>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_extra\n/debug/extra\n1\nextra",
+                        "/debug/extra",
+                        "string",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_extra_d38bfc70d930f492,
+                        null);
+                case 2:
+                    return __foxRunTransportMember_2 ??= new FoxRunGeneratedMemberAccess<System.Collections.Generic.List<float>>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_sampleList\n/debug/list\n1\nsampleList",
+                        "/debug/list",
+                        "float32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_sampleList_3b2b8000796afd9a,
+                        null);
+                case 3:
+                    return __foxRunTransportMember_3 ??= new FoxRunGeneratedMemberAccess<int?>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_optionalCount\n/debug/nullable\n1\noptionalCount",
+                        "/debug/nullable",
+                        "int32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_optionalCount_4e5493976d91a131,
+                        null);
+                case 4:
+                    return __foxRunTransportMember_4 ??= new FoxRunGeneratedMemberAccess<int>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_trigger\n/debug/trigger\n1\ntrigger",
+                        "/debug/trigger",
+                        "int32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_trigger_342c76e698075d00,
+                        null);
+                case 5:
+                    return __foxRunTransportMember_5 ??= new FoxRunGeneratedMemberAccess<float>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_value\n/debug/value\n1\nvalue",
+                        "/debug/value",
+                        "float32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_value_b2ddfbbed3a8dbb3,
+                        null);
+                case 6:
+                    return __foxRunTransportMember_6 ??= new FoxRunGeneratedMemberAccess<float>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nproperty\n_valueMirror\n/debug/value\n1\nvalueMirror",
+                        "/debug/value",
+                        "float32",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_valueMirror_a81a546626512ef6,
+                        null);
+                case 7:
+                    return __foxRunTransportMember_7 ??= new FoxRunGeneratedMemberAccess<UnityEngine.Vector3>(
+                        "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture\nfield\n_position\n/debug/vector\n1\nposition",
+                        "/debug/vector",
+                        "UnityEngine.Vector3",
+                        (FoxRunFlow)1,
+                        null,
+                        null,
+                        (FoxRunEncoding)0,
+                        new FoxRunDeliveryPolicy(
+                            FoxRunDeliveryReliability.ProviderDefault,
+                            FoxRunDeliveryDurability.ProviderDefault,
+                            FoxRunDeliveryHistory.ProviderDefault,
+                            0),
+                        __FoxRunRead_position_fa1c12bd59505221,
+                        null);
+                default: throw new ArgumentOutOfRangeException(nameof(index));
+            }
+        }
+
+        ulong IFoxRunGeneratedTransportSource.FoxRunTransport_GetCaptureSequence(int topicIndex)
+        {
+            switch (topicIndex)
+            {
+                case 0: return 0UL;
+                case 1: return 0UL;
+                case 2: return 0UL;
+                case 3: return 0UL;
+                case 4: return 0UL;
+                case 5: return 0UL;
+                case 6: return __foxRunCaptureSequence_6;
+                default: throw new ArgumentOutOfRangeException(nameof(topicIndex));
+            }
+        }
 
 
         private bool __hasLast_0;

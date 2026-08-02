@@ -55,12 +55,14 @@ class LiveNotRun(LiveFailure):
     """One exact live prerequisite is missing."""
 
     def __init__(self, prerequisite: str):
+        """Initialize the helper state."""
         self.prerequisite = str(prerequisite)[:512]
         super().__init__("NOT_RUN_LIVE_PREREQUISITE", self.prerequisite)
 
 
 @dataclasses.dataclass(frozen=True)
 class PreparedRuntime:
+    """Represent prepared runtime."""
     row_id: str
     distro: str
     rmw: str
@@ -77,6 +79,7 @@ class PreparedRuntime:
 
 @dataclasses.dataclass
 class ProcessRecord:
+    """Represent process record."""
     key: str
     logical_role: str
     executable: pathlib.Path
@@ -91,12 +94,14 @@ class OwnedLiveProcesses:
     """One kill-on-close owner plus exact root-process evidence."""
 
     def __init__(self) -> None:
+        """Initialize the helper state."""
         self._job = process_support.WindowsKillOnCloseJob()
         self._owner = process_support.OwnedProcessSet(self._job)
         self._records: dict[str, ProcessRecord] = {}
 
     @staticmethod
     def _same_path(left: pathlib.Path, right: pathlib.Path) -> bool:
+        """Handle same path for Phase186 acceptance."""
         return os.path.normcase(str(left.resolve())) == os.path.normcase(str(right.resolve()))
 
     def launch(
@@ -109,6 +114,7 @@ class OwnedLiveProcesses:
         environment: Mapping[str, str],
         output_root: pathlib.Path,
     ) -> ProcessRecord:
+        """Handle launch for Phase186 acceptance."""
         if key in self._records or not command:
             raise LiveFailure("FAIL_PROCESS_IDENTITY", "duplicate or empty process launch")
         executable = pathlib.Path(command[0]).resolve(strict=True)
@@ -162,11 +168,13 @@ class OwnedLiveProcesses:
             raise
 
     def stop(self, key: str) -> int:
+        """Handle stop for Phase186 acceptance."""
         record = self._records[key]
         record.owner_requested = record.process.poll() is None
         return self._owner.stop(key)
 
     def close(self) -> None:
+        """Release the owned acceptance resources."""
         for record in self._records.values():
             if record.process.poll() is None:
                 record.owner_requested = True
@@ -178,12 +186,15 @@ class OwnedLiveProcesses:
                 record.stderr.close()
 
     def record(self, key: str) -> ProcessRecord:
+        """Handle record for Phase186 acceptance."""
         return self._records[key]
 
     def has_record(self, key: str) -> bool:
+        """Return whether record."""
         return key in self._records
 
     def poll(self, key: str) -> int | None:
+        """Handle poll for Phase186 acceptance."""
         return self._records[key].process.poll()
 
     def actor_evidence(
@@ -193,6 +204,7 @@ class OwnedLiveProcesses:
         preferred_key: str | None = None,
         allow_role_alias: bool = False,
     ) -> dict[str, Any]:
+        """Handle actor evidence for Phase186 acceptance."""
         candidates = [
             record for record in self._records.values() if record.logical_role == logical_role
         ]
@@ -221,6 +233,7 @@ class OwnedLiveProcesses:
         }
 
     def residual_pids(self) -> list[int]:
+        """Handle residual pids for Phase186 acceptance."""
         return sorted(
             record.process.pid
             for record in self._records.values()
@@ -229,6 +242,7 @@ class OwnedLiveProcesses:
 
 
 def _choose_port(excluded: set[int]) -> int:
+    """Handle choose port for Phase186 acceptance."""
     for _ in range(32):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             if os.name == "nt":
@@ -241,6 +255,7 @@ def _choose_port(excluded: set[int]) -> int:
 
 
 def _clean_unity_environment(source: Mapping[str, str]) -> dict[str, str]:
+    """Clean unity environment."""
     environment = dict(source)
     for key in tuple(environment):
         folded = key.upper()
@@ -367,6 +382,7 @@ def prepare_runtime(
     *,
     reporter: Any | None = None,
 ) -> PreparedRuntime:
+    """Handle prepare runtime for Phase186 acceptance."""
     if reporter is not None:
         reporter.transition(
             "2/5", "preparing exact runtime and Bridge build"
@@ -454,6 +470,7 @@ def prepare_runtime(
 
 
 def _wait_port(host: str, port: int, process: ProcessRecord, timeout_seconds: float) -> None:
+    """Wait for port."""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if process.process.poll() is not None:
@@ -467,6 +484,7 @@ def _wait_port(host: str, port: int, process: ProcessRecord, timeout_seconds: fl
 
 
 def _wait_sidecar(config: Mapping[str, Any], process: ProcessRecord) -> Mapping[str, Any]:
+    """Wait for sidecar."""
     deadline = time.monotonic() + 120.0
     last: Exception | None = None
     while time.monotonic() < deadline:
@@ -490,6 +508,7 @@ def _launch_sidecar(
     config: Mapping[str, Any],
     key: str,
 ) -> tuple[ProcessRecord, Mapping[str, Any]]:
+    """Handle launch sidecar for Phase186 acceptance."""
     command = [
         str(runtime.bridge_executable),
         "--host",
@@ -511,6 +530,7 @@ def _launch_sidecar(
 
 
 def _worker_command(python: pathlib.Path, role: str, config_path: pathlib.Path) -> list[str]:
+    """Handle worker command for Phase186 acceptance."""
     return [
         str(python),
         str(pathlib.Path(live_peer.__file__).resolve()),
@@ -526,6 +546,7 @@ def _read_actor_document(
     role: str,
     kind: str,
 ) -> Mapping[str, Any] | None:
+    """Read actor document."""
     path = pathlib.Path(str(config["outputRoot"])) / "actors" / f"{role}-{kind}.json"
     if not path.is_file():
         return None
@@ -576,6 +597,7 @@ def _wait_actor_document(
     *,
     owner_role: str | None = None,
 ) -> Mapping[str, Any]:
+    """Wait for actor document."""
     process_role = owner_role or role
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -601,6 +623,7 @@ def _unity_command(
     unity: pathlib.Path,
     config: Mapping[str, Any],
 ) -> list[str]:
+    """Handle unity command for Phase186 acceptance."""
     return [
         str(unity),
         "-batchmode",
@@ -617,10 +640,12 @@ def _unity_command(
 
 
 def _marker_in_log(config: Mapping[str, Any], prefix: str) -> bool:
+    """Handle marker in log for Phase186 acceptance."""
     return live_peer._has_unity_marker(config, prefix)
 
 
 def _manual_marker_in_log(config: Mapping[str, Any]) -> bool:
+    """Handle manual marker in log for Phase186 acceptance."""
     for line in live_peer._read_log(pathlib.Path(str(config["unityLog"]))).splitlines():
         try:
             protocol.parse_manual_completion_marker(
@@ -637,6 +662,7 @@ def _manual_marker_in_log(config: Mapping[str, Any]) -> bool:
 
 
 def _manual_editor_released_in_log(config: Mapping[str, Any]) -> bool:
+    """Handle manual editor released in log for Phase186 acceptance."""
     prefix = "PHASE186_MANUAL_PLAY_EXITED "
     log = pathlib.Path(str(config["unityLog"]))
     for line in live_peer._read_log(log).splitlines():
@@ -662,6 +688,7 @@ def _wait_manual_editor_release(
     reporter: Any | None,
     timeout_seconds: float = MANUAL_EDITOR_RELEASE_TIMEOUT_SECONDS,
 ) -> None:
+    """Wait for manual editor release."""
     if reporter is not None:
         reporter.transition(
             "4/5", "Complete accepted; Unity is exiting Play Mode"
@@ -681,6 +708,7 @@ def _wait_manual_editor_release(
 
 
 def _manual_scene_ready_in_log(config: Mapping[str, Any]) -> bool:
+    """Handle manual scene ready in log for Phase186 acceptance."""
     prefix = "PHASE186_MANUAL_SCENE_READY "
     log = pathlib.Path(str(config["unityLog"]))
     for line in live_peer._read_log(log).splitlines():
@@ -703,6 +731,7 @@ def _manual_scene_ready_in_log(config: Mapping[str, Any]) -> bool:
 
 
 def _manual_scene_preparing_in_log(config: Mapping[str, Any]) -> bool:
+    """Handle manual scene preparing in log for Phase186 acceptance."""
     prefix = "PHASE186_MANUAL_SCENE_PREPARING "
     log = pathlib.Path(str(config["unityLog"]))
     for line in live_peer._read_log(log).splitlines():
@@ -724,6 +753,7 @@ def _manual_scene_preparing_in_log(config: Mapping[str, Any]) -> bool:
 
 
 def _manual_scene_prepare_failure(config: Mapping[str, Any]) -> str | None:
+    """Handle manual scene prepare failure for Phase186 acceptance."""
     prefix = "PHASE186_MANUAL_SCENE_PREPARE_FAIL "
     log = pathlib.Path(str(config["unityLog"]))
     for line in live_peer._read_log(log).splitlines():
@@ -745,6 +775,7 @@ def _manual_scene_prepare_failure(config: Mapping[str, Any]) -> str | None:
 
 
 def _manual_context_failure(config: Mapping[str, Any]) -> str | None:
+    """Handle manual context failure for Phase186 acceptance."""
     prefix = "PHASE186_ACCEPTANCE_CONTEXT_FAIL "
     log = pathlib.Path(str(config["unityLog"]))
     for line in live_peer._read_log(log).splitlines():
@@ -773,6 +804,7 @@ def _wait_unity_ready(
     owner: OwnedLiveProcesses,
     timeout_seconds: float = protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
 ) -> None:
+    """Wait for unity ready."""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if _marker_in_log(config, "PHASE186_ACCEPTANCE_READY"):
@@ -784,6 +816,7 @@ def _wait_unity_ready(
 
 
 def _unity_progress_documents(config: Mapping[str, Any]) -> tuple[Mapping[str, str], ...]:
+    """Handle unity progress documents for Phase186 acceptance."""
     prefix = "PHASE186_ACCEPTANCE_PROGRESS "
     documents: list[Mapping[str, str]] = []
     log = pathlib.Path(str(config["unityLog"]))
@@ -853,6 +886,7 @@ def _report_manual_progress(
 
 
 def _unity_progress_count(config: Mapping[str, Any]) -> int:
+    """Handle unity progress count for Phase186 acceptance."""
     return len(_unity_progress_documents(config))
 
 
@@ -862,6 +896,7 @@ def _wait_unity_progress_after(
     checkpoint: int,
     required: Mapping[str, str],
 ) -> None:
+    """Wait for unity progress after."""
     deadline = time.monotonic() + live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         documents = _unity_progress_documents(config)
@@ -889,6 +924,7 @@ def _restart_sidecar_after_observed_disconnect(
     config: Mapping[str, Any],
     health_generations: list[Mapping[str, Any]],
 ) -> None:
+    """Handle restart sidecar after observed disconnect for Phase186 acceptance."""
     disconnect_checkpoint = _unity_progress_count(config)
     owner.stop("sidecar-1")
     _wait_until_port_released(str(config["bridgeHost"]), int(config["bridgePort"]))
@@ -917,6 +953,7 @@ def _restart_sidecar_after_observed_disconnect(
 
 
 def _write_identity_gate(config: Mapping[str, Any], key: str) -> pathlib.Path:
+    """Write identity gate."""
     if key not in {"externalGate", "exerciseGate"}:
         raise LiveFailure("FAIL_PROTOCOL", "unknown Unity gate key")
     target = pathlib.Path(str(config[key]))
@@ -945,14 +982,17 @@ def _write_identity_gate(config: Mapping[str, Any], key: str) -> pathlib.Path:
 
 
 def _write_gate(config: Mapping[str, Any]) -> pathlib.Path:
+    """Write gate."""
     return _write_identity_gate(config, "externalGate")
 
 
 def _write_exercise_gate(config: Mapping[str, Any]) -> pathlib.Path:
+    """Write exercise gate."""
     return _write_identity_gate(config, "exerciseGate")
 
 
 def _parse_unity_evidence(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Parse unity evidence."""
     log = pathlib.Path(str(config["unityLog"]))
     text = live_peer._read_log(log)
     if not _marker_in_log(config, "PHASE186_ACCEPTANCE_PASS"):
@@ -1001,6 +1041,7 @@ def _parse_unity_evidence(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _unity_version(log_text: str) -> str:
+    """Handle unity version for Phase186 acceptance."""
     for line in log_text.splitlines():
         if "Version is '" in line:
             return line.split("Version is '", 1)[1].split("'", 1)[0]
@@ -1010,6 +1051,7 @@ def _unity_version(log_text: str) -> str:
 
 
 def _manual_editor_log() -> pathlib.Path:
+    """Handle manual editor log for Phase186 acceptance."""
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         raise LiveNotRun("LOCALAPPDATA for the Unity Editor log")
@@ -1017,6 +1059,7 @@ def _manual_editor_log() -> pathlib.Path:
 
 
 def _mirror_manual_log(config: Mapping[str, Any]) -> None:
+    """Handle mirror manual log for Phase186 acceptance."""
     source = _manual_editor_log()
     target = pathlib.Path(str(config["unityLog"]))
     text = live_peer._read_log(source)
@@ -1024,6 +1067,7 @@ def _mirror_manual_log(config: Mapping[str, Any]) -> None:
 
 
 def _write_manual_pointer(repository: pathlib.Path, config: Mapping[str, Any]) -> pathlib.Path:
+    """Write manual pointer."""
     pointer = repository / MANUAL_POINTER
     pointer.parent.mkdir(parents=True, exist_ok=True)
     if pointer.exists():
@@ -1041,6 +1085,7 @@ def _write_manual_pointer(repository: pathlib.Path, config: Mapping[str, Any]) -
 
 
 def _remove_manual_pointer(pointer: pathlib.Path | None, config: Mapping[str, Any]) -> None:
+    """Remove manual pointer."""
     if pointer is None or not pointer.exists():
         return
     try:
@@ -1053,6 +1098,7 @@ def _remove_manual_pointer(pointer: pathlib.Path | None, config: Mapping[str, An
 
 
 def _worker_roles(config: Mapping[str, Any]) -> tuple[str, ...]:
+    """Handle worker roles for Phase186 acceptance."""
     return tuple(
         role for role in sorted(config["requiredActors"]) if role in WORKER_ROLES
     )
@@ -1113,6 +1159,7 @@ def _owner_role_for_document(config: Mapping[str, Any], role: str) -> str:
 def _observation_path(
     config: Mapping[str, Any], worker_results: Mapping[str, Mapping[str, Any]], name: str
 ) -> pathlib.Path:
+    """Handle observation path for Phase186 acceptance."""
     output = pathlib.Path(str(config["outputRoot"]))
     if name == "unity":
         return output / "unity-evidence.json"
@@ -1139,6 +1186,7 @@ def _cleanup_document(
     extra_endpoints: Sequence[tuple[str, int]] = (),
     cleanup_errors: Sequence[str] = (),
 ) -> dict[str, Any]:
+    """Clean up document."""
     residual_ports: list[int] = []
     endpoints = (
         (str(config["bridgeHost"]), int(config["bridgePort"])),
@@ -1474,6 +1522,7 @@ def run_live(
 
 
 def _observation_source(name: str) -> str:
+    """Handle observation source for Phase186 acceptance."""
     return {
         "unity": "live-unity-editor",
         "bridge": "live-sidecar-health",
@@ -1488,6 +1537,7 @@ def _observation_source(name: str) -> str:
 
 
 def _wait_until_port_released(host: str, port: int) -> None:
+    """Wait for until port released."""
     deadline = time.monotonic() + 15.0
     while time.monotonic() < deadline:
         try:

@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Contains("FoxRunTransportPublishResult Publish(", bridge, StringComparison.Ordinal);
             Assert.Contains("runtime.PreparePublisher(", bridge, StringComparison.Ordinal);
             Assert.Contains("Ros2BridgeFrame.CreateOwned", bridge, StringComparison.Ordinal);
-            Assert.Contains("runtime.TryEnqueuePrepared", bridge, StringComparison.Ordinal);
+            Assert.Contains("runtime.TryEnqueue(frame, out reason)", bridge, StringComparison.Ordinal);
             Assert.DoesNotContain("Ros2Bridge", main, StringComparison.Ordinal);
         }
 

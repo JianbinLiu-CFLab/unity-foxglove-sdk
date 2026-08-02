@@ -164,6 +164,8 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleController.cs.meta")), "Ros2BridgeSample controller meta exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleLaserScan.cs")), "Ros2BridgeSample laser script exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSamplePointCloud.cs")), "Ros2BridgeSample point cloud script exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Editor", "Ros2BridgeSampleSceneBuilder.cs")), "Ros2BridgeSample scene builder exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Editor", "Unity2Foxglove.Ros2Bridge.Sample.Editor.asmdef")), "Ros2BridgeSample Editor assembly exists");
 
             // The Virtual LiDAR Maze Demo is importable from package.json and
             // must receive the same sample hygiene coverage as the older samples.
@@ -175,10 +177,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(lidarMazeDir, "Editor", "Phase138MazeDemoSceneBuilder.cs")), "Virtual LiDAR Maze Demo scene builder exists");
 
             // ── Forbidden items in samples ──
-            var forbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
-            foreach (var sampleDir in new[] { basicDir, fullDir, ros2Dir })
+            var editorFreeForbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
+            foreach (var sampleDir in new[] { basicDir, fullDir })
             {
-                foreach (var f in forbidden)
+                foreach (var f in editorFreeForbidden)
                 {
                     Assert(!Directory.Exists(Path.Combine(sampleDir, f)), $"{Path.GetFileName(sampleDir)}: no {f}/");
                 }
@@ -192,10 +194,20 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            var lidarForbidden = new[] { "Generated", "TutorialInfo", "Plugins", "Library", "Logs", "Recordings" };
-            foreach (var f in lidarForbidden)
+            var editorToolingSampleForbidden = new[] { "Generated", "TutorialInfo", "Plugins", "Library", "Logs", "Recordings" };
+            foreach (var sampleDir in new[] { ros2Dir, lidarMazeDir })
             {
-                Assert(!Directory.Exists(Path.Combine(lidarMazeDir, f)), $"Virtual LiDAR Maze Demo: no {f}/");
+                foreach (var f in editorToolingSampleForbidden)
+                {
+                    Assert(!Directory.Exists(Path.Combine(sampleDir, f)), $"{Path.GetFileName(sampleDir)}: no {f}/");
+                }
+
+                var allFiles = Directory.GetFiles(sampleDir, "*.cs", SearchOption.AllDirectories);
+                foreach (var file in allFiles)
+                {
+                    var name = Path.GetFileName(file);
+                    Assert(!name.Contains("_FoxRun"), $"{Path.GetFileName(sampleDir)}: no generated {name}");
+                }
             }
 
             // ── No absolute paths in samples ──

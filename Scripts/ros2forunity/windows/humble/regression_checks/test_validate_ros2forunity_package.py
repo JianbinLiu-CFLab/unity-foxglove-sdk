@@ -128,6 +128,81 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         surface = next(result for result in results if result.name == "optional package editor surface only enables runtime compile symbol")
         self.assertFalse(surface.ok)
 
+    def test_exact_editor_source_generator_artifacts_are_allowed(self) -> None:
+        """The package may ship its exact Editor-only source generator toolchain."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.configure_package_paths(root)
+            editor = self.validator.PACKAGE / "Editor"
+            source_generators = editor / "SourceGenerators"
+            analyzer = (
+                source_generators
+                / "analyzers"
+                / "dotnet"
+                / "cs"
+                / "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll"
+            )
+            analyzer.parent.mkdir(parents=True)
+            analyzer.write_bytes(b"analyzer")
+            (source_generators / "AnalyzerReleases.Shipped.md").write_text(
+                "# Shipped", encoding="utf-8"
+            )
+            (source_generators / "Directory.Build.props").write_text(
+                "<Project />", encoding="utf-8"
+            )
+            (source_generators / "FoxRunR2fuSourceGenerator.csproj").write_text(
+                "<Project />", encoding="utf-8"
+            )
+            (editor / "Unity2Foxglove.Ros2ForUnity.Editor.asmdef").write_text(
+                '{"includePlatforms":["Editor"]}', encoding="utf-8"
+            )
+            (editor / "Ros2ForUnityRuntimeDefineInstaller.cs").write_text(
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY Ros2ForUnityRuntimeSelection.GetStatus() "
+                "NamedBuildTarget.Standalone",
+                encoding="utf-8",
+            )
+            (editor / "Ros2ForUnityRuntimeSelection.cs").write_text(
+                "RuntimePackagePrefix DiscoverCandidateRuntimes UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                encoding="utf-8",
+            )
+            results = []
+
+            self.validator.check_no_runtime_artifacts(results)
+
+        no_binaries = next(
+            result
+            for result in results
+            if result.name == "optional package has no runtime binaries"
+        )
+        surface = next(
+            result
+            for result in results
+            if result.name
+            == "optional package editor surface only enables runtime compile symbol"
+        )
+        self.assertTrue(no_binaries.ok)
+        self.assertTrue(surface.ok)
+
+    def test_binary_outside_exact_editor_analyzer_path_remains_rejected(self) -> None:
+        """A similarly named binary elsewhere must not bypass the source-generator exception."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.configure_package_paths(root)
+            misplaced = self.validator.PACKAGE / "Editor" / "CopiedGenerator.dll"
+            misplaced.parent.mkdir(parents=True)
+            misplaced.write_bytes(b"not approved")
+            results = []
+
+            self.validator.check_no_runtime_artifacts(results)
+
+        no_binaries = next(
+            result
+            for result in results
+            if result.name == "optional package has no runtime binaries"
+        )
+        self.assertFalse(no_binaries.ok)
+        self.assertIn("CopiedGenerator.dll", no_binaries.detail)
+
     def test_public_phase_scan_covers_rviz_sample_readmes_and_deduplicates_hits(self) -> None:
         """Public docs scanning should include RViz samples and report unique phase tokens."""
         with tempfile.TemporaryDirectory() as temp:

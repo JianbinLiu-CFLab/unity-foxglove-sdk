@@ -86,6 +86,7 @@ class BridgeOnlyProjectFailure(RuntimeError):
 
 @dataclasses.dataclass(frozen=True)
 class OwnedBridgeOnlyProject:
+    """Represent owned bridge only project."""
     path: pathlib.Path
     marker: pathlib.Path
     owner_token: str
@@ -94,10 +95,12 @@ class OwnedBridgeOnlyProject:
 
 
 def _sha256_bytes(value: bytes) -> str:
+    """Compute the SHA-256 digest for bytes."""
     return hashlib.sha256(value).hexdigest()
 
 
 def _write_atomic(path: pathlib.Path, value: bytes) -> None:
+    """Write atomic."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: pathlib.Path | None = None
     try:
@@ -120,6 +123,7 @@ def _owned_project_path(
     repository: pathlib.Path,
     owner_token: str,
 ) -> pathlib.Path:
+    """Handle owned project path for Phase186 acceptance."""
     root = pathlib.Path(repository).resolve()
     try:
         target = protocol.owned_unity_project_path(root, owner_token)
@@ -137,6 +141,7 @@ def _owned_project_path(
 
 
 def _bridge_only_manifest(repository: pathlib.Path) -> bytes:
+    """Handle bridge only manifest for Phase186 acceptance."""
     root = pathlib.Path(repository).resolve()
     source = root / "Unity2Foxglove" / "Packages" / "manifest.json"
     try:
@@ -167,6 +172,7 @@ def _bridge_only_manifest(repository: pathlib.Path) -> bytes:
 
 
 def validate_bridge_only_manifest(path: pathlib.Path) -> dict[str, object]:
+    """Validate bridge only manifest."""
     manifest = pathlib.Path(path) / "Packages" / "manifest.json"
     try:
         value = json.loads(manifest.read_text(encoding="utf-8"))
@@ -213,6 +219,7 @@ def create_bridge_only_project(
     repository: pathlib.Path,
     owner_token: str,
 ) -> OwnedBridgeOnlyProject:
+    """Create bridge only project."""
     root = pathlib.Path(repository).resolve()
     target = _owned_project_path(root, owner_token)
     if target.exists():
@@ -275,6 +282,7 @@ def create_bridge_only_project(
 
 
 def cleanup_bridge_only_project(project: OwnedBridgeOnlyProject) -> None:
+    """Clean up bridge only project."""
     target = pathlib.Path(project.path).resolve()
     marker = pathlib.Path(project.marker).resolve()
     if marker != target / OWNERSHIP_MARKER or not marker.is_file():

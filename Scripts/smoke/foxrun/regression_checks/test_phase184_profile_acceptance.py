@@ -2169,8 +2169,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             / "unity2foxglove_ros2_bridge.cpp"
         ).read_text(encoding="utf-8")
         read_exact = source[
-            source.index("bool read_exact(") : source.index(
-                "void write_all(", source.index("bool read_exact(")
+            source.index("bool read_exact_into(") : source.index(
+                "bool read_exact(", source.index("bool read_exact_into(")
             )
         ]
         retryable_timeout = read_exact[
@@ -2185,8 +2185,8 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertIn("rclcpp::spin_some(node);", retryable_timeout[:stall_clock])
         self.assertIn("continue;", retryable_timeout[:stall_clock])
 
-    def test_bridge_health_readiness_does_not_create_a_ros_participant(self):
-        """Verify bridge health readiness does not create a ROS participant."""
+    def test_bridge_health_readiness_does_not_create_a_data_generation(self):
+        """Verify a health probe uses process ownership without creating data entities."""
 
         source = (
             ROOT
@@ -2196,26 +2196,29 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
             / "src"
             / "unity2foxglove_ros2_bridge.cpp"
         ).read_text(encoding="utf-8")
-        dispatch = source[
-            source.index("void dispatch_deferred_frame(") : source.index(
-                "void process_deferred_client(",
-                source.index("void dispatch_deferred_frame("),
+        owned_client = source[
+            source.index("void process_owned_client(") : source.index(
+                "void process_client(",
+                source.index("void process_owned_client("),
             )
         ]
         main = source[source.index("int main(int argc, char ** argv)") :]
 
-        health = dispatch.index('if (op == "health_ping")')
-        ros_bridge = dispatch.index("session.require_bridge()")
-        self.assertLess(health, ros_bridge)
-        self.assertIn("DeferredBridgeSession session(", main)
+        probe = owned_client.index(
+            "if (first.role == bridge_runtime::FirstFrameRole::probe)"
+        )
+        data_lease = owned_client.index("auto data_lease =")
+        generation = owned_client.index("generation.adopt_entities(generation_factory())")
+        self.assertLess(probe, data_lease)
+        self.assertLess(data_lease, generation)
+        self.assertIn("schedule_legacy_health_response(first, protocol);", owned_client)
+        self.assertIn("probe_lease->release();\n    return;", owned_client[probe:data_lease])
+        self.assertIn("bridge_runtime::ProcessRosOwner ros_owner", main)
         self.assertLess(
+            main.index("bridge_runtime::ProcessRosOwner ros_owner"),
             main.index("create_listen_socket("),
-            main.index("DeferredBridgeSession session("),
         )
-        self.assertNotIn(
-            'std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");',
-            main[: main.index("create_listen_socket(")],
-        )
+        self.assertIn("ros_owner.require_node()", main)
 
     def test_bridge_actor_health_checks_the_same_owned_process_before_unity(self):
         """Verify bridge actor health checks the same owned process before unity."""
@@ -2470,10 +2473,7 @@ class Phase184ProfileAcceptanceOrchestratorTests(unittest.TestCase):
         self.assertIn(marker, qos)
         self.assertLess(
             multi.index(marker),
-            multi.index(
-                "status.SucceededTargets\n"
-                "                       == (FoxRunEndpoint.Foxglove"
-            ),
+            multi.index("if (!_initialArmed && allProvidersActive)"),
         )
         self.assertLess(qos.index(marker), qos.index("if (_readyContracts == 3)"))
 

@@ -95,12 +95,15 @@ class LoopbackPortReservation:
     port: int
 
     def close(self) -> None:
+        """Release the owned acceptance resources."""
         self.socket.close()
 
     def __enter__(self) -> "LoopbackPortReservation":
+        """Enter the managed acceptance context."""
         return self
 
     def __exit__(self, _type, _value, _traceback) -> None:
+        """Exit the managed acceptance context."""
         self.close()
 
 
@@ -203,6 +206,7 @@ def validate_arguments(
 
 
 def unity_composition_for_case(case_id: str) -> str:
+    """Handle unity composition for case for Phase186 acceptance."""
     protocol.require_case(case_id)
     return (
         "repository-all-providers"
@@ -325,6 +329,7 @@ def reserve_loopback_port(port: int | None = None) -> LoopbackPortReservation:
 
 
 def _read_json_object(path: pathlib.Path, label: str) -> Mapping[str, Any]:
+    """Read json object."""
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -436,6 +441,7 @@ def validate_unity_project_composition(
 
 
 def sha256_file(path: pathlib.Path) -> str:
+    """Compute the SHA-256 digest for file."""
     digest = hashlib.sha256()
     with pathlib.Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -1066,6 +1072,7 @@ def persist_terminal(
 
 
 def _new_run_identity(case_id: str, requested_run_id: str | None) -> tuple[str, str]:
+    """Create run identity."""
     token = "p186h_" + secrets.token_hex(16)
     if requested_run_id is not None:
         return protocol.require_run_id(requested_run_id), token
@@ -1075,6 +1082,7 @@ def _new_run_identity(case_id: str, requested_run_id: str | None) -> tuple[str, 
 
 
 def _owned_run_root(repository: pathlib.Path, requested: pathlib.Path, run_id: str) -> pathlib.Path:
+    """Handle owned run root for Phase186 acceptance."""
     root = pathlib.Path(requested)
     if not root.is_absolute():
         root = repository / root
@@ -1104,6 +1112,7 @@ def _preflight(
     bridge_port: int,
     foxglove_port: int,
 ) -> dict[str, Any]:
+    """Handle preflight for Phase186 acceptance."""
     head = require_exact_head(repository, args.expected_head)
     require_clean_tracked_tree(repository)
     unity = resolve_unity_editor(project, args.unity_editor)
@@ -1160,6 +1169,7 @@ def _create_owned_unity_project(
     run_id: str,
     composition: str,
 ) -> bridge_project.OwnedBridgeOnlyProject | None:
+    """Create owned unity project."""
     if composition == "repository-all-providers":
         return None
     if composition != "bridge-only":
@@ -1178,6 +1188,7 @@ def _create_owned_unity_project(
 def _remove_owned_unity_project(
     owned: bridge_project.OwnedBridgeOnlyProject | None,
 ) -> None:
+    """Remove owned unity project."""
     if owned is None:
         return
     try:
@@ -1192,6 +1203,7 @@ def _record_temporary_project_cleanup_failure(
     project: pathlib.Path,
     error: BaseException,
 ) -> Mapping[str, Any]:
+    """Record temporary project cleanup failure."""
     value = dict(
         cleanup
         or load_cleanup_evidence_if_present(run_root)

@@ -252,7 +252,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !managerSource.Contains("PublishRos2BridgeCdr")
                   && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
                   && bridgeProvider.Contains("Ros2BridgeFrame.CreateOwned")
-                  && bridgeProvider.Contains("runtime.TryEnqueuePrepared"),
+                  && bridgeProvider.Contains("runtime.TryEnqueue(frame, out reason)"),
                 "94F-1: neutral Manager fanout reaches the explicit Bridge Provider");
             Check(sidecarReadme.Contains("Phase 94 Gate B")
                   && sidecarReadme.Contains("/unity/tf")

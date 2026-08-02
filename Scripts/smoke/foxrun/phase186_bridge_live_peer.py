@@ -64,6 +64,7 @@ class LiveActorFailure(protocol.ProtocolFailure):
 
 
 def repository_root() -> pathlib.Path:
+    """Handle repository root for Phase186 acceptance."""
     for candidate in (SCRIPT_DIRECTORY, *SCRIPT_DIRECTORY.parents):
         if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
             return candidate
@@ -71,6 +72,7 @@ def repository_root() -> pathlib.Path:
 
 
 def _read_config(path: pathlib.Path) -> Mapping[str, Any]:
+    """Read config."""
     target = pathlib.Path(path).resolve()
     try:
         if target.stat().st_size <= 0 or target.stat().st_size > MAX_DOCUMENT_BYTES:
@@ -84,6 +86,7 @@ def _read_config(path: pathlib.Path) -> Mapping[str, Any]:
 
 
 def _write_json_atomic(path: pathlib.Path, value: Mapping[str, Any]) -> None:
+    """Write json atomic."""
     target = pathlib.Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -102,6 +105,7 @@ def _write_json_atomic(path: pathlib.Path, value: Mapping[str, Any]) -> None:
 
 
 def _actor_path(config: Mapping[str, Any], role: str, kind: str) -> pathlib.Path:
+    """Handle actor path for Phase186 acceptance."""
     return pathlib.Path(str(config["outputRoot"])) / "actors" / f"{role}-{kind}.json"
 
 
@@ -111,6 +115,7 @@ def _write_actor_document(
     kind: str,
     evidence: Mapping[str, Any],
 ) -> pathlib.Path:
+    """Write actor document."""
     if role not in ROLES or kind not in {"ready", "result"}:
         raise LiveActorFailure("FAIL_PROTOCOL", "actor document identity is invalid")
     document = {
@@ -164,6 +169,7 @@ def _write_cohosted_graph_result(
 
 
 def _read_log(path: pathlib.Path) -> str:
+    """Read log."""
     try:
         size = path.stat().st_size
         with path.open("rb") as stream:
@@ -175,6 +181,7 @@ def _read_log(path: pathlib.Path) -> str:
 
 
 def _has_unity_marker(config: Mapping[str, Any], prefix: str) -> bool:
+    """Return whether unity marker."""
     identity = (
         f"run={config['runId']} case={config['caseId']} "
         f"tokenHash={config['tokenHash']} head={config['head']}"
@@ -186,6 +193,7 @@ def _has_unity_marker(config: Mapping[str, Any], prefix: str) -> bool:
 
 
 def _wait_until(predicate, timeout_seconds: float, code: str, message: str) -> None:
+    """Wait for until."""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -195,6 +203,7 @@ def _wait_until(predicate, timeout_seconds: float, code: str, message: str) -> N
 
 
 def _wait_for_unity_ready(config: Mapping[str, Any]) -> None:
+    """Wait for for unity ready."""
     _wait_until(
         lambda: _has_unity_marker(config, "PHASE186_ACCEPTANCE_READY"),
         protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
@@ -204,6 +213,7 @@ def _wait_for_unity_ready(config: Mapping[str, Any]) -> None:
 
 
 def _identity_gate_ready(config: Mapping[str, Any], key: str) -> bool:
+    """Handle identity gate ready for Phase186 acceptance."""
     try:
         path = pathlib.Path(str(config[key]))
         if path.stat().st_size <= 0 or path.stat().st_size > MAX_DOCUMENT_BYTES:
@@ -225,6 +235,7 @@ def _identity_gate_ready(config: Mapping[str, Any], key: str) -> bool:
 
 
 def _wait_for_exercise_gate(config: Mapping[str, Any]) -> None:
+    """Wait for for exercise gate."""
     _wait_until(
         lambda: _identity_gate_ready(config, "exerciseGate"),
         protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
@@ -234,12 +245,14 @@ def _wait_for_exercise_gate(config: Mapping[str, Any]) -> None:
 
 
 def _wait_for_ros_exercise_window(config: Mapping[str, Any]) -> None:
+    """Wait for for ros exercise window."""
     _wait_for_unity_ready(config)
     if str(config["caseId"]) in POST_RECONNECT_EXERCISE_CASES:
         _wait_for_exercise_gate(config)
 
 
 def _slow_unity_baseline_ready(config: Mapping[str, Any]) -> bool:
+    """Handle slow unity baseline ready for Phase186 acceptance."""
     prefix = "PHASE186_ACCEPTANCE_PROGRESS "
     for line in _read_log(pathlib.Path(str(config["unityLog"]))).splitlines():
         if not line.startswith(prefix):
@@ -266,6 +279,7 @@ def _slow_unity_baseline_ready(config: Mapping[str, Any]) -> bool:
 
 
 def _sequence_windows(case_id: str, offered: int) -> tuple[range, ...]:
+    """Handle sequence windows for Phase186 acceptance."""
     if offered <= 0:
         raise ValueError("offered sequence count must be positive")
     if case_id == "slow-main-thread-640hz":
@@ -274,16 +288,19 @@ def _sequence_windows(case_id: str, offered: int) -> tuple[range, ...]:
 
 
 def _layout(config: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Handle layout for Phase186 acceptance."""
     kinds = protocol.CASE_CONTRACT_KINDS[str(config["caseId"])]
     topics = tuple(str(value) for value in config["topics"])
     return tuple(zip(topics, kinds, strict=True))
 
 
 def _is_publish(kind: str) -> bool:
+    """Return whether publish."""
     return kind.endswith("publish") or kind.endswith("duplex")
 
 
 def _is_subscribe(kind: str) -> bool:
+    """Return whether subscribe."""
     return kind.endswith("subscribe") or kind.endswith("duplex")
 
 
@@ -322,6 +339,7 @@ def _bridge_endpoints_ready(node: Any, config: Mapping[str, Any]) -> bool:
 
 
 def _load_ros_types():
+    """Load ros types."""
     try:
         from foxglove_msgs.msg import Log
         from unity2foxglove_foxrun_interfaces_v1.msg import (
@@ -342,10 +360,12 @@ def _load_ros_types():
 
 
 def _message_type(kind: str, standard_type, envelope_type):
+    """Handle message type for Phase186 acceptance."""
     return envelope_type if kind.startswith("custom_") else standard_type
 
 
 def _standard_message(standard_type, node, config: Mapping[str, Any], sequence: int):
+    """Handle standard message for Phase186 acceptance."""
     value = standard_type()
     value.timestamp = node.get_clock().now().to_msg()
     value.level = 2
@@ -368,6 +388,7 @@ def _custom_message(
     config: Mapping[str, Any],
     sequence: int,
 ):
+    """Handle custom message for Phase186 acceptance."""
     envelope = envelope_type()
     envelope.foxrun_origin_id = "phase186-external-" + str(config["tokenHash"])[:16]
     envelope.foxrun_sequence = sequence
@@ -400,6 +421,7 @@ def _custom_message(
 
 
 def _message_text(value: object, kind: str) -> str:
+    """Handle message text for Phase186 acceptance."""
     if kind.startswith("custom_"):
         return str(getattr(getattr(value, "payload", None), "message", ""))
     return str(getattr(value, "message", ""))
@@ -469,6 +491,7 @@ def _outbound_texts(
     offered: int,
     publishers: Mapping[str, object],
 ) -> list[str]:
+    """Handle outbound texts for Phase186 acceptance."""
     kind = kinds[topic]
     values = _without_direct_peer_samples(
         received[topic],
@@ -486,6 +509,7 @@ def _outbound_topic_ready(
     texts: Sequence[str],
     token_hash: str,
 ) -> bool:
+    """Handle outbound topic ready for Phase186 acceptance."""
     if kind.endswith("duplex") or case_id == "fanout-fairness-health":
         return any("unity-local-b" in text for text in texts)
     prefix = "phase186:" + token_hash[:12] + ":"
@@ -501,6 +525,7 @@ def _outbound_wait_detail(
     offered: int,
     publishers: Mapping[str, object],
 ) -> str:
+    """Handle outbound wait detail for Phase186 acceptance."""
     missing: list[str] = []
     observed: dict[str, list[str]] = {}
     for topic in sorted(expected_outbound):
@@ -530,6 +555,7 @@ def _spin_until(
     timeout_seconds: float,
     message: str | Callable[[], str],
 ) -> None:
+    """Handle spin until for Phase186 acceptance."""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -553,6 +579,7 @@ def _settle_source_delivery(rclpy_module, node, timeout_seconds: float) -> None:
 
 
 def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Run ros peer."""
     try:
         import rclpy
         from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -581,6 +608,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
                 received[topic] = []
 
                 def capture(value, *, selected=topic):
+                    """Handle capture for Phase186 acceptance."""
                     received[selected].append(value)
                     if len(received[selected]) > 4096:
                         del received[selected][:-4096]
@@ -663,6 +691,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         expected_outbound = set(subscriptions)
 
         def outbound_ready() -> bool:
+            """Handle outbound ready for Phase186 acceptance."""
             for topic in expected_outbound:
                 kind = kinds[topic]
                 texts = _outbound_texts(
@@ -741,6 +770,7 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _endpoint_document(info: object) -> dict[str, Any]:
+    """Handle endpoint document for Phase186 acceptance."""
     qos = getattr(info, "qos_profile", None)
     return {
         "nodeName": str(getattr(info, "node_name", "")),
@@ -763,6 +793,7 @@ def _observe_graph(
     observed: dict[str, Any] = {}
 
     def graph_ready() -> bool:
+        """Handle graph ready for Phase186 acceptance."""
         observed.clear()
         for topic, kind in _layout(config):
             publishers = node.get_publishers_info_by_topic(topic)
@@ -813,6 +844,7 @@ def _observe_graph(
 
 
 def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Run graph observer."""
     try:
         import rclpy
     except ImportError as exc:
@@ -834,6 +866,7 @@ def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 async def _run_foxglove_async(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Run foxglove async."""
     try:
         import websockets
     except ImportError as exc:
@@ -915,6 +948,7 @@ async def _run_foxglove_async(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _read_frame(connection: socket.socket, initial: bytes = b"") -> bytes:
+    """Read frame."""
     fixed = bytearray(initial)
     if len(fixed) > 16:
         raise LiveActorFailure("FAIL_BRIDGE", "sidecar response prefix is oversized")
@@ -959,6 +993,7 @@ def _read_optional_frame(connection: socket.socket) -> bytes | None:
 
 
 def _decode_frame(frame: bytes) -> tuple[Mapping[str, Any], bytes]:
+    """Handle decode frame for Phase186 acceptance."""
     if len(frame) < 16 or frame[:4] != b"U2R2":
         raise LiveActorFailure("FAIL_BRIDGE", "sidecar response framing differs")
     _version, _flags, header_size, payload_size = struct.unpack("<HHII", frame[4:16])
@@ -974,6 +1009,7 @@ def _decode_frame(frame: bytes) -> tuple[Mapping[str, Any], bytes]:
 
 
 def _encode_frame(header: Mapping[str, Any], payload: bytes = b"") -> bytes:
+    """Handle encode frame for Phase186 acceptance."""
     encoded = json.dumps(
         dict(header), separators=(",", ":"), ensure_ascii=True
     ).encode("ascii")
@@ -981,6 +1017,7 @@ def _encode_frame(header: Mapping[str, Any], payload: bytes = b"") -> bytes:
 
 
 def _fixture(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Handle fixture for Phase186 acceptance."""
     path = (
         pathlib.Path(str(config["repository"]))
         / "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json"
@@ -992,6 +1029,7 @@ def _fixture(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _health(config: Mapping[str, Any], request_id: str) -> Mapping[str, Any]:
+    """Handle health for Phase186 acceptance."""
     header = {"op": "health_ping", "requestId": request_id, "protocolVersion": 1}
     frame = _encode_frame(header)
     with socket.create_connection(
@@ -1011,6 +1049,7 @@ def _health(config: Mapping[str, Any], request_id: str) -> Mapping[str, Any]:
 
 
 def run_wire_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Run wire peer."""
     fixture = _fixture(config)
     _write_actor_document(config, "wire-peer", "ready", {"state": "fixture-loaded"})
     health = fixture["health"]
@@ -1044,6 +1083,7 @@ def run_wire_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _expect_rejection(config: Mapping[str, Any], frame: bytes) -> None:
+    """Handle expect rejection for Phase186 acceptance."""
     with socket.create_connection(
         (str(config["bridgeHost"]), int(config["bridgePort"])), timeout=2.0
     ) as connection:
@@ -1059,6 +1099,7 @@ def _expect_rejection(config: Mapping[str, Any], frame: bytes) -> None:
 
 
 def _hostile_mutations() -> Mapping[str, bytes]:
+    """Handle hostile mutations for Phase186 acceptance."""
     unknown = _encode_frame({"op": "phase186_unknown_op"})
     return {
         "bad-magic": b"X2R2" + struct.pack("<HHII", 1, 0, 2, 0) + b"{}",
@@ -1073,6 +1114,7 @@ def _hostile_mutations() -> Mapping[str, bytes]:
 
 
 def _is_busy_response(header: Mapping[str, Any]) -> bool:
+    """Return whether busy response."""
     return (
         header.get("op") == "busy"
         and header.get("status") == "error"
@@ -1082,6 +1124,7 @@ def _is_busy_response(header: Mapping[str, Any]) -> bool:
 
 
 def run_hostile_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Run hostile peer."""
     _write_actor_document(
         config,
         "hostile-peer",
@@ -1115,6 +1158,7 @@ def run_hostile_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def run_role(config: Mapping[str, Any], role: str) -> Mapping[str, Any]:
+    """Run role."""
     if role not in set(config["requiredActors"]):
         raise LiveActorFailure("FAIL_PROTOCOL", "worker role is not required by this case")
     if role == "ros-peer":
@@ -1131,6 +1175,7 @@ def run_role(config: Mapping[str, Any], role: str) -> Mapping[str, Any]:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse args."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", choices=ROLES, required=True)
     parser.add_argument("--run-config", type=pathlib.Path, required=True)
@@ -1138,6 +1183,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     args = parse_args(argv)
     config: Mapping[str, Any] | None = None
     try:

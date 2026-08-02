@@ -56,6 +56,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void AdapterLaneIncludesR2fuGenerationModelsWithoutNativeRuntime()
+        {
+            var props = Text("Packages/dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props")
+                .Replace('\\', '/');
+            const string editorModels =
+                "../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs";
+            var include = props.IndexOf(editorModels, StringComparison.Ordinal);
+
+            Assert.True(include >= 0);
+            var elementEnd = props.IndexOf("/>", include, StringComparison.Ordinal);
+            Assert.True(elementEnd > include);
+            var element = props.Substring(include, elementEnd - include);
+            Assert.Contains("IncludeRos2ForUnityAdapter", element, StringComparison.Ordinal);
+            Assert.Contains("IncludeRos2ForUnityNative", element, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CompileOnlyR2fuStubsMatchAllPackagedSourceSignatures()
         {
             var expected = RelevantSignatures(Text(StubPath));

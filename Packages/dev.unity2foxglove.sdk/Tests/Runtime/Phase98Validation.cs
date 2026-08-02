@@ -262,15 +262,16 @@ namespace Unity.FoxgloveSDK.Tests
             var docs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/16_ROS2_Bridge_Sample.md");
             var samplesDoc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
 
-            Check(sampleReadme.Contains("optional Manager Inspector **ROS2 Bridge Health**")
-                  && docs.Contains("not a required publish step")
-                  && docs.Contains("ros2 launch"),
-                "98B-1: docs document optional health diagnostics and sidecar launch");
+            Check(sampleReadme.Contains("ros2 launch")
+                  && docs.Contains("## Lifecycle and diagnostics")
+                  && docs.Contains("health/provenance probes"),
+                "98B-1: docs document runtime diagnostics and explicit sidecar launch");
             Check(samplesDoc.Contains("dev.unity2foxglove.ros2bridge", StringComparison.Ordinal)
                   && samplesDoc.Contains("companion package", StringComparison.OrdinalIgnoreCase),
                 "98B-2: core sample overview routes Bridge users to the companion package");
-            Check(sampleReadme.Contains("direct Unity topics such as `/tf`")
-                  && sampleReadme.Contains("mirrors it to ROS2 as `/unity2foxglove/tf`"),
+            Check(sampleReadme.Contains("## Ordinary Publisher Topics", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Foxglove WebSocket topics", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Bridge CDR", StringComparison.Ordinal),
                 "98B-3: sample README distinguishes direct Foxglove topics from ROS2 bridge topics");
             Check(docs.Contains("RViz2-native") && docs.Contains("outside this sample"),
                 "98B-4: docs defer native RViz2 message compatibility");

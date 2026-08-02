@@ -22,6 +22,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
     """Lock the evidence protocol without launching Unity or ROS."""
 
     def test_exact_rows_and_manual_cases_are_immutable(self) -> None:
+        """Verify that exact rows and manual cases are immutable."""
         self.assertEqual(
             (
                 "humble-fastrtps",
@@ -57,6 +58,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             protocol.ROWS["other"] = protocol.ROWS["jazzy-fastrtps"]
 
     def test_automatic_cases_cover_every_locked_acceptance_family(self) -> None:
+        """Verify that automatic cases cover every locked acceptance family."""
         self.assertEqual(
             {
                 "frozen-v1",
@@ -76,6 +78,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             self.assertTrue(protocol.CASES[case_id].required_actors)
 
     def test_manual_cases_select_their_exact_rows_and_actors(self) -> None:
+        """Verify that manual cases select their exact rows and actors."""
         jazzy = protocol.CASES["manual-jazzy-fastrtps-duplex"]
         lyrical = protocol.CASES["manual-lyrical-zenoh-duplex"]
         self.assertEqual("jazzy-fastrtps", jazzy.row_id)
@@ -89,6 +92,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
         self.assertIn("zenoh-router", lyrical.required_actors)
 
     def test_topics_are_token_scoped_unique_and_do_not_overlap_old_phases(self) -> None:
+        """Verify that topics are token scoped unique and do not overlap old phases."""
         topics = protocol.topics_for_case("full-duplex", TOKEN)
         self.assertEqual(len(topics), len(set(topics)))
         self.assertTrue(all(topic.startswith("/foxrun/phase186/") for topic in topics))
@@ -96,18 +100,21 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
         self.assertFalse(any("phase181" in topic or "phase184" in topic for topic in topics))
 
     def test_topics_reject_unsafe_or_foreign_tokens(self) -> None:
+        """Verify that topics reject unsafe or foreign tokens."""
         for token in ("", "p184g_old", "p186h_slash/value", "p186h_short"):
             with self.subTest(token=token):
                 with self.assertRaises(protocol.ProtocolFailure):
                     protocol.topics_for_case("full-duplex", token)
 
     def test_unknown_case_and_row_aliases_fail_closed(self) -> None:
+        """Verify that unknown case and row aliases fail closed."""
         with self.assertRaises(protocol.ProtocolFailure):
             protocol.require_case("duplex")
         with self.assertRaises(protocol.ProtocolFailure):
             protocol.require_row("jazzy")
 
     def test_not_run_requires_a_named_prerequisite_and_is_never_pass(self) -> None:
+        """Verify that not run requires a named prerequisite and is never pass."""
         value = protocol.make_not_run_summary(
             run_id=RUN_ID,
             token=TOKEN,
@@ -124,6 +131,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             protocol.validate_terminal_summary(value)
 
     def test_pass_requires_exact_actor_evidence_and_complete_cleanup(self) -> None:
+        """Verify that pass requires exact actor evidence and complete cleanup."""
         value = protocol.make_pass_summary_for_tests(
             run_id=RUN_ID,
             token=TOKEN,
@@ -137,6 +145,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             protocol.validate_terminal_summary(value)
 
     def test_pass_binds_the_graph_actor_to_its_ros_peer_process(self) -> None:
+        """Verify that pass binds the graph actor to its ros peer process."""
         value = protocol.make_pass_summary_for_tests(
             run_id=RUN_ID,
             token=TOKEN,
@@ -181,6 +190,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             protocol.validate_terminal_summary(mismatched)
 
     def test_owner_requested_windows_exit_codes_accept_signed_and_unsigned_forms(self) -> None:
+        """Verify that owner requested windows exit codes accept signed and unsigned forms."""
         for exit_code in (-1073741510, 3221225786, -1073741515, 3221225781):
             with self.subTest(exit_code=exit_code):
                 value = protocol.make_pass_summary_for_tests(
@@ -198,6 +208,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 )
 
     def test_pass_rejects_cached_or_configuration_only_evidence(self) -> None:
+        """Verify that pass rejects cached or configuration only evidence."""
         value = protocol.make_pass_summary_for_tests(
             run_id=RUN_ID,
             token=TOKEN,
@@ -213,6 +224,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                     protocol.validate_terminal_summary(candidate)
 
     def test_pass_rejects_stale_identity_or_incomplete_cleanup(self) -> None:
+        """Verify that pass rejects stale identity or incomplete cleanup."""
         value = protocol.make_pass_summary_for_tests(
             run_id=RUN_ID,
             token=TOKEN,
@@ -237,6 +249,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                     protocol.validate_terminal_summary(candidate)
 
     def test_fail_can_preserve_incomplete_cleanup_evidence(self) -> None:
+        """Verify that fail can preserve incomplete cleanup evidence."""
         value = protocol.make_failure_summary(
             run_id=RUN_ID,
             token=TOKEN,
@@ -259,6 +272,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
         self.assertEqual([1234], validated["cleanup"]["residualProcesses"])
 
     def test_terminal_line_round_trips_and_rejects_foreign_markers(self) -> None:
+        """Verify that terminal line round trips and rejects foreign markers."""
         value = protocol.make_not_run_summary(
             run_id=RUN_ID,
             token=TOKEN,
@@ -274,6 +288,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             protocol.parse_terminal_line(line, RUN_ID + "x", TOKEN, HEAD)
 
     def test_manual_completion_marker_requires_exact_current_identity(self) -> None:
+        """Verify that manual completion marker requires exact current identity."""
         marker = protocol.format_manual_completion_marker(
             case_id="manual-jazzy-fastrtps-duplex",
             run_id=RUN_ID,
@@ -299,6 +314,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             )
 
     def test_run_config_is_bounded_to_owned_phase186_output(self) -> None:
+        """Verify that run config is bounded to owned phase186 output."""
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp).resolve()
             project = repo / "Unity2Foxglove"
@@ -325,6 +341,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 protocol.validate_run_config(config, repo)
 
     def test_run_config_accepts_only_the_exact_owned_bridge_only_project(self) -> None:
+        """Verify that run config accepts only the exact owned bridge only project."""
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp).resolve()
             (repo / "Unity2Foxglove").mkdir()
@@ -358,6 +375,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 protocol.validate_run_config(config, repo)
 
     def test_row_independent_automatic_config_has_no_synthetic_ros_alias(self) -> None:
+        """Verify that row independent automatic config has no synthetic ros alias."""
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp).resolve()
             project = repo / "Unity2Foxglove"
@@ -384,6 +402,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                 protocol.validate_run_config(config, repo)
 
     def test_run_config_rejects_invalid_ports_domains_and_extra_keys(self) -> None:
+        """Verify that run config rejects invalid ports domains and extra keys."""
         with tempfile.TemporaryDirectory() as temp:
             repo = pathlib.Path(temp).resolve()
             project = repo / "Unity2Foxglove"

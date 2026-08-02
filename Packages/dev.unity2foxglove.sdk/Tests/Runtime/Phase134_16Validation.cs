@@ -161,57 +161,46 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("class ScopedFd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
-                  && source.Contains("ScopedFd client_fd", StringComparison.Ordinal),
+                  && source.Contains("ScopedFd candidate(accepted.fd)", StringComparison.Ordinal)
+                  && source.Contains(
+                      "std::make_shared<ScopedFd>(candidate.release())",
+                      StringComparison.Ordinal),
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
-            var processClient = source.IndexOf("void process_client(", StringComparison.Ordinal);
-            var sessionBridge = processClient >= 0
+            var processOwnedClient = source.IndexOf("void process_owned_client(", StringComparison.Ordinal);
+            var generationOwnership = processOwnedClient >= 0
                 ? source.IndexOf(
-                    "BridgeNode bridge(node, payload_format);",
-                    processClient,
+                    "bridge_runtime::GenerationOwnership generation(std::move(*data_lease));",
+                    processOwnedClient,
                     StringComparison.Ordinal)
                 : -1;
-            var sessionLoop = sessionBridge >= 0
-                ? source.IndexOf("while (rclcpp::ok())", sessionBridge, StringComparison.Ordinal)
-                : -1;
-            var directSessionOwnsBridge = processClient >= 0
-                                          && sessionBridge > processClient
-                                          && sessionLoop > sessionBridge
-                                          && source.Contains(
-                                              "process_client(client_fd.get(), node, options.payload_format);",
-                                              StringComparison.Ordinal);
-            var deferredSession = source.IndexOf("class DeferredBridgeSession", StringComparison.Ordinal);
-            var deferredBridgeCreate = deferredSession >= 0
+            var generationAdoption = generationOwnership >= 0
                 ? source.IndexOf(
-                    "bridge_ = std::make_unique<BridgeNode>(node_, payload_format_);",
-                    deferredSession,
-                    StringComparison.Ordinal)
-                : -1;
-            var deferredBridgeMember = deferredSession >= 0
-                ? source.IndexOf(
-                    "std::unique_ptr<BridgeNode> bridge_;",
-                    deferredSession,
+                    "generation.adopt_entities(generation_factory())",
+                    generationOwnership,
                     StringComparison.Ordinal)
                 : -1;
             var mainEntry = source.IndexOf("int main(int argc, char ** argv)", StringComparison.Ordinal);
-            var mainLoop = mainEntry >= 0
-                ? source.IndexOf("while (rclcpp::ok())", mainEntry, StringComparison.Ordinal)
-                : -1;
-            var mainSession = mainLoop >= 0
-                ? source.IndexOf("DeferredBridgeSession session(", mainLoop, StringComparison.Ordinal)
-                : -1;
-            var deferredProcess = mainSession >= 0
+            var generationFactory = mainEntry >= 0
                 ? source.IndexOf(
-                    "process_deferred_client(client_fd.get(), session);",
-                    mainSession,
+                    "const BridgeGenerationFactory generation_factory",
+                    mainEntry,
                     StringComparison.Ordinal)
                 : -1;
-            var deferredSessionOwnsBridge = deferredSession >= 0
-                                            && deferredBridgeCreate > deferredSession
-                                            && deferredBridgeMember > deferredBridgeCreate
-                                            && mainLoop > mainEntry
-                                            && mainSession > mainLoop
-                                            && deferredProcess > mainSession;
-            Check((directSessionOwnsBridge || deferredSessionOwnsBridge)
+            var freshBridge = generationFactory >= 0
+                ? source.IndexOf(
+                    "return std::make_unique<BridgeNode>(",
+                    generationFactory,
+                    StringComparison.Ordinal)
+                : -1;
+            var workerUsesFactory = freshBridge >= 0
+                ? source.IndexOf("process_owned_client(", freshBridge, StringComparison.Ordinal)
+                : -1;
+            Check(processOwnedClient >= 0
+                  && generationOwnership > processOwnedClient
+                  && generationAdoption > generationOwnership
+                  && generationFactory > mainEntry
+                  && freshBridge > generationFactory
+                  && workerUsesFactory > freshBridge
                   && !source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal),
                 "134-16H-2: each sidecar client session owns fresh publisher maps so restarted sessions may apply replacement QoS");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)

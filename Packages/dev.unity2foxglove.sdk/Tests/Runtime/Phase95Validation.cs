@@ -240,9 +240,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
                   && bridgeProvider.Contains("TryMap"),
                 "95E-2: neutral Manager APIs fan out values to the Bridge-owned mapper");
-            Check(managerProviders.Contains("_activeFoxRunTransportSession")
-                  && managerProviders.Contains("HasOrdinaryTransportDemand")
-                  && !managerProviders.Contains("IsRunning"),
+            var demandStart = managerProviders.IndexOf(
+                "public bool HasOrdinaryTransportDemand",
+                StringComparison.Ordinal);
+            var demandEnd = demandStart < 0
+                ? -1
+                : managerProviders.IndexOf(
+                    "public FoxRunOrdinaryTransportFanoutResult",
+                    demandStart,
+                    StringComparison.Ordinal);
+            var demandSource = demandStart >= 0 && demandEnd > demandStart
+                ? managerProviders.Substring(demandStart, demandEnd - demandStart)
+                : string.Empty;
+            Check(demandSource.Contains("_activeFoxRunTransportSession")
+                  && demandSource.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && !demandSource.Contains("IsRunning"),
                 "95E-3: frozen Provider demand is independent of WebSocket runtime state");
             Check(publisherBase.Contains("ShouldPrepareAnyPublishPayload")
                   && publisherBase.Contains("ShouldPrepareOrdinaryTransportPayload")
@@ -293,7 +305,8 @@ namespace Unity.FoxgloveSDK.Tests
             var readme = ReadRepoText("README.md");
             var packageManifest = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json");
             var protocolDocs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md");
-            Check(readme.Contains("WebSocket") && readme.Contains("ROS2 Bridge") && readme.Contains("disabled by default"),
+            Check(readme.Contains("ROS2 Bridge routing is independent from WebSocket routing")
+                  && readme.Contains("unselected by default"),
                 "95F-1: README documents independent optional bridge");
             Check(packageManifest.Contains("Optional ROS 2 Bridge transport Provider")
                   && packageManifest.Contains("Owns U2R2, CDR codecs, ROS schema adapters")

@@ -5,7 +5,7 @@ This package is the optional ROS2 For Unity boundary for Unity2Foxglove.
 It provides facade/API boundaries, documentation, attribution records, and a source-only `ROS2 For Unity External Adapter` sample. ROS2 For Unity runtime binaries are not bundled here.
 
 Projects upgrading from the former SDK-owned ROS endpoint and QoS API should
-follow the [Phase186A breaking upgrade guide](Documentation~/Phase186A-Breaking-Upgrade.md).
+follow the [breaking package-boundary upgrade guide](Documentation~/Breaking-Package-Boundary-Upgrade.md).
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 

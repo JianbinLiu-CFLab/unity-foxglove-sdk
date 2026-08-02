@@ -62,7 +62,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Remove="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
-    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityEditor/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityEditor/Native/FoxRun" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <!-- Phase181's named custom catalog files remain inside the focused native FoxRun allowlist above. -->
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />

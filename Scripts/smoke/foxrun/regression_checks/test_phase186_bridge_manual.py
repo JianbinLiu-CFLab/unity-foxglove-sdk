@@ -23,12 +23,15 @@ class FakeClock:
     """A deterministic monotonic-clock seam."""
 
     def __init__(self) -> None:
+        """Initialize the helper state."""
         self.value = 100.0
 
     def __call__(self) -> float:
+        """Invoke the callable acceptance helper."""
         return self.value
 
     def advance(self, seconds: float) -> None:
+        """Handle advance for Phase186 acceptance."""
         self.value += seconds
 
 
@@ -36,6 +39,7 @@ class ManualLauncherTests(unittest.TestCase):
     """Keep the short user-facing surface immutable and non-live."""
 
     def test_aliases_are_exactly_the_two_locked_manual_cases(self) -> None:
+        """Verify that aliases are exactly the two locked manual cases."""
         self.assertEqual(
             {
                 "jazzy": (
@@ -51,6 +55,7 @@ class ManualLauncherTests(unittest.TestCase):
         )
 
     def test_usage_rejects_missing_unknown_and_extra_alias_without_coordinator(self) -> None:
+        """Verify that usage rejects missing unknown and extra alias without coordinator."""
         for argv in ([], ["humble"], ["jazzy", "zenoh"]):
             with self.subTest(argv=argv), mock.patch.object(manual.acceptance, "main") as coordinator:
                 with self.assertRaises(SystemExit) as raised:
@@ -59,6 +64,7 @@ class ManualLauncherTests(unittest.TestCase):
                 coordinator.assert_not_called()
 
     def test_launcher_forwards_immutable_jazzy_arguments_and_exit_code(self) -> None:
+        """Verify that launcher forwards immutable jazzy arguments and exit code."""
         with mock.patch.object(manual.acceptance, "main", return_value=7) as coordinator:
             self.assertEqual(7, manual.main(["jazzy"]))
 
@@ -80,6 +86,7 @@ class ManualLauncherTests(unittest.TestCase):
         kwargs["status"].close()
 
     def test_launcher_can_import_from_outside_the_repository(self) -> None:
+        """Verify that launcher can import from outside the repository."""
         repository = pathlib.Path(__file__).resolve().parents[4]
         script_directory = repository / "Scripts" / "smoke" / "foxrun"
         probe = """
@@ -105,6 +112,7 @@ class ManualStatusReporterTests(unittest.TestCase):
     """Prove the operator output is concise, bounded, and stoppable."""
 
     def test_transition_suppresses_an_unchanged_stage_and_message(self) -> None:
+        """Verify that transition suppresses an unchanged stage and message."""
         emitted: list[str] = []
         reporter = status.ManualStatusReporter(
             sink=emitted.append,
@@ -122,12 +130,14 @@ class ManualStatusReporterTests(unittest.TestCase):
         self.assertIn("stage=UNITY_READY", transitions[2])
 
     def test_transition_is_immediate_and_heartbeat_repeats_the_current_stage(self) -> None:
+        """Verify that transition is immediate and heartbeat repeats the current stage."""
         clock = FakeClock()
         emitted: list[str] = []
         first_wait = threading.Event()
         release = threading.Event()
 
         def wait(_stop: threading.Event, seconds: float) -> bool:
+            """Handle wait for Phase186 acceptance."""
             self.assertEqual(10.0, seconds)
             if _stop.is_set():
                 return True
@@ -169,6 +179,7 @@ class ManualStatusReporterTests(unittest.TestCase):
         self.assertFalse(reporter.is_alive)
 
     def test_readiness_is_two_short_unity_actions_and_close_is_idempotent(self) -> None:
+        """Verify that readiness is two short unity actions and close is idempotent."""
         emitted: list[str] = []
         reporter = status.ManualStatusReporter(
             sink=emitted.append,
@@ -193,12 +204,14 @@ class ManualStatusReporterTests(unittest.TestCase):
         self.assertTrue(any("detail Waiting for the token-bound" in line for line in emitted))
 
     def test_detail_updates_the_stage_heartbeat_message(self) -> None:
+        """Verify that detail updates the stage heartbeat message."""
         clock = FakeClock()
         emitted: list[str] = []
         first_wait = threading.Event()
         release = threading.Event()
 
         def wait(stop: threading.Event, _seconds: float) -> bool:
+            """Handle wait for Phase186 acceptance."""
             if stop.is_set():
                 return True
             first_wait.set()
@@ -233,6 +246,7 @@ class ManualStatusReporterTests(unittest.TestCase):
         )
 
     def test_terminal_handoff_has_verdict_evidence_and_exact_next_action(self) -> None:
+        """Verify that terminal handoff has verdict evidence and exact next action."""
         emitted: list[str] = []
         reporter = status.ManualStatusReporter(
             sink=emitted.append,
@@ -262,6 +276,7 @@ class ManualStatusReporterTests(unittest.TestCase):
         )
 
     def test_null_reporter_emits_nothing(self) -> None:
+        """Verify that null reporter emits nothing."""
         with mock.patch("builtins.print") as sink:
             reporter = status.NullManualStatusReporter()
             reporter.transition("READY", "unused")

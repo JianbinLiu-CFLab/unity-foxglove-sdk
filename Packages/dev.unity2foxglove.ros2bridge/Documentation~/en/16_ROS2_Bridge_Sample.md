@@ -98,6 +98,10 @@ messages use generated registries; supported FoxRun DTOs use the Bridge
 physical emitter and an exact generated ROS interface identity. Unsupported
 types or representations are rejected rather than reinterpreted.
 
+RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` mappings are
+outside this sample. Use the R2FU standard-visualization samples when native
+RViz2 topics are required.
+
 All header, payload, queue, contract, replay, tombstone, transient/in-flight,
 handshake, read/write, join, and shutdown limits are immutable and listed in
 [U2R2_PROTOCOL.md](U2R2_PROTOCOL.md).

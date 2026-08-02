@@ -357,9 +357,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && docsIndex.Contains(
                       "Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample",
                       StringComparison.Ordinal)
-                  && bridgeGuide.Contains("# ROS2 Bridge Sample", StringComparison.Ordinal)
+                  && bridgeGuide.Contains("# ROS2 Bridge Provider and Sample", StringComparison.Ordinal)
                   && bridgeGuide.Contains(
-                      "`unity2foxglove_ros2_bridge` sidecar",
+                      "ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py",
                       StringComparison.Ordinal),
                 "99D-3: SDK docs defer ROS setup while the Bridge package owns its sample guide");
 
@@ -381,9 +381,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "99E-2: Phase98 live evidence exposes product topics and all-schema count");
 
             var sampleReadme = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/README.md");
-            Check(sampleReadme.Contains("Required bridge topics")
-                  && sampleReadme.Contains("Optional topic")
-                  && sampleReadme.Contains("skips compressed point-cloud output"),
+            var requiredTopics = new[]
+            {
+                "/tf",
+                "/scene",
+                "/camera",
+                "/camera_calibration",
+                "/laser_scan",
+                "/point_cloud"
+            };
+            Check(sampleReadme.Contains("## Ordinary Publisher Topics", StringComparison.Ordinal)
+                  && requiredTopics.All(topic => sampleReadme.Contains(topic, StringComparison.Ordinal))
+                  && sampleReadme.Contains("optional `/point_cloud_draco`", StringComparison.Ordinal),
                 "99E-3: sample README documents six required topics plus optional Draco");
         }
 

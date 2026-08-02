@@ -155,6 +155,7 @@ namespace Unity.FoxgloveSDK.Tests
             var provenance = LoadJson(Provenance);
             var reference = (JObject)provenance["reference"];
             var implementations = (JArray)provenance["implementations"];
+            var notices = Read("THIRD_PARTY_NOTICES.md");
 
             Check(
                 (int?)provenance["schemaVersion"] == 1
@@ -172,6 +173,18 @@ namespace Unity.FoxgloveSDK.Tests
                     (string)item["classification"] == "original"
                     && !Path.IsPathRooted((string)item["path"])),
                 "186-A8: every current Phase186 implementation has original, repository-relative provenance");
+
+            Check(
+                notices.Contains(
+                    "Unity-Technologies/ROS-TCP-Connector (reference-only review)",
+                    StringComparison.Ordinal)
+                && notices.Contains(
+                    "no implementation code or comments were copied",
+                    StringComparison.Ordinal)
+                && notices.Contains(
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json",
+                    StringComparison.Ordinal),
+                "186-A8N: third-party notices preserve the reference-only clean-room boundary");
         }
 
         private static void VerifyPortableOriginProbe()

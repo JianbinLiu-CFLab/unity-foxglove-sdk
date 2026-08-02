@@ -178,7 +178,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && managerProviders.Contains("contribution.SchemaEncoding")
                   && managerProviders.Contains("request.DeliveryPolicy"),
                 "92C-3: Provider route carries topic, schema encodings, and delivery policy");
-            Check(bridgeProvider.Contains("TryMapFoxgloveSchema")
+            Check(bridgeProvider.Contains("TryMapOrdinary")
+                  && bridgeProvider.Contains("MatchesLogicalType")
                   && bridgeProvider.Contains("FoxgloveRos2MsgSchemaCatalog.TryGet")
                   && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper"),
                 "92C-4: Bridge Provider validates and maps supported logical schemas");
@@ -207,14 +208,10 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(schemaNames.Contains(mapping.sourceToken),
                     "92D-1: schema mapping contains " + mapping.schemaName);
 
-            Check(bridgeProvider.Contains("case \"foxglove.FrameTransform\"")
-                  && bridgeProvider.Contains("case \"foxglove.SceneUpdate\"")
-                  && bridgeProvider.Contains("case \"foxglove.CompressedImage\"")
-                  && bridgeProvider.Contains("case \"foxglove.CameraCalibration\"")
-                  && bridgeProvider.Contains("case \"foxglove.LaserScan\"")
-                  && bridgeProvider.Contains("case \"foxglove.PointCloud\"")
-                  && bridgeProvider.Contains("case \"foxglove.CompressedPointCloud\""),
-                "92D-1b: Bridge Provider maps all seven logical publisher schemas");
+            Check(bridgeProvider.Contains("Ros2CdrSerializerRegistry.TryGetByClrType")
+                  && bridgeProvider.Contains("Ros2BridgeOrdinaryLogicalSchema.Matches")
+                  && bridgeProvider.Contains("serializer.Serialize(message)"),
+                "92D-1b: Bridge Provider maps registered Foxglove protobuf publisher schemas");
 
             CheckPublisher(
                 "FoxgloveTransformPublisher.cs",

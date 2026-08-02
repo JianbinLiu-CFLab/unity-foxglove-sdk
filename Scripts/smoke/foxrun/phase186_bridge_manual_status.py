@@ -17,6 +17,7 @@ Wait = Callable[[threading.Event, float], bool]
 
 
 def _default_wait(stop: threading.Event, seconds: float) -> bool:
+    """Handle default wait for Phase186 acceptance."""
     return stop.wait(seconds)
 
 
@@ -31,6 +32,7 @@ class ManualStatusReporter:
         heartbeat_seconds: float = 10.0,
         wait: Wait = _default_wait,
     ) -> None:
+        """Initialize the helper state."""
         if heartbeat_seconds <= 0:
             raise ValueError("heartbeat_seconds must be positive")
         self._clock = clock
@@ -57,9 +59,11 @@ class ManualStatusReporter:
         return self._thread.is_alive()
 
     def _elapsed(self) -> str:
+        """Handle elapsed for Phase186 acceptance."""
         return f"{int(max(0.0, self._clock() - self._started))}s"
 
     def _emit(self, event: str, text: str) -> None:
+        """Handle emit for Phase186 acceptance."""
         self._sink(f"PHASE186_MANUAL_STATUS {event} {text}")
 
     def transition(self, stage: str, message: str) -> None:
@@ -131,6 +135,7 @@ class ManualStatusReporter:
         self._sink("PHASE186 MANUAL NEXT: " + next_action)
 
     def _run_heartbeats(self) -> None:
+        """Run heartbeats."""
         while not self._wait(self._stop, self._heartbeat_seconds):
             with self._lock:
                 stage = self._stage
@@ -149,9 +154,11 @@ class ManualStatusReporter:
             self._thread.join()
 
     def __enter__(self) -> "ManualStatusReporter":
+        """Enter the managed acceptance context."""
         return self
 
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        """Exit the managed acceptance context."""
         self.close()
 
 
@@ -159,27 +166,35 @@ class NullManualStatusReporter:
     """A status-compatible reporter for quiet noninteractive callers."""
 
     def transition(self, _stage: str, _message: str) -> None:
+        """Handle transition for Phase186 acceptance."""
         return None
 
     def unity_prepare(self, _label: str) -> None:
+        """Handle unity prepare for Phase186 acceptance."""
         return None
 
     def unity_play_ready(self, _label: str) -> None:
+        """Handle unity play ready for Phase186 acceptance."""
         return None
 
     def detail(self, _message: str) -> None:
+        """Handle detail for Phase186 acceptance."""
         return None
 
     def terminal(
         self, _verdict: str, _reason: str, _evidence_root: str
     ) -> None:
+        """Handle terminal for Phase186 acceptance."""
         return None
 
     def close(self) -> None:
+        """Release the owned acceptance resources."""
         return None
 
     def __enter__(self) -> "NullManualStatusReporter":
+        """Enter the managed acceptance context."""
         return self
 
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        """Exit the managed acceptance context."""
         self.close()

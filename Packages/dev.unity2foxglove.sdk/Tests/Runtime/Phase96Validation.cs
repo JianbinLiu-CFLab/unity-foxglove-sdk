@@ -200,7 +200,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "96D-3: Bridge Provider owns ordinary-value CDR mapping");
             Check(bridgeProvider.Contains("runtime.PreparePublisher")
                   && bridgeProvider.Contains("Ros2BridgeFrame.CreateOwned")
-                  && bridgeProvider.Contains("runtime.TryEnqueuePrepared"),
+                  && bridgeProvider.Contains("runtime.TryEnqueue(frame, out reason)"),
                 "96D-4: Bridge Provider prepares and enqueues QoS-profiled owned frames");
             Check(publisherBase.Contains("FoxRunOrdinaryPayloadRequest")
                   && publisherBase.Contains("_topic")
@@ -214,7 +214,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !manager.Contains("Ros2Bridge")
                   && !managerProviders.Contains("Ros2Bridge"),
                 "96D-6: generic Manager fanout and Bridge Provider drawer preserve package ownership");
-            Check(wrapper.Contains("Ros2BridgeFrame.CreateOwned(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal)
+            Check(wrapper.Contains("Ros2BridgeFrame.CreateOwned(", StringComparison.Ordinal)
+                  && wrapper.Contains("Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal)
                   && !wrapper.Contains("new Ros2BridgeFrame(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal),
                 "96D-7: Phase94/95 wrapper uses owned-payload frame construction");
         }

@@ -90,6 +90,17 @@ SOFTWARE.
 
 ---
 
+## Unity-Technologies/ROS-TCP-Connector (reference-only review)
+
+- **URL**: https://github.com/Unity-Technologies/ROS-TCP-Connector
+- **Revision**: `c27f00c6cf750d2d0564349b3039d19aa3925e7c`
+- **License**: Apache-2.0
+- **Usage**: Architectural reference review only; no implementation code or comments were copied.
+- **Distribution**: Unity2Foxglove does not redistribute ROS-TCP-Connector source or binaries. The current U2R2 and ROS 2 Bridge implementations are original, so upstream copyright headers are not applied to those original files.
+- **Evidence**: `Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json` freezes the exact upstream commit, tree, license, reviewed files, and `materialCopied: false` classification.
+
+---
+
 ## OpenH264 headers
 
 - **URL**: https://github.com/cisco/openh264

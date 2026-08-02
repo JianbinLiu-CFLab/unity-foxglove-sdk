@@ -23,15 +23,20 @@ from Scripts.smoke.foxrun import phase186_bridge_live_peer as live_peer
 
 
 class _FakeOwner:
+    """Represent fake owner."""
     def residual_pids(self) -> list[int]:
+        """Handle residual pids for Phase186 acceptance."""
         return []
 
 
 class _ChunkSocket:
+    """Represent chunk socket."""
     def __init__(self, chunks: list[bytes]):
+        """Initialize the helper state."""
         self._chunks = list(chunks)
 
     def recv(self, count: int) -> bytes:
+        """Handle recv for Phase186 acceptance."""
         if not self._chunks:
             return b""
         value = self._chunks.pop(0)
@@ -42,7 +47,9 @@ class _ChunkSocket:
 
 
 class Phase186BridgeLiveTests(unittest.TestCase):
+    """Group checks for phase186 bridge live tests."""
     def test_current_manual_progress_requires_exact_identity_and_emits_once(self) -> None:
+        """Verify that current manual progress requires exact identity and emits once."""
         reporter = mock.Mock()
         emitted: set[str] = set()
         with tempfile.TemporaryDirectory() as temp:
@@ -94,6 +101,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_automatic_progress_accepts_real_marker_without_manual_identity_fields(self) -> None:
+        """Verify that automatic progress accepts real marker without manual identity fields."""
         with tempfile.TemporaryDirectory() as temp:
             log = pathlib.Path(temp) / "unity.log"
             config = {
@@ -136,6 +144,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         sleep.assert_not_called()
 
     def test_live_startup_interrupt_closes_owner_and_writes_real_cleanup(self) -> None:
+        """Verify that live startup interrupt closes owner and writes real cleanup."""
         config = {
             "outputRoot": "unused",
             "runtimeRowId": "jazzy-fastrtps",
@@ -178,6 +187,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_runtime_prepare_interrupt_reports_cleanup_stage_before_rethrow(self) -> None:
+        """Verify that runtime prepare interrupt reports cleanup stage before rethrow."""
         reporter = mock.Mock()
         with mock.patch.object(live, "prepare_runtime", side_effect=KeyboardInterrupt), \
                 mock.patch.object(live, "OwnedLiveProcesses") as owner, \
@@ -196,6 +206,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         owner.assert_not_called()
 
     def test_manual_wait_interrupt_removes_only_owned_pointer_and_gates(self) -> None:
+        """Verify that manual wait interrupt removes only owned pointer and gates."""
         config = {
             "outputRoot": "unused",
             "runtimeRowId": "jazzy-fastrtps",
@@ -233,6 +244,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         }
         reporter = mock.Mock()
         def prepare(*_args, **_kwargs):
+            """Handle prepare for Phase186 acceptance."""
             reporter.transition("2/5", "preparing exact runtime and Bridge build")
             return runtime
 
@@ -277,6 +289,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_manual_wait_fails_immediately_on_exact_unity_context_failure(self) -> None:
+        """Verify that manual wait fails immediately on exact unity context failure."""
         config = {
             "outputRoot": "unused",
             "runtimeRowId": "jazzy-fastrtps",
@@ -339,6 +352,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         owner.close.assert_called_once_with()
 
     def test_manual_wait_fails_immediately_when_live_actor_exits(self) -> None:
+        """Verify that manual wait fails immediately when live actor exits."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             actors = output / "actors"
@@ -423,6 +437,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         owner.close.assert_called_once_with()
 
     def test_manual_completion_waits_for_editor_release_before_pointer_cleanup(self) -> None:
+        """Verify that manual completion waits for editor release before pointer cleanup."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             config = {
@@ -501,6 +516,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual(["editor-release", "pointer-cleanup"], events)
 
     def test_manual_editor_release_marker_requires_exact_run_identity(self) -> None:
+        """Verify that manual editor release marker requires exact run identity."""
         self.assertTrue(
             hasattr(live, "_manual_editor_released_in_log"),
             "manual completion needs an identity-bound EnteredEditMode marker",
@@ -535,6 +551,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertTrue(live._manual_editor_released_in_log(config))
 
     def test_manual_wait_accepts_actor_exit_after_all_owned_results_exist(self) -> None:
+        """Verify that manual wait accepts actor exit after all owned results exist."""
         config = {
             "outputRoot": "unused",
             "requiredActors": ["graph-observer", "ros-peer"],
@@ -557,6 +574,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_manual_scene_ready_requires_exact_identity_and_stable_schema(self) -> None:
+        """Verify that manual scene ready requires exact identity and stable schema."""
         config = {
             "unityLog": "unity.log",
             "runId": "phase186h-current-0123456789ab",
@@ -616,6 +634,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             )
 
     def test_manual_context_failure_requires_exact_generated_identity(self) -> None:
+        """Verify that manual context failure requires exact generated identity."""
         config = {
             "unityLog": "unity.log",
             "runId": "phase186h-current-0123456789ab",
@@ -648,12 +667,14 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             )
 
     def test_ros_graph_gate_requires_exact_bridge_publisher(self) -> None:
+        """Verify that ros graph gate requires exact bridge publisher."""
         config = {
             "caseId": "slow-main-thread-640hz",
             "topics": ("/phase186/slow_ingress", "/phase186/slow_control"),
         }
 
         def endpoint(node_name: str, topic_type: str) -> object:
+            """Handle endpoint for Phase186 acceptance."""
             return types.SimpleNamespace(
                 node_name=node_name,
                 topic_type=topic_type,
@@ -693,14 +714,19 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertTrue(live_peer._bridge_endpoints_ready(node, config))
 
     def test_custom_peer_sets_nested_string_presence(self) -> None:
+        """Verify that custom peer sets nested string presence."""
         class Envelope:
+            """Represent envelope."""
             pass
 
         class Payload:
+            """Represent payload."""
             pass
 
         class Nested:
+            """Represent nested."""
             def __init__(self) -> None:
+                """Initialize the helper state."""
                 self.foxrun_has_label = False
 
         node = mock.Mock()
@@ -720,6 +746,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertTrue(value.payload.nested.foxrun_has_label)
 
     def test_source_publish_keeps_ros_peer_alive_for_bounded_delivery(self) -> None:
+        """Verify that source publish keeps ros peer alive for bounded delivery."""
         ros = mock.Mock()
         node = object()
         with mock.patch.object(
@@ -735,9 +762,11 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertAlmostEqual(0.02, timeouts[1])
 
     def test_spin_timeout_builds_failure_detail_from_final_observations(self) -> None:
+        """Verify that spin timeout builds failure detail from final observations."""
         observed: list[str] = []
 
         def predicate() -> bool:
+            """Handle predicate for Phase186 acceptance."""
             observed.append("duplex:none")
             return False
 
@@ -757,9 +786,11 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertIn("missing outbound; observed=duplex:none", str(failure.exception))
 
     def test_duplex_origin_check_consumes_one_direct_sample_per_sequence(self) -> None:
+        """Verify that duplex origin check consumes one direct sample per sequence."""
         token_hash = "a" * 64
 
         def sample(sequence: int, label: str = "external-a") -> object:
+            """Handle sample for Phase186 acceptance."""
             payload = types.SimpleNamespace(
                 message=f"phase186:{token_hash[:12]}:{sequence}:{label}"
             )
@@ -784,6 +815,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual([bridge_local, bridge_echo_one], actual)
 
     def test_direct_sample_filter_keeps_malformed_or_out_of_run_samples(self) -> None:
+        """Verify that direct sample filter keeps malformed or out of run samples."""
         token_hash = "b" * 64
         wrong_envelope_sequence = types.SimpleNamespace(
             foxrun_sequence=2,
@@ -822,6 +854,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_direct_sample_filter_uses_standard_message_sequence(self) -> None:
+        """Verify that direct sample filter uses standard message sequence."""
         token_hash = "d" * 64
         direct = types.SimpleNamespace(
             message=f"phase186:{token_hash[:12]}:7:external-a"
@@ -841,6 +874,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual([duplicate], actual)
 
     def test_outbound_timeout_detail_names_missing_topic_and_observed_samples(self) -> None:
+        """Verify that outbound timeout detail names missing topic and observed samples."""
         token_hash = "e" * 64
         custom_topic = "/phase186/custom"
         standard_topic = "/phase186/standard"
@@ -880,6 +914,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertIn("unity-local-b-1", detail)
 
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
+        """Verify that actor readiness budget outlives coordinator budget."""
         self.assertEqual(
             900.0,
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
@@ -890,6 +925,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_live_actor_operation_budget_allows_slow_unity_and_ros_startup(self) -> None:
+        """Verify that live actor operation budget allows slow unity and ros startup."""
         self.assertEqual(300.0, live_peer.LIVE_ACTOR_OPERATION_TIMEOUT_SECONDS)
         self.assertGreater(
             live.LIVE_ACTOR_RESULT_TIMEOUT_SECONDS,
@@ -897,6 +933,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_slow_sequence_flood_waits_for_current_unity_baseline(self) -> None:
+        """Verify that slow sequence flood waits for current unity baseline."""
         windows = live_peer._sequence_windows(
             "slow-main-thread-640hz",
             offered=6,
@@ -933,6 +970,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertTrue(live_peer._slow_unity_baseline_ready(config))
 
     def test_reconnect_peer_waits_for_identity_bound_exercise_gate(self) -> None:
+        """Verify that reconnect peer waits for identity bound exercise gate."""
         with tempfile.TemporaryDirectory() as temp:
             gate = pathlib.Path(temp) / "exercise.json"
             config = {
@@ -978,6 +1016,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             exercise_ready.assert_called_once_with(config)
 
     def test_reconnect_restart_waits_for_observed_disconnect_and_recovery(self) -> None:
+        """Verify that reconnect restart waits for observed disconnect and recovery."""
         owner = mock.Mock()
         runtime = object()
         config = {"bridgeHost": "127.0.0.1", "bridgePort": 18605}
@@ -1032,6 +1071,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual([health], health_generations)
 
     def test_hostile_frames_encode_the_exact_declared_lengths(self) -> None:
+        """Verify that hostile frames encode the exact declared lengths."""
         mutations = live_peer._hostile_mutations()
         unknown = mutations["unknown-op"]
         _version, _flags, header_size, payload_size = struct.unpack(
@@ -1044,6 +1084,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_busy_response_uses_the_stable_protocol_error_code_field(self) -> None:
+        """Verify that busy response uses the stable protocol error code field."""
         self.assertTrue(
             live_peer._is_busy_response(
                 {
@@ -1076,6 +1117,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_optional_rejection_response_reassembles_fragmented_error_frame(self) -> None:
+        """Verify that optional rejection response reassembles fragmented error frame."""
         header = json.dumps(
             {"status": "error", "code": "invalid_frame"},
             separators=(",", ":"),
@@ -1086,6 +1128,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertIsNone(live_peer._read_optional_frame(_ChunkSocket([b""])))
 
     def test_cleanup_detects_owned_gate_pointer_and_extra_listener(self) -> None:
+        """Verify that cleanup detects owned gate pointer and extra listener."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             gate = output / "unity-external-gate.json"
@@ -1120,6 +1163,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertIn("owner close failed", cleanup["cleanupErrors"])
 
     def test_coordinator_reloads_actual_cleanup_after_live_failure(self) -> None:
+        """Verify that coordinator reloads actual cleanup after live failure."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             expected = {
@@ -1139,12 +1183,14 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             )
 
     def test_process_registry_has_public_presence_query(self) -> None:
+        """Verify that process registry has public presence query."""
         owner = object.__new__(live.OwnedLiveProcesses)
         owner._records = {"sidecar-2": object()}
         self.assertTrue(owner.has_record("sidecar-2"))
         self.assertFalse(owner.has_record("sidecar-1"))
 
     def test_ros_peer_cohosts_graph_observer_to_bound_fastdds_participants(self) -> None:
+        """Verify that ros peer cohosts graph observer to bound fastdds participants."""
         config = {
             "requiredActors": [
                 "graph-observer",
@@ -1165,6 +1211,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         )
 
     def test_cohosted_graph_process_evidence_names_the_ros_peer_owner(self) -> None:
+        """Verify that cohosted graph process evidence names the ros peer owner."""
         process = mock.Mock()
         process.pid = 18602
         process.poll.return_value = 0
@@ -1191,6 +1238,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual(18602, evidence["pid"])
 
     def test_cohosted_graph_documents_are_identity_bound_and_explicit(self) -> None:
+        """Verify that cohosted graph documents are identity bound and explicit."""
         with tempfile.TemporaryDirectory() as temp:
             output = pathlib.Path(temp)
             config = {
@@ -1224,10 +1272,12 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertTrue(result["evidence"]["cohosted"])
 
     def test_graph_observation_requires_the_exact_bridge_node(self) -> None:
+        """Verify that graph observation requires the exact bridge node."""
         expected_type = live_protocol.INTERFACE_TYPE
         config = {"caseId": "full-duplex", "topics": ["/phase186/duplex"]}
 
         def endpoint(node_name: str) -> types.SimpleNamespace:
+            """Handle endpoint for Phase186 acceptance."""
             return types.SimpleNamespace(
                 node_name=node_name,
                 node_namespace="/",
@@ -1241,6 +1291,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             )
 
         def observe(node_name: str) -> bool:
+            """Handle observe for Phase186 acceptance."""
             info = endpoint(node_name)
             node = mock.Mock()
             node.get_publishers_info_by_topic.return_value = [info]
@@ -1248,6 +1299,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             ready: list[bool] = []
 
             def spin_once(_rclpy, _node, predicate, _timeout, _message) -> None:
+                """Handle spin once for Phase186 acceptance."""
                 ready.append(bool(predicate()))
 
             with mock.patch.object(live_peer, "_spin_until", side_effect=spin_once):
@@ -1259,6 +1311,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertTrue(observe("unity2foxglove_ros2_bridge"))
 
     def test_runtime_environment_includes_ros_pixi_dll_directory(self) -> None:
+        """Verify that runtime environment includes ros pixi dll directory."""
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp) / "ros2"
             overlay = pathlib.Path(temp) / "overlay"
@@ -1302,6 +1355,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
     def test_unity_environment_binds_only_all_provider_fanout_to_run_domain(
         self,
     ) -> None:
+        """Verify that unity environment binds only all provider fanout to run domain."""
         source = {
             "PATH": "ambient",
             "ROS_DOMAIN_ID": "7",
