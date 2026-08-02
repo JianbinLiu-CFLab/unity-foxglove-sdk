@@ -226,6 +226,30 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("ProgressFingerprint", runtime, StringComparison.Ordinal);
             Assert.Contains("tokenHash=", runtime, StringComparison.Ordinal);
             Assert.Contains("head=", runtime, StringComparison.Ordinal);
+            var contextFailure = Slice(
+                runtime,
+                "_contextValid = TryValidateContext(out var reason);",
+                "private void OnDisable()");
+            Assert.Contains(
+                "PHASE186_ACCEPTANCE_CONTEXT_FAIL run=",
+                contextFailure,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_generatedIdentity.RunId",
+                contextFailure,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_generatedIdentity.CaseId",
+                contextFailure,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_generatedIdentity.TokenHash",
+                contextFailure,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_generatedIdentity.Head",
+                contextFailure,
+                StringComparison.Ordinal);
             Assert.Contains("CaptureFoxRunTransportStatuses", runtime, StringComparison.Ordinal);
             Assert.Contains("PublishLocalMutation", runtime, StringComparison.Ordinal);
             Assert.Contains("slowMainThread", runtime, StringComparison.OrdinalIgnoreCase);
@@ -343,6 +367,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "PHASE186_MANUAL_SCENE_READY",
                 manualPrepare,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ConfigureOpenSceneForRun",
+                manualPrepare,
+                StringComparison.Ordinal);
 
             var manualStabilization = Slice(
                 probe,
@@ -360,6 +388,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "if (manifestRefresh.SchemaInfoChanged)",
                 manualStabilization,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(\n"
+                + "                    configuration);",
+                manualStabilization.Replace("\r\n", "\n"),
+                StringComparison.Ordinal);
+            Assert.True(
+                manualStabilization.IndexOf(
+                    "Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(",
+                    StringComparison.Ordinal)
+                > manualStabilization.IndexOf(
+                    "if (manifestRefresh.SchemaInfoChanged)",
+                    StringComparison.Ordinal));
 
             var manualCompletion = Slice(
                 probe,

@@ -149,13 +149,23 @@ class ManualStatusReporterTests(unittest.TestCase):
         self.assertTrue(first_wait.wait(1.0))
         release.set()
         for _ in range(100):
-            if any("heartbeat stage=PREPARING elapsed=10s" in line for line in emitted):
+            if any(
+                "heartbeat stage=PREPARING elapsed=10s "
+                "message=Preparing the manual Bridge session." in line
+                for line in emitted
+            ):
                 break
             threading.Event().wait(0.005)
         reporter.close()
 
         self.assertEqual(1, sum("transition stage=PREPARING" in line for line in emitted))
-        self.assertTrue(any("heartbeat stage=PREPARING elapsed=10s" in line for line in emitted))
+        self.assertTrue(
+            any(
+                "heartbeat stage=PREPARING elapsed=10s "
+                "message=Preparing the manual Bridge session." in line
+                for line in emitted
+            )
+        )
         self.assertFalse(reporter.is_alive)
 
     def test_readiness_is_two_short_unity_actions_and_close_is_idempotent(self) -> None:

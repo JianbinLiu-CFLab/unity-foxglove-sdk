@@ -103,8 +103,6 @@ namespace Unity2Foxglove
                 EditorSceneManager.OpenScene(
                     Phase186Ros2BridgeAcceptanceBuilder.AcceptanceSceneAssetPath,
                     OpenSceneMode.Single);
-                Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(
-                    configuration);
                 Debug.Log(
                     "PHASE186_MANUAL_SCENE_PREPARING run=" + configuration.RunId
                     + " case=" + configuration.CaseId
@@ -202,6 +200,8 @@ namespace Unity2Foxglove
                     QueueManualPreparation();
                     return;
                 }
+                Phase186Ros2BridgeAcceptanceBuilder.ConfigureOpenSceneForRun(
+                    configuration);
                 CompleteManualPreparation(configuration, manifestRefresh);
             }
             catch (Exception exception)

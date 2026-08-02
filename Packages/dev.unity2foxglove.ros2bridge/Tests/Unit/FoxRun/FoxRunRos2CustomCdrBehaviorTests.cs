@@ -499,6 +499,100 @@ namespace Phase186
         }
 
         [Fact]
+        public void MixedCustomAndStandardPublishTopicsBuildBothPhysicalRoutes()
+        {
+            const string standardTopic = "/phase186/mixed/standard";
+            var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase186",
+                    "MixedCdrProbe",
+                    new[]
+                    {
+                        CreateScalarCustomMember(
+                            "State",
+                            "/phase186/mixed/custom",
+                            rawMemberOrder: 0),
+                        CreateStandardPublishMember(
+                            "MixedCdrProbe",
+                            "Log",
+                            standardTopic,
+                            rawMemberOrder: 1),
+                    }));
+
+            Assert.Contains(
+                "Ros2CdrSerializerRegistry.TryGetByClrType",
+                emitted,
+                StringComparison.Ordinal);
+            Assert.Contains("case 1:", emitted, StringComparison.Ordinal);
+
+            var host = @"
+namespace Phase186
+{
+    public sealed class MultiState
+    {
+        public int Count;
+    }
+
+    public partial class MixedCdrProbe
+    {
+        public string __foxRunOrigin = ""phase186-mixed"";
+        public MultiState __foxRunCapture_0_0 = new MultiState { Count = 7 };
+        public ulong __foxRunCaptureSequence_0 = 11UL;
+        public global::Foxglove.Log __foxRunCapture_1_0 =
+            new global::Foxglove.Log { Message = ""standard"" };
+        public ulong __foxRunCaptureSequence_1 = 22UL;
+        public global::Foxglove.Log Log;
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase186MixedCdrProbe_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(host),
+                    CSharpSyntaxTree.ParseText(emitted),
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            using var stream = new MemoryStream();
+            var compilationResult = compilation.Emit(stream);
+            Assert.True(
+                compilationResult.Success,
+                string.Join(
+                    Environment.NewLine,
+                    compilationResult.Diagnostics.Where(
+                        diagnostic =>
+                            diagnostic.Severity
+                            == DiagnosticSeverity.Error)));
+
+            stream.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(stream);
+            var probe = Activator.CreateInstance(
+                assembly.GetType(
+                    "Phase186.MixedCdrProbe",
+                    throwOnError: true));
+            var source = Assert.IsAssignableFrom<
+                IFoxRunBridgeGeneratedPublishSource>(probe);
+            Assert.True(
+                source.FoxRunBridge_TryBuildPublish(
+                    1,
+                    1_860_000_000UL,
+                    out var route,
+                    out var reason),
+                reason);
+
+            Assert.Equal(standardTopic, route.Topic);
+            Assert.Equal("foxglove_msgs/msg/Log", route.LogicalSchemaName);
+            Assert.Equal("cdr", route.MessageEncoding);
+            Assert.Equal("ros2msg", route.SchemaEncoding);
+            Assert.Equal(22UL, route.Sequence);
+            Assert.Equal(
+                Ros2CdrGeneratedSerializers.Serialize(
+                    new Foxglove.Log { Message = "standard" }),
+                route.Payload.ToArray());
+        }
+
+        [Fact]
         public void GeneratedBuilderDistinguishesNullAndEmptyMembersOnlyWithPresenceBits()
         {
             const string origin = "phase184-null-empty";
@@ -1019,6 +1113,42 @@ namespace Phase186
                     canConstruct: true),
                 generatesWebSocketCodec: false,
                 publishTransportIds: Array.Empty<string>(),
+                subscribeTransportId:
+                    "unity2foxglove.ros2bridge");
+
+        private static FoxRunGenerationMember CreateStandardPublishMember(
+            string className,
+            string memberName,
+            string topic,
+            int rawMemberOrder)
+            => new FoxRunGenerationMember(
+                "Phase186",
+                className,
+                memberName,
+                "Field",
+                "Foxglove.Log",
+                isValueType: false,
+                isArray: false,
+                elementTypeName: string.Empty,
+                topic,
+                hz: 10f,
+                schemaName: "foxglove.Log",
+                policy: (int)FoxRunPolicy.Trigger,
+                tolerance: 0f,
+                hostKind: "Field",
+                rawMemberOrder,
+                conditionalSymbols: string.Empty,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
+                encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
+                typeShape: FoxRunTypeShape.Object(
+                    "Foxglove.Log",
+                    Array.Empty<FoxRunTypeField>(),
+                    canConstruct: true),
+                generatesWebSocketCodec: false,
+                publishTransportIds: new[]
+                {
+                    "unity2foxglove.ros2bridge",
+                },
                 subscribeTransportId:
                     "unity2foxglove.ros2bridge");
 

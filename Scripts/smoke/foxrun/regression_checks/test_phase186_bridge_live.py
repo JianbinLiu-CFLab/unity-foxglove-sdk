@@ -276,6 +276,68 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             reporter.mock_calls,
         )
 
+    def test_manual_wait_fails_immediately_on_exact_unity_context_failure(self) -> None:
+        config = {
+            "outputRoot": "unused",
+            "runtimeRowId": "jazzy-fastrtps",
+            "bridgeHost": "127.0.0.1",
+            "bridgePort": 18767,
+            "foxgloveHost": "127.0.0.1",
+            "foxglovePort": 18768,
+            "externalGate": "external-gate.json",
+            "exerciseGate": "exercise-gate.json",
+            "caseId": "manual-jazzy-fastrtps-duplex",
+            "manual": True,
+            "requiredActors": [],
+            "runId": "phase186h-current-0123456789ab",
+            "tokenHash": "a" * 64,
+            "head": "b" * 40,
+            "unityLog": "unity.log",
+        }
+        runtime = types.SimpleNamespace(
+            zenoh_router=None,
+            zenoh_endpoint=None,
+            row_id="jazzy-fastrtps",
+            distro="jazzy",
+            rmw="rmw_fastrtps_cpp",
+        )
+        owner = mock.Mock()
+        owner.residual_pids.return_value = []
+        pointer = pathlib.Path("owned-pointer.json")
+        cleanup = {
+            "complete": True,
+            "cleanupErrors": [],
+            "residualProcesses": [],
+            "residualPorts": [],
+            "residualOverlays": [],
+            "residualTemporaryProjects": [],
+        }
+
+        with mock.patch.object(live, "prepare_runtime", return_value=runtime), \
+                mock.patch.object(live, "OwnedLiveProcesses", return_value=owner), \
+                mock.patch.object(live, "_launch_sidecar", return_value=(mock.Mock(), {})), \
+                mock.patch.object(live, "_write_manual_pointer", return_value=pointer), \
+                mock.patch.object(live, "_mirror_manual_log"), \
+                mock.patch.object(live, "_manual_scene_prepare_failure", return_value=None), \
+                mock.patch.object(
+                    live,
+                    "_manual_context_failure",
+                    return_value="serialized-run-identity-differs",
+                ), \
+                mock.patch.object(live, "_remove_manual_pointer"), \
+                mock.patch.object(live, "_cleanup_document", return_value=cleanup), \
+                self.assertRaises(live.LiveFailure) as failure:
+            live.run_live(
+                pathlib.Path("D:/repo"),
+                config,
+                unity_editor=pathlib.Path("Unity.exe"),
+                manual_timeout_seconds=30.0,
+                reporter=mock.Mock(),
+            )
+
+        self.assertEqual("FAIL_UNITY_CONTEXT", failure.exception.code)
+        owner.close.assert_called_once_with()
+
     def test_manual_scene_ready_requires_exact_identity_and_stable_schema(self) -> None:
         config = {
             "unityLog": "unity.log",
@@ -303,11 +365,25 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             + f"tokenHash={config['tokenHash']} head={config['head']} "
             + "manifest=abc schemaInfoChanged=false"
         )
+        preparing = (
+            "PHASE186_MANUAL_SCENE_PREPARING "
+            + f"run={config['runId']} case={config['caseId']} "
+            + f"tokenHash={config['tokenHash']} head={config['head']} "
+            + "schemaRefresh=1"
+        )
 
         with mock.patch.object(live_peer, "_read_log", return_value=stale + "\n" + changing):
             self.assertFalse(live._manual_scene_ready_in_log(config))
         with mock.patch.object(live_peer, "_read_log", return_value=stale + "\n" + exact):
             self.assertTrue(live._manual_scene_ready_in_log(config))
+        with mock.patch.object(live_peer, "_read_log", return_value=stale):
+            self.assertFalse(live._manual_scene_preparing_in_log(config))
+        with mock.patch.object(
+            live_peer,
+            "_read_log",
+            return_value=stale + "\n" + preparing,
+        ):
+            self.assertTrue(live._manual_scene_preparing_in_log(config))
 
         failed = (
             "PHASE186_MANUAL_SCENE_PREPARE_FAIL "
@@ -319,6 +395,38 @@ class Phase186BridgeLiveTests(unittest.TestCase):
             self.assertEqual(
                 "InvalidOperationException",
                 live._manual_scene_prepare_failure(config),
+            )
+
+    def test_manual_context_failure_requires_exact_generated_identity(self) -> None:
+        config = {
+            "unityLog": "unity.log",
+            "runId": "phase186h-current-0123456789ab",
+            "caseId": "manual-jazzy-fastrtps-duplex",
+            "tokenHash": "a" * 64,
+            "head": "b" * 40,
+        }
+        prefix = "PHASE186_ACCEPTANCE_CONTEXT_FAIL "
+        exact = (
+            prefix
+            + f"run={config['runId']} case={config['caseId']} "
+            + f"tokenHash={config['tokenHash']} head={config['head']} "
+            + "reason=serialized-run-identity-differs"
+        )
+        stale = exact.replace(
+            str(config["runId"]),
+            "phase186h-stale-0123456789ab",
+        )
+
+        with mock.patch.object(live_peer, "_read_log", return_value=stale):
+            self.assertIsNone(live._manual_context_failure(config))
+        with mock.patch.object(
+            live_peer,
+            "_read_log",
+            return_value=stale + "\n" + exact,
+        ):
+            self.assertEqual(
+                "serialized-run-identity-differs",
+                live._manual_context_failure(config),
             )
 
     def test_ros_graph_gate_requires_exact_bridge_publisher(self) -> None:

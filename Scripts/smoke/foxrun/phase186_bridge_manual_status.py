@@ -39,6 +39,7 @@ class ManualStatusReporter:
         self._wait = wait
         self._started = clock()
         self._stage: str | None = None
+        self._message: str | None = None
         self._last_transition: tuple[str, str] | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -72,6 +73,7 @@ class ManualStatusReporter:
             if self._last_transition == (clean_stage, clean_message):
                 return
             self._stage = clean_stage
+            self._message = clean_message
             self._last_transition = (clean_stage, clean_message)
         self._emit(
             "transition",
@@ -130,10 +132,11 @@ class ManualStatusReporter:
         while not self._wait(self._stop, self._heartbeat_seconds):
             with self._lock:
                 stage = self._stage
-            if stage is not None:
+                message = self._message
+            if stage is not None and message is not None:
                 self._emit(
                     "heartbeat",
-                    f"stage={stage} elapsed={self._elapsed()}",
+                    f"stage={stage} elapsed={self._elapsed()} message={message}",
                 )
 
     def close(self) -> None:

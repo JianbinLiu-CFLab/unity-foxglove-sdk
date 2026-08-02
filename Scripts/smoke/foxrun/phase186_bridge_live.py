@@ -657,6 +657,27 @@ def _manual_scene_ready_in_log(config: Mapping[str, Any]) -> bool:
     return False
 
 
+def _manual_scene_preparing_in_log(config: Mapping[str, Any]) -> bool:
+    prefix = "PHASE186_MANUAL_SCENE_PREPARING "
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        fields: dict[str, str] = {}
+        for part in line[len(prefix) :].split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
+        ):
+            return True
+    return False
+
+
 def _manual_scene_prepare_failure(config: Mapping[str, Any]) -> str | None:
     prefix = "PHASE186_MANUAL_SCENE_PREPARE_FAIL "
     log = pathlib.Path(str(config["unityLog"]))
@@ -675,6 +696,30 @@ def _manual_scene_prepare_failure(config: Mapping[str, Any]) -> str | None:
             and fields.get("head") == str(config["head"])
         ):
             return fields.get("reason") or "unknown"
+    return None
+
+
+def _manual_context_failure(config: Mapping[str, Any]) -> str | None:
+    prefix = "PHASE186_ACCEPTANCE_CONTEXT_FAIL "
+    log = pathlib.Path(str(config["unityLog"]))
+    for line in live_peer._read_log(log).splitlines():
+        if not line.startswith(prefix):
+            continue
+        identity, separator, reason = line[len(prefix) :].partition(" reason=")
+        if not separator:
+            continue
+        fields: dict[str, str] = {}
+        for part in identity.split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = value
+        if (
+            fields.get("run") == str(config["runId"])
+            and fields.get("case") == str(config["caseId"])
+            and fields.get("tokenHash") == str(config["tokenHash"])
+            and fields.get("head") == str(config["head"])
+        ):
+            return reason.strip() or "unknown"
     return None
 
 
@@ -1150,6 +1195,7 @@ def run_live(
                 )
             deadline = time.monotonic() + manual_timeout_seconds
             gate_written = False
+            scene_preparing_reported = False
             scene_ready_reported = False
             reported_progress: set[str] = set()
             while time.monotonic() < deadline:
@@ -1160,6 +1206,22 @@ def run_live(
                         "FAIL_UNITY_PREPARE",
                         "Unity scene preparation failed: " + prepare_failure,
                     )
+                context_failure = _manual_context_failure(config)
+                if context_failure is not None:
+                    raise LiveFailure(
+                        "FAIL_UNITY_CONTEXT",
+                        "Unity acceptance context failed: " + context_failure,
+                    )
+                if (
+                    not scene_preparing_reported
+                    and _manual_scene_preparing_in_log(config)
+                ):
+                    scene_preparing_reported = True
+                    if reporter is not None:
+                        reporter.transition(
+                            "4/5",
+                            "Unity is generating and compiling; waiting for stable READY",
+                        )
                 if (
                     not scene_ready_reported
                     and _manual_scene_ready_in_log(config)

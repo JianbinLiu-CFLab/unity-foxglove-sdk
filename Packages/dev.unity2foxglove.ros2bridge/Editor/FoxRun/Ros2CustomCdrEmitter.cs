@@ -61,7 +61,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 .ToList();
             var hasPublish = topics.Any(topic =>
                     topicMap[topic].Count == 1
-                    && IsSupportedCustomPublish(topicMap[topic][0]));
+                    && IsSupportedPublish(topicMap[topic][0]));
             var subscribeBindings = BuildSubscribeBindings(
                 type,
                 topics,
@@ -154,11 +154,11 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                  topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
-                if (fields.Count != 1 || !IsSupportedCustomPublish(fields[0]))
+                if (fields.Count != 1 || !IsSupportedPublish(fields[0]))
                     continue;
 
                 var member = fields[0];
-                var shape = ProjectShape(member.TypeShape);
+                var isStandard = IsSupportedStandardPublish(member);
                 var stableId = BuildStableMemberId(
                     type.DeclaringType,
                     member.MemberKind,
@@ -166,12 +166,73 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     member.Topic,
                     member.Mode,
                     member.JsonFieldName);
+                sb.AppendLine($"{pad}            case {topicIndex}:");
+                sb.AppendLine($"{pad}            {{");
+                if (isStandard)
+                {
+                    var sourceType = GlobalTypeName(
+                        member.TypeShape.TypeName);
+                    sb.AppendLine(
+                        $"{pad}                if (!global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrSerializerRegistry.TryGetByClrType(typeof({sourceType}), out var __serializer))");
+                    sb.AppendLine($"{pad}                {{");
+                    sb.AppendLine(
+                        $"{pad}                    reason = \"The generated Bridge CDR serializer registry has no entry for the declared Foxglove type.\";");
+                    sb.AppendLine($"{pad}                    return false;");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine(
+                        $"{pad}                var __source = __foxRunCapture_{topicIndex}_0;");
+                    sb.AppendLine(
+                        $"{pad}                if ((object)__source == null) {{ reason = \"Official Foxglove ROS 2 message is null.\"; return false; }}");
+                    sb.AppendLine(
+                        $"{pad}                if (__foxRunCaptureSequence_{topicIndex} == 0) {{ reason = \"ROS 2 message sequence was not captured.\"; return false; }}");
+                    sb.AppendLine($"{pad}                byte[] payload;");
+                    sb.AppendLine($"{pad}                try");
+                    sb.AppendLine($"{pad}                {{");
+                    sb.AppendLine(
+                        $"{pad}                    payload = __serializer.Serialize(__source);");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine(
+                        $"{pad}                catch (global::System.Exception exception)");
+                    sb.AppendLine($"{pad}                {{");
+                    sb.AppendLine(
+                        $"{pad}                    reason = exception.Message ?? \"Official Foxglove ROS 2 serialization failed.\";");
+                    sb.AppendLine(
+                        $"{pad}                    if (reason.Length > 512) reason = reason.Substring(0, 512);");
+                    sb.AppendLine($"{pad}                    return false;");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine(
+                        $"{pad}                route = new global::Unity.FoxgloveSDK.Components.FoxRunTransportPublishRoute(");
+                    sb.AppendLine(
+                        $"{pad}                    \"{CSharpStringLiteral(stableId)}\",");
+                    sb.AppendLine(
+                        $"{pad}                    \"{CSharpStringLiteral(member.Topic)}\",");
+                    sb.AppendLine($"{pad}                    __serializer.SchemaName,");
+                    sb.AppendLine($"{pad}                    payload,");
+                    sb.AppendLine($"{pad}                    nowNs,");
+                    sb.AppendLine(
+                        $"{pad}                    __foxRunCaptureSequence_{topicIndex},");
+                    sb.AppendLine(
+                        $"{pad}                    new global::Unity.FoxgloveSDK.Components.FoxRunDeliveryPolicy(");
+                    sb.AppendLine(
+                        $"{pad}                        global::Unity.FoxgloveSDK.Components.{ReliabilityLiteral(member.Reliability)},");
+                    sb.AppendLine(
+                        $"{pad}                        global::Unity.FoxgloveSDK.Components.{DurabilityLiteral(member.Durability)},");
+                    sb.AppendLine(
+                        $"{pad}                        global::Unity.FoxgloveSDK.Components.{HistoryLiteral(member.History)},");
+                    sb.AppendLine(
+                        $"{pad}                        {member.Depth}),");
+                    sb.AppendLine($"{pad}                    \"cdr\",");
+                    sb.AppendLine($"{pad}                    \"ros2msg\");");
+                    sb.AppendLine($"{pad}                return true;");
+                    sb.AppendLine($"{pad}            }}");
+                    continue;
+                }
+
+                var shape = ProjectShape(member.TypeShape);
                 var schemaName = RosPackageName
                                  + "/msg/"
                                  + shape.PayloadIdentity
                                  + "Envelope";
-                sb.AppendLine($"{pad}            case {topicIndex}:");
-                sb.AppendLine($"{pad}            {{");
                 sb.AppendLine(
                     $"{pad}                if (!__TryBuildFoxRunRos2Cdr_{topicIndex}(nowNs, out var payload, out reason))");
                 sb.AppendLine($"{pad}                    return false;");
@@ -973,6 +1034,21 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                         BridgeProviderId,
                         StringComparer.Ordinal))
                && ProjectShape(member.TypeShape) != null;
+
+        private static bool IsSupportedStandardPublish(
+            FoxRunGenerationMember member)
+            => member != null
+               && member.Mode != 2
+               && IsOfficialFoxgloveMessage(member)
+               && (member.PublishTransportIds == null
+                   || member.PublishTransportIds.Contains(
+                       BridgeProviderId,
+                       StringComparer.Ordinal));
+
+        private static bool IsSupportedPublish(
+            FoxRunGenerationMember member)
+            => IsSupportedCustomPublish(member)
+               || IsSupportedStandardPublish(member);
 
         private static bool IsSupportedCustomSubscribe(
             FoxRunGenerationMember member)

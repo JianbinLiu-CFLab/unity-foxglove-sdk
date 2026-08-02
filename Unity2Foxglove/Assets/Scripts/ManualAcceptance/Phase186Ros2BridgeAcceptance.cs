@@ -272,7 +272,12 @@ namespace Unity2Foxglove.ManualAcceptance
                 : "Fail closed: " + reason;
             if (!_contextValid)
                 Debug.LogError(
-                    "PHASE186_ACCEPTANCE_CONTEXT_FAIL reason="
+                    "PHASE186_ACCEPTANCE_CONTEXT_FAIL run="
+                    + _generatedIdentity.RunId
+                    + " case=" + _generatedIdentity.CaseId
+                    + " tokenHash=" + _generatedIdentity.TokenHash
+                    + " head=" + _generatedIdentity.Head
+                    + " reason="
                     + Phase186Bound(reason));
         }
 
