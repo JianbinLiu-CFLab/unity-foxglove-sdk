@@ -126,6 +126,8 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _fanoutFailedProviderObserved;
         private long _fanoutSentFramesBeforeFailure;
         private string _progressFingerprint = string.Empty;
+        private readonly Phase186ManualInteractionState _manualInteraction =
+            new Phase186ManualInteractionState();
 
         public string RunId => _runId;
         public string CaseId => _caseId;
@@ -183,6 +185,7 @@ namespace Unity2Foxglove.ManualAcceptance
             string externalGate,
             string exerciseGate)
         {
+            _manualInteraction.ResetForRun();
             if (!IsRunId(runId))
                 throw new ArgumentException("Run ID is malformed.", nameof(runId));
             if (string.IsNullOrWhiteSpace(caseId) || caseId.Length > 80)
@@ -236,6 +239,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _enableCount = SaturatingIncrement(_enableCount);
             _generatedEvidence = default;
             _generatedIdentity = default;
+            _manualInteraction.ResetForRun();
             _ready = false;
             _terminal = false;
             _readyMarkerEmitted = false;
@@ -283,7 +287,13 @@ namespace Unity2Foxglove.ManualAcceptance
             if (!_contextValid || _terminal)
                 return;
 
+            var appliedBeforeTick = _generatedEvidence.Applied;
             Phase186Generated_Tick(ref _generatedEvidence);
+            _manualInteraction.ObserveGeneratedTick(
+                _manual,
+                appliedBeforeTick,
+                _generatedEvidence.Applied,
+                HasObservedExternalInput());
             CaptureProviderEvidence();
             RefreshExerciseGate();
             RefreshExternalGate();
@@ -340,7 +350,9 @@ namespace Unity2Foxglove.ManualAcceptance
         private void EmitProgressIfChanged()
         {
             var caseSpecific = HasCaseSpecificEvidence();
-            var fingerprint = ProgressFingerprint(caseSpecific);
+            var fingerprint = _manual
+                ? ManualProgressFingerprint(caseSpecific)
+                : ProgressFingerprint(caseSpecific);
             if (string.Equals(
                     fingerprint,
                     _progressFingerprint,
@@ -349,6 +361,14 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
             _progressFingerprint = fingerprint;
+            if (_manual)
+                EmitManualProgress(caseSpecific);
+            else
+                EmitAutomaticProgress(caseSpecific);
+        }
+
+        private void EmitAutomaticProgress(bool caseSpecific)
+        {
             Debug.Log(
                 "PHASE186_ACCEPTANCE_PROGRESS run=" + _runId
                 + " case=" + _caseId
@@ -376,11 +396,46 @@ namespace Unity2Foxglove.ManualAcceptance
                + ":" + _subscribeState
                + ":" + Phase186Bound(_lastDiagnostic);
 
+        private string ManualProgressFingerprint(bool caseSpecific)
+            => ProgressFingerprint(caseSpecific)
+               + (_manualInteraction.ExternalAObserved ? "1" : "0");
+
+        private void EmitManualProgress(bool caseSpecific)
+        {
+            Debug.Log(
+                "PHASE186_ACCEPTANCE_PROGRESS run=" + _runId
+                    + " case=" + _caseId
+                    + " tokenHash=" + _tokenHash
+                    + " head=" + _featureHead
+                    + " ready=" + (_ready ? "true" : "false")
+                    + " external=" + (_externalGateReady ? "true" : "false")
+                    + " generated=" + (_generatedEvidence.CanComplete ? "true" : "false")
+                    + " caseSpecific=" + (caseSpecific ? "true" : "false")
+                    + " connected=" + (_connected ? "true" : "false")
+                    + " publish=" + _publishState
+                    + " subscribe=" + _subscribeState
+                    + " externalA=" + (_manualInteraction.ExternalAObserved ? "true" : "false")
+                    + " received=" + _generatedEvidence.Received.ToString(
+                        CultureInfo.InvariantCulture)
+                    + " applied=" + _generatedEvidence.Applied.ToString(
+                        CultureInfo.InvariantCulture)
+                    + " diagnostic=" + Phase186Bound(_lastDiagnostic));
+        }
+
         /// <summary>Publishes one causally distinct local B after remote A.</summary>
         public void PublishLocalMutation()
         {
-            if (!_contextValid || _terminal)
-                return;
+            if (_manual)
+            {
+                var interaction = EvaluateManualInteraction();
+                if (!_manualInteraction.TryRequestLocalB(interaction))
+                    return;
+            }
+            else
+            {
+                if (!_contextValid || _terminal)
+                    return;
+            }
             _localMutationRequested = true;
             var published = false;
             Phase186Generated_PublishLocalMutation(
@@ -399,7 +454,8 @@ namespace Unity2Foxglove.ManualAcceptance
         /// <summary>Emits the exact blocking manual marker after live evidence.</summary>
         public void CompleteManualAcceptance()
         {
-            if (!_manual || !CanComplete || _terminal)
+            var interaction = EvaluateManualInteraction();
+            if (!_manualInteraction.TryRequestComplete(interaction))
                 return;
             _terminal = true;
             _status = "Manual acceptance completed for the current run.";
@@ -561,11 +617,26 @@ namespace Unity2Foxglove.ManualAcceptance
                            "Ready",
                            StringComparison.Ordinal))
                    && (!needsSubscribe
-                       || string.Equals(
-                           _subscribeState,
-                           "Ready",
-                           StringComparison.Ordinal));
+                        || string.Equals(
+                            _subscribeState,
+                            "Ready",
+                            StringComparison.Ordinal));
         }
+
+        private Phase186ManualInteraction EvaluateManualInteraction()
+            => _manualInteraction.Evaluate(
+                _manual,
+                _contextValid,
+                _terminal,
+                string.Equals(
+                    _publishState,
+                    "Ready",
+                    StringComparison.Ordinal),
+                string.Equals(
+                    _subscribeState,
+                    "Ready",
+                    StringComparison.Ordinal),
+                CanComplete);
 
         private void RefreshExternalGate()
         {
@@ -777,7 +848,9 @@ namespace Unity2Foxglove.ManualAcceptance
             const float left = 12f;
             const float top = 44f;
             const float width = 820f;
-            GUI.Box(new Rect(left, top, width, 250f), "Phase186 ROS-free Bridge acceptance");
+            GUI.Box(
+                new Rect(left, top, width, _manual ? 280f : 250f),
+                "Phase186 ROS-free Bridge acceptance");
             GUI.Label(new Rect(left + 12f, top + 26f, width - 24f, 22f),
                 "Run: " + Phase186Bound(_runId) + " / " + Phase186Bound(_caseId));
             GUI.Label(new Rect(left + 12f, top + 48f, width - 24f, 22f),
@@ -803,21 +876,48 @@ namespace Unity2Foxglove.ManualAcceptance
                 "Latest Phase181: "
                 + Phase186Bound(_generatedEvidence.LastCustomMessage));
 
-            GUI.enabled = _contextValid && !_terminal;
+            var interaction = EvaluateManualInteraction();
+            if (_manual)
+            {
+                GUI.Label(new Rect(left + 12f, top + 180f, width - 24f, 22f),
+                    "Manual step: " + ManualStepText(interaction.Step));
+            }
+            var buttonTop = _manual ? 212f : 190f;
+
+            GUI.enabled = _manual
+                          ? interaction.CanRequestLocalB
+                          : _contextValid && !_terminal;
             if (GUI.Button(
-                    new Rect(left + 12f, top + 190f, 280f, 32f),
+                    new Rect(left + 12f, top + buttonTop, 280f, 32f),
                     "Publish distinct local mutation B"))
             {
                 PublishLocalMutation();
             }
-            GUI.enabled = _manual && CanComplete && !_terminal;
+            GUI.enabled = interaction.CanRequestComplete;
             if (GUI.Button(
-                    new Rect(left + 310f, top + 190f, 280f, 32f),
+                    new Rect(left + 310f, top + buttonTop, 280f, 32f),
                     "Complete current manual run"))
             {
                 CompleteManualAcceptance();
             }
             GUI.enabled = true;
+        }
+
+        private static string ManualStepText(Phase186ManualStep step)
+        {
+            switch (step)
+            {
+                case Phase186ManualStep.ReadyToPublishLocalB:
+                    return "Ready to publish local B.";
+                case Phase186ManualStep.WaitingForAutomatedBAndPeerEvidence:
+                    return "Waiting for automated B and peer evidence.";
+                case Phase186ManualStep.ReadyToComplete:
+                    return "Ready to complete.";
+                case Phase186ManualStep.CompletedKeepPlayRunning:
+                    return "Completed; keep Play Mode running.";
+                default:
+                    return "Waiting for Provider Publish/Subscribe readiness and external A.";
+            }
         }
 
         internal static void Phase186RecordSequence(

@@ -29,5 +29,7 @@
              Link="Harness/FoxRunAnalyzerTestComposition.cs" />
     <Compile Include="../../../dev.unity2foxglove.sdk/Tests/Unit/Fixtures/UnityEngineMathTypes.cs"
              Link="CompileStubs/UnityEngineMathTypes.cs" />
+    <Compile Include="../../../../Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs"
+             Link="ManualAcceptance/Phase186ManualInteractionState.cs" />
   </ItemGroup>
 </Project>

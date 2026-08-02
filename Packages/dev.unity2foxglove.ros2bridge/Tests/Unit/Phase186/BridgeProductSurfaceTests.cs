@@ -189,6 +189,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
         {
             const string runtimeRelative =
                 "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186Ros2BridgeAcceptance.cs";
+            const string interactionRelative =
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase186ManualInteractionState.cs";
             const string builderRelative =
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186Ros2BridgeAcceptanceBuilder.cs";
             const string probeRelative =
@@ -199,6 +201,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             foreach (var relative in new[]
                      {
                          runtimeRelative,
+                         interactionRelative,
                          builderRelative,
                          probeRelative,
                          sceneRelative,
@@ -208,6 +211,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             }
 
             var runtime = File.ReadAllText(PathOf(runtimeRelative));
+            var interaction = File.ReadAllText(PathOf(interactionRelative));
+            Assert.DoesNotContain("UnityEngine", interaction, StringComparison.Ordinal);
+            Assert.Contains("Phase186ManualStep", interaction, StringComparison.Ordinal);
+            Assert.Contains("ObserveGeneratedTick", interaction, StringComparison.Ordinal);
+            Assert.Contains("ResetForRun", interaction, StringComparison.Ordinal);
+            Assert.Contains("TryRequestLocalB", interaction, StringComparison.Ordinal);
+            Assert.Contains("TryRequestComplete", interaction, StringComparison.Ordinal);
             Assert.Contains("partial void Phase186Generated_Describe", runtime, StringComparison.Ordinal);
             Assert.Contains("partial void Phase186Generated_Tick", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", runtime, StringComparison.Ordinal);
@@ -220,12 +230,85 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("PublishLocalMutation", runtime, StringComparison.Ordinal);
             Assert.Contains("slowMainThread", runtime, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ProviderDirectionsReady", runtime, StringComparison.Ordinal);
+            Assert.Contains("EvaluateManualInteraction", runtime, StringComparison.Ordinal);
+            Assert.Contains("_manualInteraction.TryRequestLocalB", runtime, StringComparison.Ordinal);
+            Assert.Contains("_manualInteraction.TryRequestComplete", runtime, StringComparison.Ordinal);
+            Assert.Contains(
+                "var appliedBeforeTick = _generatedEvidence.Applied;\n"
+                + "            Phase186Generated_Tick(ref _generatedEvidence);\n"
+                + "            _manualInteraction.ObserveGeneratedTick(\n"
+                + "                _manual,\n"
+                + "                appliedBeforeTick,\n"
+                + "                _generatedEvidence.Applied,\n"
+                + "                HasObservedExternalInput());",
+                runtime.Replace("\r\n", "\n"),
+                StringComparison.Ordinal);
+            Assert.True(
+                runtime.IndexOf("Phase186Generated_Tick(ref _generatedEvidence);", StringComparison.Ordinal)
+                < runtime.IndexOf("_manualInteraction.ObserveGeneratedTick(", StringComparison.Ordinal));
+            Assert.True(
+                runtime.IndexOf("_manualInteraction.ResetForRun();", StringComparison.Ordinal)
+                < runtime.IndexOf("_runId = runId;", StringComparison.Ordinal));
+            Assert.Contains(
+                "tokenHash=\" + _tokenHash\n                    + \" head=\" + _featureHead",
+                runtime.Replace("\r\n", "\n"),
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "+ \" externalA=\" + (_manualInteraction.ExternalAObserved ? \"true\" : \"false\")",
+                runtime,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "+ (_manualInteraction.ExternalAObserved ? \"1\" : \"0\")",
+                runtime,
+                StringComparison.Ordinal);
             Assert.Contains(
                 "if (!_hasObservedConnection && stats.Connected)",
                 runtime,
                 StringComparison.Ordinal);
             Assert.Contains("PHASE186_FANOUT_FAILURE_INJECTED", runtime, StringComparison.Ordinal);
             Assert.Contains("unity-exercise-gate.json", runtime, StringComparison.Ordinal);
+
+            var automaticProgress = Slice(
+                runtime,
+                "private void EmitAutomaticProgress(bool caseSpecific)",
+                "private string ProgressFingerprint(bool caseSpecific)");
+            foreach (var required in new[]
+                     {
+                         "PHASE186_ACCEPTANCE_PROGRESS run=",
+                         "+ \" case=\" + _caseId",
+                         "+ \" ready=\" + (_ready ? \"true\" : \"false\")",
+                         "+ \" external=\" + (_externalGateReady ? \"true\" : \"false\")",
+                         "+ \" generated=\" + (_generatedEvidence.CanComplete ? \"true\" : \"false\")",
+                         "+ \" caseSpecific=\" + (caseSpecific ? \"true\" : \"false\")",
+                         "+ \" connected=\" + (_connected ? \"true\" : \"false\")",
+                         "+ \" publish=\" + _publishState",
+                         "+ \" subscribe=\" + _subscribeState",
+                         "+ \" received=\" + _generatedEvidence.Received.ToString(",
+                         "+ \" applied=\" + _generatedEvidence.Applied.ToString(",
+                         "+ \" diagnostic=\" + Phase186Bound(_lastDiagnostic)"
+                     })
+            {
+                Assert.Contains(required, automaticProgress, StringComparison.Ordinal);
+            }
+            Assert.DoesNotContain("tokenHash=", automaticProgress, StringComparison.Ordinal);
+            Assert.DoesNotContain("head=", automaticProgress, StringComparison.Ordinal);
+            Assert.DoesNotContain("externalA=", automaticProgress, StringComparison.Ordinal);
+
+            var automaticFingerprint = Slice(
+                runtime,
+                "private string ProgressFingerprint(bool caseSpecific)",
+                "private string ManualProgressFingerprint(bool caseSpecific)");
+            Assert.Contains(
+                "=> (_ready ? \"1\" : \"0\")\n"
+                + "               + (_externalGateReady ? \"1\" : \"0\")\n"
+                + "               + (_generatedEvidence.CanComplete ? \"1\" : \"0\")\n"
+                + "               + (caseSpecific ? \"1\" : \"0\")\n"
+                + "               + (_connected ? \"1\" : \"0\")\n"
+                + "               + \":\" + _publishState\n"
+                + "               + \":\" + _subscribeState\n"
+                + "               + \":\" + Phase186Bound(_lastDiagnostic);",
+                automaticFingerprint.Replace("\r\n", "\n"),
+                StringComparison.Ordinal);
 
             var builder = File.ReadAllText(PathOf(builderRelative));
             Assert.Contains("EditorSceneManager.SaveScene", builder, StringComparison.Ordinal);
@@ -299,6 +382,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             => Path.Combine(
                 RepoRoot,
                 relative.Replace('/', Path.DirectorySeparatorChar));
+
+        private static string Slice(string source, string start, string end)
+        {
+            var startIndex = source.IndexOf(start, StringComparison.Ordinal);
+            var endIndex = source.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
+            Assert.True(startIndex >= 0, start);
+            Assert.True(endIndex > startIndex, end);
+            return source.Substring(startIndex, endIndex - startIndex);
+        }
 
         private static string RepoRoot
         {
