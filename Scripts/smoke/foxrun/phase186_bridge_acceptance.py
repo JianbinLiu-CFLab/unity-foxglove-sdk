@@ -1218,6 +1218,100 @@ def _incomplete_cleanup_evidence(stage: str) -> dict[str, Any]:
     }
 
 
+def _emit_terminal_handoff(
+    status: Any | None,
+    *,
+    verdict: str,
+    reason: str,
+    evidence_root: pathlib.Path,
+    machine_line: str,
+) -> None:
+    """Emit reporter-only human handoff before the stable machine marker."""
+
+    if status is not None:
+        status.terminal(
+            verdict,
+            reason,
+            str(pathlib.Path(evidence_root).resolve()),
+        )
+    print(machine_line, flush=True)
+
+
+def _persist_preflight_failure(
+    run_root: pathlib.Path,
+    *,
+    run_id: str,
+    token: str,
+    case_id: str,
+    head: str | None,
+    stage: str,
+    error: protocol.ProtocolFailure,
+    cleanup: Mapping[str, Any],
+    status: Any,
+) -> Mapping[str, Any]:
+    """Persist a reporter-mode preflight failure without inventing authority."""
+
+    failure_code = (
+        str(error.code)
+        if str(error.code).startswith("FAIL_")
+        else "FAIL_PREFLIGHT"
+    )
+    prefix = failure_code + ": "
+    failure_message = str(error)
+    if failure_message.startswith(prefix):
+        failure_message = failure_message[len(prefix) :]
+    reason = f"{failure_code}: {failure_message}"
+    if head is not None:
+        result = protocol.make_failure_summary(
+            run_id=run_id,
+            token=token,
+            case_id=case_id,
+            head=head,
+            evidence_root=str(run_root),
+            failure_code=failure_code,
+            failure_message=failure_message,
+            cleanup=cleanup,
+        )
+        persist_terminal(run_root, result)
+        _emit_terminal_handoff(
+            status,
+            verdict="FAIL",
+            reason=reason,
+            evidence_root=run_root,
+            machine_line=protocol.format_terminal_line(result),
+        )
+        return result
+
+    evidence_path = (run_root / "terminal-preauthority-failure.json").resolve()
+    result = {
+        "schemaVersion": 1,
+        "runId": protocol.require_run_id(run_id),
+        "tokenHash": protocol.token_sha256(token),
+        "caseId": protocol.require_case(case_id).case_id,
+        "head": None,
+        "headObserved": False,
+        "verdict": "FAIL",
+        "failureCode": failure_code,
+        "stage": stage,
+        "failureMessage": failure_message,
+        "cleanup": dict(cleanup),
+    }
+    write_json_atomic(evidence_path, result)
+    machine_line = (
+        "PHASE186_PREAUTHORITY_FAIL"
+        + f" run={run_id} case={case_id} headObserved=false"
+        + f" failureCode={failure_code} evidence={evidence_path}"
+    )
+    _emit_terminal_handoff(
+        status,
+        verdict="FAIL",
+        reason=reason,
+        evidence_root=run_root,
+        machine_line=machine_line,
+    )
+    return result
+
+
 def _persist_interrupted(
     run_root: pathlib.Path,
     *,
@@ -1227,6 +1321,7 @@ def _persist_interrupted(
     head: str | None,
     stage: str,
     cleanup: Mapping[str, Any] | None = None,
+    status: Any | None = None,
 ) -> Mapping[str, Any]:
     """Persist one stable Ctrl+C result with honest cleanup observability."""
 
@@ -1246,11 +1341,17 @@ def _persist_interrupted(
             "cleanup": _incomplete_cleanup_evidence(stage),
         }
         write_json_atomic(evidence_path, result)
-        print(
+        machine_line = (
             "PHASE186_INTERRUPTED_FAIL"
             + f" run={run_id} case={case_id} headObserved=false"
-            + f" evidence={evidence_path}",
-            flush=True,
+            + f" evidence={evidence_path}"
+        )
+        _emit_terminal_handoff(
+            status,
+            verdict="FAIL",
+            reason=f"FAIL_INTERRUPTED: interrupted during {stage}",
+            evidence_root=run_root,
+            machine_line=machine_line,
         )
         return result
 
@@ -1265,7 +1366,13 @@ def _persist_interrupted(
         cleanup=cleanup or _incomplete_cleanup_evidence(stage),
     )
     persist_terminal(run_root, result)
-    print(protocol.format_terminal_line(result), flush=True)
+    _emit_terminal_handoff(
+        status,
+        verdict="FAIL",
+        reason=f"FAIL_INTERRUPTED: interrupted during {stage}",
+        evidence_root=run_root,
+        machine_line=protocol.format_terminal_line(result),
+    )
     return result
 
 
@@ -1397,7 +1504,13 @@ def main(
                     head=args.expected_head,
                     prerequisite=live_error.prerequisite,
                 )
-                print(protocol.format_terminal_line(result), flush=True)
+                _emit_terminal_handoff(
+                    status,
+                    verdict="NOT RUN",
+                    reason=str(result["missingPrerequisite"]),
+                    evidence_root=run_root,
+                    machine_line=protocol.format_terminal_line(result),
+                )
                 return EXIT_NOT_RUN
             failure_code = (
                 "FAIL_INTERRUPTED"
@@ -1430,7 +1543,13 @@ def main(
                 cleanup=failure_cleanup,
             )
             persist_terminal(run_root, result)
-            print(protocol.format_terminal_line(result), flush=True)
+            _emit_terminal_handoff(
+                status,
+                verdict="FAIL",
+                reason=f"{failure_code}: {failure_message}",
+                evidence_root=run_root,
+                machine_line=protocol.format_terminal_line(result),
+            )
             return EXIT_FAIL
 
         if actors is None or observations is None or cleanup is None:
@@ -1448,7 +1567,13 @@ def main(
             cleanup=cleanup,
         )
         persist_terminal(run_root, result)
-        print(protocol.format_terminal_line(result), flush=True)
+        _emit_terminal_handoff(
+            status,
+            verdict="PASS",
+            reason="manual acceptance passed with terminal cleanup complete",
+            evidence_root=run_root,
+            machine_line=protocol.format_terminal_line(result),
+        )
         return EXIT_PASS
     except KeyboardInterrupt:
         if status is not None:
@@ -1474,6 +1599,7 @@ def main(
             case_id=args.case,
             head=args.expected_head,
             stage=interruption_stage,
+            status=status,
         )
         return EXIT_FAIL
     except LivePrerequisiteMissing as exc:
@@ -1495,9 +1621,43 @@ def main(
             head=args.expected_head,
             prerequisite=str(exc),
         )
-        print(protocol.format_terminal_line(result), flush=True)
+        _emit_terminal_handoff(
+            status,
+            verdict="NOT RUN",
+            reason=str(result["missingPrerequisite"]),
+            evidence_root=run_root,
+            machine_line=protocol.format_terminal_line(result),
+        )
         return EXIT_NOT_RUN
     except protocol.ProtocolFailure as exc:
+        if status is not None and run_root is not None:
+            failure_cleanup: Mapping[str, Any] = (
+                protocol.clean_cleanup_evidence()
+            )
+            if owned_project is not None:
+                project_path = owned_project.path
+                try:
+                    _remove_owned_unity_project(owned_project)
+                    owned_project = None
+                except protocol.ProtocolFailure as cleanup_error:
+                    failure_cleanup = _record_temporary_project_cleanup_failure(
+                        run_root,
+                        failure_cleanup,
+                        project_path,
+                        cleanup_error,
+                    )
+            _persist_preflight_failure(
+                run_root,
+                run_id=run_id,
+                token=token,
+                case_id=args.case,
+                head=args.expected_head,
+                stage=interruption_stage,
+                error=exc,
+                cleanup=failure_cleanup,
+                status=status,
+            )
+            return EXIT_FAIL
         if owned_project is not None:
             try:
                 _remove_owned_unity_project(owned_project)

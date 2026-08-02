@@ -81,9 +81,12 @@ class ManualStatusReporter:
     def unity_ready(self, label: str) -> None:
         """Give the operator exactly two short Unity actions."""
 
-        clean_label = str(label).strip() or "the prepared manual scene"
-        self._sink(f"UNITY ACTION 1: open {clean_label}.")
-        self._sink("UNITY ACTION 2: enter Play Mode once.")
+        del label
+        self._sink(
+            "UNITY ACTION 1: Foxglove > Manual Acceptance > Phase186 > "
+            "Prepare Current Bridge Run"
+        )
+        self._sink("UNITY ACTION 2: Enter Play Mode once")
 
     def detail(self, message: str) -> None:
         """Emit concise supplemental context without changing the stage."""
@@ -91,6 +94,32 @@ class ManualStatusReporter:
         clean_message = str(message).strip()
         if clean_message:
             self._emit("detail", clean_message)
+
+    def terminal(self, verdict: str, reason: str, evidence_root: str) -> None:
+        """Emit the concise operator handoff before the machine terminal line."""
+
+        clean_verdict = str(verdict).strip()
+        clean_reason = str(reason).strip()
+        clean_evidence = str(evidence_root).strip()
+        if clean_verdict not in {"PASS", "FAIL", "NOT RUN"}:
+            raise ValueError("manual terminal verdict is invalid")
+        if not clean_reason or not clean_evidence:
+            raise ValueError("manual terminal reason and evidence are required")
+        self._sink(
+            f"PHASE186 MANUAL VERDICT: {clean_verdict} - {clean_reason}"
+        )
+        self._sink(f"PHASE186 MANUAL EVIDENCE: {clean_evidence}")
+        if clean_verdict == "PASS":
+            next_action = (
+                "Exit Play Mode only after terminal cleanup finished; "
+                "move to the next suite."
+            )
+        else:
+            next_action = (
+                "Review the evidence, fix the named cause, then rerun "
+                "the same one-line suite."
+            )
+        self._sink("PHASE186 MANUAL NEXT: " + next_action)
 
     def _run_heartbeats(self) -> None:
         while not self._wait(self._stop, self._heartbeat_seconds):
@@ -126,6 +155,11 @@ class NullManualStatusReporter:
         return None
 
     def detail(self, _message: str) -> None:
+        return None
+
+    def terminal(
+        self, _verdict: str, _reason: str, _evidence_root: str
+    ) -> None:
         return None
 
     def close(self) -> None:

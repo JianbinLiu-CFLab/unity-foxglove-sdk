@@ -60,6 +60,44 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
 
         self.assertEqual(0, completed.returncode, completed.stderr)
 
+    def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
+        for verdict, reason in (
+            ("PASS", "cleanup complete"),
+            ("FAIL", "FAIL_RUNTIME: peer stopped"),
+            ("NOT RUN", "Unity license unavailable"),
+        ):
+            with self.subTest(verdict=verdict):
+                ordered: list[str] = []
+                reporter = mock.Mock()
+                reporter.terminal.side_effect = (
+                    lambda value, *_args: ordered.append("human:" + value)
+                )
+                with mock.patch.object(
+                    acceptance,
+                    "print",
+                    side_effect=lambda value, **_kwargs: ordered.append(
+                        "machine:" + value
+                    ),
+                    create=True,
+                ):
+                    acceptance._emit_terminal_handoff(
+                        reporter,
+                        verdict=verdict,
+                        reason=reason,
+                        evidence_root=pathlib.Path(r"D:\evidence\run"),
+                        machine_line="PHASE186_TERMINAL " + verdict,
+                    )
+
+                self.assertEqual(
+                    ["human:" + verdict, "machine:PHASE186_TERMINAL " + verdict],
+                    ordered,
+                )
+                reporter.terminal.assert_called_once_with(
+                    verdict,
+                    reason,
+                    str(pathlib.Path(r"D:\evidence\run").resolve()),
+                )
+
     def test_direct_cli_still_requires_expected_head(self) -> None:
         with self.assertRaises(SystemExit):
             acceptance.parse_args(
@@ -154,6 +192,9 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
             manual_timeout_seconds=1800.0,
         )
         reporter = mock.Mock()
+        reporter.terminal.side_effect = lambda *_args: print(
+            "PHASE186 TEST HUMAN HANDOFF"
+        )
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory() as temp:
             repository = pathlib.Path(temp).resolve()
@@ -243,12 +284,169 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         reporter.close.assert_not_called()
         self.assertIn("headObserved=false", stdout.getvalue())
         self.assertIn(str(interrupted_path), stdout.getvalue())
+        self.assertLess(
+            stdout.getvalue().index("PHASE186 TEST HUMAN HANDOFF"),
+            stdout.getvalue().index("PHASE186_INTERRUPTED_FAIL"),
+        )
         self.assertFalse(terminal_summary_exists)
         self.assertFalse(terminal_marker_exists)
         self.assertEqual(HEAD, observed["head"])
         self.assertEqual(observed, observed_persisted)
         self.assertEqual(observed, protocol.validate_terminal_summary(observed))
         self.assertFalse(observed_interrupted_exists)
+
+    def test_reporter_preflight_failure_with_head_uses_validated_terminal(self) -> None:
+        args = types.SimpleNamespace(
+            case="manual-jazzy-fastrtps-duplex",
+            manual=True,
+            expected_head=None,
+            output_root=pathlib.Path("build/phase186/test-preflight-fail"),
+            unity_editor=None,
+            run_id=None,
+            bridge_port=None,
+            foxglove_port=None,
+            domain_id=None,
+            runtime_row=None,
+            unity_composition="repository-all-providers",
+            preflight_only=False,
+            manual_timeout_seconds=1800.0,
+        )
+
+        class Reservation:
+            def __init__(self, port: int) -> None:
+                self.port = port
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_unused) -> None:
+                return None
+
+        reporter = mock.Mock()
+        reporter.terminal.side_effect = lambda *_args: print("HUMAN PREFLIGHT FAIL")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            (repository / "build" / "phase186").mkdir(parents=True)
+            owned = types.SimpleNamespace(path=repository / "owned-project")
+            reservations = iter((Reservation(18767), Reservation(18768)))
+            with mock.patch.object(acceptance, "parse_args", return_value=args), \
+                    mock.patch.object(acceptance, "validate_arguments", return_value=args), \
+                    mock.patch.object(acceptance, "repository_root", return_value=repository), \
+                    mock.patch.object(
+                        acceptance,
+                        "_new_run_identity",
+                        return_value=(
+                            "phase186h-preflight-fail-012345",
+                            "p186h_0123456789abcdef01234567",
+                        ),
+                    ), \
+                    mock.patch.object(acceptance, "git_head", return_value=HEAD), \
+                    mock.patch.object(acceptance, "_create_owned_unity_project", return_value=owned), \
+                    mock.patch.object(
+                        acceptance,
+                        "reserve_loopback_port",
+                        side_effect=lambda *_: next(reservations),
+                    ), \
+                    mock.patch.object(
+                        acceptance,
+                        "_preflight",
+                        side_effect=acceptance.AcceptanceFailure(
+                            "FAIL_PACKAGE_COMPOSITION", "authority drift"
+                        ),
+                    ), \
+                    mock.patch.object(acceptance, "_remove_owned_unity_project") as remove, \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = acceptance.main(
+                    [], status=reporter, resolve_current_head=True
+                )
+
+            run_root = next(
+                (repository / "build" / "phase186" / "test-preflight-fail").iterdir()
+            )
+            terminal = json.loads(
+                (run_root / "terminal-summary.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(acceptance.EXIT_FAIL, result)
+        self.assertEqual(HEAD, terminal["head"])
+        self.assertEqual("FAIL_PACKAGE_COMPOSITION", terminal["failureCode"])
+        self.assertTrue(terminal["cleanup"]["complete"])
+        self.assertEqual(terminal, protocol.validate_terminal_summary(terminal))
+        remove.assert_called_once_with(owned)
+        self.assertEqual("", stderr.getvalue())
+        self.assertLess(
+            stdout.getvalue().index("HUMAN PREFLIGHT FAIL"),
+            stdout.getvalue().index("PHASE186_ACCEPTANCE_FAIL"),
+        )
+
+    def test_reporter_preauthority_failure_persists_null_head_before_machine(self) -> None:
+        args = types.SimpleNamespace(
+            case="manual-jazzy-fastrtps-duplex",
+            manual=True,
+            expected_head=None,
+            output_root=pathlib.Path("build/phase186/test-preauthority-fail"),
+            unity_editor=None,
+            run_id=None,
+            bridge_port=None,
+            foxglove_port=None,
+            domain_id=None,
+            runtime_row=None,
+            unity_composition="repository-all-providers",
+            preflight_only=False,
+            manual_timeout_seconds=1800.0,
+        )
+        reporter = mock.Mock()
+        reporter.terminal.side_effect = lambda *_args: print("HUMAN PREAUTHORITY FAIL")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            (repository / "build" / "phase186").mkdir(parents=True)
+            with mock.patch.object(acceptance, "parse_args", return_value=args), \
+                    mock.patch.object(acceptance, "validate_arguments", return_value=args), \
+                    mock.patch.object(acceptance, "repository_root", return_value=repository), \
+                    mock.patch.object(
+                        acceptance,
+                        "_new_run_identity",
+                        return_value=(
+                            "phase186h-preauthority-fail-012345",
+                            "p186h_0123456789abcdef01234567",
+                        ),
+                    ), \
+                    mock.patch.object(
+                        acceptance,
+                        "git_head",
+                        side_effect=acceptance.AcceptanceFailure(
+                            "FAIL_PREFLIGHT", "Git HEAD could not be read"
+                        ),
+                    ), \
+                    mock.patch.object(acceptance, "_create_owned_unity_project") as create, \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = acceptance.main(
+                    [], status=reporter, resolve_current_head=True
+                )
+
+            run_root = next(
+                (repository / "build" / "phase186" / "test-preauthority-fail").iterdir()
+            )
+            evidence_path = run_root / "terminal-preauthority-failure.json"
+            terminal = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(acceptance.EXIT_FAIL, result)
+        self.assertIsNone(terminal["head"])
+        self.assertFalse(terminal["headObserved"])
+        self.assertEqual("FAIL_PREFLIGHT", terminal["failureCode"])
+        self.assertEqual("Git HEAD could not be read", terminal["failureMessage"])
+        self.assertTrue(terminal["cleanup"]["complete"])
+        create.assert_not_called()
+        self.assertEqual("", stderr.getvalue())
+        self.assertLess(
+            stdout.getvalue().index("HUMAN PREAUTHORITY FAIL"),
+            stdout.getvalue().index("PHASE186_PREAUTHORITY_FAIL"),
+        )
+        self.assertIn(str(evidence_path), stdout.getvalue())
 
     def test_manual_flag_is_limited_to_the_two_manual_cases(self) -> None:
         args = acceptance.parse_args(
