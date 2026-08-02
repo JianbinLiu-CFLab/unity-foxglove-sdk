@@ -34,10 +34,12 @@ INTERFACE_DIGEST = (
 TERMINAL_PREFIX = "PHASE186_ACCEPTANCE_"
 MANUAL_COMPLETE_PREFIX = "PHASE186_MANUAL_COMPLETE"
 MANUAL_READY_PREFIX = "PHASE186_MANUAL_READY"
-COORDINATOR_UNITY_READY_TIMEOUT_SECONDS = 480.0
+COORDINATOR_UNITY_READY_TIMEOUT_SECONDS = 900.0
 # Workers are launched before Unity so the coordinator can prove actor
-# ownership. Their readiness budget must outlive the coordinator's first-import
-# budget; otherwise a valid slow Unity import can kill the witnesses first.
+# ownership. The coordinator matches the Unity Batch probe's 15-minute bound;
+# its first import can consume more than eight minutes on a cold package cache.
+# Worker readiness must outlive that budget so valid witnesses are not killed
+# before Unity reaches Play Mode.
 ACTOR_UNITY_READY_TIMEOUT_SECONDS = (
     COORDINATOR_UNITY_READY_TIMEOUT_SECONDS + 60.0
 )

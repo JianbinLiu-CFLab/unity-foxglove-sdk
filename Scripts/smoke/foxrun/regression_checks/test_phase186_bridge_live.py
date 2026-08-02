@@ -601,9 +601,9 @@ class Phase186BridgeLiveTests(unittest.TestCase):
         self.assertEqual([duplicate], actual)
 
     def test_actor_readiness_budget_outlives_coordinator_budget(self) -> None:
-        self.assertGreaterEqual(
+        self.assertEqual(
+            900.0,
             live_protocol.COORDINATOR_UNITY_READY_TIMEOUT_SECONDS,
-            480.0,
         )
         self.assertGreater(
             live_protocol.ACTOR_UNITY_READY_TIMEOUT_SECONDS,
