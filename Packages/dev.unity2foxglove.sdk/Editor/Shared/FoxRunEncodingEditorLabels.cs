@@ -18,15 +18,17 @@ namespace Unity.FoxgloveSDK.Editor
             if (property == null)
                 return;
 
-            var selected = property.enumValueIndex switch
+            var selected = property.intValue switch
             {
+                (int)FoxRunEncoding.Protobuf => 0,
                 (int)FoxRunEncoding.JSON => 1,
                 (int)FoxRunEncoding.MessagePack => 2,
                 _ => 0
             };
             selected = EditorGUILayout.Popup(label, selected, ManagerDefaultLabels);
-            property.enumValueIndex = selected switch
+            property.intValue = selected switch
             {
+                0 => (int)FoxRunEncoding.Protobuf,
                 1 => (int)FoxRunEncoding.JSON,
                 2 => (int)FoxRunEncoding.MessagePack,
                 _ => (int)FoxRunEncoding.Protobuf

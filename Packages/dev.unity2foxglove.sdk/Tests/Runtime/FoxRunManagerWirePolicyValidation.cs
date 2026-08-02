@@ -232,13 +232,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal),
                 "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\", \"MessagePack\" }", StringComparison.Ordinal)
+                  && labels.Contains("var selected = property.intValue switch", StringComparison.Ordinal)
+                  && labels.Contains("(int)FoxRunEncoding.Protobuf => 0", StringComparison.Ordinal)
                   && labels.Contains("(int)FoxRunEncoding.JSON => 1", StringComparison.Ordinal)
                   && labels.Contains("(int)FoxRunEncoding.MessagePack => 2", StringComparison.Ordinal)
+                  && labels.Contains("property.intValue = selected switch", StringComparison.Ordinal)
+                  && labels.Contains("0 => (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
                   && labels.Contains("1 => (int)FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && labels.Contains("2 => (int)FoxRunEncoding.MessagePack", StringComparison.Ordinal)
-                  && labels.Contains("_ => (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
+                  && !labels.Contains("property.enumValueIndex", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
-                "175C-8: Manager dropdown offers Protobuf, JSON, and MessagePack and cannot persist Inherit");
+                "175C-8: Manager dropdown maps popup indices through serialized enum values without using enumValueIndex as the wire enum");
             Check(inspector.Contains("Subscription Control", StringComparison.Ordinal)
                   && inspector.Contains("Subscribe Source", StringComparison.Ordinal)
                   && inspector.Contains("WebSocket Encoding", StringComparison.Ordinal)
