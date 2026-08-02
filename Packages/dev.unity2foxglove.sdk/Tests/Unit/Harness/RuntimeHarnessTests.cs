@@ -259,6 +259,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void RuntimeHarnessBuildRestoresBeforeNoRestoreBuild()
+        {
+            var source = File.ReadAllText(Path.Combine(
+                FindRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Tests",
+                "Unit",
+                "Harness",
+                "RuntimeHarnessTests.cs"));
+            var method = source.LastIndexOf(
+                "private static async Task EnsureHarnessBuiltAsync",
+                StringComparison.Ordinal);
+            var restore = source.IndexOf("\"restore\"", method, StringComparison.Ordinal);
+            var build = source.IndexOf("\"build\"", method, StringComparison.Ordinal);
+
+            Assert.True(method >= 0);
+            Assert.True(restore > method);
+            Assert.True(build > restore);
+        }
+
+        [Fact]
         public void Phase14013RepoLocatorSupportsGitWorktreeFiles()
         {
             var method = LoadRuntimeSyntax("Phase140_13Validation.cs")
@@ -340,6 +362,22 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 if (_harnessBuilt)
                     return;
+
+                var restore = await RunProcessAsync(
+                    "dotnet",
+                    repoRoot,
+                    HarnessBuildTimeoutMilliseconds,
+                    new[]
+                    {
+                        "restore",
+                        project,
+                        "--nologo",
+                        "--ignore-failed-sources"
+                    });
+                if (restore.ExitCode != 0)
+                    throw new InvalidOperationException(
+                        "Failed to restore runtime harness before CLI tests." + Environment.NewLine +
+                        restore.StandardOutput + Environment.NewLine + restore.StandardError);
 
                 var result = await RunProcessAsync(
                     "dotnet",

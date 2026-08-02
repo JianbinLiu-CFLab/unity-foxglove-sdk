@@ -383,6 +383,15 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
 
+    def test_msbuild_compile_include_normalizes_windows_separators(self) -> None:
+        """MSBuild Include paths must resolve identically on Windows and POSIX hosts."""
+        self.assertEqual(
+            "src/Shared/FoxRunGenerationModel.cs",
+            self.validator._normalize_compile_include(
+                r"src\Shared\FoxRunGenerationModel.cs"
+            ),
+        )
+
     def test_provider_analyzers_use_owned_explicit_sources_and_roslyn_only_dependencies(self) -> None:
         """Provider analyzers must not compile core trees or carry runtime codec dependencies."""
         projects = (

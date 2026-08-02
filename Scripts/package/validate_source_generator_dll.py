@@ -185,6 +185,11 @@ def validate_unity_plugin_protobuf_match(analyzer_dependency: Path) -> bool:
     return True
 
 
+def _normalize_compile_include(include: str) -> str:
+    """Normalize an MSBuild Compile Include for the current filesystem host."""
+    return include.replace("\\", "/")
+
+
 def _project_sources(project: Path) -> list[Path]:
     """Resolve every explicit Compile item in one controlled analyzer project."""
     root = ET.parse(project).getroot()
@@ -193,7 +198,7 @@ def _project_sources(project: Path) -> list[Path]:
         for include in node.attrib.get("Include", "").split(";"):
             include = include.strip()
             if include:
-                normalized = include.replace("\\", "/")
+                normalized = _normalize_compile_include(include)
                 if "*" in normalized or "?" in normalized:
                     sources.extend(
                         path.resolve()
@@ -204,7 +209,7 @@ def _project_sources(project: Path) -> list[Path]:
                     )
                 else:
                     sources.append(
-                        (project.parent / include).resolve()
+                        (project.parent / normalized).resolve()
                     )
     return sources
 
@@ -309,14 +314,15 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                     include = include.strip()
                     if not include:
                         continue
-                    if "*" in include:
+                    normalized = _normalize_compile_include(include)
+                    if "*" in normalized:
                         failures.append(
                             f"{name}: wildcard Compile item is forbidden: "
                             f"{include}"
                         )
                         continue
                     source = (
-                        target.project.parent / include
+                        target.project.parent / normalized
                     ).resolve()
                     if not source.is_relative_to(package_root):
                         failures.append(
