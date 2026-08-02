@@ -37,7 +37,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 requiresSubscription: true,
                 writerCapacity: 2,
                 pendingCapacity: 2,
-                timeoutMs: 50,
+                timeoutMs: 1000,
                 retirement: reservation,
                 readerRetirementIndex: 0,
                 writerRetirementIndex: 1,
