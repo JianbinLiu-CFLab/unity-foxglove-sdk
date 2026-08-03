@@ -352,17 +352,21 @@ namespace Unity.FoxgloveSDK.IO
                     if (logNs > clampedTime)
                         continue;
 
-                    var data = new byte[dataLen];
-                    Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
-
-                    latestByChannel[record.ChannelId] = new McapMessage
+                    var candidate = new McapMessage
                     {
                         ChannelId = record.ChannelId,
                         Sequence = record.Sequence,
                         LogTime = logNs,
-                        PublishTime = record.PublishTime,
-                        Data = data
+                        PublishTime = record.PublishTime
                     };
+                    if (latestByChannel.TryGetValue(record.ChannelId, out var current)
+                        && McapIndexedReaderHelpers.CompareLatestCandidate(candidate, current) <= 0)
+                        continue;
+
+                    var data = new byte[dataLen];
+                    Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
+                    candidate.Data = data;
+                    latestByChannel[record.ChannelId] = candidate;
                 }
             }
 

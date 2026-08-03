@@ -295,7 +295,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void StreamingAscendingMaxMessagesKeepsEarliestLogTimes()
+        public void StreamingAscendingMaxMessagesKeepsLatestLogTimes()
         {
             using var stream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
             using var streaming = new McapStreamingReader(stream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
@@ -304,8 +304,36 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Order = McapReadOrder.LogTimeAscending,
                 MaxMessages = 2
             });
-            Assert.True(result.Messages.Count == 2 && result.Messages[0].Sequence == 1 && result.Messages[1].Sequence == 2,
-                "173-040A: streaming LogTimeAscending + MaxMessages keeps earliest messages");
+            Assert.True(result.Messages.Count == 2 && result.Messages[0].Sequence == 4 && result.Messages[1].Sequence == 5,
+                "187-140: streaming LogTimeAscending + MaxMessages keeps the latest messages");
+        }
+
+        [Fact]
+        public void AscendingMaxMessagesReturnsSameSubsetAcrossReaders()
+        {
+            var options = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 2
+            };
+
+            using var indexedStream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
+            using var indexed = new McapIndexedReader(
+                indexedStream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+            var indexedMessages = indexed.ReadMessages(options);
+
+            using var streamingStream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
+            using var streaming = new McapStreamingReader(
+                streamingStream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+            var streamingMessages = streaming.Read(options).Messages;
+
+            Assert.Equal(
+                indexedMessages.ConvertAll(message => message.Sequence),
+                streamingMessages.ConvertAll(message => message.Sequence));
         }
 
         [Fact]

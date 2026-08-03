@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.IO
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated string length at offset {off}");
             var len = ReadSupportedLength(buf, ref off, "string");
             EnsureAvailable(buf, off, len, "string data");
-            var s = Encoding.UTF8.GetString(buf, off, len);
+            var s = McapUtf8.Decode(buf, off, len, "string");
             off += len;
             return s;
         }
@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.IO
             EnsureAvailableWithin(buf, off, 4, end, valueName + " length");
             var len = ReadSupportedLength(buf, ref off, valueName);
             EnsureAvailableWithin(buf, off, len, end, valueName + " data");
-            var value = Encoding.UTF8.GetString(buf, off, len);
+            var value = McapUtf8.Decode(buf, off, len, valueName);
             off += len;
             return value;
         }
@@ -121,6 +121,29 @@ namespace Unity.FoxgloveSDK.IO
             for (var i = 0; i < magic.Length; i++)
                 if (buf[off + i] != magic[i]) return false;
             return true;
+        }
+    }
+
+    internal static class McapUtf8
+    {
+        private static readonly UTF8Encoding StrictEncoding = new UTF8Encoding(false, true);
+
+        internal static string Decode(
+            byte[] buffer,
+            int offset,
+            int count,
+            string fieldName)
+        {
+            try
+            {
+                return StrictEncoding.GetString(buffer, offset, count);
+            }
+            catch (DecoderFallbackException error)
+            {
+                throw new InvalidDataException(
+                    "MCAP " + fieldName + " contains invalid UTF-8 at offset " + offset + ".",
+                    error);
+            }
         }
     }
 }

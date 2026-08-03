@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
@@ -392,7 +391,7 @@ namespace Unity.FoxgloveSDK.IO
 
             var count = (int)len;
             EnsureSegmentBytes(off, count, end, fieldName);
-            var value = Encoding.UTF8.GetString(buf, off, count);
+            var value = McapUtf8.Decode(buf, off, count, fieldName);
             off += count;
             return value;
         }

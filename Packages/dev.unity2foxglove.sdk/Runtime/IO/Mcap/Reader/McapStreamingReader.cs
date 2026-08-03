@@ -115,7 +115,7 @@ namespace Unity.FoxgloveSDK.IO
                     ref retainedAttachmentBytes);
             }
 
-            ApplyOrderingAndLimit(result.Messages, options);
+            McapIndexedReaderHelpers.ApplyOrderingAndLimit(result.Messages, options);
             return result;
         }
 
@@ -362,22 +362,6 @@ namespace Unity.FoxgloveSDK.IO
             return total;
         }
 
-        private static void ApplyOrderingAndLimit(List<McapMessage> messages, McapReadOptions options)
-        {
-            if (options.Order == McapReadOrder.LogTimeAscending)
-                messages.Sort(CompareMessages);
-            else if (options.Order == McapReadOrder.LogTimeDescending)
-                messages.Sort((left, right) => CompareMessages(right, left));
-
-            if (options.MaxMessages <= 0 || messages.Count <= options.MaxMessages)
-                return;
-
-            if (options.Order == McapReadOrder.LogTimeDescending || options.Order == McapReadOrder.FileOrder)
-                messages.RemoveRange(options.MaxMessages, messages.Count - options.MaxMessages);
-            else
-                messages.RemoveRange(options.MaxMessages, messages.Count - options.MaxMessages);
-        }
-
         private sealed class StreamingReadFilter
         {
             private readonly McapReadOptions _options;
@@ -537,17 +521,6 @@ namespace Unity.FoxgloveSDK.IO
 
         private static void AddChannel(List<McapChannel> channels, McapChannel channel)
             => McapRecordDecoder.AddChannel(channels, channel);
-
-        private static int CompareMessages(McapMessage left, McapMessage right)
-        {
-            var cmp = left.LogTime.CompareTo(right.LogTime);
-            if (cmp != 0) return cmp;
-            cmp = left.ChannelId.CompareTo(right.ChannelId);
-            if (cmp != 0) return cmp;
-            cmp = left.Sequence.CompareTo(right.Sequence);
-            if (cmp != 0) return cmp;
-            return left.PublishTime.CompareTo(right.PublishTime);
-        }
 
         /// <summary>Dispose the owned stream when requested by the constructor.</summary>
         public void Dispose()
