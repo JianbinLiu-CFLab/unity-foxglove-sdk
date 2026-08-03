@@ -176,12 +176,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "private void StopServer(bool restoreLivePublishers)");
             Check(OccursBefore(
                       startServer,
+                      "BeginFoxRunPublishSessionIfNeeded();",
+                      "BeginFoxRunSubscriptionSessionIfNeeded();")
+                  && OccursBefore(
+                      startServer,
                       "BeginFoxRunSubscriptionSessionIfNeeded();",
                       "if (!_foxgloveOutputEnabled)")
                   && !stopServer.Contains("EndFoxRunSubscriptionSession", StringComparison.Ordinal)
-                  && !startServer.Contains("BeginFoxRunPublishSessionIfNeeded", StringComparison.Ordinal)
                   && !stopServer.Contains("EndFoxRunPublishSession", StringComparison.Ordinal),
-                "WebSocket restart preserves both Manager-lifetime directional snapshots");
+                "WebSocket start ensures both Manager-lifetime directional snapshots before the output gate and restart preserves them");
         }
 
         private static void VerifyLegacyProviderMigrationDefaultsToWebSocket()
