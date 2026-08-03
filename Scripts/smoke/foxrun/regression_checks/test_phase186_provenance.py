@@ -198,6 +198,27 @@ class Phase186ProvenanceTests(unittest.TestCase):
         self.assertEqual([], provenance_errors)
         self.assertEqual([], inventory_errors)
 
+    def test_dotnet_ci_materializes_exact_provenance_authorities(self) -> None:
+        """The Linux release gate must own history and both pinned references."""
+
+        workflow = (ROOT / ".github/workflows/dotnet-tests.yml").read_text(
+            encoding="utf-8"
+        )
+        test_job = workflow.split("  optional-ros2-adapter:", maxsplit=1)[0]
+        self.assertIn("fetch-depth: 0", test_job)
+        self.assertIn("repository: foxglove/foxglove-sdk", test_job)
+        self.assertIn(
+            "ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
+            test_job,
+        )
+        self.assertIn("path: third-party/foxglove-sdk", test_job)
+        self.assertIn(
+            "repository: Unity-Technologies/ROS-TCP-Connector",
+            test_job,
+        )
+        self.assertIn(f"ref: {REFERENCE_REVISION}", test_job)
+        self.assertIn("path: third-party/ROS-TCP-Connector", test_job)
+
     def test_repository_rejects_noncanonical_ledger_path_even_when_payload_claims_canonical(
         self,
     ) -> None:

@@ -16,7 +16,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
+      - name: Checkout pinned official ROS-TCP-Connector reference
+        uses: actions/checkout@v4
+        with:
+          repository: Unity-Technologies/ROS-TCP-Connector
+          ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
+          path: third-party/ROS-TCP-Connector
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
         with:

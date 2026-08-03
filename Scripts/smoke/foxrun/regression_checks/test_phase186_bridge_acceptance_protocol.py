@@ -16,6 +16,9 @@ from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 HEAD = "a" * 40
 TOKEN = "p186h_0123456789abcdef01234567"
 RUN_ID = "phase186h-jazzy-0123456789ab"
+EVIDENCE_ROOT = str(
+    (pathlib.Path(tempfile.gettempdir()) / "phase186-acceptance-run").resolve()
+)
 
 
 class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
@@ -121,7 +124,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
             prerequisite="ROS 2 Jazzy Windows root",
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         validated = protocol.validate_terminal_summary(value)
         self.assertEqual("NOT RUN", validated["verdict"])
@@ -137,7 +140,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             token=TOKEN,
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         self.assertEqual("PASS", protocol.validate_terminal_summary(value)["verdict"])
         value["actors"].pop("sidecar")
@@ -151,7 +154,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             token=TOKEN,
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         for actor_name, actor in value["actors"].items():
             actor["processRole"] = actor_name
@@ -198,7 +201,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
                     token=TOKEN,
                     case_id="manual-jazzy-fastrtps-duplex",
                     head=HEAD,
-                    evidence_root=r"D:\repo\build\phase186\acceptance\run",
+                    evidence_root=EVIDENCE_ROOT,
                 )
                 value["actors"]["sidecar"]["termination"] = "owner-requested"
                 value["actors"]["sidecar"]["exitCode"] = exit_code
@@ -214,7 +217,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             token=TOKEN,
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         for forbidden_source in ("cached", "configuration", "unit-test", "skipped"):
             with self.subTest(source=forbidden_source):
@@ -230,7 +233,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             token=TOKEN,
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         for path, replacement in (
             (("head",), "b" * 39),
@@ -255,7 +258,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             token=TOKEN,
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
             failure_code="FAIL_CLEANUP",
             failure_message="owned sidecar remained live",
             cleanup={
@@ -279,7 +282,7 @@ class Phase186BridgeAcceptanceProtocolTests(unittest.TestCase):
             case_id="manual-jazzy-fastrtps-duplex",
             head=HEAD,
             prerequisite="Unity license",
-            evidence_root=r"D:\repo\build\phase186\acceptance\run",
+            evidence_root=EVIDENCE_ROOT,
         )
         line = protocol.format_terminal_line(value)
         parsed = protocol.parse_terminal_line(line, RUN_ID, TOKEN, HEAD)
