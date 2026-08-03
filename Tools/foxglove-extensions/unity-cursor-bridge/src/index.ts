@@ -37,6 +37,10 @@ const MAX_FOLLOW_STEP_MS = 150;
 const SEEK_UI_INTERVAL_MS = 100;
 const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
 const NO_TOKEN_HEADERS: Record<string, string> = { "Content-Type": "application/json" };
+const RESPONSE_DIAGNOSTIC_MAX_CHARS = 200;
+// Four bytes per displayed character preserves the existing diagnostic for valid UTF-8 while
+// keeping the response read itself bounded. The extra byte proves that the body exceeded the cap.
+const RESPONSE_DIAGNOSTIC_MAX_BYTES = (RESPONSE_DIAGNOSTIC_MAX_CHARS * 4) + 1;
 
 // Stage 3 (140K): seekPlayback is an undocumented PanelExtensionContext method reached via
 // cast. When present it lets the panel advance the Foxglove timeline forward-only at Unity's
@@ -165,12 +169,61 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export function summarizeResponseText(responseText: string, maxLength = 200): string {
+export function summarizeResponseText(responseText: string, maxLength = RESPONSE_DIAGNOSTIC_MAX_CHARS): string {
   if (responseText.length <= maxLength) {
     return responseText;
   }
 
   return `${responseText.slice(0, maxLength)}…`;
+}
+
+async function readResponseDiagnostic(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (reader == undefined) {
+    return "";
+  }
+
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let responseText = "";
+  let cancelReader = false;
+  try {
+    while (bytesRead < RESPONSE_DIAGNOSTIC_MAX_BYTES) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        responseText += decoder.decode();
+        return summarizeResponseText(responseText);
+      }
+
+      if (chunk.value.byteLength === 0) {
+        continue;
+      }
+
+      const remaining = RESPONSE_DIAGNOSTIC_MAX_BYTES - bytesRead;
+      const prefix = chunk.value.subarray(0, remaining);
+      bytesRead += prefix.byteLength;
+      responseText += decoder.decode(prefix, { stream: true });
+      if (prefix.byteLength < chunk.value.byteLength || bytesRead === RESPONSE_DIAGNOSTIC_MAX_BYTES) {
+        cancelReader = true;
+        responseText += decoder.decode();
+        const summary = summarizeResponseText(responseText);
+        return summary.length > RESPONSE_DIAGNOSTIC_MAX_CHARS
+          ? summary
+          : `${summary}…`;
+      }
+    }
+
+    throw new Error("Response diagnostic byte limit was not enforced.");
+  } finally {
+    if (cancelReader) {
+      try {
+        await reader.cancel();
+      } catch {
+        // The response may already be aborted; cancellation must not hide the HTTP status.
+      }
+    }
+    reader.releaseLock();
+  }
 }
 
 export function formatReplayTimeUtc(time: Time | undefined, cache: ReplayTimeDisplayCache): string {
@@ -195,7 +248,7 @@ export function formatReplayTimeUtc(time: Time | undefined, cache: ReplayTimeDis
   return cache.text;
 }
 
-async function sendCursor(
+export async function sendCursor(
   endpoint: string,
   token: string,
   payload: CursorPayload,
@@ -217,12 +270,22 @@ async function sendCursor(
     body: JSON.stringify(payload),
     signal,
   });
-  const responseText = await response.text();
+  if (response.ok) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The ACK is authoritative; best-effort body cleanup must not turn it into a failure.
+    }
+    return {
+      ok: true,
+      message: "Unity is following Foxglove",
+    };
+  }
+
+  const responseText = await readResponseDiagnostic(response);
   return {
-    ok: response.ok,
-    message: response.ok
-      ? "Unity is following Foxglove"
-      : `Unity rejected replay time (HTTP ${response.status}): ${summarizeResponseText(responseText)}`,
+    ok: false,
+    message: `Unity rejected replay time (HTTP ${response.status}): ${summarizeResponseText(responseText)}`,
   };
 }
 
