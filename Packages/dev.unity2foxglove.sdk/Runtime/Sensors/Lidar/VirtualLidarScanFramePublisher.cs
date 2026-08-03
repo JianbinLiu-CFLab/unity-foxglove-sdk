@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Components
             bool publishEmptyFrames,
             PointCloudFrame activeScanFrame,
             int activeScanValidPoints,
+            VirtualLidarScanRepresentation representation,
             ref VirtualLidarPointData[] snapshot,
             ref int snapshotCount,
             ref LidarScanBoundaryTimings timings)
@@ -35,20 +36,43 @@ namespace Unity.FoxgloveSDK.Components
                 if (activeScanFrame == null)
                     return false;
 
-                activeScanFrame.ValidCount = activeScanValidPoints > 0
-                    ? activeScanValidPoints
-                    : snapshotCount;
+                activeScanFrame.ValidCount = representation.UseNativeSnapshot
+                    ? snapshotCount
+                    : activeScanValidPoints;
 
-                var hasNativeSnapshot = snapshotCount > 0;
+                var hasNativeSnapshot = representation.UseNativeSnapshot && snapshotCount > 0;
                 if (!hasNativeSnapshot && activeScanValidPoints <= 0 && !publishEmptyFrames)
                     return true;
 
                 if (pointCloudPublisher == null)
                     return true;
 
-                if (!TryPublishNativePackedPointCloudScan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount, ref timings)
-                    && !TryPublishNativeDracoScan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount))
+                var publishedNative = representation.UseNativeSnapshot
+                                      && (TryPublishNativePackedPointCloudScan(
+                                              pointCloudPublisher,
+                                              activeScanFrame,
+                                              ref snapshot,
+                                              ref snapshotCount,
+                                              ref timings)
+                                          || TryPublishNativeDracoScan(
+                                              pointCloudPublisher,
+                                              activeScanFrame,
+                                              ref snapshot,
+                                              ref snapshotCount));
+                if (!publishedNative)
                 {
+                    if (hasNativeSnapshot)
+                    {
+                        activeScanValidPoints += representation.AppendValidSnapshotPoints(
+                            activeScanFrame,
+                            snapshot,
+                            snapshotCount);
+                        VirtualLidarPointSnapshotPool.Return(snapshot);
+                        snapshot = null;
+                        snapshotCount = 0;
+                    }
+
+                    activeScanFrame.ValidCount = activeScanValidPoints;
                     pointCloudPublisher.SetFrame(activeScanFrame);
                 }
 

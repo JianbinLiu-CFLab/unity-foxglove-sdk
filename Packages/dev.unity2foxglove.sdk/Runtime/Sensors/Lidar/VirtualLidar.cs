@@ -215,6 +215,7 @@ namespace Unity.FoxgloveSDK.Components
         private VirtualLidarPointData[] _activeScanPointSnapshot;
         private int _activeScanPointSnapshotCount;
         private int _activeScanValidPoints;
+        private VirtualLidarScanRepresentation _activeScanRepresentation;
         private float4x4 _activeScanWorldToLocal;
 
         private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
@@ -378,7 +379,7 @@ namespace Unity.FoxgloveSDK.Components
                 ScanScheduler.ConsumePendingScan(
                     _logPerformanceDiagnostics,
                     Time.fixedDeltaTime,
-                    UseNativePointCloudSnapshotPath(),
+                    _activeScanRepresentation.UseNativeSnapshot,
                     _scanBuffers,
                     ref _activeScanFrame,
                     ref _activeScanPointSnapshot,
@@ -446,7 +447,7 @@ namespace Unity.FoxgloveSDK.Components
                     _syntheticReflectivity,
                     _scanPattern,
                     _activeScanWorldToLocal,
-                    RequiresNativeAcquisitionFrame(),
+                    _activeScanRepresentation.RequiresNativeAcquisitionFrame,
                     _scanBuffers);
                 LogLidarFixedUpdateTiming(
                     _logPerformanceDiagnostics,
@@ -504,6 +505,9 @@ namespace Unity.FoxgloveSDK.Components
             // would drop the in-tick remainder.
             _activeScanStartPhysSeconds = scanStartPhysSeconds;
             _activeScanWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(transform.position, transform.rotation);
+            _activeScanRepresentation = new VirtualLidarScanRepresentation(
+                UseNativePointCloudSnapshotPath(),
+                RequiresNativeAcquisitionFrame());
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = _scanClock.GetScanStartUnixNs(_activeScanStartPhysSeconds),
@@ -514,7 +518,7 @@ namespace Unity.FoxgloveSDK.Components
             };
             _activeScanValidPoints = 0;
             _activeScanPointSnapshotCount = 0;
-            if (UseNativePointCloudSnapshotPath())
+            if (_activeScanRepresentation.UseNativeSnapshot)
             {
                 EnsureActiveScanSnapshotCapacity();
             }
@@ -563,6 +567,7 @@ namespace Unity.FoxgloveSDK.Components
                 _publishEmptyFrames,
                 _activeScanFrame,
                 _activeScanValidPoints,
+                _activeScanRepresentation,
                 ref _activeScanPointSnapshot,
                 ref _activeScanPointSnapshotCount,
                 ref timings);
