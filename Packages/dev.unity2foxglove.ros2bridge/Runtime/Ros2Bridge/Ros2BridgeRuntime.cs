@@ -359,81 +359,135 @@ namespace Unity2Foxglove.Ros2Bridge
 
             lock (_gate)
             {
-                if (!_enabled)
-                {
-                    reason = "ROS2 Bridge is disabled.";
+                if (!TryValidateEnqueueState(
+                        preparationKey,
+                        requiresPreparation,
+                        requireReadyAtAdmission,
+                        out reason))
                     return false;
-                }
-                if (!_autoConnect)
-                {
-                    reason = "ROS2 Bridge auto-connect is disabled; connect before sending frames.";
-                    return false;
-                }
+            }
 
-                if (requiresPreparation)
+            var preparationDisposition = _outbound.PrepareEnqueue(
+                frame,
+                out var prepared);
+            if (preparationDisposition
+                != Ros2BridgeOutboundEnqueueDisposition.Accepted)
+            {
+                lock (_gate)
                 {
-                    if (!_preparations.TryGetValue(preparationKey, out var entry))
-                    {
-                        reason = "ROS2 Bridge publisher preparation was not registered.";
-                        return false;
-                    }
-                    if (entry.Readiness == Ros2BridgePublisherReadiness.Rejected)
-                    {
-                        reason = entry.Reason;
-                        return false;
-                    }
-                    if (requireReadyAtAdmission
-                        && (entry.Readiness
-                                != Ros2BridgePublisherReadiness.Ready
-                            || entry.ReadyConnectionGeneration
-                                != _connectionGeneration))
-                    {
-                        reason =
-                            "ROS2 Bridge publisher preparation is pending.";
-                        return false;
-                    }
+                    return TryApplyEnqueueDisposition(
+                        preparationDisposition,
+                        out reason);
                 }
+            }
 
-                var disposition = _outbound.Enqueue(
-                    frame,
-                    U2R2QueueOverflowPolicy.DropOldest,
-                    requiresPreparation,
-                    _connectionGeneration);
-                switch (disposition)
+            using (prepared)
+            {
+                lock (_gate)
                 {
-                    case Ros2BridgeOutboundEnqueueDisposition.Accepted:
-                        reason = string.Empty;
-                        break;
-                    case Ros2BridgeOutboundEnqueueDisposition.DroppedOldest:
-                    case Ros2BridgeOutboundEnqueueDisposition.ReplacedLatest:
-                        _droppedFrames++;
-                        reason = string.Empty;
-                        break;
-                    case Ros2BridgeOutboundEnqueueDisposition.Oversize:
-                        reason =
-                            "ROS2 Bridge full wire frame exceeds the bounded outbound limits.";
+                    if (!TryValidateEnqueueState(
+                            preparationKey,
+                            requiresPreparation,
+                            requireReadyAtAdmission,
+                            out reason))
                         return false;
-                    case Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected:
-                        reason =
-                            "ROS2 Bridge bounded outbound capacity is exhausted.";
+
+                    var disposition = _outbound.CommitPrepared(
+                        prepared,
+                        U2R2QueueOverflowPolicy.DropOldest,
+                        requiresPreparation,
+                        _connectionGeneration);
+                    if (!TryApplyEnqueueDisposition(
+                            disposition,
+                            out reason))
                         return false;
-                    case Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop:
-                        reason = "ROS2 Bridge is disabled.";
-                        return false;
-                    case Ros2BridgeOutboundEnqueueDisposition.Faulted:
-                        reason =
-                            "ROS2 Bridge outbound scheduler faulted.";
-                        _failedFrames++;
-                        _signal.Set();
-                        return false;
-                    default:
-                        throw new InvalidOperationException(
-                            "ROS2 Bridge outbound scheduler returned an unknown admission result.");
                 }
             }
 
             _signal.Set();
             return true;
+        }
+
+        private bool TryValidateEnqueueState(
+            PublisherPreparationKey preparationKey,
+            bool requiresPreparation,
+            bool requireReadyAtAdmission,
+            out string reason)
+        {
+            if (!_enabled)
+            {
+                reason = "ROS2 Bridge is disabled.";
+                return false;
+            }
+            if (!_autoConnect)
+            {
+                reason =
+                    "ROS2 Bridge auto-connect is disabled; connect before sending frames.";
+                return false;
+            }
+
+            if (requiresPreparation)
+            {
+                if (!_preparations.TryGetValue(preparationKey, out var entry))
+                {
+                    reason =
+                        "ROS2 Bridge publisher preparation was not registered.";
+                    return false;
+                }
+                if (entry.Readiness == Ros2BridgePublisherReadiness.Rejected)
+                {
+                    reason = entry.Reason;
+                    return false;
+                }
+                if (requireReadyAtAdmission
+                    && (entry.Readiness
+                            != Ros2BridgePublisherReadiness.Ready
+                        || entry.ReadyConnectionGeneration
+                            != _connectionGeneration))
+                {
+                    reason = "ROS2 Bridge publisher preparation is pending.";
+                    return false;
+                }
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
+        private bool TryApplyEnqueueDisposition(
+            Ros2BridgeOutboundEnqueueDisposition disposition,
+            out string reason)
+        {
+            switch (disposition)
+            {
+                case Ros2BridgeOutboundEnqueueDisposition.Accepted:
+                    reason = string.Empty;
+                    return true;
+                case Ros2BridgeOutboundEnqueueDisposition.DroppedOldest:
+                case Ros2BridgeOutboundEnqueueDisposition.ReplacedLatest:
+                    _droppedFrames++;
+                    reason = string.Empty;
+                    return true;
+                case Ros2BridgeOutboundEnqueueDisposition.Oversize:
+                    reason =
+                        "ROS2 Bridge full wire frame exceeds the bounded outbound limits.";
+                    return false;
+                case Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected:
+                    reason =
+                        "ROS2 Bridge bounded outbound capacity is exhausted.";
+                    return false;
+                case Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop:
+                    reason = "ROS2 Bridge is disabled.";
+                    return false;
+                case Ros2BridgeOutboundEnqueueDisposition.Faulted:
+                    reason = "ROS2 Bridge outbound scheduler faulted.";
+                    _failedFrames++;
+                    _signal.Set();
+                    return false;
+                default:
+                    throw new InvalidOperationException(
+                        "ROS2 Bridge outbound scheduler returned an unknown admission result.");
+            }
         }
 
         private static bool TryValidateFrame(

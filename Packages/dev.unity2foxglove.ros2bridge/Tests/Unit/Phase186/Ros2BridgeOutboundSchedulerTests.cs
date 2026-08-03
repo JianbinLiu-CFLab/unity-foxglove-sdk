@@ -69,28 +69,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
-        public void EnqueueReservesTwiceTheMeasuredWireAndLeaseKeepsRawWireAndSource()
+        public void EnqueueReservesOneOwnedWireBufferAndLeaseKeepsRawWireAndSource()
         {
             var frame = Frame("/phase186/scheduler/wire", 1);
             var measurement = Ros2BridgeFrameWriter.Measure(frame);
             var requiredTransient =
-                checked(2UL * (ulong)measurement.TotalWireBytes);
-            var rejectedLimits = LimitsForMeasurement(
-                measurement,
-                requiredTransient - 1);
-            using (var rejected = new Ros2BridgeOutboundScheduler(
-                       rejectedLimits,
-                       sessionGeneration: 1))
-            {
-                Assert.Equal(
-                    Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected,
-                    rejected.Enqueue(
-                        frame,
-                        U2R2QueueOverflowPolicy.Reject));
-                Assert.Equal(0UL, rejected.DataQueuedDepth);
-                Assert.Equal(0UL, rejected.TransientBytes);
-            }
-
+                checked((ulong)measurement.TotalWireBytes);
             var acceptedLimits = LimitsForMeasurement(
                 measurement,
                 requiredTransient);
@@ -125,6 +109,68 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     lease.WireBytes.ToArray());
                 lease.Complete();
             }
+        }
+
+        [Fact]
+        public void PreparedWireReservationIsReleasedOnCancelAndCloseRace()
+        {
+            var frame = Frame("/phase186/scheduler/prepared", 1);
+            var wireBytes = checked(
+                (ulong)Ros2BridgeFrameWriter.Measure(frame).TotalWireBytes);
+            using var scheduler = new Ros2BridgeOutboundScheduler(
+                U2R2ProtocolLimits.Default,
+                sessionGeneration: 3);
+
+            Assert.Equal(
+                Ros2BridgeOutboundEnqueueDisposition.Accepted,
+                scheduler.PrepareEnqueue(frame, out var cancelled));
+            Assert.Equal(wireBytes, scheduler.TransientBytes);
+            cancelled.Dispose();
+            Assert.Equal(0UL, scheduler.TransientBytes);
+            Assert.Equal(0UL, scheduler.DataQueuedDepth);
+
+            Assert.Equal(
+                Ros2BridgeOutboundEnqueueDisposition.Accepted,
+                scheduler.PrepareEnqueue(frame, out var raced));
+            Assert.Equal(wireBytes, scheduler.TransientBytes);
+            scheduler.Close();
+            Assert.Equal(
+                Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop,
+                scheduler.CommitPrepared(
+                    raced,
+                    U2R2QueueOverflowPolicy.Reject));
+            Assert.Equal(0UL, scheduler.TransientBytes);
+            Assert.Equal(0UL, scheduler.DataQueuedDepth);
+            Assert.Equal(1UL, scheduler.Counters.RejectedAfterStop);
+        }
+
+        [Fact]
+        public void TrustedAuthorityPathTakesOwnershipButPublicFactoryClones()
+        {
+            var key = new U2R2ContractKey(1, 1);
+            var ownedBytes = new byte[] { 0x01, 0x02 };
+            var owned = U2R2OutboundFrame.DataOwned(
+                "owned",
+                key,
+                1,
+                ownedBytes);
+            Assert.True(MemoryMarshal.TryGetArray(
+                owned.Bytes,
+                out ArraySegment<byte> ownedSegment));
+            Assert.Same(ownedBytes, ownedSegment.Array);
+
+            var callerBytes = new byte[] { 0x03, 0x04 };
+            var defensive = U2R2OutboundFrame.Data(
+                "public",
+                key,
+                2,
+                callerBytes);
+            Assert.True(MemoryMarshal.TryGetArray(
+                defensive.Bytes,
+                out ArraySegment<byte> defensiveSegment));
+            Assert.NotSame(callerBytes, defensiveSegment.Array);
+            callerBytes[0] = 0xff;
+            Assert.Equal(0x03, defensive.Bytes.Span[0]);
         }
 
         [Fact]
