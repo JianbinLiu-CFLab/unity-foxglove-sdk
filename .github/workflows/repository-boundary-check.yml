@@ -6,16 +6,16 @@ on:
     paths:
       - "Plan/**"
       - "Developer/**"
-      - "*/Developer/**"
-      - "*/Developer.meta"
+      - "**/Developer/**"
+      - "**/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
   pull_request:
     branches: [main]
     paths:
       - "Plan/**"
       - "Developer/**"
-      - "*/Developer/**"
-      - "*/Developer.meta"
+      - "**/Developer/**"
+      - "**/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
 
 jobs:

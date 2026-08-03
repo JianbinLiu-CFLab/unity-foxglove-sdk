@@ -32,6 +32,9 @@ PHASE186_WINDOWS_LIVE_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "phase186-bridge-windows-live.yml"
 )
 DOTNET_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "dotnet-tests.yml"
+REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
+    ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
+)
 
 
 def load_module(name: str, path: Path):
@@ -437,6 +440,30 @@ class RunCiTests(unittest.TestCase):
 
         self.assertIn(["git", "ls-files"], calls)
         self.assertFalse(any(":(glob)" in " ".join(call) for call in calls))
+
+    def test_repository_boundary_workflow_triggers_for_deep_private_paths(self) -> None:
+        """GitHub must schedule the boundary job for private paths at any depth."""
+        workflow = REPOSITORY_BOUNDARY_WORKFLOW_PATH.read_text(encoding="utf-8")
+        event_blocks: dict[str, str] = {}
+        for event in ("push", "pull_request"):
+            match = re.search(
+                rf"(?ms)^  {event}:\n(?P<body>.*?)(?=^  [a-z_]+:|^jobs:)",
+                workflow,
+            )
+            self.assertIsNotNone(match, f"missing {event} event block")
+            event_blocks[event] = match.group("body")
+
+        required_patterns = {
+            "Unity2Foxglove/Assets/Developer/private.md": '      - "**/Developer/**"',
+            "Packages/A/B/Developer.meta": '      - "**/Developer.meta"',
+        }
+        for event, block in event_blocks.items():
+            for private_path, required_pattern in required_patterns.items():
+                self.assertIn(
+                    required_pattern,
+                    block,
+                    f"{event} does not schedule the boundary job for {private_path}",
+                )
 
     def test_run_ci_includes_schema_generated_output_freshness(self) -> None:
         """Local CI should reject stale committed schema generator outputs."""
