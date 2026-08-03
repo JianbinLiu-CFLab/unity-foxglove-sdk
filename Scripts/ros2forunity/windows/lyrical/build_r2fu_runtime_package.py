@@ -866,6 +866,32 @@ def extract_runtime(paths: BuildPaths) -> None:
                 shutil.copyfileobj(source, destination)
 
 
+def normalize_ros2cs_plugin_roots(package: Path) -> None:
+    """Replace artifact-producer plugin roots with package-relative metadata."""
+    metadata_files = (
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+    )
+    for path in metadata_files:
+        text = path.read_text(encoding="utf-8", errors="strict")
+        try:
+            root = ElementTree.fromstring(text)
+        except ElementTree.ParseError as error:
+            raise ValueError(f"Invalid ros2cs metadata XML: {path}") from error
+        plugins = root.find("plugins") if root.tag == "ros2cs" else None
+        if plugins is None or plugins.get("root") is None:
+            raise ValueError(f"Missing ros2cs plugin root: {path}")
+        normalized, replacements = re.subn(
+            r'(<plugins\b[^>]*\broot=")[^"]*(")',
+            r"\g<1>.\2",
+            text,
+            count=1,
+        )
+        if replacements != 1:
+            raise ValueError(f"Ambiguous ros2cs plugin root: {path}")
+        write_text(path, normalized)
+
+
 def safe_runtime_zip_relative_path(name: str) -> Path:
     """Return the path under Runtime/Ros2ForUnity for a trusted zip entry name."""
     zip_path = PurePosixPath(name)
@@ -1572,6 +1598,7 @@ def build_package(paths: BuildPaths) -> None:
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
+        normalize_ros2cs_plugin_roots(paths.package)
         prune_non_contract_examples(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
         patch_ros2_for_unity(paths.package)

@@ -34,6 +34,27 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
+    def test_ros2cs_plugin_metadata_requires_portable_roots(self) -> None:
+        """Both packaged plugin inventories must use a package-relative root."""
+        with tempfile.TemporaryDirectory() as temp:
+            runtime_root = Path(temp) / "Runtime" / "Ros2ForUnity"
+            plugin_root = runtime_root / "Plugins" / "Windows" / "x86_64"
+            metadata_files = (
+                runtime_root / "Plugins" / "metadata_ros2cs.xml",
+                plugin_root / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('<ros2cs><plugins root="D:\\producer\\plugins" /></ros2cs>', encoding="utf-8")
+            self.validator.RUNTIME_ROOT = runtime_root
+            self.validator.PLUGIN_ROOT = plugin_root
+            results = []
+
+            self.validator.check_ros2cs_metadata_portability(results)
+
+            self.assertEqual(2, len(results))
+            self.assertTrue(all(not result.ok for result in results))
+
     def test_release_gate_blocks_candidate_runtime_inventory(self) -> None:
         """Release gate fails while redistributionStatus is candidate_not_published."""
         exit_code = self.validator.main(["--release-gate"])

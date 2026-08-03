@@ -8,7 +8,7 @@
       <branch>HEAD</branch>
    </version>
    <standalone>1</standalone>
-   <plugins root="D:\ros2unity\.build\r2fu-release-matrix\260722022746\lyrical\ros2-for-unity\install\asset\Ros2ForUnity\Plugins" runtime_file_count="992">
+   <plugins root="." runtime_file_count="992">
       <file>Windows/x86_64/action_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_generator_py.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_typesupport_c.dll</file>

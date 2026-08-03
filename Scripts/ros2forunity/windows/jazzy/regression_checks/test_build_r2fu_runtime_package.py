@@ -90,6 +90,29 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             target = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
             self.assertEqual("ok", target.read_text(encoding="utf-8"))
 
+    def test_normalize_ros2cs_plugin_roots_rewrites_both_package_copies(self) -> None:
+        """Generated metadata must not retain the artifact producer's absolute plugin path."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            metadata_files = (
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    '<ros2cs><plugins root="D:\\producer\\plugins" runtime_file_count="1"><file>a.dll</file></plugins></ros2cs>',
+                    encoding="utf-8",
+                )
+
+            self.builder.normalize_ros2cs_plugin_roots(package)
+
+            for path in metadata_files:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn('<plugins root="." runtime_file_count="1">', text)
+                self.assertIn("<file>a.dll</file>", text)
+                self.assertNotIn("D:\\producer", text)
+
     def test_patch_deps_json_sha512_updates_inventory_hash(self) -> None:
         """Generated deps.json files should carry integrity hints and matching inventory hashes."""
         with tempfile.TemporaryDirectory() as temp:

@@ -413,6 +413,27 @@ def check_ros2cs_metadata_descriptions(results: list[CheckResult]) -> None:
         )
 
 
+def check_ros2cs_metadata_portability(results: list[CheckResult]) -> None:
+    """Require package-relative roots in both shipped plugin inventories."""
+    for path in (
+        RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
+        PLUGIN_ROOT / "metadata_ros2cs.xml",
+    ):
+        text = read_optional_text(path)
+        try:
+            root = ElementTree.fromstring(text)
+            plugins = root.find("plugins") if root.tag == "ros2cs" else None
+            plugin_root = plugins.get("root") if plugins is not None else None
+        except ElementTree.ParseError:
+            plugin_root = None
+        add(
+            results,
+            f"{rel(path)} uses portable plugin root",
+            plugin_root == ".",
+            f"root={plugin_root!r}",
+        )
+
+
 def check_runtime_manifest(results: list[CheckResult]) -> None:
     """Validate the runtime support manifest."""
     data = load_json(MANIFEST, results, "runtime manifest parses")
@@ -1192,6 +1213,7 @@ def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[
     check_package_metadata(results)
     check_required_files(results)
     check_ros2cs_metadata_descriptions(results)
+    check_ros2cs_metadata_portability(results)
     check_runtime_manifest(results)
     check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)
