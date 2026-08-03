@@ -132,6 +132,16 @@ namespace Unity.FoxgloveSDK.Transport
             return _sendQueue.Enqueue(new QueuedFrame(OpClose, Array.Empty<byte>(), FramePriority.Control));
         }
 
+        public EnqueueResult SendClose(ushort statusCode)
+        {
+            var payload = new[]
+            {
+                (byte)(statusCode >> 8),
+                (byte)statusCode
+            };
+            return _sendQueue.Enqueue(new QueuedFrame(OpClose, payload, FramePriority.Control));
+        }
+
         /// <summary>Echo back a pong frame with the given payload in response to a ping.</summary>
         public EnqueueResult SendPong(byte[] data)
         {
@@ -212,7 +222,13 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         public WsFrame ReadFrame()
         {
-            return WsFrameCodec.TryReadFrame(_stream, out var frame) ? frame : null;
+            return ReadFrame(out _);
+        }
+
+        public WsFrame ReadFrame(out WsFrameReadResult result)
+        {
+            result = WsFrameCodec.ReadFrame(_stream, out var frame);
+            return result == WsFrameReadResult.Success ? frame : null;
         }
 
         /// <summary>Close and dispose the underlying network stream.</summary>

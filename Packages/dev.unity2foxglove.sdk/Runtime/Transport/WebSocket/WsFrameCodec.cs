@@ -9,6 +9,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Text;
 using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Transport
@@ -36,6 +37,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const byte Payload64BitLengthMarker = 127;
         /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
         internal const int MaxPayloadBytes = 64 * 1024 * 1024;
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         internal static int WriteFrameHeader(byte opcode, int payloadLength, Span<byte> destination)
         {
@@ -92,15 +94,18 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         internal static bool TryReadFrame(Stream stream, out WsFrame frame)
+            => ReadFrame(stream, out frame) == WsFrameReadResult.Success;
+
+        internal static WsFrameReadResult ReadFrame(Stream stream, out WsFrame frame)
         {
             frame = null;
 
             Span<byte> header = stackalloc byte[2];
             if (!ReadExact(stream, header))
-                return false;
+                return WsFrameReadResult.EndOfStream;
 
             if ((header[0] & ReservedBitsMask) != 0)
-                return false;
+                return WsFrameReadResult.ProtocolError;
 
             var fin = (header[0] & FinBit) != 0;
             var opcode = header[0] & OpcodeMask;
@@ -111,42 +116,49 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 Span<byte> ext = stackalloc byte[2];
                 if (!ReadExact(stream, ext))
-                    return false;
+                    return WsFrameReadResult.EndOfStream;
                 payloadLen = (ext[0] << 8) | ext[1];
+                if (payloadLen <= SmallPayloadLimit)
+                    return WsFrameReadResult.ProtocolError;
             }
             else if (payloadLen == Payload64BitLengthMarker)
             {
                 Span<byte> ext = stackalloc byte[8];
                 if (!ReadExact(stream, ext))
-                    return false;
-                var len64 = (long)(((long)ext[0] << 56) | ((long)ext[1] << 48) | ((long)ext[2] << 40)
-                                 | ((long)ext[3] << 32) | ((long)ext[4] << 24) | ((long)ext[5] << 16)
-                                 | ((long)ext[6] << 8)  | (long)ext[7]);
-                if (len64 < 0 || len64 > int.MaxValue)
-                    return false;
+                    return WsFrameReadResult.EndOfStream;
+                ulong len64 = 0;
+                for (var i = 0; i < ext.Length; i++)
+                    len64 = (len64 << 8) | ext[i];
+                if ((len64 & (1UL << 63)) != 0 || len64 <= ushort.MaxValue)
+                    return WsFrameReadResult.ProtocolError;
+                if (len64 > MaxPayloadBytes)
+                    return WsFrameReadResult.MessageTooBig;
                 payloadLen = (int)len64;
             }
 
             if (!masked)
-                return false;
+                return WsFrameReadResult.ProtocolError;
 
             if (!IsKnownDataOpcode(opcode) && !IsKnownControlOpcode(opcode))
-                return false;
+                return WsFrameReadResult.ProtocolError;
 
             if (IsControlOpcode(opcode)
                 && (!fin || payloadLen > SmallPayloadLimit))
-                return false;
+                return WsFrameReadResult.ProtocolError;
+
+            if (opcode == WsOpcode.Close && payloadLen == 1)
+                return WsFrameReadResult.ProtocolError;
 
             if (payloadLen > MaxPayloadBytes)
-                return false;
+                return WsFrameReadResult.MessageTooBig;
 
             Span<byte> mask = stackalloc byte[4];
             if (!ReadExact(stream, mask))
-                return false;
+                return WsFrameReadResult.EndOfStream;
 
             var payload = new byte[payloadLen];
             if (payloadLen > 0 && !ReadExact(stream, payload, 0, payloadLen))
-                return false;
+                return WsFrameReadResult.EndOfStream;
 
             var maskIndex = 0;
             for (var i = 0; i < payload.Length; i++)
@@ -157,13 +169,36 @@ namespace Unity.FoxgloveSDK.Transport
                     maskIndex = 0;
             }
 
+            if (opcode == WsOpcode.Close && payloadLen >= 2)
+            {
+                var closeCode = (payload[0] << 8) | payload[1];
+                if (!IsValidCloseCode(closeCode))
+                    return WsFrameReadResult.ProtocolError;
+                if (!TryDecodeUtf8(payload, 2, payload.Length - 2, out _))
+                    return WsFrameReadResult.InvalidPayloadData;
+            }
+
             frame = new WsFrame
             {
                 Fin = fin,
                 Opcode = (byte)opcode,
                 Payload = payload
             };
-            return true;
+            return WsFrameReadResult.Success;
+        }
+
+        internal static bool TryDecodeUtf8(byte[] payload, int index, int count, out string text)
+        {
+            try
+            {
+                text = StrictUtf8.GetString(payload ?? Array.Empty<byte>(), index, count);
+                return true;
+            }
+            catch (DecoderFallbackException)
+            {
+                text = null;
+                return false;
+            }
         }
 
         private static bool IsControlOpcode(int opcode) => opcode >= WsOpcode.Close;
@@ -173,6 +208,23 @@ namespace Unity.FoxgloveSDK.Transport
 
         private static bool IsKnownControlOpcode(int opcode) =>
             opcode == WsOpcode.Close || opcode == WsOpcode.Ping || opcode == WsOpcode.Pong;
+
+        private static bool IsValidCloseCode(int closeCode)
+        {
+            return closeCode == 1000
+                   || closeCode == 1001
+                   || closeCode == 1002
+                   || closeCode == 1003
+                   || closeCode == 1007
+                   || closeCode == 1008
+                   || closeCode == 1009
+                   || closeCode == 1010
+                   || closeCode == 1011
+                   || closeCode == 1012
+                   || closeCode == 1013
+                   || closeCode == 1014
+                   || (closeCode >= 3000 && closeCode <= 4999);
+        }
 
         /// <summary>Read exactly <c>count</c> bytes into the buffer, returning <c>false</c> if the stream ends early.</summary>
         private static bool ReadExact(Stream stream, byte[] buffer, int offset, int count)
@@ -233,6 +285,15 @@ namespace Unity.FoxgloveSDK.Transport
 
             return false;
         }
+    }
+
+    internal enum WsFrameReadResult
+    {
+        Success,
+        EndOfStream,
+        ProtocolError,
+        InvalidPayloadData,
+        MessageTooBig
     }
 
     /// <summary>Decoded WebSocket frame: FIN flag, opcode, and unmasked payload.</summary>
