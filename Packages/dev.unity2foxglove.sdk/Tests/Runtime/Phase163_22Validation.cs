@@ -291,6 +291,8 @@ namespace Unity.FoxgloveSDK.Tests
                 onlyIf: onlyIf,
                 isAggregateMember: isAggregateMember,
                 jsonFieldName: jsonFieldName,
+                typeShape: FoxRunTypeShape.Canonical(
+                    FoxRunCanonicalTypeNormalizer.NormalizeTypeName(typeName)),
                 conditionMemberKind: conditionMemberKind,
                 isStream: isStream);
 
