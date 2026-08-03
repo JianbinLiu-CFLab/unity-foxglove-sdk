@@ -21,9 +21,11 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 import platform
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -54,6 +56,19 @@ DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
 DEFAULT_BUILD_TIMEOUT_MINUTES = 120
 UNITY_TERMINATION_WAIT_SECONDS = 30
+PROCESS_TREE_POLL_SECONDS = 0.05
+
+# Win32 process/job constants kept local so the script remains dependency-free.
+WINDOWS_CREATE_SUSPENDED = 0x00000004
+WINDOWS_JOB_OBJECT_BASIC_PROCESS_ID_LIST = 3
+WINDOWS_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+WINDOWS_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+WINDOWS_JOB_QUERY_BUFFER_BYTES = 1024 * 1024
+WINDOWS_PROCESS_SET_QUOTA = 0x0100
+WINDOWS_PROCESS_TERMINATE = 0x0001
+WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
+WINDOWS_TH32CS_SNAPTHREAD = 0x00000004
+WINDOWS_DWORD_FAILURE = 0xFFFFFFFF
 
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
@@ -352,16 +367,334 @@ def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str
     return new_offset, important
 
 
-def terminate_process(process: subprocess.Popen) -> None:
-    """Best-effort termination for a hung Unity process."""
+class _WindowsKillOnCloseJob:
+    """Own one Windows process tree through a kill-on-close Job Object."""
+
+    def __init__(self) -> None:
+        from ctypes import wintypes
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [
+                ("read_operation_count", ctypes.c_ulonglong),
+                ("write_operation_count", ctypes.c_ulonglong),
+                ("other_operation_count", ctypes.c_ulonglong),
+                ("read_transfer_count", ctypes.c_ulonglong),
+                ("write_transfer_count", ctypes.c_ulonglong),
+                ("other_transfer_count", ctypes.c_ulonglong),
+            ]
+
+        class BasicLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("per_process_user_time_limit", ctypes.c_longlong),
+                ("per_job_user_time_limit", ctypes.c_longlong),
+                ("limit_flags", wintypes.DWORD),
+                ("minimum_working_set_size", ctypes.c_size_t),
+                ("maximum_working_set_size", ctypes.c_size_t),
+                ("active_process_limit", wintypes.DWORD),
+                ("affinity", ctypes.c_size_t),
+                ("priority_class", wintypes.DWORD),
+                ("scheduling_class", wintypes.DWORD),
+            ]
+
+        class ExtendedLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("basic_limit_information", BasicLimitInformation),
+                ("io_info", IoCounters),
+                ("process_memory_limit", ctypes.c_size_t),
+                ("job_memory_limit", ctypes.c_size_t),
+                ("peak_process_memory_used", ctypes.c_size_t),
+                ("peak_job_memory_used", ctypes.c_size_t),
+            ]
+
+        self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        self._kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        self._kernel32.SetInformationJobObject.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        ]
+        self._kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        self._kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        self._kernel32.OpenProcess.restype = wintypes.HANDLE
+        self._kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        self._kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        self._kernel32.QueryInformationJobObject.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        self._kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+        self._kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        self._kernel32.TerminateJobObject.restype = wintypes.BOOL
+        self._kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        self._kernel32.CloseHandle.restype = wintypes.BOOL
+
+        self._handle = self._kernel32.CreateJobObjectW(None, None)
+        if not self._handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+
+        info = ExtendedLimitInformation()
+        info.basic_limit_information.limit_flags = WINDOWS_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not self._kernel32.SetInformationJobObject(
+            self._handle,
+            WINDOWS_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        ):
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.close()
+            raise error
+
+    def assign(self, process_id: int) -> None:
+        """Assign a still-suspended process before it can create descendants."""
+        access = WINDOWS_PROCESS_SET_QUOTA | WINDOWS_PROCESS_TERMINATE
+        process_handle = self._kernel32.OpenProcess(access, False, process_id)
+        if not process_handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            if not self._kernel32.AssignProcessToJobObject(self._handle, process_handle):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            self._kernel32.CloseHandle(process_handle)
+
+    def active_pids(self) -> List[int]:
+        """Return active process IDs still assigned to this job."""
+        from ctypes import wintypes
+
+        if not self._handle:
+            return []
+        buffer = ctypes.create_string_buffer(WINDOWS_JOB_QUERY_BUFFER_BYTES)
+        returned = wintypes.DWORD()
+        if not self._kernel32.QueryInformationJobObject(
+            self._handle,
+            WINDOWS_JOB_OBJECT_BASIC_PROCESS_ID_LIST,
+            buffer,
+            len(buffer),
+            ctypes.byref(returned),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+        count = ctypes.c_uint32.from_buffer(buffer, ctypes.sizeof(ctypes.c_uint32)).value
+        first_pid_offset = ctypes.sizeof(ctypes.c_uint32) * 2
+        pid_size = ctypes.sizeof(ctypes.c_size_t)
+        capacity = (len(buffer) - first_pid_offset) // pid_size
+        if count > capacity:
+            raise OSError(f"Windows Job Object PID list exceeded capacity: {count} > {capacity}")
+        return [
+            int(ctypes.c_size_t.from_buffer(buffer, first_pid_offset + index * pid_size).value)
+            for index in range(count)
+        ]
+
+    def terminate(self) -> None:
+        """Terminate every process currently assigned to the job."""
+        if self._handle and not self._kernel32.TerminateJobObject(self._handle, EXIT_TIMEOUT):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def close(self) -> None:
+        """Close the job; kill-on-close covers any late residual process."""
+        handle = getattr(self, "_handle", None)
+        if handle:
+            self._handle = None
+            self._kernel32.CloseHandle(handle)
+
+
+def _resume_suspended_windows_process(process_id: int) -> None:
+    """Resume the primary thread after its process has joined the Job Object."""
+    from ctypes import wintypes
+
+    class ThreadEntry32(ctypes.Structure):
+        _fields_ = [
+            ("size", wintypes.DWORD),
+            ("usage_count", wintypes.DWORD),
+            ("thread_id", wintypes.DWORD),
+            ("owner_process_id", wintypes.DWORD),
+            ("base_priority", wintypes.LONG),
+            ("delta_priority", wintypes.LONG),
+            ("flags", wintypes.DWORD),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(ThreadEntry32)]
+    kernel32.Thread32First.restype = wintypes.BOOL
+    kernel32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(ThreadEntry32)]
+    kernel32.Thread32Next.restype = wintypes.BOOL
+    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
+    kernel32.ResumeThread.restype = wintypes.DWORD
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(WINDOWS_TH32CS_SNAPTHREAD, 0)
+    if snapshot == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    thread_id = None
     try:
-        process.kill()
+        entry = ThreadEntry32()
+        entry.size = ctypes.sizeof(entry)
+        available = kernel32.Thread32First(snapshot, ctypes.byref(entry))
+        while available:
+            if entry.owner_process_id == process_id:
+                thread_id = int(entry.thread_id)
+                break
+            available = kernel32.Thread32Next(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+
+    if thread_id is None:
+        raise OSError(f"Could not locate suspended primary thread for process {process_id}")
+    thread_handle = kernel32.OpenThread(WINDOWS_THREAD_SUSPEND_RESUME, False, thread_id)
+    if not thread_handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if kernel32.ResumeThread(thread_handle) == WINDOWS_DWORD_FAILURE:
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel32.CloseHandle(thread_handle)
+
+
+def _posix_process_group_pids(process_group_id: int) -> List[int]:
+    """Enumerate a POSIX process group for bounded residual diagnostics."""
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid=,pgid="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
     except OSError:
-        return
+        return []
+    pids = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            pid, group = (int(field) for field in fields)
+        except ValueError:
+            continue
+        if group == process_group_id:
+            pids.append(pid)
+    if not pids:
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return []
+        except PermissionError:
+            return [process_group_id]
+        return [process_group_id]
+    return pids
+
+
+class OwnedProcessTree:
+    """Platform-owned process tree used for one Unity build invocation."""
+
+    def __init__(
+        self,
+        process: subprocess.Popen,
+        windows_job: Optional[_WindowsKillOnCloseJob] = None,
+        posix_process_group_id: Optional[int] = None,
+    ) -> None:
+        self.process = process
+        self._windows_job = windows_job
+        self._posix_process_group_id = posix_process_group_id
+
+    def active_pids(self) -> List[int]:
+        """Return the process IDs still owned by this invocation."""
+        if self._windows_job is not None:
+            return self._windows_job.active_pids()
+        if self._posix_process_group_id is not None:
+            return _posix_process_group_pids(self._posix_process_group_id)
+        return []
+
+    def terminate(self) -> List[int]:
+        """Terminate the owned tree and return PIDs that miss the quiescence bound."""
+        if self._windows_job is not None:
+            self._windows_job.terminate()
+        elif self._posix_process_group_id is not None:
+            try:
+                os.killpg(self._posix_process_group_id, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        try:
+            self.process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+
+        deadline = time.monotonic() + UNITY_TERMINATION_WAIT_SECONDS
+        while True:
+            residual_pids = self.active_pids()
+            if not residual_pids or time.monotonic() >= deadline:
+                return residual_pids
+            time.sleep(PROCESS_TREE_POLL_SECONDS)
+
+    def close(self) -> None:
+        """Release platform ownership after the invocation is quiescent."""
+        if self._windows_job is not None:
+            self._windows_job.close()
+            self._windows_job = None
+        elif self._posix_process_group_id is not None:
+            try:
+                os.killpg(self._posix_process_group_id, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            self._posix_process_group_id = None
+
+
+def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
+    """Start Unity inside a platform-owned process tree."""
+    if os.name == "nt":
+        job = _WindowsKillOnCloseJob()
+        process = None
+        try:
+            process = subprocess.Popen(
+                cmd,
+                cwd=root,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | WINDOWS_CREATE_SUSPENDED,
+            )
+            job.assign(process.pid)
+            _resume_suspended_windows_process(process.pid)
+            return OwnedProcessTree(process, windows_job=job)
+        except Exception:
+            if process is not None:
+                try:
+                    process.kill()
+                    process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            job.close()
+            raise
+
+    process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
+    return OwnedProcessTree(process, posix_process_group_id=process.pid)
+
+
+def terminate_process(process_tree: OwnedProcessTree) -> List[int]:
+    """Terminate an owned Unity process tree and return residual process IDs."""
     try:
-        process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
+        return process_tree.terminate()
+    except OSError as exc:
+        print(
+            f"[build_unity_il2cpp] Owned process-tree termination failed: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            process_tree.process.kill()
+            process_tree.process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        try:
+            return process_tree.active_pids()
+        except OSError:
+            return [process_tree.process.pid] if process_tree.process.poll() is None else []
 
 
 def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int, timeout_minutes: int) -> int:
@@ -371,40 +704,51 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
     timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
     offset = INITIAL_LOG_OFFSET
 
-    process = subprocess.Popen(cmd, cwd=root)
-    while True:
-        offset, lines = read_new_important_lines(log_path, offset)
-        for line in lines:
-            print(f"[unity-log] {line}", flush=True)
-
-        returncode = process.poll()
-        now = time.monotonic()
-        if returncode is not None:
-            break
-
-        if timeout_seconds is not None and now - started >= timeout_seconds:
+    process_tree = start_owned_process(cmd, root)
+    process = process_tree.process
+    try:
+        while True:
             offset, lines = read_new_important_lines(log_path, offset)
             for line in lines:
                 print(f"[unity-log] {line}", flush=True)
-            print(
-                f"[build_unity_il2cpp] Unity timed out after {format_elapsed(now - started)}; "
-                f"terminating process. Log: {relative_to_root(log_path, root)}",
-                file=sys.stderr,
-                flush=True,
-            )
-            terminate_process(process)
-            return EXIT_TIMEOUT
 
-        if now >= next_heartbeat:
-            elapsed = format_elapsed(now - started)
-            print(
-                f"[build_unity_il2cpp] Elapsed {elapsed}; still building. "
-                f"Log: {relative_to_root(log_path, root)}",
-                flush=True,
-            )
-            next_heartbeat = now + interval
+            returncode = process.poll()
+            now = time.monotonic()
+            if returncode is not None:
+                break
 
-        time.sleep(LOG_POLL_SLEEP_SECONDS)
+            if timeout_seconds is not None and now - started >= timeout_seconds:
+                offset, lines = read_new_important_lines(log_path, offset)
+                for line in lines:
+                    print(f"[unity-log] {line}", flush=True)
+                print(
+                    f"[build_unity_il2cpp] Unity timed out after {format_elapsed(now - started)}; "
+                    f"terminating owned process tree. Log: {relative_to_root(log_path, root)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                residual_pids = terminate_process(process_tree)
+                if residual_pids:
+                    print(
+                        "[build_unity_il2cpp] Owned process tree did not quiesce; "
+                        f"residual PIDs: {', '.join(str(pid) for pid in residual_pids)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                return EXIT_TIMEOUT
+
+            if now >= next_heartbeat:
+                elapsed = format_elapsed(now - started)
+                print(
+                    f"[build_unity_il2cpp] Elapsed {elapsed}; still building. "
+                    f"Log: {relative_to_root(log_path, root)}",
+                    flush=True,
+                )
+                next_heartbeat = now + interval
+
+            time.sleep(LOG_POLL_SLEEP_SECONDS)
+    finally:
+        process_tree.close()
 
     offset, lines = read_new_important_lines(log_path, offset)
     for line in lines:

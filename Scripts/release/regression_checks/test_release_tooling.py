@@ -7,15 +7,18 @@
 from __future__ import annotations
 
 import ast
+import ctypes
 import importlib.util
 import io
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 from pathlib import Path
@@ -1894,6 +1897,127 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         build_dir = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
 
         self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
+
+    def test_timeout_terminates_owned_descendant_tree(self) -> None:
+        """A timed-out Unity stand-in must not leave its compiler child alive."""
+        parent_pid = None
+        child_pid = None
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            parent_pid_path = root / "parent.pid"
+            child_pid_path = root / "child.pid"
+            parent_code = (
+                "import os, pathlib, subprocess, sys, time; "
+                f"pathlib.Path({str(parent_pid_path)!r}).write_text(str(os.getpid()), encoding='utf-8'); "
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+                f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding='utf-8'); "
+                "time.sleep(60)"
+            )
+
+            try:
+                with mock.patch.object(self.unity_il2cpp, "SECONDS_PER_MINUTE", 5):
+                    with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0.01):
+                        with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 2):
+                            result = self.unity_il2cpp.run_with_progress(
+                                [sys.executable, "-c", parent_code],
+                                root,
+                                root / "unity.log",
+                                interval=1,
+                                timeout_minutes=1,
+                            )
+
+                self.assertEqual(self.unity_il2cpp.EXIT_TIMEOUT, result)
+                self.assertTrue(parent_pid_path.is_file(), "fake Unity did not publish its PID")
+                self.assertTrue(child_pid_path.is_file(), "fake compiler did not publish its PID")
+                parent_pid = int(parent_pid_path.read_text(encoding="utf-8"))
+                child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+                self.assertTrue(self._wait_for_pid_exit(parent_pid))
+                self.assertTrue(
+                    self._wait_for_pid_exit(child_pid),
+                    f"timed-out compiler child remained alive: pid={child_pid}",
+                )
+            finally:
+                if child_pid is None:
+                    child_pid = self._read_pid_if_present(child_pid_path)
+                if parent_pid is None:
+                    parent_pid = self._read_pid_if_present(parent_pid_path)
+                self._kill_if_running(child_pid)
+                self._kill_if_running(parent_pid)
+
+    def test_owned_process_tree_preserves_normal_exit(self) -> None:
+        """Owned launch plumbing must preserve an ordinary successful exit."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0.01):
+                result = self.unity_il2cpp.run_with_progress(
+                    [sys.executable, "-c", "raise SystemExit(0)"],
+                    root,
+                    root / "unity.log",
+                    interval=1,
+                    timeout_minutes=0,
+                )
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
+
+    @staticmethod
+    def _read_pid_if_present(path: Path) -> int | None:
+        """Read a test-owned PID file when startup reached that boundary."""
+        if not path.is_file():
+            return None
+        return int(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _wait_for_pid_exit(pid: int, timeout_seconds: float = 2.0) -> bool:
+        """Return whether a concrete PID disappears within a bounded wait."""
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if not UnityIl2CppBuildTests._pid_is_running(pid):
+                return True
+            time.sleep(0.02)
+        return not UnityIl2CppBuildTests._pid_is_running(pid)
+
+    @staticmethod
+    def _pid_is_running(pid: int) -> bool:
+        """Check one PID with only standard-library platform primitives."""
+        if os.name != "nt":
+            try:
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                return True
+
+        from ctypes import wintypes
+
+        process_query_limited_information = 0x1000
+        still_active = 259
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = wintypes.DWORD()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))) and exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
+
+    @staticmethod
+    def _kill_if_running(pid: int | None) -> None:
+        """Best-effort cleanup for a failed process-tree regression."""
+        if pid is None:
+            return
+        try:
+            os.kill(pid, signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        UnityIl2CppBuildTests._wait_for_pid_exit(pid)
 
 
 if __name__ == "__main__":
