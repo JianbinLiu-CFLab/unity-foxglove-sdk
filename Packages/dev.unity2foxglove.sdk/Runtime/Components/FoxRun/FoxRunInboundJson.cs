@@ -18,6 +18,11 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int MaxTypeHintScanDepth = 32;
 
+        private static readonly Encoding StrictUtf8 =
+            new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true);
+
         private static readonly JsonLoadSettings LoadSettings = new JsonLoadSettings
         {
             CommentHandling = CommentHandling.Ignore,
@@ -53,7 +58,7 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
-                var json = Encoding.UTF8.GetString(payload);
+                var json = StrictUtf8.GetString(payload);
                 var root = ParseToken(json);
                 if (ContainsForbiddenTypeHint(root, 0, out var typeHintError))
                 {
@@ -70,7 +75,9 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex) when (ex is JsonException || ex is DecoderFallbackException)
             {
-                var detail = ex.Message;
+                var detail = ex is DecoderFallbackException
+                    ? "Payload is not valid UTF-8."
+                    : ex.Message;
                 if (ex is JsonReaderException
                     && detail.IndexOf("MaxDepth", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
