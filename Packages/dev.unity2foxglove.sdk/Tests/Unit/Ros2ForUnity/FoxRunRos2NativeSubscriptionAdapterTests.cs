@@ -2457,6 +2457,42 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void SubscriptionAdmissionChoosesTheSameCanonicalTopKForEveryDiscoveryPermutation()
+        {
+            var first = new List<string>
+            {
+                "source-d",
+                "source-a",
+                "source-c",
+                "source-b",
+            };
+            var second = new List<string>
+            {
+                "source-b",
+                "source-c",
+                "source-a",
+                "source-d",
+            };
+
+            Assert.Equal(
+                1,
+                FoxRunRos2SubscriptionAdmission.RetainDeterministicPrefix(
+                    first,
+                    3,
+                    StringComparer.Ordinal.Compare));
+            Assert.Equal(
+                1,
+                FoxRunRos2SubscriptionAdmission.RetainDeterministicPrefix(
+                    second,
+                    3,
+                    StringComparer.Ordinal.Compare));
+            Assert.Equal(
+                new[] { "source-a", "source-b", "source-c" },
+                first);
+            Assert.Equal(first, second);
+        }
+
+        [Fact]
         public void ProductionBackendRechecksLifecycleAdmissionImmediatelyBeforeSubscriptionCreation()
         {
             var driver = new FakeR2fuNodeDriver();
