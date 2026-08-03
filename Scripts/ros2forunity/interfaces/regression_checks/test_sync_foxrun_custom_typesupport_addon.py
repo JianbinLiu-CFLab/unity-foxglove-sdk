@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import unittest
 from pathlib import Path
@@ -53,6 +54,76 @@ class CustomTypesupportSyncTests(unittest.TestCase):
         with self._fixture(validated=True) as fixture:
             (fixture.candidate / "unexpected.dll").write_bytes(b"unexpected")
             with self.assertRaises(AddonSyncError):
+                verify_sync_ready(fixture.request, validator=lambda _request: None)
+
+    def test_sync_rejects_matching_package_name_outside_candidate_repository(self) -> None:
+        """Bind the destructive target to the repository that owns the candidate."""
+        with self._fixture(validated=True) as fixture:
+            external_target = (
+                fixture.root.parent
+                / (fixture.root.name + "-external")
+                / "Packages"
+                / fixture.target.name
+            )
+            request = replace(fixture.request, target_package=external_target)
+
+            with self.assertRaisesRegex(
+                AddonSyncError,
+                "use-matching-addon-package-target",
+            ):
+                verify_sync_ready(request, validator=lambda _request: None)
+
+    def test_sync_rejects_reparse_target_at_expected_package_path(self) -> None:
+        """Never follow an expected package path through a directory link."""
+        with self._fixture(validated=True) as fixture:
+            redirected = fixture.root / "redirected-target"
+            redirected.mkdir()
+            try:
+                fixture.target.symlink_to(redirected, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlink creation is unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                AddonSyncError,
+                "use-matching-addon-package-target",
+            ):
+                verify_sync_ready(fixture.request, validator=lambda _request: None)
+
+    def test_sync_rejects_reparse_component_above_expected_package(self) -> None:
+        """Reject a redirected Packages parent even when the lexical target matches."""
+        with self._fixture(validated=True) as fixture:
+            packages = fixture.root / "Packages"
+            redirected = fixture.root / "redirected-packages"
+            packages.rename(redirected)
+            try:
+                packages.symlink_to(redirected, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlink creation is unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                AddonSyncError,
+                "use-matching-addon-package-target",
+            ):
+                verify_sync_ready(fixture.request, validator=lambda _request: None)
+
+    def test_sync_rejects_nested_reparse_component_before_payload_writes(self) -> None:
+        """Do not let an existing package subtree redirect allowlisted writes."""
+        with self._fixture(validated=True) as fixture:
+            fixture.target.mkdir()
+            redirected = fixture.root / "redirected-runtime"
+            redirected.mkdir()
+            try:
+                (fixture.target / "Runtime").symlink_to(
+                    redirected,
+                    target_is_directory=True,
+                )
+            except OSError as exc:
+                self.skipTest(f"directory symlink creation is unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                AddonSyncError,
+                "use-matching-addon-package-target",
+            ):
                 verify_sync_ready(fixture.request, validator=lambda _request: None)
 
     def test_sync_replaces_only_the_legacy_platform_managed_assembly(self) -> None:

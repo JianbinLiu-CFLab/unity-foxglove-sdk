@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path, PurePosixPath
 import shutil
 import sys
@@ -153,8 +154,36 @@ def verify_sync_ready(
 def _validate_target_path(request: AddonSyncRequest) -> None:
     """Implement the internal validate target path step."""
     target = Path(request.target_package)
-    if target.name != addon_package_id(request.distro) or target.parent.name != "Packages":
+    candidate_root = _candidate_root(request)
+    repo_root = candidate_root.parents[3]
+    expected = repo_root / "Packages" / addon_package_id(request.distro)
+    target_lexical = os.path.normcase(os.path.abspath(target))
+    expected_lexical = os.path.normcase(os.path.abspath(expected))
+    if target_lexical != expected_lexical:
         raise AddonSyncError("use-matching-addon-package-target")
+    current = repo_root
+    for component in ("Packages", addon_package_id(request.distro)):
+        current /= component
+        try:
+            is_reparse = _is_reparse_path(current)
+        except OSError as exc:
+            raise AddonSyncError("use-matching-addon-package-target") from exc
+        if is_reparse:
+            raise AddonSyncError("use-matching-addon-package-target")
+    if target.exists():
+        try:
+            if any(_is_reparse_path(path) for path in target.rglob("*")):
+                raise AddonSyncError("use-matching-addon-package-target")
+        except OSError as exc:
+            raise AddonSyncError("use-matching-addon-package-target") from exc
+
+
+def _is_reparse_path(path: Path) -> bool:
+    """Return whether one existing or broken path redirects filesystem access."""
+
+    return path.is_symlink() or (
+        hasattr(path, "is_junction") and path.is_junction()
+    )
 
 
 def _target_has_only_expected_payload(target: Path, allowed: Sequence[str]) -> bool:
