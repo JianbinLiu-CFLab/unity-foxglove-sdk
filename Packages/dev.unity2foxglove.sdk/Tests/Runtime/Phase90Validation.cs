@@ -285,12 +285,37 @@ namespace Unity.FoxgloveSDK.Tests
                 var nameBytes = Encoding.UTF8.GetBytes(file.RelativePath);
                 sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
-                var fileBytes = File.ReadAllBytes(file.Path);
+                var fileBytes = ReadCanonicalSourceBytes(file.Path);
                 sha.TransformBlock(fileBytes, 0, fileBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
             }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             return BitConverter.ToString(sha.Hash).Replace("-", "").ToLowerInvariant();
+        }
+
+        private static byte[] ReadCanonicalSourceBytes(string path)
+        {
+            var source = File.ReadAllBytes(path);
+            if (Array.IndexOf(source, (byte)'\r') < 0)
+                return source;
+
+            var normalized = new byte[source.Length];
+            var writeIndex = 0;
+            for (var readIndex = 0; readIndex < source.Length; readIndex++)
+            {
+                if (source[readIndex] == (byte)'\r')
+                {
+                    if (readIndex + 1 < source.Length && source[readIndex + 1] == (byte)'\n')
+                        readIndex++;
+                    normalized[writeIndex++] = (byte)'\n';
+                    continue;
+                }
+
+                normalized[writeIndex++] = source[readIndex];
+            }
+
+            Array.Resize(ref normalized, writeIndex);
+            return normalized;
         }
 
         private static string ToStableRelativePath(string root, string path)

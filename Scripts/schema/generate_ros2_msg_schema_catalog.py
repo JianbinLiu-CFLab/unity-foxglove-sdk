@@ -204,13 +204,25 @@ def validate_schema_files(files: list[Path], input_dir: Path) -> None:
         )
 
 
+def canonical_source_bytes(data: bytes) -> bytes:
+    """Normalize text line endings before computing checkout-independent hashes."""
+
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def source_file_sha(data: bytes) -> str:
+    """Hash one source file after canonical line-ending normalization."""
+
+    return hashlib.sha256(canonical_source_bytes(data)).hexdigest()
+
+
 def source_tree_sha(files: list[Path], file_bytes: dict[Path, bytes]) -> str:
-    """Compute a deterministic SHA-256 over sorted root filenames and bytes."""
+    """Compute a deterministic SHA-256 independent of checkout line endings."""
     sha = hashlib.sha256()
     for path in files:
         sha.update(path.name.encode("utf-8"))
         sha.update(b"\0")
-        sha.update(file_bytes[path])
+        sha.update(canonical_source_bytes(file_bytes[path]))
         sha.update(b"\0")
     return sha.hexdigest()
 
@@ -279,7 +291,7 @@ def generate(input_dir: Path, output: Path) -> str:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
         content = merged_schema(local_sources[name], local_sources, root_name=name)
-        source_sha = hashlib.sha256(file_bytes[path]).hexdigest()
+        source_sha = source_file_sha(file_bytes[path])
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"
         content_literal = csharp_base64_literal(content, "                    ")
@@ -342,7 +354,7 @@ namespace {CSHARP_NAMESPACE}
         /// <summary>Source root .msg filename from the Foxglove SDK snapshot.</summary>
         public string SourceFile {{ get; }}
 
-        /// <summary>SHA-256 of the source root .msg file.</summary>
+        /// <summary>SHA-256 of the source root .msg text after LF line-ending normalization.</summary>
         public string SourceSha256 {{ get; }}
 
         /// <summary>Coarse schema category used for documentation.</summary>

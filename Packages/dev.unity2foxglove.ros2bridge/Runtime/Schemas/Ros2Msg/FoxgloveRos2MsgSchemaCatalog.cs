@@ -44,7 +44,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         /// <summary>Source root .msg filename from the Foxglove SDK snapshot.</summary>
         public string SourceFile { get; }
 
-        /// <summary>SHA-256 of the source root .msg file.</summary>
+        /// <summary>SHA-256 of the source root .msg text after LF line-ending normalization.</summary>
         public string SourceSha256 { get; }
 
         /// <summary>Coarse schema category used for documentation.</summary>
@@ -60,7 +60,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         public const string SchemaEncoding = "ros2msg";
         public const int SourceFileCount = 41;
         public const string SourceSnapshot = "third-party/foxglove-sdk/schemas/ros2";
-        public const string SourceTreeSha256 = "b9703a7ea74cf053c92e9aa91d2dee90a7edd3e7657e1fd9af9e60e253a53882";
+        public const string SourceTreeSha256 = "26f35c4636df2b9ff49981f480ce0ab38da68165cc77da8082d0976fb13b9ac5";
         public const string SourceCommit = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba";
 
         // These generated schema strings are decoded once at type initialization so
@@ -90,7 +90,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "MCBhbmQgMQpmbG9hdDY0IHIKCiMgR3JlZW4gdmFsdWUgYmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgZwoKIyBCbHVlIHZhbHVl" +
                     "IGJldHdlZW4gMCBhbmQgMQpmbG9hdDY0IGIKCiMgQWxwaGEgdmFsdWUgYmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgYQo="),
                 "ArrowPrimitive.msg",
-                "c96a288af16e6ca67365d8b3e5a1099eff38a799e1cccc3f08efe5973db15190",
+                "70720f335e75d18a01f17a0dfc7c151616c450916e9af8775ba0e82a3449d4b0",
                 "visualization",
                 false),
             Entry(
@@ -143,7 +143,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ck1TRzogYnVpbHRpbl9pbnRlcmZhY2VzL1RpbWUKaW50MzIg" +
                     "c2VjCnVpbnQzMiBuYW5vc2VjCg=="),
                 "CameraCalibration.msg",
-                "b6636b63909a8a089742f95cab0a05ca68ec239bf8242bc11384ab4e2c3a4aef",
+                "aa2e2c41305bef6139359e354628f3a39f6e35225e88eab50e98bde287bcb9c5",
                 "image",
                 true),
             Entry(
@@ -175,7 +175,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "aXRoIGl0cyBhc3NvY2lhdGVkIHZhbHVlCgojIEdlbmVyYXRlZCBieSBodHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94" +
                     "Z2xvdmUtc2RrCgojIEtleQpzdHJpbmcga2V5CgojIFZhbHVlCnN0cmluZyB2YWx1ZQo="),
                 "CircleAnnotation.msg",
-                "c5675385ccdb33b50862061a6d49b7b3573d5fc29970142563168bcce5d1e658",
+                "87c1bae62386853cd6dc46c6962280a5b08c9c38ce610daa196740a737e24e2f",
                 "annotation",
                 false),
             Entry(
@@ -186,7 +186,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IHIKCiMgR3JlZW4gdmFsdWUgYmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgZwoKIyBCbHVlIHZhbHVlIGJldHdlZW4gMCBhbmQg" +
                     "MQpmbG9hdDY0IGIKCiMgQWxwaGEgdmFsdWUgYmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgYQo="),
                 "Color.msg",
-                "d5f5d2196026ddc801f8b44549a86d9a3a2f09b23874ba8c95955af38474e29c",
+                "cee3fef5643a27f8f01bb4754eb02a8facb886939eeefddac020d5d046c3a8a5",
                 "geometry",
                 false),
             Entry(
@@ -202,7 +202,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09" +
                     "PT09PT0KTVNHOiBidWlsdGluX2ludGVyZmFjZXMvVGltZQppbnQzMiBzZWMKdWludDMyIG5hbm9zZWMK"),
                 "CompressedImage.msg",
-                "9c4c79fcd07f4e7844fd4084c2aafdabd7ed3353bd21c7d188a5e1f8382ac039",
+                "04b7175647b62ad0c5e344124432b81f0a5e4a989fcb9caea05ba46c0898d566",
                 "image",
                 true),
             Entry(
@@ -231,7 +231,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ck1TRzogZ2VvbWV0cnlfbXNncy9RdWF0ZXJuaW9uCmZsb2F0NjQgeApm" +
                     "bG9hdDY0IHkKZmxvYXQ2NCB6CmZsb2F0NjQgdwo="),
                 "CompressedPointCloud.msg",
-                "89149dfb347a040b5aa2be0fe24d743bc887c15bfef67a87dd773aa77b662ab8",
+                "2f565927e8b92915a9d6a432c6c4ba6aaf24aabf7eb572b6caa608cffdc1c6d9",
                 "point cloud",
                 false),
             Entry(
@@ -269,7 +269,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KTVNHOiBidWlsdGluX2ludGVyZmFjZXMvVGltZQppbnQzMiBzZWMK" +
                     "dWludDMyIG5hbm9zZWMK"),
                 "CompressedVideo.msg",
-                "1a897b701c7126d32ceaafe3d3d932131d25804016ac318d0cf57610db63b7d2",
+                "83d044efaefc90291cdd56cd36b2ef6b190748c1df860d1eca7df77328174324",
                 "image",
                 false),
             Entry(
@@ -295,7 +295,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "MQpmbG9hdDY0IGcKCiMgQmx1ZSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBiCgojIEFscGhhIHZhbHVlIGJldHdl" +
                     "ZW4gMCBhbmQgMQpmbG9hdDY0IGEK"),
                 "CubePrimitive.msg",
-                "4adb574a3074618f2359efe6b91523df581d2945d21e01f4f41d7c04fa742f67",
+                "52dfd0560f8d697d5aad959f1ac68eba1d7b1d1d460d87207783d6678df58d8d",
                 "visualization",
                 false),
             Entry(
@@ -325,7 +325,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "CmZsb2F0NjQgcgoKIyBHcmVlbiB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBnCgojIEJsdWUgdmFsdWUgYmV0d2Vl" +
                     "biAwIGFuZCAxCmZsb2F0NjQgYgoKIyBBbHBoYSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBhCg=="),
                 "CylinderPrimitive.msg",
-                "d8cff4e9450de77e0d0589602a9e9627e49bd0850f6368d030faf50c8b4f78db",
+                "d52bfce818c04448b2c73c8d0ad4e2866c6b2ade787924131eae3725d5aef9b2",
                 "visualization",
                 false),
             Entry(
@@ -356,7 +356,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT0KTVNHOiBnZW9tZXRyeV9tc2dzL1F1YXRlcm5pb24KZmxvYXQ2NCB4CmZsb2F0NjQgeQpmbG9hdDY0IHoK" +
                     "ZmxvYXQ2NCB3Cg=="),
                 "FrameTransform.msg",
-                "64c6880bda9aeb7e7b8e51d36e5fe92b384a44792a1eaaf14d4a5255ee04e69d",
+                "f4a3c1c9c4b13794144f0049d59d25ae98489d6e79188820f84c486e8e280e3b",
                 "transform",
                 true),
             Entry(
@@ -391,7 +391,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpNU0c6IGdlb21ldHJ5X21zZ3MvUXVhdGVybmlvbgpmbG9hdDY0" +
                     "IHgKZmxvYXQ2NCB5CmZsb2F0NjQgegpmbG9hdDY0IHcK"),
                 "FrameTransforms.msg",
-                "4f6f40ec7c71db1019a329245bfd8eb7658fac0d9250ce462e735120871e3b41",
+                "facf46095fff41a1f033a00f4bcfb8a6b8604362a500d1cee4e33f434553c6ca",
                 "transform",
                 false),
             Entry(
@@ -401,7 +401,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "dGVkIGJ5IGh0dHBzOi8vZ2l0aHViLmNvbS9mb3hnbG92ZS9mb3hnbG92ZS1zZGsKCiMgR2VvSlNPTiBkYXRhIGVuY29kZWQg" +
                     "YXMgYSBVVEYtOCBzdHJpbmcKc3RyaW5nIGdlb2pzb24K"),
                 "GeoJSON.msg",
-                "c4db7cfd73dbbbc305f356bc4d9f6947547e63679755429f2325800c48feb82b",
+                "fa4f6b009249941438cd8fe1f696c0363acd8de9e0dc081ce7b2a3b2241005d8",
                 "location",
                 false),
             Entry(
@@ -469,7 +469,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "bmctcG9pbnQgbnVtYmVyCnVpbnQ4IEZMT0FUNjQ9OAoKIyBUeXBlIG9mIGRhdGEgaW4gdGhlIGZpZWxkLiBJbnRlZ2VycyBh" +
                     "cmUgc3RvcmVkIHVzaW5nIGxpdHRsZS1lbmRpYW4gYnl0ZSBvcmRlci4KdWludDggdHlwZQo="),
                 "Grid.msg",
-                "6dc3c9ecc05ce735649744c2ef84c3d8ee6fcce6414bf56e221334c29aa5f5c0",
+                "7817557010da67b7aa8e928eb260143cd8495e7feecb6aa9fa0de439fffd62d8",
                 "grid",
                 false),
             Entry(
@@ -541,7 +541,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "ZWQgd2l0aCB0aGlzIGFubm90YXRpb24uIEtleXMgbXVzdCBiZSB1bmlxdWUuCmZveGdsb3ZlX21zZ3MvS2V5VmFsdWVQYWly" +
                     "W10gbWV0YWRhdGEK"),
                 "ImageAnnotations.msg",
-                "baf135b33490afd3d35fd680257f1fb562fc9299487595b2aae76c35c3869416",
+                "4a523999bbef85432ded4979ce194cf9d4c685681cce15dac9ade01300dfb0a1",
                 "annotation",
                 false),
             Entry(
@@ -558,7 +558,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "ZWZmb3J0IChmb3JjZSBvciB0b3JxdWUpLiBObSBmb3IgcmV2b2x1dGUgam9pbnRzLCBOIGZvciBwcmlzbWF0aWMgam9pbnRz" +
                     "LiAoTmFOIGluZGljYXRlcyB0aGlzIHZhbHVlIGlzIG5vdCBzZXQpCmZsb2F0NjQgZWZmb3J0Cg=="),
                 "JointState.msg",
-                "79f35d584e526f6e223c2db5df28a278f95cd8d892b7fc3cc0eb0f0849df70d1",
+                "7eb624da69ad6f6555c9f3d75374e317f2d30127d00bb765b5520904f63862e6",
                 "robot state",
                 false),
             Entry(
@@ -582,7 +582,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "cnQgKGZvcmNlIG9yIHRvcnF1ZSkuIE5tIGZvciByZXZvbHV0ZSBqb2ludHMsIE4gZm9yIHByaXNtYXRpYyBqb2ludHMuIChO" +
                     "YU4gaW5kaWNhdGVzIHRoaXMgdmFsdWUgaXMgbm90IHNldCkKZmxvYXQ2NCBlZmZvcnQK"),
                 "JointStates.msg",
-                "bbef0c8968f4ddd24420846a74eee1d691f429b57edf63772083e23e724d3cb3",
+                "cda5785ae772d63bf4656d15d82bd0655c6c022eac99a144ab03289a48e40447",
                 "robot state",
                 false),
             Entry(
@@ -592,7 +592,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "bmVyYXRlZCBieSBodHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94Z2xvdmUtc2RrCgojIEtleQpzdHJpbmcga2V5Cgoj" +
                     "IFZhbHVlCnN0cmluZyB2YWx1ZQo="),
                 "KeyValuePair.msg",
-                "b9462e3792b035b394f639e5d19f81ee690b6bd8b7f3977707e1adac66cc121a",
+                "97685b923c02bff281f5d2775fa27b258382e213155bc9738d77f1ca93178e28",
                 "metadata",
                 false),
             Entry(
@@ -618,7 +618,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KTVNH" +
                     "OiBnZW9tZXRyeV9tc2dzL1F1YXRlcm5pb24KZmxvYXQ2NCB4CmZsb2F0NjQgeQpmbG9hdDY0IHoKZmxvYXQ2NCB3Cg=="),
                 "LaserScan.msg",
-                "6e0b31647f70c48058c686cdefd00198ac8cddce166f240fb8dc1b16100c095e",
+                "f45d31ab1b8d7ca617e4015f7e88698417e7bbf7b9e1be3e938259e590208931",
                 "range",
                 true),
             Entry(
@@ -655,7 +655,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "CgojIEJsdWUgdmFsdWUgYmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgYgoKIyBBbHBoYSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEK" +
                     "ZmxvYXQ2NCBhCg=="),
                 "LinePrimitive.msg",
-                "2a5ec8cd131831fccabcf72909f0bd814522ba553bc6eff17e0573d64566f232",
+                "7964c072f4074ef4f1ebfafcf8a41cc1e35de9044855f184e5ee8d036ada3539",
                 "visualization",
                 false),
             Entry(
@@ -695,7 +695,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "S2V5VmFsdWVQYWlyCiMgQSBrZXkgd2l0aCBpdHMgYXNzb2NpYXRlZCB2YWx1ZQoKIyBHZW5lcmF0ZWQgYnkgaHR0cHM6Ly9n" +
                     "aXRodWIuY29tL2ZveGdsb3ZlL2ZveGdsb3ZlLXNkawoKIyBLZXkKc3RyaW5nIGtleQoKIyBWYWx1ZQpzdHJpbmcgdmFsdWUK"),
                 "LocationFix.msg",
-                "1c06af71eedf46206905f41a64da20bbdbfa1ce078b45043df53e0d872d973bd",
+                "c9dcc0d1d879142a9011b818b582fb78f4ab6ab1d3f5b7b555e91acbd9b7af39",
                 "location",
                 false),
             Entry(
@@ -740,7 +740,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGJ5IGh0dHBzOi8vZ2l0aHViLmNvbS9mb3hnbG92ZS9mb3hnbG92ZS1zZGsKCiMgS2V5CnN0cmluZyBrZXkKCiMgVmFsdWUK" +
                     "c3RyaW5nIHZhbHVlCg=="),
                 "LocationFixes.msg",
-                "e9ef6947d4651b601db4fc21c749e9c9b7d39cefd78b95904f4e2aa697145303",
+                "0d2d71b6983526088544ba0a1fc6652b2cfc14e154f6194a49911bcf5564f3ee",
                 "location",
                 false),
             Entry(
@@ -757,7 +757,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09Ck1TRzogYnVpbHRpbl9pbnRlcmZhY2VzL1RpbWUKaW50MzIgc2VjCnVpbnQzMiBuYW5v" +
                     "c2VjCg=="),
                 "Log.msg",
-                "1cacf4b47ef1c6306f00c673ed283837f80c9f1b67ffa8ecf3a0929f62e6c5fd",
+                "13566915f24162eab241ef8df32ed199c1c8748c2252b359b7bf0253cd866e44",
                 "debug",
                 false),
             Entry(
@@ -793,7 +793,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "bG9hdDY0IGcKCiMgQmx1ZSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBiCgojIEFscGhhIHZhbHVlIGJldHdlZW4g" +
                     "MCBhbmQgMQpmbG9hdDY0IGEK"),
                 "ModelPrimitive.msg",
-                "84095ae98579072363a229b2434510567ed8085f7254619850450ccde5f5ef20",
+                "cca00d12c9bfb700baabb90c508dc1f38795d6838232f00945fa84a0849a3d5b",
                 "visualization",
                 false),
             Entry(
@@ -831,7 +831,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGl0cyBhc3NvY2lhdGVkIHZhbHVlCgojIEdlbmVyYXRlZCBieSBodHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94Z2xv" +
                     "dmUtc2RrCgojIEtleQpzdHJpbmcga2V5CgojIFZhbHVlCnN0cmluZyB2YWx1ZQo="),
                 "Odometry.msg",
-                "cf93c888a26c20c872a529183679e46a04ea6b4a9b657c918ca45098a5b7591f",
+                "556bc9cf118331cae6514f3a9d0386b9b75a36b5697fd9b793498e9ba580a621",
                 "robot state",
                 false),
             Entry(
@@ -849,7 +849,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGluIHRoZSBmaWVsZC4gSW50ZWdlcnMgYXJlIHN0b3JlZCB1c2luZyBsaXR0bGUtZW5kaWFuIGJ5dGUgb3JkZXIuCnVpbnQ4" +
                     "IHR5cGUK"),
                 "PackedElementField.msg",
-                "d31d5f4a44a0478b9a08464ebfc3207869ded97bc177e6b2ed8bcc45edc3b9b9",
+                "3cbac51d2381f0762bc2eb673ca65fda62851768be62e355d5c063a8ce3abde6",
                 "layout",
                 false),
             Entry(
@@ -859,7 +859,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "CgojIEdlbmVyYXRlZCBieSBodHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94Z2xvdmUtc2RrCgojIHggY29vcmRpbmF0" +
                     "ZSBwb3NpdGlvbgpmbG9hdDY0IHgKCiMgeSBjb29yZGluYXRlIHBvc2l0aW9uCmZsb2F0NjQgeQo="),
                 "Point2.msg",
-                "7a295723457dcb7f7476c30e68c94ca0ab611152def3b3121125a1992da4d423",
+                "8cf96a2d95e115dde2836d5308c638397e260d25d7b159f34497010de7ab3ffa",
                 "geometry",
                 false),
             Entry(
@@ -897,7 +897,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "bnVtYmVyCnVpbnQ4IEZMT0FUNjQ9OAoKIyBUeXBlIG9mIGRhdGEgaW4gdGhlIGZpZWxkLiBJbnRlZ2VycyBhcmUgc3RvcmVk" +
                     "IHVzaW5nIGxpdHRsZS1lbmRpYW4gYnl0ZSBvcmRlci4KdWludDggdHlwZQo="),
                 "PointCloud.msg",
-                "1d24b1ba5f009f05c9b0eaed3e810bf08091bc8506a089dab7f2ad2a8bae2b1d",
+                "da7406961200657a5a75d69568cd073aae79834729013a136e014827deeb6de5",
                 "point cloud",
                 true),
             Entry(
@@ -936,7 +936,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "dHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94Z2xvdmUtc2RrCgojIEtleQpzdHJpbmcga2V5CgojIFZhbHVlCnN0cmlu" +
                     "ZyB2YWx1ZQo="),
                 "PointsAnnotation.msg",
-                "28464b7a66cafb704efaf784f29508e98773607eb2a5f3d99c30001c09b0ece6",
+                "f50fc379f31b1de4a77dbbad18ceeef46a50758e35f259e8608df31840c82138",
                 "annotation",
                 false),
             Entry(
@@ -956,7 +956,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KTVNHOiBnZW9tZXRyeV9t" +
                     "c2dzL1F1YXRlcm5pb24KZmxvYXQ2NCB4CmZsb2F0NjQgeQpmbG9hdDY0IHoKZmxvYXQ2NCB3Cg=="),
                 "PoseInFrame.msg",
-                "eb47c68e67456f21fffd1cb0a0e008dfab688b98a587b51fe03d0f6d81b73bd8",
+                "7c9b295ac0247acdafa9af878dcfd59215e0a000fbd82fc72e3edca4666e1387",
                 "geometry",
                 false),
             Entry(
@@ -976,7 +976,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09" +
                     "Ck1TRzogZ2VvbWV0cnlfbXNncy9RdWF0ZXJuaW9uCmZsb2F0NjQgeApmbG9hdDY0IHkKZmxvYXQ2NCB6CmZsb2F0NjQgdwo="),
                 "PosesInFrame.msg",
-                "29401c823e9e6e02d156d13a9bdd675a3214bcaed07442f0389717ad0a7398ab",
+                "1b058b0ef99fa359424da6b90f9720c1db15b15667b5e7442b3a66492a164af7",
                 "geometry",
                 false),
             Entry(
@@ -992,7 +992,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpNU0c6IGJ1aWx0aW5faW50ZXJmYWNlcy9U" +
                     "aW1lCmludDMyIHNlYwp1aW50MzIgbmFub3NlYwo="),
                 "RawAudio.msg",
-                "92b1dda8c87f30f5bd85f7e3393b564a6453561362f4ea708ac50709ac3762b7",
+                "16173f453851a592dd6aab7caedf4d26e69907e4d863e17fb9ea48c5bc200e2a",
                 "audio",
                 false),
             Entry(
@@ -1068,7 +1068,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KTVNHOiBidWlsdGluX2ludGVyZmFjZXMvVGltZQppbnQzMiBz" +
                     "ZWMKdWludDMyIG5hbm9zZWMK"),
                 "RawImage.msg",
-                "3c5637fe6fd1e36420c81664bafb93b132be4f60c9080ef3778fcbb1f3712faa",
+                "a048162c88b66e03c253b61a015e8e847007227886cbd2f742a7db3e19daebdf",
                 "image",
                 false),
             Entry(
@@ -1211,7 +1211,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGJlIG5vbi1lbXB0eS4gSWYgYGRhdGFgIGlzIG5vbi1lbXB0eSwgYG1lZGlhX3R5cGVgIG11c3QgYmUgc2V0IHRvIGluZGlj" +
                     "YXRlIHRoZSB0eXBlIG9mIHRoZSBkYXRhLgp1aW50OFtdIGRhdGEK"),
                 "SceneEntity.msg",
-                "7e9cd11a231f018edbbf844e8d123e60bbfd040192db23786cc2791aef654359",
+                "5c29d3eece450437d53ae867260a50f1fb914f5539520d62013ca9453e4d040e",
                 "visualization",
                 false),
             Entry(
@@ -1228,7 +1228,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpNU0c6IGJ1aWx0aW5f" +
                     "aW50ZXJmYWNlcy9UaW1lCmludDMyIHNlYwp1aW50MzIgbmFub3NlYwo="),
                 "SceneEntityDeletion.msg",
-                "ac77e0d4b8bcfa8f1d6abf99708646def0d24579914736d66fea1cab6eb68a8f",
+                "1e963b95c9585fdd01722f24a76cd9f9c4b0344582f9dc9a6a390f8a8baf94c5",
                 "visualization",
                 false),
             Entry(
@@ -1386,7 +1386,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "bi1lbXB0eS4gSWYgYGRhdGFgIGlzIG5vbi1lbXB0eSwgYG1lZGlhX3R5cGVgIG11c3QgYmUgc2V0IHRvIGluZGljYXRlIHRo" +
                     "ZSB0eXBlIG9mIHRoZSBkYXRhLgp1aW50OFtdIGRhdGEK"),
                 "SceneUpdate.msg",
-                "1e339401d42557ab91fec91ee3c5b6b9ef154f40a94505b8611f5828f19ee583",
+                "f46f07abc3d0d64ce8feb06f1016e120b844e44d56a62c2d6792a602c23aab61",
                 "visualization",
                 true),
             Entry(
@@ -1412,7 +1412,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGJldHdlZW4gMCBhbmQgMQpmbG9hdDY0IGcKCiMgQmx1ZSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBiCgojIEFs" +
                     "cGhhIHZhbHVlIGJldHdlZW4gMCBhbmQgMQpmbG9hdDY0IGEK"),
                 "SpherePrimitive.msg",
-                "949847d6b559f03ac4878878ffe9d639779c64f02af043bbf0d9c847fd10ef40",
+                "6de291ec07a7c0c37bb75ba744e3783c7ed4c157c43939a82b0d6a7e23b69d17",
                 "visualization",
                 false),
             Entry(
@@ -1444,7 +1444,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IHdpdGggaXRzIGFzc29jaWF0ZWQgdmFsdWUKCiMgR2VuZXJhdGVkIGJ5IGh0dHBzOi8vZ2l0aHViLmNvbS9mb3hnbG92ZS9m" +
                     "b3hnbG92ZS1zZGsKCiMgS2V5CnN0cmluZyBrZXkKCiMgVmFsdWUKc3RyaW5nIHZhbHVlCg=="),
                 "TextAnnotation.msg",
-                "2645bc064ae9822f0304126c1ba1f3473aa8cf8de6589d40eddb236f973ed293",
+                "6871e86af8a33579dfa5ca74a62596373be5924bf41f9c03608ebc9932620255",
                 "annotation",
                 false),
             Entry(
@@ -1473,7 +1473,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "CgojIEdyZWVuIHZhbHVlIGJldHdlZW4gMCBhbmQgMQpmbG9hdDY0IGcKCiMgQmx1ZSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEK" +
                     "ZmxvYXQ2NCBiCgojIEFscGhhIHZhbHVlIGJldHdlZW4gMCBhbmQgMQpmbG9hdDY0IGEK"),
                 "TextPrimitive.msg",
-                "2cd53cb060e468814e29970817fccdd40b5b8d31fb568f67070578841387d4e3",
+                "bd439923477d82befe9233d9de7aecc4ce7517b3f62d403e7e159fc3c58d0978",
                 "visualization",
                 false),
             Entry(
@@ -1504,7 +1504,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "IGFuZCAxCmZsb2F0NjQgcgoKIyBHcmVlbiB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBnCgojIEJsdWUgdmFsdWUg" +
                     "YmV0d2VlbiAwIGFuZCAxCmZsb2F0NjQgYgoKIyBBbHBoYSB2YWx1ZSBiZXR3ZWVuIDAgYW5kIDEKZmxvYXQ2NCBhCg=="),
                 "TriangleListPrimitive.msg",
-                "42f66bc0f00de41b42ef5ee325684df9cb51b444a2889e7b3e677ed87abf2377",
+                "0a758abf466a2a330c651e6865c4b839ae2446aab62b84b0846ab30fb1037f9d",
                 "visualization",
                 false),
             Entry(
@@ -1514,7 +1514,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "ZWN0aW9uIG9ubHkKCiMgR2VuZXJhdGVkIGJ5IGh0dHBzOi8vZ2l0aHViLmNvbS9mb3hnbG92ZS9mb3hnbG92ZS1zZGsKCiMg" +
                     "eCBjb21wb25lbnQKZmxvYXQ2NCB4CgojIHkgY29tcG9uZW50CmZsb2F0NjQgeQo="),
                 "Vector2.msg",
-                "ee9d80a2ab8af929b9f0caf29bdfbf364acb43ad165c03dd9d6d016e5e863add",
+                "c3e09bd93006a85115a86155da500781915995a864c8a12b6945462b05e9bb5e",
                 "geometry",
                 false),
             Entry(
@@ -1562,7 +1562,7 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
                     "dDggRkxPQVQ2ND04CgojIFR5cGUgb2YgZGF0YSBpbiB0aGUgZmllbGQuIEludGVnZXJzIGFyZSBzdG9yZWQgdXNpbmcgbGl0" +
                     "dGxlLWVuZGlhbiBieXRlIG9yZGVyLgp1aW50OCB0eXBlCg=="),
                 "VoxelGrid.msg",
-                "be0e3ca91a387687934905e70c0bad2cf41e07fb35a5f76adbc69d7390ae507d",
+                "4bccaf2f690bbf419c0c9bc1b9d9d624ad26a619779f0942c9396eac23fa830a",
                 "grid",
                 false)
         };

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import subprocess
@@ -292,6 +293,26 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertEqual("", commit)
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
+
+    def test_schema_catalog_hashes_are_checkout_line_ending_independent(self) -> None:
+        """The same Git schema content must hash identically on Windows and Linux."""
+
+        module = load_module(
+            "schema_catalog_line_endings",
+            "Scripts/schema/generate_ros2_msg_schema_catalog.py",
+        )
+        source = Path("Log.msg")
+        lf_bytes = b"uint8 DEBUG=1\nstring message\n"
+        crlf_bytes = lf_bytes.replace(b"\n", b"\r\n")
+
+        lf_digest = module.source_tree_sha([source], {source: lf_bytes})
+        crlf_digest = module.source_tree_sha([source], {source: crlf_bytes})
+
+        self.assertEqual(lf_digest, crlf_digest)
+        self.assertEqual(
+            hashlib.sha256(lf_bytes).hexdigest(),
+            module.source_file_sha(crlf_bytes),
+        )
 
     def test_schema_catalog_reports_missing_schema_names(self) -> None:
         """Snapshot validation should name missing and extra .msg files."""
