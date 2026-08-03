@@ -5,6 +5,13 @@ The normative byte and state ledger is
 Both the extracted Bridge package C# codec and this sidecar's C++ codec read
 that fixture independently and reproduce every listed v2 frame byte for byte.
 
+The top-level 19-case v1 negative catalog remains byte-for-byte frozen to its
+Phase186-A capture. Its versioned executable binding is
+`v2.legacyV1NegativeExecution`: every catalog ID has a concrete mutation or
+stream action, an expected failure stage, and explicit `csharp`/`cpp`
+consumer roles. The binding lives in the permitted post-capture extension
+object so adding executable evidence does not rewrite the frozen v1 source.
+
 ## Provenance and clean-room status
 
 The Phase186-B protocol implementation is original. Design review used only

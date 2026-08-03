@@ -10,6 +10,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
@@ -250,16 +251,11 @@ namespace Unity2Foxglove.Ros2Bridge
                 throw new FormatException("U2R2 publisher preparation payload must be empty.");
             if (frame.Length != checked(16 + (int)headerLength))
                 throw new FormatException("U2R2 publisher preparation frame length is invalid.");
-            try
-            {
-                return JObject.Parse(Encoding.UTF8.GetString(frame, 16, (int)headerLength));
-            }
-            catch (JsonException exception)
-            {
-                throw new FormatException(
-                    "U2R2 publisher preparation JSON is malformed: " + exception.Message,
-                    exception);
-            }
+            return U2R2ProtocolCodec.ParseStrictV1Object(
+                frame,
+                16,
+                checked((int)headerLength),
+                "U2R2 publisher preparation");
         }
 
         private static void ValidateFixedHeader(byte[] frame)

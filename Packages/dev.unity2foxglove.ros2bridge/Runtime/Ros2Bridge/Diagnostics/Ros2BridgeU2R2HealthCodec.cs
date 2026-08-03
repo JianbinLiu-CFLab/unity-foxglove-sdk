@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
@@ -107,15 +108,13 @@ namespace Unity2Foxglove.Ros2Bridge
             if (headerBytes == null || headerBytes.Length == 0)
                 throw new FormatException("Health pong JSON header is empty.");
 
-            var headerJson = Encoding.UTF8.GetString(headerBytes);
-            try
-            {
-                return ParseHealthPongHeader(JObject.Parse(headerJson), expectedRequestId);
-            }
-            catch (JsonException ex)
-            {
-                throw new FormatException("Health pong JSON header is malformed: " + ex.Message, ex);
-            }
+            return ParseHealthPongHeader(
+                U2R2ProtocolCodec.ParseStrictV1Object(
+                    headerBytes,
+                    0,
+                    headerBytes.Length,
+                    "Health pong"),
+                expectedRequestId);
         }
 
         private static Ros2BridgeHealthPong ParseHealthPongHeader(JObject header, string expectedRequestId)
@@ -210,15 +209,11 @@ namespace Unity2Foxglove.Ros2Bridge
             if (frame.Length != expected)
                 throw new FormatException("U2R2 frame length does not match header.");
 
-            var headerJson = Encoding.UTF8.GetString(frame, 16, checked((int)headerLength));
-            try
-            {
-                return JObject.Parse(headerJson);
-            }
-            catch (JsonException ex)
-            {
-                throw new FormatException("U2R2 JSON header is malformed: " + ex.Message, ex);
-            }
+            return U2R2ProtocolCodec.ParseStrictV1Object(
+                frame,
+                16,
+                checked((int)headerLength),
+                "U2R2 health response");
         }
 
         private static ushort ReadUInt16LE(byte[] data, int offset)

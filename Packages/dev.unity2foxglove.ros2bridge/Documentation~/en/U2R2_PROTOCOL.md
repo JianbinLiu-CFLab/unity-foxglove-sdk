@@ -10,6 +10,12 @@ headers, request/response correlation, connection states, stable error codes,
 and terminal classification. The C# and C++ codecs consume the fixture
 independently and must reproduce every v2 frame byte for byte.
 
+The top-level 19-case v1 negative catalog remains byte-for-byte frozen to its
+Phase186-A capture. `v2.legacyV1NegativeExecution` adds the versioned
+executable binding without rewriting that frozen source: each catalog ID has
+a concrete mutation or stream action, an expected failure stage, and explicit
+`csharp`/`cpp` consumer roles.
+
 ## Provenance and clean-room status
 
 The Phase186-B protocol implementation is original. Design review used only

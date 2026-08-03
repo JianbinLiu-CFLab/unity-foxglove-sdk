@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <condition_variable>
@@ -254,6 +255,307 @@ int ShutdownSocketWrite(SocketHandle socket)
   return ::shutdown(socket, SHUT_WR);
 #endif
 }
+
+const nlohmann::json & ExecutableV1BaseVector(
+  const nlohmann::json & fixture,
+  const std::string & base_frame)
+{
+  if (base_frame == "preparePublisher.request") {
+    return fixture.at("preparePublisher").at("request");
+  }
+  if (base_frame == "preparePublisher.response") {
+    return fixture.at("preparePublisher").at("response");
+  }
+  if (base_frame == "publish.frame") {
+    return fixture.at("publish").at("frame");
+  }
+  throw std::runtime_error(
+          "unknown executable v1 base frame: " + base_frame);
+}
+
+std::vector<uint8_t> ExecutableV1BaseFrame(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  return HexToBytes(
+    ExecutableV1BaseVector(
+      fixture,
+      vector.at("baseFrame").get<std::string>())
+    .at("frameHex").get<std::string>());
+}
+
+void SetU32At(std::vector<uint8_t> & bytes, size_t offset, uint32_t value)
+{
+  if (offset + 4U > bytes.size()) {
+    throw std::runtime_error("executable v1 u32 patch is outside the frame");
+  }
+  bytes[offset] = static_cast<uint8_t>(value & 0xffU);
+  bytes[offset + 1U] = static_cast<uint8_t>((value >> 8U) & 0xffU);
+  bytes[offset + 2U] = static_cast<uint8_t>((value >> 16U) & 0xffU);
+  bytes[offset + 3U] = static_cast<uint8_t>((value >> 24U) & 0xffU);
+}
+
+void ReadExecutableV1Body(
+  const std::vector<uint8_t> & frame,
+  std::vector<uint8_t> & header,
+  std::vector<uint8_t> & payload)
+{
+  if (frame.size() < 16U) {
+    throw std::runtime_error("executable v1 base frame is too short");
+  }
+  const auto header_length = read_u32_le(&frame[8]);
+  const auto payload_length = read_u32_le(&frame[12]);
+  if (
+    frame.size() !=
+    16U + static_cast<size_t>(header_length) +
+    static_cast<size_t>(payload_length))
+  {
+    throw std::runtime_error(
+            "executable v1 base frame has inconsistent lengths");
+  }
+  header.assign(
+    frame.begin() + 16,
+    frame.begin() + 16 + header_length);
+  payload.assign(
+    frame.begin() + 16 + header_length,
+    frame.end());
+}
+
+std::vector<uint8_t> RebuildExecutableV1Frame(
+  const std::vector<uint8_t> & base,
+  const std::vector<uint8_t> & header,
+  const std::vector<uint8_t> & payload)
+{
+  if (base.size() < 16U ||
+    header.size() > std::numeric_limits<uint32_t>::max() ||
+    payload.size() > std::numeric_limits<uint32_t>::max())
+  {
+    throw std::runtime_error("executable v1 rebuild input is invalid");
+  }
+  std::vector<uint8_t> frame(
+    16U + header.size() + payload.size(),
+    0U);
+  std::copy_n(base.begin(), 16, frame.begin());
+  SetU32At(frame, 8, static_cast<uint32_t>(header.size()));
+  SetU32At(frame, 12, static_cast<uint32_t>(payload.size()));
+  std::copy(header.begin(), header.end(), frame.begin() + 16);
+  std::copy(
+    payload.begin(),
+    payload.end(),
+    frame.begin() + 16 + header.size());
+  return frame;
+}
+
+std::vector<uint8_t> BuildExecutableV1Wire(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  auto frame = ExecutableV1BaseFrame(fixture, vector);
+  const auto action = vector.at("action").get<std::string>();
+  if (action == "patch_frame") {
+    const auto replacement =
+      HexToBytes(vector.at("replacementHex").get<std::string>());
+    const auto offset = vector.at("offset").get<size_t>();
+    if (offset + replacement.size() > frame.size()) {
+      throw std::runtime_error("executable v1 patch is outside the frame");
+    }
+    std::copy(
+      replacement.begin(),
+      replacement.end(),
+      frame.begin() + offset);
+    return frame;
+  }
+  if (action == "truncate_frame" || action == "stream_frame") {
+    size_t length;
+    if (vector.contains("length")) {
+      length = vector.at("length").get<size_t>();
+    } else {
+      const auto trim = vector.at("trimBytes").get<size_t>();
+      if (trim >= frame.size()) {
+        throw std::runtime_error("executable v1 trim removes the whole frame");
+      }
+      length = frame.size() - trim;
+    }
+    if (length >= frame.size()) {
+      throw std::runtime_error("executable v1 truncation is not shorter");
+    }
+    frame.resize(length);
+    return frame;
+  }
+  if (action == "patch_json") {
+    auto decoded = u2r2::decode_frame(frame);
+    const auto path = vector.at("path").get<std::string>();
+    if (path == "qos.history") {
+      decoded.header.at("qos")["history"] = vector.at("value");
+    } else if (path.find('.') == std::string::npos) {
+      decoded.header[path] = vector.at("value");
+    } else {
+      throw std::runtime_error(
+              "unsupported executable v1 JSON path: " + path);
+    }
+    return u2r2::encode_frame(decoded.header, decoded.payload);
+  }
+
+  std::vector<uint8_t> header;
+  std::vector<uint8_t> payload;
+  ReadExecutableV1Body(frame, header, payload);
+  if (action == "duplicate_json_property") {
+    if (header.empty() || header.front() != '{') {
+      throw std::runtime_error(
+              "executable v1 duplicate base header is not an object");
+    }
+    const auto prefix =
+      nlohmann::json(vector.at("property").get<std::string>()).dump() +
+      ":" + vector.at("value").dump() + ",";
+    header.insert(
+      header.begin() + 1,
+      prefix.begin(),
+      prefix.end());
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  if (action == "replace_header_utf8") {
+    const auto needle_text = vector.at("needle").get<std::string>();
+    const std::vector<uint8_t> needle(
+      needle_text.begin(),
+      needle_text.end());
+    const auto replacement =
+      HexToBytes(vector.at("replacementHex").get<std::string>());
+    const auto found = std::search(
+      header.begin(),
+      header.end(),
+      needle.begin(),
+      needle.end());
+    if (found == header.end() || replacement.size() > needle.size()) {
+      throw std::runtime_error(
+              "executable v1 UTF-8 replacement target is invalid");
+    }
+    std::copy(replacement.begin(), replacement.end(), found);
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  if (action == "append_json_root") {
+    const auto suffix = vector.at("suffix").get<std::string>();
+    header.insert(header.end(), suffix.begin(), suffix.end());
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  throw std::runtime_error("unknown executable v1 action: " + action);
+}
+
+std::string ExpectedCppV1FailureFragment(const std::string & failure)
+{
+  if (failure == "magic") {
+    return "magic";
+  }
+  if (failure == "version" || failure == "flags") {
+    return "envelope version or reserved flags";
+  }
+  if (failure == "header_length") {
+    return "JSON header length is out of range";
+  }
+  if (failure == "payload_length") {
+    return "payload length is out of range";
+  }
+  if (failure == "fixed_header") {
+    return "shorter than its fixed header";
+  }
+  if (failure == "header_completion" || failure == "payload_completion") {
+    return "truncated or trailing bytes";
+  }
+  if (failure == "duplicate_property") {
+    return "duplicate property";
+  }
+  if (failure == "operation") {
+    return "first legacy U2R2 frame";
+  }
+  if (failure == "utf8" || failure == "json_root") {
+    return "JSON header is invalid";
+  }
+  if (failure == "topic") {
+    return "topic";
+  }
+  if (failure == "schema_name") {
+    return "schemaName";
+  }
+  if (failure == "qos") {
+    return "qos.depth";
+  }
+  throw std::runtime_error(
+          "unknown executable C++ v1 failure classification: " + failure);
+}
+
+void ExpectExecutableV1NegativeRejected(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  const auto action = vector.at("action").get<std::string>();
+  const auto expected_failure =
+    vector.at("expectedFailure").get<std::string>();
+  if (action == "stream_frame") {
+    const auto wire = BuildExecutableV1Wire(fixture, vector);
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    configure_client_timeouts(reader.get());
+    write_all(writer.get(), wire);
+    const auto termination = vector.at("termination").get<std::string>();
+    const auto limits = termination == "timeout"
+      ? u2r2::ProtocolLimits::defaults().with({
+          {"partialFrameTimeoutMs", vector.at("timeoutMs").get<uint64_t>()},
+        })
+      : u2r2::ProtocolLimits::defaults();
+    if (termination == "eof") {
+      ASSERT_EQ(0, ShutdownSocketWrite(writer.get()));
+    } else if (termination != "timeout") {
+      FAIL() << "unknown executable v1 stream termination: " << termination;
+    }
+    bridge_runtime::BridgeSessionProtocol protocol(limits);
+    if (termination == "timeout") {
+      try {
+        (void)read_accounted_wire_frame(
+          reader.get(),
+          protocol,
+          []() {return true;});
+        FAIL() << "partial executable v1 frame did not time out";
+      } catch (const u2r2::ProtocolError & error) {
+        EXPECT_EQ("timeout", error.code());
+        EXPECT_TRUE(error.terminal());
+      }
+      EXPECT_EQ("partial_payload_timeout", expected_failure);
+    } else {
+      EXPECT_THROW(
+        (void)read_accounted_wire_frame(
+          reader.get(),
+          protocol,
+          []() {return true;}),
+        ClientClosedException);
+      EXPECT_EQ("peer_close", expected_failure);
+    }
+    return;
+  }
+
+  const auto wire = BuildExecutableV1Wire(fixture, vector);
+  std::string rejection;
+  try {
+    if (
+      expected_failure == "topic" ||
+      expected_failure == "schema_name" ||
+      expected_failure == "qos")
+    {
+      (void)parse_prepare_publisher_frame(
+        raw_frame_from_wire(wire, u2r2::ProtocolLimits::defaults()));
+    } else {
+      (void)u2r2::parse_legacy_v1_first_frame(wire);
+    }
+  } catch (const std::exception & error) {
+    rejection = error.what();
+  }
+  EXPECT_FALSE(rejection.empty());
+  EXPECT_NE(
+    std::string::npos,
+    rejection.find(ExpectedCppV1FailureFragment(expected_failure)))
+    << rejection;
+}
 }  // namespace
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCppProtocol)
@@ -340,9 +642,6 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
     HexToBytes(publish.at("payloadHex").get<std::string>()),
     publish_frame.payload);
 
-  // Phase186-A froze these v1 entries as a documented case catalog.
-  // Executable negative actions live under v2.negativeVectors and are driven
-  // by test_u2r2_protocol.cpp in both language implementations.
   const std::array<std::string, 19> expected_negative_ids = {
     "bad_magic",
     "bad_version",
@@ -373,6 +672,32 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
     EXPECT_EQ(
       "reject",
       negative_vectors[index].at("expected").get<std::string>());
+  }
+
+  const auto & execution =
+    fixture.at("v2").at("legacyV1NegativeExecution");
+  EXPECT_EQ(1, execution.at("schemaVersion").get<int>());
+  EXPECT_EQ("negativeVectors", execution.at("catalog").get<std::string>());
+  const auto & executable_vectors = execution.at("vectors");
+  ASSERT_EQ(expected_negative_ids.size(), executable_vectors.size());
+  for (size_t index = 0; index < executable_vectors.size(); ++index) {
+    const auto & vector = executable_vectors[index];
+    EXPECT_EQ(
+      expected_negative_ids[index],
+      vector.at("id").get<std::string>());
+    ASSERT_TRUE(vector.at("action").is_string());
+    ASSERT_FALSE(vector.at("action").get<std::string>().empty());
+    ASSERT_TRUE(vector.at("expectedFailure").is_string());
+    ASSERT_FALSE(vector.at("expectedFailure").get<std::string>().empty());
+    const auto & consumers = vector.at("consumers");
+    ASSERT_TRUE(consumers.is_array());
+    ASSERT_FALSE(consumers.empty());
+    const auto consumes_cpp =
+      std::find(consumers.begin(), consumers.end(), "cpp") !=
+      consumers.end();
+    if (consumes_cpp) {
+      ExpectExecutableV1NegativeRejected(fixture, vector);
+    }
   }
 }
 

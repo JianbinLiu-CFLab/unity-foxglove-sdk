@@ -58,6 +58,10 @@ namespace Unity.FoxgloveSDK.Tests
             var negativeVectors = (JArray)fixture["negativeVectors"];
             var executableV2Negatives =
                 (JArray)fixture["v2"]?["negativeVectors"];
+            var executableV1Authority =
+                (JObject)fixture["v2"]?["legacyV1NegativeExecution"];
+            var executableV1Negatives =
+                (JArray)executableV1Authority?["vectors"];
 
             Check(
                 (int?)fixture["fixtureVersion"] == 1
@@ -89,6 +93,24 @@ namespace Unity.FoxgloveSDK.Tests
                     == negativeIds.Length
                 && negativeVectors.All(
                     vector => (string)vector["expected"] == "reject")
+                && (int?)executableV1Authority?["schemaVersion"] == 1
+                && (string)executableV1Authority?["catalog"]
+                    == "negativeVectors"
+                && executableV1Negatives != null
+                && executableV1Negatives.Count == negativeVectors.Count
+                && executableV1Negatives
+                    .Select(vector => (string)vector["id"])
+                    .SequenceEqual(negativeIds, StringComparer.Ordinal)
+                && executableV1Negatives.All(
+                    vector => !string.IsNullOrWhiteSpace(
+                                  (string)vector["action"])
+                              && !string.IsNullOrWhiteSpace(
+                                  (string)vector["expectedFailure"])
+                              && vector["consumers"] is JArray consumers
+                              && consumers.Count > 0
+                              && consumers.All(
+                                  consumer => (string)consumer == "csharp"
+                                              || (string)consumer == "cpp"))
                 && executableV2Negatives != null
                 && executableV2Negatives.Count == 51
                 && executableV2Negatives.All(
@@ -98,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
                                   (string)vector["expectedErrorCode"])
                               && vector["terminal"]?.Type
                                   == JTokenType.Boolean),
-                "186-A3: the frozen v1 negative case catalog remains documented, while all 51 v2 negatives carry executable cross-language actions and exact errors");
+                "186-A3: all 19 frozen v1 negative IDs bind to versioned role-aware executable actions, while all 51 v2 negatives carry cross-language actions and exact errors");
         }
 
         private static void VerifyPreMoveBehaviorAuthority()

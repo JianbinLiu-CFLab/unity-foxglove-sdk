@@ -524,6 +524,46 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             }
         }
 
+        internal static JObject ParseStrictV1Object(
+            byte[] bytes,
+            int offset,
+            int count,
+            string context)
+        {
+            if (bytes == null)
+                throw new ArgumentNullException(nameof(bytes));
+            if (offset < 0 || count < 0 || offset > bytes.Length - count)
+                throw new ArgumentOutOfRangeException(nameof(offset));
+            context = string.IsNullOrWhiteSpace(context)
+                ? "U2R2 v1"
+                : context;
+
+            string json;
+            try
+            {
+                json = StrictUtf8.GetString(bytes, offset, count);
+            }
+            catch (DecoderFallbackException exception)
+            {
+                throw new FormatException(
+                    context + " JSON UTF-8 is invalid.",
+                    exception);
+            }
+
+            try
+            {
+                return ParseStrictObject(
+                    json,
+                    U2R2ProtocolLimits.Default.MaxJsonDepth);
+            }
+            catch (U2R2ProtocolException exception)
+            {
+                throw new FormatException(
+                    context + " JSON is invalid: " + exception.Message,
+                    exception);
+            }
+        }
+
         private static JObject ParseStrictObject(
             string json,
             ulong maxJsonDepth)
@@ -559,6 +599,15 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             catch (U2R2ProtocolException)
             {
                 throw;
+            }
+            catch (JsonException exception)
+                when (exception.Message.IndexOf(
+                          "already exists",
+                          StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw InvalidFrame(
+                    "The U2R2 JSON header contains a duplicate property.",
+                    exception);
             }
             catch (JsonException exception)
             {
