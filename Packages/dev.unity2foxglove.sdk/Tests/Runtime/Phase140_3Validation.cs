@@ -409,6 +409,8 @@ namespace Unity.FoxgloveSDK.Tests
             var replay = ExtractMethodBody(session, "internal void PublishReplay");
             var dispose = ExtractMethodBody(session, "public void Dispose()");
             var broadcast = ExtractMethodBody(parameters, "public void BroadcastParameterValues");
+            var advertise = ExtractMethodBody(session, "private string SerializeSingleAdvertise");
+            var unadvertise = ExtractMethodBody(session, "private string SerializeSingleUnadvertise");
 
             Check(session.Contains("[ThreadStatic]", StringComparison.Ordinal)
                   && session.Contains("s_publishSubscriberScratch", StringComparison.Ordinal)
@@ -419,11 +421,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && !copy.Contains("SendBinary", StringComparison.Ordinal)
                   && !copy.Contains("SendDataBinary", StringComparison.Ordinal),
                 "173-024A: FoxgloveSession only holds subscriber scratch lock while copying subscribers and documents scratch reentry limits");
-            Check(!session.Contains("_singleAdvertiseChannels", StringComparison.Ordinal)
-                  && !session.Contains("_singleUnadvertiseChannelIds", StringComparison.Ordinal)
-                  && session.Contains("new List<AdvertiseChannel>(1) { channel }", StringComparison.Ordinal)
-                  && session.Contains("new List<uint>(1) { channelId }", StringComparison.Ordinal),
-                "173-024B: single advertise/unadvertise serialization avoids shared mutable lists");
+            Check(session.Contains("[ThreadStatic]\n        private static List<AdvertiseChannel> s_singleAdvertiseChannels;", StringComparison.Ordinal)
+                  && session.Contains("[ThreadStatic]\n        private static List<uint> s_singleUnadvertiseChannelIds;", StringComparison.Ordinal)
+                  && advertise.Contains("s_singleAdvertiseChannels ??= new List<AdvertiseChannel>(1)", StringComparison.Ordinal)
+                  && advertise.Contains("channels.Add(channel)", StringComparison.Ordinal)
+                  && advertise.Contains("finally", StringComparison.Ordinal)
+                  && advertise.LastIndexOf("channels.Clear()", StringComparison.Ordinal)
+                     > advertise.IndexOf("JsonConvert.SerializeObject", StringComparison.Ordinal)
+                  && unadvertise.Contains("s_singleUnadvertiseChannelIds ??= new List<uint>(1)", StringComparison.Ordinal)
+                  && unadvertise.Contains("channelIds.Add(channelId)", StringComparison.Ordinal)
+                  && unadvertise.Contains("finally", StringComparison.Ordinal)
+                  && unadvertise.LastIndexOf("channelIds.Clear()", StringComparison.Ordinal)
+                     > unadvertise.IndexOf("JsonConvert.SerializeObject", StringComparison.Ordinal),
+                "173-024B: single advertise/unadvertise serialization reuses cleared thread-local lists without retained aliases");
             Check(dispose.Contains("Volatile.Write(ref _recorder, null)", StringComparison.Ordinal)
                   && dispose.Contains("Volatile.Write(ref _mirrorSink, null)", StringComparison.Ordinal),
                 "173-024C: disposed sessions release recorder and mirror sink references");
