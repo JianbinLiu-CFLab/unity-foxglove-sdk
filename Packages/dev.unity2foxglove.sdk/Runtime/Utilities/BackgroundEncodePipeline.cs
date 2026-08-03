@@ -72,19 +72,35 @@ namespace Unity.FoxgloveSDK.Util
 
             var startWorker = false;
             var workerGeneration = 0;
-            TRequest replacedRequest;
+            var rejectStoppingGeneration = false;
+            TRequest replacedRequest = null;
             startError = null;
             lock (_worker.Gate)
             {
-                replacedRequest = _pending;
-                replacedPending = replacedRequest != null;
-                workerGeneration = _worker.StartOrReuseLocked(out startWorker);
-                request.Generation = workerGeneration;
-                _pending = request;
+                if (_worker.IsRunning && _worker.StopRequested)
+                {
+                    replacedPending = false;
+                    startError = "Background encode worker is stopping.";
+                    rejectStoppingGeneration = true;
+                }
+                else
+                {
+                    replacedRequest = _pending;
+                    replacedPending = replacedRequest != null;
+                    workerGeneration = _worker.StartOrReuseLocked(out startWorker);
+                    request.Generation = workerGeneration;
+                    _pending = request;
+                    _workerSignal.Set();
+                }
+            }
+
+            if (rejectStoppingGeneration)
+            {
+                DropRequest(request);
+                return false;
             }
 
             DropRequest(replacedRequest);
-            _workerSignal.Set();
 
             if (!startWorker)
                 return true;
