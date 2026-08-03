@@ -246,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown maps popup indices through serialized enum values without using enumValueIndex as the wire enum");
             Check(inspector.Contains("Subscription Control", StringComparison.Ordinal)
-                  && inspector.Contains("Subscribe Source", StringComparison.Ordinal)
+                  && inspector.Contains("DrawSubscribeTransportSelection(source, \"Source\")", StringComparison.Ordinal)
                   && inspector.Contains("WebSocket Encoding", StringComparison.Ordinal)
                   && inspector.Contains("Maximum Payload Bytes", StringComparison.Ordinal)
                   && inspector.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)
