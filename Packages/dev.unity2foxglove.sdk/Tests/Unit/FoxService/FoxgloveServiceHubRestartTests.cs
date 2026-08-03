@@ -73,9 +73,14 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxService
         {
             var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
             Assert.False(string.IsNullOrEmpty(trustedAssemblies));
+            var testAssembly = typeof(FoxgloveServiceHubRestartTests).Assembly.Location;
 
             return trustedAssemblies
                 .Split(Path.PathSeparator)
+                .Where(path => !string.Equals(
+                    path,
+                    testAssembly,
+                    StringComparison.OrdinalIgnoreCase))
                 .Append(typeof(JToken).Assembly.Location)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(path => MetadataReference.CreateFromFile(path))
