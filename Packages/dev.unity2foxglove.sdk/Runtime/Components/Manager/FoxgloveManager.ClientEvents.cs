@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
             new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
         private readonly List<ClientEvent> _clientEventDrainScratch = new();
+        private readonly ClientEventDispatchState _clientEventDispatchState = new();
 
         /// <summary>
         /// Queues a transport connect event for main-thread delivery.
@@ -102,16 +103,35 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     if (evt.IsMessage)
                     {
-                        OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
-                        OnClientMessageWithEncoding?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Encoding, evt.Payload);
+                        _clientEventDispatchState.Invoke(
+                            OnClientMessage,
+                            evt.ClientId,
+                            evt.ChannelId,
+                            evt.Topic,
+                            evt.Payload,
+                            WarnClientEventSubscriberFailure);
+                        _clientEventDispatchState.Invoke(
+                            OnClientMessageWithEncoding,
+                            evt.ClientId,
+                            evt.ChannelId,
+                            evt.Topic,
+                            evt.Encoding,
+                            evt.Payload,
+                            WarnClientEventSubscriberFailure);
                     }
                     else if (evt.IsConnect)
                     {
-                        OnClientConnected?.Invoke(evt.ClientId);
+                        _clientEventDispatchState.Invoke(
+                            OnClientConnected,
+                            evt.ClientId,
+                            WarnClientEventSubscriberFailure);
                     }
                     else
                     {
-                        OnClientDisconnected?.Invoke(evt.ClientId);
+                        _clientEventDispatchState.Invoke(
+                            OnClientDisconnected,
+                            evt.ClientId,
+                            WarnClientEventSubscriberFailure);
                     }
                 }
             }
@@ -119,6 +139,15 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _clientEventDrainScratch.Clear();
             }
+        }
+
+        private static void WarnClientEventSubscriberFailure(
+            System.Exception exception)
+        {
+            Debug.LogWarning(
+                "[Foxglove] Client event subscriber threw '"
+                + exception.GetType().FullName
+                + "'; remaining subscribers and queued events continue.");
         }
 
         private void ClearClientEvents()

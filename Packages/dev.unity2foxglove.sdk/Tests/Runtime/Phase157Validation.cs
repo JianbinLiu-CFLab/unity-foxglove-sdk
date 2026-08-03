@@ -52,23 +52,30 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMainThreadAndSecurityBoundary()
         {
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var dispatchState = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ClientEventDispatchState.cs");
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
             var subscriptionSession = ReadRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunSubscriptionSession.cs");
             var authorization = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInboundAuthorization.cs");
 
             Check(clientEvents.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal)
-                  && clientEvents.Contains("OnClientMessage?.Invoke", StringComparison.Ordinal)
+                  && clientEvents.Contains("queue.DrainTo(_clientEventDrainScratch)", StringComparison.Ordinal)
+                  && clientEvents.Contains("_clientEventDispatchState.Invoke(", StringComparison.Ordinal)
+                  && dispatchState.Contains("subscribers.GetInvocationList()", StringComparison.Ordinal)
                   && hub.Contains("_manager.OnClientMessageWithEncoding += OnClientMessage", StringComparison.Ordinal),
-                "transport messages cross the existing bounded manager queue before input assignment");
+                "transport messages cross the bounded manager queue and isolated subscriber dispatcher before input assignment");
             Check(authorization.Contains("IsLoopbackHost", StringComparison.Ordinal)
                   && authorization.Contains("remote inbound requires a configured shared token", StringComparison.Ordinal),
                 "non-loopback inbound fails closed without explicit token-backed authorization");
             Check(hub.Contains(
-                      "_router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;",
+                      "_router.MaxPayloadBytes = policy.MaxPayloadBytes;",
                       StringComparison.Ordinal)
                   && subscriptionSession.Contains(
                       "ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic",
+                      StringComparison.Ordinal)
+                  && subscriptionSession.Contains(
+                      "FoxRunSubscriptionMaxPayloadBytes",
                       StringComparison.Ordinal)
                   && hub.Contains(
                       "_router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;",
