@@ -190,8 +190,10 @@ namespace Unity.FoxgloveSDK.Tests
                         jsonFieldName: "samples")
                 }));
 
-            Check(source.Contains("fields=samples:float32", StringComparison.Ordinal)
-                  && !source.Contains("fields=samples:float[]", StringComparison.Ordinal),
+            Check(source.Contains("|fields=1|field|json=7#samples", StringComparison.Ordinal)
+                  && source.Contains("|member=8#_samples|canonical=7#float32|shape=", StringComparison.Ordinal)
+                  && source.Contains("#S|kind=0|type=7#float32|canonical=7#float32", StringComparison.Ordinal)
+                  && !source.Contains("|canonical=7#float[]", StringComparison.Ordinal),
                 "163-22E-1: emitted FoxTopicContract fingerprint shape uses canonical array element type");
         }
 
