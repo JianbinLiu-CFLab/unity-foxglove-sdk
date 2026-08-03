@@ -55,6 +55,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void ProbePublisherCompletesOwnedSidecarRetirementBeforeLifecycleReturns()
+        {
+            var publisher = Source(PublisherPath);
+            var stopSidecar = Method(publisher, "StopSidecar").ToFullString();
+
+            Assert.Contains("sidecar.Dispose();", stopSidecar);
+            Assert.Contains("LogSidecarShutdownFailure", stopSidecar);
+            Assert.DoesNotContain("Task.Run", stopSidecar);
+        }
+
+        [Fact]
         public void ProbeSidecarClosesStderrToUnblockReadLineAsync()
         {
             var sidecar = Source(SidecarPath).Text;

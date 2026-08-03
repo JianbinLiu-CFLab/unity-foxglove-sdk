@@ -5,7 +5,6 @@
 // Purpose: Demo-only OpenH264 camera probe for Phase 80 source spike.
 
 using System;
-using System.Threading.Tasks;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
@@ -387,17 +386,23 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         _sidecar = null;
         _sidecarWidth = 0;
         _sidecarHeight = 0;
-        Task.Run(() =>
+        try
         {
-            try
-            {
-                sidecar.Dispose();
-            }
-            catch
-            {
-                // Experimental probe shutdown must not surface background dispose failures on Unity's main thread.
-            }
-        });
+            // Disposal closes the helper pipes, kills the owned process, and
+            // performs bounded worker joins. Complete it before OnDisable or
+            // OnDestroy returns so a replacement cannot overlap this helper.
+            sidecar.Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogSidecarShutdownFailure(ex);
+        }
+    }
+
+    private void LogSidecarShutdownFailure(Exception exception)
+    {
+        _lastHelperError = "OpenH264 helper shutdown failed: " + exception.Message;
+        Debug.LogWarning("[Foxglove] " + _lastHelperError);
     }
 
     private void LogUnavailable(string message)
