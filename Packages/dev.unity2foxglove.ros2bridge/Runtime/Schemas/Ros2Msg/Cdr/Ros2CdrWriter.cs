@@ -266,7 +266,12 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
     public sealed class Ros2CdrWriterBudgetExceededException : InvalidOperationException
     {
         internal Ros2CdrWriterBudgetExceededException(int maximumBytes)
-            : base($"ROS 2 CDR payload exceeds the {maximumBytes}-byte budget.")
+            : this($"ROS 2 CDR payload exceeds the {maximumBytes}-byte budget.")
+        {
+        }
+
+        internal Ros2CdrWriterBudgetExceededException(string message)
+            : base(message)
         {
         }
     }

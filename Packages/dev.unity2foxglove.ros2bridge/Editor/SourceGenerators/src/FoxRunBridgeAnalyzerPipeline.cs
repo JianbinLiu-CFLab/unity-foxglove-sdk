@@ -36,6 +36,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 new Dictionary<
                     (string Ns, string ClassName),
                     MemberData>();
+            var locationsByMember =
+                new Dictionary<string, Location>(
+                    StringComparer.Ordinal);
             foreach (var item in items)
             {
                 if (item == null
@@ -48,6 +51,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var key = (item.Ns, item.ClassName);
                 if (!firstByClass.ContainsKey(key))
                     firstByClass.Add(key, item);
+                locationsByMember[MemberKey(
+                    item.Ns,
+                    item.ClassName,
+                    item.MemberName)] = item.MemberLocation;
             }
 
             if (members.Count == 0)
@@ -67,6 +74,47 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                                 StringComparison.Ordinal))
                         .Select(DeclaringType),
                     StringComparer.Ordinal);
+            var reportedBridgeDiagnostics =
+                new HashSet<string>(StringComparer.Ordinal);
+            foreach (var type in model.Types)
+            foreach (var member in type.Members)
+            {
+                if (FoxRunBridgeSourceEmitter
+                    .TryValidateExplicitBridgeMember(
+                        member,
+                        out var diagnosticId,
+                        out var reason))
+                {
+                    continue;
+                }
+
+                invalid.Add(type.DeclaringType);
+                var memberKey = MemberKey(
+                    type.Namespace,
+                    type.ClassName,
+                    member.MemberName);
+                if (!reportedBridgeDiagnostics.Add(
+                        memberKey + "\n" + diagnosticId))
+                {
+                    continue;
+                }
+
+                var location = locationsByMember.TryGetValue(
+                    memberKey,
+                    out var exactLocation)
+                    ? exactLocation
+                    : firstByClass.TryGetValue(
+                        (type.Namespace, type.ClassName),
+                        out var first)
+                        ? first.MemberLocation
+                        : Location.None;
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        FoxRunBridgeDiagnostics.For(
+                            diagnosticId),
+                        location,
+                        reason));
+            }
 
             foreach (var type in model.Types)
             {
@@ -113,5 +161,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     target.Length - suffix.Length)
                 : target;
         }
+
+        private static string MemberKey(
+            string ns,
+            string className,
+            string memberName)
+            => (string.IsNullOrEmpty(ns)
+                    ? className ?? string.Empty
+                    : ns + "." + className)
+               + "\n"
+               + (memberName ?? string.Empty);
     }
 }

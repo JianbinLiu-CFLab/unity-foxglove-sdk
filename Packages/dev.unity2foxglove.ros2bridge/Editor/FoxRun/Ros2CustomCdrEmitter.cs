@@ -982,6 +982,8 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 : variable + " == null ? 0 : " + variable + ".Length";
             var count = "__sequenceCount_" + ordinal;
             sb.AppendLine($"{pad}var {count} = {countExpression};");
+            sb.AppendLine(
+                $"{pad}global::Unity2Foxglove.Ros2Bridge.FoxRunBridgeCustomDtoBudgetPolicy.EnsureSequenceItems({count});");
             sb.AppendLine($"{pad}writer.WriteSequenceLength({count});");
             sb.AppendLine($"{pad}if ({variable} != null)");
             sb.AppendLine($"{pad}{{");
@@ -1034,6 +1036,57 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                         BridgeProviderId,
                         StringComparer.Ordinal))
                && ProjectShape(member.TypeShape) != null;
+
+        internal static bool TryValidateExplicitBridgeMember(
+            FoxRunGenerationMember member,
+            out string diagnosticId,
+            out string reason)
+        {
+            diagnosticId = string.Empty;
+            reason = string.Empty;
+            if (member == null)
+                return true;
+
+            var explicitPublish =
+                member.Mode != 2
+                && member.PublishTransportIds != null
+                && member.PublishTransportIds.Contains(
+                    BridgeProviderId,
+                    StringComparer.Ordinal);
+            var explicitSubscribe =
+                member.Mode != 1
+                && string.Equals(
+                    member.SubscribeTransportId,
+                    BridgeProviderId,
+                    StringComparison.Ordinal);
+            if ((!explicitPublish && !explicitSubscribe)
+                || IsOfficialFoxgloveMessage(member))
+            {
+                return true;
+            }
+
+            if (!TryValidateRosFieldNames(
+                    member.TypeShape,
+                    member.TypeShape?.TypeName
+                    ?? member.EmissionTypeName,
+                    new HashSet<FoxRunTypeShape>(),
+                    out reason))
+            {
+                diagnosticId = "FOXBRG002";
+                return false;
+            }
+
+            if (ProjectShape(member.TypeShape) != null)
+                return true;
+
+            diagnosticId = "FOXBRG001";
+            reason = "The explicitly selected Bridge route for '"
+                     + member.DeclaringType
+                     + "."
+                     + member.MemberName
+                     + "' requires a supported constructible custom DTO with assignable members.";
+            return false;
+        }
 
         private static bool IsSupportedStandardPublish(
             FoxRunGenerationMember member)
@@ -1164,6 +1217,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
                 var rosName = ToRosFieldName(field.MemberName);
                 if (string.IsNullOrEmpty(rosName)
+                    || !IsValidRosFieldName(rosName)
                     || rosName.StartsWith("foxrun_", StringComparison.Ordinal)
                     || !rosNames.Add(rosName))
                 {
@@ -1494,6 +1548,111 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 }
             }
             return builder.ToString().Trim('_');
+        }
+
+        private static bool TryValidateRosFieldNames(
+            FoxRunTypeShape shape,
+            string path,
+            ISet<FoxRunTypeShape> visited,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (shape == null)
+                return true;
+            if (shape.Kind == FoxRunTypeShapeKind.Collection)
+            {
+                return TryValidateRosFieldNames(
+                    shape.ElementShape,
+                    path + "[]",
+                    visited,
+                    out reason);
+            }
+            if (shape.Kind != FoxRunTypeShapeKind.Object
+                || !visited.Add(shape))
+            {
+                return true;
+            }
+
+            var rosNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in shape.Fields
+                         .OrderBy(
+                             value => value?.MemberName,
+                             StringComparer.Ordinal))
+            {
+                if (field == null)
+                    continue;
+
+                var rosName = ToRosFieldName(field.MemberName);
+                var fieldPath = (path ?? string.Empty)
+                                + "."
+                                + field.MemberName;
+                if (!IsValidRosFieldName(rosName))
+                {
+                    reason = "Bridge custom DTO member '"
+                             + fieldPath
+                             + "' lowers to invalid ROS 2 field identifier '"
+                             + rosName
+                             + "'.";
+                    return false;
+                }
+                if (rosName.StartsWith(
+                        "foxrun_",
+                        StringComparison.Ordinal))
+                {
+                    reason = "Bridge custom DTO member '"
+                             + fieldPath
+                             + "' uses the reserved ROS 2 field prefix 'foxrun_'.";
+                    return false;
+                }
+                if (!rosNames.Add(rosName))
+                {
+                    reason = "Bridge custom DTO member '"
+                             + fieldPath
+                             + "' collides after lowering to ROS 2 field identifier '"
+                             + rosName
+                             + "'.";
+                    return false;
+                }
+                if (!TryValidateRosFieldNames(
+                        field.TypeShape,
+                        fieldPath,
+                        visited,
+                        out reason))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool IsValidRosFieldName(string value)
+        {
+            if (string.IsNullOrEmpty(value)
+                || value[0] < 'a'
+                || value[0] > 'z')
+            {
+                return false;
+            }
+
+            var previousUnderscore = false;
+            for (var index = 1; index < value.Length; index++)
+            {
+                var current = value[index];
+                if ((current >= 'a' && current <= 'z')
+                    || (current >= '0' && current <= '9'))
+                {
+                    previousUnderscore = false;
+                    continue;
+                }
+                if (current != '_'
+                    || previousUnderscore
+                    || index == value.Length - 1)
+                {
+                    return false;
+                }
+                previousUnderscore = true;
+            }
+            return true;
         }
 
         private static string ToPascalIdentifier(string value)

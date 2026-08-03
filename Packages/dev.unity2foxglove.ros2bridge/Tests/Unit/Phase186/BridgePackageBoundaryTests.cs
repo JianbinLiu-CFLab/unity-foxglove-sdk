@@ -181,6 +181,95 @@ namespace Demo
                 generated.Keys.Distinct(StringComparer.Ordinal).Count());
         }
 
+        [Fact]
+        public void BridgeAnalyzerRejectsAnUnsupportedBridgeOnlyDto()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9);
+            const string source = @"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{
+    public partial class Publisher
+    {
+        [FoxRun(""/phase187/bridge-unsupported"",
+            PublishTransportIds = new[] { ""unity2foxglove.ros2bridge"" })]
+        private Dictionary<string, int> _values = new Dictionary<string, int>();
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "phase187_bridge_unsupported_dto",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                PlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                FoxRunAnalyzerTestComposition.CoreAndBridge(),
+                parseOptions: parseOptions);
+            var run = driver.RunGenerators(compilation).GetRunResult();
+
+            Assert.Contains(
+                run.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXBRG001"
+                              && diagnostic.Severity
+                              == DiagnosticSeverity.Error);
+            Assert.DoesNotContain(
+                run.Results.SelectMany(
+                    result => result.GeneratedSources),
+                item => item.HintName.Contains(
+                    "ros2bridge",
+                    StringComparison.Ordinal));
+        }
+
+        [Theory]
+        [InlineData("_1Value")]
+        [InlineData("Über")]
+        public void BridgeAnalyzerRejectsDtoMembersThatCannotLowerToRosFields(
+            string memberName)
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9);
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{
+    public sealed class State
+    {
+        public int " + memberName + @";
+    }
+
+    public partial class Publisher
+    {
+        [FoxRun(""/phase187/bridge-field"",
+            PublishTransportIds = new[] { ""unity2foxglove.ros2bridge"" })]
+        private State _state = new State();
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "phase187_bridge_invalid_ros_field",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                PlatformReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                FoxRunAnalyzerTestComposition.CoreAndBridge(),
+                parseOptions: parseOptions);
+            var run = driver.RunGenerators(compilation).GetRunResult();
+
+            Assert.Contains(
+                run.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXBRG002"
+                              && diagnostic.Severity
+                              == DiagnosticSeverity.Error);
+            Assert.DoesNotContain(
+                run.Results.SelectMany(
+                    result => result.GeneratedSources),
+                item => item.HintName.Contains(
+                    "ros2bridge",
+                    StringComparison.Ordinal));
+        }
+
         private static MetadataReference[] PlatformReferences()
         {
             var trusted = (string)AppContext.GetData(

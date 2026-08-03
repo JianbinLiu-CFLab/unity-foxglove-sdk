@@ -19,6 +19,7 @@
     <Compile Include="..\FoxRun\Ros2CustomCdrEmitter.cs"
              Link="Bridge\FoxRunBridgeSourceEmitter.cs" />
     <Compile Include="src\FoxRunBridgeAnalyzerPipeline.cs" />
+    <Compile Include="src\FoxRunBridgeDiagnostics.cs" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
