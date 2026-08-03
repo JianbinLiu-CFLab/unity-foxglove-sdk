@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -92,21 +91,5 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(1, results.Count(task => task.Result));
         }
 
-        [Fact]
-        public void Ros2MsgSchemaRegistrationIsIdempotentForDefaultRegistry()
-        {
-            var registry = new DefaultSchemaRegistry();
-
-            Ros2MsgSchemasSetup.RegisterSchemas(registry);
-            Assert.True(registry.TryGetSchema("foxglove_msgs/msg/CompressedImage", "ros2msg", out var first));
-
-            Ros2MsgSchemasSetup.RegisterSchemas(registry);
-            Assert.True(registry.TryGetSchema("foxglove_msgs/msg/CompressedImage", "ros2msg", out var second));
-
-            Assert.Equal(first.Name, second.Name);
-            Assert.Equal(first.Encoding, second.Encoding);
-            Assert.Equal(first.Content, second.Content);
-            Assert.Equal(first.RawContent, second.RawContent);
-        }
     }
 }

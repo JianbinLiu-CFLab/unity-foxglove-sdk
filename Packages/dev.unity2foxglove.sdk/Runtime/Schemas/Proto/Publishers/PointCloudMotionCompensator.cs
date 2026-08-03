@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Each raw point is already expressed in one scan reference sensor frame.
         /// This is kept for legacy callers that intentionally publish pre-aligned
-        /// visualization points; raw PointCloud2 Native uses acquisition-time points.
+        /// visualization points; raw PackedPointCloud Native uses acquisition-time points.
         /// </summary>
         ScanReferenceSensorFrame
     }
@@ -413,7 +413,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private static uint TimeOffsetSecondsToNanoseconds(float seconds)
         {
-            // Stored per-point time offsets are encoded as unsigned nanoseconds, clamped to MCAP/PointCloud2 field width.
+            // Stored per-point time offsets are encoded as unsigned nanoseconds, clamped to MCAP/PackedPointCloud field width.
             if (float.IsNaN(seconds) || seconds <= 0f)
                 return 0U;
 

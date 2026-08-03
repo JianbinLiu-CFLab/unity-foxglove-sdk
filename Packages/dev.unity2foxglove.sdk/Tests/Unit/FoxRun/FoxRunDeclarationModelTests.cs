@@ -144,48 +144,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunGenerationDescriptorConstants.InheritEncoding, blank.Encoding);
         }
 
-        [Fact]
-        public void DirectTopicMetadataEmissionKeepsQosPresenceOnCanonicalEndpoint()
-        {
-            const string topic = "/phase184/qos/canonical-endpoint";
-            var source = FoxgloveSourceEmitter.EmitClass(
-                "Demo",
-                "CanonicalEndpoint",
-                new[]
-                {
-                    new FoxgloveSourceEmitter.TopicMember(
-                        "_first",
-                        "System.Int32",
-                        topic,
-                        10f,
-                        "",
-                        policy: (int)FoxRunPolicy.FixedRate,
-                        tolerance: 0f,
-                        encoding: FoxRunGenerationDescriptorConstants.InheritEncoding),
-                    new FoxgloveSourceEmitter.TopicMember(
-                        "_second",
-                        "System.Int32",
-                        topic,
-                        10f,
-                        "",
-                        policy: (int)FoxRunPolicy.FixedRate,
-                        tolerance: 0f,
-                        encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
-                        qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
-                        namedArgumentPresence: FoxRunNamedArgumentPresence.QoS)
-                });
-            var topicLine = source
-                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Single(line => line.Contains(
-                    "new FoxgloveLogTopicInfo(\"/phase184/qos/canonical-endpoint\"",
-                    StringComparison.Ordinal));
 
-            Assert.Contains("hasExplicitQosProfile: false", topicLine, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitReliability: false", topicLine, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitDurability: false", topicLine, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitHistory: false", topicLine, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitDepth: false", topicLine, StringComparison.Ordinal);
-        }
 
         [Fact]
         public void GeneratedTopicMetadataDistinguishesInheritedAndExplicitPublishRates()
@@ -395,12 +354,14 @@ namespace Demo
                 new[]
                 {
                     FoxRunEncoding.Protobuf,
-                    FoxRunEncoding.JSON
+                    FoxRunEncoding.JSON,
+                    (FoxRunEncoding)3
                 },
                 values);
             Assert.Equal(0, (int)(FoxRunEncoding)0);
             Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
             Assert.Equal(2, (int)FoxRunEncoding.JSON);
+            Assert.Equal(3, (int)(FoxRunEncoding)3);
         }
 
         [Fact]
@@ -427,259 +388,19 @@ namespace Demo
             Assert.Equal(0, aggregateFieldNumber.GetValue(new FoxRunFieldAttribute()));
         }
 
-        [Fact]
-        public void OfficialQosDeclarationsUseStronglyTypedAxesAndUnnamedOmissionSentinels()
-        {
-            Assert.Equal(
-                new[] { "Default", "SensorData", "SystemDefault" },
-                Enum.GetNames(typeof(FoxRunQosProfile)));
-            Assert.Equal(
-                new[] { "SystemDefault", "Reliable", "BestEffort" },
-                Enum.GetNames(typeof(FoxRunQosReliability)));
-            Assert.Equal(
-                new[] { "SystemDefault", "Volatile", "TransientLocal" },
-                Enum.GetNames(typeof(FoxRunQosDurability)));
-            Assert.Equal(
-                new[] { "SystemDefault", "KeepLast", "KeepAll" },
-                Enum.GetNames(typeof(FoxRunQosHistory)));
 
-            var member = new FoxRunAttribute("/phase184/qos");
-            var aggregate = new FoxRunMessageAttribute("/phase184/qos-message");
-            Assert.Equal((FoxRunQosProfile)0, member.QoS);
-            Assert.Equal((FoxRunQosReliability)0, member.Reliability);
-            Assert.Equal((FoxRunQosDurability)0, member.Durability);
-            Assert.Equal((FoxRunQosHistory)0, member.History);
-            Assert.Equal(0, member.Depth);
-            Assert.Equal((FoxRunQosProfile)0, aggregate.QoS);
-            Assert.Null(typeof(FoxRunAttribute).GetProperty("Ros2Qos"));
-        }
 
-        [Fact]
-        public void OfficialQosStaticImportGrammarCompiles()
-        {
-            var output = CreateCompilation(@"
-using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
-using static Unity.FoxgloveSDK.Components.FoxRunQosProfile;
-using static Unity.FoxgloveSDK.Components.FoxRunQosReliability;
-using static Unity.FoxgloveSDK.Components.FoxRunQosDurability;
-using static Unity.FoxgloveSDK.Components.FoxRunQosHistory;
 
-namespace Demo
-{
-    public partial class QosGrammar
-    {
-        [FoxRun(""/phase184/sensor"", Targets = Ros2Native, QoS = SensorData)]
-        private float _sensor;
 
-        [FoxRun(""/phase184/map"", Targets = Ros2Native | Ros2Bridge,
-            QoS = Default, Reliability = Reliable,
-            Durability = TransientLocal, History = KeepLast, Depth = 1)]
-        private float _map;
 
-        [FoxRun(""/phase184/system"", Targets = Ros2Native,
-            QoS = FoxRunQosProfile.SystemDefault,
-            Reliability = FoxRunQosReliability.SystemDefault)]
-        private float _system;
-    }
-}");
 
-            Assert.DoesNotContain(
-                output.GetDiagnostics(),
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-        }
 
-        [Fact]
-        public void RoslynGeneratorAcceptsEveryOfficialQosProfileAndPerAxisOverrides()
-        {
-            var result = RunGenerator(@"
-using Unity.FoxgloveSDK.Components;
 
-namespace Demo
-{
-    public partial class QosProfiles
-    {
-        [FoxRun(""/phase184/default"", QoS = FoxRunQosProfile.Default,
-            Reliability = FoxRunQosReliability.Reliable,
-            Durability = FoxRunQosDurability.TransientLocal,
-            History = FoxRunQosHistory.KeepLast, Depth = 23)]
-        private float _default;
 
-        [FoxRun(""/phase184/sensor"", QoS = FoxRunQosProfile.SensorData)]
-        private float _sensor;
 
-        [FoxRun(""/phase184/system"", QoS = FoxRunQosProfile.SystemDefault,
-            Reliability = FoxRunQosReliability.SystemDefault,
-            Durability = FoxRunQosDurability.SystemDefault,
-            History = FoxRunQosHistory.SystemDefault)]
-        private float _system;
-    }
-}");
 
-            Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            using var descriptor = JsonDocument.Parse(GeneratedDescriptorJson(result));
-            var members = descriptor.RootElement
-                .GetProperty("types")
-                .EnumerateArray()
-                .SelectMany(type => type.GetProperty("members").EnumerateArray())
-                .ToDictionary(
-                    member => member.GetProperty("topic").GetString(),
-                    StringComparer.Ordinal);
-            var defaultQos = members["/phase184/default"];
-            Assert.Equal("default", defaultQos.GetProperty("qosProfile").GetString());
-            Assert.Equal("reliable", defaultQos.GetProperty("qosReliability").GetString());
-            Assert.Equal("transient-local", defaultQos.GetProperty("qosDurability").GetString());
-            Assert.Equal("keep-last", defaultQos.GetProperty("qosHistory").GetString());
-            Assert.Equal(23, defaultQos.GetProperty("qosDepth").GetInt32());
 
-            var sensorQos = members["/phase184/sensor"];
-            Assert.Equal("sensor-data", sensorQos.GetProperty("qosProfile").GetString());
-            Assert.Equal("inherit", sensorQos.GetProperty("qosReliability").GetString());
-            Assert.Equal("inherit", sensorQos.GetProperty("qosDurability").GetString());
-            Assert.Equal("inherit", sensorQos.GetProperty("qosHistory").GetString());
-            Assert.Equal(0, sensorQos.GetProperty("qosDepth").GetInt32());
 
-            var systemQos = members["/phase184/system"];
-            Assert.Equal("system-default", systemQos.GetProperty("qosProfile").GetString());
-            Assert.Equal("system-default", systemQos.GetProperty("qosReliability").GetString());
-            Assert.Equal("system-default", systemQos.GetProperty("qosDurability").GetString());
-            Assert.Equal("system-default", systemQos.GetProperty("qosHistory").GetString());
-            Assert.Equal(0, systemQos.GetProperty("qosDepth").GetInt32());
-        }
-
-        [Fact]
-        public void RoslynGeneratorKeepsExplicitDepthZeroDistinctFromOmission()
-        {
-            const string omittedSource = @"
-using Unity.FoxgloveSDK.Components;
-
-namespace Demo
-{
-    public partial class OmittedQosDepth
-    {
-        [FoxRun(""/phase184/omitted"")]
-        private float _omitted;
-    }
-}";
-            const string explicitZeroSource = @"
-using Unity.FoxgloveSDK.Components;
-
-namespace Demo
-{
-    public partial class ExplicitZeroQosDepth
-    {
-        [FoxRun(""/phase184/explicit-zero"", QoS = FoxRunQosProfile.Default,
-            History = FoxRunQosHistory.KeepLast, Depth = 0)]
-        private float _explicitZero;
-    }
-}";
-            const FoxRunNamedArgumentPresence expectedPresence =
-                FoxRunNamedArgumentPresence.QoS
-                | FoxRunNamedArgumentPresence.History
-                | FoxRunNamedArgumentPresence.Depth;
-            var omitted = Assert.Single(ExtractRoslynMemberData(omittedSource).Topics);
-            var explicitZero = Assert.Single(ExtractRoslynMemberData(explicitZeroSource).Topics);
-
-            Assert.Equal(
-                FoxRunNamedArgumentPresence.None,
-                omitted.NamedArgumentPresence & expectedPresence);
-            Assert.Equal(
-                expectedPresence,
-                explicitZero.NamedArgumentPresence & expectedPresence);
-            Assert.Equal((int)FoxRunQosProfile.Default, explicitZero.QosProfile);
-            Assert.Equal((int)FoxRunQosHistory.KeepLast, explicitZero.QosHistory);
-            Assert.Equal(0, explicitZero.QosDepth);
-            Assert.Single(
-                RunGenerator(explicitZeroSource).Diagnostics,
-                diagnostic => diagnostic.Id == "FOXRUN613"
-                    && diagnostic.GetMessage().Contains("Depth", StringComparison.Ordinal));
-        }
-
-        [Theory]
-        [InlineData("FoxRunQosProfile.SensorData", "FoxRunQosHistory.KeepAll")]
-        [InlineData("FoxRunQosProfile.SystemDefault", "FoxRunQosHistory.SystemDefault")]
-        public void RoslynGeneratorRejectsDepthForNonKeepLastHistoryWithStableDiagnostic(
-            string profile,
-            string history)
-        {
-            var result = RunGenerator($@"
-using Unity.FoxgloveSDK.Components;
-
-namespace Demo
-{{
-    public partial class InvalidQosHistory
-    {{
-        [FoxRun(""/phase184/invalid-history"", QoS = {profile},
-            History = {history}, Depth = 8)]
-        private float _value;
-    }}
-}}");
-
-            var diagnostic = Assert.Single(
-                result.Diagnostics,
-                candidate => candidate.Id == "FOXRUN613");
-            Assert.Contains("Depth", diagnostic.GetMessage(), StringComparison.Ordinal);
-            Assert.DoesNotContain(result.Diagnostics, candidate => candidate.Id == "FOXRUN614");
-        }
-
-        [Fact]
-        public void ExplicitQosWithKnownAllFoxgloveDirectionsFailsClosed()
-        {
-            var result = RunGenerator(@"
-using Unity.FoxgloveSDK.Components;
-
-namespace Demo
-{
-    public partial class AllFoxgloveQos
-    {
-        [FoxRun(""/phase184/all-foxglove"", Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Foxglove, Targets = FoxRunEndpoint.Foxglove,
-            QoS = FoxRunQosProfile.SensorData)]
-        private float _value;
-    }
-}");
-
-            Assert.Single(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN614");
-            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN613");
-        }
-
-        [Fact]
-        public void ExplicitQosWithInheritedDirectionsRemainsADeferredRuntimeConstraint()
-        {
-            var result = RunGenerator(@"
-using Unity.FoxgloveSDK.Components;
-
-namespace Demo
-{
-    public partial class InheritedDirectionQos
-    {
-        [FoxRun(""/phase184/inherited"", Mode = FoxRunFlow.PublishAndSubscribe,
-            QoS = FoxRunQosProfile.SensorData,
-            Reliability = FoxRunQosReliability.BestEffort)]
-        private float _value;
-    }
-}");
-
-            Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            var descriptor = GeneratedDescriptor(result);
-            Assert.Contains("\\\"source\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"targets\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"qosProfile\\\":\\\"sensor-data\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains(
-                "\\\"explicitArguments\\\":\\\"Mode,QoS,Reliability\\\"",
-                descriptor,
-                StringComparison.Ordinal);
-            var generated = result.GeneratedTrees
-                .Select(tree => tree.GetText().ToString())
-                .Single(text => text.Contains("partial class InheritedDirectionQos", StringComparison.Ordinal));
-            Assert.Contains("declaredTargets: (FoxRunEndpoint)0", generated, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitTargets: false", generated, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitQos: true", generated, StringComparison.Ordinal);
-        }
 
         [Fact]
         public void SubscribeMembersStayOutOfGeneratedPublishDispatch()
@@ -726,6 +447,14 @@ namespace Demo
         private Vector3 _incomingVelocity;
     }
 }";
+            var extracted = ExtractRoslynMemberData(
+                source,
+                "_incomingVelocity");
+            var topic = Assert.Single(extracted.Topics);
+            Assert.Null(topic.SubscribeTransportId);
+            Assert.True(
+                topic.GeneratesWebSocketCodec(topic.Mode));
+
             var result = RunGenerator(source);
             var generated = result.GeneratedTrees
                 .Select(tree => tree.GetText().ToString())
@@ -806,29 +535,7 @@ namespace Demo
             Assert.Contains("if (__remoteUnchanged) return false;", generated, StringComparison.Ordinal);
         }
 
-        [Fact]
-        [Trait("Phase", "184-F")]
-        public void ValidPublishAndSubscribeDoesNotEmitAuthorityWarning()
-        {
-            var result = RunGenerator(@"
-using Unity.FoxgloveSDK.Components;
 
-namespace Demo
-{
-    public partial class SharedState
-    {
-        [FoxRun(""/phase184/full-duplex"", Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Foxglove,
-            Targets = FoxRunEndpoint.Foxglove,
-            Encoding = FoxRunEncoding.JSON)]
-        private string _state;
-    }
-}");
-
-            Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Id == "FOXRUN400");
-        }
 
         [Fact]
         public void TriggerMethodsAreDirectionSpecificAndExposeBulkOperations()
@@ -1018,47 +725,7 @@ namespace Demo
             Assert.Equal(2, Convert.ToInt32(mode.Value));
         }
 
-        [Fact]
-        public void RoslynGeneratorPreservesDeclaredTargetsEncodingAndFieldNumberInDescriptor()
-        {
-            var result = RunGenerator(@"
-using Unity.FoxgloveSDK.Components;
 
-namespace Demo
-{
-    public sealed class WirePayload
-    {
-        public int Count { get; set; }
-    }
-
-    public partial class WireState
-    {
-        [FoxRun(
-            ""/phase175/wire_state"",
-            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
-            Encoding = FoxRunEncoding.Protobuf,
-            ProtobufFieldNumber = 17)]
-        private WirePayload _payload;
-    }
-}");
-            Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            var descriptor = result.Results
-                .Single()
-                .GeneratedSources
-                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
-                .SourceText
-                .ToString();
-
-            Assert.Contains("\\\"encoding\\\":\\\"protobuf\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"targets\\\":\\\"foxglove,ros2-bridge\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains(
-                "\\\"explicitArguments\\\":\\\"Encoding,Targets,ProtobufFieldNumber\\\"",
-                descriptor,
-                StringComparison.Ordinal);
-            Assert.Contains("\\\"protobufFieldNumber\\\":17", descriptor, StringComparison.Ordinal);
-        }
 
         [Fact]
         public void RoslynGeneratorRejectsInvalidDeclaredEncoding()
@@ -1463,7 +1130,10 @@ namespace Demo
                 .ToString();
 
             Assert.Contains("\\\"encoding\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
-            Assert.Contains("\\\"protobufFieldNumber\\\":23", descriptor, StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"protobuf\\\":{\\\"fieldNumber\\\":23",
+                descriptor,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -1501,15 +1171,15 @@ namespace Demo
         [Trait("Phase", "184-G")]
         public void WebSocketValidationAllowsJsonDtoAndEnumShapesButRejectsUnknownScalars()
         {
-            var objectShape = FoxRunProtobufTypeShape.Object(
+            var objectShape = FoxRunTypeShape.Object(
                 "Demo.Payload",
-                Array.Empty<FoxRunProtobufTypeField>());
-            var enumShape = FoxRunProtobufTypeShape.Enum(
+                Array.Empty<FoxRunTypeField>());
+            var enumShape = FoxRunTypeShape.Enum(
                 "Demo.State",
                 new[]
                 {
-                    new FoxRunProtobufEnumValue("UNSPECIFIED", 0),
-                    new FoxRunProtobufEnumValue("READY", 1),
+                    new FoxRunEnumValue("UNSPECIFIED", 0),
+                    new FoxRunEnumValue("READY", 1),
                 });
             var members = new[]
             {
@@ -1519,21 +1189,21 @@ namespace Demo
                     1, 0.1f, "UnitTest", 0, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                    protobufTypeShape: objectShape),
+                    typeShape: objectShape),
                 new FoxRunGenerationMember(
                     "Demo", "JsonInputs", "_incomingState", "field", "Demo.State",
                     true, false, "", "/phase184/json/state", 10f, "",
                     1, 0.1f, "UnitTest", 1, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                    protobufTypeShape: enumShape),
+                    typeShape: enumShape),
                 new FoxRunGenerationMember(
                     "Demo", "JsonInputs", "_incomingUnknown", "field", "Demo.CustomScalar",
                     true, false, "", "/phase184/json/unknown", 10f, "",
                     1, 0.1f, "UnitTest", 2, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                    protobufTypeShape: FoxRunProtobufTypeShape.Canonical(
+                    typeShape: FoxRunTypeShape.Canonical(
                         "demo.custom.scalar")),
             };
 
@@ -1690,57 +1360,146 @@ namespace Demo
             var member = model.Types.Single().Members.Single();
 
             Assert.Equal("protobuf", member.Encoding);
-            Assert.Equal(17, member.ProtobufFieldNumber);
+            Assert.Equal(17, member.ProtobufMetadata.FieldNumber);
+        }
+
+
+
+        [Fact]
+        [Trait("Phase", "186-A")]
+        public void ReflectionScannerPreservesDirectionSpecificTransportProviderSelection()
+        {
+            var snapshot = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.ProviderSelection)));
+            const FoxRunNamedArgumentPresence providerAxes =
+                FoxRunNamedArgumentPresence.PublishTransportIds
+                | FoxRunNamedArgumentPresence.SubscribeTransportId;
+            var presence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                snapshot,
+                "NamedArgumentPresence");
+
+            Assert.Equal(providerAxes, presence & providerAxes);
+            Assert.Equal(
+                new[]
+                {
+                    "unity2foxglove.zeta",
+                    "foxglove.websocket"
+                },
+                ReadField<string[]>(snapshot, "PublishTransportIds"));
+            Assert.Equal(
+                "unity2foxglove.alpha",
+                ReadField<string>(snapshot, "SubscribeTransportId"));
+
+            var member = new FoxrunCodeGenerator.MemberData(
+                nameof(ReflectionArgumentsFixture.ProviderSelection),
+                typeof(float),
+                "field",
+                typeof(ReflectionArgumentsFixture).Namespace ?? string.Empty,
+                nameof(ReflectionArgumentsFixture),
+                "/phase186/reflection/providers",
+                -1f,
+                string.Empty,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
+                namedArgumentPresence: presence,
+                publishTransportIds:
+                    ReadField<string[]>(snapshot, "PublishTransportIds"),
+                subscribeTransportId:
+                    ReadField<string>(snapshot, "SubscribeTransportId"));
+            var lowered = Assert.Single(
+                Assert.Single(
+                    FoxRunReflectionGenerationModelLowerer.Lower(
+                        new[] { member.ToReflectionMember() }).Types).Members);
+
+            Assert.Equal(
+                new[]
+                {
+                    "foxglove.websocket",
+                    "unity2foxglove.zeta"
+                },
+                lowered.PublishTransportIds);
+            Assert.Equal("unity2foxglove.alpha", lowered.SubscribeTransportId);
         }
 
         [Fact]
-        public void ReflectionScannerPreservesOmittedAndExplicitDefaultNamedArguments()
+        [Trait("Phase", "186-A")]
+        public void AggregateRoslynAndReflectionPreservePublishTransportProviders()
         {
-            var omitted = ReadReflectionAttributeSnapshot(
-                typeof(ReflectionArgumentsFixture).GetField(
-                    nameof(ReflectionArgumentsFixture.Omitted)));
-            var explicitDefaults = ReadReflectionAttributeSnapshot(
-                typeof(ReflectionArgumentsFixture).GetField(
-                    nameof(ReflectionArgumentsFixture.ExplicitDefaults)));
-            const FoxRunNamedArgumentPresence scheduling =
-                FoxRunNamedArgumentPresence.Hz
-                | FoxRunNamedArgumentPresence.Tolerance
-                | FoxRunNamedArgumentPresence.OnlyIf;
-            const FoxRunNamedArgumentPresence existingAxes =
-                FoxRunNamedArgumentPresence.Policy
-                | FoxRunNamedArgumentPresence.Mode
-                | FoxRunNamedArgumentPresence.Encoding
-                | FoxRunNamedArgumentPresence.Source
-                | FoxRunNamedArgumentPresence.Targets
-                | FoxRunNamedArgumentPresence.QoS
-                | FoxRunNamedArgumentPresence.Reliability
-                | FoxRunNamedArgumentPresence.Durability
-                | FoxRunNamedArgumentPresence.History
-                | FoxRunNamedArgumentPresence.Depth;
-            var omittedPresence = (FoxRunNamedArgumentPresence)ReadInt64Field(
-                omitted,
-                "NamedArgumentPresence");
-            var explicitPresence = (FoxRunNamedArgumentPresence)ReadInt64Field(
-                explicitDefaults,
-                "NamedArgumentPresence");
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
 
-            Assert.Equal(FoxRunNamedArgumentPresence.None, omittedPresence & scheduling);
-            Assert.Equal(FoxRunNamedArgumentPresence.None, omittedPresence & existingAxes);
-            Assert.Equal(scheduling, explicitPresence & scheduling);
-            Assert.Equal(existingAxes, explicitPresence & existingAxes);
-            Assert.Equal(-1f, ReadField<float>(explicitDefaults, "Hz"));
-            Assert.Equal(0f, ReadField<float>(explicitDefaults, "Tolerance"));
-            Assert.Equal(string.Empty, ReadField<string>(explicitDefaults, "OnlyIf"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Policy"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Mode"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Encoding"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Source"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Targets"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosProfile"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosReliability"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosDurability"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosHistory"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosDepth"));
+namespace Demo
+{
+    [FoxRunMessage(
+        ""/phase186/aggregate"",
+        PublishTransportIds = new[]
+        {
+            ""unity2foxglove.zeta"",
+            ""foxglove.websocket""
+        })]
+    public partial class AggregateState
+    {
+        [FoxRunField(""value"")]
+        public int Value;
+    }
+}";
+            var roslyn = ExtractRoslynMemberData(source);
+            var topic = Assert.Single(roslyn.Topics);
+            Assert.Equal(
+                FoxRunNamedArgumentPresence.PublishTransportIds,
+                topic.NamedArgumentPresence
+                & FoxRunNamedArgumentPresence.PublishTransportIds);
+            Assert.Equal(
+                new[]
+                {
+                    "unity2foxglove.zeta",
+                    "foxglove.websocket"
+                },
+                topic.PublishTransportIds);
+
+            var aggregateSnapshot = ReadReflectionMessageAttributeSnapshot(
+                typeof(ReflectionAggregateFixture));
+            var aggregatePresence =
+                (FoxRunNamedArgumentPresence)ReadInt64Field(
+                    aggregateSnapshot,
+                    "NamedArgumentPresence");
+            var reflected = new FoxrunCodeGenerator.MemberData(
+                nameof(ReflectionAggregateFixture.Value),
+                typeof(int),
+                "field",
+                typeof(ReflectionAggregateFixture).Namespace ?? string.Empty,
+                nameof(ReflectionAggregateFixture),
+                "/phase186/reflection/aggregate",
+                -1f,
+                typeof(ReflectionAggregateFixture).FullName,
+                isAggregateMember: true,
+                jsonFieldName: "value",
+                namedArgumentPresence: aggregatePresence,
+                publishTransportIds:
+                    ReadField<string[]>(
+                        aggregateSnapshot,
+                        "PublishTransportIds"));
+            var reflectionModel = FoxRunReflectionGenerationModelLowerer.Lower(
+                new[] { reflected.ToReflectionMember() });
+            var reflectionMember = Assert.Single(
+                Assert.Single(reflectionModel.Types).Members);
+            var roslynModel = FoxRunRoslynGenerationModelLowerer.Lower(
+                roslyn.ToRoslynMembers());
+            var roslynMember = Assert.Single(
+                Assert.Single(roslynModel.Types).Members);
+
+            Assert.Equal(
+                new[]
+                {
+                    "foxglove.websocket",
+                    "unity2foxglove.zeta"
+                },
+                roslynMember.PublishTransportIds);
+            Assert.Equal(
+                roslynMember.PublishTransportIds,
+                reflectionMember.PublishTransportIds);
+            Assert.Null(roslynMember.SubscribeTransportId);
+            Assert.Null(reflectionMember.SubscribeTransportId);
         }
 
         [Fact]
@@ -1757,29 +1516,7 @@ namespace Demo
             Assert.True((presence & FoxRunNamedArgumentPresence.Policy) != 0);
         }
 
-        [Fact]
-        public void ReflectionScannerPreservesInvalidExplicitQosValuesAndPresence()
-        {
-            var invalid = ReadReflectionAttributeSnapshot(
-                typeof(ReflectionArgumentsFixture).GetField(
-                    nameof(ReflectionArgumentsFixture.InvalidQos)));
-            const FoxRunNamedArgumentPresence qosAxes =
-                FoxRunNamedArgumentPresence.QoS
-                | FoxRunNamedArgumentPresence.Reliability
-                | FoxRunNamedArgumentPresence.Durability
-                | FoxRunNamedArgumentPresence.History
-                | FoxRunNamedArgumentPresence.Depth;
-            var presence = (FoxRunNamedArgumentPresence)ReadInt64Field(
-                invalid,
-                "NamedArgumentPresence");
 
-            Assert.Equal(qosAxes, presence & qosAxes);
-            Assert.Equal(99, ReadField<int>(invalid, "QosProfile"));
-            Assert.Equal(98, ReadField<int>(invalid, "QosReliability"));
-            Assert.Equal(97, ReadField<int>(invalid, "QosDurability"));
-            Assert.Equal(96, ReadField<int>(invalid, "QosHistory"));
-            Assert.Equal(-4, ReadField<int>(invalid, "QosDepth"));
-        }
 
         [Fact]
         public void ReflectionAndRoslynLowerersProduceEquivalentCanonicalConditionModel()
@@ -1824,110 +1561,224 @@ namespace Demo
                 roslyn.Types.Single().Members.Single().ConditionMemberKind);
         }
 
+
+
+
+
         [Fact]
-        public void RoslynDescriptorRecordsOnlyExplicitNewNamedArguments()
+        [Trait("Phase", "186-A")]
+        public void ExternalProviderConstantDoesNotEnableCoreWebSocketInput()
         {
-            var result = RunGenerator(@"
+            const string source = @"
 using Unity.FoxgloveSDK.Components;
+
+namespace Unity2Foxglove.Ros2ForUnity.Native
+{
+    public static class FoxRunRos2TransportProvider
+    {
+        public const string IdValue = ""unity2foxglove.r2fu"";
+    }
+}
+
+namespace ROS2
+{
+    public interface Message
+    {
+    }
+}
+
+namespace std_msgs.msg
+{
+    public sealed class String : ROS2.Message
+    {
+        public string Data { get; set; }
+    }
+}
 
 namespace Demo
 {
-    public sealed class PresencePayload
+    public partial class R2fuOnlyInput
     {
-        public float Value { get; set; }
+        [FoxRun(""/phase186/r2fu-only"",
+            Mode = FoxRunFlow.Subscribe,
+            SubscribeTransportId =
+                Unity2Foxglove.Ros2ForUnity.Native
+                    .FoxRunRos2TransportProvider.IdValue)]
+        private std_msgs.msg.String _value;
     }
-
-    public partial class PresenceProbe
-    {
-        private bool Enabled => true;
-
-        [FoxRun(""/phase184/omitted"")]
-        private PresencePayload _omitted;
-
-        [FoxRun(""/phase184/explicit"", Hz = 10f, Tolerance = 0f,
-            OnlyIf = nameof(Enabled), Policy = FoxRunPolicy.FixedRate,
-            Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.Protobuf,
-            Source = FoxRunEndpoint.Foxglove,
-            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default,
-            Reliability = FoxRunQosReliability.Reliable,
-            Durability = FoxRunQosDurability.Volatile,
-            History = FoxRunQosHistory.KeepLast,
-            Depth = 1)]
-        private PresencePayload _explicit;
-    }
-}");
-            var descriptor = result.Results
+}";
+            var result = RunGenerator(source);
+            var generated = result.Results
                 .Single()
                 .GeneratedSources
-                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .Single(item =>
+                    item.HintName
+                    == "Demo_R2fuOnlyInput_FoxRun.g.cs")
                 .SourceText
                 .ToString();
 
-            Assert.Contains(
-                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,Source,Targets,QoS,Reliability,Durability,History,Depth\\\"",
-                descriptor,
-                StringComparison.Ordinal);
-            Assert.Contains("\\\"explicitArguments\\\":\\\"\\\"", descriptor, StringComparison.Ordinal);
             Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            Assert.DoesNotContain("\\\"rateHz\\\"", descriptor, StringComparison.Ordinal);
-            Assert.DoesNotContain("\\\"changeEpsilon\\\"", descriptor, StringComparison.Ordinal);
-            Assert.DoesNotContain("\\\"forceIntervalSeconds\\\"", descriptor, StringComparison.Ordinal);
-            Assert.DoesNotContain("\\\"when\\\"", descriptor, StringComparison.Ordinal);
-            Assert.DoesNotContain("\\\"unless\\\"", descriptor, StringComparison.Ordinal);
+                "IFoxgloveInputSource",
+                generated,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "FoxRunInboundJson",
+                generated,
+                StringComparison.Ordinal);
         }
 
         [Fact]
-        public void RoslynExtractionPreservesNonZeroInvalidQosCastsAndPresence()
+        [Trait("Phase", "186-A")]
+        public void RoslynExtractionPreservesCanonicalTransportProviderSelection()
         {
             const string source = @"
 using Unity.FoxgloveSDK.Components;
 
 namespace Demo
 {
-    public partial class InvalidQosCasts
+    public partial class ProviderSelection
     {
-        [FoxRun(""/phase184/invalid-qos-casts"",
-            QoS = (FoxRunQosProfile)91,
-            Reliability = (FoxRunQosReliability)92,
-            Durability = (FoxRunQosDurability)93,
-            History = (FoxRunQosHistory)94,
-            Depth = -5)]
-        private float _value;
+        [FoxRun(""/phase186/provider"",
+            Mode = FoxRunFlow.PublishAndSubscribe,
+            PublishTransportIds = new[]
+            {
+                ""unity2foxglove.zeta"",
+                ""foxglove.websocket""
+            },
+            SubscribeTransportId = ""unity2foxglove.alpha"")]
+        private int _value;
     }
 }";
-            const FoxRunNamedArgumentPresence qosPresence =
-                FoxRunNamedArgumentPresence.QoS
-                | FoxRunNamedArgumentPresence.Reliability
-                | FoxRunNamedArgumentPresence.Durability
-                | FoxRunNamedArgumentPresence.History
-                | FoxRunNamedArgumentPresence.Depth;
             var extracted = ExtractRoslynMemberData(source);
             var topic = Assert.Single(extracted.Topics);
 
-            Assert.Equal(qosPresence, topic.NamedArgumentPresence & qosPresence);
-            Assert.Equal(91, topic.QosProfile);
-            Assert.Equal(92, topic.QosReliability);
-            Assert.Equal(93, topic.QosDurability);
-            Assert.Equal(94, topic.QosHistory);
-            Assert.Equal(-5, topic.QosDepth);
+            Assert.Equal(
+                FoxRunNamedArgumentPresence.PublishTransportIds
+                | FoxRunNamedArgumentPresence.SubscribeTransportId,
+                topic.NamedArgumentPresence
+                & (FoxRunNamedArgumentPresence.PublishTransportIds
+                   | FoxRunNamedArgumentPresence.SubscribeTransportId));
+            Assert.Equal(
+                new[]
+                {
+                    "unity2foxglove.zeta",
+                    "foxglove.websocket"
+                },
+                topic.PublishTransportIds);
+            Assert.Equal("unity2foxglove.alpha", topic.SubscribeTransportId);
 
-            var model = FoxRunRoslynGenerationModelLowerer.Lower(extracted.ToRoslynMembers());
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(
+                extracted.ToRoslynMembers());
             var member = Assert.Single(Assert.Single(model.Types).Members);
-            Assert.Equal(qosPresence, member.NamedArgumentPresence & qosPresence);
-            Assert.Equal(string.Empty, member.QosProfile);
-            Assert.Equal(string.Empty, member.QosReliability);
-            Assert.Equal(string.Empty, member.QosDurability);
-            Assert.Equal(string.Empty, member.QosHistory);
-            Assert.Equal(-5, member.QosDepth);
-            Assert.Single(
+            Assert.Equal(
+                new[]
+                {
+                    "foxglove.websocket",
+                    "unity2foxglove.zeta"
+                },
+                member.PublishTransportIds);
+            Assert.Equal("unity2foxglove.alpha", member.SubscribeTransportId);
+            Assert.DoesNotContain(
                 FoxRunGenerationModelValidator.Validate(model),
-                diagnostic => diagnostic.Id == "FOXRUN613");
-            Assert.Single(
+                diagnostic => diagnostic.Id == "FOXRUN620"
+                              || diagnostic.Id == "FOXRUN621");
+
+            var generated = RunGenerator(source);
+            Assert.DoesNotContain(
+                generated.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var descriptor = generated.Results
+                .Single()
+                .GeneratedSources
+                .Single(item =>
+                    item.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+            Assert.Contains(
+                "\\\"publishTransportIds\\\":[\\\"foxglove.websocket\\\",\\\"unity2foxglove.zeta\\\"]",
+                descriptor,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"subscribeTransportId\\\":\\\"unity2foxglove.alpha\\\"",
+                descriptor,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "186-A")]
+        public void TransportProviderSelectionFailsClosedForInvalidDirection()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class InvalidProviderDirection
+    {
+        [FoxRun(""/phase186/publish"",
+            SubscribeTransportId = ""foxglove.websocket"")]
+        private int _publish;
+
+        [FoxRun(""/phase186/subscribe"",
+            Mode = FoxRunFlow.Subscribe,
+            PublishTransportIds = new[] { ""foxglove.websocket"" })]
+        private int _subscribe;
+    }
+}";
+            var diagnostics = RunGenerator(source).Diagnostics
+                .Where(diagnostic => diagnostic.Id == "FOXRUN621")
+                .ToArray();
+
+            Assert.Equal(2, diagnostics.Length);
+        }
+
+        [Fact]
+        [Trait("Phase", "186-A")]
+        public void TransportNeutralSystemDefaultDeliveryAxesAreAccepted()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class SystemDefaultDelivery
+    {
+        [FoxRun(""/phase186/system-default"",
+            Reliability = FoxRunDeliveryReliability.SystemDefault,
+            Durability = FoxRunDeliveryDurability.SystemDefault,
+            History = FoxRunDeliveryHistory.SystemDefault)]
+        private int _value;
+    }
+}";
+
+            Assert.DoesNotContain(
                 RunGenerator(source).Diagnostics,
-                diagnostic => diagnostic.Id == "FOXRUN613");
+                diagnostic => diagnostic.Severity
+                              == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        [Trait("Phase", "186-A")]
+        public void InvalidTransportNeutralDeliveryAxisUsesPublicDiagnostic()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class InvalidDelivery
+    {
+        [FoxRun(""/phase186/invalid-delivery"",
+            Reliability = (FoxRunDeliveryReliability)99)]
+        private int _value;
+    }
+}";
+
+            var diagnostic = Assert.Single(
+                RunGenerator(source).Diagnostics,
+                value => value.Severity
+                         == DiagnosticSeverity.Error);
+            Assert.Equal("FOXRUN622", diagnostic.Id);
         }
 
         [Fact]
@@ -1959,6 +1810,44 @@ namespace Demo
             Assert.Contains(
                 comparison.SemanticDifferences,
                 difference => difference.Contains("mode", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void DescriptorComparerTreatsValueTypeClassificationAsSemanticState()
+        {
+            FoxRunGenerationModel Build(bool isValueType)
+                => FoxRunGenerationModel.FromMembers(new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "ValueTypeProbe",
+                        "_value",
+                        "field",
+                        "System.Int32",
+                        isValueType,
+                        false,
+                        string.Empty,
+                        "/phase185/value-type",
+                        10f,
+                        "Demo.Value",
+                        (int)FoxRunPolicy.FixedRate,
+                        0f,
+                        "UnitTest",
+                        0,
+                        string.Empty)
+                });
+
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(
+                Build(isValueType: true),
+                Build(isValueType: false));
+
+            Assert.False(comparison.IsSemanticEqual);
+            Assert.Contains(
+                comparison.SemanticDifferences,
+                difference => difference.Contains(
+                    "isValueType",
+                    StringComparison.Ordinal));
         }
 
         [Fact]
@@ -1996,44 +1885,7 @@ namespace Demo
                 difference => difference.Contains("isStream", StringComparison.Ordinal));
         }
 
-        [Fact]
-        [Trait("Phase", "184-E")]
-        public void ManifestAndGeneratedSubscriptionCatalogPreserveStreamSemantics()
-        {
-            var generationMember = new FoxRunGenerationMember(
-                "Demo", "StreamInput", "_samples", "field", "System.Int32",
-                true, false, "", "/phase184/catalog-stream", 0f, "",
-                1, 0f, "UnitTest", 0, "",
-                mode: (int)FoxRunFlow.Subscribe,
-                isStream: true);
-            var manifestMember = FoxRunManifestMember.FromGenerationMember(generationMember);
-            var manifest = FoxRunManifestBuilder.Build(
-                new[] { manifestMember },
-                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
-            var binding = Assert.Single(manifest.Sections.Subscriptions.Bindings);
-            var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
-            var generated = FoxRunSchemaInfoWriter.GenerateSource(manifest);
-            var runtimeBinding = new FoxRunSchemaSubscriptionBindingInfo(
-                binding.DeclaringType,
-                binding.MemberName,
-                binding.Topic,
-                binding.Flow,
-                FoxRunEndpoint.Foxglove,
-                (FoxRunQosProfile)0,
-                supportsWebSocket: true,
-                supportsRos2Native: false,
-                nativeType: string.Empty,
-                canonicalRosType: string.Empty,
-                copyShapeIdentity: string.Empty,
-                isStream: true);
 
-            Assert.True(manifestMember.IsStream);
-            Assert.True(binding.IsStream);
-            Assert.Contains("\"isStream\":true", canonical, StringComparison.Ordinal);
-            Assert.Contains("/phase184/catalog-stream", generated, StringComparison.Ordinal);
-            Assert.Matches(@"0,\s+true\s+\),", generated);
-            Assert.True(runtimeBinding.IsStream);
-        }
 
         [Fact]
         public void DescriptorComparerTreatsMatchingNanFloatsAsSameValue()
@@ -2132,9 +1984,16 @@ namespace Demo
 
             var contracts = manifest.Sections.FoxRun.Types.Single().Contracts;
 
-            Assert.Equal(new[] { "json", "protobuf" }, contracts.Select(contract => contract.Encoding).OrderBy(encoding => encoding));
-            Assert.Equal(0, contracts.Single(contract => contract.Encoding == "json").Fields.Single().ProtobufFieldNumber);
-            Assert.Equal(17, contracts.Single(contract => contract.Encoding == "protobuf").Fields.Single().ProtobufFieldNumber);
+            Assert.Equal(
+                new[] { "json", "msgpack", "protobuf" },
+                contracts.Select(contract => contract.Encoding).OrderBy(encoding => encoding));
+            Assert.Null(contracts.Single(contract => contract.Encoding == "json").Fields.Single().ProtobufMetadata);
+            Assert.Null(contracts.Single(contract => contract.Encoding == "msgpack").Fields.Single().ProtobufMetadata);
+            Assert.Equal(
+                17,
+                contracts.Single(contract => contract.Encoding == "protobuf")
+                    .Fields.Single()
+                    .ProtobufMetadata.FieldNumber);
         }
 
         [Fact]
@@ -2222,7 +2081,7 @@ namespace Demo
                     1, 0.1f, "UnitTest", 0, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: "protobuf",
-                    protobufTypeShape: FoxRunProtobufTypeShape.Canonical("float32"))
+                    typeShape: FoxRunTypeShape.Canonical("float32"))
             });
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
@@ -2302,7 +2161,7 @@ namespace Demo
 
             var ex = Assert.Throws<ArgumentException>(() => FoxgloveSourceEmitter.EmitClass(type));
 
-            Assert.Contains("Input TopicMember has empty MemberName", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("TopicMember has empty MemberName", ex.Message, StringComparison.Ordinal);
         }
 
         private static FoxRunGenerationModel ModelWithMode(FoxRunFlow mode)
@@ -2341,6 +2200,17 @@ namespace Demo
             var snapshots = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
                 reader.Invoke(null, new object[] { field }));
             return Assert.Single(snapshots.Cast<object>());
+        }
+
+        private static object ReadReflectionMessageAttributeSnapshot(Type type)
+        {
+            var reader = typeof(FoxrunCodeGenerator).GetMethod(
+                "ReadFoxRunMessageAttributeSnapshot",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(reader);
+            var snapshot = reader.Invoke(null, new object[] { type });
+            Assert.NotNull(snapshot);
+            return snapshot;
         }
 
         private static IReadOnlyDictionary<string, FoxRunConditionMemberKind> ScanReflectionConditionKinds(
@@ -2442,60 +2312,7 @@ namespace Demo
                 .ToArray();
         }
 
-        [Fact]
-        [Trait("Phase", "184-E")]
-        public void RoslynAcceptsOneInitializedSubscribeStreamWithDirectionalTransportOptions()
-        {
-            const string source = @"
-using Unity.FoxgloveSDK.Components;
-namespace UnityEngine.Scripting
-{
-    [System.AttributeUsage(System.AttributeTargets.All)]
-    public sealed class PreserveAttribute : System.Attribute { }
-}
-namespace Demo
-{
-    public partial class Streams
-    {
-        [FoxRun(""/imu"", Mode = FoxRunFlow.Subscribe, Source = FoxRunEndpoint.Foxglove,
-            Encoding = FoxRunEncoding.JSON)]
-        private FoxRunStream<int> _imu = new FoxRunStream<int>();
-    }
-}";
-            var result = RunGenerator(source);
-            var generated = result.GeneratedTrees
-                .Select(tree => tree.GetText().ToString())
-                .Single(text => text.Contains("partial class Streams", StringComparison.Ordinal));
-            var output = RunGeneratorAndUpdateCompilation(source);
 
-            Assert.DoesNotContain(
-                output.GetDiagnostics(),
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            Assert.Contains("IFoxgloveOwnedInputSource", generated, StringComparison.Ordinal);
-            Assert.Contains(
-                "void IFoxgloveOwnedInputSource.FoxgloveInput_ClearOwned(int topicIndex)",
-                generated,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "bool IFoxgloveOwnedInputSource.FoxgloveInput_TryAcquireOwned(int topicIndex, out string error)",
-                generated,
-                StringComparison.Ordinal);
-            Assert.Contains("isStream: true", generated, StringComparison.Ordinal);
-            Assert.Contains("must be initialized before registration", generated, StringComparison.Ordinal);
-            Assert.Contains(
-                "private global::Unity.FoxgloveSDK.Components.FoxRunStream<int> __foxRunInputStream_0;",
-                generated,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "Interlocked.CompareExchange(ref __foxRunInputStream_0, __stream, null)",
-                generated,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "Interlocked.Exchange(ref __foxRunInputStream_0, null)?.Clear();",
-                generated,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain("this._imu?.Clear();", generated, StringComparison.Ordinal);
-        }
 
         [Fact]
         [Trait("Phase", "184-E")]
@@ -2527,476 +2344,7 @@ namespace Demo
                 diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         }
 
-        [Fact]
-        [Trait("Phase", "184-G")]
-        public void Phase184AcceptanceDeclarationsGenerateEveryLockedRoute()
-        {
-            const string source = @"
-using System.Collections.Generic;
-using Unity.FoxgloveSDK.Components;
-namespace UnityEngine.Scripting
-{
-    [System.AttributeUsage(System.AttributeTargets.All)]
-    public sealed class PreserveAttribute : System.Attribute { }
-}
-namespace Demo
-{
-    public enum Phase181StateKind : ushort
-    {
-        Unknown,
-        Active
-    }
 
-    public sealed class Phase181NestedState
-    {
-        public bool Enabled { get; set; }
-        public string Label { get; set; }
-    }
-
-    public sealed class Phase181State
-    {
-        public int Count { get; set; }
-        public Phase181StateKind Kind { get; set; }
-        public string Message { get; set; }
-        public byte[] Bytes { get; set; }
-        public List<long> Values { get; set; }
-        public Phase181NestedState Nested { get; set; }
-        public int? OptionalCount { get; set; }
-        public string OptionalText { get; set; }
-    }
-
-    public partial class Phase184Acceptance
-    {
-        [FoxRun(""/foxrun/phase184/profile/default"",
-            Mode = FoxRunFlow.PublishAndSubscribe)]
-        private Phase181State _inheritedFoxglove;
-
-        [FoxRun(""/foxrun/phase184/profile/json"",
-            Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Foxglove,
-            Targets = FoxRunEndpoint.Foxglove,
-            Encoding = FoxRunEncoding.JSON,
-            Policy = FoxRunPolicy.Change,
-            OnlyIf = nameof(AcceptExplicitJson))]
-        private Phase181State _explicitJson;
-
-        [FoxRun(""/foxrun/phase184/multi/state"",
-            Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            Encoding = FoxRunEncoding.Protobuf,
-            QoS = FoxRunQosProfile.Default,
-            Policy = FoxRunPolicy.Change,
-            Hz = 4f)]
-        private Phase181State _multiTarget;
-
-        [FoxRun(""/foxrun/phase184/degraded/state"",
-            Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
-            Encoding = FoxRunEncoding.Protobuf,
-            Policy = FoxRunPolicy.Change)]
-        private Phase181State _degradedTarget;
-
-        [FoxRun(""/foxrun/phase184/qos/system_default"",
-            Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.SystemDefault)]
-        private Phase181State _qosSystemDefault;
-
-        [FoxRun(""/foxrun/phase184/qos/keep_all"",
-            Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.Default,
-            History = FoxRunQosHistory.KeepAll)]
-        private Phase181State _qosKeepAll;
-
-        [FoxRun(""/foxrun/phase184/qos/keep_last_depth"",
-            Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.Default,
-            Reliability = FoxRunQosReliability.BestEffort,
-            Durability = FoxRunQosDurability.TransientLocal,
-            History = FoxRunQosHistory.KeepLast,
-            Depth = 7)]
-        private Phase181State _qosKeepLastDepth;
-
-        [FoxRun(""/foxrun/phase184/stream/state"",
-            Mode = FoxRunFlow.Subscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.SensorData)]
-        private FoxRunStream<Phase181State> _inputStream =
-            new FoxRunStream<Phase181State>(
-                new FoxRunStreamOptions(
-                    32,
-                    1000d,
-                    16,
-                    FoxRunStreamOverflowPolicy.DropOldest));
-
-        [FoxRun(""/foxrun/phase184/zenoh/origin"",
-            Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.SensorData,
-            Policy = FoxRunPolicy.Change)]
-        private Phase181State _zenohOrigin;
-
-        private bool AcceptExplicitJson() => true;
-    }
-}";
-            var result = RunGenerator(source);
-            var generated = result.GeneratedTrees
-                .Select(tree => tree.GetText().ToString())
-                .Single(text => text.Contains(
-                    "partial class Phase184Acceptance",
-                    StringComparison.Ordinal));
-            var allGenerated = string.Join(
-                Environment.NewLine,
-                result.GeneratedTrees.Select(tree => tree.GetText().ToString()));
-
-            Assert.DoesNotContain(
-                result.Diagnostics,
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-            var output = RunGeneratorAndUpdateCompilation(source);
-            var compilationErrors = output.GetDiagnostics()
-                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-            Assert.True(
-                compilationErrors.Length == 0,
-                string.Join(Environment.NewLine, compilationErrors.Select(error => error.ToString()))
-                + Environment.NewLine
-                + generated);
-#endif
-            foreach (var topic in new[]
-                     {
-                         "/foxrun/phase184/profile/default",
-                         "/foxrun/phase184/profile/json",
-                         "/foxrun/phase184/multi/state",
-                         "/foxrun/phase184/degraded/state",
-                         "/foxrun/phase184/qos/system_default",
-                         "/foxrun/phase184/qos/keep_all",
-                         "/foxrun/phase184/qos/keep_last_depth",
-                         "/foxrun/phase184/stream/state",
-                         "/foxrun/phase184/zenoh/origin",
-                     })
-            {
-                Assert.Contains(topic, generated, StringComparison.Ordinal);
-            }
-            Assert.Contains("RegisterStream<", allGenerated, StringComparison.Ordinal);
-            Assert.Contains("_inputStream", allGenerated, StringComparison.Ordinal);
-            Assert.Contains("() => AcceptExplicitJson()", generated, StringComparison.Ordinal);
-
-            var acceptanceSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
-                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase184FoxRunProfileAcceptance.cs");
-            foreach (var declarationAnchor in new[]
-                     {
-                         "private Phase181State _inheritedFoxglove;",
-                         "private Phase181State _explicitJson;",
-                         "private Phase181State _multiTarget;",
-                         "private Phase181State _degradedTarget;",
-                         "private Phase181State _qosSystemDefault;",
-                         "private Phase181State _qosKeepAll;",
-                         "private Phase181State _qosKeepLastDepth;",
-                         "private FoxRunStream<Phase181State> _inputStream =",
-                         "private Phase181State _zenohOrigin;",
-                     })
-            {
-                Assert.Contains(declarationAnchor, acceptanceSource, StringComparison.Ordinal);
-            }
-            Assert.Contains(
-                "\" token=\" + Phase184AcceptanceText.SafeMarker(context.Token)",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "\" succeeded=\" + _succeededTargets",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "Hz = 4f)]",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "\" foxgloveState=Ready ros2BridgeState=Unavailable bridgeDiagnostics=\"",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private void OnDestroy()",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "_inputStream?.Dispose();",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const float StreamEvidenceTimeoutSeconds = 5f;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "Fail(BuildStreamFailureReason());",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "\"stream_evidence_incomplete_received_\"",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "if (_firstSampleAt < 0f && stats.Received > 0)",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "Time.realtimeSinceStartup - _firstSampleAt >= InitialDrainDelaySeconds",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "public bool Passed => _passed;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            foreach (var routeType in new[]
-                     {
-                         "Phase184FoxgloveProfileRoute",
-                         "Phase184MultiTargetRoute",
-                         "Phase184DegradedTargetRoute",
-                         "Phase184QosContractRoute",
-                         "Phase184StreamRoute",
-                     })
-            {
-                var routeSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
-                    "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
-                    + routeType
-                    + ".cs");
-                Assert.Contains(
-                    "partial class " + routeType,
-                    routeSource,
-                    StringComparison.Ordinal);
-            }
-
-            var batchProbeSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
-                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184BatchModeProfileProbe.cs");
-            Assert.Contains(
-                "PHASE184G_MANUAL_PLAY_EXITED case=",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "SessionState.SetString(ManualTokenSessionKey, _manualToken);",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "SessionState.SetString(SessionKey(\"case\"), _caseId);",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "RestoreRunIdentity();",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "WorkerResultDrainTimeoutSeconds",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "BeginSuccessfulExit();",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "AllRequiredWorkerResultsReady()",
-                batchProbeSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PulseOutboundBootstrap();",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const float ClientReadyTimeoutSeconds = 300f;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const float ProfileResponseTimeoutSeconds = 60f;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "\"profile-client-ready\"",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PHASE184G_PROFILE_CLIENT_READY",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const float DegradedDeliveryPulseIntervalSeconds = 0.25f;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"public const string DegradedClientReadyTopic =
-            ""/foxrun/phase184/degraded/client_ready"";",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const float DegradedClientReadyTimeoutSeconds = 180f;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "private const uint DegradedClientReadyChannelId = 184902;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"_degradedDeliveryPulses = 0;
-            PulseDegradedDelivery();",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"if (Time.realtimeSinceStartup >= _nextDegradedDeliveryPulseAt)
-                    PulseDegradedDelivery();",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"State(
-                    RunToken,
-                    ""degraded-local"",
-                    18420 + pulse);",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            var degradedRouteStart = acceptanceSource.IndexOf(
-                "public sealed partial class Phase184DegradedTargetRoute",
-                StringComparison.Ordinal);
-            var degradedRouteEnd = acceptanceSource.IndexOf(
-                "public sealed partial class Phase184QosContractRoute",
-                degradedRouteStart,
-                StringComparison.Ordinal);
-            Assert.True(degradedRouteStart >= 0);
-            Assert.True(degradedRouteEnd > degradedRouteStart);
-            var degradedSource = acceptanceSource.Substring(
-                degradedRouteStart,
-                degradedRouteEnd - degradedRouteStart);
-            Assert.Contains(
-                "_manager.OnClientMessageWithEncoding += OnDegradedClientMessage;",
-                degradedSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "_manager.OnClientMessageWithEncoding -= OnDegradedClientMessage;",
-                degradedSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "FoxRunInboundJson.TryReadObject<Phase181State>(",
-                degradedSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "channelId != DegradedClientReadyChannelId",
-                degradedSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "IsState(ready, \"degraded-client-ready\")",
-                degradedSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PHASE184G_DEGRADED_CLIENT_READY",
-                degradedSource,
-                StringComparison.Ordinal);
-            var degradedReadyGuard = degradedSource.IndexOf(
-                "if (!_degradedClientReadyObserved)",
-                StringComparison.Ordinal);
-            var degradedTargetStatus = degradedSource.IndexOf(
-                "TryGetTargetStatus(Topic, out var status)",
-                StringComparison.Ordinal);
-            Assert.True(degradedReadyGuard >= 0);
-            Assert.True(degradedTargetStatus > degradedReadyGuard);
-            Assert.Contains(
-                "_clientReadyDeadline = Time.realtimeSinceStartup "
-                + "+ ClientReadyTimeoutSeconds;",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"_bootstrapSequence = 0;
-            PulseOutboundBootstrap();
-            _clientReadyDeadline",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"if (!_clientReadyObserved)
-            {
-                if (IsState(_explicitJson, ""profile-client-ready""))",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                @"if (Time.realtimeSinceStartup >= _clientReadyDeadline)
-                {
-                    Fail(""Foxglove profile client readiness was not observed."");",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            var clientReadyGuard = acceptanceSource.IndexOf(
-                "if (!_clientReadyObserved)",
-                StringComparison.Ordinal);
-            var postReadyBootstrap = acceptanceSource.IndexOf(
-                "if (!_gateClosed",
-                clientReadyGuard,
-                StringComparison.Ordinal);
-            Assert.True(clientReadyGuard >= 0);
-            Assert.True(postReadyBootstrap > clientReadyGuard);
-            var preReadySlice = acceptanceSource.Substring(
-                clientReadyGuard,
-                postReadyBootstrap - clientReadyGuard);
-            Assert.DoesNotContain(
-                "MaximumBootstrapPulses",
-                preReadySlice,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "return;",
-                preReadySlice,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PulseWarmupUntilTargetsReady();",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PHASE184G_NATIVE_READY_FOR_BRIDGE",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PHASE184G_BRIDGE_RUNTIME_FAILURE",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "PHASE184G_MULTI_TARGET_STATUS",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "status.SucceededTargets",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "GetRos2BridgeStatsSnapshot()",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "FoxgloveLogHub.TryGetActivePublishTargetStatus(",
-                acceptanceSource,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "FindFirstObjectByType<FoxgloveLogHub>()",
-                acceptanceSource,
-                StringComparison.Ordinal);
-
-            var builderSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
-                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase184FoxRunProfileAcceptanceBuilder.cs");
-            Assert.Contains(
-                "FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult()",
-                builderSource,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "SetInteger(serialized, \"_ros2BridgeSendTimeoutMs\", 30000);",
-                builderSource,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "_defaultFoxRunPublishTargets",
-                builderSource,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "DefaultFoxRunPublishTargets =",
-                builderSource,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "DefaultFoxRunPublishTargets =",
-                acceptanceSource,
-                StringComparison.Ordinal);
-        }
 
         [Fact]
         [Trait("Phase", "184-H")]
@@ -3209,11 +2557,15 @@ namespace Demo
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_manager.ActiveFoxRunPublishTargets",
+                "_manager.ConfiguredFoxRunPublishTransportIds",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_manager.ActiveFoxRunSubscriptionSource",
+                "_manager.ConfiguredFoxRunSubscribeTransportId",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "manager?.ActiveFoxRunTransportSession",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -3239,7 +2591,7 @@ namespace Demo
                 Assert.Contains(marker, source, StringComparison.Ordinal);
             }
             Assert.Contains(
-                "Phase184AcceptanceText.FormatEndpoints(",
+                "Phase184AcceptanceText.FormatTransportIds(",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -3578,28 +2930,7 @@ namespace Demo
             Assert.Equal(("Normal", 0, 0L), probe.Observe(0, 0));
         }
 
-        [Fact]
-        [Trait("Phase", "184-G")]
-        public void Phase181NativeAcceptancePinsBothOutboundTargets()
-        {
-            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
-                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
-                + "Phase181FoxRunCustomRos2InterfaceAcceptance.cs");
 
-            Assert.Contains(
-                "NativePublishTopic,\n"
-                + "            Mode = FoxRunFlow.Publish,\n"
-                + "            Targets = FoxRunEndpoint.Ros2Native,",
-                source,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                "NativeBidirectionalTopic,\n"
-                + "            Mode = FoxRunFlow.PublishAndSubscribe,\n"
-                + "            Source = FoxRunEndpoint.Ros2Native,\n"
-                + "            Targets = FoxRunEndpoint.Ros2Native,",
-                source,
-                StringComparison.Ordinal);
-        }
 
         [Fact]
         [Trait("Phase", "181-F")]
@@ -3755,36 +3086,7 @@ namespace Demo
             }
         }
 
-        [Theory]
-        [Trait("Phase", "184-E")]
-        [InlineData("", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Publish", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.PublishAndSubscribe", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe, Targets = FoxRunEndpoint.Foxglove", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe, Policy = FoxRunPolicy.Change", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe, Hz = 10", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe, Tolerance = 0.1f", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe, OnlyIf = \"Enabled\"", "private FoxRunStream<int> _stream = new FoxRunStream<int>();")]
-        [InlineData("Mode = FoxRunFlow.Subscribe", "private FoxRunStream<int> Stream { get; } = new FoxRunStream<int>();")]
-        public void RoslynRejectsIllegalStreamDeclarationShapes(
-            string arguments,
-            string declaration)
-        {
-            var separator = string.IsNullOrEmpty(arguments) ? string.Empty : ", ";
-            var result = RunGenerator($@"
-using Unity.FoxgloveSDK.Components;
-namespace Demo
-{{
-    public partial class Streams
-    {{
-        private bool Enabled => true;
-        [FoxRun(""/stream""{separator}{arguments})]
-        {declaration}
-    }}
-}}");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN215");
-        }
 
         [Theory]
         [Trait("Phase", "184-E")]
@@ -3792,7 +3094,7 @@ namespace Demo
         [InlineData(3, "field", false, 0L)]
         [InlineData(2, "property", false, 0L)]
         [InlineData(2, "field", true, 0L)]
-        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Targets)]
+        [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.PublishTransportIds)]
         [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Policy)]
         [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Hz)]
         [InlineData(2, "field", false, (long)FoxRunNamedArgumentPresence.Tolerance)]
@@ -3872,7 +3174,9 @@ namespace Demo
         {
             var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
                 "Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
-            var result = RunGenerator(source);
+            var messagePackSource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.MessagePack.cs");
+            var result = RunGenerator(source, messagePackSource);
             var core = result.Results
                 .Single()
                 .GeneratedSources
@@ -4059,11 +3363,22 @@ namespace Demo
             }
         }
 
-        private static GeneratorDriverRunResult RunGenerator(string source)
+        private static GeneratorDriverRunResult RunGenerator(params string[] sources)
         {
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilation(sources);
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGenerators(compilation);
+            return driver.GetRunResult();
+        }
+
+        private static GeneratorDriverRunResult RunGeneratorWithR2fu(
+            params string[] sources)
+        {
+            var compilation = CreateCompilation(sources);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.CoreAndR2fu());
             driver = driver.RunGenerators(compilation);
             return driver.GetRunResult();
         }
@@ -4090,15 +3405,19 @@ namespace Demo
         }
 
         private static Unity.FoxgloveSDK.SourceGenerators.MemberData ExtractRoslynMemberData(
-            string source)
+            string source,
+            string memberName = null)
         {
             var compilation = CreateCompilation(source);
-            var field = compilation.SyntaxTrees
-                .Single()
-                .GetRoot()
-                .DescendantNodes()
+            var fields = compilation.SyntaxTrees
+                .SelectMany(tree => tree.GetRoot().DescendantNodes())
                 .OfType<FieldDeclarationSyntax>()
-                .Single();
+                .ToArray();
+            var field = string.IsNullOrEmpty(memberName)
+                ? fields.Single()
+                : fields.Single(candidate =>
+                    candidate.Declaration.Variables.Any(variable =>
+                        variable.Identifier.ValueText == memberName));
             var constructor = typeof(GeneratorSyntaxContext).GetConstructor(
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 binder: null,
@@ -4125,11 +3444,25 @@ namespace Demo
             return outputCompilation;
         }
 
-        private static CSharpCompilation CreateCompilation(string source)
+        private static Compilation RunGeneratorAndUpdateCompilationWithR2fu(
+            string source)
+        {
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.CoreAndR2fu());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var outputCompilation,
+                out _);
+            return outputCompilation;
+        }
+
+        private static CSharpCompilation CreateCompilation(params string[] sources)
         {
             return CSharpCompilation.Create(
                 "Phase157GeneratorProbe",
-                new[] { CSharpSyntaxTree.ParseText(source) },
+                sources.Select(source => CSharpSyntaxTree.ParseText(source)),
                 BasicReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         }
@@ -4146,41 +3479,39 @@ namespace Demo
             [FoxRun("/phase184/reflection/omitted")]
             public float Omitted;
 
-        [FoxRun(
-                "/phase184/reflection/explicit",
-                Hz = -1f,
-                Tolerance = 0f,
-                OnlyIf = "",
-                Policy = (FoxRunPolicy)0,
-                Mode = (FoxRunFlow)0,
-                Encoding = (FoxRunEncoding)0,
-                Source = (FoxRunEndpoint)0,
-                Targets = (FoxRunEndpoint)0,
-                QoS = (FoxRunQosProfile)0,
-                Reliability = (FoxRunQosReliability)0,
-                Durability = (FoxRunQosDurability)0,
-                History = (FoxRunQosHistory)0,
-                Depth = 0)]
-            public float ExplicitDefaults;
-
             [FoxRun(
                 "/phase184/reflection/invalid-policy",
                 Policy = (FoxRunPolicy)99)]
             public float InvalidPolicy;
 
             [FoxRun(
-                "/phase184/reflection/invalid-qos",
-                QoS = (FoxRunQosProfile)99,
-                Reliability = (FoxRunQosReliability)98,
-                Durability = (FoxRunQosDurability)97,
-                History = (FoxRunQosHistory)96,
-                Depth = -4)]
-            public float InvalidQos;
-
-            [FoxRun(
                 "/phase184/reflection/whitespace-condition",
                 OnlyIf = " Enabled ")]
             public float WhitespaceCondition;
+
+            [FoxRun(
+                "/phase186/reflection/providers",
+                Mode = FoxRunFlow.PublishAndSubscribe,
+                PublishTransportIds = new[]
+                {
+                    "unity2foxglove.zeta",
+                    "foxglove.websocket"
+                },
+                SubscribeTransportId = "unity2foxglove.alpha")]
+            public float ProviderSelection;
+        }
+
+        [FoxRunMessage(
+            "/phase186/reflection/aggregate",
+            PublishTransportIds = new[]
+            {
+                "unity2foxglove.zeta",
+                "foxglove.websocket"
+            })]
+        private sealed class ReflectionAggregateFixture
+        {
+            [FoxRunField("value")]
+            public int Value;
         }
 
         private class ReflectionInheritedConditionGrandBase

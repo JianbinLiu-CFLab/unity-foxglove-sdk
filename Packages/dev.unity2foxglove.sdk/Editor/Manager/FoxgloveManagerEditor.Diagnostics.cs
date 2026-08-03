@@ -5,7 +5,6 @@
 
 using System.IO;
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEditor;

@@ -47,10 +47,11 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var pkgDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk");
+            var bridgePkgDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.ros2bridge");
             var samplesDir = Path.Combine(pkgDir, "Samples~");
             var basicDir = Path.Combine(samplesDir, "BasicVisualization");
             var fullDir = Path.Combine(samplesDir, "FullDemoVisualization");
-            var ros2Dir = Path.Combine(samplesDir, "Ros2BridgeSample");
+            var ros2Dir = Path.Combine(bridgePkgDir, "Samples~", "Ros2BridgeSample");
             var lidarMazeDir = Path.Combine(samplesDir, "Virtual LiDAR Maze Demo");
             var configsDir = Path.Combine(repoRoot, "Unity2Foxglove", "Configs");
 
@@ -59,11 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
             var pkg = JObject.Parse(pkgJson);
             Assert(pkg["samples"] != null, "package.json.samples exists");
             var samples = pkg["samples"] as JArray;
-            Assert(samples != null && samples.Count == 4, "package.json.samples has 4 entries");
+            Assert(samples != null && samples.Count == 3, "core package.json.samples has 3 entries");
 
             bool hasBasic = false;
             bool hasFull = false;
-            bool hasRos2Bridge = false;
             bool hasLidarMaze = false;
             foreach (var s in samples)
             {
@@ -71,14 +71,14 @@ namespace Unity.FoxgloveSDK.Tests
                 var path = (string)s["path"];
                 if (name == "Basic Visualization") hasBasic = true;
                 if (name == "Full Demo Visualization") hasFull = true;
-                if (name == "ROS2 Bridge Sample") hasRos2Bridge = true;
                 if (name == "Virtual LiDAR Maze Demo") hasLidarMaze = true;
                 Assert(Directory.Exists(Path.Combine(pkgDir, path)), $"Sample path exists: {path}");
             }
             Assert(hasBasic, "Basic Visualization sample declared");
             Assert(hasFull, "Full Demo Visualization sample declared");
-            Assert(hasRos2Bridge, "ROS2 Bridge Sample declared");
             Assert(hasLidarMaze, "Virtual LiDAR Maze Demo sample declared");
+            Assert(!pkgJson.Contains("ROS2 Bridge Sample", StringComparison.Ordinal),
+                "core package does not declare the companion Bridge sample");
 
             // ── package core dependencies ──
             var deps = pkg["dependencies"] as JObject;
@@ -143,7 +143,17 @@ namespace Unity.FoxgloveSDK.Tests
                 sampleSyncSource.Contains("(\"_recordingDirectory\", \"_recordingDirectory:\")"),
                 "FullDemo sample sync scrubs recording directory");
 
-            // ── 17D: ROS2 Bridge Sample ──
+            // ── 17D: ROS2 Bridge companion package sample ──
+            var bridgePkgJson = JObject.Parse(
+                File.ReadAllText(Path.Combine(bridgePkgDir, "package.json")));
+            var bridgeSamples = bridgePkgJson["samples"] as JArray;
+            Assert(bridgePkgJson["dependencies"]?["dev.unity2foxglove.sdk"] != null,
+                "ROS2 Bridge package depends on the core SDK");
+            Assert(bridgeSamples != null && bridgeSamples.Count == 1,
+                "ROS2 Bridge package declares one sample");
+            Assert((string)bridgeSamples?[0]?["displayName"] == "ROS2 Bridge Sample"
+                   && (string)bridgeSamples?[0]?["path"] == "Samples~/Ros2BridgeSample",
+                "ROS2 Bridge sample is owned by the companion package");
             Assert(Directory.Exists(ros2Dir), "Ros2BridgeSample/ exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "README.md")), "Ros2BridgeSample README exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scenes", "Ros2BridgeSample.unity")), "Ros2BridgeSample scene exists");
@@ -154,6 +164,8 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleController.cs.meta")), "Ros2BridgeSample controller meta exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleLaserScan.cs")), "Ros2BridgeSample laser script exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSamplePointCloud.cs")), "Ros2BridgeSample point cloud script exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Editor", "Ros2BridgeSampleSceneBuilder.cs")), "Ros2BridgeSample scene builder exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Editor", "Unity2Foxglove.Ros2Bridge.Sample.Editor.asmdef")), "Ros2BridgeSample Editor assembly exists");
 
             // The Virtual LiDAR Maze Demo is importable from package.json and
             // must receive the same sample hygiene coverage as the older samples.
@@ -165,10 +177,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(lidarMazeDir, "Editor", "Phase138MazeDemoSceneBuilder.cs")), "Virtual LiDAR Maze Demo scene builder exists");
 
             // ── Forbidden items in samples ──
-            var forbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
-            foreach (var sampleDir in new[] { basicDir, fullDir, ros2Dir })
+            var editorFreeForbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
+            foreach (var sampleDir in new[] { basicDir, fullDir })
             {
-                foreach (var f in forbidden)
+                foreach (var f in editorFreeForbidden)
                 {
                     Assert(!Directory.Exists(Path.Combine(sampleDir, f)), $"{Path.GetFileName(sampleDir)}: no {f}/");
                 }
@@ -182,10 +194,20 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            var lidarForbidden = new[] { "Generated", "TutorialInfo", "Plugins", "Library", "Logs", "Recordings" };
-            foreach (var f in lidarForbidden)
+            var editorToolingSampleForbidden = new[] { "Generated", "TutorialInfo", "Plugins", "Library", "Logs", "Recordings" };
+            foreach (var sampleDir in new[] { ros2Dir, lidarMazeDir })
             {
-                Assert(!Directory.Exists(Path.Combine(lidarMazeDir, f)), $"Virtual LiDAR Maze Demo: no {f}/");
+                foreach (var f in editorToolingSampleForbidden)
+                {
+                    Assert(!Directory.Exists(Path.Combine(sampleDir, f)), $"{Path.GetFileName(sampleDir)}: no {f}/");
+                }
+
+                var allFiles = Directory.GetFiles(sampleDir, "*.cs", SearchOption.AllDirectories);
+                foreach (var file in allFiles)
+                {
+                    var name = Path.GetFileName(file);
+                    Assert(!name.Contains("_FoxRun"), $"{Path.GetFileName(sampleDir)}: no generated {name}");
+                }
             }
 
             // ── No absolute paths in samples ──

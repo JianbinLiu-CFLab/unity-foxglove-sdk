@@ -39,11 +39,11 @@ For a ready-made project, open the `Unity2Foxglove` directory in Unity Hub. The 
 | Area | Current capability |
 | --- | --- |
 | Live protocol | In-process managed WebSocket/WSS server with schemas, channels, time, status, graph, client publish, assets, parameters, services, and playback control. |
-| FoxRun | AOT-safe generated field/property bindings for publish, subscribe, and debug-oriented full duplex; JSON, Protobuf, multi-sink output, single-source input, and main-thread apply. |
+| FoxRun | AOT-safe generated field/property bindings for publish, subscribe, and debug-oriented full duplex; JSON, Protobuf, or typed MessagePack over Foxglove WebSocket, plus multi-sink output, single-source input, and main-thread apply. |
 | MCAP | Indexed recording with LZ4/Zstd, attachments, schema evidence, bounded reading, seek/history, and Unity scene reproduction. |
 | Foxglove replay control | Remote files plus the `Unity Replay Sync` panel let Foxglove Timeline and Plot seek drive the Unity scene. |
 | Sensors | Transform, scene primitives, camera, IMU, laser scan, point cloud, camera calibration, raw/compressed point-cloud, and high-rate pipeline controls. |
-| Data exchange | Independent Foxglove WebSocket, optional ROS2 Bridge, and optional ROS2 Native output; WebSocket or ROS2 Native input where the generated contract supports it. |
+| Data exchange | Independent Foxglove WebSocket, optional ROS2 Bridge, and optional ROS2 Native Providers; each supported Provider can publish and subscribe where the generated contract permits it. |
 
 ### FoxRun in One Minute
 
@@ -64,14 +64,16 @@ full-duplex, and stream grammar stays explicit:
 
 ```csharp
 [FoxRun("/robot/command", Mode = FoxRunFlow.Subscribe,
-    Source = FoxRunEndpoint.Foxglove)]
+    SubscribeTransportId = FoxgloveWebSocketTransport.Id)]
 private RobotCommand _command;
 
 [FoxRun("/robot/state",
-    Targets = FoxRunEndpoint.Foxglove |
-              FoxRunEndpoint.Ros2Native |
-              FoxRunEndpoint.Ros2Bridge,
-    QoS = FoxRunQosProfile.SensorData)]
+    PublishTransportIds = new[]
+    {
+        FoxgloveWebSocketTransport.Id,
+        "unity2foxglove.r2fu",
+        "unity2foxglove.ros2bridge"
+    })]
 private RobotState _fanoutState;
 
 [FoxRun("/events/reset", Policy = FoxRunPolicy.Trigger)]
@@ -81,26 +83,39 @@ private ResetEvent _reset;
 private DebugState _debugState;
 
 [FoxRun("/control/samples", Mode = FoxRunFlow.Subscribe,
-    Source = FoxRunEndpoint.Foxglove)]
+    SubscribeTransportId = FoxgloveWebSocketTransport.Id)]
 private FoxRunStream<ControlSample> _samples = new FoxRunStream<ControlSample>();
 
 private bool PublishReset() => FoxRun_Publish_reset();
 ```
 
-One subscribed member resolves one `Source`; published data may select multiple
-`Targets`. Portable ROS 2 QoS uses `QoS`, `Reliability`, `Durability`,
-`History`, and `Depth`. Trigger declarations generate direction-specific
+One subscribed member resolves exactly one `SubscribeTransportId`; published
+data may select zero or more `PublishTransportIds`. A configured missing,
+duplicate, unavailable, or capability-incompatible Provider fails closed with
+no fallback. Trigger declarations generate direction-specific
 `FoxRun_Publish_*` and `FoxRun_Apply_*` methods. Full duplex is intended for
 debug and integration loops; use separate one-way declarations for production
 authority. `FoxRunStream<T>` is Subscribe-only, finite, and user-drained.
 
-The normal Foxglove WebSocket and localhost ROS2 Bridge paths need only
-`dev.unity2foxglove.sdk`. Bridge is publish-only and its sidecar is not a
-remote gateway. Add the optional R2FU facade and exactly one runtime only for
-direct ROS2 Native input or output.
+FoxRun MessagePack supports `Publish`, `Subscribe`, and
+`PublishAndSubscribe` on the Foxglove WebSocket direction. Its live and MCAP
+channels use `message_encoding=msgpack`, empty wire-schema fields, schema id
+zero, and the exact generated payload bytes. Typed discovery and editing use
+the maintained **FoxRun Publish** extension; built-in Foxglove panels do not
+visualize or author typed MessagePack. ROS2 Native and ROS2 Bridge continue to
+use generated ROS2 DTO/CDR contracts and never consume MessagePack bytes.
+MessagePack input permits ordinary fields or exactly one `FoxRunStream<T>` per
+topic, not a mixed or multi-stream topology; multi-member directions must also
+share one normalized schedule.
+
+The normal Foxglove WebSocket path needs only `dev.unity2foxglove.sdk`. Add
+`dev.unity2foxglove.ros2bridge` for loopback sidecar publish and subscribe; it
+does not require R2FU. Add the optional R2FU facade and exactly one runtime
+only for direct in-process ROS2 Native input or output. The Bridge sidecar is
+manually operated and is not a remote gateway.
 
 See the [FoxRun user guide](Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md)
-for Subscribe, endpoints, QoS, triggers, full duplex, and stream examples, and
+for Subscribe, Providers, delivery intent, triggers, full duplex, and stream examples, and
 the [shared-emitter architecture](docs/research-shared-emitter-architecture.md)
 for the AOT boundary.
 
@@ -118,9 +133,10 @@ Foxglove owns interactive time. Unity applies ordered forward ranges during norm
 
 **Most projects need only `dev.unity2foxglove.sdk`.** It is the complete
 ROS-free product for Foxglove WebSocket streaming, FoxRun over WebSocket, MCAP
-recording/replay, sensors, services, and the optional `ROS2 Bridge` sidecar.
+recording/replay, sensors, and services. Add the independent optional Bridge
+package only when the project needs the loopback ROS2 sidecar.
 Do not add a ROS2 runtime merely because a project publishes data to Foxglove.
-ROS2 Bridge output is independent from WebSocket output and disabled by default.
+ROS2 Bridge routing is independent from WebSocket routing and unselected by default.
 
 The repository contains candidate packages for optional capabilities. A package
 folder on disk is not an instruction to add it to a Unity project: only the
@@ -128,7 +144,8 @@ packages resolved by that project's `Packages/manifest.json` are active.
 
 | Role | Package | Add it only when you need it |
 | --- | --- | --- |
-| Core | `dev.unity2foxglove.sdk` | Always. This is the normal and sufficient installation. |
+| Core | `dev.unity2foxglove.sdk` | Always. This is the normal and sufficient Foxglove installation. |
+| ROS2 Bridge | `dev.unity2foxglove.ros2bridge` | Loopback sidecar ROS2 publish and subscribe. It depends only on the core SDK and does not require R2FU. |
 | Remote gateway | `dev.unity2foxglove.remotegateway.win64` | Windows x64 Foxglove Cloud remote-access gateway. It depends on the core SDK. |
 | ROS2 facade | `dev.unity2foxglove.ros2forunity` | Direct native ROS2 communication through ROS2 For Unity. It depends on the core SDK but has no runtime by itself. |
 | ROS2 runtime | One of `dev.unity2foxglove.ros2forunity.runtime.humble.win64`, `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`, or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` | Direct native ROS2 on Windows x64. Select exactly one distro. Lyrical Fast DDS versus Zenoh is a communication-mode setting, not another package. |
@@ -139,7 +156,8 @@ Choose one active set rather than accumulating packages:
 
 | Goal | Packages the Unity project must resolve | Do not add for this goal |
 | --- | --- | --- |
-| Normal Unity-to-Foxglove, FoxRun/WebSocket input, MCAP, Replay, or ROS2 Bridge | `dev.unity2foxglove.sdk` | ROS2 facade, runtime, static interface, and typesupport packages. |
+| Normal Unity-to-Foxglove, FoxRun/WebSocket input, MCAP, or Replay | `dev.unity2foxglove.sdk` | Bridge and native ROS2 packages. |
+| Loopback ROS2 sidecar publish and subscribe | Core + `dev.unity2foxglove.ros2bridge` | R2FU facade, runtime, static interface, and typesupport packages. |
 | Windows x64 remote gateway | Core + `dev.unity2foxglove.remotegateway.win64` | ROS2 packages unless the project also has a separate native ROS2 need. |
 | Direct native ROS2 using packaged standard messages | Core + `dev.unity2foxglove.ros2forunity` + exactly one matching runtime | Custom interface and custom typesupport packages. |
 | Direct native ROS2 using generated custom FoxRun DTOs | Core + facade + exactly one runtime + `dev.unity2foxglove.foxrun.ros2.interfaces` + the exact matching typesupport add-on | Every other runtime and every other typesupport add-on. |

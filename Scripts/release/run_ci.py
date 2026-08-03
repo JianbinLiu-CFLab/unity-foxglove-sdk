@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
+import hashlib
 import os
 import subprocess
 import sys
@@ -25,6 +26,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
+
+
+def phase186_certification_run_id(head: str) -> str:
+    """Return a run identifier bound to both the current HEAD and CI invocation."""
+    identity = hashlib.sha256(RUN_ID.encode("utf-8")).hexdigest()[:6]
+    return f"phase186h-cert-{head[:6]}{identity}"
 
 PASS = "[PASS]"
 FAIL = "[FAIL]"
@@ -81,6 +88,18 @@ PHASE184_WINDOWS_JOB_OWNER_REGRESSION = (
 PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION = (
     "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance"
 )
+PHASE186_BRIDGE_TOOLING_REGRESSIONS = (
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance_protocol",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_live",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_certification",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_build",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_capability_probe",
+    "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance",
+)
+PHASE186_PACKAGE_MATRIX_VALIDATOR = "Scripts/package/validate_phase186_package_matrix.py"
+PHASE186_PROVENANCE_MODULE = "Scripts.smoke.foxrun.phase186_provenance"
+PHASE186_CERTIFICATION_MODULE = "Scripts.smoke.foxrun.phase186_bridge_certification"
 PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest",
     "Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface",
@@ -130,6 +149,32 @@ class CapturedCommandResult:
     stdout: str
     stderr: str
     timeout_seconds: int | None = None
+
+
+def current_git_head() -> str:
+    """Return the exact tracked commit used to identity-bind live evidence."""
+
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    head = completed.stdout.strip().lower()
+    if completed.returncode != 0 or len(head) != 40:
+        raise RuntimeError(
+            "cannot resolve exact Git HEAD for Phase186 live certification: "
+            + completed.stderr.strip()[:512]
+        )
+    try:
+        int(head, 16)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Git HEAD is not a canonical 40-character hexadecimal object ID"
+        ) from exc
+    return head
 
 
 def command_timeout_seconds() -> int:
@@ -414,6 +459,11 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
                 disable_timeout=True,
             ),
             CiJob(
+                "phase186-bridge-tooling",
+                [sys.executable, script, "--only", "phase186-bridge-tooling"],
+                disable_timeout=True,
+            ),
+            CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
                 disable_timeout=True,
@@ -646,6 +696,7 @@ def main() -> int:
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
             "phase181-ros2-regression, phase184-acceptance-tooling, "
+            "phase186-bridge-tooling, phase186-bridge-windows-live, "
             "mcap-conformance, packages, boundary"
         ),
     )
@@ -918,6 +969,45 @@ def main() -> int:
                 PHASE184_FOXGLOVE_DESKTOP_LIVE_ACCEPTANCE_REGRESSION,
             ],
             "Phase184 Foxglove Desktop live coordinator regressions",
+        )
+
+    # --- pure Phase186 Bridge tooling and package-composition gates ---
+    if args.only in (None, "phase186-bridge-tooling"):
+        for module in PHASE186_BRIDGE_TOOLING_REGRESSIONS:
+            label = module.rsplit(".", 1)[-1].removeprefix("test_").replace("_", " ")
+            results["phase186-" + module.rsplit(".", 1)[-1]] = run(
+                [sys.executable, "-m", "unittest", module],
+                "Phase186 " + label + " regressions",
+            )
+        results["phase186-package-matrix"] = run(
+            [sys.executable, PHASE186_PACKAGE_MATRIX_VALIDATOR],
+            "Phase186 package-composition compile and boundary matrix",
+            disable_timeout=True,
+        )
+        results["phase186-provenance"] = run(
+            [sys.executable, "-m", PHASE186_PROVENANCE_MODULE],
+            "Phase186 protocol and source provenance",
+            disable_timeout=True,
+        )
+
+    # --- specifically provisioned Windows Unity + ROS/RMW live certification ---
+    if args.only == "phase186-bridge-windows-live":
+        head = current_git_head()
+        certification_run_id = phase186_certification_run_id(head)
+        results["phase186-bridge-windows-live"] = run(
+            [
+                sys.executable,
+                "-m",
+                PHASE186_CERTIFICATION_MODULE,
+                "--expected-head",
+                head,
+                "--output-root",
+                "build/phase186/windows-live",
+                "--run-id",
+                certification_run_id,
+            ],
+            "Phase186 provisioned Windows Unity and ROS/RMW live certification",
+            disable_timeout=True,
         )
 
     # --- pure Phase181 custom-interface helper and source-package regressions ---

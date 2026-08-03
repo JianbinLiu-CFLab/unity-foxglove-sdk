@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
-// Purpose: Resolves sensor camera profile topics, frame ids, and ROS image payloads.
+// Purpose: Resolves sensor camera profile topics and frame ids.
 
 using System;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -40,7 +39,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>
         /// Resolves the compressed image topic kept for the canonical camera publisher alias.
-        /// Use <see cref="ResolveRawImageTopic"/> when a raw sensor_msgs/Image topic is required.
+        /// Use <see cref="ResolveRawImageTopic"/> when a raw Provider image topic is required.
         /// </summary>
         public static string ResolveImageTopic(object sensorUnitProfile, string fallbackTopic)
             => ResolveCompressedImageTopic(sensorUnitProfile, fallbackTopic);
@@ -65,8 +64,6 @@ namespace Unity.FoxgloveSDK.Components
 
         public static void ApplyDefaults(
             object sensorUnitProfile,
-            bool publishStandardRos2CompressedImage,
-            bool publishStandardRos2RawImage,
             string activeDefaultTopic,
             string activeRawDefaultTopic,
             ref string topic,
@@ -74,17 +71,15 @@ namespace Unity.FoxgloveSDK.Components
             ref string frameId)
         {
             var profile = ResolveProfile(sensorUnitProfile);
-            if (profile == null || (!publishStandardRos2CompressedImage && !publishStandardRos2RawImage))
+            if (profile == null)
                 return;
 
-            if (publishStandardRos2CompressedImage
-                && (string.IsNullOrWhiteSpace(topic) || topic == activeDefaultTopic))
+            if (string.IsNullOrWhiteSpace(topic) || topic == activeDefaultTopic)
             {
                 topic = ResolveCompressedImageTopic(profile, activeDefaultTopic);
             }
 
-            if (publishStandardRos2RawImage
-                && (string.IsNullOrWhiteSpace(rawTopic) || rawTopic == activeRawDefaultTopic))
+            if (string.IsNullOrWhiteSpace(rawTopic) || rawTopic == activeRawDefaultTopic)
             {
                 rawTopic = ResolveRawImageTopic(profile, activeRawDefaultTopic);
             }
@@ -93,20 +88,11 @@ namespace Unity.FoxgloveSDK.Components
                 frameId = profile.CameraFrameId;
         }
 
-        public static bool HasCompressedImageDemand(bool standardRos2CompressedImageOutput, bool hasSubscribers)
-            => standardRos2CompressedImageOutput && hasSubscribers;
+        public static bool HasCompressedImageDemand(bool hasSubscribers)
+            => hasSubscribers;
 
-        public static bool HasRawImageDemand(bool standardRos2RawImageOutput, bool hasSubscribers)
-            => standardRos2RawImageOutput && hasSubscribers;
+        public static bool HasRawImageDemand(bool hasSubscribers)
+            => hasSubscribers;
 
-        public static byte[] SerializeCompressedImage(
-            bool publishStandardRos2CompressedImage,
-            ulong unixNs,
-            string frameId,
-            byte[] jpeg,
-            string format)
-            => publishStandardRos2CompressedImage
-                ? Ros2CdrSensorCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, format)
-                : Ros2CdrCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, format);
     }
 }

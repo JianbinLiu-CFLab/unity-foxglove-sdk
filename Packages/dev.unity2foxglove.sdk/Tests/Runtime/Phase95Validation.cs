@@ -10,8 +10,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Foxglove;
-using Unity.FoxgloveSDK.Ros2Bridge;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -136,6 +136,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(runtime.TryEnqueue(CreateFrame("/unity/tf", 1), out _), "95C-1: runtime enqueues before reconnect succeeds");
             Check(WaitUntil(() => factory.SentFrameCount == 1, BackgroundRuntimeTimeoutMs),
                 "95C-2: runtime reconnects and sends queued frame");
+            Check(WaitUntil(() =>
+                {
+                    var current = runtime.GetStatsSnapshot();
+                    return current.Connected && current.SentFrames == 1;
+                }, BackgroundRuntimeTimeoutMs),
+                "95C-2a: runtime commits the completed send into its stats");
             var stats = runtime.GetStatsSnapshot();
             Check(stats.Connected && stats.SentFrames == 1 && stats.FailedFrames == 0,
                 "95C-3: reconnect failures do not count as frame send failures");
@@ -213,32 +219,59 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySourceIntegration()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
+            var managerProviders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var managerPublishEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
-            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var bridgeDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
+            var bridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeTransportProviderEditor.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
 
-            Check(manager.Contains("_ros2BridgeEnabled") && manager.Contains("Ros2BridgeRuntime"),
-                "95E-1: Manager owns bridge settings and runtime");
-            Check(publishing.Contains("TryPrepareRos2BridgePublish") && publishing.Contains("PublishRos2BridgeCdr"),
-                "95E-2: Manager exposes bridge prepare and CDR publish APIs");
-            Check(publishing.Contains("SuppressLivePublishersForReplay") && !SourceMethodContains(publishing, "TryPrepareRos2BridgePublish", "IsRunning"),
-                "95E-3: bridge prepare respects replay suppression but not WebSocket IsRunning");
-            Check(publisherBase.Contains("_ros2BridgeOutput") && publisherBase.Contains("ShouldPrepareAnyPublishPayload"),
-                "95E-4: Publisher base has independent bridge output policy");
-            Check(publisherBase.Contains("ShouldPrepareRos2BridgePayload") && publisherBase.Contains("PublishRos2Bridge"),
-                "95E-5: Publisher base has bridge prepare and publish helpers");
+            Check(bridgeProvider.Contains("_host")
+                  && bridgeProvider.Contains("_port")
+                  && bridgeProvider.Contains("_queueCapacity")
+                  && bridgeProvider.Contains("Ros2BridgeRuntime")
+                  && !manager.Contains("Ros2Bridge"),
+                "95E-1: extracted Bridge Provider owns bridge settings and runtime");
+            Check(managerProviders.Contains("PublishOrdinaryTransport")
+                  && managerProviders.Contains("PublishOrdinaryTransports")
+                  && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("TryMap"),
+                "95E-2: neutral Manager APIs fan out values to the Bridge-owned mapper");
+            var demandStart = managerProviders.IndexOf(
+                "public bool HasOrdinaryTransportDemand",
+                StringComparison.Ordinal);
+            var demandEnd = demandStart < 0
+                ? -1
+                : managerProviders.IndexOf(
+                    "public FoxRunOrdinaryTransportFanoutResult",
+                    demandStart,
+                    StringComparison.Ordinal);
+            var demandSource = demandStart >= 0 && demandEnd > demandStart
+                ? managerProviders.Substring(demandStart, demandEnd - demandStart)
+                : string.Empty;
+            Check(demandSource.Contains("_activeFoxRunTransportSession")
+                  && demandSource.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && !demandSource.Contains("IsRunning"),
+                "95E-3: frozen Provider demand is independent of WebSocket runtime state");
+            Check(publisherBase.Contains("ShouldPrepareAnyPublishPayload")
+                  && publisherBase.Contains("ShouldPrepareOrdinaryTransportPayload")
+                  && !publisherBase.Contains("_ros2BridgeOutput"),
+                "95E-4: Publisher base exposes a Provider-neutral payload policy");
+            Check(publisherBase.Contains("PublishOrdinaryTransport")
+                  && publisherBase.Contains("PublishOrdinaryTransports"),
+                "95E-5: Publisher base fans ordinary values through neutral Manager APIs");
 
             foreach (var file in ProductPublisherFiles())
             {
                 var source = ReadProductPublisherText(file);
-                Check(source.Contains("ShouldPrepareAnyPublishPayload") || source.Contains("ShouldPrepareRos2BridgePayload"),
-                    "95E-6: publisher uses bridge-aware prepare gate " + Path.GetFileName(file));
-                Check(source.Contains("PublishRos2Bridge"),
-                    "95E-7: publisher mirrors ROS2 Bridge payload " + Path.GetFileName(file));
+                Check(source.Contains("ShouldPrepareAnyPublishPayload")
+                      || source.Contains("ShouldPrepareOrdinaryTransportPayload"),
+                    "95E-6: publisher uses Provider-aware prepare gate " + Path.GetFileName(file));
+                Check(source.Contains("PublishOrdinaryTransport"),
+                    "95E-7: publisher fans out its ordinary payload " + Path.GetFileName(file));
             }
 
             var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
@@ -246,29 +279,42 @@ namespace Unity.FoxgloveSDK.Tests
                   && sceneCubePublisher.Contains("base.OnValidate();", StringComparison.Ordinal),
                 "95E-7a: SceneCube publisher validates through the base publisher OnValidate override");
 
-            Check(!ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedPointCloudPublisher.cs").Contains("PublishRos2Bridge"),
-                "95E-8: legacy compressed point cloud spike stays out of bridge productization");
-            Check(managerPublishEditor.Contains("ROS 2 Bridge")
-                  && managerPublishEditor.Contains("ROS 2 Bridge Output")
-                  && ros2BridgeEditor.Contains("Queued Frames")
-                  && ros2BridgeEditor.Contains("Last Error"),
-                "95E-9: Manager Inspector exposes simple bridge UX");
-            Check(cameraEditor.Contains("ROS2 Bridge") && pointCloudEditor.Contains("ROS2 Bridge"),
-                "95E-10: custom publisher Inspectors expose bridge UX");
-            Check(!managerEditor.Contains("payload-format") && !managerEditor.Contains("ros2msg"),
+            Check(!ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedPointCloudPublisher.cs").Contains("PublishOrdinaryTransport"),
+                "95E-8: legacy compressed point cloud spike stays out of Provider fanout");
+            Check(managerPublishEditor.Contains("Publish Destinations")
+                  && managerPublishEditor.Contains("FoxRunTransportProviderDrawerRegistry")
+                  && bridgeDrawer.Contains("ROS 2 Bridge")
+                  && bridgeDrawer.Contains("Queued Frames")
+                  && bridgeDrawer.Contains("LastError")
+                  && bridgeEditor.Contains("Ros2BridgeProviderDrawer.DrawStats(stats)"),
+                "95E-9: Manager Inspector hosts the extracted Bridge Provider UX");
+            Check(cameraEditor.Contains("Provider Payload")
+                  && pointCloudEditor.Contains("Packed Provider Frame")
+                  && !cameraEditor.Contains("ROS2 Bridge")
+                  && !pointCloudEditor.Contains("ROS2 Bridge"),
+                "95E-10: custom publisher Inspectors stay Provider-neutral");
+            Check(!managerEditor.Contains("payload-format")
+                  && !managerEditor.Contains("ros2msg")
+                  && !bridgeDrawer.Contains("payload-format")
+                  && !bridgeDrawer.Contains("ros2msg"),
                 "95E-11: Inspector does not expose sidecar internals");
         }
 
         private static void VerifyDocumentationAndEvidenceBoundary()
         {
             var readme = ReadRepoText("README.md");
-            var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
-            Check(readme.Contains("WebSocket") && readme.Contains("ROS2 Bridge") && readme.Contains("disabled by default"),
+            var packageManifest = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json");
+            var protocolDocs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md");
+            Check(readme.Contains("ROS2 Bridge routing is independent from WebSocket routing")
+                  && readme.Contains("unselected by default"),
                 "95F-1: README documents independent optional bridge");
-            Check(docs.Contains("Phase 95")
-                  && (docs.Contains("seven validated publisher") || docs.Contains("7 validated publisher"))
-                  && docs.Contains("sidecar"),
-                "95F-2: schema coverage docs describe Phase95 product boundary");
+            Check(packageManifest.Contains("Optional ROS 2 Bridge transport Provider")
+                  && packageManifest.Contains("Owns U2R2, CDR codecs, ROS schema adapters")
+                  && protocolDocs.Contains("ROS 2 Bridge package and its standalone sidecar")
+                  && protocolDocs.Contains("protocol authority")
+                  && protocolDocs.Contains("prepare_publisher")
+                  && protocolDocs.Contains("publisher_ready"),
+                "95F-2: Bridge package documents Provider and sidecar protocol authority");
             Check(ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md").Contains("Phase 95"),
                 "95F-3: sidecar README references productized bridge path");
         }
@@ -370,7 +416,7 @@ namespace Unity.FoxgloveSDK.Tests
                 return ReadRepoText(relativePath)
                     + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs")
                     + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs")
-                    + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+                    + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
             }
 
             return ReadRepoText(relativePath);

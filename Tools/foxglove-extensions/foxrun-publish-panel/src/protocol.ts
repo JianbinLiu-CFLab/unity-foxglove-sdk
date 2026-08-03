@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tools/foxglove-extensions/foxrun-publish-panel
-// Purpose: Explicit Foxglove WebSocket publication path for raw Protobuf FoxRun payloads.
+// Purpose: Explicit Foxglove WebSocket publication path for raw typed FoxRun payloads.
 
 const FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1";
 const MESSAGE_DATA_OPCODE = 1;
@@ -12,6 +12,7 @@ const DIRECT_SOCKET_OPEN = 1;
 
 export type DirectFoxRunSocket = Pick<WebSocket, "addEventListener" | "binaryType" | "close" | "readyState" | "send">;
 export type DirectFoxRunSocketFactory = (url: string, protocol: string) => DirectFoxRunSocket;
+export type DirectFoxRunEncoding = "protobuf" | "msgpack";
 
 type OpenableWebSocket = Pick<DirectFoxRunSocket, "addEventListener" | "close">;
 
@@ -32,11 +33,16 @@ export function withToken(endpoint: string, token: string): string {
   return url.toString();
 }
 
-export function buildClientAdvertise(topic: string, channelId: number): string {
+export function buildClientAdvertise(
+  topic: string,
+  channelId: number,
+  encoding: DirectFoxRunEncoding,
+): string {
   validateChannel(topic, channelId);
+  validateEncoding(encoding);
   return JSON.stringify({
     op: "advertise",
-    channels: [{ id: channelId, topic, encoding: "protobuf" }],
+    channels: [{ id: channelId, topic, encoding }],
   });
 }
 
@@ -47,10 +53,10 @@ export function buildClientUnadvertise(channelId: number): string {
 
 export function buildMessageDataFrame(channelId: number, payload: Uint8Array): Uint8Array {
   if (!Number.isInteger(channelId) || channelId <= 0 || channelId > 0xffffffff) {
-    throw new Error("FoxRun Protobuf channel id must be a positive uint32.");
+    throw new Error("FoxRun direct channel id must be a positive uint32.");
   }
   if (payload.length === 0) {
-    throw new Error("FoxRun Protobuf payload must not be empty.");
+    throw new Error("FoxRun direct payload must not be empty.");
   }
 
   const frame = new Uint8Array(5 + payload.length);
@@ -75,9 +81,9 @@ export function waitForSocketOpen(socket: OpenableWebSocket, timeoutMs: number):
         reject(error);
       }
     };
-    const fail = (): void => settle(new Error("Could not open the direct Protobuf connection to Unity."));
+    const fail = (): void => settle(new Error("Could not open the direct FoxRun connection to Unity."));
     const timeout = setTimeout(() => {
-      settle(new Error("Timed out opening the direct Protobuf connection to Unity."));
+      settle(new Error("Timed out opening the direct FoxRun connection to Unity."));
       socket.close();
     }, Math.max(1, timeoutMs));
 
@@ -91,24 +97,31 @@ export class DirectFoxRunProtocolClient {
   private attempt: DirectConnectionAttempt | undefined;
   private nextConnectionGeneration = 0;
   private nextChannelId = 176_001;
-  private readonly channels = new DirectProtobufChannelTracker(() => this.allocateChannelId());
+  private readonly channels = new DirectFoxRunChannelTracker(() => this.allocateChannelId());
 
   /** Test seam; production construction uses the browser WebSocket factory. */
   public constructor(private readonly socketFactory: DirectFoxRunSocketFactory = browserSocketFactory) {
   }
 
-  public async publish(endpoint: string, token: string, topic: string, payload: Uint8Array): Promise<void> {
+  public async publish(
+    endpoint: string,
+    token: string,
+    topic: string,
+    encoding: DirectFoxRunEncoding,
+    payload: Uint8Array,
+  ): Promise<void> {
+    validateEncoding(encoding);
     const socket = await this.ensureSocket(endpoint, token);
     if (!this.isCurrentOpenSocket(socket)) {
-      throw new Error("The direct Protobuf connection was closed or replaced before publication.");
+      throw new Error("The direct FoxRun connection was closed or replaced before publication.");
     }
 
-    const action = this.channels.begin(topic);
+    const action = this.channels.begin(topic, encoding);
     if (action.unadvertiseChannelId != undefined) {
       socket.send(buildClientUnadvertise(action.unadvertiseChannelId));
     }
     if (action.advertise) {
-      socket.send(buildClientAdvertise(topic, action.channelId));
+      socket.send(buildClientAdvertise(topic, action.channelId, encoding));
     }
     socket.send(buildMessageDataFrame(action.channelId, payload));
   }
@@ -146,11 +159,19 @@ export class DirectFoxRunProtocolClient {
       pendingOpen: undefined,
     };
     this.attempt = attempt;
+    socket.addEventListener("close", () => {
+      if (!this.ownsAttempt(attempt)) {
+        return;
+      }
+      this.attempt = undefined;
+      this.nextConnectionGeneration++;
+      this.channels.release();
+    }, { once: true });
 
     const pendingOpen = waitForSocketOpen(socket, DIRECT_CONNECTION_TIMEOUT_MS).then(
       () => {
         if (!this.ownsAttempt(attempt) || !this.isSocketOpen(socket)) {
-          throw new Error("The direct Protobuf connection attempt was superseded before it opened.");
+          throw new Error("The direct FoxRun connection attempt was superseded before it opened.");
         }
         attempt.pendingOpen = undefined;
         return socket;
@@ -200,20 +221,24 @@ export class DirectFoxRunProtocolClient {
   }
 }
 
-export class DirectProtobufChannelTracker {
+export class DirectFoxRunChannelTracker {
   private activeTopic: string | undefined;
+  private activeEncoding: DirectFoxRunEncoding | undefined;
   private activeChannelId: number | undefined;
 
   public constructor(private readonly allocateChannelId: () => number) {
   }
 
-  public begin(topic: string): {
+  public begin(topic: string, encoding: DirectFoxRunEncoding): {
     channelId: number;
     advertise: boolean;
     unadvertiseChannelId: number | undefined;
   } {
     validateTopic(topic);
-    if (this.activeTopic === topic && this.activeChannelId != undefined) {
+    validateEncoding(encoding);
+    if (this.activeTopic === topic
+        && this.activeEncoding === encoding
+        && this.activeChannelId != undefined) {
       return {
         channelId: this.activeChannelId,
         advertise: false,
@@ -224,12 +249,14 @@ export class DirectProtobufChannelTracker {
     const unadvertiseChannelId = this.activeChannelId;
     const channelId = this.allocateChannelId();
     this.activeTopic = topic;
+    this.activeEncoding = encoding;
     this.activeChannelId = channelId;
     return { channelId, advertise: true, unadvertiseChannelId };
   }
 
   public release(): void {
     this.activeTopic = undefined;
+    this.activeEncoding = undefined;
     this.activeChannelId = undefined;
   }
 }
@@ -241,12 +268,18 @@ function validateChannel(topic: string, channelId: number): void {
 
 function validateTopic(topic: string): void {
   if (topic.trim().length === 0) {
-    throw new Error("FoxRun Protobuf topic must not be empty.");
+    throw new Error("FoxRun direct topic must not be empty.");
   }
 }
 
 function validateChannelId(channelId: number): void {
   if (!Number.isInteger(channelId) || channelId <= 0 || channelId > 0xffffffff) {
-    throw new Error("FoxRun Protobuf channel id must be a positive uint32.");
+    throw new Error("FoxRun direct channel id must be a positive uint32.");
+  }
+}
+
+function validateEncoding(encoding: DirectFoxRunEncoding): void {
+  if (encoding !== "protobuf" && encoding !== "msgpack") {
+    throw new Error("FoxRun direct encoding must be protobuf or msgpack.");
   }
 }

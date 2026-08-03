@@ -107,18 +107,20 @@ namespace Unity.FoxgloveSDK.Tests
                 editorSource,
                 "private void DrawPublishDataSection");
 
-            Check(section.Contains("Subheader(\"FoxRun Publish Profile\")")
+            Check(section.Contains("Subheader(\"Publish Destinations\")")
                   && section.Contains("\"Default Publish Rate Hz\""),
-                "70A-14: Publish Data keeps the default publish rate inside the FoxRun Publish Profile");
-            Check(section.Contains("Subheader(\"Publisher Encoding\")"),
-                "70A-15: Publish Data labels global encoding settings as Publisher Encoding");
+                "70A-14: Publish Data keeps the default publish rate inside Publish Destinations");
+            Check(section.Contains("Subheader(\"Component Publishers\")")
+                  && section.Contains("\"WebSocket Encoding\""),
+                "70A-15: Publish Data labels component-publisher WebSocket encoding explicitly");
             Check(!section.Contains("Subheader(\"Rate\")") && !section.Contains("Subheader(\"Encoding\")"),
                 "70A-16: Publish Data avoids ambiguous Rate and Encoding headings");
-            Check(IndexOf(section, "Subheader(\"FoxRun Publish Profile\")") < IndexOf(section, "_defaultPublishRateHz")
-                  && IndexOf(section, "_defaultPublishRateHz") < IndexOf(section, "Subheader(\"Publisher Encoding\")")
-                  && IndexOf(section, "Subheader(\"Publisher Encoding\")") < IndexOf(section, "_defaultPublisherEncoding")
+            Check(IndexOf(section, "Subheader(\"Publish Destinations\")") < IndexOf(section, "_foxRunPublishTransportIds")
+                  && IndexOf(section, "_foxRunPublishTransportIds") < IndexOf(section, "_defaultPublishRateHz")
+                  && IndexOf(section, "_defaultPublishRateHz") < IndexOf(section, "Subheader(\"Component Publishers\")")
+                  && IndexOf(section, "Subheader(\"Component Publishers\")") < IndexOf(section, "_defaultPublisherEncoding")
                   && IndexOf(section, "_defaultPublisherEncoding") < IndexOf(section, "_allowPublisherOverride"),
-                "70A-17: Publish Data header order is FoxRun Publish Profile -> Publisher Encoding");
+                "70A-17: Publish Data order is Publish Destinations -> rate -> Component Publishers");
             var publishRateHeader = IndexOf(managerSource, "[Header(\"Publish Rate\")]");
             var publishRateField = IndexOf(managerSource, "_defaultPublishRateHz");
             var publisherEncodingHeader = IndexOf(managerSource, "[Header(\"Publisher Encoding\")]");

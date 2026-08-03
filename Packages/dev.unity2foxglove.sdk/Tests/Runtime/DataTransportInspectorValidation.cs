@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Structural guard for the public Data Transport Inspector hierarchy.
+// Purpose: Structural guard for the Provider-neutral Data Transport Inspector.
 
 using System;
 using System.Collections.Generic;
@@ -14,145 +14,134 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Unity.FoxgloveSDK.Tests
 {
     /// <summary>
-    /// Guards the public FoxgloveManager Inspector hierarchy planned for Phase 180.
+    /// Guards the one Manager-owned transport selection UI and lazy optional
+    /// Provider companion contract.
     /// </summary>
     public static class DataTransportInspectorValidation
     {
         private const string ManagerEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
+        private const string DataTransportPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.DataTransport.cs";
+        private const string PublishDataPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs";
+        private const string SubscribeDataPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs";
+        private const string DrawerRegistryPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxRunTransportProviderDrawerRegistry.cs";
+        private const string TransportIdPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportId.cs";
         private const string ManagerRuntimePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
+        private const string ManagerProvidersPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs";
         private const string ManagerCoordinateMigrationPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs";
         private const string McapRecorderPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs";
         private const string SessionClientPublishHandlerPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionClientPublishHandler.cs";
-        private static readonly string[] LegacyTransportFoldoutKeys =
-        {
-            "PublishData",
-            "SubscribeData",
-            "R2fuRuntime",
-            "Ros2Bridge",
-        };
-        private static readonly string[] DataTransportFoldoutKeys =
-        {
-            "DataTransport",
-            "DataTransportPublish",
-            "DataTransportSubscribe",
-            "DataTransportNativeRuntime",
-            "DataTransportRos2Bridge",
-        };
-
-        private static readonly Dictionary<string, string> DataTransportFoldoutFields =
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                { "DataTransport", "_dataTransportExpanded" },
-                { "DataTransportPublish", "_dataTransportPublishExpanded" },
-                { "DataTransportSubscribe", "_dataTransportSubscribeExpanded" },
-                { "DataTransportNativeRuntime", "_dataTransportNativeRuntimeExpanded" },
-                { "DataTransportRos2Bridge", "_dataTransportRos2BridgeExpanded" },
-            };
+        private const string R2fuDrawerPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs";
+        private const string BridgeDrawerPath =
+            "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs";
 
         private static int _passed;
 
         /// <summary>
-        /// Validates the public Data Transport grouping without changing Inspector behavior.
+        /// Validates that optional transport packages extend one neutral Manager
+        /// workflow without making their companions eager core state.
         /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 180: Data Transport Inspector Structure ===");
+            Console.WriteLine(
+                "=== Phase 180: Provider-neutral Data Transport Inspector ===");
             _passed = 0;
 
-            var mainInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerEditorPath);
-            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
-            var managerRuntime = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerRuntimePath);
-            var managerCoordinateMigration = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerCoordinateMigrationPath);
-            var mcapRecorder = PhaseValidationSourceHelpers.ReadRequiredRepoText(McapRecorderPath);
-            var sessionClientPublishHandler = PhaseValidationSourceHelpers.ReadRequiredRepoText(SessionClientPublishHandlerPath);
-            var topLevel = FindMethod(mainInspector, "OnInspectorGUI");
-            var section = FindMethod(mainInspector, "DrawSection");
-            var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
-            var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
-            var publishData = FindMethod(editorSources, "DrawPublishDataSection");
-            var subscribeData = FindMethod(editorSources, "DrawSubscribeDataSection");
-            var subscriptionMaxPayload = FindMethod(editorSources, "DrawSubscriptionMaxPayload");
-            var subscriptionMaxPayloadUnit = FindMethod(
-                editorSources,
-                "GetSubscriptionMaxPayloadDisplayUnit");
-            var nativeQos = FindMethod(editorSources, "DrawFoxRunRos2Qos");
-            var nativeBudget = FindMethod(editorSources, "DrawRos2NativeCopyBudget");
-            var nativeBudgetUnit = FindMethod(editorSources, "GetNativeCopyBudgetDisplayUnit");
-            var nativeRuntime = FindMethod(editorSources, "DrawR2fuRuntimeSection");
-            var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
+            var managerEditor =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    ManagerEditorPath);
+            var managerEditorSources =
+                PhaseValidationSourceHelpers
+                    .ReadFoxgloveManagerEditorSources();
+            var dataTransport =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    DataTransportPath);
+            var publishData =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    PublishDataPath);
+            var subscribeData =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    SubscribeDataPath);
+            var drawerRegistry =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    DrawerRegistryPath);
+            var transportId =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    TransportIdPath);
+            var r2fuDrawer =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    R2fuDrawerPath);
+            var bridgeDrawer =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    BridgeDrawerPath);
 
-            VerifyTopLevelWorkflow(topLevel);
-            VerifyNestedTransportWorkflow(dataTransport, publishData);
-            VerifyPublishPresentation(publishData);
-            VerifySubscribePresentation(
-                dataTransport,
-                subscribeData,
-                subscriptionMaxPayload,
-                subscriptionMaxPayloadUnit,
-                nativeQos,
-                nativeBudget,
-                nativeBudgetUnit);
-            VerifyNativeRuntimePresentation(nativeRuntime);
-            VerifyFoldoutStateModel(mainInspector, foldoutState);
-            VerifyParentSectionPresentationHelper(section);
-            VerifySubsectionPresentationHelper(subsection);
-            VerifyDirectionalCoordinateRuntimePolicy(
-                managerRuntime,
-                managerCoordinateMigration,
-                mcapRecorder,
-                sessionClientPublishHandler);
+            VerifyTopLevelWorkflow(
+                FindMethod(managerEditor, "OnInspectorGUI"));
+            VerifyNeutralSubsections(
+                FindMethod(dataTransport, "DrawDataTransportSection"),
+                FindMethod(
+                    dataTransport,
+                    "DrawDataTransportSubsection"));
+            VerifyPublishSelection(
+                publishData,
+                FindMethod(publishData, "DrawPublishDataSection"));
+            VerifySubscribeSelection(
+                FindMethod(
+                    subscribeData,
+                    "DrawSubscribeDataSection"));
+            VerifyDrawerContract(
+                drawerRegistry,
+                transportId,
+                r2fuDrawer,
+                bridgeDrawer);
+            VerifyLazyProviderCompanions(
+                managerEditorSources,
+                FindMethod(
+                    publishData,
+                    "DrawFoxRunTransportProviderExtensions"),
+                FindMethod(
+                    publishData,
+                    "ShouldEnsureProvider"));
+            VerifyFoldoutState(managerEditor);
+            VerifyNeutralSerialization();
+            VerifyDirectionalCoordinateRuntimePolicy();
             VerifyValidationRegistryEntry();
 
-            Console.WriteLine("Phase 180: " + _passed + " checks passed.");
+            Console.WriteLine(
+                "Phase 180: " + _passed + " checks passed.");
         }
 
-        private static void VerifyValidationRegistryEntry()
+        private static void VerifyTopLevelWorkflow(
+            MethodDeclarationSyntax topLevel)
         {
-            var flaggedEntries = PhaseValidationRegistry.All
-                .Where(item => string.Equals(item.Flag, "--phase180", StringComparison.Ordinal))
+            var calls = topLevel.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(invocation =>
+                    IsInvocationNamed(invocation, "DrawSection")
+                    || IsInvocationNamed(
+                        invocation,
+                        "DrawRecordingReplayWarning"))
+                .OrderBy(invocation => invocation.SpanStart)
+                .Select(invocation =>
+                    IsInvocationNamed(
+                        invocation,
+                        "DrawRecordingReplayWarning")
+                        ? "DrawRecordingReplayWarning"
+                        : StringArgument(invocation, 0))
                 .ToArray();
-            var handlerEntries = PhaseValidationRegistry.All
-                .Where(item => item.Run == (Action)Validate)
-                .ToArray();
-            var defaultEntries = PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false)
-                .Where(item => string.Equals(item.Flag, "--phase180", StringComparison.Ordinal))
-                .ToArray();
-            var selected = PhaseValidationRegistry.Find(new[] { "--phase180" });
-            var expectedEvidence = ValidationEvidence.Behavior | ValidationEvidence.Structural;
-
-            Check(flaggedEntries.Length == 1
-                  && handlerEntries.Length == 1
-                  && ReferenceEquals(flaggedEntries[0], handlerEntries[0])
-                  && ReferenceEquals(selected, flaggedEntries[0])
-                  && defaultEntries.Length == 1
-                  && ReferenceEquals(defaultEntries[0], flaggedEntries[0])
-                  && flaggedEntries[0].Category == ValidationCategory.CiSafe
-                  && flaggedEntries[0].IncludeInDefault
-                  && flaggedEntries[0].Evidence == expectedEvidence
-                  && string.Equals(flaggedEntries[0].Name, "Data Transport Inspector information architecture", StringComparison.Ordinal),
-                "180H-1: Phase 180 has one default CI registry entry with the data-transport handler and Behavior | Structural evidence");
-        }
-
-        private static void VerifyTopLevelWorkflow(MethodDeclarationSyntax topLevel)
-        {
-            var directSections = DirectInvocations(topLevel)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
-                .ToArray();
-            var executableSections = ExecutableInvocations(topLevel)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
-                .ToArray();
-            var allInvocations = AllInvocations(topLevel);
-            var directWorkflowCalls = DirectInvocations(topLevel)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                     || IsInvocationNamed(invocation, "DrawRecordingReplayWarning"))
-                .ToArray();
-            var expectedWorkflowOrder = new[]
+            var expected = new[]
             {
                 "Connection & Security",
                 "Data Transport",
@@ -161,1277 +150,780 @@ namespace Unity.FoxgloveSDK.Tests
                 "FoxServices",
                 "Diagnostics",
             };
-            var actualWorkflowOrder = directWorkflowCalls
-                .Select(DescribeTopLevelWorkflowCall)
-                .ToArray();
-            var dataTransport = directSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
-            var mcap = directSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
-            var allDataTransport = executableSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
-            var allMcap = executableSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
-            var bridgeSectionCallbacks = allInvocations
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                     && HasMethodGroupArgument(invocation, "DrawRos2BridgeSection"))
-                .ToArray();
 
-            Check(actualWorkflowOrder.SequenceEqual(expectedWorkflowOrder)
-                  && allDataTransport.Length == 1
-                  && dataTransport.Length == 1
-                  && ReferenceEquals(allDataTransport[0], dataTransport[0])
-                  && HasMethodGroupArgument(dataTransport[0], "DrawDataTransportSection")
-                  && allMcap.Length == 1
-                  && mcap.Length == 1
-                  && ReferenceEquals(allMcap[0], mcap[0])
-                  && HasMethodGroupArgument(mcap[0], "DrawMcapSection")
-                  && Array.IndexOf(directSections, dataTransport[0]) < Array.IndexOf(directSections, mcap[0]),
-                "180A-1: Manager Inspector keeps Connection, Data Transport, warning, sibling MCAP, services, and diagnostics in the exact workflow order");
-            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Publish Data")),
-                "180A-2: Publish Data is no longer a top-level workflow section");
-            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
-                "180A-3: Subscribe Data is no longer a top-level workflow section");
-            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
-                                                        || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared")),
-                "180A-4: the shared ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
-            Check(bridgeSectionCallbacks.Length == 0
-                  && !allInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection")),
-                "180A-5: ROS2 Bridge has neither a top-level callback section nor a direct top-level draw");
+            Check(calls.SequenceEqual(expected),
+                "180A-1: Manager keeps one Data Transport workflow between Connection and sibling MCAP");
+            Check(!topLevel.ToFullString().Contains(
+                      "DrawSection(\"Publish Data\"",
+                      StringComparison.Ordinal)
+                  && !topLevel.ToFullString().Contains(
+                      "DrawSection(\"Subscribe Data\"",
+                      StringComparison.Ordinal)
+                  && !topLevel.ToFullString().Contains(
+                      "DrawRos2BridgeSection",
+                      StringComparison.Ordinal)
+                  && !topLevel.ToFullString().Contains(
+                      "DrawR2fuRuntimeSection",
+                      StringComparison.Ordinal),
+                "180A-2: Provider-specific and directional controls are not separate top-level Manager sections");
         }
 
-        private static void VerifyNestedTransportWorkflow(
+        private static void VerifyNeutralSubsections(
             MethodDeclarationSyntax dataTransport,
+            MethodDeclarationSyntax subsection)
+        {
+            var childSections = InvocationsNamed(
+                    dataTransport,
+                    "DrawDataTransportSubsection")
+                .OrderBy(invocation => invocation.SpanStart)
+                .ToArray();
+            var providerExtensions = InvocationsNamed(
+                    dataTransport,
+                    "DrawFoxRunTransportProviderExtensions")
+                .ToArray();
+
+            Check(childSections.Length == 2
+                  && StringArgument(childSections[0], 0)
+                  == "Publish Data"
+                  && StringArgument(childSections[0], 1)
+                  == "DataTransportPublish"
+                  && HasIdentifierArgument(
+                      childSections[0],
+                      "DrawPublishDataSection")
+                  && StringArgument(childSections[1], 0)
+                  == "Subscribe Data"
+                  && StringArgument(childSections[1], 1)
+                  == "DataTransportSubscribe"
+                  && HasIdentifierArgument(
+                      childSections[1],
+                      "DrawSubscribeDataSection"),
+                "180B-1: Data Transport contains exactly one Publish Data and one Subscribe Data subsection");
+            Check(providerExtensions.Length == 1
+                  && providerExtensions[0].SpanStart
+                  > childSections[1].SpanStart
+                  && !dataTransport.ToFullString().Contains(
+                      "ROS 2",
+                      StringComparison.Ordinal)
+                  && !dataTransport.ToFullString().Contains(
+                      "R2FU",
+                      StringComparison.Ordinal),
+                "180B-2: optional Provider drawers extend the neutral workflow after both selections without ROS-specific core UI");
+
+            var subsectionText = subsection.ToFullString();
+            Check(subsectionText.Contains(
+                      "FoxgloveManagerInspectorLayout.WorkflowSubsection",
+                      StringComparison.Ordinal)
+                  && subsectionText.Contains(
+                      "EditorStyles.foldoutHeader",
+                      StringComparison.Ordinal)
+                  && subsection.DescendantNodes()
+                      .OfType<TryStatementSyntax>()
+                      .Any(statement =>
+                          statement.Finally != null)
+                  && subsectionText.Contains(
+                      "EditorGUI.indentLevel++",
+                      StringComparison.Ordinal)
+                  && subsectionText.Contains(
+                      "EditorGUI.indentLevel--",
+                      StringComparison.Ordinal),
+                "180B-3: both neutral subsections retain persistent bold foldouts and exception-safe indentation");
+        }
+
+        private static void VerifyPublishSelection(
+            string publishDataSource,
             MethodDeclarationSyntax publishData)
         {
-            var subsections = DirectInvocations(dataTransport)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection"))
-                .ToArray();
-            var allInvocations = AllInvocations(dataTransport);
-            var nativeSubsections = allInvocations
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared"))
-                .ToArray();
-            var nativeDemandBranches = DirectIfStatements(dataTransport)
-                .Where(HasNativeDemandCondition)
-                .ToArray();
-            var branchNativeSubsections = nativeDemandBranches
-                .SelectMany(DirectThenStatements)
-                .OfType<ExpressionStatementSyntax>()
-                .Select(statement => statement.Expression as InvocationExpressionSyntax)
-                .Where(invocation => invocation != null
-                                     && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared"))
-                .ToArray();
-            var bridgeSubsections = AllInvocations(publishData)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Bridge Output"))
-                .ToArray();
-            var bridgeEnabledBranches = DirectIfStatements(publishData)
-                .Where(HasBridgeDemandCondition)
-                .ToArray();
-            var branchBridgeSubsections = bridgeEnabledBranches
-                .SelectMany(DirectThenStatements)
-                .OfType<ExpressionStatementSyntax>()
-                .Select(statement => statement.Expression as InvocationExpressionSyntax)
-                .Where(invocation => invocation != null
-                                     && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Bridge Output"))
-                .ToArray();
+            var destinationDraws =
+                InvocationsNamed(
+                        publishData,
+                        "DrawPublishTransportSelection")
+                    .ToArray();
+            var headings =
+                InvocationsNamed(publishData, "Subheader")
+                    .Where(invocation =>
+                        HasStringArgument(
+                            invocation,
+                            "Publish Destinations"))
+                    .ToArray();
+            var encoding =
+                InvocationsNamed(
+                        publishData,
+                        "DrawFoxRunEncoding")
+                    .ToArray();
+            var encodingGuard = encoding
+                .Select(invocation => invocation.Ancestors()
+                    .OfType<IfStatementSyntax>()
+                    .FirstOrDefault())
+                .SingleOrDefault();
+            var text = publishDataSource;
 
-            Check(!ContainsStringLiteral(dataTransport, "MCAP Record & Replay")
-                  && !ContainsIdentifier(dataTransport, "DrawMcapSection")
-                  && !ContainsIdentifier(dataTransport, "DrawRos2BridgeSection"),
-                "180B-1: Data Transport contains no MCAP Record & Replay child workflow");
-            Check(subsections.Length == 2
-                  && HasExactlyOneSubsection(
-                      subsections,
-                      "Publish Data",
-                      "DataTransportPublish",
-                      "_dataTransportPublishExpanded",
-                      "DrawPublishDataSection")
-                  && HasExactlyOneSubsection(
-                      subsections,
-                      "Subscribe Data",
-                      "DataTransportSubscribe",
-                      "_dataTransportSubscribeExpanded",
-                      "DrawSubscribeDataSection")
-                  && HasStringHeading(subsections[0], "Publish Data")
-                  && HasStringHeading(subsections[1], "Subscribe Data"),
-                "180B-2: Data Transport nests the public Publish workflow");
-            Check(nativeSubsections.Length == 1
-                  && HasSubsectionArguments(
-                      nativeSubsections[0],
-                      "ROS 2 Native Runtime (R2FU) — Shared",
-                      "DataTransportNativeRuntime",
-                      "_dataTransportNativeRuntimeExpanded",
-                      "DrawR2fuRuntimeSection")
-                  && nativeDemandBranches.Length == 1
-                  && branchNativeSubsections.Length == 1
-                  && ReferenceEquals(nativeSubsections[0], branchNativeSubsections[0]),
-                "180B-3: Data Transport nests the shared ROS 2 Native Runtime (R2FU) only under native demand");
-            Check(bridgeSubsections.Length == 1
-                  && HasSubsectionArguments(
-                      bridgeSubsections[0],
-                      "ROS 2 Bridge Output",
-                      "DataTransportRos2Bridge",
-                      "_dataTransportRos2BridgeExpanded",
-                      "DrawRos2BridgeSection")
-                  && bridgeEnabledBranches.Length == 1
-                  && branchBridgeSubsections.Length == 1
-                  && ReferenceEquals(bridgeSubsections[0], branchBridgeSubsections[0]),
-                "180B-4: Publish nests persisted ROS 2 Bridge Output only when its destination is enabled");
+            Check(headings.Length == 1
+                  && destinationDraws.Length == 1
+                  && text.Contains(
+                      "FindCachedProperty(\"_foxRunPublishTransportIds\")",
+                      StringComparison.Ordinal)
+                  && text.Contains(
+                      "EditorGUILayout.ToggleLeft",
+                      StringComparison.Ordinal)
+                  && text.Contains(
+                      "Unavailable Provider",
+                      StringComparison.Ordinal),
+                "180C-1: Publish exposes one authoritative selectable destination collection and retains unavailable IDs visibly");
+            Check(encoding.Length == 1
+                  && encodingGuard != null
+                  && encodingGuard.Condition.ToFullString().Contains(
+                      "SerializedStringArrayContains",
+                      StringComparison.Ordinal)
+                  && encodingGuard.Condition.ToFullString().Contains(
+                      "FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal),
+                "180C-2: FoxRunEncoding remains a WebSocket-only control guarded by the built-in transport ID");
+            Check(!text.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && !text.Contains("_ros2BridgeEnabled", StringComparison.Ordinal)
+                  && !text.Contains(
+                      "ROS 2 Native",
+                      StringComparison.Ordinal)
+                  && !text.Contains(
+                      "ROS 2 Bridge",
+                      StringComparison.Ordinal),
+                "180C-3: core Publish UI contains no retired ROS destination fields or Provider-specific labels");
         }
 
-        private static void VerifyPublishPresentation(MethodDeclarationSyntax publishData)
+        private static void VerifySubscribeSelection(
+            MethodDeclarationSyntax subscribeData)
         {
-            const string publishCoordinateMessage =
-                "Defines the coordinate convention of supported data published from Unity. MCAP records the same converted external payload and labels output channels with this mode.";
-            var directInvocations = DirectInvocations(publishData).ToArray();
-            var allInvocations = AllInvocations(publishData);
-            var nativeOutputBranches = DirectIfStatements(publishData)
-                .Where(statement => HasIdentifierCondition(statement, "includesRos2Native"))
-                .ToArray();
-            var nativeProfileInvocations = nativeOutputBranches
-                .SelectMany(DirectThenStatements)
-                .SelectMany(AllInvocations)
-                .ToArray();
+            var sourceDraws =
+                InvocationsNamed(
+                        subscribeData,
+                        "DrawSubscribeTransportSelection")
+                    .ToArray();
+            var encoding =
+                InvocationsNamed(
+                        subscribeData,
+                        "DrawFoxRunEncoding")
+                    .ToArray();
+            var encodingGuard = encoding
+                .Select(invocation => invocation.Ancestors()
+                    .OfType<IfStatementSyntax>()
+                    .FirstOrDefault())
+                .SingleOrDefault();
+            var text = subscribeData.ToFullString();
 
-            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                 && HasStringHeading(invocation, "Publish Destinations")) == 1
-                  && HasExactlyOneLabeledProperty(directInvocations, "_foxgloveOutputEnabled", "Foxglove WebSocket")
-                  && HasExactlyOneLabeledProperty(directInvocations, "_ros2NativeEnabled", "ROS 2 Native (R2FU)")
-                  && HasExactlyOneLabeledProperty(directInvocations, "_ros2BridgeEnabled", "ROS 2 Bridge")
-                  && !ContainsStringLiteral(publishData, "Output Mode"),
-                "180E-1: Publish renders the three independent approved destinations without the obsolete output-mode heading");
-            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                 && HasStringHeading(invocation, "Publisher Encoding")) == 1
-                  && HasExactlyOneLabeledInvocation(
-                      allInvocations,
-                      "DrawGlobalEncodingProperty",
-                      "_defaultPublisherEncoding",
-                      "Component Publisher Encoding")
-                  && HasExactlyOneLabeledInvocation(
-                      allInvocations,
-                      "DrawProperty",
-                      "_allowPublisherOverride",
-                      "Allow Component Publisher Override")
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                 && HasStringHeading(invocation, "FoxRun Publish Profile")) == 1
-                  && allInvocations.All(invocation => !IsInvocationNamed(invocation, "DrawTargets"))
-                  && !ContainsStringLiteral(
-                      publishData,
-                      "Override Publish Destinations for FoxRun")
-                  && !ContainsStringLiteral(
-                      publishData,
-                      "FoxRun Override Destinations")
-                  && publishData.ToFullString().Contains(
-                      "FoxRunPublishTargetPolicy.FromPublishDestinations(",
+            Check(sourceDraws.Length == 1
+                  && InvocationsNamed(
+                          subscribeData,
+                          "FindCachedProperty")
+                      .Count(invocation =>
+                          HasStringArgument(
+                              invocation,
+                              "_foxRunSubscribeTransportId"))
+                  == 1
+                  && InvocationsNamed(subscribeData, "DrawProperty")
+                      .Count(invocation =>
+                          HasStringArgument(
+                              invocation,
+                              "_enableFoxRunInbound")) == 1
+                  && text.Contains("\"Source\"", StringComparison.Ordinal)
+                  && text.Contains(
+                      "Configured Provider is unavailable",
+                      StringComparison.Ordinal),
+                "180D-1: Subscribe exposes one enabled-state control and exactly one fail-closed Source selector");
+            Check(encoding.Length == 1
+                  && encodingGuard != null
+                  && encodingGuard.Condition.ToFullString().Contains(
+                      "FoxgloveWebSocketTransport.Id",
                       StringComparison.Ordinal)
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunEncoding")
-                                                 && HasStringArgument(invocation, 1, "Foxglove Encoding")) == 1
-                  && HasExactlyOneLabeledInvocation(
-                      allInvocations,
-                      "DrawFloatProperty",
-                      "_defaultPublishRateHz",
-                      "Default Publish Rate Hz")
-                  && ContainsStringLiteral(
-                      publishData,
-                      "Component publishers and generated FoxRun contracts use independent default encodings.")
-                  && !ContainsStringLiteral(publishData, "FoxRun Contract Encoding"),
-                "180E-2: Publish exposes one authoritative destination group inherited by FoxRun and keeps component encoding separate from the Foxglove encoding and rate profile");
-            Check(nativeOutputBranches.Length == 1
-                  && nativeProfileInvocations.Count(invocation =>
-                      IsInvocationNamed(invocation, "DrawFoxRunRos2Qos")
-                      && HasFindCachedPropertyArgument(
-                          invocation,
-                          0,
-                          "_defaultFoxRunNativePublishQos")
-                      && HasStringArgument(invocation, 1, "ROS 2 Native QoS Profile")) == 1
-                  && nativeProfileInvocations.Count(invocation =>
-                      IsInvocationNamed(invocation, "HelpBox")
-                      && HasStringArgument(
-                          invocation,
-                          0,
-                          "FoxRun resolves the ROS 2 message type automatically from the generated contract.")
-                      && HasMessageTypeInfoArgument(invocation, 1)) == 1,
-                "180E-3: a selected FoxRun ROS 2 Native target exposes its directional QoS profile and automatic message type");
-            Check(HasExactlyOneLabeledProperty(
-                      directInvocations,
-                      "_outputCoordinateMode",
-                      "Output Coordinate Mode")
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
-                                                && HasStringArgument(invocation, 0, publishCoordinateMessage)
-                                                && HasMessageTypeInfoArgument(invocation, 1)) == 1,
-                "180E-4: Publish exposes its output coordinate convention and truthful MCAP representation scope");
+                  && text.Contains(
+                      "Default Subscribe Rate Hz",
+                      StringComparison.Ordinal)
+                  && text.Contains(
+                      "Maximum Subscribe Rate Hz (per Topic)",
+                      StringComparison.Ordinal),
+                "180D-2: WebSocket-only encoding/security is source-guarded while neutral rate bounds remain shared");
+            Check(!text.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && !text.Contains("_ros2BridgeEnabled", StringComparison.Ordinal)
+                  && !text.Contains(
+                      "ROS 2 Native",
+                      StringComparison.Ordinal)
+                  && !text.Contains(
+                      "ROS 2 Bridge",
+                      StringComparison.Ordinal),
+                "180D-3: core Subscribe UI contains no retired ROS source fields or Provider-specific labels");
         }
 
-        private static void VerifySubscribePresentation(
-            MethodDeclarationSyntax dataTransport,
-            MethodDeclarationSyntax subscribeData,
-            MethodDeclarationSyntax subscriptionMaxPayload,
-            MethodDeclarationSyntax subscriptionMaxPayloadUnit,
-            MethodDeclarationSyntax nativeQos,
-            MethodDeclarationSyntax nativeBudget,
-            MethodDeclarationSyntax nativeBudgetUnit)
+        private static void VerifyDrawerContract(
+            string drawerRegistry,
+            string transportId,
+            string r2fuDrawer,
+            string bridgeDrawer)
         {
-            const string nativeSubscriptionRuntimeMessage =
-                "ROS 2 Native Subscribe requires the shared ROS 2 Native Runtime (R2FU). Subscribe does not enable Publish.";
-            const string subscribeCoordinateMessage =
-                "Defines the coordinate convention expected from supported external publishers. MCAP records original external input first; Unity converts an owned value only when applying it.";
-            var subscribeSource = subscribeData.ToFullString();
-            var allInvocations = AllInvocations(subscribeData);
-            var directInvocations = DirectInvocations(subscribeData).ToArray();
-            var webSocketBranches = subscribeData.DescendantNodes()
-                .OfType<IfStatementSyntax>()
-                .Where(statement => HasIdentifierCondition(statement, "showFoxglove"))
-                .ToArray();
-            var nativeBranches = subscribeData.DescendantNodes()
-                .OfType<IfStatementSyntax>()
-                .Where(statement => HasIdentifierCondition(statement, "showRos2Native"))
-                .ToArray();
-            var webSocketBranchInvocations = webSocketBranches
-                .SelectMany(DirectThenStatements)
-                .SelectMany(AllInvocations)
-                .ToArray();
-            var nativeBranchInvocations = nativeBranches
-                .SelectMany(DirectThenStatements)
-                .SelectMany(AllInvocations)
-                .ToArray();
-            var nativeDiagnostics = allInvocations
-                .Where(invocation => IsInvocationNamed(invocation, "DrawOptionalR2fuNativeSubscriptionDiagnostics"))
-                .ToArray();
-            var nativeSubscriptionRuntimeBranches = DirectIfStatements(subscribeData)
-                .Where(HasNativeSubscriptionDemandCondition)
-                .ToArray();
-            var nativeSubscriptionRuntimeDemandCalls = allInvocations
-                .Where(invocation => IsInvocationNamed(invocation, "HasR2fuNativeSubscriptionDemand"))
-                .ToArray();
-            var generalizedRuntimeDemandCalls = allInvocations
-                .Where(invocation => IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand"))
-                .ToArray();
-            var nativeRuntimePlacementBranches = DirectIfStatements(dataTransport)
-                .Where(HasNativeDemandCondition)
-                .ToArray();
-
-            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                && HasStringHeading(invocation, "FoxRun Subscribe Profile")) == 1
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawSource")
-                                                && HasStringArgument(invocation, 1, "Source")) == 1
-                  && !ContainsStringLiteral(subscribeData, "Subscription Protocol")
-                  && !ContainsStringLiteral(subscribeData, "Default Input Transport"),
-                "180F-1: Subscribe exposes Source independently inside the FoxRun Subscribe Profile");
-            Check(HasExactlyOneLabeledProperty(directInvocations, "_enableFoxRunInbound", "Enable FoxRun Subscriptions")
-                  && HasExactlyOneLabeledProperty(
-                      allInvocations,
-                       "_foxRunDefaultSubscribeRateHz",
-                       "Default Subscribe Rate Hz")
-                   && HasExactlyOneLabeledProperty(
-                       allInvocations,
-                       "_foxRunInboundMaxMessagesPerSecondPerTopic",
-                       "Maximum Subscribe Rate Hz (per Topic)")
-                   && subscribeSource.IndexOf("Default Subscribe Rate Hz", StringComparison.Ordinal)
-                      < subscribeSource.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
-                  && ContainsStringLiteralFragment(
-                      subscribeData,
-                       "captured source, Foxglove encoding, QoS, copy budget, default subscribe rate, and maximum subscribe rate."),
-                "180F-2: Subscribe keeps its enable gate, ordered rates, and complete frozen-session policy boundary");
-            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                && HasStringHeading(invocation, "Coordinate System")) == 1
-                  && HasExactlyOneLabeledProperty(
-                      directInvocations,
-                      "_inputCoordinateMode",
-                      "Input Coordinate Mode")
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
-                                                && HasStringArgument(invocation, 0, subscribeCoordinateMessage)
-                                                && HasMessageTypeInfoArgument(invocation, 1)) == 1,
-                "180F-2A: Subscribe exposes its input coordinate convention and explains raw external MCAP capture before Unity application");
-            Check(webSocketBranches.Length == 1
-                  && HasProviderVisibilityRule(
-                      subscribeData,
-                      "showFoxglove",
-                      "Foxglove")
-                  && webSocketBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                         && HasStringHeading(invocation, "Foxglove")) == 1
-                  && webSocketBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunEncoding")
-                                                         && HasStringArgument(invocation, 1, "Foxglove Encoding")) == 1
-                  && HasExactlyOneLabeledProperty(
-                      webSocketBranchInvocations,
-                      "_allowRemoteFoxRunInboundWithSharedToken",
-                      "Allow Remote FoxRun Subscriptions With Shared Token")
-                  && webSocketBranchInvocations.Count(invocation =>
-                      IsInvocationNamed(invocation, "DrawSubscriptionMaxPayload")) == 1
-                  && !HasExactlyOneLabeledProperty(
-                      webSocketBranchInvocations,
-                      "_foxRunInboundMaxPayloadBytes",
-                      "Subscription Max Payload Bytes"),
-                "180F-3: WebSocket input remains visible for a selected or explicit generated WebSocket contract");
-            Check(subscriptionMaxPayload != null
-                  && subscriptionMaxPayloadUnit != null
-                  && AllInvocations(subscriptionMaxPayloadUnit).Count(invocation =>
-                      IsInvocationNamed(invocation, "GetInt")) == 1
-                  && AllInvocations(subscriptionMaxPayload).Count(invocation =>
-                      IsInvocationNamed(invocation, "SetInt")) == 1
-                  && ContainsStringLiteral(
-                      subscriptionMaxPayload,
-                      "Subscription Max Payload Unit"),
-                "180F-3A: Subscription Max Payload keeps its display unit in SessionState instead of Manager serialization");
-            Check(subscriptionMaxPayload != null
-                  && AllInvocations(subscriptionMaxPayload).Any(invocation =>
-                      IsInvocationNamed(invocation, "ToSubscriptionPayloadDisplayValue"))
-                  && AllInvocations(subscriptionMaxPayload).Count(invocation =>
-                      IsInvocationNamed(invocation, "ToClampedSubscriptionPayloadBytes")) == 1
-                  && ContainsStringLiteralFragment(
-                      subscriptionMaxPayload,
-                      "Subscription Max Payload (")
-                  && ContainsStringLiteral(
-                      subscriptionMaxPayload,
-                      "Stored Max Payload")
-                  && ContainsStringLiteralFragment(subscriptionMaxPayload, "bytes"),
-                "180F-3B: Subscription Max Payload converts decimal KB or MB and renders its exact stored-byte equivalent");
-            Check(nativeBranches.Length == 2
-                  && HasProviderVisibilityRule(
-                      subscribeData,
-                      "showRos2Native",
-                      "Ros2Native")
-                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                      && HasStringHeading(invocation, "ROS 2 Native")) == 1
-                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeSubscriptionQos")) == 1
-                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeCopyBudget")) == 1
-                  && nativeDiagnostics.Length == 1
-                  && nativeDiagnostics.All(invocation => HasShowRos2NativeAncestor(invocation)
-                                                      && !HasInboundDisabledScopeAncestor(invocation))
-                  && !ContainsStringLiteral(subscribeData, "Native Copied-Data Budget Bytes"),
-                "180F-4: native input remains visible for a selected or explicit generated native contract, keeps diagnostics readable, and uses dedicated QoS and budget controls");
-            Check(nativeQos != null
-                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Popup")) == 1
-                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "HelpBox")) == 1
-                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "DrawQosOverride")) == 4
-                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Resolve")) == 1
-                  && nativeQos.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
-                      .Count(memberAccess => memberAccess.Name.Identifier.ValueText == "ManagerQosChoices") == 1
-                  && nativeQos.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
-                      .Count(memberAccess => memberAccess.Name.Identifier.ValueText == "ManagerQosLabels") == 1
-                  && ContainsStringLiteral(nativeQos, "Advanced Overrides")
-                  && nativeQos.ToFullString().Contains(
-                      "normalizedProfile != FoxRunQosProfile.Default",
+            Check(drawerRegistry.Contains(
+                      "string TransportId { get; }",
                       StringComparison.Ordinal)
-                  && nativeQos.ToFullString().Contains(
-                      "normalizedProfile != FoxRunQosProfile.SensorData",
+                  && drawerRegistry.Contains(
+                      "string DisplayName { get; }",
                       StringComparison.Ordinal)
-                  && nativeQos.ToFullString().Contains(
-                      "normalizedProfile != FoxRunQosProfile.SystemDefault",
+                  && drawerRegistry.Contains(
+                      "int Order { get; }",
                       StringComparison.Ordinal)
-                  && !nativeQos.DescendantNodes().OfType<ArrayCreationExpressionSyntax>().Any(
-                      array => array.Type.ElementType is PredefinedTypeSyntax type
-                               && type.Keyword.IsKind(SyntaxKind.StringKeyword))
-                  && !ContainsStringLiteral(nativeQos, "Inherit")
-                  && !ContainsStringLiteral(nativeQos, "Reliable Default")
-                  && !ContainsStringLiteral(nativeQos, "Transient Local")
-                  && !ContainsStringLiteral(nativeQos, "Custom"),
-                "180F-5: native QoS normalizes malformed profiles, uses cached official choices, exposes four advanced overrides, and reports resolved portable policy");
-            Check(nativeBudget != null
-                  && nativeBudgetUnit != null
-                  && AllInvocations(nativeBudgetUnit).Count(invocation => IsInvocationNamed(invocation, "GetInt")) == 1
-                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "SetInt")) == 1,
-                "180F-6: native copied-message budget keeps its display unit in SessionState instead of Manager serialization");
-            Check(nativeBudget != null
-                  && AllInvocations(nativeBudget).Any(invocation => IsInvocationNamed(invocation, "ToDisplayValue"))
-                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "ToClampedBytes")) == 1
-                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedBytes")) == 1
-                  && ContainsStringLiteralFragment(nativeBudget, "Native Copied-Message Budget")
-                  && ContainsStringLiteralFragment(nativeBudget, "bytes"),
-                "180F-7: native copied-message budget converts decimal KB or MB deterministically and renders its exact stored-byte equivalent");
-            Check(nativeSubscriptionRuntimeBranches.Length == 1
-                  && nativeSubscriptionRuntimeDemandCalls.Length == 1
-                  && generalizedRuntimeDemandCalls.Length == 0
-                  && HasExactlyOneInfoHelpBox(
-                      DirectThenStatements(nativeSubscriptionRuntimeBranches[0]),
-                      nativeSubscriptionRuntimeMessage)
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
-                                                && HasStringArgument(
-                                                    invocation,
-                                                    0,
-                                                    nativeSubscriptionRuntimeMessage)) == 1
-                  && !ContainsStringLiteralFragment(subscribeData, "ROS2 Runtime")
-                  && !ContainsStringLiteralFragment(subscribeData, "ROS2 Publish Data")
-                  && nativeRuntimePlacementBranches.Length == 1,
-                "180F-8: only native input demand shows its shared ROS 2 Native Runtime context; Subscribe retains no generalized runtime condition or obsolete ROS2 labels");
+                  && drawerRegistry.Contains(
+                      "FoxRunTransportCapabilities Capabilities { get; }",
+                      StringComparison.Ordinal)
+                  && drawerRegistry.Contains(
+                      "FoxRunEditorDefinitionRegistry<",
+                      StringComparison.Ordinal),
+                "180E-1: Editor drawer definitions expose stable ID, display name, explicit order, capabilities, and conflict-aware deterministic capture");
+            Check(transportId.Contains(
+                      "public const string Id = \"foxglove.websocket\"",
+                      StringComparison.Ordinal)
+                  && r2fuDrawer.Contains(
+                      "FoxRunRos2TransportProvider.IdValue",
+                      StringComparison.Ordinal)
+                  && r2fuDrawer.Contains(
+                      "\"ROS 2 Native (R2FU)\"",
+                      StringComparison.Ordinal)
+                  && r2fuDrawer.Contains(
+                      "FoxRunTransportCapabilities.Publish",
+                      StringComparison.Ordinal)
+                  && r2fuDrawer.Contains(
+                      "FoxRunTransportCapabilities.Subscribe",
+                      StringComparison.Ordinal)
+                  && bridgeDrawer.Contains(
+                      "Ros2BridgeTransportProvider.ProviderId",
+                      StringComparison.Ordinal)
+                  && bridgeDrawer.Contains(
+                      "\"ROS 2 Bridge\"",
+                      StringComparison.Ordinal)
+                  && bridgeDrawer.Contains(
+                      "FoxRunTransportCapabilities.Publish",
+                      StringComparison.Ordinal)
+                  && bridgeDrawer.Contains(
+                      "FoxRunTransportCapabilities.Subscribe",
+                      StringComparison.Ordinal),
+                "180E-2: built-in, R2FU, and Bridge identities and directional capabilities stay with their owning definitions");
         }
 
-        private static void VerifyNativeRuntimePresentation(MethodDeclarationSyntax nativeRuntime)
+        private static void VerifyLazyProviderCompanions(
+            string managerEditor,
+            MethodDeclarationSyntax extensions,
+            MethodDeclarationSyntax shouldEnsureProvider)
         {
-            const string combinedDemandMessage =
-                "This shared runtime/RMW selection is used by native Publish Data and Subscribe Data. Subscribe Data does not enable Publish Data.";
-            const string subscribeOnlyMessage =
-                "This shared runtime/RMW selection is currently required by Subscribe Data. Subscribe Data does not enable Publish Data.";
-            const string publishOnlyMessage =
-                "This shared runtime/RMW selection is currently required by Publish Data.";
-
-            var demandBranches = DirectIfStatements(nativeRuntime).ToArray();
-            var combinedDemandBranches = demandBranches
-                .Where(branch => HasIdentifierConjunctionCondition(branch, "outputDemand", "subscriptionDemand"))
+            var loops = extensions.DescendantNodes()
+                .OfType<ForEachStatementSyntax>()
+                .Where(loop =>
+                    loop.Identifier.ValueText == "drawer"
+                    && loop.Expression.ToFullString().Contains(
+                        "FoxRunTransportProviderDrawerRegistry.Capture",
+                        StringComparison.Ordinal))
                 .ToArray();
-            var combinedDemandBranch = combinedDemandBranches.Length == 1
-                ? combinedDemandBranches[0]
+            var loop = loops.Length == 1 ? loops[0] : null;
+            var ensureCalls = loop == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : InvocationsNamed(loop, "EnsureProvider")
+                    .ToArray();
+            var drawCalls = loop == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : InvocationsNamed(loop, "Draw")
+                    .ToArray();
+            var ensureGuard = ensureCalls.Length == 1
+                ? ensureCalls[0].Ancestors()
+                    .TakeWhile(node => node != loop)
+                    .OfType<IfStatementSyntax>()
+                    .FirstOrDefault()
                 : null;
-            var subscribeOnlyBranch = combinedDemandBranch?.Else?.Statement as IfStatementSyntax;
-            var publishOnlyBranch = subscribeOnlyBranch?.Else?.Statement;
-            var customNativeInputDemand = HasCustomNativeSubscriptionDemandAssignment(nativeRuntime);
+            var drawIsUnconditional =
+                drawCalls.Length == 1
+                && !drawCalls[0].Ancestors()
+                    .TakeWhile(node => node != loop)
+                    .OfType<IfStatementSyntax>()
+                    .Any();
+            var guardInvocation = ensureGuard == null
+                ? null
+                : UnwrapParentheses(
+                    ensureGuard.Condition)
+                    as InvocationExpressionSyntax;
+            var guardCallsHelper =
+                guardInvocation != null
+                && IsInvocationNamed(
+                    guardInvocation,
+                    "ShouldEnsureProvider")
+                && guardInvocation.ArgumentList.Arguments
+                    .Select(argument =>
+                        argument.Expression)
+                    .OfType<IdentifierNameSyntax>()
+                    .Select(identifier =>
+                        identifier.Identifier.ValueText)
+                    .SequenceEqual(new[]
+                    {
+                        "drawer",
+                        "publishTransportIds",
+                        "subscribeTransportId",
+                    });
+            var helperReturns = shouldEnsureProvider
+                .DescendantNodes()
+                .OfType<ReturnStatementSyntax>()
+                .Where(statement =>
+                    statement.Expression != null)
+                .ToArray();
+            var selectionReturn = helperReturns
+                .SingleOrDefault(statement =>
+                    statement.Expression
+                        .DescendantNodesAndSelf()
+                        .OfType<BinaryExpressionSyntax>()
+                        .Any(expression =>
+                            expression.IsKind(
+                                SyntaxKind.LogicalOrExpression)));
+            var selectionContext = selectionReturn == null
+                ? string.Empty
+                : ExpandGuardContext(
+                    shouldEnsureProvider,
+                    selectionReturn.Expression);
+            var multiObjectFalseGate =
+                shouldEnsureProvider.DescendantNodes()
+                    .OfType<IfStatementSyntax>()
+                    .Any(statement =>
+                        statement.Condition.ToFullString()
+                            .Contains(
+                                "serializedObject.isEditingMultipleObjects",
+                                StringComparison.Ordinal)
+                        && statement.Statement
+                            .DescendantNodesAndSelf()
+                            .OfType<ReturnStatementSyntax>()
+                            .Any(returnStatement =>
+                                returnStatement.Expression
+                                    is LiteralExpressionSyntax literal
+                                && literal.IsKind(
+                                    SyntaxKind.FalseLiteralExpression)));
+            var isMultiObjectEditor =
+                PhaseValidationSourceHelpers.TypeHasAttribute(
+                    managerEditor,
+                    "FoxgloveManagerEditor",
+                    "CanEditMultipleObjects");
+            var extensionText = extensions.ToFullString();
 
-            Check(nativeRuntime != null
-                  && combinedDemandBranches.Length == 1
-                  && combinedDemandBranch != null
-                  && HasIdentifierCondition(subscribeOnlyBranch, "subscriptionDemand")
-                  && publishOnlyBranch != null
-                  && customNativeInputDemand
-                  && HasExactlyOneInfoHelpBox(DirectThenStatements(combinedDemandBranch), combinedDemandMessage)
-                  && HasExactlyOneInfoHelpBox(DirectThenStatements(subscribeOnlyBranch), subscribeOnlyMessage)
-                  && HasExactlyOneInfoHelpBox(DirectBranchStatements(publishOnlyBranch), publishOnlyMessage),
-                "180G-1: shared ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand, including custom native input, without implying that Subscribe enables Publish");
+            Check(loop != null
+                  && ensureCalls.Length == 1
+                  && ensureGuard != null
+                  && guardCallsHelper
+                  && extensionText.Contains(
+                      "_foxRunPublishTransportIds",
+                      StringComparison.Ordinal)
+                  && extensionText.Contains(
+                      "_foxRunSubscribeTransportId",
+                      StringComparison.Ordinal)
+                  && selectionReturn != null
+                  && selectionContext.Contains(
+                      "drawer.TransportId",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "FoxRunTransportCapabilities.Publish",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "FoxRunTransportCapabilities.Subscribe",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "publishTransportIds",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "subscribeTransportId",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "publishTransportIds != null",
+                      StringComparison.Ordinal)
+                  && selectionContext.Contains(
+                      "subscribeTransportId != null",
+                      StringComparison.Ordinal)
+                  && Count(
+                      selectionContext,
+                      "hasMultipleDifferentValues") >= 2
+                  && isMultiObjectEditor
+                  && multiObjectFalseGate,
+                "180F-1: EnsureProvider is AST-nested only under publish/subscribe capability and ID demand, while multi-object editing never creates companions implicitly");
+            Check(drawCalls.Length == 1
+                  && drawIsUnconditional,
+                "180F-2: every captured Provider drawer is still offered exactly one unconditional Draw call");
         }
 
-        private static bool HasCustomNativeSubscriptionDemandAssignment(MethodDeclarationSyntax method)
+        private static void VerifyFoldoutState(string managerEditor)
         {
-            var body = method?.ToFullString() ?? string.Empty;
-            return body.Contains(
-                       "HasR2fuNativeSubscriptionDemand(loadedScene)",
-                       StringComparison.Ordinal)
-                   && body.Contains(
-                       "FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(",
-                       StringComparison.Ordinal)
-                   && body.Contains("customContracts", StringComparison.Ordinal);
+            Check(Count(
+                      managerEditor,
+                      "private bool _dataTransportExpanded;") == 1
+                  && Count(
+                      managerEditor,
+                      "private bool _dataTransportPublishExpanded;") == 1
+                  && Count(
+                      managerEditor,
+                      "private bool _dataTransportSubscribeExpanded;") == 1
+                  && !managerEditor.Contains(
+                      "_dataTransportNativeRuntimeExpanded",
+                      StringComparison.Ordinal)
+                  && !managerEditor.Contains(
+                      "_dataTransportRos2BridgeExpanded",
+                      StringComparison.Ordinal)
+                  && managerEditor.Contains(
+                      "InspectorFoldoutKey(\"DataTransport\")",
+                      StringComparison.Ordinal)
+                  && managerEditor.Contains(
+                      "InspectorFoldoutKey(\"DataTransportPublish\")",
+                      StringComparison.Ordinal)
+                  && managerEditor.Contains(
+                      "InspectorFoldoutKey(\"DataTransportSubscribe\")",
+                      StringComparison.Ordinal),
+                "180G-1: foldout persistence belongs only to Data Transport and its two neutral directional subsections");
         }
 
-        private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
+        private static void VerifyNeutralSerialization()
         {
-            var expectedFields = new[]
-            {
-                "_dataTransportExpanded",
-                "_dataTransportPublishExpanded",
-                "_dataTransportSubscribeExpanded",
-                "_dataTransportNativeRuntimeExpanded",
-                "_dataTransportRos2BridgeExpanded",
-            };
-            var obsoleteFields = new[]
-            {
-                "_publishDataExpanded",
-                "_subscribeDataExpanded",
-                "_r2fuRuntimeExpanded",
-                "_ros2BridgeExpanded",
-            };
-            var migration = DirectIfStatements(foldoutState)
-                .Where(HasDataTransportMigrationCondition)
-                .ToArray();
-            var migrationStatements = migration.Length == 1
-                ? DirectThenStatements(migration[0]).ToArray()
-                : Array.Empty<StatementSyntax>();
-            var migrationInvocations = migrationStatements
-                .SelectMany(AllInvocations)
-                .ToArray();
-            var legacyLocalNames = FindLegacyFoldoutLocalNames(migrationStatements);
-            var markerWrites = migrationInvocations
-                .Where(invocation => IsSessionStateInvocationNamed(invocation, "SetInt")
-                                     && HasInspectorFoldoutKeyArgument(invocation, 0, "DataTransportFoldoutMigrationVersion")
-                                     && HasIntegerLiteralArgument(invocation, 1, 1))
-                .ToArray();
-            var newLoads = AllInvocations(foldoutState)
-                .Where(invocation => IsSessionStateInvocationNamed(invocation, "GetBool")
-                                     && DataTransportFoldoutKeys.Any(key => HasInspectorFoldoutKeyArgument(invocation, 0, key)))
-                .ToArray();
-            var hasUnsupportedSessionStateProbe = AllInvocations(foldoutState)
-                .Any(IsSessionStateHasInvocation);
-
-            Check(expectedFields.All(field => CountBoolFieldDeclarations(mainInspector, field) == 1)
-                  && obsoleteFields.All(field => CountBoolFieldDeclarations(mainInspector, field) == 0),
-                "180C-1: Data Transport owns exactly its five persisted foldout fields and retires the four legacy top-level fields");
-            Check(migration.Length == 1
-                  && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.ContainsKey(key))
-                  && DataTransportFoldoutKeys.All(key => newLoads.Count(invocation => HasInspectorFoldoutKeyArgument(invocation, 0, key)) == 1)
-                  && DataTransportFoldoutFields.Count == DataTransportFoldoutKeys.Length
-                  && DataTransportFoldoutKeys.All(key => DataTransportFoldoutFields.ContainsKey(key)
-                                                     && HasMatchingFoldoutLoad(foldoutState, key, DataTransportFoldoutFields[key]))
-                  && HasMigratedChildSeed(migrationInvocations, "DataTransportPublish", legacyLocalNames, "PublishData")
-                  && HasMigratedChildSeed(migrationInvocations, "DataTransportSubscribe", legacyLocalNames, "SubscribeData")
-                  && HasMigratedChildSeed(migrationInvocations, "DataTransportNativeRuntime", legacyLocalNames, "R2fuRuntime")
-                  && HasMigratedChildSeed(migrationInvocations, "DataTransportRos2Bridge", legacyLocalNames, "Ros2Bridge")
-                  && HasMigratedParentSeed(migrationInvocations, legacyLocalNames)
-                  && markerWrites.Length == 1
-                  && newLoads.All(invocation => markerWrites[0].SpanStart < invocation.SpanStart)
-                  && !hasUnsupportedSessionStateProbe,
-                "180C-2: one-time SessionState migration assigns each persisted foldout to its matching field, seeds the parent from the four legacy children, and writes its marker before loading new state");
+            var source =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    ManagerProvidersPath);
+            Check(source.Contains(
+                      "private string[] _foxRunPublishTransportIds",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "private string _foxRunSubscribeTransportId",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "? default",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "? FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "TryCreateCapturedTransportSelection",
+                      StringComparison.Ordinal)
+                  && source.Contains(
+                      "Configured transport selection is invalid:",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "FormerlySerializedAs",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "_ros2Native",
+                      StringComparison.Ordinal)
+                  && !source.Contains(
+                      "_ros2Bridge",
+                      StringComparison.Ordinal),
+                "180G-2: neutral publish/source IDs serialize directly and blank or unknown Source never falls back to WebSocket");
         }
 
-        private static void VerifyParentSectionPresentationHelper(MethodDeclarationSyntax section)
+        private static void VerifyDirectionalCoordinateRuntimePolicy()
         {
-            var workflowSections = AllInvocations(section)
-                .Where(invocation => IsInvocationNamed(invocation, "WorkflowSection"))
-                .ToArray();
-            var closedSectionReturns = DirectIfStatements(section)
-                .Where(statement => statement.Condition is PrefixUnaryExpressionSyntax prefix
-                                    && prefix.IsKind(SyntaxKind.LogicalNotExpression)
-                                    && prefix.Operand is InvocationExpressionSyntax invocation
-                                    && IsInvocationNamed(invocation, "WorkflowSection")
-                                    && DirectThenStatements(statement).OfType<ReturnStatementSyntax>().Any())
-                .ToArray();
-
-            Check(workflowSections.Length == 1
-                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSections[0], 1, "sessionStateName")
-                  && HasRefIdentifierArgument(workflowSections[0], 2, "expanded")
-                  && closedSectionReturns.Length == 1
-                  && HasExceptionSafeIndentedContents(section),
-                "180D-1: parent Inspector sections preserve collapsed behavior and restore indentation with try/finally");
-        }
-
-        private static void VerifySubsectionPresentationHelper(MethodDeclarationSyntax subsection)
-        {
-            var workflowSubsections = AllInvocations(subsection)
-                .Where(invocation => IsInvocationNamed(invocation, "WorkflowSubsection"))
-                .ToArray();
-            var closedSubsectionReturns = DirectIfStatements(subsection)
-                .Where(statement => statement.Condition is PrefixUnaryExpressionSyntax prefix
-                                    && prefix.IsKind(SyntaxKind.LogicalNotExpression)
-                                    && prefix.Operand is InvocationExpressionSyntax invocation
-                                    && IsInvocationNamed(invocation, "WorkflowSubsection")
-                                    && DirectThenStatements(statement).OfType<ReturnStatementSyntax>().Any())
-                .ToArray();
-            Check(workflowSubsections.Length == 1
-                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSubsections[0], 1, "sessionStateName")
-                  && HasRefIdentifierArgument(workflowSubsections[0], 2, "expanded")
-                  && closedSubsectionReturns.Length == 1
-                  && subsection.ToFullString().Contains("EditorStyles.foldoutHeader", StringComparison.Ordinal)
-                  && HasExceptionSafeIndentedContents(subsection),
-                "180D-2: Data Transport primary subsections persist bold foldout headings and confine indentation to expanded contents with try/finally");
-        }
-
-        private static void VerifyDirectionalCoordinateRuntimePolicy(
-            string managerRuntime,
-            string managerCoordinateMigration,
-            string mcapRecorder,
-            string sessionClientPublishHandler)
-        {
-            var managerSyntax = CSharpSyntaxTree.ParseText(managerRuntime);
-            var syntaxErrors = managerSyntax.GetDiagnostics()
-                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-            var managerRoot = managerSyntax.GetRoot();
+            var managerRuntime =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    ManagerRuntimePath);
+            var managerCoordinateMigration =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    ManagerCoordinateMigrationPath);
+            var mcapRecorder =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    McapRecorderPath);
+            var sessionClientPublishHandler =
+                PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    SessionClientPublishHandlerPath);
+            var managerRoot = Parse(managerRuntime);
             var fields = managerRoot.DescendantNodes()
                 .OfType<FieldDeclarationSyntax>()
-                .SelectMany(field => field.Declaration.Variables)
-                .Select(variable => variable.Identifier.ValueText)
+                .SelectMany(field =>
+                    field.Declaration.Variables)
+                .Select(variable =>
+                    variable.Identifier.ValueText)
                 .ToArray();
-            var outputPosition = FindAnyMethod(managerRoot, "UnityToFoxglovePosition");
-            var outputRotation = FindAnyMethod(managerRoot, "UnityToFoxgloveRotation");
-            var inputPosition = FindAnyMethod(managerRoot, "FoxgloveToUnityPosition");
-            var inputRotation = FindAnyMethod(managerRoot, "FoxgloveToUnityRotation");
-            var recorderWrite = sessionClientPublishHandler.IndexOf(
-                "recorder?.WriteClientMessage",
-                StringComparison.Ordinal);
-            var callbackWrite = sessionClientPublishHandler.IndexOf(
-                "_messageCallback",
-                recorderWrite < 0 ? 0 : recorderWrite,
-                StringComparison.Ordinal);
+            var outputPosition =
+                FindMethod(managerRuntime, "UnityToFoxglovePosition");
+            var outputRotation =
+                FindMethod(managerRuntime, "UnityToFoxgloveRotation");
+            var inputPosition =
+                FindMethod(managerRuntime, "FoxgloveToUnityPosition");
+            var inputRotation =
+                FindMethod(managerRuntime, "FoxgloveToUnityRotation");
+            var recorderWrite =
+                sessionClientPublishHandler.IndexOf(
+                    "recorder?.WriteClientMessage",
+                    StringComparison.Ordinal);
+            var callbackWrite =
+                sessionClientPublishHandler.IndexOf(
+                    "_messageCallback",
+                    recorderWrite < 0 ? 0 : recorderWrite,
+                    StringComparison.Ordinal);
 
-            Check(syntaxErrors.Length == 0
-                  && fields.Count(field => field == "_coordinateMode") == 1
-                  && fields.Count(field => field == "_outputCoordinateMode") == 1
-                  && fields.Count(field => field == "_inputCoordinateMode") == 1
-                  && MethodReferencesIdentifier(outputPosition, "ActiveOutputCoordinateMode")
-                  && MethodReferencesIdentifier(outputRotation, "ActiveOutputCoordinateMode")
-                  && MethodReferencesIdentifier(inputPosition, "ActiveInputCoordinateMode")
-                  && MethodReferencesIdentifier(inputRotation, "ActiveInputCoordinateMode")
-                  && managerCoordinateMigration.Contains("CoordinateTransportPolicy.Migrate", StringComparison.Ordinal)
-                  && mcapRecorder.Contains("DataDirectionMetadataKey", StringComparison.Ordinal)
-                  && mcapRecorder.Contains("McapChannelDirection.Output", StringComparison.Ordinal)
-                  && mcapRecorder.Contains("McapChannelDirection.Input", StringComparison.Ordinal)
+            Check(fields.Count(field => field == "_coordinateMode") == 1
+                  && fields.Count(
+                      field => field == "_outputCoordinateMode") == 1
+                  && fields.Count(
+                      field => field == "_inputCoordinateMode") == 1
+                  && References(
+                      outputPosition,
+                      "ActiveOutputCoordinateMode")
+                  && References(
+                      outputRotation,
+                      "ActiveOutputCoordinateMode")
+                  && References(
+                      inputPosition,
+                      "ActiveInputCoordinateMode")
+                  && References(
+                      inputRotation,
+                      "ActiveInputCoordinateMode")
+                  && managerCoordinateMigration.Contains(
+                      "CoordinateTransportPolicy.Migrate",
+                      StringComparison.Ordinal)
+                  && mcapRecorder.Contains(
+                      "DataDirectionMetadataKey",
+                      StringComparison.Ordinal)
+                  && mcapRecorder.Contains(
+                      "McapChannelDirection.Output",
+                      StringComparison.Ordinal)
+                  && mcapRecorder.Contains(
+                      "McapChannelDirection.Input",
+                      StringComparison.Ordinal)
                   && recorderWrite >= 0
                   && callbackWrite > recorderWrite,
-                "180I-1: directional coordinates preserve migration, named conversion paths, directional MCAP metadata, and raw inbound recording order");
+                "180H-1: neutral transport UI preserves directional coordinate migration, MCAP metadata, and raw inbound recording order");
         }
 
-        private static MethodDeclarationSyntax FindAnyMethod(SyntaxNode root, string methodName)
+        private static void VerifyValidationRegistryEntry()
         {
-            var methods = root.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .Where(method => method.Identifier.ValueText == methodName)
+            var entries = PhaseValidationRegistry.All
+                .Where(item =>
+                    string.Equals(
+                        item.Flag,
+                        "--phase180",
+                        StringComparison.Ordinal))
                 .ToArray();
-            return methods.Length == 1 ? methods[0] : null;
-        }
-
-        private static bool MethodReferencesIdentifier(MethodDeclarationSyntax method, string identifier)
-        {
-            return method != null
-                   && method.DescendantNodes()
-                       .OfType<IdentifierNameSyntax>()
-                       .Any(name => name.Identifier.ValueText == identifier);
-        }
-
-        private static bool HasExceptionSafeIndentedContents(MethodDeclarationSyntax section)
-        {
-            var indentationMutations = section == null
-                ? Array.Empty<SyntaxNode>()
-                : section.DescendantNodes()
-                    .Where(IsEditorGuiIndentMutation)
+            var defaults =
+                PhaseValidationRegistry.DefaultValidations(
+                        includeLocalEvidence: false)
+                    .Where(item =>
+                        string.Equals(
+                            item.Flag,
+                            "--phase180",
+                            StringComparison.Ordinal))
                     .ToArray();
-            var increments = indentationMutations
-                .Where(IsEditorGuiIndentIncrement)
-                .ToArray();
-            var decrements = indentationMutations
-                .Where(IsEditorGuiIndentDecrement)
-                .ToArray();
-            var tryStatements = section?.Body?.Statements.OfType<TryStatementSyntax>().ToArray()
-                                ?? Array.Empty<TryStatementSyntax>();
-            var tryStatement = tryStatements.Length == 1 ? tryStatements[0] : null;
-            var drawsContents = tryStatement != null
-                                && tryStatement.Block.DescendantNodes()
-                                    .OfType<InvocationExpressionSyntax>()
-                                    .Any(invocation => IsInvocationNamed(invocation, "drawContents"));
-            var decrementsInFinally = tryStatement?.Finally != null
-                                      && tryStatement.Finally.Block.DescendantNodes()
-                                          .Any(IsEditorGuiIndentDecrement);
 
-            return increments.Length == 1
-                   && decrements.Length == 1
-                   && tryStatement != null
-                   && increments[0].SpanStart < tryStatement.SpanStart
-                   && drawsContents
-                   && decrementsInFinally;
+            Check(entries.Length == 1
+                  && defaults.Length == 1
+                  && ReferenceEquals(entries[0], defaults[0])
+                  && entries[0].Run
+                  == (Action)Validate
+                  && entries[0].Category
+                  == ValidationCategory.CiSafe
+                  && entries[0].Evidence
+                  == (ValidationEvidence.Behavior
+                      | ValidationEvidence.Structural),
+                "180I-1: Phase 180 remains one default CI-safe Behavior | Structural gate");
         }
 
-        private static MethodDeclarationSyntax FindMethod(string source, string methodName)
-        {
-            var methods = CSharpSyntaxTree.ParseText(source)
-                .GetRoot()
-                .DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .Where(method => method.Identifier.ValueText == methodName && method.Body != null)
-                .ToArray();
-            return methods.Length == 1 ? methods[0] : null;
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> DirectInvocations(MethodDeclarationSyntax method)
-        {
-            return method?.Body == null
-                ? Enumerable.Empty<InvocationExpressionSyntax>()
-                : DirectInvocations(method.Body.Statements);
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> DirectInvocations(IEnumerable<StatementSyntax> statements)
-        {
-            foreach (var statement in statements.OfType<ExpressionStatementSyntax>())
-            {
-                if (statement.Expression is InvocationExpressionSyntax invocation)
-                    yield return invocation;
-            }
-        }
-
-        private static IEnumerable<IfStatementSyntax> DirectIfStatements(MethodDeclarationSyntax method)
-        {
-            return method?.Body == null
-                ? Enumerable.Empty<IfStatementSyntax>()
-                : method.Body.Statements.OfType<IfStatementSyntax>();
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> ExecutableInvocations(MethodDeclarationSyntax method)
-        {
-            return method?.Body == null
-                ? Enumerable.Empty<InvocationExpressionSyntax>()
-                : method.Body.Statements.SelectMany(ExecutableInvocations);
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> ExecutableInvocations(StatementSyntax statement)
-        {
-            return statement is LocalFunctionStatementSyntax
-                ? Enumerable.Empty<InvocationExpressionSyntax>()
-                : statement.DescendantNodes(ShouldDescendIntoExecutableNode).OfType<InvocationExpressionSyntax>();
-        }
-
-        private static bool ShouldDescendIntoExecutableNode(SyntaxNode node)
-        {
-            return !(node is AnonymousFunctionExpressionSyntax)
-                   && !(node is LocalFunctionStatementSyntax);
-        }
-
-        private static IEnumerable<StatementSyntax> DirectThenStatements(IfStatementSyntax statement)
-        {
-            return DirectBranchStatements(statement.Statement);
-        }
-
-        private static IEnumerable<StatementSyntax> DirectBranchStatements(StatementSyntax statement)
-        {
-            if (statement is BlockSyntax block)
-                return block.Statements;
-
-            return new[] { statement };
-        }
-
-        private static InvocationExpressionSyntax[] AllInvocations(MethodDeclarationSyntax method)
-        {
-            return method == null
-                ? Array.Empty<InvocationExpressionSyntax>()
-                : method.DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> AllInvocations(StatementSyntax statement)
-        {
-            return statement == null
-                ? Enumerable.Empty<InvocationExpressionSyntax>()
-                : statement.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>();
-        }
-
-        private static bool HasExactlyOneSubsection(
-            IEnumerable<InvocationExpressionSyntax> subsections,
-            string heading,
-            string sessionStateName,
-            string expandedField,
-            string callback)
-        {
-            var matches = subsections.Where(invocation => HasStringHeading(invocation, heading)).ToArray();
-            return matches.Length == 1
-                   && HasSubsectionArguments(matches[0], heading, sessionStateName, expandedField, callback);
-        }
-
-        private static bool HasSubsectionArguments(
-            InvocationExpressionSyntax invocation,
-            string heading,
-            string sessionStateName,
-            string expandedField,
-            string callback)
-        {
-            return HasStringHeading(invocation, heading)
-                   && HasStringArgument(invocation, 1, sessionStateName)
-                   && HasRefIdentifierArgument(invocation, 2, expandedField)
-                   && HasMethodGroupArgument(invocation, callback);
-        }
-
-        private static bool HasNativeDemandCondition(IfStatementSyntax statement)
-        {
-            return statement.Condition is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand")
-                   && invocation.ArgumentList.Arguments.Count == 0;
-        }
-
-        private static bool HasNativeSubscriptionDemandCondition(IfStatementSyntax statement)
-        {
-            return statement.Condition is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "HasR2fuNativeSubscriptionDemand")
-                   && invocation.ArgumentList.Arguments.Count == 0;
-        }
-
-        private static bool HasSerializedBooleanCondition(IfStatementSyntax statement, string propertyName)
-        {
-            return statement?.Condition is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "GetBool")
-                   && HasStringArgument(invocation, 0, propertyName);
-        }
-
-        private static bool HasBridgeDemandCondition(IfStatementSyntax statement)
-        {
-            return statement?.Condition is BinaryExpressionSyntax condition
-                   && condition.IsKind(SyntaxKind.LogicalOrExpression)
-                   && condition.Left is InvocationExpressionSyntax bridgeEnabled
-                   && IsInvocationNamed(bridgeEnabled, "GetBool")
-                   && HasStringArgument(bridgeEnabled, 0, "_ros2BridgeEnabled")
-                   && IsIdentifierNamed(condition.Right, "includesRos2Bridge");
-        }
-
-        private static bool HasIdentifierCondition(IfStatementSyntax statement, string identifier)
-        {
-            return statement?.Condition is IdentifierNameSyntax condition
-                   && condition.Identifier.ValueText == identifier;
-        }
-
-        private static bool HasIdentifierConjunctionCondition(
-            IfStatementSyntax statement,
-            string leftIdentifier,
-            string rightIdentifier)
-        {
-            return statement?.Condition is BinaryExpressionSyntax condition
-                   && condition.IsKind(SyntaxKind.LogicalAndExpression)
-                   && IsIdentifierNamed(condition.Left, leftIdentifier)
-                   && IsIdentifierNamed(condition.Right, rightIdentifier);
-        }
-
-        private static bool HasExactlyOneInfoHelpBox(
-            IEnumerable<StatementSyntax> statements,
-            string message)
-        {
-            return statements.SelectMany(AllInvocations)
-                .Count(invocation => IsInvocationNamed(invocation, "HelpBox")
-                                     && HasStringArgument(invocation, 0, message)
-                                     && HasMessageTypeInfoArgument(invocation, 1)) == 1;
-        }
-
-        private static bool HasProviderVisibilityRule(
+        private static string ExpandGuardContext(
             MethodDeclarationSyntax method,
-            string localName,
-            string providerMemberName)
+            ExpressionSyntax condition)
         {
-            var declarationMatches = method?.DescendantNodes()
+            var declarations = method.DescendantNodes()
                 .OfType<VariableDeclaratorSyntax>()
-                .Where(variable => variable.Identifier.ValueText == localName
-                                   && HasExactProviderVisibilityExpression(
-                                       variable.Initializer?.Value,
-                                       providerMemberName))
-                .ToArray()
-                ?? Array.Empty<VariableDeclaratorSyntax>();
-            var assignmentMatches = method?.DescendantNodes()
-                .OfType<AssignmentExpressionSyntax>()
-                .Where(assignment => assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-                                     && IsIdentifierNamed(assignment.Left, localName)
-                                     && HasExactProviderVisibilityExpression(
-                                         assignment.Right,
-                                         providerMemberName))
-                .ToArray()
-                ?? Array.Empty<AssignmentExpressionSyntax>();
-            return declarationMatches.Length + assignmentMatches.Length == 1;
-        }
-
-        private static bool HasExactProviderVisibilityExpression(
-            ExpressionSyntax expression,
-            string providerMemberName)
-        {
-            if (expression is ParenthesizedExpressionSyntax parenthesized)
-                return HasExactProviderVisibilityExpression(parenthesized.Expression, providerMemberName);
-
-            if (!(expression is BinaryExpressionSyntax binary)
-                || !binary.IsKind(SyntaxKind.LogicalOrExpression))
-            {
-                return false;
-            }
-
-            return (HasSelectedProviderComparison(binary.Left, providerMemberName)
-                    && HasExplicitSourceInvocation(binary.Right, providerMemberName))
-                   || (HasExplicitSourceInvocation(binary.Left, providerMemberName)
-                       && HasSelectedProviderComparison(binary.Right, providerMemberName));
-        }
-
-        private static bool HasExplicitSourceInvocation(
-            ExpressionSyntax expression,
-            string providerMemberName)
-        {
-            return expression is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "HasExplicitSource")
-                   && HasProviderMemberArgument(invocation, providerMemberName);
-        }
-
-        private static bool HasShowRos2NativeAncestor(InvocationExpressionSyntax invocation)
-        {
-            return invocation?.Ancestors().OfType<IfStatementSyntax>()
-                .Any(statement => HasIdentifierCondition(statement, "showRos2Native")) == true;
-        }
-
-        private static bool HasInboundDisabledScopeAncestor(InvocationExpressionSyntax invocation)
-        {
-            return invocation?.Ancestors().OfType<UsingStatementSyntax>()
-                .Any(IsInboundDisabledScope) == true;
-        }
-
-        private static bool IsInboundDisabledScope(UsingStatementSyntax statement)
-        {
-            if (!(statement?.Expression is ObjectCreationExpressionSyntax construction)
-                || construction.Type.ToString() != "EditorGUI.DisabledScope"
-                || construction.ArgumentList?.Arguments.Count != 1)
-            {
-                return false;
-            }
-
-            return construction.ArgumentList.Arguments[0].Expression is PrefixUnaryExpressionSyntax negation
-                   && negation.IsKind(SyntaxKind.LogicalNotExpression)
-                   && negation.Operand is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "GetBool")
-                   && HasStringArgument(invocation, 0, "_enableFoxRunInbound");
-        }
-
-        private static bool HasSelectedProviderComparison(
-            ExpressionSyntax comparison,
-            string providerMemberName)
-        {
-            return comparison is BinaryExpressionSyntax binary
-                   && binary.IsKind(SyntaxKind.EqualsExpression)
-                   && ((IsIdentifierNamed(binary.Left, "selectedSource")
-                        && IsProviderMember(binary.Right, providerMemberName))
-                       || (IsProviderMember(binary.Left, providerMemberName)
-                           && IsIdentifierNamed(binary.Right, "selectedSource")));
-        }
-
-        private static bool IsIdentifierNamed(ExpressionSyntax expression, string identifier)
-        {
-            return expression is IdentifierNameSyntax name
-                   && name.Identifier.ValueText == identifier;
-        }
-
-        private static bool IsProviderMember(ExpressionSyntax expression, string memberName)
-        {
-            return expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "FoxRunEndpoint"
-                   && memberAccess.Name.Identifier.ValueText == memberName;
-        }
-
-        private static bool HasProviderMemberArgument(
-            InvocationExpressionSyntax invocation,
-            string memberName)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count == 1
-                   && invocation.ArgumentList.Arguments[0].Expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "FoxRunEndpoint"
-                   && memberAccess.Name.Identifier.ValueText == memberName;
-        }
-
-        private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
-        {
-            if (invocation == null)
-                return false;
-
-            if (invocation.Expression is IdentifierNameSyntax identifier)
-                return identifier.Identifier.ValueText == name;
-
-            return invocation.Expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Name.Identifier.ValueText == name;
-        }
-
-        private static bool HasStringHeading(InvocationExpressionSyntax invocation, string heading)
-        {
-            return HasStringArgument(invocation, 0, heading);
-        }
-
-        private static bool HasStringArgument(InvocationExpressionSyntax invocation, int argumentIndex, string value)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
-                   && literal.RawKind == (int)SyntaxKind.StringLiteralExpression
-                   && literal.Token.ValueText == value;
-        }
-
-        private static bool HasFindCachedPropertyArgument(
-            InvocationExpressionSyntax invocation,
-            int argumentIndex,
-            string propertyName)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax finder
-                   && IsInvocationNamed(finder, "FindCachedProperty")
-                   && HasStringArgument(finder, 0, propertyName);
-        }
-
-        private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
-        {
-            return invocation != null && invocation.ArgumentList.Arguments.Any(argument =>
-                IsMethodGroupNamed(argument.Expression, methodName));
-        }
-
-        private static bool IsMethodGroupNamed(ExpressionSyntax expression, string methodName)
-        {
-            if (expression is IdentifierNameSyntax identifier)
-                return identifier.Identifier.ValueText == methodName;
-
-            return expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Name.Identifier.ValueText == methodName;
-        }
-
-        private static bool HasExactlyOneLabeledProperty(
-            IEnumerable<InvocationExpressionSyntax> invocations,
-            string propertyName,
-            string label)
-        {
-            return HasExactlyOneLabeledInvocation(invocations, "DrawProperty", propertyName, label);
-        }
-
-        private static bool HasExactlyOneLabeledInvocation(
-            IEnumerable<InvocationExpressionSyntax> invocations,
-            string invocationName,
-            string propertyName,
-            string label)
-        {
-            return invocations.Count(invocation => IsInvocationNamed(invocation, invocationName)
-                                                && HasStringArgument(invocation, 0, propertyName)
-                                                && HasStringArgument(invocation, 1, label)) == 1;
-        }
-
-        private static bool HasMessageTypeInfoArgument(InvocationExpressionSyntax invocation, int argumentIndex)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "MessageType"
-                   && memberAccess.Name.Identifier.ValueText == "Info";
-        }
-
-        private static string DescribeTopLevelWorkflowCall(InvocationExpressionSyntax invocation)
-        {
-            return IsInvocationNamed(invocation, "DrawRecordingReplayWarning")
-                ? "DrawRecordingReplayWarning"
-                : invocation?.ArgumentList.Arguments.FirstOrDefault().Expression is LiteralExpressionSyntax literal
-                    ? literal.Token.ValueText
-                    : string.Empty;
-        }
-
-        private static bool HasDataTransportMigrationCondition(IfStatementSyntax statement)
-        {
-            return statement?.Condition is BinaryExpressionSyntax comparison
-                   && comparison.IsKind(SyntaxKind.LessThanExpression)
-                   && comparison.Left is InvocationExpressionSyntax version
-                   && IsSessionStateInvocationNamed(version, "GetInt")
-                   && HasInspectorFoldoutKeyArgument(version, 0, "DataTransportFoldoutMigrationVersion")
-                   && HasIntegerLiteralArgument(version, 1, 0)
-                   && comparison.Right is LiteralExpressionSyntax literal
-                   && literal.IsKind(SyntaxKind.NumericLiteralExpression)
-                   && literal.Token.Value is int value
-                   && value == 1;
-        }
-
-        private static bool IsSessionStateInvocationNamed(InvocationExpressionSyntax invocation, string methodName)
-        {
-            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "SessionState"
-                   && memberAccess.Name.Identifier.ValueText == methodName;
-        }
-
-        private static bool IsSessionStateHasInvocation(InvocationExpressionSyntax invocation)
-        {
-            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "SessionState"
-                   && memberAccess.Name.Identifier.ValueText.StartsWith("Has", StringComparison.Ordinal);
-        }
-
-        private static bool HasInspectorFoldoutKeyArgument(
-            InvocationExpressionSyntax invocation,
-            int argumentIndex,
-            string key)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax keyInvocation
-                   && IsInvocationNamed(keyInvocation, "InspectorFoldoutKey")
-                   && HasStringArgument(keyInvocation, 0, key);
-        }
-
-        private static bool HasInspectorFoldoutKeyIdentifierArgument(
-            InvocationExpressionSyntax invocation,
-            int argumentIndex,
-            string identifier)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax keyInvocation
-                   && IsInvocationNamed(keyInvocation, "InspectorFoldoutKey")
-                   && keyInvocation.ArgumentList.Arguments.Count == 1
-                   && keyInvocation.ArgumentList.Arguments[0].Expression is IdentifierNameSyntax argument
-                   && argument.Identifier.ValueText == identifier;
-        }
-
-        private static bool HasIntegerLiteralArgument(InvocationExpressionSyntax invocation, int argumentIndex, int value)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
-                   && literal.IsKind(SyntaxKind.NumericLiteralExpression)
-                   && literal.Token.Value is int intValue
-                   && intValue == value;
-        }
-
-        private static bool HasRefIdentifierArgument(
-            InvocationExpressionSyntax invocation,
-            int argumentIndex,
-            string identifier)
-        {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
-                   && argument.Identifier.ValueText == identifier;
-        }
-
-        private static Dictionary<string, string> FindLegacyFoldoutLocalNames(IEnumerable<StatementSyntax> statements)
-        {
-            var result = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var declaration in statements.OfType<LocalDeclarationStatementSyntax>())
-            {
-                foreach (var variable in declaration.Declaration.Variables)
+                .Where(variable =>
+                    variable.Initializer != null)
+                .GroupBy(variable =>
+                    variable.Identifier.ValueText,
+                    StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First(),
+                    StringComparer.Ordinal);
+            var pending = new Queue<string>(
+                condition.DescendantNodesAndSelf()
+                    .OfType<IdentifierNameSyntax>()
+                    .Select(identifier =>
+                        identifier.Identifier.ValueText));
+            var visited =
+                new HashSet<string>(StringComparer.Ordinal);
+            var fragments =
+                new List<string>
                 {
-                    if (!(variable.Initializer?.Value is InvocationExpressionSyntax invocation)
-                        || !IsSessionStateInvocationNamed(invocation, "GetBool"))
-                        continue;
+                    condition.ToFullString()
+                };
 
-                    foreach (var key in LegacyTransportFoldoutKeys)
-                    {
-                        if (HasInspectorFoldoutKeyArgument(invocation, 0, key)
-                            && HasIntegerLiteralArgument(invocation, 1, 0) == false
-                            && invocation.ArgumentList.Arguments.Count > 1
-                            && invocation.ArgumentList.Arguments[1].Expression.IsKind(SyntaxKind.FalseLiteralExpression))
-                        {
-                            result[key] = variable.Identifier.ValueText;
-                        }
-                    }
+            while (pending.Count > 0)
+            {
+                var name = pending.Dequeue();
+                if (!visited.Add(name)
+                    || !declarations.TryGetValue(
+                        name,
+                        out var declaration))
+                {
+                    continue;
+                }
+
+                var initializer =
+                    declaration.Initializer.Value;
+                fragments.Add(initializer.ToFullString());
+                foreach (var identifier in
+                         initializer.DescendantNodesAndSelf()
+                             .OfType<IdentifierNameSyntax>())
+                {
+                    pending.Enqueue(
+                        identifier.Identifier.ValueText);
                 }
             }
 
-            return result;
+            return string.Join("\n", fragments);
         }
 
-        private static bool HasMigratedChildSeed(
-            IEnumerable<InvocationExpressionSyntax> invocations,
-            string newKey,
-            IReadOnlyDictionary<string, string> legacyLocalNames,
-            string oldKey)
+        private static SyntaxNode Parse(string source)
         {
-            return legacyLocalNames.TryGetValue(oldKey, out var oldLocal)
-                   && invocations.Count(invocation => IsSessionStateInvocationNamed(invocation, "SetBool")
-                                                && HasInspectorFoldoutKeyArgument(invocation, 0, newKey)
-                                                && HasIdentifierArgument(invocation, 1, oldLocal)) == 1;
-        }
-
-        private static bool HasMatchingFoldoutLoad(
-            MethodDeclarationSyntax foldoutState,
-            string key,
-            string field)
-        {
-            var matchingLoads = foldoutState?.Body?.Statements
-                                    .OfType<ExpressionStatementSyntax>()
-                                    .Select(statement => statement.Expression as AssignmentExpressionSyntax)
-                                    .Where(assignment => assignment != null
-                                                         && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-                                                         && assignment.Left is IdentifierNameSyntax target
-                                                         && target.Identifier.ValueText == field
-                                                         && assignment.Right is InvocationExpressionSyntax read
-                                                         && IsSessionStateInvocationNamed(read, "GetBool")
-                                                         && HasInspectorFoldoutKeyArgument(read, 0, key)
-                                                         && read.ArgumentList.Arguments.Count == 2
-                                                         && read.ArgumentList.Arguments[1].Expression.IsKind(SyntaxKind.FalseLiteralExpression))
-                                    .ToArray()
-                                ?? Array.Empty<AssignmentExpressionSyntax>();
-            return matchingLoads.Length == 1;
-        }
-
-        private static bool HasMigratedParentSeed(
-            IEnumerable<InvocationExpressionSyntax> invocations,
-            IReadOnlyDictionary<string, string> legacyLocalNames)
-        {
-            var parentSeeds = invocations
-                .Where(invocation => IsSessionStateInvocationNamed(invocation, "SetBool")
-                                     && HasInspectorFoldoutKeyArgument(invocation, 0, "DataTransport"))
+            var tree = CSharpSyntaxTree.ParseText(source);
+            var errors = tree.GetDiagnostics()
+                .Where(diagnostic =>
+                    diagnostic.Severity
+                    == DiagnosticSeverity.Error)
                 .ToArray();
-            if (parentSeeds.Length != 1 || parentSeeds[0].ArgumentList.Arguments.Count < 2)
-                return false;
-
-            var parentExpression = parentSeeds[0].ArgumentList.Arguments[1].Expression;
-            var legacyOperands = new List<string>();
-            return CollectLogicalOrIdentifierOperands(parentExpression, legacyOperands)
-                   && legacyOperands.Count == LegacyTransportFoldoutKeys.Length
-                   && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.TryGetValue(key, out var local)
-                                                       && legacyOperands.Count(operand => operand == local) == 1);
-        }
-
-        private static bool CollectLogicalOrIdentifierOperands(ExpressionSyntax expression, ICollection<string> operands)
-        {
-            if (expression is ParenthesizedExpressionSyntax parenthesized)
-                return CollectLogicalOrIdentifierOperands(parenthesized.Expression, operands);
-
-            if (expression is BinaryExpressionSyntax binary
-                && binary.IsKind(SyntaxKind.LogicalOrExpression))
+            if (errors.Length != 0)
             {
-                return CollectLogicalOrIdentifierOperands(binary.Left, operands)
-                       && CollectLogicalOrIdentifierOperands(binary.Right, operands);
+                throw new InvalidOperationException(
+                    "Source contains syntax errors: "
+                    + errors[0]);
             }
 
-            if (expression is IdentifierNameSyntax identifier)
-            {
-                operands.Add(identifier.Identifier.ValueText);
-                return true;
-            }
-
-            return false;
+            return tree.GetRoot();
         }
 
-        private static bool HasIdentifierArgument(InvocationExpressionSyntax invocation, int argumentIndex, string identifier)
+        private static MethodDeclarationSyntax FindMethod(
+            string source,
+            string methodName)
         {
-            return invocation != null
-                   && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
-                   && argument.Identifier.ValueText == identifier;
-        }
-
-        private static int CountBoolFieldDeclarations(string source, string fieldName)
-        {
-            return CSharpSyntaxTree.ParseText(source)
-                .GetRoot()
+            var methods = Parse(source)
                 .DescendantNodes()
-                .OfType<FieldDeclarationSyntax>()
-                .Where(field => field.Declaration.Type is PredefinedTypeSyntax type
-                                && type.Keyword.IsKind(SyntaxKind.BoolKeyword))
-                .SelectMany(field => field.Declaration.Variables)
-                .Count(variable => variable.Identifier.ValueText == fieldName);
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method =>
+                    method.Identifier.ValueText == methodName)
+                .ToArray();
+            if (methods.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    "Expected exactly one method named "
+                    + methodName
+                    + ", found "
+                    + methods.Length
+                    + ".");
+            }
+
+            return methods[0];
         }
 
-        private static bool IsEditorGuiIndentMutation(SyntaxNode node)
+        private static IEnumerable<InvocationExpressionSyntax>
+            InvocationsNamed(
+                SyntaxNode node,
+                string methodName)
+            => node.DescendantNodesAndSelf()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(invocation =>
+                    IsInvocationNamed(
+                        invocation,
+                        methodName));
+
+        private static bool IsInvocationNamed(
+            InvocationExpressionSyntax invocation,
+            string methodName)
         {
-            return node is AssignmentExpressionSyntax assignment
-                   && IsEditorGuiIndentTarget(assignment.Left)
-                   || node is PostfixUnaryExpressionSyntax unary
-                   && IsEditorGuiIndentTarget(unary.Operand)
-                   && (unary.IsKind(SyntaxKind.PostIncrementExpression)
-                       || unary.IsKind(SyntaxKind.PostDecrementExpression));
+            if (invocation.Expression
+                is IdentifierNameSyntax identifier)
+            {
+                return identifier.Identifier.ValueText
+                       == methodName;
+            }
+
+            return invocation.Expression
+                       is MemberAccessExpressionSyntax access
+                   && access.Name.Identifier.ValueText
+                   == methodName;
         }
 
-        private static bool IsEditorGuiIndentIncrement(SyntaxNode node)
+        private static string StringArgument(
+            InvocationExpressionSyntax invocation,
+            int index)
         {
-            return node is AssignmentExpressionSyntax assignment
-                   && assignment.IsKind(SyntaxKind.AddAssignmentExpression)
-                   && IsEditorGuiIndentTarget(assignment.Left)
-                   || node is PostfixUnaryExpressionSyntax unary
-                   && unary.IsKind(SyntaxKind.PostIncrementExpression)
-                   && IsEditorGuiIndentTarget(unary.Operand);
+            if (invocation.ArgumentList.Arguments.Count <= index
+                || invocation.ArgumentList.Arguments[index]
+                       .Expression
+                   is not LiteralExpressionSyntax literal
+                || !literal.IsKind(
+                    SyntaxKind.StringLiteralExpression))
+            {
+                return string.Empty;
+            }
+
+            return literal.Token.ValueText;
         }
 
-        private static bool IsEditorGuiIndentDecrement(SyntaxNode node)
+        private static ExpressionSyntax UnwrapParentheses(
+            ExpressionSyntax expression)
         {
-            return node is AssignmentExpressionSyntax assignment
-                   && assignment.IsKind(SyntaxKind.SubtractAssignmentExpression)
-                   && IsEditorGuiIndentTarget(assignment.Left)
-                   || node is PostfixUnaryExpressionSyntax unary
-                   && unary.IsKind(SyntaxKind.PostDecrementExpression)
-                   && IsEditorGuiIndentTarget(unary.Operand);
+            while (expression
+                   is ParenthesizedExpressionSyntax parentheses)
+            {
+                expression = parentheses.Expression;
+            }
+
+            return expression;
         }
 
-        private static bool IsEditorGuiIndentTarget(ExpressionSyntax expression)
+        private static bool HasStringArgument(
+            InvocationExpressionSyntax invocation,
+            string expected)
+            => invocation.ArgumentList.Arguments
+                .Select(argument => argument.Expression)
+                .OfType<LiteralExpressionSyntax>()
+                .Any(literal =>
+                    literal.IsKind(
+                        SyntaxKind.StringLiteralExpression)
+                    && string.Equals(
+                        literal.Token.ValueText,
+                        expected,
+                        StringComparison.Ordinal));
+
+        private static bool HasIdentifierArgument(
+            InvocationExpressionSyntax invocation,
+            string expected)
+            => invocation.ArgumentList.Arguments
+                .Select(argument => argument.Expression)
+                .OfType<IdentifierNameSyntax>()
+                .Any(identifier =>
+                    identifier.Identifier.ValueText
+                    == expected);
+
+        private static bool References(
+            MethodDeclarationSyntax method,
+            string identifier)
+            => method.DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .Any(name =>
+                    name.Identifier.ValueText
+                    == identifier);
+
+        private static int Count(
+            string source,
+            string token)
         {
-            return expression is MemberAccessExpressionSyntax memberAccess
-                   && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "EditorGUI"
-                   && memberAccess.Name.Identifier.ValueText == "indentLevel";
+            var count = 0;
+            var index = 0;
+            while ((index = source.IndexOf(
+                       token,
+                       index,
+                       StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += token.Length;
+            }
+
+            return count;
         }
 
-        private static bool ContainsStringLiteral(MethodDeclarationSyntax method, string value)
-        {
-            return method != null
-                   && method.DescendantNodes().OfType<LiteralExpressionSyntax>().Any(literal =>
-                       literal.RawKind == (int)SyntaxKind.StringLiteralExpression
-                       && literal.Token.ValueText == value);
-        }
-
-        private static bool ContainsStringLiteralFragment(MethodDeclarationSyntax method, string value)
-        {
-            return method != null
-                   && method.DescendantNodes().OfType<LiteralExpressionSyntax>().Any(literal =>
-                       literal.RawKind == (int)SyntaxKind.StringLiteralExpression
-                       && literal.Token.ValueText.Contains(value, StringComparison.Ordinal));
-        }
-
-        private static bool ContainsIdentifier(MethodDeclarationSyntax method, string identifier)
-        {
-            return method != null
-                   && method.DescendantNodes().OfType<IdentifierNameSyntax>().Any(name =>
-                       name.Identifier.ValueText == identifier);
-        }
-
-        private static void Check(bool condition, string name)
+        private static void Check(
+            bool condition,
+            string name)
         {
             if (!condition)
-                throw new InvalidOperationException("[FAIL] " + name);
+                throw new InvalidOperationException(
+                    "[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

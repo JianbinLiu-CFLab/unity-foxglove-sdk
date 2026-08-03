@@ -17,9 +17,11 @@ namespace Unity.FoxgloveSDK.Editor
             string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
-            string pad)
+            string pad,
+            bool hasTransactionalInput = false)
         {
-            if (members == null || members.Count == 0)
+            if ((members == null || members.Count == 0)
+                && !hasTransactionalInput)
                 return;
 
             var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
@@ -40,17 +42,19 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(
                     $"{pad}            case {i}: return new FoxgloveInputTopicInfo(" +
                     $"\"{topic}\", {WireEncodingLiteral(member.Encoding)}, {mode}, " +
-                    $"{SourceLiteral(member.Source)}, " +
-                    $"hasExplicitSource: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Source))}, " +
+                    $"publishTransportIds: {TopicMetadataEmitter.TransportIdsLiteral(member.PublishTransportIds)}, " +
+                    $"subscribeTransportId: {TopicMetadataEmitter.NullableStringLiteral(member.SubscribeTransportId)}, " +
                     $"hasExplicitEncoding: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Encoding))}, " +
                     $"supportsWebSocket: {BoolLiteral(member.GeneratesWebSocketCodec)}, " +
-                    $"supportsRos2Native: {BoolLiteral(member.GeneratesRos2NativeRegistration)}, " +
+                    $"deliveryPolicy: new FoxRunDeliveryPolicy(" +
+                    $"{TopicMetadataEmitter.ReliabilityLiteral(member.Reliability)}, " +
+                    $"{TopicMetadataEmitter.DurabilityLiteral(member.Durability)}, " +
+                    $"{TopicMetadataEmitter.HistoryLiteral(member.History)}, " +
+                    $"{member.Depth}), " +
+                    $"hasExplicitDeliveryPolicy: {BoolLiteral(HasExplicitDeliveryPolicy(member))}, " +
                     $"policy: {TopicMetadataEmitter.PolicyLiteral(member.Policy)}, " +
                     $"hz: {TypeExprEmitter.FloatLiteral(member.Hz)}, " +
                     $"hasExplicitHz: {BoolLiteral(member.HasExplicitHz)}, " +
-                    $"declaredTargets: {TargetsLiteral(member.Targets)}, " +
-                    $"hasExplicitTargets: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Targets))}, " +
-                    $"hasExplicitQos: {BoolLiteral(HasExplicitQos(member))}, " +
                     $"isStream: {BoolLiteral(member.IsStream)});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
@@ -68,7 +72,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
-            EmitInputFlush(sb, members, publishTopics, pad);
+            EmitInputFlush(
+                sb,
+                members,
+                publishTopics,
+                pad,
+                hasTransactionalInput);
             EmitOwnedInputClear(sb, members, pad);
             ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
@@ -123,7 +132,7 @@ namespace Unity.FoxgloveSDK.Editor
                 ? ProtobufInputDispatchEmitter.ReaderCall(
                     protobufFieldNumber,
                     typeName,
-                    member.ProtobufTypeShape,
+                    member.TypeShape,
                     index)
                 : string.Empty;
             var jsonReader = SupportsGeneratedJsonObject(member)
@@ -206,7 +215,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
-            string pad)
+            string pad,
+            bool hasTransactionalInput)
         {
             sb.AppendLine();
             sb.AppendLine($"{pad}    int IFoxgloveInputSource.FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)");
@@ -216,6 +226,11 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (!members[i].IsStream)
                     EmitInputFlushMember(sb, members[i], i, pad);
+            }
+            if (hasTransactionalInput)
+            {
+                sb.AppendLine(
+                    $"{pad}        applied += __FoxRunFlushMessagePackTransactions(nowSeconds, inheritedSubscribeRateHz);");
             }
             sb.AppendLine($"{pad}        return applied;");
             sb.AppendLine($"{pad}    }}");
@@ -436,78 +451,20 @@ namespace Unity.FoxgloveSDK.Editor
                 return "FoxRunEncoding.Protobuf";
             if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, System.StringComparison.Ordinal))
                 return "FoxRunEncoding.JSON";
+            if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.MessagePackEncoding, System.StringComparison.Ordinal))
+                return "FoxRunEncoding.MessagePack";
             return "(FoxRunEncoding)0";
         }
 
-        internal static string SourceLiteral(string provider)
+        internal static bool HasExplicitDeliveryPolicy(
+            FoxgloveSourceEmitter.TopicMember member)
         {
-            if (string.Equals(
-                    provider,
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
-                    System.StringComparison.Ordinal))
-            {
-                return "FoxRunEndpoint.Foxglove";
-            }
-            if (string.Equals(
-                    provider,
-                    FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                    System.StringComparison.Ordinal))
-            {
-                return "FoxRunEndpoint.Ros2Native";
-            }
-            return "(FoxRunEndpoint)0";
-        }
-
-        internal static string TargetsLiteral(string targets)
-        {
-            if (string.Equals(
-                    targets,
-                    FoxRunGenerationDescriptorConstants.InheritTargets,
-                    System.StringComparison.Ordinal))
-            {
-                return "(FoxRunEndpoint)0";
-            }
-
-            var literals = new List<string>();
-            foreach (var target in (targets ?? string.Empty).Split(','))
-            {
-                if (string.Equals(
-                        target,
-                        FoxRunGenerationDescriptorConstants.FoxgloveTarget,
-                        System.StringComparison.Ordinal))
-                {
-                    literals.Add("FoxRunEndpoint.Foxglove");
-                }
-                else if (string.Equals(
-                             target,
-                             FoxRunGenerationDescriptorConstants.Ros2NativeTarget,
-                             System.StringComparison.Ordinal))
-                {
-                    literals.Add("FoxRunEndpoint.Ros2Native");
-                }
-                else if (string.Equals(
-                             target,
-                             FoxRunGenerationDescriptorConstants.Ros2BridgeTarget,
-                             System.StringComparison.Ordinal))
-                {
-                    literals.Add("FoxRunEndpoint.Ros2Bridge");
-                }
-            }
-
-            return literals.Count == 0
-                ? "(FoxRunEndpoint)0"
-                : string.Join(" | ", literals);
-        }
-
-        internal static bool HasExplicitQos(FoxgloveSourceEmitter.TopicMember member)
-        {
-            const FoxRunNamedArgumentPresence qosArguments =
-                FoxRunNamedArgumentPresence.QoS
-                | FoxRunNamedArgumentPresence.Reliability
+            const FoxRunNamedArgumentPresence arguments =
+                FoxRunNamedArgumentPresence.Reliability
                 | FoxRunNamedArgumentPresence.Durability
                 | FoxRunNamedArgumentPresence.History
                 | FoxRunNamedArgumentPresence.Depth;
-            return (member.NamedArgumentPresence & qosArguments) != 0;
+            return (member.NamedArgumentPresence & arguments) != 0;
         }
 
         internal static string BoolLiteral(bool value) => value ? "true" : "false";
@@ -526,8 +483,23 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool SupportsGeneratedJsonObject(
             FoxgloveSourceEmitter.TopicMember member)
-            => member?.ProtobufTypeShape != null
-               && (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
-                   || member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum);
+        {
+            var shape = member?.TypeShape;
+            if (shape?.Kind == FoxRunTypeShapeKind.Collection)
+                shape = shape.ElementShape;
+            return shape != null
+                   && (shape.Kind == FoxRunTypeShapeKind.Object
+                       || shape.Kind == FoxRunTypeShapeKind.Enum)
+                   && !UsesBuiltInJsonCodec(shape);
+        }
+
+        private static bool UsesBuiltInJsonCodec(FoxRunTypeShape shape)
+        {
+            var typeName = shape?.TypeName ?? string.Empty;
+            return string.Equals(typeName, "UnityEngine.Vector2", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Vector3", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Quaternion", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal);
+        }
     }
 }

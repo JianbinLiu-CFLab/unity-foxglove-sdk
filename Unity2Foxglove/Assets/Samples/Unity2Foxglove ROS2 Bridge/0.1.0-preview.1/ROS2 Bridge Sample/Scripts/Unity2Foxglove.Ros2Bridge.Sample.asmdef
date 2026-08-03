@@ -1,0 +1,16 @@
+{
+  "name": "Unity2Foxglove.Ros2Bridge.Sample",
+  "rootNamespace": "Unity2Foxglove.Ros2Bridge.Sample",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Proto.Generated",
+    "Unity2Foxglove.Ros2Bridge",
+    "Unity2Foxglove.Ros2Bridge.Generated"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

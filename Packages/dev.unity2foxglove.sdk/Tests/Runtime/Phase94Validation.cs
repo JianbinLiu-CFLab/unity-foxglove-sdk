@@ -15,8 +15,8 @@ using System.Threading;
 using Foxglove;
 using Google.Protobuf;
 using Newtonsoft.Json.Linq;
-using Unity.FoxgloveSDK.Ros2Bridge;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -242,15 +242,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySourceBoundaries()
         {
             var managerSource = ReadRepoDirectoryText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager", "FoxgloveManager*.cs");
-            var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
             var readme = ReadRepoText("README.md");
             var sidecarSource = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
             var sidecarCmake = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
             var sidecarReadme = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
-            Check(managerSource.Contains("TryPrepareRos2BridgePublish") && managerSource.Contains("PublishRos2BridgeCdr"),
-                "94F-1: Manager exposes ROS2 Bridge through explicit opt-in APIs");
-            Check(docs.Contains("Phase 94") && docs.Contains("three representative"),
-                "94F-2: schema coverage docs describe Phase94 bridge boundary");
+            Check(managerSource.Contains("PublishOrdinaryTransports")
+                  && !managerSource.Contains("TryPrepareRos2BridgePublish")
+                  && !managerSource.Contains("PublishRos2BridgeCdr")
+                  && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("Ros2BridgeFrame.CreateOwned")
+                  && bridgeProvider.Contains("runtime.TryEnqueue(frame, out reason)"),
+                "94F-1: neutral Manager fanout reaches the explicit Bridge Provider");
+            Check(sidecarReadme.Contains("Phase 94 Gate B")
+                  && sidecarReadme.Contains("/unity/tf")
+                  && sidecarReadme.Contains("/unity/laser_scan")
+                  && sidecarReadme.Contains("/unity/point_cloud"),
+                "94F-2: sidecar docs preserve the Phase94 three-sample bridge boundary");
             Check(readme.Contains("Unity2Foxglove does not require ROS") || readme.Contains("does not require ROS"),
                 "94F-3: README keeps no-ROS default positioning");
             Check(sidecarSource.Contains("read_exact") && sidecarSource.Contains("nlohmann") && sidecarSource.Contains("create_generic_publisher"),

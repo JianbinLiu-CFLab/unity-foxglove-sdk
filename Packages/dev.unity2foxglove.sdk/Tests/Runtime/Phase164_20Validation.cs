@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyBridgeFrameWriterAvoidsExtraPublicCopy();
             VerifyTcpClientUsesStreamWriterPath();
-            VerifyR2fuSinkCachesPublishersPerTopic();
+            VerifyR2fuTypedBindingsCachePublishersPerContract();
             VerifyEditorGuardsAvoidUnnecessaryWork();
             VerifyQosProfileIsValueTyped();
             VerifyRegistry();
@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBridgeFrameWriterAvoidsExtraPublicCopy()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             var write = PhaseValidationSourceHelpers.SourceMethod(source, "public static byte[] Write");
 
             Check(write.Contains("var buffer = new byte[checked(16 + headerBytes.Length + frame.PayloadLength)];", StringComparison.Ordinal)
@@ -37,10 +37,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTcpClientUsesStreamWriterPath()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
             var send = PhaseValidationSourceHelpers.SourceMethod(source, "public void Send");
 
-            Check(send.Contains("var stream = _client.GetStream();", StringComparison.Ordinal)
+            Check(send.Contains("var stream = client.GetStream();", StringComparison.Ordinal)
                   && send.Contains("Ros2BridgeFrameWriter.Write(frame, stream);", StringComparison.Ordinal)
                   && send.Contains("stream.Flush();", StringComparison.Ordinal),
                 "164-20B-1: TCP bridge sender writes frames directly to the network stream");
@@ -49,20 +49,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-20B-2: TCP bridge sender does not allocate a full frame byte array per send");
         }
 
-        private static void VerifyR2fuSinkCachesPublishersPerTopic()
+        private static void VerifyR2fuTypedBindingsCachePublishersPerContract()
         {
-            var source = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
-            var register = PhaseValidationSourceHelpers.SourceMethod(source, "public void Register");
-            var publish = PhaseValidationSourceHelpers.SourceMethod(source, "public void Publish");
+            var hub = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs");
+            var binding = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs");
+            var start = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "internal FoxRunRos2RegistrationResult TryStart");
+            var publish = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "private bool OnBusEnvelope");
 
-            Check(source.Contains("private readonly Dictionary<string, IRos2TopicPublisher> _publishers", StringComparison.Ordinal)
-                  && register.Contains("_factory.TryCreate(contract, _node, out var publisher, out var reason)", StringComparison.Ordinal)
-                  && register.Contains("_publishers[contract.Topic] = publisher;", StringComparison.Ordinal),
-                "164-20C-1: R2FU topic sink creates publishers at topic registration time");
-            Check(publish.Contains("_publishers.TryGetValue(contract.Topic, out publisher)", StringComparison.Ordinal)
-                  && publish.Contains("publisher.TryPublish(payload, timestampNs, out var error)", StringComparison.Ordinal)
-                  && !publish.Contains("_factory.TryCreate", StringComparison.Ordinal),
-                "164-20C-2: R2FU topic sink publish path reuses cached publishers");
+            Check(hub.Contains("private readonly List<IFoxRunRos2CustomPublisherHostedBinding> _bindings", StringComparison.Ordinal)
+                  && hub.Contains("var identity = source.GetInstanceID() + \"|\" + contract.Id;", StringComparison.Ordinal)
+                  && hub.Contains("_existing.Contains(identity)", StringComparison.Ordinal)
+                  && hub.Contains("_bindings.Add(new HostedBinding", StringComparison.Ordinal),
+                "164-20C-1: the R2FU Provider hub creates one typed publisher binding per source and contract identity");
+            Check(start.Contains("_backend.Register<TEnvelope>(_contract, _qos)", StringComparison.Ordinal)
+                  && start.Contains("_token = registration.Token;", StringComparison.Ordinal)
+                  && publish.Contains("Volatile.Read(ref _token)", StringComparison.Ordinal)
+                  && publish.Contains("_backend.TryPublish(token, mapped)", StringComparison.Ordinal)
+                  && !publish.Contains("_backend.Register", StringComparison.Ordinal),
+                "164-20C-2: the typed R2FU publish path reuses its registered publisher token");
         }
 
         private static void VerifyEditorGuardsAvoidUnnecessaryWork()
@@ -86,10 +96,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyQosProfileIsValueTyped()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunResolvedQos.cs");
+            var source = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/FoxRunRos2Qos.cs");
 
             Check(source.Contains("public readonly struct FoxRunResolvedQos", StringComparison.Ordinal),
-                "164-20E-1: shared portable ROS 2 QoS contract stays value typed");
+                "164-20E-1: Provider-owned R2FU QoS contract stays value typed");
         }
 
         private static void VerifyRegistry()

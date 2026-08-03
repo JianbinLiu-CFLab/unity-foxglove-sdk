@@ -462,7 +462,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                     "_message",
                     "std_msgs/msg/String",
                     FoxRunFlow.Subscribe,
-                    FoxRunEndpoint.Ros2Native,
+                    FoxRunRos2RouteEndpoint.R2fu,
                     qos.Profile,
                     true,
                     qos.Reliability,

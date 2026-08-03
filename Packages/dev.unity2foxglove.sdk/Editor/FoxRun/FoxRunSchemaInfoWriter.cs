@@ -104,7 +104,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("        public const int ContractCount = " + counts.ContractCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int FieldCount = " + counts.FieldCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int SubscriptionBindingCount = " + manifest.Sections.Subscriptions.Bindings.Count.ToString(CultureInfo.InvariantCulture) + ";");
-            sb.AppendLine("        public const int CustomNativeContractCount = " + manifest.CustomNativeContracts.Count.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaTypeInfo[] Types =");
             WriteTypesArray(sb, types, 3);
@@ -112,10 +111,6 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaSubscriptionBindingInfo[] SubscriptionBindings =");
             WriteSubscriptionBindingsArray(sb, manifest.Sections.Subscriptions.Bindings, 3);
-            sb.AppendLine(";");
-            sb.AppendLine();
-            sb.AppendLine("        public static readonly FoxRunSchemaCustomNativeContractInfo[] CustomNativeContracts =");
-            WriteCustomNativeContractsArray(sb, manifest.CustomNativeContracts, 3);
             sb.AppendLine(";");
             sb.AppendLine();
             sb.AppendLine("        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]");
@@ -131,8 +126,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("                    FoxRunManifestHash,");
             sb.AppendLine("                    Types,");
             sb.AppendLine("                    SubscriptionManifestHash,");
-            sb.AppendLine("                    SubscriptionBindings,");
-            sb.AppendLine("                    CustomNativeContracts));");
+            sb.AppendLine("                    SubscriptionBindings));");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -178,9 +172,6 @@ namespace Unity.FoxgloveSDK.Editor
                 result.AddError("ContractCount mismatch.");
             if (result.ExpectedFieldCount != result.ActualFieldCount)
                 result.AddError("FieldCount mismatch.");
-            if (manifest.CustomNativeContracts.Count != ExtractIntConstant(generatedSource, "CustomNativeContractCount"))
-                result.AddError("CustomNativeContractCount mismatch.");
-
             return result;
         }
 
@@ -221,7 +212,37 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.Tolerance) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
                 AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
-                AppendProtobufDescriptorSet(sb, inner, contract);
+                AppendProtobufDescriptorSet(sb, inner, contract, trailingComma: true);
+                AppendIndentedStringLiteralLine(sb, inner, contract.LogicalSchemaName, ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(contract.PublishAvailable) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(contract.SubscribeAvailable) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.UnavailableDiagnosticId, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.UnavailableReason, ",");
+                AppendIndentedStringLiteralLine(
+                    sb,
+                    inner,
+                    contract.PublishUnavailableDiagnosticId,
+                    ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.PublishUnavailableReason, ",");
+                AppendIndentedStringLiteralLine(
+                    sb,
+                    inner,
+                    contract.SubscribeUnavailableDiagnosticId,
+                    ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.SubscribeUnavailableReason, ",");
+                WriteStringArrayOrNull(
+                    sb,
+                    contract.PublishTransportIds,
+                    indentLevel + 2,
+                    trailingComma: true);
+                if (contract.SubscribeTransportId == null)
+                    sb.AppendLine(inner + "    null");
+                else
+                    AppendIndentedStringLiteralLine(
+                        sb,
+                        inner,
+                        contract.SubscribeTransportId,
+                        "");
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
@@ -243,148 +264,28 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Flow, ",");
-                sb.AppendLine(inner + "    " + SourceLiteral(binding.DeclaredSource) + ",");
-                sb.AppendLine(inner + "    " + QosProfileLiteral(binding.QosProfile) + ",");
+                WriteStringArrayOrNull(
+                    sb,
+                    binding.PublishTransportIds,
+                    indentLevel + 2,
+                    trailingComma: true);
+                if (binding.SubscribeTransportId == null)
+                    sb.AppendLine(inner + "    null,");
+                else
+                    AppendIndentedStringLiteralLine(
+                        sb,
+                        inner,
+                        binding.SubscribeTransportId,
+                        ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Reliability, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Durability, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.History, ",");
+                sb.AppendLine(inner + "    " + binding.Depth.ToString(CultureInfo.InvariantCulture) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.NativeType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CanonicalRosType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CopyShapeIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.Ros2ContractKind.ToString(), ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, ",");
-                sb.AppendLine(inner + "    " + TargetsLiteral(binding.DeclaredTargets) + ",");
-                sb.AppendLine(inner + "    " + QosReliabilityLiteral(binding.QosReliability) + ",");
-                sb.AppendLine(inner + "    " + QosDurabilityLiteral(binding.QosDurability) + ",");
-                sb.AppendLine(inner + "    " + QosHistoryLiteral(binding.QosHistory) + ",");
-                sb.AppendLine(inner + "    " + binding.QosDepth.ToString(CultureInfo.InvariantCulture) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.IsStream));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
-        }
-
-        private static void WriteCustomNativeContractsArray(
-            StringBuilder sb,
-            IReadOnlyList<FoxRunManifestCustomNativeContract> contracts,
-            int indentLevel)
-        {
-            var indent = Indent(indentLevel);
-            var inner = Indent(indentLevel + 1);
-            sb.AppendLine(indent + "new FoxRunSchemaCustomNativeContractInfo[]");
-            sb.AppendLine(indent + "{");
-            foreach (var contract in contracts)
-            {
-                sb.AppendLine(inner + "new FoxRunSchemaCustomNativeContractInfo(");
-                AppendIndentedStringLiteralLine(sb, inner, contract.DeclaringType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
-                sb.AppendLine(inner + "    " + SourceLiteral(contract.DeclaredSource) + ",");
-                sb.AppendLine(inner + "    " + QosProfileLiteral(contract.QosProfile) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomDtoIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, ",");
-                sb.AppendLine(inner + "    " + TargetsLiteral(contract.DeclaredTargets) + ",");
-                sb.AppendLine(inner + "    " + QosReliabilityLiteral(contract.QosReliability) + ",");
-                sb.AppendLine(inner + "    " + QosDurabilityLiteral(contract.QosDurability) + ",");
-                sb.AppendLine(inner + "    " + QosHistoryLiteral(contract.QosHistory) + ",");
-                sb.AppendLine(inner + "    " + contract.QosDepth.ToString(CultureInfo.InvariantCulture));
-                sb.AppendLine(inner + "),");
-            }
-            sb.Append(indent + "}");
-        }
-
-        private static string SourceLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
-                return "FoxRunEndpoint.Foxglove";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
-                return "FoxRunEndpoint.Ros2Native";
-            return "(FoxRunEndpoint)0";
-        }
-
-        private static string TargetsLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
-                return "(FoxRunEndpoint)0";
-
-            var parts = (value ?? string.Empty).Split(',');
-            var literals = new List<string>();
-            foreach (var part in parts)
-            {
-                if (string.Equals(part, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Foxglove");
-                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Ros2Native");
-                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
-                    literals.Add("FoxRunEndpoint.Ros2Bridge");
-            }
-
-            return literals.Count == 0
-                ? "(FoxRunEndpoint)0"
-                : string.Join(" | ", literals);
-        }
-
-        private static string QosProfileLiteral(string value)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.Default";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SensorData";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SystemDefault";
-            return "(FoxRunQosProfile)0";
-        }
-
-        private static string QosReliabilityLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosReliability.SystemDefault",
-                FoxRunGenerationDescriptorConstants.ReliableQosReliability,
-                "FoxRunQosReliability.Reliable",
-                FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
-                "FoxRunQosReliability.BestEffort",
-                "(FoxRunQosReliability)0");
-
-        private static string QosDurabilityLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosDurability.SystemDefault",
-                FoxRunGenerationDescriptorConstants.VolatileQosDurability,
-                "FoxRunQosDurability.Volatile",
-                FoxRunGenerationDescriptorConstants.TransientLocalQosDurability,
-                "FoxRunQosDurability.TransientLocal",
-                "(FoxRunQosDurability)0");
-
-        private static string QosHistoryLiteral(string value)
-            => QosPolicyLiteral(
-                value,
-                "FoxRunQosHistory.SystemDefault",
-                FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
-                "FoxRunQosHistory.KeepLast",
-                FoxRunGenerationDescriptorConstants.KeepAllQosHistory,
-                "FoxRunQosHistory.KeepAll",
-                "(FoxRunQosHistory)0");
-
-        private static string QosPolicyLiteral(
-            string value,
-            string systemDefaultLiteral,
-            string firstValue,
-            string firstLiteral,
-            string secondValue,
-            string secondLiteral,
-            string inheritLiteral)
-        {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return systemDefaultLiteral;
-            if (string.Equals(value, firstValue, StringComparison.Ordinal))
-                return firstLiteral;
-            if (string.Equals(value, secondValue, StringComparison.Ordinal))
-                return secondLiteral;
-            return inheritLiteral;
         }
 
         private static void WriteFieldsArray(
@@ -407,7 +308,10 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Nullable) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + ",");
-                sb.AppendLine(inner + "    " + field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture) + "),");
+                sb.AppendLine(inner + "    " + (field.ProtobufMetadata?.FieldNumber ?? 0).ToString(CultureInfo.InvariantCulture) + ",");
+                AppendTypeShapeInfo(sb, field.TypeShape, indentLevel + 2, trailingComma: true);
+                AppendNormalizedScheduleInfo(sb, field.NormalizedSchedule, indentLevel + 2);
+                sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + (trailingComma ? "}," : "}"));
         }
@@ -415,18 +319,116 @@ namespace Unity.FoxgloveSDK.Editor
         private static void AppendProtobufDescriptorSet(
             StringBuilder sb,
             string indent,
-            FoxRunManifestContract contract)
+            FoxRunManifestContract contract,
+            bool trailingComma = false)
         {
             if (!string.Equals(contract.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
             {
-                sb.AppendLine(indent + "    null");
+                sb.AppendLine(indent + "    null" + (trailingComma ? "," : string.Empty));
                 return;
             }
 
             var descriptor = FoxRunProtobufContractBuilder.Build(ToProtobufContractInput(contract)).FileDescriptorSet;
             sb.Append(indent + "    global::System.Convert.FromBase64String(");
             AppendStringLiteral(sb, Convert.ToBase64String(descriptor));
-            sb.AppendLine(")");
+            sb.AppendLine(")" + (trailingComma ? "," : string.Empty));
+        }
+
+        private static void AppendTypeShapeInfo(
+            StringBuilder sb,
+            FoxRunTypeShape shape,
+            int indentLevel,
+            bool trailingComma = false)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            if (shape == null)
+            {
+                sb.AppendLine(indent + "null" + (trailingComma ? "," : string.Empty));
+                return;
+            }
+
+            sb.AppendLine(indent + "new FoxRunTypeShapeInfo(");
+            sb.AppendLine(inner + "FoxRunTypeShapeInfoKind." + shape.Kind + ",");
+            AppendIndentedStringLiteralLine(sb, indent, shape.TypeName, ",");
+            AppendIndentedStringLiteralLine(sb, indent, shape.CanonicalType, ",");
+            sb.AppendLine(inner + BoolLiteral(shape.Nullable) + ",");
+            sb.AppendLine(inner + "FoxRunCollectionInfoKind." + shape.CollectionKind + ",");
+            AppendTypeShapeInfo(sb, shape.ElementShape, indentLevel + 1, trailingComma: true);
+            AppendTypeShapeFields(sb, shape.Fields, indentLevel + 1, trailingComma: true);
+            AppendTypeShapeEnumValues(sb, shape.EnumValues, indentLevel + 1, trailingComma: true);
+            sb.AppendLine(inner + BoolLiteral(shape.CanConstruct) + ",");
+            sb.AppendLine(inner + BoolLiteral(shape.IsValueType));
+            sb.AppendLine(indent + ")" + (trailingComma ? "," : string.Empty));
+        }
+
+        private static void AppendTypeShapeFields(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunTypeField> fields,
+            int indentLevel,
+            bool trailingComma = false)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            sb.AppendLine(indent + "new FoxRunTypeFieldInfo[]");
+            sb.AppendLine(indent + "{");
+            foreach (var field in fields ?? Array.Empty<FoxRunTypeField>())
+            {
+                sb.AppendLine(inner + "new FoxRunTypeFieldInfo(");
+                AppendIndentedStringLiteralLine(sb, inner, field.JsonName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, field.MemberName, ",");
+                AppendTypeShapeInfo(sb, field.TypeShape, indentLevel + 2, trailingComma: true);
+                sb.AppendLine(inner + "    " + BoolLiteral(field.Repeated) + ",");
+                sb.AppendLine(inner + "    FoxRunCollectionInfoKind." + field.RepeatedCollectionKind + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(field.CanAssign) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(field.IsNullable));
+                sb.AppendLine(inner + "),");
+            }
+            sb.AppendLine(indent + "}" + (trailingComma ? "," : string.Empty));
+        }
+
+        private static void AppendTypeShapeEnumValues(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunEnumValue> values,
+            int indentLevel,
+            bool trailingComma = false)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            sb.AppendLine(indent + "new FoxRunEnumValueInfo[]");
+            sb.AppendLine(indent + "{");
+            foreach (var value in values ?? Array.Empty<FoxRunEnumValue>())
+            {
+                sb.Append(inner + "new FoxRunEnumValueInfo(");
+                AppendStringLiteral(sb, value.Name);
+                sb.Append(", ")
+                    .Append(value.Number.ToString(CultureInfo.InvariantCulture))
+                    .AppendLine("),");
+            }
+            sb.AppendLine(indent + "}" + (trailingComma ? "," : string.Empty));
+        }
+
+        private static void AppendNormalizedScheduleInfo(
+            StringBuilder sb,
+            FoxRunNormalizedScheduleTuple schedule,
+            int indentLevel)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            if (schedule == null)
+            {
+                sb.AppendLine(indent + "null");
+                return;
+            }
+
+            sb.AppendLine(indent + "new FoxRunNormalizedScheduleInfo(");
+            sb.AppendLine(inner + schedule.Policy.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine(inner + BoolLiteral(schedule.HasExplicitHz) + ",");
+            sb.AppendLine(inner + FloatLiteral(schedule.Hz) + ",");
+            sb.AppendLine(inner + FloatLiteral(schedule.Tolerance) + ",");
+            AppendIndentedStringLiteralLine(sb, indent, schedule.OnlyIf, ",");
+            sb.AppendLine(inner + ((int)schedule.ConditionMemberKind).ToString(CultureInfo.InvariantCulture));
+            sb.AppendLine(indent + ")");
         }
 
         private static FoxRunProtobufContractInput ToProtobufContractInput(FoxRunManifestContract contract)
@@ -439,8 +441,9 @@ namespace Unity.FoxgloveSDK.Editor
                     field.MemberName,
                     field.Type,
                     field.Array,
-                    field.ProtobufFieldNumber,
-                    field.ProtobufTypeShape));
+                    0,
+                    field.TypeShape,
+                    field.ProtobufMetadata));
             }
 
             return new FoxRunProtobufContractInput(
@@ -607,6 +610,26 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(innerIndent).Append("    ");
             AppendStringLiteral(sb, value);
             sb.AppendLine(suffix);
+        }
+
+        private static void WriteStringArrayOrNull(
+            StringBuilder sb,
+            IReadOnlyList<string> values,
+            int indentLevel,
+            bool trailingComma)
+        {
+            var indent = Indent(indentLevel);
+            if (values == null)
+            {
+                sb.AppendLine(indent + "null" + (trailingComma ? "," : string.Empty));
+                return;
+            }
+
+            sb.AppendLine(indent + "new string[]");
+            sb.AppendLine(indent + "{");
+            foreach (var value in values)
+                AppendIndentedStringLiteralLine(sb, indent, value, ",");
+            sb.AppendLine(indent + "}" + (trailingComma ? "," : string.Empty));
         }
 
         private static void AppendStringLiteral(StringBuilder sb, string value)

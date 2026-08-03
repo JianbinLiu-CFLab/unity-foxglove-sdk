@@ -8,7 +8,6 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -20,7 +19,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LogRawBandwidthWarningIfNeeded()
         {
-            if (!_publishStandardRos2RawImage || _rawBandwidthWarningIssued)
+            if (!HasSensorRawImageDemand() || _rawBandwidthWarningIssued)
                 return;
 
             var width = Math.Max(1, _width);
@@ -30,7 +29,7 @@ namespace Unity.FoxgloveSDK.Components
             var bytesPerSecond = (long)(bytesPerFrame * rate);
             _rawBandwidthWarningIssued = true;
             Debug.Log(
-                "[Foxglove] Standard ROS2 raw image output enabled on topic "
+                "[Foxglove] Raw image Provider output enabled on topic "
                 + ResolveSensorCameraRawImageTopic()
                 + $". each frame is {bytesPerFrame} bytes (~{bytesPerSecond} bytes/s at {rate:F0}Hz).");
         }

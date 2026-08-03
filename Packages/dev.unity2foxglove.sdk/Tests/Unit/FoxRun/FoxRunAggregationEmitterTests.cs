@@ -23,6 +23,44 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunAggregationEmitterTests
     {
         [Fact]
+        [Trait("Phase", "185-B")]
+        public void AggregateMessagePackEmitsOneDirectStableMapBuilderWithoutJsonFallback()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "MessagePackTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "MessagePackTelemetry", "_zeta", "field", "System.Double",
+                        true, false, "", "/phase185/aggregate", 10f, "Demo.MessagePackTelemetry",
+                        0, 0f, "UnitTest", 1, "",
+                        isAggregateMember: true,
+                        jsonFieldName: "zeta",
+                        encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        typeShape: FoxRunTypeShape.Canonical("float64")),
+                    new FoxRunGenerationMember(
+                        "Demo", "MessagePackTelemetry", "_alpha", "field", "System.Int32",
+                        true, false, "", "/phase185/aggregate", 10f, "Demo.MessagePackTelemetry",
+                        0, 0f, "UnitTest", 0, "",
+                        isAggregateMember: true,
+                        jsonFieldName: "alpha",
+                        encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        typeShape: FoxRunTypeShape.Canonical("int32"))
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("__BuildFoxRunMessagePack_0", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveMsgPackWriter", source, StringComparison.Ordinal);
+            Assert.True(
+                source.IndexOf("WriteString(\"alpha\")", StringComparison.Ordinal)
+                < source.IndexOf("WriteString(\"zeta\")", StringComparison.Ordinal));
+            Assert.DoesNotContain("__BuildFoxRunJson_0", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("JsonConvert", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void AggregateMemberEmitsExplicitJsonBytesWithoutDictionaryPayload()
         {
             var type = new FoxRunGenerationType(
@@ -105,7 +143,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("__foxRunLastJson_0 = __payload_0;", source, StringComparison.Ordinal);
             Assert.Contains("var __sink_0 = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
             Assert.Contains("__foxRunLastJson_0 = null;", source, StringComparison.Ordinal);
-            Assert.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0,", source, StringComparison.Ordinal);
+            Assert.Contains("router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON, nowNs, __sink_0,", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -149,8 +187,56 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("mgr.PublishJson(\"/phase155/status\", \"foxglove.Log\"", source, StringComparison.Ordinal);
             Assert.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", source, StringComparison.Ordinal);
             Assert.Contains("var __sink_0 = __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
-            Assert.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0,", source, StringComparison.Ordinal);
+            Assert.Contains("router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON, nowNs, __sink_0,", source, StringComparison.Ordinal);
             Assert.Contains("\\\"message\\\"", source, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(FoxRunGenerationDescriptorConstants.JsonEncoding)]
+        [InlineData(FoxRunGenerationDescriptorConstants.ProtobufEncoding)]
+        [InlineData(FoxRunGenerationDescriptorConstants.InheritEncoding)]
+        [Trait("Phase", "185-F")]
+        public void NonMessagePackSinkSideChannelAlwaysExcludesTargetSinks(
+            string encoding)
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "CompatibleSinkTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "CompatibleSinkTelemetry",
+                        "_value",
+                        "field",
+                        "System.Int32",
+                        true,
+                        false,
+                        "",
+                        "/phase185f/compatible-sink",
+                        10f,
+                        "Demo.CompatibleSink",
+                        0,
+                        0f,
+                        "UnitTest",
+                        0,
+                        "",
+                        jsonFieldName: "value",
+                        encoding: encoding,
+                        typeShape:
+                            FoxRunTypeShape.Canonical("int32"))
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains(
+                "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0)",
+                source,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -245,8 +331,134 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("fields=samples:float32", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("fields=samples:float[]", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "|field|json=7#samples",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "|canonical=7#float32",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "|canonical=7#float[]",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "185-F")]
+        public void ContractFingerprintTracksCompleteShapeButNotDiscoveryOrder()
+        {
+            var baselineEnum = FoxRunTypeShape.Enum(
+                "Demo.Mode",
+                new[]
+                {
+                    new FoxRunEnumValue("Idle", 0),
+                    new FoxRunEnumValue("Active", 1)
+                });
+            var changedEnum = FoxRunTypeShape.Enum(
+                "Demo.Mode",
+                new[]
+                {
+                    new FoxRunEnumValue("Idle", 0),
+                    new FoxRunEnumValue("Active", 2)
+                });
+            var value = new FoxRunTypeField(
+                "value",
+                "Value",
+                FoxRunTypeShape.Canonical("int32"));
+            var optional = new FoxRunTypeField(
+                "optional",
+                "Optional",
+                FoxRunTypeShape.Canonical("int32"));
+            var nullableOptional = new FoxRunTypeField(
+                "optional",
+                "Optional",
+                FoxRunTypeShape.Canonical("int32", nullable: true),
+                isNullable: true);
+            var mode = new FoxRunTypeField("mode", "Mode", baselineEnum);
+            var changedMode = new FoxRunTypeField(
+                "mode",
+                "Mode",
+                changedEnum);
+            var baseline = FoxRunTypeShape.Object(
+                "Demo.Envelope",
+                new[] { value, optional, mode });
+            var reversedDiscovery = FoxRunTypeShape.Object(
+                "Demo.Envelope",
+                new[] { mode, optional, value });
+            var nullableChanged = FoxRunTypeShape.Object(
+                "Demo.Envelope",
+                new[] { value, nullableOptional, mode });
+            var enumChanged = FoxRunTypeShape.Object(
+                "Demo.Envelope",
+                new[] { value, optional, changedMode });
+
+            string Fingerprint(FoxRunTypeShape shape)
+            {
+                var member = new FoxgloveSourceEmitter.TopicMember(
+                    "_value",
+                    "Demo.Envelope",
+                    "/phase185f/contract",
+                    10f,
+                    "Demo.Envelope",
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    typeShape: shape);
+                return TopicMetadataEmitter.Sha256Hex(
+                    TopicMetadataEmitter.CanonicalTopicShape(
+                        member.Topic,
+                        member.SchemaName,
+                        FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                        new[] { member }));
+            }
+
+            Assert.Equal(
+                Fingerprint(baseline),
+                Fingerprint(reversedDiscovery));
+            Assert.NotEqual(
+                Fingerprint(baseline),
+                Fingerprint(nullableChanged));
+            Assert.NotEqual(
+                Fingerprint(baseline),
+                Fingerprint(enumChanged));
+
+            var alpha = new FoxgloveSourceEmitter.TopicMember(
+                "_alpha",
+                "System.Int32",
+                "/phase185f/top-level-order",
+                10f,
+                "Demo.TopLevel",
+                policy: 1,
+                tolerance: 0f,
+                jsonFieldName: "alpha",
+                canonicalType: "int32",
+                encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                typeShape: FoxRunTypeShape.Canonical("int32"));
+            var zeta = new FoxgloveSourceEmitter.TopicMember(
+                "_zeta",
+                "System.String",
+                "/phase185f/top-level-order",
+                10f,
+                "Demo.TopLevel",
+                policy: 1,
+                tolerance: 0f,
+                jsonFieldName: "zeta",
+                canonicalType: "string",
+                encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                typeShape: FoxRunTypeShape.Canonical("string"));
+
+            var ordered = TopicMetadataEmitter.CanonicalTopicShape(
+                alpha.Topic,
+                alpha.SchemaName,
+                alpha.Encoding,
+                new[] { alpha, zeta });
+            var reversed = TopicMetadataEmitter.CanonicalTopicShape(
+                alpha.Topic,
+                alpha.SchemaName,
+                alpha.Encoding,
+                new[] { zeta, alpha });
+
+            Assert.Equal(ordered, reversed);
         }
 
         [Fact]

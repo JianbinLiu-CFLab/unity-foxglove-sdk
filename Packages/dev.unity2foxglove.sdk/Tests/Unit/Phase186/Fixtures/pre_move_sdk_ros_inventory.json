@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "capturedFromHead": "b5388cb4051750939776d217208f467f37aa86c6",
+  "capturedTree": "4ef65eace86d0163c7ec0b75b21975ccfca95751",
+  "purpose": "Exact compact inventory of tracked SDK production assets that Phase186A must move, split, or delete.",
+  "scopes": [
+    {
+      "id": "bridge_runtime_tree",
+      "action": "move_to_bridge",
+      "prefixes": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge"
+      ],
+      "exactPaths": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge.meta"
+      ],
+      "pathCount": 36,
+      "pathDigestSha256": "aeac5eb30d61304fea11edde4593a0220afcb67aeec4033309dfb15968986b0d"
+    },
+    {
+      "id": "ros2msg_runtime_tree",
+      "action": "move_to_bridge",
+      "prefixes": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg"
+      ],
+      "exactPaths": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg.meta"
+      ],
+      "pathCount": 57,
+      "pathDigestSha256": "4a996525ec25e53810c561ca0817a1e8fbba17c304293a1cbbb59e545a6c6602"
+    },
+    {
+      "id": "bridge_editor_tree",
+      "action": "move_to_bridge",
+      "prefixes": [
+        "Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge"
+      ],
+      "exactPaths": [
+        "Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge.meta",
+        "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs",
+        "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs.meta"
+      ],
+      "pathCount": 7,
+      "pathDigestSha256": "eec005ad89e40d64339923536ef78fae800a00549baacc8eecd67f94750f583e"
+    },
+    {
+      "id": "bridge_manager_runtime",
+      "action": "delete_from_sdk",
+      "exactPaths": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.Ros2Bridge.cs",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.Ros2Bridge.cs.meta"
+      ],
+      "pathCount": 2,
+      "pathDigestSha256": "071e81b2c33c4645602ff0ce22710b3d824dd91f68610ae7d780f86eb25b8b34"
+    },
+    {
+      "id": "provider_generation_split",
+      "action": "split_between_providers",
+      "globs": [
+        "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/*Ros2*.cs*",
+        "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/*Ros2*.cs*",
+        "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/*Ros2*.cs*",
+        "Packages/dev.unity2foxglove.sdk/Editor/Shared/*Ros2*.cs*",
+        "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/*Ros2*.cs*"
+      ],
+      "pathCount": 42,
+      "pathDigestSha256": "525303cf340ae2f37a24c7e7aa43f232073fe23ded5e28bb2b2f8f9310bccaac"
+    },
+    {
+      "id": "r2fu_runtime_edge",
+      "action": "move_to_r2fu",
+      "globs": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2*.cs*",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/Ros2NativeOutputPolicy.cs*"
+      ],
+      "pathCount": 10,
+      "pathDigestSha256": "8bd0cf74c43d7a45af54e85331a80c2709f3f5e8d41af82dc4743ed062422e9e"
+    },
+    {
+      "id": "orphan_ros_proto_markers",
+      "action": "delete_from_sdk",
+      "exactPaths": [
+        "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Bridge.meta",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Msg.meta"
+      ],
+      "pathCount": 2,
+      "pathDigestSha256": "1655b4e819a5396194326d7ab7b61842b0f94242c85b279b228eab8a15ba8141"
+    }
+  ],
+  "totalPathCount": 156,
+  "totalPathDigestSha256": "72aa3286e017673725c8b62b25cf02acd6dc7f65466db13669623753da815517"
+}

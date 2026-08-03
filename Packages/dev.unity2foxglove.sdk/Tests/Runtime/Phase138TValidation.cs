@@ -129,14 +129,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("public event Action<SensorRawImageFrame> SensorRawImageReady;", StringComparison.Ordinal),
                 "138T-3B: FoxgloveCameraPublisher exposes SensorRawImageReady event");
-            Check(source.Contains("public bool IsStandardRos2RawImageOutput", StringComparison.Ordinal),
-                "138T-3C: FoxgloveCameraPublisher exposes raw output gate");
+            Check(source.Contains("public string SensorCameraRawImageTopic => ResolveSensorCameraRawImageTopic();", StringComparison.Ordinal),
+                "138T-3C: FoxgloveCameraPublisher exposes the ROS-free raw Provider topic");
             Check(source.Contains("private bool HasSensorRawImageDemand()", StringComparison.Ordinal),
                 "138T-3D: FoxgloveCameraPublisher checks raw demand with event presence");
             Check(source.Contains("private string ResolveSensorCameraRawImageTopic()", StringComparison.Ordinal),
                 "138T-3E: FoxgloveCameraPublisher resolves raw topic");
-            Check(source.Contains("_publishStandardRos2RawImage", StringComparison.Ordinal),
-                "138T-3F: FoxgloveCameraPublisher stores raw output flag");
+            Check(!source.Contains("_publishStandardRos2RawImage", StringComparison.Ordinal)
+                  && source.Contains("SensorRawImageReady != null", StringComparison.Ordinal),
+                "138T-3F: raw output demand is owned by the neutral event rather than a ROS flag");
             Check(source.Contains("_sensorCameraRawImageTopic", StringComparison.Ordinal),
                 "138T-3G: FoxgloveCameraPublisher stores raw topic override");
             Check(source.Contains("PublishRawFrame(", StringComparison.Ordinal),
@@ -145,17 +146,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "138T-3I: FoxgloveCameraPublisher logs raw bandwidth warning when raw output is active");
 
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
-            Check(editor.Contains("Publish Raw Image DDS", StringComparison.Ordinal)
-                  && editor.Contains("if (publishStandardRos2RawImage.boolValue)", StringComparison.Ordinal)
-                  && editor.Contains("Raw Image Topic", StringComparison.Ordinal),
-                "138T-3I2: Camera Inspector keeps raw image DDS opt-in and hides the raw topic until enabled");
-            Check(editor.Contains("DrawRos2OutputsSection", StringComparison.Ordinal)
-                  && editor.Contains("IsRos2CameraUiRelevant", StringComparison.Ordinal)
-                  && editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
-                  && editor.Contains("Publish CameraInfo DDS", StringComparison.Ordinal),
-                "138T-3I3: Camera Inspector hides ROS2 output controls unless ROS2 is relevant and groups CameraInfo with image DDS outputs");
-            Check(!editor.Contains("Sensor / ROS2", StringComparison.Ordinal),
-                "138T-3I4: Camera Inspector no longer exposes ROS2 wording in the default camera setup path");
+            Check(editor.Contains("\"Provider Payload\"", StringComparison.Ordinal)
+                  && !editor.Contains("Publish Raw Image DDS", StringComparison.Ordinal)
+                  && !editor.Contains("publishStandardRos2RawImage", StringComparison.Ordinal),
+                "138T-3I2: Camera Inspector exposes neutral Provider payload controls without DDS opt-ins");
+            Check(!editor.Contains("DrawRos2OutputsSection", StringComparison.Ordinal)
+                  && !editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
+                  && !editor.Contains("Publish CameraInfo DDS", StringComparison.Ordinal),
+                "138T-3I3: Camera Inspector leaves ROS-specific controls to optional Provider packages");
+            Check(!editor.Contains("ROS2", StringComparison.Ordinal)
+                  && !editor.Contains("DDS", StringComparison.Ordinal),
+                "138T-3I4: Camera Inspector contains no ROS2 or DDS wording");
 
             var resolverSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             Check(resolverSource.Contains("public static string ResolveRawImageTopic", StringComparison.Ordinal),
@@ -171,16 +172,16 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadCameraPublisherSources();
             var resolverSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
 
-            Check(source.Contains("var publishJpegFrame = publishWebSocket || publishBridge || publishNativeFrame;", StringComparison.Ordinal),
+            Check(source.Contains("var publishJpegFrame = publishWebSocket || publishProvider || publishNativeFrame;", StringComparison.Ordinal),
                 "138T-4A: camera publisher tracks JPEG demand separately from raw demand");
             Check(source.Contains("if (!publishJpegFrame)", StringComparison.Ordinal)
                   && source.Contains("PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);", StringComparison.Ordinal),
                 "138T-4B: raw-only camera readbacks publish raw frames without forcing JPEG encode");
-            Check(resolverSource.Contains("if (publishStandardRos2CompressedImage", StringComparison.Ordinal)
-                  && resolverSource.Contains("topic = ResolveCompressedImageTopic", StringComparison.Ordinal),
+            Check(resolverSource.Contains("if (string.IsNullOrWhiteSpace(topic) || topic == activeDefaultTopic)", StringComparison.Ordinal)
+                  && resolverSource.Contains("topic = ResolveCompressedImageTopic(profile, activeDefaultTopic);", StringComparison.Ordinal),
                 "138T-4C: raw-only profile defaults do not rewrite the compressed/WebSocket topic");
-            Check(resolverSource.Contains("if (publishStandardRos2RawImage", StringComparison.Ordinal)
-                  && resolverSource.Contains("rawTopic = ResolveRawImageTopic", StringComparison.Ordinal),
+            Check(resolverSource.Contains("if (string.IsNullOrWhiteSpace(rawTopic) || rawTopic == activeRawDefaultTopic)", StringComparison.Ordinal)
+                  && resolverSource.Contains("rawTopic = ResolveRawImageTopic(profile, activeRawDefaultTopic);", StringComparison.Ordinal),
                 "138T-4D: raw profile defaults are applied only to the raw topic");
         }
 

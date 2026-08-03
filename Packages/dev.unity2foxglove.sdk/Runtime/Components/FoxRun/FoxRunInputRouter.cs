@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using Unity.FoxgloveSDK.Schemas.MsgPack;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -48,10 +49,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
-        private FoxRunEndpoint _defaultSubscriptionSource =
-            FoxRunEndpoint.Foxglove;
-        private FoxRunEndpoint _defaultPublishTargets =
-            FoxRunEndpoint.Foxglove;
+        private string _defaultSubscribeTransportId =
+            FoxgloveWebSocketTransport.Id;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -62,35 +61,19 @@ namespace Unity.FoxgloveSDK.Components
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
 
-        /// <summary>Manager-resolved targets used to validate inherited full-duplex constraints.</summary>
-        public FoxRunEndpoint DefaultPublishTargets
+        /// <summary>Manager-resolved transport used when declarations inherit.</summary>
+        public string DefaultSubscribeTransportId
         {
             get
             {
                 lock (_gate)
-                    return _defaultPublishTargets;
+                    return _defaultSubscribeTransportId;
             }
             set
             {
-                value = FoxRunEndpointResolver.ValidateProfileTargets(value);
+                var id = new FoxRunTransportId(value);
                 lock (_gate)
-                    _defaultPublishTargets = value;
-            }
-        }
-
-        /// <summary>Manager-resolved source used only when later registrations omit Source.</summary>
-        public FoxRunEndpoint DefaultSubscriptionSource
-        {
-            get
-            {
-                lock (_gate)
-                    return _defaultSubscriptionSource;
-            }
-            set
-            {
-                value = FoxRunEndpointResolver.ValidateProfileSource(value);
-                lock (_gate)
-                    _defaultSubscriptionSource = value;
+                    _defaultSubscribeTransportId = id.Value;
             }
         }
 
@@ -120,6 +103,36 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             }
+        }
+
+        private static bool TryResolveWebSocketRegistration(
+            FoxgloveInputTopicInfo info,
+            string inheritedSubscribeTransportId,
+            FoxRunEncoding inheritedEncoding,
+            out FoxRunEncoding encoding)
+        {
+            encoding = (FoxRunEncoding)0;
+            if (!info.SupportsWebSocket)
+                return false;
+
+            var transportId = string.IsNullOrWhiteSpace(
+                info.SubscribeTransportId)
+                ? inheritedSubscribeTransportId
+                : info.SubscribeTransportId;
+            if (!string.Equals(
+                    transportId,
+                    FoxgloveWebSocketTransport.Id,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            encoding = info.HasExplicitEncoding
+                ? FoxRunEncodingResolver.ValidateProfileDefault(
+                    info.DeclaredEncoding)
+                : FoxRunEncodingResolver.ValidateProfileDefault(
+                    inheritedEncoding);
+            return true;
         }
 
         public void Register(
@@ -153,9 +166,16 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var ownedInputSource = source as IFoxgloveOwnedInputSource;
+            var transactionalSource = source as IFoxgloveTransactionalInputSource;
+            var transactionalOwnedInputSource =
+                source as IFoxgloveTransactionalOwnedInputSource;
             var firstUnavailableDiagnostic = string.Empty;
             var registrationError = string.Empty;
             var pending = new List<PendingRegistration>();
+            var requiredTransactionTopics = new HashSet<string>(StringComparer.Ordinal);
+            var frozenMaxPayloadBytes = Math.Max(1, MaxPayloadBytes);
+            var frozenReadLimits =
+                FoxgloveMsgPackReadLimits.ForPayloadBytes(frozenMaxPayloadBytes);
             var registrationOpened = false;
             ExceptionDispatchInfo failure = null;
             try
@@ -174,28 +194,27 @@ namespace Unity.FoxgloveSDK.Components
                             var info = topics[index];
                             if (string.IsNullOrWhiteSpace(info.Topic))
                                 continue;
-                            var topology = FoxRunEndpointResolver.Resolve(
-                                info.Mode,
-                                info.DeclaredSource,
-                                info.HasExplicitSource,
-                                info.DeclaredTargets,
-                                info.HasExplicitTargets,
-                                info.DeclaredEncoding,
-                                info.HasExplicitEncoding,
-                                _defaultSubscriptionSource,
-                                _defaultPublishTargets,
-                                publishDefaultEncoding: _defaultSubscriptionEncoding,
-                                subscribeDefaultEncoding: _defaultSubscriptionEncoding,
-                                info.HasExplicitQos);
-                            if (!topology.Success
-                                || topology.Topology.Source != FoxRunEndpoint.Foxglove
-                                || !info.SupportsWebSocket)
+                            if (!TryResolveWebSocketRegistration(
+                                    info,
+                                    _defaultSubscribeTransportId,
+                                    _defaultSubscriptionEncoding,
+                                    out var resolvedEncoding))
+                                continue;
+                            if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
+                                    source.GetType(),
+                                    info.Topic,
+                                    FoxRunFlow.Subscribe,
+                                    resolvedEncoding,
+                                    out _,
+                                    out var sessionDiagnostic))
                             {
-                                if (topology.DiagnosticCode == FoxRunEndpointDiagnosticCode.QosRequiresRos2
-                                    && string.IsNullOrEmpty(firstUnavailableDiagnostic))
-                                {
-                                    firstUnavailableDiagnostic = topology.DiagnosticMessage;
-                                }
+                                if (string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                                    firstUnavailableDiagnostic = sessionDiagnostic;
+                                continue;
+                            }
+                            if (resolvedEncoding == FoxRunEncoding.MessagePack)
+                            {
+                                requiredTransactionTopics.Add(info.Topic);
                                 continue;
                             }
                             pending.Add(new PendingRegistration(
@@ -208,7 +227,72 @@ namespace Unity.FoxgloveSDK.Components
                                     info.Mode,
                                     _defaultSubscriptionEncoding,
                                     info.IsStream,
+                                    isTransactional: false,
+                                    frozenMaxPayloadBytes,
+                                    frozenReadLimits,
                                     lifetime)));
+                        }
+
+                        if (transactionalSource != null)
+                        {
+                            var transactionCount = Math.Max(
+                                0,
+                                transactionalSource.FoxgloveInput_TransactionCount);
+                            for (var index = 0; index < transactionCount; index++)
+                            {
+                                var info =
+                                    transactionalSource.FoxgloveInput_GetTransaction(index);
+                                if (string.IsNullOrWhiteSpace(info.Topic))
+                                    continue;
+                                if (!TryResolveWebSocketRegistration(
+                                        info,
+                                        _defaultSubscribeTransportId,
+                                        _defaultSubscriptionEncoding,
+                                        out var resolvedEncoding)
+                                    || resolvedEncoding
+                                    != FoxRunEncoding.MessagePack)
+                                {
+                                    continue;
+                                }
+                                if (!FoxRunSchemaInfoRegistry.TryResolveSessionContract(
+                                        source.GetType(),
+                                        info.Topic,
+                                        FoxRunFlow.Subscribe,
+                                        FoxRunEncoding.MessagePack,
+                                        out _,
+                                        out var sessionDiagnostic))
+                                {
+                                    if (string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                                        firstUnavailableDiagnostic = sessionDiagnostic;
+                                    continue;
+                                }
+
+                                requiredTransactionTopics.Remove(info.Topic);
+                                pending.Add(new PendingRegistration(
+                                    info.Topic,
+                                    new Registration(
+                                        source,
+                                        index,
+                                        info.DeclaredEncoding,
+                                        info.HasExplicitEncoding,
+                                        info.Mode,
+                                        _defaultSubscriptionEncoding,
+                                        info.IsStream,
+                                        isTransactional: true,
+                                        frozenMaxPayloadBytes,
+                                        frozenReadLimits,
+                                        lifetime)));
+                                lifetime.RecordTransactionIndex(index);
+                            }
+                        }
+
+                        if (requiredTransactionTopics.Count > 0
+                            && string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                        {
+                            firstUnavailableDiagnostic =
+                                "FOXRUN619: Generated MessagePack transaction implementation is missing for topic '"
+                                + string.Join("', '", requiredTransactionTopics)
+                                + "'.";
                         }
                     }
                 }
@@ -218,6 +302,29 @@ namespace Unity.FoxgloveSDK.Components
                     var registration = pending[index].Registration;
                     if (!registration.IsStream)
                         continue;
+                    if (registration.IsTransactional)
+                    {
+                        if (transactionalOwnedInputSource == null)
+                        {
+                            registrationError =
+                                "MessagePack FoxRunStream transaction does not implement transactional owned-input cleanup.";
+                            break;
+                        }
+                        if (!transactionalOwnedInputSource
+                                .FoxgloveInput_TryAcquireTransactionalOwned(
+                                    registration.TopicIndex,
+                                    out var transactionalOwnedError))
+                        {
+                            registrationError =
+                                string.IsNullOrWhiteSpace(transactionalOwnedError)
+                                    ? "FoxRun transactional owned input source is not ready for registration."
+                                    : transactionalOwnedError;
+                            break;
+                        }
+                        lifetime.RecordOwnedTransactionIndex(
+                            registration.TopicIndex);
+                        continue;
+                    }
                     if (ownedInputSource == null)
                     {
                         registrationError =
@@ -249,7 +356,9 @@ namespace Unity.FoxgloveSDK.Components
                                     _registrations[item.Topic] = registrations = new List<Registration>();
                                 if (registrations.Exists(existing =>
                                         ReferenceEquals(existing.Source, source)
-                                        && existing.TopicIndex == item.Registration.TopicIndex))
+                                        && existing.TopicIndex == item.Registration.TopicIndex
+                                        && existing.IsTransactional
+                                        == item.Registration.IsTransactional))
                                 {
                                     continue;
                                 }
@@ -287,7 +396,11 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     try
                     {
-                        TeardownRegistrationLifetime(lifetime, ownedInputSource);
+                        TeardownRegistrationLifetime(
+                            lifetime,
+                            source as IFoxgloveTransactionalInputSource,
+                            ownedInputSource,
+                            transactionalOwnedInputSource);
                     }
                     catch (Exception exception)
                     {
@@ -317,12 +430,13 @@ namespace Unity.FoxgloveSDK.Components
                 if (lifetime == null)
                     return;
                 lifetime.Close();
-                RemoveSourceRegistrationsUnderLock(source);
             }
 
             TeardownRegistrationLifetime(
                 lifetime,
-                source as IFoxgloveOwnedInputSource);
+                source as IFoxgloveTransactionalInputSource,
+                source as IFoxgloveOwnedInputSource,
+                source as IFoxgloveTransactionalOwnedInputSource);
         }
 
         /// <summary>
@@ -407,6 +521,7 @@ namespace Unity.FoxgloveSDK.Components
             Registration[] registrations;
             var advertisedEncoding = encoding ?? string.Empty;
             var ordinaryRateAccepted = true;
+            payload ??= Array.Empty<byte>();
             lock (_gate)
             {
                 if (string.IsNullOrEmpty(topic)
@@ -418,17 +533,8 @@ namespace Unity.FoxgloveSDK.Components
                         "Topic is not in the generated FoxRun inbound allowlist.",
                         0);
                 }
-
-                payload ??= Array.Empty<byte>();
-                if (payload.Length > Math.Max(1, MaxPayloadBytes))
-                {
-                    return new FoxRunInputDispatchResult(
-                        FoxRunInputDispatchStatus.PayloadTooLarge,
-                        "Payload exceeds the FoxRun inbound byte limit.",
-                        0);
-                }
-
                 var hasMatchingEncoding = false;
+                var hasMatchingPayloadLimit = false;
                 var hasMatchingOrdinary = false;
                 var hasMatchingStream = false;
                 foreach (var registration in registrations)
@@ -436,6 +542,9 @@ namespace Unity.FoxgloveSDK.Components
                     if (string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
                     {
                         hasMatchingEncoding = true;
+                        if (payload.Length > registration.MaxPayloadBytes)
+                            continue;
+                        hasMatchingPayloadLimit = true;
                         if (registration.IsStream)
                             hasMatchingStream = true;
                         else
@@ -452,6 +561,13 @@ namespace Unity.FoxgloveSDK.Components
                             + "\" but client advertised \""
                             + advertisedEncoding
                             + "\".",
+                        0);
+                }
+                if (!hasMatchingPayloadLimit)
+                {
+                    return new FoxRunInputDispatchResult(
+                        FoxRunInputDispatchStatus.PayloadTooLarge,
+                        "Payload exceeds the frozen FoxRun session byte limit.",
                         0);
                 }
 
@@ -493,6 +609,13 @@ namespace Unity.FoxgloveSDK.Components
                         firstError = "Ordinary FoxRun input exceeded the per-topic rate limit.";
                     continue;
                 }
+                if (payload.Length > registration.MaxPayloadBytes)
+                {
+                    if (string.IsNullOrEmpty(firstError))
+                        firstError =
+                            "Payload exceeds the frozen FoxRun session byte limit.";
+                    continue;
+                }
 
                 try
                 {
@@ -500,11 +623,26 @@ namespace Unity.FoxgloveSDK.Components
                         continue;
                     try
                     {
-                        if (registration.Source.FoxgloveInput_TryStage(
+                        string error;
+                        bool accepted;
+                        if (registration.IsTransactional)
+                        {
+                            accepted = ((IFoxgloveTransactionalInputSource)registration.Source)
+                                .FoxgloveInput_TryStageTransaction(
+                                    registration.TopicIndex,
+                                    payload,
+                                    registration.ReadLimits,
+                                    out error);
+                        }
+                        else
+                        {
+                            accepted = registration.Source.FoxgloveInput_TryStage(
                                 registration.TopicIndex,
                                 payload,
                                 encoding,
-                                out var error))
+                                out error);
+                        }
+                        if (accepted)
                         {
                             staged++;
                         }
@@ -596,7 +734,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void TeardownRegistrationLifetime(
             RegistrationLifetime lifetime,
-            IFoxgloveOwnedInputSource ownedInputSource)
+            IFoxgloveTransactionalInputSource transactionalInputSource,
+            IFoxgloveOwnedInputSource ownedInputSource,
+            IFoxgloveTransactionalOwnedInputSource transactionalOwnedInputSource)
         {
             if (!lifetime.TryClaimCleanup())
             {
@@ -608,6 +748,21 @@ namespace Unity.FoxgloveSDK.Components
             {
                 lifetime.WaitForIdle();
                 ExceptionDispatchInfo failure = null;
+                if (transactionalInputSource != null)
+                {
+                    foreach (var transactionIndex in lifetime.TransactionIndices)
+                    {
+                        try
+                        {
+                            transactionalInputSource.FoxgloveInput_ClearTransaction(
+                                transactionIndex);
+                        }
+                        catch (Exception exception)
+                        {
+                            failure ??= ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
                 if (ownedInputSource != null)
                 {
                     foreach (var topicIndex in lifetime.OwnedTopicIndices)
@@ -622,13 +777,32 @@ namespace Unity.FoxgloveSDK.Components
                         }
                     }
                 }
+                if (transactionalOwnedInputSource != null)
+                {
+                    foreach (var transactionIndex in lifetime.OwnedTransactionIndices)
+                    {
+                        try
+                        {
+                            transactionalOwnedInputSource
+                                .FoxgloveInput_ClearTransactionalOwned(
+                                    transactionIndex);
+                        }
+                        catch (Exception exception)
+                        {
+                            failure ??= ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
                 failure?.Throw();
             }
             finally
             {
-                lifetime.CompleteCleanup();
                 lock (_gate)
+                {
+                    RemoveSourceRegistrationsUnderLock(lifetime.Source);
                     _registrationLifetimes.Remove(lifetime);
+                }
+                lifetime.CompleteCleanup();
             }
         }
 
@@ -655,6 +829,9 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunFlow mode,
                 FoxRunEncoding subscriptionDefault,
                 bool isStream,
+                bool isTransactional,
+                int maxPayloadBytes,
+                FoxgloveMsgPackReadLimits readLimits,
                 RegistrationLifetime lifetime)
             {
                 Source = source;
@@ -663,6 +840,10 @@ namespace Unity.FoxgloveSDK.Components
                 HasExplicitEncoding = hasExplicitEncoding;
                 Mode = mode;
                 IsStream = isStream;
+                IsTransactional = isTransactional;
+                MaxPayloadBytes = Math.Max(1, maxPayloadBytes);
+                ReadLimits = readLimits
+                             ?? throw new ArgumentNullException(nameof(readLimits));
                 Lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
                 Encoding = FoxRunEncodingResolver.ToProtocolEncoding(
                     hasExplicitEncoding
@@ -676,6 +857,9 @@ namespace Unity.FoxgloveSDK.Components
             public bool HasExplicitEncoding { get; }
             public FoxRunFlow Mode { get; }
             public bool IsStream { get; }
+            public bool IsTransactional { get; }
+            public int MaxPayloadBytes { get; }
+            public FoxgloveMsgPackReadLimits ReadLimits { get; }
             public RegistrationLifetime Lifetime { get; }
             public string Encoding { get; }
 
@@ -688,6 +872,9 @@ namespace Unity.FoxgloveSDK.Components
                     Mode,
                     subscriptionDefault,
                     IsStream,
+                    IsTransactional,
+                    MaxPayloadBytes,
+                    ReadLimits,
                     Lifetime);
         }
 
@@ -713,6 +900,8 @@ namespace Unity.FoxgloveSDK.Components
             private readonly ManualResetEventSlim _initialized = new ManualResetEventSlim();
             private readonly ManualResetEventSlim _cleanupComplete = new ManualResetEventSlim();
             private readonly List<int> _ownedTopicIndices = new List<int>();
+            private readonly List<int> _transactionIndices = new List<int>();
+            private readonly List<int> _ownedTransactionIndices = new List<int>();
             private int _state = InitializingState;
             private int _inFlight = 1;
             private int _cleanupClaimed;
@@ -722,6 +911,9 @@ namespace Unity.FoxgloveSDK.Components
 
             internal IFoxgloveInputSource Source { get; }
             internal IReadOnlyList<int> OwnedTopicIndices => _ownedTopicIndices;
+            internal IReadOnlyList<int> TransactionIndices => _transactionIndices;
+            internal IReadOnlyList<int> OwnedTransactionIndices =>
+                _ownedTransactionIndices;
             internal bool IsInitializing => Volatile.Read(ref _state) == InitializingState;
             internal bool IsOpen => Volatile.Read(ref _state) == OpenState;
 
@@ -750,6 +942,18 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (!_ownedTopicIndices.Contains(topicIndex))
                     _ownedTopicIndices.Add(topicIndex);
+            }
+
+            internal void RecordTransactionIndex(int transactionIndex)
+            {
+                if (!_transactionIndices.Contains(transactionIndex))
+                    _transactionIndices.Add(transactionIndex);
+            }
+
+            internal void RecordOwnedTransactionIndex(int transactionIndex)
+            {
+                if (!_ownedTransactionIndices.Contains(transactionIndex))
+                    _ownedTransactionIndices.Add(transactionIndex);
             }
 
             internal bool TryEnter()

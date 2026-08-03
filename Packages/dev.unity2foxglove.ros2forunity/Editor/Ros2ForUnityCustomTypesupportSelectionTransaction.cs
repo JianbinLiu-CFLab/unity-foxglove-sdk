@@ -12,6 +12,7 @@ using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
 {

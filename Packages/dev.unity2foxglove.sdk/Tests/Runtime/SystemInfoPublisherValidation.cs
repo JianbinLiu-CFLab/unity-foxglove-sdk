@@ -46,8 +46,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "145A-3: default topic is /sysinfo");
             checks.Check(source.Contains("SupportsProtobufEncoding => false", StringComparison.Ordinal),
                 "145A-4: publisher is not advertised as protobuf-capable");
-            checks.Check(source.Contains("SupportsRos2Encoding => false", StringComparison.Ordinal),
-                "145A-5: publisher is not advertised as ROS2-capable");
+            checks.Check(!source.Contains("SupportsRos2Encoding", StringComparison.Ordinal)
+                  && !source.Contains("Ros2", StringComparison.Ordinal)
+                  && !source.Contains("ROS2", StringComparison.Ordinal),
+                "145A-5: publisher carries no ROS-specific capability or authority");
             checks.Check(source.Contains("protected override void OnValidate()", StringComparison.Ordinal)
                   && source.Contains("base.OnValidate();", StringComparison.Ordinal),
                 "145A-6: publisher validates through the base publisher OnValidate override");

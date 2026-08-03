@@ -34,8 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             "ROS2Node",
             "IPublisher<",
             "ISubscription<",
-            "std_msgs",
-            "ros2cs"
+            "std_msgs"
         };
 
         private static int _passed;
@@ -105,7 +104,8 @@ namespace Unity.FoxgloveSDK.Tests
             var editorFiles = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories);
             var invalidFiles = editorFiles
                 .Where(path => !HasTextExtension(path)
-                               && !Path.GetExtension(path).Equals(".meta", StringComparison.OrdinalIgnoreCase))
+                               && !Path.GetExtension(path).Equals(".meta", StringComparison.OrdinalIgnoreCase)
+                               && !IsOwnedOptionalEditorAnalyzer(path))
                 .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
                 .ToList();
             var tokenHits = new List<string>();
@@ -124,7 +124,7 @@ namespace Unity.FoxgloveSDK.Tests
             var compileSymbolSurface = installerText + Environment.NewLine + selectionText;
 
             Check(invalidFiles.Count == 0,
-                "107-A8a: optional package Editor surface contains only text/meta files"
+                "107-A8a: optional package Editor surface contains only source, metadata, project, and owned analyzer files"
                 + (invalidFiles.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles) + ")"));
             Check(tokenHits.Count == 0,
                 "107-A8b: optional package Editor surface avoids forbidden runtime tokens"
@@ -445,6 +445,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsOptionalPackageRuntimeBinary(string path)
         {
+            if (IsOwnedOptionalEditorAnalyzer(path))
+                return false;
+
             if (!path.StartsWith(OptionalPackage + "/", StringComparison.Ordinal))
                 return false;
 
@@ -471,6 +474,21 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool IsExplicitRuntimePackagePath(string path)
             => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
+        private static bool IsOwnedOptionalEditorAnalyzer(string path)
+        {
+            var absolute = Path.IsPathRooted(path)
+                ? path
+                : Path.Combine(
+                    RepoRoot(),
+                    path.Replace('/', Path.DirectorySeparatorChar));
+            var relative = Path.GetRelativePath(RepoRoot(), absolute).Replace('\\', '/');
+            return relative.Equals(
+                OptionalPackage
+                + "/Editor/SourceGenerators/analyzers/dotnet/cs/"
+                + "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll",
+                StringComparison.Ordinal);
+        }
+
         private static JObject LoadJsonObject(string relativePath)
         {
             var text = ReadRepoText(relativePath);
@@ -483,6 +501,8 @@ namespace Unity.FoxgloveSDK.Tests
             return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".props", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
                    || extension.Equals(".xml", StringComparison.OrdinalIgnoreCase);
         }

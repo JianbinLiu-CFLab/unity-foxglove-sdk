@@ -1,0 +1,24 @@
+{
+  "name": "Unity2Foxglove.Ros2Bridge.Tests",
+  "rootNamespace": "Unity2Foxglove.Ros2Bridge.Tests",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Editor",
+    "Unity.FoxgloveSDK.Proto.Generated",
+    "Unity2Foxglove.Ros2Bridge",
+    "Unity2Foxglove.Ros2Bridge.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

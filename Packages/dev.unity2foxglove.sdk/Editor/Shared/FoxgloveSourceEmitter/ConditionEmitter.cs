@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Emits per-topic conditional publish gates for FoxRun members with
     /// <c>OnlyIf</c> attribute settings.
     /// </summary>
-    internal static class ConditionEmitter
+    public static class ConditionEmitter
     {
         internal static void EmitConditions(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Editor
             return parts.Count == 0 ? "true" : string.Join(" && ", parts);
         }
 
-        internal static string ConditionAccess(
+        public static string ConditionAccess(
             string conditionName,
             FoxRunConditionMemberKind memberKind)
         {

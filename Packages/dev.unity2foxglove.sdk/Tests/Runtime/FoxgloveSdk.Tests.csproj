@@ -8,7 +8,9 @@
     <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
+    <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">true</IncludeRos2Bridge>
     <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_R2FU_VALIDATION</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
@@ -30,9 +32,13 @@
     <Compile Include="../../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
     <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/Transport/*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
-    <Compile Include="../../Runtime/Components/Manager/Ros2NativeOutputPolicy.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2NativeOutputPolicy.cs"
+             Link="Ros2ForUnityRuntime/Native/Ros2NativeOutputPolicy.cs"
+             Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
@@ -41,7 +47,8 @@
     <Compile Include="../../Runtime/Protocol/**/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
-    <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/**/*.cs" LinkBase="Ros2BridgeRuntime" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Protocol/**/*.cs" LinkBase="Ros2BridgeProtocol" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <!-- Runtime/Sensors wildcard is intentionally broad; every Unity-dependent file must stay explicitly excluded here. -->
     <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;../../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
@@ -50,11 +57,14 @@
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Imu/*.cs" />
     <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackWriter.cs" />
-    <Compile Include="../../Runtime/Schemas/Ros2Msg/**/*.cs" />
+    <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackReader.cs" />
+    <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackReadLimits.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/**/*.cs" LinkBase="Ros2BridgeSchemas" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <!-- Runtime/Schemas/Proto wildcard is intentionally broad; Unity-facing publishers/builders must stay explicitly excluded. -->
     <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/Channels/**/*.cs;../../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;../../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;../../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;../../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/Builders/ImuMessageBuilder.cs" />
     <Compile Include="../../Runtime/Utilities/*.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Fixtures/FoxRunGenerationModelFixture.cs" />
     <Compile Include="ValidationCategory.cs" />
@@ -170,11 +180,19 @@
     <Compile Include="FoxRunManagerWirePolicyValidation.cs" />
     <Compile Include="FoxRunSubscribeDataValidation.cs" />
     <Compile Include="FoxRunWireHardeningValidation.cs" />
-    <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs" />
+    <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="DataTransportInspectorValidation.cs" />
-    <Compile Include="FoxRunCustomRos2InterfaceValidation.cs" />
+    <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="FoxRunDeclarationModelValidation.cs" />
     <Compile Include="FoxRunProfileModelValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublicContractValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublishFanoutValidation.cs" />
+    <Compile Include="FoxRunMessagePackBoundedInputValidation.cs" />
+    <Compile Include="FoxRunMessagePackDuplexToolingValidation.cs" />
+    <Compile Include="FoxRunMessagePackArtifactAcceptanceValidation.cs" />
+    <Compile Include="Ros2BridgeBidirectionalValidation.cs" />
     <Compile Include="Phase163_2Validation.cs" />
     <Compile Include="Phase163_3Validation.cs" />
     <Compile Include="Phase163_4Validation.cs" />
@@ -436,7 +454,7 @@
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
-    <Compile Include="../../Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityEditor/FoxRun" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
@@ -456,7 +474,7 @@
       <_Phase179InboundBackend Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityFoxRunInboundBackend'" />
       <_Phase179InboundDiagnostics Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionDiagnostics'" />
       <_Phase179CompileStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeCompileStubs'" />
-      <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
+      <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and '%(Compile.Filename)' != 'Ros2NativeOutputPolicy' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
     </ItemGroup>
     <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
     <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179InboundHub)' == '' or '@(_Phase179InboundBackend)' == '' or '@(_Phase179InboundDiagnostics)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />

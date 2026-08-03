@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Camera
-// Purpose: Core-SDK camera calibration DTO for optional native ROS2 adapters.
+// Purpose: Core-SDK camera calibration DTO for optional transport Providers.
 
 using System;
 using System.Collections.Generic;

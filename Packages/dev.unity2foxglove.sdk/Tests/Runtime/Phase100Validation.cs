@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -47,22 +47,28 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeRuntimeHardening()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
-            Check(source.Contains("sinkToClose = _sink")
-                  && source.Contains("_sink = null")
-                  && source.Contains("CloseSink(sinkToClose)")
-                  && source.Contains("Math.Max(1000, _sendTimeoutMs + 250)")
-                  && source.Contains("worker.Join(joinTimeoutMs)"),
-                "100A-1: Stop closes the sink before bounded worker join to unblock blocking sends");
-            Check(source.Contains("_stopRequested || !_enabled") && source.Contains("CloseSink(sink)") && source.Contains("return false"),
-                "100A-2: EnsureConnected closes late-connected sink when stop/disable wins");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
+            Check(source.Contains("DisconnectSink(_ownedSink)")
+                  && source.Contains("_signal.Set()")
+                  && source.Contains("worker.Join(joinTimeoutMs)")
+                  && source.Contains("TryRetireAfterTimeout()")
+                  && source.Contains("TryConvertToRetired("),
+                "100A-1: Stop wakes I/O before bounded join and transfers the pre-reserved lease on timeout");
+            Check(source.Contains("_stopRequested || !_enabled")
+                  && source.Contains("_ownedSink.Connect(")
+                  && source.Contains("DisposeResources()")
+                  && source.Contains("return false"),
+                "100A-2: late Connect observes stopped admission while final sink disposal stays with the worker lease");
             Check(source.Contains("catch (ObjectDisposedException) when (ShouldStop("),
                 "100A-3: worker loop treats shutdown disposal as clean exit");
             Check(source.Contains("catch (Exception ex)") && source.Contains("MarkFailure(ex.Message, disconnect: true)")
                   && source.Contains("countFrameFailure: false"),
                 "100A-4: worker loop has a top-level failure guard");
-            Check(source.Contains("auto-connect is disabled") && source.Contains("return false"),
-                "100A-5: autoConnect=false sends fail clearly instead of queuing into an idle runtime");
+            Check(shell.Contains("if (!enabled || !autoConnect)")
+                  && shell.Contains("ROS2 Bridge runtime is not ready.")
+                  && shell.Contains("return false"),
+                "100A-5: autoConnect=false creates no worker and sends fail clearly");
         }
 
         private static void VerifyPointCloudDemandCaching()
@@ -76,8 +82,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && state.Contains("SetPreparedDemand")
                   && state.Contains("ClearPreparedDemand"),
                 "100B-1: point-cloud publisher caches demand for one prepared frame");
-            Check(source.Contains("TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge)"),
-                "100B-2: raw/Draco helpers reuse cached demand when called from Update/PublishFrame");
+            Check(source.Contains("TryGetPreparedPublishDemand(out var publishWebSocket, out var publishProvider)"),
+                "100B-2: raw/Draco helpers reuse cached Provider demand when called from Update/PublishFrame");
             Check(source.Contains("protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)"),
                 "100B-3: protected PublishPreparedFrame signature remains compatible");
         }
@@ -151,13 +157,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeFrameImmutabilityDecision()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             Check(source.Contains("private readonly byte[] _payload")
+                  && source.Contains("private readonly int _payloadOffset")
+                  && source.Contains("private readonly int _payloadLength")
                   && source.Contains("clonePayload ? (byte[])payload.Clone() : payload")
                   && source.Contains("internal static Ros2BridgeFrame CreateOwned")
-                  && source.Contains("public byte[] Payload => (byte[])_payload.Clone()"),
+                  && source.Contains("internal static Ros2BridgeFrame CreateWireOwnedView")
+                  && source.Contains("public ReadOnlyMemory<byte> PayloadMemory")
+                  && source.Contains("public byte[] Payload => PayloadMemory.ToArray()"),
                 "100F-1: bridge frame keeps public defensive payload copies while allowing internal owned payload transfer");
-            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
             Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(destination)")
                   && !writer.Contains("stream.Write(frame.Payload"),
                 "100F-2: bridge writer serializes the owned payload snapshot without using the public clone");

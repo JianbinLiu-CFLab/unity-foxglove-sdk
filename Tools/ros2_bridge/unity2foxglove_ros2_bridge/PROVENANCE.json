@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "ledgerPath": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json",
+  "reference": {
+    "repository": "https://github.com/Unity-Technologies/ROS-TCP-Connector.git",
+    "origin": "https://github.com/Unity-Technologies/ROS-TCP-Connector.git",
+    "revision": "c27f00c6cf750d2d0564349b3039d19aa3925e7c",
+    "tree": "183ee0c7888b39e7278b24992e288a6c7555f39d",
+    "commitDate": "2022-02-02T09:25:06-08:00",
+    "subject": "Release 0.7.0",
+    "license": "Apache-2.0",
+    "licenseFile": "LICENSE",
+    "licenseSha256": "2e21a5b872a2cdfec6f89db4c93be2867e05b481e77b9c4a6af1caf813129fb0",
+    "inspectedFiles": [
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/ROSConnection.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/OutgoingMessageSender.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/MessagePool.cs",
+      "com.unity.robotics.ros-tcp-connector/Runtime/TcpConnector/TopicMessageSender.cs",
+      "com.unity.robotics.ros-tcp-connector/Editor/MessageGeneration/MessageParser.cs"
+    ],
+    "ideasReviewed": [
+      "one component owns a connection lifecycle",
+      "outbound work crosses a bounded sender boundary",
+      "payload ownership can be pooled explicitly",
+      "topic routing has a stable per-topic sender identity",
+      "code generation separates parsing from emitted artifacts"
+    ],
+    "materialCopied": false
+  },
+  "introducedSourceCommits": [
+    {
+      "revision": "c66a694a1e2a1a229598837a5d593d71e93b2c86",
+      "subject": "test(186b): define cross-language U2R2 v2 authority",
+      "sourceCount": 6
+    },
+    {
+      "revision": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
+      "subject": "fix(186b): enforce U2R2 replay and ordering bounds",
+      "sourceCount": 8
+    }
+  ],
+  "v1Compatibility": {
+    "capturedFromHead": "3fe4fc32460762963175b2dd9f9558ca964fd81d",
+    "fixturePath": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json",
+    "topLevelKeys": [
+      "fixtureVersion",
+      "protocol",
+      "limits",
+      "health",
+      "preparePublisher",
+      "publish",
+      "negativeVectors"
+    ],
+    "canonicalSha256": "de79b8f992261a80b838589ce8660ce6a6a49b824c5e98015d1e63e958b55586"
+  },
+  "implementations": [
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
+      "sha256": "1965fc38f1e9c075c68f6e62298f8a76d87bb1e0488db0ca521d51b076ef61ed",
+      "classification": "original",
+      "influence": "Original package-facing protocol, limits, compatibility, and clean-room documentation."
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
+      "sha256": "3081ab330d186d184859187a548415bb6acbb2b83e18c69b03b247c26afea517",
+      "classification": "original",
+      "influence": "Original C# contract identity and ordering authority.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2OutboundAuthority.cs",
+      "sha256": "7ba827999ddcf6561fb8064b4fafdff999d7478a096e55b360dd8118b4ac0c69",
+      "classification": "original",
+      "influence": "Original C# bounded outbound scheduling authority.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
+      "sha256": "1edbb788c63196b782b889e85981482a51f49a295abea00dbafb5e72ff662e72",
+      "classification": "original",
+      "influence": "Original strict C# U2R2 v2 frame codec.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
+      "sha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
+      "classification": "original",
+      "influence": "Original immutable C# protocol limit snapshot.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolModel.cs",
+      "sha256": "feba4fd497d9ad9761cf81b51969c4648d6718c1bb07d494b1a529fa64a87cc9",
+      "classification": "original",
+      "influence": "Original C# U2R2 v2 protocol and error model.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ReplayAuthority.cs",
+      "sha256": "12e2ef23ca4910c3ff6f3d6a0c8c728d30338dcf20f8888769672ef9001ce6c2",
+      "classification": "original",
+      "influence": "Original C# request replay and correlation authority.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
+      "sha256": "46ecbd1b0906bb89f9dffced4abf6c423e35a683a1ed628b03564498474f5183",
+      "classification": "original",
+      "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
+      "sha256": "12eb7205c766e9f1973572707b27e7170bdb7bb27a4b2944c748a728a3bec280",
+      "classification": "original",
+      "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_sdk_ros_inventory.json",
+      "sha256": "cc9e3859f323595610ba2e8a59eb4166e50de02a5edf028fe3618e76079dcbd7",
+      "classification": "original",
+      "influence": "Original immutable Git-tree inventory of the pre-extraction SDK ROS ownership surface."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance.py",
+      "sha256": "edeb862b919ba4147de58c3699aa308177205628501437810ba284d4fe56f36a",
+      "classification": "original",
+      "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance.py",
+      "sha256": "7c090f3182c74abb5f9211d7813939645bf2bc942bde73f3bac23f04705317f5",
+      "classification": "original",
+      "influence": "Original negative and repository integration tests for the provenance gate."
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",
+      "sha256": "0a543ca57641c63c2978f8bc7303fc39149db9b10c8347296beb99965bff3cf3",
+      "classification": "original",
+      "influence": "Original sidecar protocol, limits, compatibility, and clean-room documentation."
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol.hpp",
+      "sha256": "254f10251129100e9351adb8e593ba9417a5869fa5b0ee66d615f1e0c9e9ae19",
+      "classification": "original",
+      "influence": "Original strict C++ U2R2 v2 protocol declarations.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp",
+      "sha256": "4d4581afaa6bb7d11b15b37acdca11ef715bbd86aae1d79444010f19b6394611",
+      "classification": "original",
+      "influence": "Original C++ replay, ordering, queue, limit, and contract authority declarations.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol.cpp",
+      "sha256": "122049491bfa112378915653af73a454d9436edb6bd8a7526c73b0197d0c2176",
+      "classification": "original",
+      "influence": "Original strict C++ U2R2 v2 protocol implementation.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
+      "sha256": "7cb016b14a1ab63cdbb28d76688e0e95d0b894e566873b162eaf4b7708636e25",
+      "classification": "original",
+      "influence": "Original C++ replay, ordering, queue, limit, and contract authority implementation.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json",
+      "sha256": "fcd39ccda5759817d854a9ea5ab5214a22b362e5e7653bfeb8deb8dc7544edfd",
+      "classification": "original",
+      "influence": "Original shared v1 compatibility and v2 byte/state authority fixture."
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
+      "sha256": "5d8476f86eb54661c8b54cf4e2f0e28ca1092680842fb64d8b4f46fbd65216c4",
+      "classification": "original",
+      "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
+      "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority.cpp",
+      "sha256": "67f7bc94a6ca76d23eedb3b5cef732d6f1c9750ebda529307f13b7079e92a98b",
+      "classification": "original",
+      "influence": "Original C++ behavioral coverage for replay, ordering, queues, limits, and contracts.",
+      "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    }
+  ]
+}

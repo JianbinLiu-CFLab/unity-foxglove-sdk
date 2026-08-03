@@ -76,8 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySourceWiring()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            Check(validator.Contains("Error(\"FOXRUN008\"", StringComparison.Ordinal),
-                "134-17-D1: invalid topic diagnostic is modeled as an error");
+            Check(validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic is required.\")", StringComparison.Ordinal)
+                  && validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic must be absolute and start with '/'.\")", StringComparison.Ordinal)
+                  && !validator.Contains("AddError(diagnostics, \"FOXRUN001\", member", StringComparison.Ordinal),
+                "134-17-D1: blank and relative topic diagnostics use the mapped FOXRUN008 error");
 
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(sourceGenerator.Contains("\"FOXRUN008\", \"FoxRun topic must be absolute\"", StringComparison.Ordinal)
@@ -193,7 +195,10 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         onlyIf: "isReady",
                         isAggregateMember: true,
-                        jsonFieldName: "values")
+                        jsonFieldName: "values",
+                        typeShape: FoxRunTypeShape.Collection(
+                            FoxRunCollectionKind.Array,
+                            FoxRunTypeShape.Canonical("float32")))
                 })
             });
 
@@ -205,6 +210,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(member.Value<float>("hz") == 10f
                   && member.Value<float>("tolerance") == 0f,
                 "134-17-F2: descriptor JSON writes finite values and resolves the default publish rate");
+            Check(Member("Demo", "RateProbe", "zero", "/rate/zero", "float", 0f).Hz == 10f
+                  && Member("Demo", "RateProbe", "negative", "/rate/negative", "float", -2f).Hz == 10f
+                  && Member("Demo", "RateProbe", "nonFinite", "/rate/nonfinite", "float", float.NegativeInfinity).Hz == 10f
+                  && Member("Demo", "RateProbe", "positive", "/rate/positive", "float", 25f).Hz == 25f,
+                "134-17-F2B: generation model preserves default cadence fallback for non-positive and non-finite rates");
 
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, reread);
@@ -242,7 +252,8 @@ namespace Unity.FoxgloveSDK.Tests
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
                         (int)FoxRunPolicy.FixedRate, 0f, "Test", 0, string.Empty,
-                        mode: (int)FoxRunFlow.Subscribe)
+                        mode: (int)FoxRunFlow.Subscribe,
+                        typeShape: FoxRunTypeShape.Canonical("float32"))
                 })
             });
             var inboundJson = FoxRunGenerationDescriptorJsonWriter.Write(inboundModel);
@@ -416,13 +427,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             CheckThrows<ArgumentException>(() => new Unity2FoxgloveSdkTypedPublishersSection(
                     2,
-                    new[] { new Unity2FoxgloveSdkTypedPublisherEntry("Publisher", "typed", "family", "/topic", "foxglove.Log", "", true, true, false, false, false, string.Empty) }),
+                    new[] { new Unity2FoxgloveSdkTypedPublisherEntry("Publisher", "typed", "family", "/topic", "foxglove.Log", true, true, false, false, string.Empty) }),
                 "134-17-H2: SDK typed publishers section validates entryCount consistency");
 
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
             Check(builder.Contains("entry.SupportsJson || entry.SupportsProtobuf", StringComparison.Ordinal)
-                  && builder.Contains("entry.SupportsRos2", StringComparison.Ordinal),
-                "134-17-H3: schema manifest builder validates supports flags against schema names");
+                  && builder.Contains("entry.FoxgloveSchemaName", StringComparison.Ordinal)
+                  && !builder.Contains("SupportsRos2", StringComparison.Ordinal),
+                "134-17-H3: schema manifest builder validates neutral encoding flags against schema names");
 
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestWriter.cs");
             Check(writer.Contains("FileContentEquals", StringComparison.Ordinal)
@@ -486,7 +498,8 @@ namespace Unity.FoxgloveSDK.Tests
             string className,
             string memberName,
             string topic,
-            string typeName)
+            string typeName,
+            float hz = 1f)
         {
             return new FoxRunGenerationMember(
                 ns,
@@ -498,7 +511,7 @@ namespace Unity.FoxgloveSDK.Tests
                 false,
                 string.Empty,
                 topic,
-                1f,
+                hz,
                 string.Empty,
                 (int)FoxRunPolicy.FixedRate,
                 0f,

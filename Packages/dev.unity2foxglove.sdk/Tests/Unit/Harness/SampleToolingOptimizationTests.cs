@@ -41,17 +41,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Ros2BridgeSampleStatusFormatsOnlyChange()
+        public void Ros2BridgeProviderSampleStatusFormatsOnlyChange()
         {
-            var controller = TestSources.Text("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
+            var controller = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs");
             var update = TestSources.Slice(controller, "private void Update()", "    private void UpdateStatusIfChanged");
 
-            Assert.Contains("private bool _lastRos2BridgeEnabled;", controller, StringComparison.Ordinal);
+            Assert.Contains("private bool _lastProviderEnabled;", controller, StringComparison.Ordinal);
             Assert.Contains("private bool _hasStatusSnapshot;", controller, StringComparison.Ordinal);
-            Assert.Contains("private void UpdateStatusIfChanged(Ros2BridgeStatsSnapshot stats, bool ros2BridgeEnabled)", controller, StringComparison.Ordinal);
-            Assert.Contains("UpdateStatusIfChanged(stats, _manager.Ros2BridgeEnabled);", update, StringComparison.Ordinal);
-            Assert.Contains("_status = $\"ROS2 Bridge", controller, StringComparison.Ordinal);
-            Assert.DoesNotContain("_status = $\"ROS2 Bridge", update, StringComparison.Ordinal);
+            Assert.Contains("private void UpdateStatusIfChanged(Ros2BridgeStatsSnapshot stats, bool providerEnabled)", controller, StringComparison.Ordinal);
+            Assert.Contains("UpdateStatusIfChanged(stats, _provider.isActiveAndEnabled);", update, StringComparison.Ordinal);
+            Assert.Contains("_status = $\"ROS2 Bridge Provider", controller, StringComparison.Ordinal);
+            Assert.DoesNotContain("_status = $\"ROS2 Bridge Provider", update, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -320,8 +320,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("return data.decode(\"utf-8\").replace(\"\\r\\n\", \"\\n\").replace(\"\\r\", \"\\n\")", catalog, StringComparison.Ordinal);
             Assert.Contains("local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}", catalog, StringComparison.Ordinal);
             Assert.Contains("tree_sha = source_tree_sha(files, file_bytes)", catalog, StringComparison.Ordinal);
-            Assert.Contains("source_sha = hashlib.sha256(file_bytes[path]).hexdigest()", catalog, StringComparison.Ordinal);
-            Assert.Contains("sha.update(file_bytes[path])", sourceTreeSha, StringComparison.Ordinal);
+            Assert.Contains("source_sha = source_file_sha(file_bytes[path])", catalog, StringComparison.Ordinal);
+            Assert.Contains("sha.update(canonical_source_bytes(file_bytes[path]))", sourceTreeSha, StringComparison.Ordinal);
             Assert.DoesNotContain("path.read_text", generate, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(generate, "path.read_bytes()"));
             Assert.Equal(openh264, packageOpenh264);

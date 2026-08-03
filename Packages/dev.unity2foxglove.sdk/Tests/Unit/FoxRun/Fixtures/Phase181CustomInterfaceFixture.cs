@@ -5,6 +5,7 @@
 
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
 {
@@ -14,9 +15,13 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
             "/phase181/custom_state",
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
-            Source = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default,
-            Reliability = FoxRunQosReliability.Reliable)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            PublishTransportIds = new[]
+            {
+                FoxgloveWebSocketTransport.Id
+            },
+            Reliability = FoxRunDeliveryReliability.Reliable)]
         public Phase181State State { get; set; }
     }
 

@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyManagerEditorCachesSerializedPropertiesAndUrls();
             VerifyManagerEditorCachesRuntimeSnapshotsPerRepaint();
-            VerifyR2fuSelectorReflectionIsCached();
+            VerifyR2fuProviderOwnsSelectorDirectly();
             VerifyMcapInspectorUsesCachedPropertiesAndUrls();
             VerifyPointCloudEditorCachesSerializedProperties();
             VerifyRegistry();
@@ -85,29 +85,74 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-25B-4: FoxService inspector snapshots are cached per hub and repaint frame");
         }
 
-        private static void VerifyR2fuSelectorReflectionIsCached()
+        private static void VerifyR2fuProviderOwnsSelectorDirectly()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
-            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var draw = PhaseValidationSourceHelpers.SourceMethod(source, "private void DrawOptionalR2fuRuntimeSelector");
-            var resolve = PhaseValidationSourceHelpers.SourceMethod(source, "private static MethodInfo ResolveR2fuRuntimeSelectorDrawMethod");
-            var reset = PhaseValidationSourceHelpers.SourceMethod(source, "private static void ResetOptionalR2fuRuntimeSelectorCache");
+            var source = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityManagerSetupDrawer.cs");
+            var providerDrawer = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs");
+            var asmdef = Read(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
+            var manager = Read(
+                "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var coreManagerSources =
+                PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
 
-            Check(source.Contains("private static bool _r2fuRuntimeSelectorResolved;", StringComparison.Ordinal)
-                  && source.Contains("private static MethodInfo _r2fuRuntimeSelectorDrawMethod;", StringComparison.Ordinal),
-                "164-25C-1: optional R2FU selector reflection result is stored in static cache fields");
-            Check(draw.Contains("var drawMethod = ResolveR2fuRuntimeSelectorDrawMethod();", StringComparison.Ordinal)
-                  && !draw.Contains("Type.GetType", StringComparison.Ordinal)
-                  && !draw.Contains("GetMethod", StringComparison.Ordinal),
-                "164-25C-2: R2FU selector drawing does not resolve reflection every repaint");
-            Check(resolve.Contains("if (_r2fuRuntimeSelectorResolved)", StringComparison.Ordinal)
-                  && resolve.Contains("System.Type.GetType", StringComparison.Ordinal)
-                  && resolve.Contains("GetMethod", StringComparison.Ordinal),
-                "164-25C-3: R2FU selector resolver performs reflection once and reuses the result");
-            Check(editor.Contains("AssemblyReloadEvents.beforeAssemblyReload += ResetOptionalR2fuRuntimeSelectorCache;", StringComparison.Ordinal)
-                  && reset.Contains("_r2fuRuntimeSelectorResolved = false;", StringComparison.Ordinal)
-                  && reset.Contains("_r2fuRuntimeSelectorDrawMethod = null;", StringComparison.Ordinal),
-                "164-25C-4: R2FU selector reflection cache resets before assembly reload");
+            Check(source.Contains("IFoxRunManagerSetupDrawer", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCount(
+                          source,
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Register") == 1
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          manager,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Capture") == 1
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          manager,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "setupDrawer",
+                          "Draw") == 1,
+                "164-25C-1: the R2FU selector is hosted by one domain-registered Manager setup drawer");
+            Check(PhaseValidationSourceHelpers
+                      .InvocationCountInMethod(
+                          source,
+                          "Draw",
+                          "DrawActiveRuntimeSelector") == 1
+                  && PhaseValidationSourceHelpers
+                      .InvocationCount(
+                          source,
+                          "DrawActiveRuntimeSelector") == 1
+                  && PhaseValidationSourceHelpers
+                      .InvocationCount(
+                          providerDrawer,
+                          "DrawActiveRuntimeSelector") == 0
+                  && !source.Contains("Type.GetType", StringComparison.Ordinal)
+                  && !source.Contains("GetMethod", StringComparison.Ordinal),
+                "164-25C-2: the unconstrained setup drawer invokes the R2FU selector exactly once with no native-drawer duplicate");
+            Check(asmdef.Contains(
+                      "\"name\": \"Unity2Foxglove.Ros2ForUnity.Editor\"",
+                      StringComparison.Ordinal)
+                  && asmdef.Contains(
+                      "\"Unity.FoxgloveSDK.Editor\"",
+                      StringComparison.Ordinal)
+                  && asmdef.Contains(
+                      "\"defineConstraints\": []",
+                      StringComparison.Ordinal),
+                "164-25C-3: the unconstrained R2FU Editor assembly declares its generic Manager-editor dependency");
+            Check(!coreManagerSources.Contains(
+                      "Unity2Foxglove.Ros2ForUnity",
+                      StringComparison.Ordinal)
+                  && !coreManagerSources.Contains(
+                      "_r2fuRuntimeSelectorDrawMethod",
+                      StringComparison.Ordinal)
+                  && !coreManagerSources.Contains(
+                      "ResolveR2fuRuntimeSelectorDrawMethod",
+                      StringComparison.Ordinal),
+                "164-25C-4: the core Manager editor owns no optional R2FU reflection cache after Provider extraction");
         }
 
         private static void VerifyMcapInspectorUsesCachedPropertiesAndUrls()
@@ -146,8 +191,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(onEnable.Contains("_topic = serializedObject.FindProperty(\"_topic\");", StringComparison.Ordinal)
                   && onEnable.Contains("_publishRateSource = serializedObject.FindProperty(\"_publishRateSource\");", StringComparison.Ordinal)
-                  && onEnable.Contains("_bridgeOutput = serializedObject.FindProperty(\"_ros2BridgeOutput\");", StringComparison.Ordinal),
-                "164-25E-1: point-cloud editor caches serialized properties in OnEnable");
+                  && onEnable.Contains("_encodingOverride = serializedObject.FindProperty(\"_encodingOverride\");", StringComparison.Ordinal)
+                  && !source.Contains("_ros2BridgeOutput", StringComparison.Ordinal),
+                "164-25E-1: point-cloud editor caches provider-neutral serialized properties in OnEnable");
             Check(gui.Contains("DrawOutputModeSection(_outputMode, _topic);", StringComparison.Ordinal)
                   && general.Contains("DrawProperty(_manager, \"Manager\");", StringComparison.Ordinal)
                   && drawProperty.Contains("if (property != null)", StringComparison.Ordinal),

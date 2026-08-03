@@ -23,8 +23,8 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectionDetectsZenohAcrossPluginLayouts();
             RuntimeSelectorInspectorAvoidsFalseSelectionAndExtraManifestReads();
             PlayModeGuardClearsCompilationState();
-            Ros2SinkTeardownIsObservableAndDisposeIsTerminal();
-            OptionalSelectorReflectionMatchesAsmdef();
+            ProviderTeardownIsObservableAndSessionDisposeIsTerminal();
+            ProviderSelectorDependencyMatchesAsmdef();
             PhaseWiringIsPresent();
 
             Console.WriteLine($"Phase 163-27: {_passed} checks passed.");
@@ -42,10 +42,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && selection.Contains("SerializeManifest", StringComparison.Ordinal)
                   && !selection.Contains("string.Join(Environment.NewLine, lines)", StringComparison.Ordinal),
                 "163-27A-2: runtime package switching preserves manifest line endings after JSON serialization");
-            Check(selection.Contains("ApplyCommunicationModeEnvironment(projectDirectory);", StringComparison.Ordinal)
-                  && selection.IndexOf("ApplyCommunicationModeEnvironment(projectDirectory);", StringComparison.Ordinal)
-                     < selection.IndexOf("Client.Resolve();", StringComparison.Ordinal),
-                "163-27A-3: runtime package switching immediately refreshes RMW_IMPLEMENTATION before package resolve");
+            var resolveIndex = selection.IndexOf("resolve: () => Client.Resolve()", StringComparison.Ordinal);
+            var invalidateIndex = selection.IndexOf("InvalidateStatusCache();", resolveIndex, StringComparison.Ordinal);
+            var environmentIndex = selection.IndexOf(
+                "ApplyCommunicationModeEnvironment(projectDirectory);",
+                invalidateIndex,
+                StringComparison.Ordinal);
+            Check(resolveIndex >= 0
+                  && invalidateIndex > resolveIndex
+                  && environmentIndex > invalidateIndex,
+                "163-27A-3: runtime package switching resolves the transaction, invalidates cached selection, then refreshes RMW_IMPLEMENTATION");
         }
 
         private static void RuntimeSelectionDetectsZenohAcrossPluginLayouts()
@@ -97,34 +103,82 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-27D-3: play-mode guard releases editor reload lock after R2FU Play Mode exits");
         }
 
-        private static void Ros2SinkTeardownIsObservableAndDisposeIsTerminal()
+        private static void ProviderTeardownIsObservableAndSessionDisposeIsTerminal()
         {
-            var sink = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
-            var bootstrap = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2TopicSinkBootstrap.cs");
+            var publisherHub = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs");
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
 
-            Check(sink.Contains("ROS2 publisher teardown failed", StringComparison.Ordinal)
-                  && sink.Contains("ROS2 node teardown failed", StringComparison.Ordinal)
-                  && sink.Contains("ex.GetType().Name + \": \" + ex.Message", StringComparison.Ordinal),
-                "163-27E-1: ROS2 topic sink logs best-effort teardown exceptions before swallowing them");
-            Check(bootstrap.Contains("throw new ObjectDisposedException(nameof(Ros2TopicSinkBootstrap))", StringComparison.Ordinal)
-                  && bootstrap.Contains("private bool _disposed", StringComparison.Ordinal)
-                  && bootstrap.Contains("public void Dispose()", StringComparison.Ordinal),
-                "163-27E-2: ROS2 topic sink bootstrap treats Dispose as terminal while Detach remains reusable");
+            Check(publisherHub.Contains("Custom native ROS2 publisher teardown failed: ", StringComparison.Ordinal)
+                  && publisherHub.Contains("exception.GetType().Name", StringComparison.Ordinal)
+                  && publisherHub.Contains("Diagnostics must not interrupt the remaining teardown.", StringComparison.Ordinal),
+                "163-27E-1: the typed R2FU Provider hub reports recoverable teardown failures without interrupting remaining cleanup");
+            Check(provider.Contains("private sealed class Session : IFoxRunTransportSession", StringComparison.Ordinal)
+                  && provider.Contains("var owner = Interlocked.Exchange(ref _owner, null);", StringComparison.Ordinal)
+                  && provider.Contains("owner?.Release(Generation);", StringComparison.Ordinal)
+                  && provider.Contains("manager.UnregisterFoxRunTransportProvider(this);", StringComparison.Ordinal),
+                "163-27E-2: R2FU Provider session Dispose is terminal and component detach remains safely unregisterable");
         }
 
-        private static void OptionalSelectorReflectionMatchesAsmdef()
+        private static void ProviderSelectorDependencyMatchesAsmdef()
         {
-            var managerInspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
-            var asmdef = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
+            var setupDrawer = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityManagerSetupDrawer.cs");
+            var providerDrawer = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs");
+            var asmdef = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
+            var manager = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
 
-            Check(managerInspector.Contains("Unity2Foxglove.Ros2ForUnity.Editor", StringComparison.Ordinal)
-                  || managerInspector.Contains("\"Unity2Foxglove.Ros2\" + \"ForUnity.Editor.Ros2\" + \"ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2\" + \"ForUnity.Editor\"", StringComparison.Ordinal)
-                  || (managerInspector.Contains("\"Unity2Foxglove.\" + \"Ros2\" + \"For\" + \"Unity.Editor.\"", StringComparison.Ordinal)
-                      && managerInspector.Contains("\"Unity2Foxglove.\"", StringComparison.Ordinal)
-                      && managerInspector.Contains("\"Ros2\" + \"For\" + \"Unity.Editor\"", StringComparison.Ordinal)),
-                "163-27F-1: core Inspector reflection lookup names the optional R2FU editor assembly");
-            Check(asmdef.Contains("\"name\": \"Unity2Foxglove.Ros2ForUnity.Editor\"", StringComparison.Ordinal),
-                "163-27F-2: optional R2FU editor asmdef name matches the core Inspector reflection lookup");
+            Check(setupDrawer.Contains(
+                      "IFoxRunManagerSetupDrawer",
+                      StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCount(
+                          setupDrawer,
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Register") == 1
+                  && PhaseValidationSourceHelpers
+                      .InvocationCountInMethod(
+                          setupDrawer,
+                          "Draw",
+                          "DrawActiveRuntimeSelector") == 1
+                  && PhaseValidationSourceHelpers
+                      .InvocationCount(
+                          setupDrawer,
+                          "DrawActiveRuntimeSelector") == 1
+                  && PhaseValidationSourceHelpers
+                      .InvocationCount(
+                          providerDrawer,
+                          "DrawActiveRuntimeSelector") == 0
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          manager,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Capture") == 1
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          manager,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "setupDrawer",
+                          "Draw") == 1
+                  && !setupDrawer.Contains(
+                      "Type.GetType",
+                      StringComparison.Ordinal),
+                "163-27F-1: one unconstrained R2FU setup drawer invokes the runtime selector exactly once without core reflection or native-drawer duplication");
+            Check(asmdef.Contains(
+                      "\"name\": \"Unity2Foxglove.Ros2ForUnity.Editor\"",
+                      StringComparison.Ordinal)
+                  && asmdef.Contains(
+                      "\"Unity.FoxgloveSDK.Editor\"",
+                      StringComparison.Ordinal)
+                  && asmdef.Contains(
+                      "\"defineConstraints\": []",
+                      StringComparison.Ordinal),
+                "163-27F-2: the unconstrained R2FU Editor assembly declares its generic Manager-editor dependency and remains available before first runtime selection");
         }
 
         private static void PhaseWiringIsPresent()

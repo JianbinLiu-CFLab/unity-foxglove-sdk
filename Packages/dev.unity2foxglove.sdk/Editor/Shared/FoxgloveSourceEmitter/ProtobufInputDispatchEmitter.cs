@@ -13,14 +13,18 @@ namespace Unity.FoxgloveSDK.Editor
 {
     internal static class ProtobufInputDispatchEmitter
     {
-        internal static string ReaderCall(int fieldNumber, string typeName, FoxRunProtobufTypeShape shape, int topicIndex)
-            => IsCollectionTypeName(typeName)
-                ? "__TryReadFoxRunProtobufCollection_" + topicIndex + "(payload, out " + GlobalTypeName(typeName) + " __value, out error)"
-                : shape != null && shape.Kind == FoxRunProtobufTypeShapeKind.Object
-                    ? "__TryReadFoxRunProtobufObject_" + topicIndex + "_0(payload, out " + GlobalTypeName(typeName) + " __value, out error)"
-                    : shape != null && shape.Kind == FoxRunProtobufTypeShapeKind.Enum
-                        ? "__TryReadFoxRunProtobufEnum_" + topicIndex + "(payload, out " + GlobalTypeName(typeName) + " __value, out error)"
-                    : "FoxRunInboundProtobuf.TryRead(payload, " + fieldNumber + ", out " + GlobalTypeName(typeName) + " __value, out error)";
+        internal static string ReaderCall(int fieldNumber, string typeName, FoxRunTypeShape shape, int topicIndex)
+        {
+            if (IsCollectionTypeName(typeName))
+                return "__TryReadFoxRunProtobufCollection_" + topicIndex + "(payload, out " + GlobalTypeName(typeName) + " __value, out error)";
+
+            shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
+            if (shape != null && shape.Kind == FoxRunTypeShapeKind.Object)
+                return "__TryReadFoxRunProtobufObject_" + topicIndex + "_0(payload, out " + GlobalTypeName(typeName) + " __value, out error)";
+            if (shape != null && shape.Kind == FoxRunTypeShapeKind.Enum)
+                return "__TryReadFoxRunProtobufEnum_" + topicIndex + "(payload, out " + GlobalTypeName(typeName) + " __value, out error)";
+            return "FoxRunInboundProtobuf.TryRead(payload, " + fieldNumber + ", out " + GlobalTypeName(typeName) + " __value, out error)";
+        }
 
         internal static void EmitReaders(
             StringBuilder sb,
@@ -32,15 +36,22 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var member = members[index];
                 if (!UsesProtobuf(member.Encoding)
-                    || member.ProtobufTypeShape == null)
+                    || member.TypeShape == null)
                     continue;
-                var shapes = new List<FoxRunProtobufTypeShape>();
-                CollectObjects(member.ProtobufTypeShape, shapes);
+                var shapes = new List<FoxRunTypeShape>();
+                CollectObjects(member.TypeShape, shapes);
                 for (var shapeIndex = 0; shapeIndex < shapes.Count; shapeIndex++)
-                    EmitObjectReader(sb, shapes[shapeIndex], index, shapeIndex, pad, shapes);
+                    EmitObjectReader(
+                        sb,
+                        shapes[shapeIndex],
+                        member.ProtobufMetadata?.TypeMetadata,
+                        index,
+                        shapeIndex,
+                        pad,
+                        shapes);
                 if (IsCollectionTypeName(member.TypeName))
                     EmitCollectionReader(sb, declaringType, member, index, pad, shapes);
-                else if (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum)
+                else if (member.TypeShape.Kind == FoxRunTypeShapeKind.Enum)
                     EmitEnumReader(sb, declaringType, member, index, pad);
             }
         }
@@ -68,8 +79,16 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
-        private static void EmitObjectReader(StringBuilder sb, FoxRunProtobufTypeShape shape, int rootIndex, int shapeIndex, string pad, IReadOnlyList<FoxRunProtobufTypeShape> shapes)
+        private static void EmitObjectReader(
+            StringBuilder sb,
+            FoxRunTypeShape shape,
+            FoxRunProtobufTypeMetadata rootMetadata,
+            int rootIndex,
+            int shapeIndex,
+            string pad,
+            IReadOnlyList<FoxRunTypeShape> shapes)
         {
+            var typeMetadata = FindTypeMetadata(rootMetadata, shape.TypeName);
             sb.AppendLine();
             sb.AppendLine($"{pad}    private static bool __TryReadFoxRunProtobufObject_{rootIndex}_{shapeIndex}(byte[] payload, out global::{shape.TypeName} value, out string error)");
             sb.AppendLine($"{pad}    {{");
@@ -77,14 +96,16 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        if (!FoxRunInboundProtobuf.TryReadFields(payload, __fields, out error)) {{ value = default; return false; }}");
             sb.AppendLine($"{pad}        var __value = new global::{shape.TypeName}();");
             foreach (var field in shape.Fields.Where(candidate => candidate.Repeated).OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
-                sb.AppendLine($"{pad}        var __{field.MemberName}Values = new global::System.Collections.Generic.List<{RepeatedStorageType(field.TypeShape)}>();");
+                sb.AppendLine($"{pad}        var __{field.MemberName}Values = new global::System.Collections.Generic.List<{RepeatedStorageType(CollectionElementOrSelf(field.TypeShape))}>();");
             sb.AppendLine($"{pad}        foreach (var __field in __fields)");
             sb.AppendLine($"{pad}        {{");
             sb.AppendLine($"{pad}            switch (__field.Number)");
             sb.AppendLine($"{pad}            {{");
             foreach (var field in shape.Fields.OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
             {
-                var number = FoxRunProtobufFieldNumber.Resolve(shape.TypeName + "|" + field.MemberName, field.ProtobufFieldNumber);
+                var number = FoxRunProtobufFieldNumber.Resolve(
+                    shape.TypeName + "|" + field.MemberName,
+                    typeMetadata?.Find(field.MemberName, field.JsonName)?.FieldNumber ?? 0);
                 sb.AppendLine($"{pad}                case {number}:");
                 sb.AppendLine($"{pad}                {{");
                 EmitFieldDecode(sb, field, rootIndex, shapes, pad + "                    ");
@@ -96,15 +117,16 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var field in shape.Fields.Where(candidate => candidate.Repeated).OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
             {
                 var values = "__" + field.MemberName + "Values";
-                if (field.TypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum)
+                var valueShape = CollectionElementOrSelf(field.TypeShape);
+                if (valueShape.Kind == FoxRunTypeShapeKind.Enum)
                 {
                     var typedValues = values + "Typed";
-                    var enumType = CSharpType(field.TypeShape);
+                    var enumType = CSharpType(valueShape);
                     sb.AppendLine($"{pad}        var {typedValues} = new global::System.Collections.Generic.List<{enumType}>({values}.Count);");
                     sb.AppendLine($"{pad}        foreach (var __raw in {values}) {typedValues}.Add(({enumType})__raw);");
                     values = typedValues;
                 }
-                var assignment = field.RepeatedCollectionKind == FoxRunProtobufRepeatedCollectionKind.Array
+                var assignment = field.RepeatedCollectionKind == FoxRunCollectionKind.Array
                     ? values + ".ToArray()"
                     : values;
                 sb.AppendLine($"{pad}        __value.{field.MemberName} = {assignment};");
@@ -119,7 +141,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveSourceEmitter.TopicMember member,
             int rootIndex,
             string pad,
-            IReadOnlyList<FoxRunProtobufTypeShape> shapes)
+            IReadOnlyList<FoxRunTypeShape> shapes)
         {
             var fieldNumber = FoxRunProtobufFieldNumber.Resolve(
                 FoxRunProtobufContractBuilder.BuildFieldIdentity(
@@ -129,7 +151,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName),
                 member.ProtobufFieldNumber);
             var type = GlobalTypeName(member.TypeName);
-            var storageType = RepeatedStorageType(member.ProtobufTypeShape);
+            var valueShape = CollectionElementOrSelf(member.TypeShape);
+            var storageType = RepeatedStorageType(valueShape);
             var value = "__values";
 
             sb.AppendLine();
@@ -141,11 +164,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        foreach (var __field in __fields)");
             sb.AppendLine($"{pad}        {{");
             sb.AppendLine($"{pad}            if (__field.Number != {fieldNumber}) continue;");
-            EmitValueDecode(sb, member.ProtobufTypeShape, true, "__values", rootIndex, shapes, pad + "            ");
+            EmitValueDecode(sb, valueShape, true, "__values", rootIndex, shapes, pad + "            ");
             sb.AppendLine($"{pad}        }}");
-            if (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum)
+            if (valueShape.Kind == FoxRunTypeShapeKind.Enum)
             {
-                var enumType = CSharpType(member.ProtobufTypeShape);
+                var enumType = CSharpType(valueShape);
                 sb.AppendLine($"{pad}        var __typedValues = new global::System.Collections.Generic.List<{enumType}>(__values.Count);");
                 sb.AppendLine($"{pad}        foreach (var __raw in __values) __typedValues.Add(({enumType})__raw);");
                 value = IsArrayTypeName(member.TypeName) ? "__typedValues.ToArray()" : "__typedValues";
@@ -158,22 +181,30 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
-        private static void EmitFieldDecode(StringBuilder sb, FoxRunProtobufTypeField field, int rootIndex, IReadOnlyList<FoxRunProtobufTypeShape> shapes, string pad)
+        private static void EmitFieldDecode(StringBuilder sb, FoxRunTypeField field, int rootIndex, IReadOnlyList<FoxRunTypeShape> shapes, string pad)
         {
             var target = field.Repeated ? "__" + field.MemberName + "Values" : "__value." + field.MemberName;
-            EmitValueDecode(sb, field.TypeShape, field.Repeated, target, rootIndex, shapes, pad);
+            EmitValueDecode(
+                sb,
+                field.Repeated ? CollectionElementOrSelf(field.TypeShape) : field.TypeShape,
+                field.Repeated,
+                target,
+                rootIndex,
+                shapes,
+                pad);
         }
 
         private static void EmitValueDecode(
             StringBuilder sb,
-            FoxRunProtobufTypeShape shape,
+            FoxRunTypeShape shape,
             bool repeated,
             string target,
             int rootIndex,
-            IReadOnlyList<FoxRunProtobufTypeShape> shapes,
+            IReadOnlyList<FoxRunTypeShape> shapes,
             string pad)
         {
-            if (shape.Kind == FoxRunProtobufTypeShapeKind.Enum)
+            shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
+            if (shape.Kind == FoxRunTypeShapeKind.Enum)
             {
                 if (repeated)
                 {
@@ -192,7 +223,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}if (!FoxRunInboundProtobuf.{repeatedReader}(__field, {target}, out error)) {{ value = default; return false; }}");
                 return;
             }
-            if (shape.Kind == FoxRunProtobufTypeShapeKind.Object)
+            if (shape.Kind == FoxRunTypeShapeKind.Object)
             {
                 var childIndex = IndexOfObject(shapes, shape.TypeName);
                 var objectType = CSharpType(shape);
@@ -206,9 +237,9 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}{target}{(repeated ? ".Add(__decoded);" : " = __decoded;")}");
         }
 
-        private static string DecoderMethod(FoxRunProtobufTypeShape shape)
+        private static string DecoderMethod(FoxRunTypeShape shape)
         {
-            if (shape.Kind == FoxRunProtobufTypeShapeKind.Enum) return "TryDecodeInt32";
+            if (shape.Kind == FoxRunTypeShapeKind.Enum) return "TryDecodeInt32";
             switch (shape.CanonicalType)
             {
                 case "bool": return "TryDecodeBool";
@@ -231,7 +262,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static bool TryGetRepeatedReader(FoxRunProtobufTypeShape shape, out string reader)
+        private static bool TryGetRepeatedReader(FoxRunTypeShape shape, out string reader)
         {
             switch (shape.CanonicalType)
             {
@@ -250,14 +281,28 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static void CollectObjects(FoxRunProtobufTypeShape shape, ICollection<FoxRunProtobufTypeShape> shapes)
+        private static void CollectObjects(FoxRunTypeShape shape, ICollection<FoxRunTypeShape> shapes)
         {
-            if (shape == null || shape.Kind != FoxRunProtobufTypeShapeKind.Object || IndexOfObject(shapes, shape.TypeName) >= 0) return;
+            if (shape == null)
+                return;
+            if (shape.Kind == FoxRunTypeShapeKind.Collection)
+            {
+                CollectObjects(shape.ElementShape, shapes);
+                return;
+            }
+            shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
+            if (shape.Kind != FoxRunTypeShapeKind.Object || IndexOfObject(shapes, shape.TypeName) >= 0)
+                return;
             shapes.Add(shape);
             foreach (var field in shape.Fields) CollectObjects(field.TypeShape, shapes);
         }
 
-        private static int IndexOfObject(IEnumerable<FoxRunProtobufTypeShape> shapes, string typeName)
+        private static FoxRunTypeShape CollectionElementOrSelf(FoxRunTypeShape shape)
+            => shape != null && shape.Kind == FoxRunTypeShapeKind.Collection
+                ? shape.ElementShape
+                : shape;
+
+        private static int IndexOfObject(IEnumerable<FoxRunTypeShape> shapes, string typeName)
         {
             var index = 0;
             foreach (var shape in shapes)
@@ -268,11 +313,28 @@ namespace Unity.FoxgloveSDK.Editor
             return -1;
         }
 
-        private static string CSharpType(FoxRunProtobufTypeShape shape)
+        private static FoxRunProtobufTypeMetadata FindTypeMetadata(
+            FoxRunProtobufTypeMetadata metadata,
+            string typeName)
         {
-            if (shape.Kind == FoxRunProtobufTypeShapeKind.Object)
+            if (metadata == null)
+                return null;
+            if (string.Equals(metadata.TypeName, typeName, StringComparison.Ordinal))
+                return metadata;
+            foreach (var field in metadata.Fields)
+            {
+                var found = FindTypeMetadata(field.TypeMetadata, typeName);
+                if (found != null)
+                    return found;
+            }
+            return null;
+        }
+
+        private static string CSharpType(FoxRunTypeShape shape)
+        {
+            if (shape.Kind == FoxRunTypeShapeKind.Object)
                 return GlobalTypeName(shape.TypeName);
-            if (shape.Kind == FoxRunProtobufTypeShapeKind.Enum) return GlobalTypeName(shape.TypeName);
+            if (shape.Kind == FoxRunTypeShapeKind.Enum) return GlobalTypeName(shape.TypeName);
             switch (shape.CanonicalType)
             {
                 case "bool": return "bool";
@@ -295,8 +357,8 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string RepeatedStorageType(FoxRunProtobufTypeShape shape)
-            => shape.Kind == FoxRunProtobufTypeShapeKind.Enum ? "int" : CSharpType(shape);
+        private static string RepeatedStorageType(FoxRunTypeShape shape)
+            => shape.Kind == FoxRunTypeShapeKind.Enum ? "int" : CSharpType(shape);
 
         private static bool IsCollectionTypeName(string typeName)
         {

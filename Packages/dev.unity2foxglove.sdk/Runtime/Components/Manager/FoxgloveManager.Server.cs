@@ -27,6 +27,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void StartServer()
         {
+            if (!BeginFoxRunTransportSessionIfNeeded())
+            {
+                _startServerAfterTransportCapture = true;
+                return;
+            }
+
+            _startServerAfterTransportCapture = false;
+            BeginFoxRunPublishSessionIfNeeded();
             BeginFoxRunSubscriptionSessionIfNeeded();
 
             if (IsRunning)
@@ -67,7 +75,7 @@ namespace Unity.FoxgloveSDK.Components
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
                 RegisterFoxRunSubscriptionCatalogService();
-                _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
+                _runtime.Start(_serverName, _host, _port);
                 StartRemoteMcapFileServerIfNeeded();
                 StartReplayCursorEndpointIfNeeded();
                 if (!PublishPendingRecordingSidecar())
@@ -228,6 +236,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="restoreLivePublishers">Whether live publishers should be restored after shutdown.</param>
         private void StopServer(bool restoreLivePublishers)
         {
+            _startServerAfterTransportCapture = false;
             if (!IsRunning)
             {
                 StopRemoteMcapFileServer();
@@ -258,6 +267,7 @@ namespace Unity.FoxgloveSDK.Components
             StopCertificateDistributor();
             _channelCache.Clear();
             _foxRunRecordingChannelCache.Clear();
+            _foxRunRawRecordingChannelCache.Clear();
             ClearClientEvents();
             _connectionState.ResetChannelIds(FirstAutoChannelId);
             if (restoreLivePublishers)

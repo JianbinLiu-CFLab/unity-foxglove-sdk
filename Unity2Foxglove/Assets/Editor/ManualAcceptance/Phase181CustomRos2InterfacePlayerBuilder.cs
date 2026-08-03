@@ -16,6 +16,10 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
+
 /// <summary>
 /// Owns only the reproducible Phase181 custom-interface scene and Player
 /// build. The tool reads resolved package manifests rather than adding an
@@ -359,16 +363,23 @@ public static class Phase181CustomRos2InterfacePlayerBuilder
     {
         var serialized = new SerializedObject(manager);
         SetBoolean(serialized, "_foxgloveOutputEnabled", true);
-        SetBoolean(serialized, "_ros2NativeEnabled", true);
         SetBoolean(serialized, "_enableFoxRunInbound", true);
-        SetEnumByName(
-            serialized,
-            "_defaultFoxRunSubscriptionSource",
-            nameof(FoxRunEndpoint.Ros2Native));
         serialized.ApplyModifiedPropertiesWithoutUndo();
-        // Use the public setter too, so a later migration cannot restore the
-        // legacy WebSocket provider over this serialized value.
-        manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
+            manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
+        manager.ConfigureFoxRunTransports(
+            new[]
+            {
+                FoxgloveWebSocketTransport.Id,
+                FoxRunRos2TransportProvider.IdValue
+            },
+            subscriptionsEnabled: true,
+            FoxRunRos2TransportProvider.IdValue);
+#else
+        throw new InvalidOperationException(
+            "Phase181 requires an active ROS2 For Unity runtime package.");
+#endif
         EditorUtility.SetDirty(manager);
     }
 
@@ -420,13 +431,10 @@ public static class Phase181CustomRos2InterfacePlayerBuilder
 
             var serialized = new SerializedObject(managers[0]);
             if (!GetBoolean(serialized, "_foxgloveOutputEnabled")
-                || !GetBoolean(serialized, "_ros2NativeEnabled")
-                || !GetBoolean(serialized, "_enableFoxRunInbound")
-                || GetEnumName(serialized, "_defaultFoxRunSubscriptionSource")
-                    != nameof(FoxRunEndpoint.Ros2Native))
+                || !GetBoolean(serialized, "_enableFoxRunInbound"))
             {
                 throw new InvalidOperationException(
-                    "The Phase181 acceptance Manager must enable native output, WebSocket output, and native FoxRun subscriptions.");
+                    "The Phase181 acceptance Manager must enable WebSocket output and FoxRun subscriptions.");
             }
 
             var receiverSerialized = new SerializedObject(receivers[0]);
@@ -553,28 +561,6 @@ public static class Phase181CustomRos2InterfacePlayerBuilder
         if (property == null || property.propertyType != SerializedPropertyType.Boolean)
             throw new InvalidOperationException("FoxgloveManager boolean property was not found: " + propertyPath);
         return property.boolValue;
-    }
-
-    private static void SetEnumByName(SerializedObject serialized, string propertyPath, string valueName)
-    {
-        var property = serialized.FindProperty(propertyPath);
-        if (property == null || property.propertyType != SerializedPropertyType.Enum)
-            throw new InvalidOperationException("FoxgloveManager enum property was not found: " + propertyPath);
-        var enumIndex = Array.IndexOf(property.enumNames, valueName);
-        if (enumIndex < 0)
-            throw new InvalidOperationException(
-                "FoxgloveManager enum value was not found for " + propertyPath + ": " + valueName);
-        property.enumValueIndex = enumIndex;
-    }
-
-    private static string GetEnumName(SerializedObject serialized, string propertyPath)
-    {
-        var property = serialized.FindProperty(propertyPath);
-        if (property == null || property.propertyType != SerializedPropertyType.Enum)
-            throw new InvalidOperationException("FoxgloveManager enum property was not found: " + propertyPath);
-        return property.enumValueIndex >= 0 && property.enumValueIndex < property.enumNames.Length
-            ? property.enumNames[property.enumValueIndex]
-            : string.Empty;
     }
 
     private static string SampleMetadataAbsolutePath(string assetPath)

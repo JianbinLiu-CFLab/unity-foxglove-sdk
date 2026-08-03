@@ -10,7 +10,8 @@ using System.IO;
 using System.Linq;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.IO;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -71,9 +72,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Ros2CdrDeserializerRegistry.DeserializerCount >= 41
                   && Ros2CdrDeserializerRegistry.Entries.Count == Ros2CdrDeserializerRegistry.DeserializerCount,
                 "125-A3: generated deserializer registry declares at least the Phase125 floor and matches entry count");
-            Check(Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Ros2CdrTyped)
-                  && (int)McapDecodedPayloadKind.Ros2CdrTyped == 6,
-                "125-A4: decoded payload kind includes stable Ros2CdrTyped value 6");
+            Check(Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Provider)
+                  && (int)McapDecodedPayloadKind.Provider == 3,
+                "125-A4: decoded payload kind exposes the stable Provider value");
         }
 
         private static void VerifyRuntimeReader()
@@ -183,7 +184,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Topics = new List<string> { "/phase125/typed" }
             }).Single();
-            Check(typed.Payload.Kind == McapDecodedPayloadKind.Ros2CdrTyped
+            Check(typed.Payload.Kind == McapDecodedPayloadKind.Provider
                   && typed.Payload.Value is Foxglove.Log typedLog
                   && typedLog.Message == "phase125 typed"
                   && typed.Problems.Count == 0
@@ -194,8 +195,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Topics = new List<string> { "/phase125/unknown" }
             }).Single();
-            var unknownDiagnostic = unknown.Payload.Value as McapRos2CdrDiagnosticPayload;
-            Check(unknown.Payload.Kind == McapDecodedPayloadKind.Ros2CdrDiagnostic
+            var unknownDiagnostic = unknown.Payload.Value as Ros2CdrDiagnosticPayload;
+            Check(unknown.Payload.Kind == McapDecodedPayloadKind.Provider
                   && unknownDiagnostic != null
                   && !unknownDiagnostic.SchemaKnown,
                 "125-G2: unsupported ROS2 schema falls back to diagnostic payload");
@@ -204,7 +205,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Topics = new List<string> { "/phase125/malformed" }
             }).Single();
-            Check(malformed.Payload.Kind == McapDecodedPayloadKind.Ros2CdrDiagnostic
+            Check(malformed.Payload.Kind == McapDecodedPayloadKind.Provider
                   && malformed.Problems.Count == 1
                   && malformed.Problems[0].Code == "McapRos2CdrTypedDecodeFailed",
                 "125-G3: RawWithProblem falls back to diagnostic when typed decode fails");
@@ -244,7 +245,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && generator.Contains("generate_deserializer_registry", StringComparison.Ordinal),
                 "125-H3: generator owns deserializer source and registry output");
 
-            var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
+            var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
             Check(!cdrReader.Contains("CopyEndianBytes", StringComparison.Ordinal)
                   && !cdrReader.Contains("CopyReversedBytes", StringComparison.Ordinal)
                   && cdrReader.Contains("BinaryPrimitives.ReadInt64LittleEndian", StringComparison.Ordinal),

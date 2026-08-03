@@ -2,69 +2,79 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Components/FoxRun
-// Purpose: Immutable FoxRun publish-profile snapshot and lifecycle state.
+// Purpose: Immutable Provider-neutral publish-session policy.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Unity.FoxgloveSDK.Components
 {
-    /// <summary>
-    /// Immutable defaults captured for the complete enabled lifetime of one
-    /// Manager. Individual transport restarts must not recapture this policy.
-    /// </summary>
     public sealed class FoxRunPublishSessionPolicy
     {
+        private readonly IReadOnlyList<FoxRunTransportId>
+            _publishTransportIds;
+
         internal FoxRunPublishSessionPolicy(
             ulong sessionGeneration,
             bool sessionActive,
-            FoxRunEndpoint defaultTargets,
-            FoxRunEncoding foxgloveEncoding,
+            IEnumerable<FoxRunTransportId> publishTransportIds,
+            FoxRunEncoding webSocketEncoding,
             float defaultPublishRateHz,
-            FoxRunResolvedQos nativeRos2Qos,
-            FoxRunResolvedQos bridgeRos2Qos)
+            FoxRunDeliveryPolicy defaultDeliveryPolicy)
         {
             SessionGeneration = sessionGeneration;
             SessionActive = sessionActive;
-            DefaultTargets = defaultTargets;
-            FoxgloveEncoding = foxgloveEncoding;
+            _publishTransportIds = Array.AsReadOnly(
+                (publishTransportIds
+                 ?? Enumerable.Empty<FoxRunTransportId>())
+                .OrderBy(id => id.Value, StringComparer.Ordinal)
+                .ToArray());
+            WebSocketEncoding = webSocketEncoding;
             DefaultPublishRateHz = defaultPublishRateHz;
-            NativeRos2Qos = nativeRos2Qos;
-            BridgeRos2Qos = bridgeRos2Qos;
+            DefaultDeliveryPolicy = defaultDeliveryPolicy;
         }
 
         public ulong SessionGeneration { get; }
         public bool SessionActive { get; }
-        public FoxRunEndpoint DefaultTargets { get; }
-        public FoxRunEncoding FoxgloveEncoding { get; }
+        public IReadOnlyList<FoxRunTransportId>
+            PublishTransportIds => _publishTransportIds;
+        public FoxRunEncoding WebSocketEncoding { get; }
         public float DefaultPublishRateHz { get; }
-        public FoxRunResolvedQos NativeRos2Qos { get; }
-        public FoxRunResolvedQos BridgeRos2Qos { get; }
+        public FoxRunDeliveryPolicy DefaultDeliveryPolicy { get; }
 
-        internal static FoxRunPublishSessionPolicy Disabled(ulong generation)
-            => new(
+        internal static FoxRunPublishSessionPolicy Disabled(
+            ulong generation)
+            => new FoxRunPublishSessionPolicy(
                 generation,
                 false,
-                defaultTargets: 0,
-                foxgloveEncoding: 0,
-                defaultPublishRateHz: 0f,
-                nativeRos2Qos: FoxRunResolvedQos.Default,
-                bridgeRos2Qos: FoxRunResolvedQos.Default);
+                Array.Empty<FoxRunTransportId>(),
+                FoxRunEncoding.Protobuf,
+                10f,
+                FoxRunDeliveryPolicy.ProviderDefault);
     }
 
     internal sealed class FoxRunPublishSessionState
     {
-        internal FoxRunPublishSessionState(ulong initialGeneration = 0)
+        internal FoxRunPublishSessionState(
+            ulong initialGeneration = 0)
         {
-            Current = FoxRunPublishSessionPolicy.Disabled(initialGeneration);
+            Current =
+                FoxRunPublishSessionPolicy.Disabled(
+                    initialGeneration);
         }
 
-        internal FoxRunPublishSessionPolicy Current { get; private set; }
+        internal FoxRunPublishSessionPolicy Current
+        {
+            get;
+            private set;
+        }
 
         internal FoxRunPublishSessionPolicy BeginIfNeeded(
-            FoxRunEndpoint defaultTargets,
-            FoxRunEncoding foxgloveEncoding,
+            IEnumerable<FoxRunTransportId> publishTransportIds,
+            FoxRunEncoding webSocketEncoding,
             float defaultPublishRateHz,
-            FoxRunResolvedQos nativeRos2Qos,
-            FoxRunResolvedQos bridgeRos2Qos)
+            FoxRunDeliveryPolicy defaultDeliveryPolicy)
         {
             if (Current.SessionActive)
                 return Current;
@@ -77,25 +87,30 @@ namespace Unity.FoxgloveSDK.Components
             Current = new FoxRunPublishSessionPolicy(
                 Current.SessionGeneration + 1UL,
                 true,
-                FoxRunEndpointResolver.ValidateProfileTargets(defaultTargets),
-                FoxRunEncodingResolver.ValidateProfileDefault(foxgloveEncoding),
+                publishTransportIds,
+                FoxRunEncodingResolver.ValidateProfileDefault(
+                    webSocketEncoding),
                 NormalizeRate(defaultPublishRateHz),
-                nativeRos2Qos,
-                bridgeRos2Qos);
+                defaultDeliveryPolicy);
             return Current;
         }
 
         internal FoxRunPublishSessionPolicy End()
         {
-            if (!Current.SessionActive)
-                return Current;
+            if (Current.SessionActive)
+            {
+                Current =
+                    FoxRunPublishSessionPolicy.Disabled(
+                        Current.SessionGeneration);
+            }
 
-            Current = FoxRunPublishSessionPolicy.Disabled(Current.SessionGeneration);
             return Current;
         }
 
         private static float NormalizeRate(float rateHz)
-            => float.IsNaN(rateHz) || float.IsInfinity(rateHz) || rateHz <= 0f
+            => float.IsNaN(rateHz)
+               || float.IsInfinity(rateHz)
+               || rateHz <= 0f
                 ? 10f
                 : rateHz;
     }

@@ -30,7 +30,7 @@ namespace Foxglove.Schemas
         /// <summary>Official protobuf message.</summary>
         public Foxglove.PointCloud Protobuf { get; }
         /// <summary>
-        /// Packed point bytes returned for diagnostics or CDR use. The paired
+        /// Packed point bytes returned for diagnostics or Provider mapping. The paired
         /// JSON string and protobuf ByteString already copied these bytes and
         /// are not affected by later mutation of this array.
         /// </summary>

@@ -9,7 +9,7 @@ using System.IO;
 using System.Linq;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -122,7 +122,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-15D-7: CompressedPointCloud publisher schema name follows builder constant");
 
             var source = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
             Check(source.Contains("Ros2CdrFrameTransformBuilder.SchemaName")
                   && source.Contains("Ros2CdrCompressedPointCloudBuilder.SchemaName"),
                 "134-15D-8: publisher schema-name source references builder constants directly");
@@ -143,9 +143,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SceneUpdateAndPointCloudWritersFailFastForFutureEnumExpansion()
         {
             var sceneSource = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
             var pointCloudSource = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
             Check(sceneSource.Contains("checked((byte)deletion.Type)"),
                 "134-15G-1: SceneUpdate deletion enum conversion is checked");
             Check(pointCloudSource.Contains("writer.WriteUInt8(MapDatatype(field.Type));")
@@ -187,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-15H-3: CDR writer rejects null required float64 sequences");
 
             var source = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
             Check(source.Contains("approximate output capacity hint")
                   && source.Contains("Write a required uint8 sequence")
                   && source.Contains("Write a required float64 sequence")

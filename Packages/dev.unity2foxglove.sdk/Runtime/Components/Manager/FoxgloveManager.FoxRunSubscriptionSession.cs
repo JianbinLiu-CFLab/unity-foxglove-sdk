@@ -34,12 +34,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var policy = _foxRunSubscriptionSessionState.BeginIfNeeded(
-                DefaultFoxRunSubscriptionSource,
+                DefaultFoxRunSubscribeTransportId,
                 DefaultFoxRunSubscriptionEncoding,
-                DefaultFoxRunNativeSubscribeQos,
-                FoxRunRos2NativeCopyBudgetBytes,
+                FoxRunDeliveryPolicy.ProviderDefault,
                 ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic,
-                ConfiguredFoxRunDefaultSubscribeRateHz);
+                ConfiguredFoxRunDefaultSubscribeRateHz,
+                FoxRunSubscriptionMaxPayloadBytes);
             NotifyFoxRunSubscriptionSessionChanged(policy);
         }
 
@@ -76,6 +76,14 @@ namespace Unity.FoxgloveSDK.Components
 
         private void SyncFoxRunSubscriptionSession()
         {
+            if (_activeFoxRunTransportSession == null
+                && !BeginFoxRunTransportSessionIfNeeded())
+            {
+                EndFoxRunSubscriptionSession();
+                return;
+            }
+
+            BeginFoxRunPublishSessionIfNeeded();
             if (_enableFoxRunInbound)
                 BeginFoxRunSubscriptionSessionIfNeeded();
             else

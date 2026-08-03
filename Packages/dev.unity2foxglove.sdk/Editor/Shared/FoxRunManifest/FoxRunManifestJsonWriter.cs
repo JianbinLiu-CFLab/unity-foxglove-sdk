@@ -82,7 +82,19 @@ namespace Unity.FoxgloveSDK.Editor
             string schemaName,
             string encoding,
             IReadOnlyList<FoxRunManifestField> fields,
-            string flow = "Publish")
+            string flow = "Publish",
+            string logicalSchemaName = "",
+            bool publishAvailable = true,
+            bool subscribeAvailable = true,
+            string unavailableDiagnosticId = "",
+            string unavailableReason = "",
+            string publishUnavailableDiagnosticId = "",
+            string publishUnavailableReason = "",
+            string subscribeUnavailableDiagnosticId = "",
+            string subscribeUnavailableReason = "",
+            bool includesTransportSelection = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -92,8 +104,30 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "schemaName");
             AppendString(sb, schemaName);
             sb.Append(',');
+            AppendPropertyName(sb, "logicalSchemaName");
+            AppendString(sb, logicalSchemaName);
+            sb.Append(',');
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
+            sb.Append(',');
+            if (includesTransportSelection)
+            {
+                WriteTransportSelection(
+                    sb,
+                    publishTransportIds,
+                    subscribeTransportId);
+                sb.Append(',');
+            }
+            WriteAvailability(
+                sb,
+                publishAvailable,
+                subscribeAvailable,
+                unavailableDiagnosticId,
+                unavailableReason,
+                publishUnavailableDiagnosticId,
+                publishUnavailableReason,
+                subscribeUnavailableDiagnosticId,
+                subscribeUnavailableReason);
             sb.Append(',');
             if (!IsDefaultFlow(flow))
             {
@@ -111,7 +145,11 @@ namespace Unity.FoxgloveSDK.Editor
             string declaringType,
             string topic,
             string schemaName,
-            string encoding)
+            string encoding,
+            string flow = "",
+            bool includesTransportSelection = false,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -126,6 +164,20 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
+            if (includesTransportSelection)
+            {
+                sb.Append(',');
+                WriteTransportSelection(
+                    sb,
+                    publishTransportIds,
+                    subscribeTransportId);
+            }
+            if (!string.IsNullOrWhiteSpace(flow))
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "flow");
+                AppendString(sb, flow);
+            }
             sb.Append('}');
             return sb.ToString();
         }
@@ -272,56 +324,28 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "flow");
             AppendString(sb, binding.Flow);
             sb.Append(',');
-            AppendPropertyName(sb, "declaredSource");
-            AppendString(sb, binding.DeclaredSource);
+            WriteTransportSelection(
+                sb,
+                binding.PublishTransportIds,
+                binding.SubscribeTransportId);
             sb.Append(',');
-            AppendPropertyName(sb, "declaredTargets");
-            AppendString(sb, binding.DeclaredTargets);
+            AppendPropertyName(sb, "reliability");
+            AppendString(sb, binding.Reliability);
             sb.Append(',');
-            AppendPropertyName(sb, "qosProfile");
-            AppendString(sb, binding.QosProfile);
+            AppendPropertyName(sb, "durability");
+            AppendString(sb, binding.Durability);
             sb.Append(',');
-            AppendPropertyName(sb, "qosReliability");
-            AppendString(sb, binding.QosReliability);
+            AppendPropertyName(sb, "history");
+            AppendString(sb, binding.History);
             sb.Append(',');
-            AppendPropertyName(sb, "qosDurability");
-            AppendString(sb, binding.QosDurability);
-            sb.Append(',');
-            AppendPropertyName(sb, "qosHistory");
-            AppendString(sb, binding.QosHistory);
-            sb.Append(',');
-            AppendPropertyName(sb, "qosDepth");
-            sb.Append(binding.QosDepth.ToString(CultureInfo.InvariantCulture));
+            AppendPropertyName(sb, "depth");
+            sb.Append(binding.Depth.ToString(CultureInfo.InvariantCulture));
             sb.Append(',');
             AppendPropertyName(sb, "supportsWebSocket");
             sb.Append(binding.SupportsWebSocket ? "true" : "false");
             sb.Append(',');
-            AppendPropertyName(sb, "supportsRos2Native");
-            sb.Append(binding.SupportsRos2Native ? "true" : "false");
-            sb.Append(',');
             AppendPropertyName(sb, "isStream");
             sb.Append(binding.IsStream ? "true" : "false");
-            sb.Append(',');
-            AppendPropertyName(sb, "nativeType");
-            AppendString(sb, binding.NativeType);
-            sb.Append(',');
-            AppendPropertyName(sb, "canonicalRosType");
-            AppendString(sb, binding.CanonicalRosType);
-            sb.Append(',');
-            AppendPropertyName(sb, "copyShapeIdentity");
-            AppendString(sb, binding.CopyShapeIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "ros2ContractKind");
-            AppendString(sb, binding.Ros2ContractKind.ToString());
-            sb.Append(',');
-            AppendPropertyName(sb, "customDtoIdentity");
-            AppendString(sb, binding.CustomDtoIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "customPayloadIdentity");
-            AppendString(sb, binding.CustomPayloadIdentity);
-            sb.Append(',');
-            AppendPropertyName(sb, "customEnvelopeIdentity");
-            AppendString(sb, binding.CustomEnvelopeIdentity);
             sb.Append('}');
         }
 
@@ -369,8 +393,34 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "schemaName");
             AppendString(sb, contract.SchemaName);
             sb.Append(',');
+            AppendPropertyName(sb, "wireSchemaName");
+            AppendString(sb, contract.WireSchemaName);
+            sb.Append(',');
+            AppendPropertyName(sb, "logicalSchemaName");
+            AppendString(sb, contract.LogicalSchemaName);
+            sb.Append(',');
             AppendPropertyName(sb, "encoding");
             AppendString(sb, contract.Encoding);
+            sb.Append(',');
+            if (contract.IncludesTransportSelection)
+            {
+                WriteTransportSelection(
+                    sb,
+                    contract.PublishTransportIds,
+                    contract.SubscribeTransportId);
+                sb.Append(',');
+            }
+            AppendPropertyName(sb, "availability");
+            WriteAvailability(
+                sb,
+                contract.PublishAvailable,
+                contract.SubscribeAvailable,
+                contract.UnavailableDiagnosticId,
+                contract.UnavailableReason,
+                contract.PublishUnavailableDiagnosticId,
+                contract.PublishUnavailableReason,
+                contract.SubscribeUnavailableDiagnosticId,
+                contract.SubscribeUnavailableReason);
             sb.Append(',');
             AppendPropertyName(sb, "contractHash");
             AppendString(sb, contract.ContractHash);
@@ -427,22 +477,86 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "array");
             sb.Append(field.Array ? "true" : "false");
-            if (field.ProtobufFieldNumber > 0)
+            if (field.ProtobufMetadata != null)
             {
                 sb.Append(',');
-                AppendPropertyName(sb, "protobufFieldNumber");
-                sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+                AppendPropertyName(sb, "protobuf");
+                WriteProtobufMetadata(sb, field.ProtobufMetadata);
             }
-            if (field.ProtobufTypeShape != null)
+            if (field.TypeShape != null)
             {
                 sb.Append(',');
-                AppendPropertyName(sb, "protobufShape");
-                WriteProtobufTypeShape(sb, field.ProtobufTypeShape);
+                AppendPropertyName(sb, "typeShape");
+                WriteTypeShape(sb, field.TypeShape);
+            }
+            if (field.NormalizedSchedule != null)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "normalizedSchedule");
+                WriteNormalizedSchedule(sb, field.NormalizedSchedule);
             }
             sb.Append('}');
         }
 
-        private static void WriteProtobufTypeShape(StringBuilder sb, FoxRunProtobufTypeShape shape)
+        private static void WriteProtobufMetadata(
+            StringBuilder sb,
+            FoxRunProtobufMetadata metadata)
+        {
+            sb.Append('{');
+            AppendPropertyName(sb, "fieldNumber");
+            sb.Append(metadata.FieldNumber.ToString(CultureInfo.InvariantCulture));
+            sb.Append(',');
+            AppendPropertyName(sb, "type");
+            WriteProtobufTypeMetadata(sb, metadata.TypeMetadata);
+            sb.Append('}');
+        }
+
+        private static void WriteProtobufTypeMetadata(
+            StringBuilder sb,
+            FoxRunProtobufTypeMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            AppendPropertyName(sb, "typeName");
+            AppendString(sb, metadata.TypeName);
+            sb.Append(',');
+            AppendPropertyName(sb, "fields");
+            sb.Append('[');
+            for (var index = 0; index < metadata.Fields.Count; index++)
+            {
+                if (index > 0)
+                    sb.Append(',');
+                var field = metadata.Fields[index];
+                sb.Append('{');
+                AppendPropertyName(sb, "memberName");
+                AppendString(sb, field.MemberName);
+                sb.Append(',');
+                AppendPropertyName(sb, "jsonName");
+                AppendString(sb, field.JsonName);
+                sb.Append(',');
+                AppendPropertyName(sb, "fieldNumber");
+                sb.Append(field.FieldNumber.ToString(CultureInfo.InvariantCulture));
+                sb.Append(',');
+                AppendPropertyName(sb, "presenceOnly");
+                sb.Append(field.PresenceOnly ? "true" : "false");
+                sb.Append(',');
+                AppendPropertyName(sb, "presenceUsesHasValue");
+                sb.Append(field.PresenceUsesHasValue ? "true" : "false");
+                sb.Append(',');
+                AppendPropertyName(sb, "type");
+                WriteProtobufTypeMetadata(sb, field.TypeMetadata);
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append('}');
+        }
+
+        private static void WriteTypeShape(StringBuilder sb, FoxRunTypeShape shape)
         {
             sb.Append('{');
             AppendPropertyName(sb, "kind");
@@ -450,6 +564,21 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "typeName");
             AppendString(sb, shape.TypeName);
+            sb.Append(',');
+            AppendPropertyName(sb, "nullable");
+            sb.Append(shape.Nullable ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "canConstruct");
+            sb.Append(shape.CanConstruct ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "isValueType");
+            sb.Append(shape.IsValueType ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "collectionKind");
+            AppendString(sb, shape.CollectionKind.ToString());
+            sb.Append(',');
+            AppendPropertyName(sb, "binary");
+            sb.Append(shape.IsBinary ? "true" : "false");
             if (!string.IsNullOrEmpty(shape.CanonicalType))
             {
                 sb.Append(',');
@@ -468,13 +597,18 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendPropertyName(sb, "enumValues");
                 WriteProtobufEnumValues(sb, shape.EnumValues);
             }
+            if (shape.ElementShape != null)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "elementShape");
+                WriteTypeShape(sb, shape.ElementShape);
+            }
             sb.Append('}');
         }
 
-        private static void WriteProtobufTypeFields(StringBuilder sb, IReadOnlyList<FoxRunProtobufTypeField> fields)
+        private static void WriteProtobufTypeFields(StringBuilder sb, IReadOnlyList<FoxRunTypeField> fields)
         {
-            var ordered = new List<FoxRunProtobufTypeField>(fields ?? Array.Empty<FoxRunProtobufTypeField>());
-            ordered.Sort((left, right) => string.Compare(left.MemberName, right.MemberName, StringComparison.Ordinal));
+            var ordered = new List<FoxRunTypeField>(fields ?? Array.Empty<FoxRunTypeField>());
             sb.Append('[');
             for (var index = 0; index < ordered.Count; index++)
             {
@@ -490,23 +624,26 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.Append(',');
                 AppendPropertyName(sb, "repeated");
                 sb.Append(field.Repeated ? "true" : "false");
-                if (field.ProtobufFieldNumber > 0)
-                {
-                    sb.Append(',');
-                    AppendPropertyName(sb, "protobufFieldNumber");
-                    sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
-                }
+                sb.Append(',');
+                AppendPropertyName(sb, "collectionKind");
+                AppendString(sb, field.RepeatedCollectionKind.ToString());
+                sb.Append(',');
+                AppendPropertyName(sb, "canAssign");
+                sb.Append(field.CanAssign ? "true" : "false");
+                sb.Append(',');
+                AppendPropertyName(sb, "nullable");
+                sb.Append(field.IsNullable ? "true" : "false");
                 sb.Append(',');
                 AppendPropertyName(sb, "shape");
-                WriteProtobufTypeShape(sb, field.TypeShape);
+                WriteTypeShape(sb, field.TypeShape);
                 sb.Append('}');
             }
             sb.Append(']');
         }
 
-        private static void WriteProtobufEnumValues(StringBuilder sb, IReadOnlyList<FoxRunProtobufEnumValue> values)
+        private static void WriteProtobufEnumValues(StringBuilder sb, IReadOnlyList<FoxRunEnumValue> values)
         {
-            var ordered = new List<FoxRunProtobufEnumValue>(values ?? Array.Empty<FoxRunProtobufEnumValue>());
+            var ordered = new List<FoxRunEnumValue>(values ?? Array.Empty<FoxRunEnumValue>());
             ordered.Sort((left, right) =>
             {
                 var byNumber = left.Number.CompareTo(right.Number);
@@ -542,6 +679,87 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append('}');
         }
 
+        private static void WriteAvailability(
+            StringBuilder sb,
+            bool publishAvailable,
+            bool subscribeAvailable,
+            string unavailableDiagnosticId,
+            string unavailableReason,
+            string publishUnavailableDiagnosticId,
+            string publishUnavailableReason,
+            string subscribeUnavailableDiagnosticId,
+            string subscribeUnavailableReason)
+        {
+            sb.Append('{');
+            AppendPropertyName(sb, "publishAvailable");
+            sb.Append(publishAvailable ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "subscribeAvailable");
+            sb.Append(subscribeAvailable ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "unavailableDiagnosticId");
+            AppendString(sb, unavailableDiagnosticId);
+            sb.Append(',');
+            AppendPropertyName(sb, "unavailableReason");
+            AppendString(sb, unavailableReason);
+            if (!string.Equals(
+                    publishUnavailableDiagnosticId,
+                    unavailableDiagnosticId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    publishUnavailableReason,
+                    unavailableReason,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    subscribeUnavailableDiagnosticId,
+                    unavailableDiagnosticId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    subscribeUnavailableReason,
+                    unavailableReason,
+                    StringComparison.Ordinal))
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "publishUnavailableDiagnosticId");
+                AppendString(sb, publishUnavailableDiagnosticId);
+                sb.Append(',');
+                AppendPropertyName(sb, "publishUnavailableReason");
+                AppendString(sb, publishUnavailableReason);
+                sb.Append(',');
+                AppendPropertyName(sb, "subscribeUnavailableDiagnosticId");
+                AppendString(sb, subscribeUnavailableDiagnosticId);
+                sb.Append(',');
+                AppendPropertyName(sb, "subscribeUnavailableReason");
+                AppendString(sb, subscribeUnavailableReason);
+            }
+            sb.Append('}');
+        }
+
+        private static void WriteNormalizedSchedule(
+            StringBuilder sb,
+            FoxRunNormalizedScheduleTuple schedule)
+        {
+            sb.Append('{');
+            AppendPropertyName(sb, "policy");
+            sb.Append(schedule.Policy.ToString(CultureInfo.InvariantCulture));
+            sb.Append(',');
+            AppendPropertyName(sb, "hasExplicitHz");
+            sb.Append(schedule.HasExplicitHz ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "hz");
+            AppendFloat(sb, schedule.Hz);
+            sb.Append(',');
+            AppendPropertyName(sb, "tolerance");
+            AppendFloat(sb, schedule.Tolerance);
+            sb.Append(',');
+            AppendPropertyName(sb, "onlyIf");
+            AppendString(sb, schedule.OnlyIf);
+            sb.Append(',');
+            AppendPropertyName(sb, "conditionMemberKind");
+            AppendString(sb, schedule.ConditionMemberKind.ToString());
+            sb.Append('}');
+        }
+
         private static void WriteStringArray(StringBuilder sb, IReadOnlyList<string> values)
         {
             sb.Append('[');
@@ -552,6 +770,24 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendString(sb, values[i]);
             }
             sb.Append(']');
+        }
+
+        private static void WriteTransportSelection(
+            StringBuilder sb,
+            IReadOnlyList<string> publishTransportIds,
+            string subscribeTransportId)
+        {
+            AppendPropertyName(sb, "publishTransportIds");
+            if (publishTransportIds == null)
+                sb.Append("null");
+            else
+                WriteStringArray(sb, publishTransportIds);
+            sb.Append(',');
+            AppendPropertyName(sb, "subscribeTransportId");
+            if (subscribeTransportId == null)
+                sb.Append("null");
+            else
+                AppendString(sb, subscribeTransportId);
         }
 
         private static void AppendPropertyName(StringBuilder sb, string value)

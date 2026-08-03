@@ -77,9 +77,31 @@ namespace Unity.FoxgloveSDK.Tests
             Check(generated.Any(s => s.HintName == "FoxRunGeneratedDescriptorInfo.g.cs"
                                      && s.SourceText.ToString().Contains("DescriptorJson", StringComparison.Ordinal)),
                 "115E-A5: Roslyn generator source harness exposes descriptor carrier source");
+            RefreshGoldenIfRequested(foxRunSource);
             var golden = ReadRepoText(GoldenRelativePath);
             Check(NormalizeNewlines(foxRunSource).TrimEnd() == NormalizeNewlines(golden).TrimEnd(),
                 "115E-A4: Roslyn generated source matches the golden baseline");
+        }
+
+        private static void RefreshGoldenIfRequested(string generatedSource)
+        {
+            if (!string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        "UNITY2FOXGLOVE_UPDATE_FOXRUN_GOLDEN"),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            File.WriteAllText(
+                RepoPath(GoldenRelativePath),
+                NormalizeNewlines(generatedSource).TrimEnd()
+                + Environment.NewLine,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Console.WriteLine(
+                "[UPDATE] Refreshed " + GoldenRelativePath
+                + " from the Roslyn generator.");
         }
 
         private static void VerifyReflectionHarnessCanLoadFixtureAssembly()
@@ -126,10 +148,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj")
                       .Contains("FoxRunDescriptor", StringComparison.Ordinal),
                 "115E-B4: source-generator and runtime tests explicitly link shared descriptor sources");
+            var roslynSources =
+                PhaseValidationSourceHelpers
+                    .ReadFoxgloveLogSourceGeneratorSources();
             Check(ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs")
                       .Contains("FoxRunReflectionGenerationModelLowerer.Lower", StringComparison.Ordinal)
-                  && PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources()
-                      .Contains("FoxRunRoslynGenerationModelLowerer.Lower", StringComparison.Ordinal),
+                  && roslynSources.Contains(
+                      "FoxRunRoslynGenerationModelLowerer",
+                      StringComparison.Ordinal)
+                  && roslynSources.Contains(
+                      ".Lower(members)",
+                      StringComparison.Ordinal),
                 "115E-B5: Roslyn and build-time hosts lower into FoxRunGenerationModel before emission");
             Check(ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs")
                       .Contains("EmitClass(FoxRunGenerationType type)", StringComparison.Ordinal),
@@ -371,17 +400,13 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
                 var isArray = TryGetArrayElementType(memberType, out var elementType);
-                // Phase181 extends the semantic descriptor with the custom
-                // ROS2 DTO candidate.  This fixture contains no packaged
-                // ROS2 message types, so reflect the same candidate shape the
-                // Roslyn host now produces for ordinary FoxRun members.
-                var customDtoShape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(memberType);
                 members.Add(new FoxRunReflectionGenerationMember(
                     declaringType.Namespace ?? string.Empty,
                     declaringType.Name,
                     member.Name,
                     memberKind,
                     memberType.FullName ?? memberType.Name,
+                    FoxRunEmissionTypeNameFormatter.FromReflectionType(memberType),
                     isValueType: memberType.IsValueType,
                     isArray: isArray,
                     elementTypeName: elementType == null ? string.Empty : elementType.FullName ?? elementType.Name,
@@ -392,8 +417,7 @@ namespace Unity.FoxgloveSDK.Tests
                     tolerance: tolerance,
                     rawMemberOrder: rawMemberOrder,
                     conditionalSymbols: "FOXRUN_FIXTURE_EXTRA",
-                    ros2CustomDtoShape: customDtoShape,
-                    ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
+                    typeShape: FoxRunReflectionTypeShapeBuilder.Build(memberType),
                     namedArgumentPresence: presence));
             }
         }

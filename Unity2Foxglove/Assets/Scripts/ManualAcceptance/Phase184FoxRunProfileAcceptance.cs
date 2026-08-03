@@ -13,6 +13,7 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
+using Unity2Foxglove.Ros2Bridge;
 using Debug = UnityEngine.Debug;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -128,10 +129,15 @@ namespace Unity2Foxglove.ManualAcceptance
             CaptureRuntimeProfileEvidence();
             CaptureTransportClientEvidence();
             _effectivePublishProfile =
-                _manager.ActiveFoxRunPublishTargets + " / "
+                Phase184AcceptanceText.FormatTransportIds(
+                    _manager.ActiveFoxRunPublishSessionPolicy
+                        .PublishTransportIds)
+                + " / "
                 + _manager.ActiveFoxRunPublishEncoding;
             _effectiveSubscribeProfile =
-                _manager.ActiveFoxRunSubscriptionSource + " / "
+                _manager.ActiveFoxRunSubscriptionSessionPolicy
+                    .DefaultProvider.Value
+                + " / "
                 + _manager.ActiveFoxRunSubscriptionEncoding;
         }
 
@@ -140,8 +146,10 @@ namespace Unity2Foxglove.ManualAcceptance
             if (_profileEvidenceEmitted || _activeRoute == null)
                 return;
 
-            var source = (FoxRunEndpoint)0;
-            var targets = (FoxRunEndpoint)0;
+            var subscribeTransportIds =
+                new HashSet<string>(StringComparer.Ordinal);
+            var publishTransportIds =
+                new HashSet<string>(StringComparer.Ordinal);
             var hasPublish = false;
             var hasSubscribe = false;
             var publishProtobuf = false;
@@ -163,9 +171,21 @@ namespace Unity2Foxglove.ManualAcceptance
                         || declaration.Mode == FoxRunFlow.PublishAndSubscribe)
                     {
                         hasPublish = true;
-                        targets |= declaration.Targets != 0
-                            ? declaration.Targets
-                            : _manager.ActiveFoxRunPublishTargets;
+                        if (declaration.PublishTransportIds != null
+                            && declaration.PublishTransportIds.Length > 0)
+                        {
+                            AddTransportIds(
+                                publishTransportIds,
+                                declaration.PublishTransportIds);
+                        }
+                        else
+                        {
+                            foreach (var id in
+                                     _manager.ConfiguredFoxRunPublishTransportIds)
+                            {
+                                publishTransportIds.Add(id.Value);
+                            }
+                        }
                         AddEncoding(
                             declaration.Encoding != 0
                                 ? declaration.Encoding
@@ -177,9 +197,13 @@ namespace Unity2Foxglove.ManualAcceptance
                         || declaration.Mode == FoxRunFlow.PublishAndSubscribe)
                     {
                         hasSubscribe = true;
-                        source |= declaration.Source != 0
-                            ? declaration.Source
-                            : _manager.ActiveFoxRunSubscriptionSource;
+                        subscribeTransportIds.Add(
+                            string.IsNullOrWhiteSpace(
+                                declaration.SubscribeTransportId)
+                                ? _manager
+                                    .ConfiguredFoxRunSubscribeTransportId
+                                    .Value
+                                : declaration.SubscribeTransportId);
                         AddEncoding(
                             declaration.Encoding != 0
                                 ? declaration.Encoding
@@ -202,17 +226,30 @@ namespace Unity2Foxglove.ManualAcceptance
                 + " token=" + Phase184AcceptanceText.SafeMarker(_runToken)
                 + " source="
                 + (hasSubscribe
-                    ? Phase184AcceptanceText.FormatEndpoints(source)
+                    ? Phase184AcceptanceText.FormatTransportIds(
+                        subscribeTransportIds)
                     : "None")
                 + " targets="
                 + (hasPublish
-                    ? Phase184AcceptanceText.FormatEndpoints(targets)
+                    ? Phase184AcceptanceText.FormatTransportIds(
+                        publishTransportIds)
                     : "None")
                 + " publishEncoding="
                 + FormatEncodings(hasPublish, publishProtobuf, publishJson)
                 + " subscribeEncoding="
                 + FormatEncodings(hasSubscribe, subscribeProtobuf, subscribeJson));
             _profileEvidenceEmitted = true;
+        }
+
+        private static void AddTransportIds(
+            ISet<string> destination,
+            IEnumerable<string> source)
+        {
+            foreach (var id in source)
+            {
+                if (!string.IsNullOrWhiteSpace(id))
+                    destination.Add(id);
+            }
         }
 
         private static void AddEncoding(
@@ -276,26 +313,61 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void ConfigureDirectionalDefaults(string caseId)
         {
-            _manager.EnableFoxRunInbound = true;
             _manager.DefaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
             _manager.DefaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf;
-            _manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove;
-
-            if (caseId == MultiTargetCase
-                || caseId == QosContractCase
-                || caseId == StreamCase)
+            var publishTransportIds = new[]
             {
-                _manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
+                FoxgloveWebSocketTransport.Id
+            };
+            var subscribeTransportId = FoxgloveWebSocketTransport.Id;
+
+            switch (caseId)
+            {
+                case MultiTargetCase:
+                    publishTransportIds = new[]
+                    {
+                        FoxgloveWebSocketTransport.Id,
+                        FoxRunRos2TransportProvider.IdValue,
+                        Ros2BridgeTransportProvider.ProviderId
+                    };
+                    subscribeTransportId =
+                        FoxRunRos2TransportProvider.IdValue;
+                    break;
+                case QosContractCase:
+                    publishTransportIds = new[]
+                    {
+                        FoxRunRos2TransportProvider.IdValue,
+                        Ros2BridgeTransportProvider.ProviderId
+                    };
+                    subscribeTransportId =
+                        FoxRunRos2TransportProvider.IdValue;
+                    break;
+                case StreamCase:
+                    publishTransportIds = new[]
+                    {
+                        FoxRunRos2TransportProvider.IdValue
+                    };
+                    subscribeTransportId =
+                        FoxRunRos2TransportProvider.IdValue;
+                    break;
             }
+
+            _manager.ConfigureFoxRunTransports(
+                publishTransportIds,
+                subscriptionsEnabled: true,
+                subscribeTransportId);
         }
 
         private void CaptureProfiles()
         {
             _requestedPublishProfile =
-                _manager.DefaultFoxRunPublishTargets + " / "
+                Phase184AcceptanceText.FormatTransportIds(
+                    _manager.ConfiguredFoxRunPublishTransportIds)
+                + " / "
                 + _manager.DefaultFoxRunPublishEncoding;
             _requestedSubscribeProfile =
-                _manager.DefaultFoxRunSubscriptionSource + " / "
+                _manager.ConfiguredFoxRunSubscribeTransportId.Value
+                + " / "
                 + _manager.DefaultFoxRunSubscriptionEncoding;
             _effectivePublishProfile = _requestedPublishProfile;
             _effectiveSubscribeProfile = _requestedSubscribeProfile;
@@ -836,29 +908,33 @@ namespace Unity2Foxglove.ManualAcceptance
                    RunToken + "-" + stage,
                    StringComparison.Ordinal);
 
-        protected bool TryGetTargetStatus(
-            string topic,
-            out FoxRunPublishDispatchResult result)
+        protected bool HasActivePublishTransport(string transportId)
         {
-            result = default;
-            var source = this as IFoxgloveLogSource;
-            if (source == null)
+            var manager = FindFirstObjectByType<FoxgloveManager>();
+            var snapshot = manager?.ActiveFoxRunTransportSession;
+            if (snapshot == null)
                 return false;
-            for (var index = 0; index < source.FoxgloveLog_TopicCount; index++)
+            try
             {
-                if (!string.Equals(
-                        source.FoxgloveLog_GetTopic(index).Topic,
-                        topic,
-                        StringComparison.Ordinal))
-                {
-                    continue;
-                }
-                return FoxgloveLogHub.TryGetActivePublishTargetStatus(
-                    source,
-                    index,
-                    out result);
+                return snapshot.TryGetPublishTransport(
+                    new FoxRunTransportId(transportId),
+                    out _);
             }
-            return false;
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        protected bool HasActivePublishTransports(
+            params string[] transportIds)
+        {
+            foreach (var id in transportIds)
+            {
+                if (!HasActivePublishTransport(id))
+                    return false;
+            }
+            return true;
         }
     }
 
@@ -876,8 +952,11 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             JsonTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Foxglove,
-            Targets = FoxRunEndpoint.Foxglove,
+            SubscribeTransportId = FoxgloveWebSocketTransport.Id,
+            PublishTransportIds = new[]
+            {
+                FoxgloveWebSocketTransport.Id
+            },
             Encoding = FoxRunEncoding.JSON,
             Policy = FoxRunPolicy.Change,
             OnlyIf = nameof(AcceptExplicitJson))]
@@ -1027,26 +1106,19 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void EmitTargetStatus()
         {
-            if (!TryGetTargetStatus(InheritedTopic, out var inherited)
-                || !TryGetTargetStatus(JsonTopic, out var json))
-            {
-                return;
-            }
-
-            var sameStatus = inherited.Status == json.Status;
-            var sameSucceeded =
-                inherited.SucceededTargets == json.SucceededTargets;
-            var status = sameStatus ? inherited.Status.ToString() : "Mixed";
-            var succeeded = sameSucceeded
-                ? inherited.SucceededTargets
-                : inherited.SucceededTargets & json.SucceededTargets;
-            var failed = inherited.FailedTargets | json.FailedTargets;
+            var active =
+                HasActivePublishTransport(
+                    FoxgloveWebSocketTransport.Id);
             var evidence =
-                "status=" + status
+                "status=" + (active ? "Active" : "Unavailable")
                 + " succeeded="
-                + Phase184AcceptanceText.FormatEndpoints(succeeded)
+                + (active
+                    ? FoxgloveWebSocketTransport.Id
+                    : "None")
                 + " failed="
-                + Phase184AcceptanceText.FormatEndpoints(failed)
+                + (active
+                    ? "None"
+                    : FoxgloveWebSocketTransport.Id)
                 + " topics=2";
             if (string.Equals(evidence, _lastTargetEvidence, StringComparison.Ordinal))
                 return;
@@ -1065,12 +1137,15 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             Topic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Foxglove
-                      | FoxRunEndpoint.Ros2Native
-                      | FoxRunEndpoint.Ros2Bridge,
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            PublishTransportIds = new[]
+            {
+                FoxgloveWebSocketTransport.Id,
+                FoxRunRos2TransportProvider.IdValue,
+                Ros2BridgeTransportProvider.ProviderId
+            },
             Encoding = FoxRunEncoding.Protobuf,
-            QoS = FoxRunQosProfile.Default,
             Policy = FoxRunPolicy.Change,
             Hz = 4f)]
         [SerializeField] private Phase181State _multiTarget;
@@ -1120,29 +1195,28 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
 
             EmitBridgeRuntimeFailure();
-            if (TryGetTargetStatus(Topic, out var status))
+            var allProvidersActive = HasActivePublishTransports(
+                FoxgloveWebSocketTransport.Id,
+                FoxRunRos2TransportProvider.IdValue,
+                Ros2BridgeTransportProvider.ProviderId);
+            EmitTargetStatus(allProvidersActive);
+            _targetStatus =
+                allProvidersActive ? "Active" : "Waiting";
+            if (!_nativeReadyForBridge
+                && HasActivePublishTransport(
+                    FoxRunRos2TransportProvider.IdValue))
             {
-                EmitTargetStatus(status);
-                _targetStatus = status.Status.ToString();
-                if (!_nativeReadyForBridge
-                    && (status.SucceededTargets & FoxRunEndpoint.Ros2Native) != 0)
-                {
-                    _nativeReadyForBridge = true;
-                    Emit(
-                        "PHASE184G_NATIVE_READY_FOR_BRIDGE",
-                        "topic=" + Topic + " target=native");
-                }
-                if (!_initialArmed
-                    && status.Status == FoxRunPublishTargetStatus.Ready
-                    && status.SucceededTargets
-                       == (FoxRunEndpoint.Foxglove
-                           | FoxRunEndpoint.Ros2Native
-                           | FoxRunEndpoint.Ros2Bridge))
-                {
-                    _initialArmed = true;
-                    _multiTarget = State(RunToken, "multi-local-1", 18411);
-                    Emit("PHASE184G_MULTI_LOCAL_ARMED", "stage=1");
-                }
+                _nativeReadyForBridge = true;
+                Emit(
+                    "PHASE184G_NATIVE_READY_FOR_BRIDGE",
+                    "topic=" + Topic + " target="
+                    + FoxRunRos2TransportProvider.IdValue);
+            }
+            if (!_initialArmed && allProvidersActive)
+            {
+                _initialArmed = true;
+                _multiTarget = State(RunToken, "multi-local-1", 18411);
+                Emit("PHASE184G_MULTI_LOCAL_ARMED", "stage=1");
             }
             if (!_initialArmed)
             {
@@ -1182,9 +1256,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 Emit("PHASE184G_MULTI_LOCAL_MUTATED", "stage=3");
             }
 
-            if (_laterLocalMutation
-                && TryGetTargetStatus(Topic, out var finalStatus)
-                && finalStatus.Status == FoxRunPublishTargetStatus.Ready)
+            if (_laterLocalMutation && allProvidersActive)
             {
                 Pass(
                     "remoteApplied=True sameOriginDrops="
@@ -1208,7 +1280,11 @@ namespace Unity2Foxglove.ManualAcceptance
             if (_manager == null)
                 return;
 
-            var stats = _manager.GetRos2BridgeStatsSnapshot();
+            var provider =
+                _manager.GetComponent<Ros2BridgeTransportProvider>();
+            var stats = provider == null
+                ? Ros2BridgeStatsSnapshot.Disabled
+                : provider.GetStatsSnapshot();
             var error = stats.LastError ?? string.Empty;
             if (string.IsNullOrWhiteSpace(error)
                 || string.Equals(
@@ -1229,14 +1305,23 @@ namespace Unity2Foxglove.ManualAcceptance
                 + Phase184AcceptanceText.SafeMarker(error));
         }
 
-        private void EmitTargetStatus(FoxRunPublishDispatchResult status)
+        private void EmitTargetStatus(bool allProvidersActive)
         {
             var evidence =
-                "status=" + status.Status
+                "status="
+                + (allProvidersActive ? "Active" : "Waiting")
                 + " succeeded="
-                + Phase184AcceptanceText.FormatEndpoints(status.SucceededTargets)
+                + Phase184AcceptanceText.FormatTransportIds(
+                    ActiveProviderIds(
+                        FoxgloveWebSocketTransport.Id,
+                        FoxRunRos2TransportProvider.IdValue,
+                        Ros2BridgeTransportProvider.ProviderId))
                 + " failed="
-                + Phase184AcceptanceText.FormatEndpoints(status.FailedTargets)
+                + Phase184AcceptanceText.FormatTransportIds(
+                    InactiveProviderIds(
+                        FoxgloveWebSocketTransport.Id,
+                        FoxRunRos2TransportProvider.IdValue,
+                        Ros2BridgeTransportProvider.ProviderId))
                 + " bridgeRuntimeFailures="
                 + _bridgeRuntimeFailures.ToString(CultureInfo.InvariantCulture);
             if (string.Equals(
@@ -1249,6 +1334,26 @@ namespace Unity2Foxglove.ManualAcceptance
 
             _lastTargetEvidence = evidence;
             Emit("PHASE184G_MULTI_TARGET_STATUS", evidence);
+        }
+
+        private IEnumerable<string> ActiveProviderIds(
+            params string[] providerIds)
+        {
+            foreach (var id in providerIds)
+            {
+                if (HasActivePublishTransport(id))
+                    yield return id;
+            }
+        }
+
+        private IEnumerable<string> InactiveProviderIds(
+            params string[] providerIds)
+        {
+            foreach (var id in providerIds)
+            {
+                if (!HasActivePublishTransport(id))
+                    yield return id;
+            }
         }
     }
 
@@ -1268,7 +1373,11 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             Topic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
+            PublishTransportIds = new[]
+            {
+                FoxgloveWebSocketTransport.Id,
+                Ros2BridgeTransportProvider.ProviderId
+            },
             Encoding = FoxRunEncoding.Protobuf,
             Policy = FoxRunPolicy.Change)]
         [SerializeField] private Phase181State _degradedTarget;
@@ -1338,15 +1447,25 @@ namespace Unity2Foxglove.ManualAcceptance
                 }
                 return;
             }
-            if (!TryGetTargetStatus(Topic, out var status))
-                return;
-
-            _targetStatus = status.Status.ToString();
-            _succeededTargets = status.SucceededTargets.ToString();
-            _failedTargets = status.FailedTargets.ToString();
-            if (status.Status == FoxRunPublishTargetStatus.Degraded
-                && status.SucceededTargets == FoxRunEndpoint.Foxglove
-                && status.FailedTargets == FoxRunEndpoint.Ros2Bridge)
+            var webSocketActive =
+                HasActivePublishTransport(
+                    FoxgloveWebSocketTransport.Id);
+            var bridgeActive =
+                HasActivePublishTransport(
+                    Ros2BridgeTransportProvider.ProviderId);
+            _targetStatus =
+                webSocketActive && !bridgeActive
+                    ? "Degraded"
+                    : "Waiting";
+            _succeededTargets =
+                webSocketActive
+                    ? FoxgloveWebSocketTransport.Id
+                    : "None";
+            _failedTargets =
+                bridgeActive
+                    ? "None"
+                    : Ros2BridgeTransportProvider.ProviderId;
+            if (webSocketActive && !bridgeActive)
             {
                 if (Time.realtimeSinceStartup >= _nextDegradedDeliveryPulseAt)
                     PulseDegradedDelivery();
@@ -1442,26 +1561,38 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             SystemDefaultTopic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.SystemDefault)]
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue,
+                Ros2BridgeTransportProvider.ProviderId
+            },
+            Reliability = FoxRunDeliveryReliability.SystemDefault,
+            Durability = FoxRunDeliveryDurability.SystemDefault,
+            History = FoxRunDeliveryHistory.SystemDefault)]
         [SerializeField] private Phase181State _qosSystemDefault;
 
         [FoxRun(
             KeepAllTopic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.Default,
-            History = FoxRunQosHistory.KeepAll)]
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue,
+                Ros2BridgeTransportProvider.ProviderId
+            },
+            History = FoxRunDeliveryHistory.KeepAll)]
         [SerializeField] private Phase181State _qosKeepAll;
 
         [FoxRun(
             KeepLastDepthTopic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-            QoS = FoxRunQosProfile.Default,
-            Reliability = FoxRunQosReliability.BestEffort,
-            Durability = FoxRunQosDurability.TransientLocal,
-            History = FoxRunQosHistory.KeepLast,
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue,
+                Ros2BridgeTransportProvider.ProviderId
+            },
+            Reliability = FoxRunDeliveryReliability.BestEffort,
+            Durability = FoxRunDeliveryDurability.TransientLocal,
+            History = FoxRunDeliveryHistory.KeepLast,
             Depth = 7)]
         [SerializeField] private Phase181State _qosKeepLastDepth;
 
@@ -1497,13 +1628,14 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
 
             if (!_nativeReadyForBridge
-                && TryGetTargetStatus(SystemDefaultTopic, out var nativeStatus)
-                && (nativeStatus.SucceededTargets & FoxRunEndpoint.Ros2Native) != 0)
+                && HasActivePublishTransport(
+                    FoxRunRos2TransportProvider.IdValue))
             {
                 _nativeReadyForBridge = true;
                 Emit(
                     "PHASE184G_NATIVE_READY_FOR_BRIDGE",
-                    "topic=" + SystemDefaultTopic + " target=native");
+                    "topic=" + SystemDefaultTopic + " target="
+                    + FoxRunRos2TransportProvider.IdValue);
             }
 
             _readyContracts = 0;
@@ -1516,28 +1648,52 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void CountReady(string topic, ref string lastEvidence)
         {
-            if (!TryGetTargetStatus(topic, out var status))
-                return;
-
+            var nativeActive =
+                HasActivePublishTransport(
+                    FoxRunRos2TransportProvider.IdValue);
+            var bridgeActive =
+                HasActivePublishTransport(
+                    Ros2BridgeTransportProvider.ProviderId);
             var evidence =
                 "topic=" + Phase184AcceptanceText.SafeMarker(topic)
-                + " status=" + status.Status
+                + " status="
+                + (nativeActive && bridgeActive
+                    ? "Active"
+                    : "Waiting")
                 + " succeeded="
-                + Phase184AcceptanceText.FormatEndpoints(status.SucceededTargets)
+                + Phase184AcceptanceText.FormatTransportIds(
+                    ActiveProviderIds(nativeActive, bridgeActive))
                 + " failed="
-                + Phase184AcceptanceText.FormatEndpoints(status.FailedTargets);
+                + Phase184AcceptanceText.FormatTransportIds(
+                    InactiveProviderIds(nativeActive, bridgeActive));
             if (!string.Equals(evidence, lastEvidence, StringComparison.Ordinal))
             {
                 lastEvidence = evidence;
                 Emit("PHASE184G_QOS_TARGET_STATUS", evidence);
             }
 
-            if (status.Status == FoxRunPublishTargetStatus.Ready
-                && status.SucceededTargets
-                   == (FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge))
-            {
+            if (nativeActive && bridgeActive)
                 _readyContracts++;
-            }
+        }
+
+        private static IEnumerable<string> ActiveProviderIds(
+            bool nativeActive,
+            bool bridgeActive)
+        {
+            if (nativeActive)
+                yield return FoxRunRos2TransportProvider.IdValue;
+            if (bridgeActive)
+                yield return Ros2BridgeTransportProvider.ProviderId;
+        }
+
+        private static IEnumerable<string> InactiveProviderIds(
+            bool nativeActive,
+            bool bridgeActive)
+        {
+            if (!nativeActive)
+                yield return FoxRunRos2TransportProvider.IdValue;
+            if (!bridgeActive)
+                yield return Ros2BridgeTransportProvider.ProviderId;
         }
     }
 
@@ -1553,8 +1709,12 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             StreamTopic,
             Mode = FoxRunFlow.Subscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.SensorData)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            Reliability = FoxRunDeliveryReliability.BestEffort,
+            Durability = FoxRunDeliveryDurability.Volatile,
+            History = FoxRunDeliveryHistory.KeepLast,
+            Depth = 5)]
         private FoxRunStream<Phase181State> _inputStream =
             new FoxRunStream<Phase181State>(
                 new FoxRunStreamOptions(
@@ -1566,9 +1726,16 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             OriginTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.SensorData,
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue
+            },
+            Reliability = FoxRunDeliveryReliability.BestEffort,
+            Durability = FoxRunDeliveryDurability.Volatile,
+            History = FoxRunDeliveryHistory.KeepLast,
+            Depth = 5,
             Policy = FoxRunPolicy.Change)]
         [SerializeField] private Phase181State _zenohOrigin;
 
@@ -1827,16 +1994,37 @@ namespace Unity2Foxglove.ManualAcceptance
             return new string(characters);
         }
 
-        internal static string FormatEndpoints(FoxRunEndpoint endpoints)
+        internal static string FormatTransportIds(
+            IEnumerable<FoxRunTransportId> transportIds)
         {
-            var names = new List<string>(3);
-            if ((endpoints & FoxRunEndpoint.Foxglove) != 0)
-                names.Add(nameof(FoxRunEndpoint.Foxglove));
-            if ((endpoints & FoxRunEndpoint.Ros2Native) != 0)
-                names.Add(nameof(FoxRunEndpoint.Ros2Native));
-            if ((endpoints & FoxRunEndpoint.Ros2Bridge) != 0)
-                names.Add(nameof(FoxRunEndpoint.Ros2Bridge));
-            return names.Count == 0 ? "None" : string.Join(",", names);
+            var names = new List<string>();
+            if (transportIds != null)
+            {
+                foreach (var id in transportIds)
+                    names.Add(id.Value);
+            }
+            names.Sort(StringComparer.Ordinal);
+            return names.Count == 0
+                ? "None"
+                : string.Join(",", names);
+        }
+
+        internal static string FormatTransportIds(
+            IEnumerable<string> transportIds)
+        {
+            var names = new List<string>();
+            if (transportIds != null)
+            {
+                foreach (var id in transportIds)
+                {
+                    if (!string.IsNullOrWhiteSpace(id))
+                        names.Add(id);
+                }
+            }
+            names.Sort(StringComparer.Ordinal);
+            return names.Count == 0
+                ? "None"
+                : string.Join(",", names);
         }
 
         internal static string Bound(string value, int maximum)

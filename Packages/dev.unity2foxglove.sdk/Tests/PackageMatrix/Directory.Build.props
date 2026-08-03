@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <PackageMatrixBuildRoot>$(MSBuildThisFileDirectory)..\..\..\..\build\PackageMatrix\$(MSBuildProjectName)\</PackageMatrixBuildRoot>
+    <BaseOutputPath>$(PackageMatrixBuildRoot)</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(PackageMatrixBuildRoot)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(PackageMatrixBuildRoot)obj\</MSBuildProjectExtensionsPath>
+    <RestoreOutputPath>$(PackageMatrixBuildRoot)obj\</RestoreOutputPath>
+  </PropertyGroup>
+</Project>

@@ -37,20 +37,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("\\ud83d\\ude00", report, StringComparison.Ordinal);
         }
 
+        [Fact]
+        [Trait("Phase", "185-A")]
+        public void CurrentFoxRunDescriptorMajorVersionIsReportedAsSix()
+        {
+            var section = new Unity2FoxgloveFoxRunSummarySection(
+                true,
+                5,
+                FoxRunGenerationDescriptorConstants.DescriptorVersion,
+                "hash",
+                "contracts",
+                1,
+                1,
+                1,
+                "subscriptions");
+
+            var json = Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(section);
+
+            Assert.Contains("\"generatorMajorVersion\":6", json, StringComparison.Ordinal);
+            Assert.Equal(6, FoxRunGenerationDescriptorConstants.DescriptorVersion);
+        }
+
         private static Unity2FoxgloveSchemaManifest EmptyManifest()
         {
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 new Unity2FoxgloveFoxRunSummarySection(false, 0, 0, "", "", 0, 0, 0, ""),
                 new Unity2FoxgloveProtobufRegistrySection("protobuf", "", "", 0, Array.Empty<Unity2FoxgloveProtobufRegistryEntry>()),
-                new Unity2FoxgloveRos2MsgRegistrySection("ros2msg", "", "", "", 0, 0, Array.Empty<Unity2FoxgloveRos2MsgRegistryEntry>()),
                 new Unity2FoxgloveSdkTypedPublishersSection(0, Array.Empty<Unity2FoxgloveSdkTypedPublisherEntry>()));
 
             return new Unity2FoxgloveSchemaManifest(
-                1,
+                2,
                 "Unity2Foxglove",
                 new Unity2FoxgloveSchemaManifestGeneratorInfo("test", 1),
                 sections,
-                new Unity2FoxgloveSchemaManifestSectionHashes("", "", "", ""),
+                new Unity2FoxgloveSchemaManifestSectionHashes("", "", ""),
                 "hash");
         }
     }

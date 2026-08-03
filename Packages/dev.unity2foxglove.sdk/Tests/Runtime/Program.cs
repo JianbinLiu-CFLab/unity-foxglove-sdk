@@ -32,6 +32,7 @@ class Program
         ("--phase93-inspect-mcap", "Tool", "Phase 93 ROS2 full-schema MCAP inspector"),
         ("--phase68-indexed-reader-smoke", "Tool", "Phase 68 indexed reader external MCAP smoke"),
         ("--phase44-all-schemas-mcap", "Tool", "Phase 44 all-schema MCAP generator"),
+        ("--phase185-inspect-mcap", "Tool", "Phase185 typed MessagePack output MCAP inspector"),
         ("--phase139b-remote-data-loader-server", "Manual", "Phase 139B remote data loader server"),
     };
 
@@ -95,6 +96,9 @@ class Program
 
         if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
             return registeredValidationExitCode;
+
+        if (argSet.Contains("--phase185-inspect-mcap"))
+            return RunPhase185MessagePackMcapInspector(argList);
 
         if (argSet.Contains("--phase139b-remote-data-loader-server"))
             return RunPhase139BRemoteDataLoaderServer(argList);
@@ -225,6 +229,50 @@ class Program
         }
 
         return RunTests(argSet.Contains("--local-evidence"));
+    }
+
+    private static int RunPhase185MessagePackMcapInspector(IReadOnlyList<string> arguments)
+    {
+        try
+        {
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            var allowed = new HashSet<string>(
+                new[]
+                {
+                    "--phase185-inspect-mcap",
+                    "--expected-probe-report",
+                    "--output"
+                },
+                StringComparer.Ordinal);
+
+            for (var index = 0; index < arguments.Count; index += 2)
+            {
+                var flag = arguments[index];
+                if (!allowed.Contains(flag))
+                    throw new ArgumentException("Unexpected Phase185 inspector argument: " + flag);
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(flag + " requires exactly one path value.");
+                }
+                if (!values.TryAdd(flag, arguments[index + 1]))
+                    throw new ArgumentException(flag + " may be supplied only once.");
+            }
+
+            foreach (var flag in allowed)
+                if (!values.ContainsKey(flag))
+                    throw new ArgumentException("Missing required Phase185 inspector option: " + flag);
+
+            return FoxRunMessagePackMcapInspector.RunCommand(
+                values["--phase185-inspect-mcap"],
+                values["--expected-probe-report"],
+                values["--output"]);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("Phase185 MessagePack MCAP inspector argument failure: " + exception.Message);
+            return 1;
+        }
     }
 
     private static bool TryRunRegisteredValidation(List<string> argList, IReadOnlyCollection<string> argSet, out int exitCode)
@@ -487,7 +535,7 @@ class Program
 
             Console.WriteLine($"Phase 97 health report written: {jsonPath}");
             Console.WriteLine($"Summary: {report.Summary}");
-            if (liveMode && report.Summary != Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
+            if (liveMode && report.Summary != Unity2Foxglove.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
                 return 1;
             return 0;
         }

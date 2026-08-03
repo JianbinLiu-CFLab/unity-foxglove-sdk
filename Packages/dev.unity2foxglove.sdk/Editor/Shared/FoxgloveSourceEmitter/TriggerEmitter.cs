@@ -186,18 +186,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Emits one direction-specific apply method for every Trigger input
-        /// declaration plus a single bulk method. WebSocket staging remains in
-        /// the core partial; optional native trigger fields are referenced only
-        /// behind the exact symbols that emit their owning partials.
+        /// declaration plus a single bulk method. Provider-specific trigger
+        /// behavior is implemented by Provider contributions.
         /// </summary>
         internal static void EmitApplyMethods(
             StringBuilder sb,
             IReadOnlyList<ApplyMember> applyMembers,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> webSocketInputMembers,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> packagedNativeInputMembers,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> customNativeInputMembers,
-            string pad,
-            bool emitRos2NativePartial)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> legacyWebSocketInputMembers,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> transactionalInputMembers,
+            string pad)
         {
             for (var inputIndex = 0; inputIndex < applyMembers.Count; inputIndex++)
             {
@@ -205,12 +202,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var member = apply.Member;
                 var methodName = apply.MethodName;
 
-                var webSocketIndex = IndexOfMember(webSocketInputMembers, member);
-                var hasPackagedNative = emitRos2NativePartial
-                                        && IndexOfMember(packagedNativeInputMembers, member) >= 0;
-                var hasCustomNative = emitRos2NativePartial
-                                      && IndexOfMember(customNativeInputMembers, member) >= 0;
-
+                var webSocketIndex = IndexOfMember(
+                    legacyWebSocketInputMembers,
+                    member);
+                var hasMessagePackTransaction =
+                    MessagePackInputDispatchEmitter.TryGetTransactionIndex(
+                        transactionalInputMembers,
+                        member,
+                        out var messagePackTransactionIndex);
                 sb.AppendLine();
                 sb.AppendLine($"{pad}    public bool {methodName}()");
                 sb.AppendLine($"{pad}    {{");
@@ -224,6 +223,13 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}            __foxRunInputHasPending_{webSocketIndex} = false;");
                         sb.AppendLine($"{pad}            __foxRunInputHasApplied_{webSocketIndex} = false;");
                     }
+                    if (hasMessagePackTransaction)
+                    {
+                        sb.AppendLine(
+                            $"{pad}            global::System.Threading.Interlocked.Exchange(ref __foxRunMessagePackPending_{messagePackTransactionIndex}, null);");
+                        sb.AppendLine(
+                            $"{pad}            __foxRunMessagePackApplied_{messagePackTransactionIndex} = null;");
+                    }
                     sb.AppendLine($"{pad}            return false;");
                     sb.AppendLine($"{pad}        }}");
                 }
@@ -231,29 +237,10 @@ namespace Unity.FoxgloveSDK.Editor
                 if (webSocketIndex >= 0)
                     sb.AppendLine(
                         $"{pad}        applied |= __FoxRunApplyInput_{webSocketIndex}(0d, 0f);");
-
-                if (hasPackagedNative || hasCustomNative)
+                if (hasMessagePackTransaction)
                 {
-                    var fieldSuffix = TriggerFieldSuffix(member);
-                    sb.AppendLine($"{pad}        var nativeTriggerRequested = false;");
-                    if (hasPackagedNative)
-                    {
-                        sb.AppendLine($"{pad}#if UNITY2FOXGLOVE_ROS2_FOR_UNITY");
-                        sb.AppendLine(
-                            $"{pad}        global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_{fieldSuffix}, 1);");
-                        sb.AppendLine($"{pad}        nativeTriggerRequested = true;");
-                        sb.AppendLine($"{pad}#endif");
-                    }
-                    else
-                    {
-                        sb.AppendLine(
-                            $"{pad}#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES");
-                        sb.AppendLine(
-                            $"{pad}        global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_{fieldSuffix}, 1);");
-                        sb.AppendLine($"{pad}        nativeTriggerRequested = true;");
-                        sb.AppendLine($"{pad}#endif");
-                    }
-                    sb.AppendLine($"{pad}        applied |= nativeTriggerRequested;");
+                    sb.AppendLine(
+                        $"{pad}        applied |= __FoxRunApplyMessagePackTransaction_{messagePackTransactionIndex}(0d, 0f);");
                 }
 
                 sb.AppendLine($"{pad}        return applied;");
@@ -291,14 +278,5 @@ namespace Unity.FoxgloveSDK.Editor
             return -1;
         }
 
-        private static string TriggerFieldSuffix(FoxgloveSourceEmitter.TopicMember member)
-            => IdentifierUtils.SanitizeIdentifier(
-                   (member.MemberName ?? string.Empty).TrimStart('_'))
-               + "_"
-               + TopicMetadataEmitter.Sha256Hex(
-                       (member.MemberName ?? string.Empty)
-                       + "|"
-                       + (member.Topic ?? string.Empty))
-                   .Substring(0, 8);
     }
 }

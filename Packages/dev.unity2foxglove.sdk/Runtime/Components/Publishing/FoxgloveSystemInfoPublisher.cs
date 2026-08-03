@@ -30,7 +30,6 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => FoxgloveSchemaDefinitions.SystemInfoSchemaName;
 
         public override bool SupportsProtobufEncoding => false;
-        public override bool SupportsRos2Encoding => false;
 
         protected override void Reset()
         {

@@ -38,12 +38,13 @@ You will learn what the main Inspector fields do, when to change them, and which
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
-| Default Wire Encoding | `Protobuf` | Resolves generated `[FoxRun]` topics that leave `Encoding` as `Inherit`. | Select `JSON` only for a deliberate legacy-client compatibility session. | Expecting the popup to override an explicit `[FoxRun(Encoding = ...)]` declaration. |
+| Publish Profile > Foxglove Encoding | `Protobuf` | Resolves generated publish directions that leave `Encoding` omitted. Options are `Protobuf`, `JSON`, and `MessagePack`. | Select `MessagePack` for a generated schemaless custom-panel contract; select `JSON` for deliberate legacy-client compatibility. | Expecting the popup to override an explicit `[FoxRun(Encoding = ...)]` declaration. |
+| Subscribe Profile > Foxglove Encoding | `Protobuf` | Resolves generated subscribe directions that leave `Encoding` omitted. Options are `Protobuf`, `JSON`, and `MessagePack`. | Select `MessagePack` only when the client uses the bounded generated contract and maintained FoxRun Publish extension. | Assuming Foxglove built-in panels author typed MessagePack. |
 | Enable FoxRun Inbound | Disabled | Enables generated `Subscribe` and `PublishAndSubscribe` inputs. | Enable only for an intentional remote-control surface. | Enabling it on a non-loopback endpoint without the explicit shared-token policy. |
 | Inbound Max Payload | `65536` | Maximum accepted client message size in bytes. | Lower it for small command messages. | Treating it as an outbound publish limit. |
 | Inbound Max Rate | `60` | Per-topic cap on incoming client messages per second. | Lower it to bound external-control traffic. | Treating it as a Unity publish scheduler frequency. |
 
-FoxRun policy is captured when the server starts. Changing **Default Wire Encoding** while Play Mode is running is visible in the Inspector but applies after server restart or re-enable. The runtime topic summary distinguishes source-owned `Inherit`, explicit JSON/Protobuf declarations, and the active effective contract.
+FoxRun policy is captured when the server starts. Changing either directional Foxglove encoding popup while Play Mode is running is visible in the Inspector but applies after server restart or re-enable. Explicit declarations still take precedence. The runtime topic summary distinguishes omitted/inherited values, explicit JSON/Protobuf/MessagePack declarations, and the active effective contract. MessagePack rows are schemaless on the wire and require the maintained custom FoxRun Publish extension for typed editing. Optional transport Providers expose their own settings and diagnostics.
 
 ### 3.4 MCAP Recording
 
@@ -169,17 +170,17 @@ For Windows Native mode, no path fields are shown. The backend uses Windows Medi
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
-| Point Cloud Output Mode | `Raw` | Selects dependency-free `foxglove.PointCloud` output or optional Draco-compressed `foxglove.CompressedPointCloud`. | Use `Draco` on Windows after `Check Draco` reports the bundled native plugin is available. | Expecting JSON output from `foxglove.CompressedPointCloud` or expecting Draco on unsupported platforms. |
+| Point Cloud Output Mode | `Raw` | Selects dependency-free `foxglove.PointCloud`, Draco-compressed `foxglove.CompressedPointCloud`, or a packed Provider handoff frame. | Use `Draco` on Windows after `Check Draco` passes; use Packed Provider Frame only with a matching optional Provider. | Expecting JSON output from compressed mode or WebSocket output from Provider-only mode. |
 | Frame Id | `unity_world` | Frame ID associated with generated transform points and fallback frames. | Set to match your `/tf` tree or sensor frame. | Using a frame ID that is never published. |
 | Max Points | `4096` | Caps the number of points that enter raw packing or Draco compression. | Lower it for bandwidth or CPU limits. | Raising it without checking publish/update cost. |
 | Max Packed Bytes | `0` | Raw `PointCloud.data` byte budget; `0` disables the byte budget. | Use for high-rate raw point clouds. | Assuming it is a post-compression byte limit. |
 | Sampling Mode | `UniformStride` after reset | Chooses which points survive QoS: first points, uniform stride, or voxel grid. | Use `VoxelGrid` to preserve spatial coverage. | Treating sampling as a coordinate transform. |
 
-Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JSON, Protobuf, or ROS2. Draco mode publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode, or `foxglove_msgs/msg/CompressedPointCloud` with CDR payloads in ROS2 mode. Both Draco paths use format = `draco`. The Inspector changes the topic only while it is still the old default; custom topics are preserved.
+Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JSON or Protobuf. Draco mode publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode with format = `draco`. Packed Provider Frame mode emits `unity2foxglove.PackedPointCloud` on `/unity/point_cloud_packed` only to an installed Provider. The Inspector changes the topic only while it is still the old default; custom topics are preserved.
 
 Draco mode is optional and uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible plugin binaries log a warning and publish nothing; the publisher does not silently fall back to raw mode. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
 
-Draco native encode runs on a worker thread. Large frames can still spend main-thread time in QoS preparation, frame cloning, result draining, and Raw/ROS2 packing, so validate with `Check Draco`, keep QoS budgets realistic, and enable performance diagnostics for full-fidelity stress runs.
+Draco native encode runs on a worker thread. Large frames can still spend main-thread time in sampling preparation, frame cloning, and result draining, so validate with `Check Draco`, keep point budgets realistic, and enable performance diagnostics for full-fidelity stress runs.
 
 ## 9. FoxgloveReplayObjectAdapter
 

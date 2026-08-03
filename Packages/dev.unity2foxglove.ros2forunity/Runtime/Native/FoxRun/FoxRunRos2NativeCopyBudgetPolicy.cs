@@ -1,0 +1,42 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Ros2ForUnity.Native/FoxRun
+// Purpose: R2FU-owned bounds and recovery rules for copied-message budgets.
+
+namespace Unity2Foxglove.Ros2ForUnity.Native
+{
+    /// <summary>Portable limits for copied R2FU subscription data.</summary>
+    public static class FoxRunRos2NativeCopyBudgetPolicy
+    {
+        /// <summary>Smallest user-editable copied-data budget.</summary>
+        public const int MinBytes = 1024;
+
+        /// <summary>Largest portable copied-data budget.</summary>
+        public const int MaxBytes = 256 * 1024 * 1024;
+
+        /// <summary>Safe default used when old serialized scenes have no configured budget.</summary>
+        public const int DefaultBytes = 4 * 1024 * 1024;
+
+        /// <summary>
+        /// Recovers a serialized value while preserving the historic missing-value default.
+        /// </summary>
+        public static int NormalizeSerializedBytes(int serializedBytes)
+        {
+            return serializedBytes <= 0
+                ? DefaultBytes
+                : ClampUserEditedBytes(serializedBytes);
+        }
+
+        /// <summary>Clamps a direct user edit to the portable copied-data range.</summary>
+        public static int ClampUserEditedBytes(int editedBytes)
+        {
+            if (editedBytes < MinBytes)
+                return MinBytes;
+
+            return editedBytes > MaxBytes
+                ? MaxBytes
+                : editedBytes;
+        }
+    }
+}

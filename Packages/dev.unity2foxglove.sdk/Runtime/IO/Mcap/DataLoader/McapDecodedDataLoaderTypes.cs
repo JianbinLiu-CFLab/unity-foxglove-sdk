@@ -16,11 +16,32 @@ namespace Unity.FoxgloveSDK.IO
         IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel);
     }
 
+    /// <summary>
+    /// Stable identity required for explicit, session-local decoder factory
+    /// snapshots. IDs are compared ordinally and duplicates fail closed.
+    /// </summary>
+    public interface IStableMcapMessageDecoderFactory :
+        IMcapMessageDecoderFactory
+    {
+        string StableDecoderId { get; }
+    }
+
     /// <summary>Decodes a raw DataLoader message into an optional higher-level diagnostic payload.</summary>
     public interface IMcapMessageDecoder
     {
         /// <summary>Decode one raw message. Implementations must not mutate <paramref name="message"/>.</summary>
         McapDecodedPayload Decode(McapDataLoaderMessage message);
+    }
+
+    /// <summary>
+    /// Optional encoding-neutral recovery hook for a decoder that can preserve
+    /// a diagnostic view when its primary typed decode fails.
+    /// </summary>
+    public interface IMcapMessageDecoderFailureFallback
+    {
+        string FailureProblemCode { get; }
+
+        McapDecodedPayload DecodeFallback(McapDataLoaderMessage message);
     }
 
     /// <summary>Kind of payload returned by the decoded DataLoader view.</summary>
@@ -32,14 +53,12 @@ namespace Unity.FoxgloveSDK.IO
         Json = 1,
         /// <summary>Payload decoded as a packaged Foxglove protobuf IMessage.</summary>
         Protobuf = 2,
-        /// <summary>Payload inspected as a ROS2 CDR diagnostic envelope.</summary>
-        Ros2CdrDiagnostic = 3,
+        /// <summary>Payload decoded by an explicitly supplied Provider factory.</summary>
+        Provider = 3,
         /// <summary>No decoder supports this schema/channel encoding.</summary>
         Unsupported = 4,
         /// <summary>A matching decoder failed and failure policy kept the raw message.</summary>
-        Failed = 5,
-        /// <summary>Payload decoded as a packaged Foxglove ROS2 CDR IMessage.</summary>
-        Ros2CdrTyped = 6
+        Failed = 5
     }
 
     /// <summary>Controls how decode errors are surfaced to callers.</summary>
@@ -60,7 +79,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Caller-provided factories. These run before built-in decoders.</summary>
         public List<IMcapMessageDecoderFactory> DecoderFactories = new List<IMcapMessageDecoderFactory>();
 
-        /// <summary>Whether JSON, packaged protobuf, and ROS2 typed/diagnostic decoders are enabled.</summary>
+        /// <summary>Whether SDK-owned JSON and packaged protobuf decoders are enabled.</summary>
         public bool UseBuiltInDecoders = true;
 
         /// <summary>Policy for malformed payloads or decoder exceptions.</summary>
@@ -110,8 +129,14 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Payload kind.</summary>
         public McapDecodedPayloadKind Kind = McapDecodedPayloadKind.Raw;
 
-        /// <summary>Decoded value, such as JToken, IMessage, or McapRos2CdrDiagnosticPayload.</summary>
+        /// <summary>Decoded value supplied by the selected decoder.</summary>
         public object Value;
+
+        /// <summary>
+        /// Stable decoder identity for <see cref="McapDecodedPayloadKind.Provider"/>
+        /// payloads. Empty for SDK built-ins.
+        /// </summary>
+        public string DecoderId = string.Empty;
 
         /// <summary>Optional diagnostic or JSON text representation for logs and tests.</summary>
         public string Text = string.Empty;
@@ -122,28 +147,6 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Create a raw payload view.</summary>
         public static McapDecodedPayload Raw(byte[] rawData)
             => new McapDecodedPayload { Kind = McapDecodedPayloadKind.Raw, RawData = rawData ?? Array.Empty<byte>() };
-    }
-
-    /// <summary>Schema-aware diagnostic view for ROS2 CDR payloads.</summary>
-    public sealed class McapRos2CdrDiagnosticPayload
-    {
-        /// <summary>Schema name recorded in MCAP.</summary>
-        public string SchemaName = string.Empty;
-
-        /// <summary>Whether the schema name exists in the bundled ROS2 .msg catalog.</summary>
-        public bool SchemaKnown;
-
-        /// <summary>CDR encapsulation kind from the first two bytes.</summary>
-        public ushort EncapsulationKind;
-
-        /// <summary>True for little-endian CDR encapsulation kinds.</summary>
-        public bool IsLittleEndian;
-
-        /// <summary>Total raw message payload length.</summary>
-        public int PayloadByteLength;
-
-        /// <summary>Payload length after the four-byte CDR encapsulation header.</summary>
-        public int DataByteLength;
     }
 
     /// <summary>Structured decode diagnostic attached to one decoded message.</summary>

@@ -10,7 +10,6 @@ using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
@@ -45,8 +44,8 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge)
+            var publishProvider = ShouldPrepareOrdinaryTransportPayload();
+            if (!publishWebSocket && !publishProvider)
             {
                 VirtualLidarPointSnapshotPool.Return(points);
                 return true;
@@ -65,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
                 frameId,
                 emitAbsoluteTimeNs,
                 publishWebSocket,
-                publishBridge,
+                publishProvider,
                 EffectiveEncoding);
             return true;
         }
@@ -114,10 +113,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void QueueDracoEncode(PointCloudFrame frame, ulong unixNs)
         {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishProvider))
             {
                 publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
+                publishProvider = ShouldPrepareOrdinaryTransportPayload();
             }
 
             // No main-thread clone. Callers must transfer ownership of the frame before queueing.
@@ -129,7 +128,7 @@ namespace Unity.FoxgloveSDK.Components
                 frame,
                 unixNs,
                 publishWebSocket,
-                publishBridge,
+                publishProvider,
                 EffectiveEncoding,
                 0d);
             EnqueueDracoEncodeRequest(request);
@@ -142,7 +141,7 @@ namespace Unity.FoxgloveSDK.Components
             string frameId,
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
-            bool publishBridge,
+            bool publishProvider,
             PublisherEffectiveEncoding webSocketEncoding)
         {
             if (points == null || pointCount <= 0)
@@ -156,7 +155,7 @@ namespace Unity.FoxgloveSDK.Components
                 string.IsNullOrEmpty(frameId) ? _frameId : frameId,
                 emitAbsoluteTimeNs,
                 publishWebSocket,
-                publishBridge,
+                publishProvider,
                 webSocketEncoding,
                 0d);
             EnqueueDracoEncodeRequest(request);
@@ -175,17 +174,18 @@ namespace Unity.FoxgloveSDK.Components
         {
             _diagnostics.RecordEncodeResult(_logPerformanceDiagnostics, result);
 
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
-            }
-            else if (result.Request.PublishWebSocket)
+            if (result.Request.PublishWebSocket)
             {
                 PublishProto(result.WebSocketPayload, result.Request.UnixNs);
             }
 
-            if (result.Request.PublishBridge)
-                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
+            if (result.Request.PublishProvider)
+            {
+                PublishOrdinaryTransport(
+                    result.ProtobufMessage,
+                    Foxglove.CompressedPointCloud.Descriptor.FullName,
+                    result.Request.UnixNs);
+            }
         }
     }
 }

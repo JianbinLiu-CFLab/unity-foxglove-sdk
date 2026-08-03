@@ -5,7 +5,6 @@
 // Purpose: Point-cloud output mode and profile metadata for point-cloud publishers.
 
 using System;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -18,8 +17,8 @@ namespace Unity.FoxgloveSDK.Components
         Raw = 0,
         /// <summary>Compressed foxglove.CompressedPointCloud output mode.</summary>
         Draco = 1,
-        /// <summary>Standard sensor_msgs/msg/PointCloud2 output mode for ROS2 consumers.</summary>
-        PointCloud2Native = 2
+        /// <summary>Packed point-cloud output mode for optional Providers.</summary>
+        PackedPointCloud = 2
     }
 
     /// <summary>
@@ -35,7 +34,6 @@ namespace Unity.FoxgloveSDK.Components
             string displayName,
             string defaultTopic,
             string schemaName,
-            string ros2SchemaName,
             bool supportsJson,
             bool supportsProtobuf)
         {
@@ -43,7 +41,6 @@ namespace Unity.FoxgloveSDK.Components
             DisplayName = displayName ?? "";
             DefaultTopic = defaultTopic ?? "";
             SchemaName = schemaName ?? "";
-            Ros2SchemaName = ros2SchemaName ?? "";
             SupportsJson = supportsJson;
             SupportsProtobuf = supportsProtobuf;
         }
@@ -56,8 +53,6 @@ namespace Unity.FoxgloveSDK.Components
         public string DefaultTopic { get; }
         /// <summary>Schema advertised for the selected profile.</summary>
         public string SchemaName { get; }
-        /// <summary>ROS2 schema advertised for the selected profile.</summary>
-        public string Ros2SchemaName { get; }
         /// <summary>Whether JSON publishing is supported for the selected profile.</summary>
         public bool SupportsJson { get; }
         /// <summary>Whether protobuf publishing is supported for the selected profile.</summary>
@@ -76,17 +71,15 @@ namespace Unity.FoxgloveSDK.Components
                         "Draco",
                         PointCloudOutputModeDefaults.DracoTopic,
                         PointCloudOutputModeDefaults.DracoSchema,
-                        Ros2PublisherSchemaNames.CompressedPointCloud,
                         supportsJson: false,
                         supportsProtobuf: true);
 
-                case PointCloudOutputMode.PointCloud2Native:
+                case PointCloudOutputMode.PackedPointCloud:
                     return new PointCloudOutputProfile(
                         mode,
-                        "PointCloud2 Native",
-                        PointCloudOutputModeDefaults.PointCloud2NativeTopic,
-                        PointCloudOutputModeDefaults.PointCloud2NativeSchema,
-                        Ros2PublisherSchemaNames.SensorPointCloud2,
+                        "Packed Provider Frame",
+                        PointCloudOutputModeDefaults.PackedPointCloudTopic,
+                        PointCloudOutputModeDefaults.PackedPointCloudSchema,
                         supportsJson: false,
                         supportsProtobuf: false);
 
@@ -96,7 +89,6 @@ namespace Unity.FoxgloveSDK.Components
                         "Raw",
                         PointCloudOutputModeDefaults.RawTopic,
                         PointCloudOutputModeDefaults.RawSchema,
-                        Ros2PublisherSchemaNames.PointCloud,
                         supportsJson: true,
                         supportsProtobuf: true);
 
@@ -115,13 +107,15 @@ namespace Unity.FoxgloveSDK.Components
         public const string RawTopic = "/unity/point_cloud";
         /// <summary>Default topic for Draco-compressed point-cloud output.</summary>
         public const string DracoTopic = "/unity/point_cloud_draco";
-        /// <summary>Default topic for standard ROS2 PointCloud2 output.</summary>
-        public const string PointCloud2NativeTopic = "/unity/point_cloud2";
+        /// <summary>Default topic for packed point-cloud output.</summary>
+        public const string PackedPointCloudTopic =
+            "/unity/point_cloud_packed";
         /// <summary>Schema name for raw foxglove.PointCloud output.</summary>
         public const string RawSchema = "foxglove.PointCloud";
         /// <summary>Schema name for Draco-compressed foxglove.CompressedPointCloud output.</summary>
         public const string DracoSchema = "foxglove.CompressedPointCloud";
-        /// <summary>Schema name for standard ROS2 PointCloud2 output.</summary>
-        public const string PointCloud2NativeSchema = "sensor_msgs/msg/PointCloud2";
+        /// <summary>Logical type label for a packed Provider handoff.</summary>
+        public const string PackedPointCloudSchema =
+            "unity2foxglove.PackedPointCloud";
     }
 }

@@ -11,7 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "138M-1B: standard camera-info schema name is sensor_msgs/msg/CameraInfo");
 
             var compressedPayload = InvokeStaticByteArray(
-                "Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSensorCompressedImageBuilder",
+                "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrSensorCompressedImageBuilder",
                 "Serialize",
                 1_700_000_001_234_567_890UL,
                 "os_camera",
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
             var r = new[] { 1d, 0d, 0d, 0d, 1d, 0d, 0d, 0d, 1d };
             var p = new[] { 320d, 0d, 160d, 0d, 0d, 320d, 120d, 0d, 0d, 0d, 1d, 0d };
             var cameraInfoPayload = InvokeStaticByteArray(
-                "Unity.FoxgloveSDK.Schemas.Ros2Msg.Ros2CdrSensorCameraInfoBuilder",
+                "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.Ros2CdrSensorCameraInfoBuilder",
                 "Serialize",
                 1_700_000_002_345_678_901UL,
                 "os_camera",
@@ -147,23 +147,25 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("_sensorUnitProfile", StringComparison.Ordinal)
                   && source.Contains("_useSharedSensorClock", StringComparison.Ordinal)
-                  && source.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal),
-                "138M-4A: camera publisher has sensor profile, shared-clock, and standard ROS image toggles");
+                  && source.Contains("SensorCompressedImageReady", StringComparison.Ordinal)
+                  && !source.Contains("_publishStandardRos2", StringComparison.Ordinal),
+                "138M-4A: core camera publisher exposes a transport-neutral sensor payload without removed ROS toggles");
             Check(source.Contains("ResolveCameraCaptureUnixNs", StringComparison.Ordinal)
                   && source.Contains("GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
                   && source.Contains("ResolveFrameId", StringComparison.Ordinal),
                 "138M-4B: camera capture timestamp and frame id resolve through sensor mode");
-            Check(resolver.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
-                  && source.Contains("CameraSensorProfileResolver.SerializeCompressedImage", StringComparison.Ordinal)
+            Check(source.Contains("new SensorCompressedImageFrame", StringComparison.Ordinal)
                   && source.Contains("SensorCompressedImageReady", StringComparison.Ordinal)
-                  && source.Contains("SensorCompressedImageFrame", StringComparison.Ordinal),
-                "138M-4C: camera publisher emits standard ROS compressed-image payloads and DDS handoff frames");
-            Check(editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
-                  && editor.Contains("IsRos2CameraUiRelevant", StringComparison.Ordinal)
+                  && source.Contains("SensorCompressedImageFrame", StringComparison.Ordinal)
+                  && !resolver.Contains("Ros2Cdr", StringComparison.Ordinal)
+                  && !source.Contains("Ros2Cdr", StringComparison.Ordinal),
+                "138M-4C: camera publisher emits a schema-neutral compressed-image handoff frame");
+            Check(editor.Contains("Provider Payload", StringComparison.Ordinal)
+                  && editor.Contains("Sensor Unit Profile", StringComparison.Ordinal)
                   && editor.Contains("Use Shared Sensor Clock", StringComparison.Ordinal)
-                  && editor.Contains("Publish CompressedImage DDS", StringComparison.Ordinal)
-                  && editor.Contains("Publish Raw Image DDS", StringComparison.Ordinal),
-                "138M-4D: camera Inspector hides ROS2 camera controls until ROS2 output is relevant");
+                  && !editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
+                  && !editor.Contains("Publish CompressedImage DDS", StringComparison.Ordinal),
+                "138M-4D: core camera Inspector presents only transport-neutral Provider payload controls");
         }
 
         private static void CameraInfoPublisherUsesSensorClockAndStandardCameraInfo()
@@ -173,9 +175,12 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraInfoPublisherEditor.cs");
 
-            Check(source.Contains("Ros2CdrSensorCameraInfoBuilder.Serialize", StringComparison.Ordinal)
-                  && source.Contains("Ros2PublisherSchemaNames.SensorCameraInfo", StringComparison.Ordinal),
-                "138M-5A: CameraInfo publisher uses standard sensor_msgs/msg/CameraInfo CDR");
+            Check(source.Contains("BuildSensorCameraInfoFrame", StringComparison.Ordinal)
+                  && source.Contains("new SensorCameraInfoFrame", StringComparison.Ordinal)
+                  && source.Contains("SensorCameraInfoReady", StringComparison.Ordinal)
+                  && !source.Contains("Ros2Cdr", StringComparison.Ordinal)
+                  && !source.Contains("Ros2PublisherSchemaNames", StringComparison.Ordinal),
+                "138M-5A: core CameraInfo publisher emits a schema-neutral Provider handoff frame");
             Check(source.Contains("_sensorUnitProfile", StringComparison.Ordinal)
                   && source.Contains("_imagePublisher", StringComparison.Ordinal)
                   && source.Contains("GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
@@ -188,24 +193,26 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("NumericQuaternion.Inverse", StringComparison.Ordinal),
                 "138M-5C: CameraInfo matches image capture dimensions and publishes sensor-to-camera TF pose");
             Check(editor.Contains("Standalone CameraInfo", StringComparison.Ordinal)
-                  && editor.Contains("Advanced CameraInfo Publisher", StringComparison.Ordinal)
                   && editor.Contains("Advanced Camera Calibration", StringComparison.Ordinal)
                   && editor.Contains("Optional TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("Image Publisher", StringComparison.Ordinal)
                   && editor.Contains("Use Shared Sensor Clock", StringComparison.Ordinal)
-                  && editor.Contains("Publish Camera TF Anchor", StringComparison.Ordinal),
+                  && editor.Contains("Publish Camera TF Anchor", StringComparison.Ordinal)
+                  && editor.Contains("Advanced Transport", StringComparison.Ordinal),
                 "138M-5D: CameraInfo Inspector presents the component as an advanced standalone calibration publisher");
-            Check(publisherBase.Contains("IsExpectedEncodingFallback", StringComparison.Ordinal)
-                  && publisherBase.Contains("resolution.IsSupported && IsExpectedEncodingFallback(resolution)", StringComparison.Ordinal)
-                  && source.Contains("IsExpectedEncodingFallback", StringComparison.Ordinal)
-                  && source.Contains("resolution.Effective == PublisherEffectiveEncoding.Ros2", StringComparison.Ordinal)
-                  && pointCloudPublisher.Contains("IsPointCloud2NativeOutput && resolution.Effective == PublisherEffectiveEncoding.Ros2", StringComparison.Ordinal),
-                "138M-5E: product ROS2-only camera/PointCloud2 paths do not warn on expected Protobuf-to-ROS2 fallback");
+            Check(publisherBase.Contains("SupportsJsonEncoding", StringComparison.Ordinal)
+                  && publisherBase.Contains("SupportsProtobufEncoding", StringComparison.Ordinal)
+                  && publisherBase.Contains("SupportsMsgPackEncoding", StringComparison.Ordinal)
+                  && !publisherBase.Contains("PublisherEffectiveEncoding.Ros2", StringComparison.Ordinal)
+                  && source.Contains("SensorCameraInfoReady", StringComparison.Ordinal)
+                  && pointCloudPublisher.Contains("PackedPointCloudFrameReady", StringComparison.Ordinal),
+                "138M-5E: core encoding stays ROS-free while camera and packed-point-cloud payloads use Provider events");
         }
 
         private static void OptionalR2fuCameraBridgeStaysInOptionalPackage()
         {
             var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraNativeBridge.cs");
+            var outputPolicy = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2NativeOutputPolicy.cs");
             var nativeSource = ReadDirectory("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native");
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
@@ -218,8 +225,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "138M-6A: camera DDS bridge stays behind the optional R2FU runtime boundary");
             Check(bridge.Contains("FindObjectsByType<FoxgloveCameraPublisher>", StringComparison.Ordinal)
                   && bridge.Contains("FindObjectsByType<FoxgloveCameraInfoPublisher>", StringComparison.Ordinal)
-                  && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
-                "138M-6B: R2FU camera bridge is automatic and gated by the Manager ROS2 Native toggle");
+                  && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal)
+                  && outputPolicy.Contains("FoxRunRos2TransportProvider", StringComparison.Ordinal)
+                  && outputPolicy.Contains("_provider.isActiveAndEnabled", StringComparison.Ordinal)
+                  && !outputPolicy.Contains("_ros2NativeEnabled", StringComparison.Ordinal),
+                "138M-6B: R2FU camera bridge is automatic and gated by the optional R2FU Provider");
             Check(bridge.Contains("DefaultCompressedImageTopic", StringComparison.Ordinal)
                   && bridge.Contains("DefaultRawImageTopic", StringComparison.Ordinal)
                   && bridge.Contains("DefaultCameraInfoTopic", StringComparison.Ordinal)
@@ -259,23 +269,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && bootstrap.Contains("_useSharedSensorClock", StringComparison.Ordinal)
                   && bootstrap.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
                   && bootstrap.Contains("/unity/point_cloud_draco", StringComparison.Ordinal)
-                  && bootstrap.Contains("SetPrivateField(sensorCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
-                  && bootstrap.Contains("SetPrivateField(sensorCameraPublisher, \"_publishStandardRos2RawImage\", false)", StringComparison.Ordinal)
+                  && !bootstrap.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
+                  && !bootstrap.Contains("_publishStandardRos2RawImage", StringComparison.Ordinal)
                   && bootstrap.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
                   && bootstrap.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
                   && bootstrap.Contains("sensorCameraInfoPublisher.enabled = false", StringComparison.Ordinal)
                   && bootstrap.Contains("cartCameraMount.gameObject.SetActive(false)", StringComparison.Ordinal)
                   && bootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
                   && bootstrap.Contains("/unity/camera", StringComparison.Ordinal),
-                "138M-7A: runtime Maze Demo defaults to a WebSocket-friendly camera/Draco scene while keeping ROS2 camera assets opt-in");
+                "138M-7A: runtime Maze Demo defaults to a core WebSocket camera/Draco scene without removed ROS fields");
             Check(builder.Contains("CartCameraMount", StringComparison.Ordinal)
                   && builder.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && builder.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
                   && builder.Contains("_useSharedSensorClock", StringComparison.Ordinal)
                   && builder.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
                   && builder.Contains("/unity/point_cloud_draco", StringComparison.Ordinal)
-                  && builder.Contains("SetField(sensorCamPub, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
-                  && builder.Contains("SetField(sensorCamPub, \"_publishStandardRos2RawImage\", false)", StringComparison.Ordinal)
+                  && !builder.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
+                  && !builder.Contains("_publishStandardRos2RawImage", StringComparison.Ordinal)
                   && builder.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
                   && builder.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
                   && builder.Contains("sensorCamInfoPub.enabled = false", StringComparison.Ordinal)
@@ -284,17 +294,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("/unity/camera", StringComparison.Ordinal),
                 "138M-7B: editor Maze Demo builder defaults to the same WebSocket-friendly scene state");
             Check(bootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
-                  && bootstrap.Contains("SetPrivateField(demoCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
+                  && !bootstrap.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
                   && builder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
-                  && builder.Contains("SetField(demoCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
+                  && !builder.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
                   && !builder.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
-                "138M-7C: overview camera is the default non-ROS2 camera path and diagnostic smoke component is absent");
+                "138M-7C: overview camera stays on the core path and diagnostic smoke component is absent");
             Check(readme.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
                   && readme.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
-                  && readme.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
-                  && readme.Contains("PointCloud2 Native", StringComparison.Ordinal)
-                  && readme.Contains("os_camera", StringComparison.Ordinal),
-                "138M-7D: Maze Demo README documents the product camera/PointCloud2 setup");
+                  && readme.Contains("companion transport packages", StringComparison.Ordinal)
+                  && !readme.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
+                  && !readme.Contains("PointCloud2 Native", StringComparison.Ordinal),
+                "138M-7D: Maze Demo README keeps core topics and routes optional transports to companion packages");
             Check(importedBootstrap.Contains("CartCameraMount", StringComparison.Ordinal)
                   && importedBootstrap.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && importedBootstrap.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
@@ -307,6 +317,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && importedBuilder.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
                   && importedBuilder.Contains("cartCameraMount.SetActive(false)", StringComparison.Ordinal)
                   && importedBuilder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
+                  && !importedBootstrap.Contains("_publishStandardRos2", StringComparison.Ordinal)
+                  && !importedBuilder.Contains("_publishStandardRos2", StringComparison.Ordinal)
                   && !importedBuilder.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal)
                   && importedReadme.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal),
                 "138M-7E: imported Unity sample copy matches the opt-in ROS2 camera path and default demo output");

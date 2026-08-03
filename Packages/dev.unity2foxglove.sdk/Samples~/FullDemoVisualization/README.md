@@ -63,7 +63,7 @@ Assets/Samples/Unity2Foxglove SDK/<version>/Full Demo Visualization/
 | Foxglove | `FoxgloveManager`, `FoxgloveDemoSetup` | Starts the server, registers parameters, exposes `/cube/reset_pose` with `[FoxService]`, and owns recording/replay settings |
 | Cube | `FoxgloveTransformPublisher`, `FoxgloveSceneCubePublisher`, `MouseDragCube` | Publishes transform/scene data and supports mouse-driven interaction |
 | Main Camera | `FoxgloveCameraPublisher` | Streams `/unity/camera` |
-| TestLog | `TestLog` with `[FoxRun]` fields | Publishes `/debug/position`, `/debug/position2`, and `/debug/health` |
+| TestLog | `TestLog` with `[FoxRun]` fields | Publishes the debug topics and owns the controlled `/phase185/messagepack/full-duplex` typed MessagePack acceptance contract |
 
 ## Run Steps
 
@@ -100,6 +100,14 @@ Foxglove should show:
 | Parameters | `/cube/color` and `/cube/scale` are editable |
 | Service Call | Declarative `/cube/reset_pose` resets the cube with `{}` |
 | Raw Messages | FoxRun debug topics publish live values |
+
+The controlled MessagePack contract supports publish, subscribe, and full
+duplex over the Foxglove WebSocket path. Its live and MCAP channels are
+schemaless (`message_encoding=msgpack`, schema id zero), and the maintained
+**FoxRun Publish** extension is required for typed field discovery/editing;
+built-in Foxglove panels do not render or author typed MessagePack. The probe
+uses ordinary fields, while a MessagePack input topic may instead contain
+exactly one `FoxRunStream<T>`—never a mixed or multi-stream topology.
 
 ## Interaction Checks
 

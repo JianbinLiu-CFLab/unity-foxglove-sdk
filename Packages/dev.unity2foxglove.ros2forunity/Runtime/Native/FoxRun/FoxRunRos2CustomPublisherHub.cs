@@ -30,66 +30,113 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     [AddComponentMenu("")]
     internal sealed class FoxRunRos2CustomPublisherHub : MonoBehaviour
     {
-        private const string HubObjectName = "[FoxRun ROS2 Custom Publisher Hub]";
         private const float ScanIntervalSeconds = 0.5f;
-        private const float ManagerSearchIntervalSeconds = 0.5f;
         private const int MaximumBindings = 4096;
 
-        private static FoxRunRos2CustomPublisherHub _instance;
         private readonly List<IFoxRunRos2CustomPublisherHostedBinding> _bindings =
             new List<IFoxRunRos2CustomPublisherHostedBinding>();
         private readonly List<IFoxRunRos2CustomPublisherHostedBinding> _stale =
             new List<IFoxRunRos2CustomPublisherHostedBinding>();
         private readonly HashSet<string> _existing = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _nativeDemand = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _warnings = new HashSet<string>(StringComparer.Ordinal);
         private readonly FoxRunRos2CustomPublisherSessionTracker _publishSessionTracker =
             new FoxRunRos2CustomPublisherSessionTracker();
         private FoxgloveManager _manager;
+        private FoxRunRos2TransportProvider _provider;
         private float _scanCooldown;
-        private float _managerSearchCooldown;
         private bool _stopping;
-        private bool _duplicate;
+        private bool _providerSessionActive;
+        private bool _scanCompleted;
+        private int _observedNativeContractCount;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics()
+        internal void BindProviderOwner(
+            FoxgloveManager manager,
+            FoxRunRos2TransportProvider provider)
         {
-            _instance = null;
+            _provider = provider;
+            SetManager(manager);
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void Bootstrap()
+        internal void SetProviderSessionActive(bool active)
         {
-            if (_instance != null)
+            if (_providerSessionActive == active)
                 return;
-            var existing = FindFirstObjectByType<FoxRunRos2CustomPublisherHub>();
-            if (existing != null)
-            {
-                _instance = existing;
-                return;
-            }
-
-            var go = new GameObject(HubObjectName) { hideFlags = HideFlags.HideAndDontSave };
-            DontDestroyOnLoad(go);
-            _instance = go.AddComponent<FoxRunRos2CustomPublisherHub>();
+            _providerSessionActive = active;
+            if (!active)
+                StopBindings();
+            _scanCooldown = 0f;
         }
 
-        private void Awake()
+        internal FoxRunTransportDirectionStatus CaptureTransportStatus()
         {
-            if (_instance != null && _instance != this)
+            var ready = 0;
+            for (var index = 0; index < _bindings.Count; index++)
+                if (!_bindings[index].IsStopped)
+                    ready++;
+            var failed = _bindings.Count - ready;
+            var observed = Math.Max(_observedNativeContractCount, _bindings.Count);
+            return BuildTransportStatus(
+                _providerSessionActive,
+                _stopping,
+                _scanCompleted,
+                observed,
+                ready,
+                failed);
+        }
+
+        internal static FoxRunTransportDirectionStatus BuildTransportStatus(
+            bool sessionActive,
+            bool stopping,
+            bool scanCompleted,
+            int observedContracts,
+            int readyContracts,
+            int failedContracts)
+        {
+            if (!sessionActive || stopping)
             {
-                _duplicate = true;
-                _stopping = true;
-                Destroy(this);
-                return;
+                return new FoxRunTransportDirectionStatus(
+                    FoxRunTransportDirection.Publish,
+                    selected: true,
+                    FoxRunTransportObservedState.Stopped,
+                    0,
+                    0,
+                    0);
             }
-            _instance = this;
+
+            var pending = observedContracts - readyContracts - failedContracts;
+            var state = failedContracts != 0
+                ? readyContracts == 0
+                    ? FoxRunTransportObservedState.Failed
+                    : FoxRunTransportObservedState.Degraded
+                : !scanCompleted || pending != 0
+                    ? readyContracts == 0
+                        ? FoxRunTransportObservedState.Starting
+                        : FoxRunTransportObservedState.Degraded
+                    : FoxRunTransportObservedState.Ready;
+            FoxRunTransportDiagnostic? diagnostic = failedContracts != 0
+                ? new FoxRunTransportDiagnostic(
+                    "R2FU002",
+                    "One or more native publisher bindings stopped.")
+                : !scanCompleted || pending != 0
+                    ? new FoxRunTransportDiagnostic(
+                        "R2FU001",
+                        "Native publisher bindings are waiting for runtime readiness.")
+                    : (FoxRunTransportDiagnostic?)null;
+            return new FoxRunTransportDirectionStatus(
+                FoxRunTransportDirection.Publish,
+                selected: true,
+                state,
+                observedContracts,
+                readyContracts,
+                failedContracts,
+                diagnostic);
         }
 
         private void OnEnable()
         {
-            if (!_duplicate)
-                _stopping = false;
+            _stopping = false;
         }
 
         private void Update()
@@ -100,20 +147,33 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            ResolveManager();
+            if (!_providerSessionActive || _manager == null)
+            {
+                StopBindings();
+                return;
+            }
+
             ApplyPublishSessionPolicy(
-                _manager == null
-                    ? null
-                    : _manager.ActiveFoxRunPublishSessionPolicy);
+                _manager.ActiveFoxRunPublishSessionPolicy);
+
+            // Hierarchy notifications deliberately make the cheap shutdown
+            // read fail closed without rebuilding the scene cache. Refresh
+            // that dirty cache before deciding the window is still unsafe,
+            // otherwise one recoverable hierarchy change can stop native
+            // publishers for the remainder of Play Mode.
+            var bridgeLifecycleIsShuttingDown =
+                Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
+                    gameObject.scene)
+                && !Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
+                    gameObject.scene);
 
             // Output policy is independent from the captured subscription
             // session. A Publish custom endpoint must stay available while
             // subscriptions or the legacy component-output switch are disabled.
             if (ShouldStopFoxRunPublishing(
                     _publishSessionTracker.AllowsPublishing,
-                    _manager == null || _manager.Ros2NativeEnabled,
-                    Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
-                        gameObject.scene)))
+                    legacyComponentNativeOutputEnabled: true,
+                    bridgeLifecycleIsShuttingDown))
             {
                 StopBindings();
                 return;
@@ -128,32 +188,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
 
             var publishSessionPolicy = _publishSessionTracker.Current;
-            var inheritedQos = publishSessionPolicy == null
-                ? FoxRunResolvedQos.Default
-                : publishSessionPolicy.NativeRos2Qos;
+            var inheritedQos =
+                _provider?.ActivePublishQos
+                ?? FoxRunResolvedQos.Default;
             var defaultTargets = publishSessionPolicy == null
-                ? FoxRunEndpoint.Ros2Native
-                : publishSessionPolicy.DefaultTargets;
+                ? FoxRunRos2RouteEndpoint.R2fu
+                : FoxRunRos2RouteResolver
+                    .FromPublishProviders(
+                        publishSessionPolicy
+                            .PublishTransportIds);
             var subscriptionPolicy = _manager == null
                 ? null
                 : _manager.ActiveFoxRunSubscriptionSessionPolicy;
             var defaultSource = subscriptionPolicy != null
                                 && subscriptionPolicy.SubscriptionsEnabled
-                ? subscriptionPolicy.DefaultSource
-                : FoxRunEndpoint.Foxglove;
+                ? FoxRunRos2RouteResolver
+                    .FromSubscribeProvider(
+                        subscriptionPolicy.DefaultProvider)
+                : FoxRunRos2RouteEndpoint.WebSocket;
             ScanAndReconcile(bus, inheritedQos, defaultSource, defaultTargets);
-        }
-
-        private void ResolveManager()
-        {
-            if (_manager != null)
-                return;
-
-            _managerSearchCooldown -= Time.deltaTime;
-            if (_managerSearchCooldown > 0f)
-                return;
-            _managerSearchCooldown = ManagerSearchIntervalSeconds;
-            SetManager(FindFirstObjectByType<FoxgloveManager>());
         }
 
         private void SetManager(FoxgloveManager manager)
@@ -175,8 +228,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 ApplyPublishSessionPolicy(null);
             }
-
-            _managerSearchCooldown = 0f;
         }
 
         private void OnPublishSessionChanged(FoxRunPublishSessionPolicy policy)
@@ -194,9 +245,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void ScanAndReconcile(
             FoxTopicBus bus,
             FoxRunResolvedQos inheritedQos,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets)
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets)
         {
+            _scanCompleted = false;
+            _nativeDemand.Clear();
             _seen.Clear();
             _existing.Clear();
             for (var index = 0; index < _bindings.Count; index++)
@@ -248,14 +301,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "stale|" + exception.GetType().FullName + "|" + exception.Message,
                     "Custom native ROS2 publisher teardown failed: "
                     + exception.GetType().Name));
+            _observedNativeContractCount = Math.Max(
+                _nativeDemand.Count,
+                _bindings.Count);
+            _scanCompleted = true;
         }
 
         private void AddBinding<TDto, TEnvelope>(
             MonoBehaviour source,
             FoxTopicBus bus,
             FoxRunResolvedQos inheritedQos,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets,
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets,
             FoxRunRos2CustomPublisherContract contract,
             Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> map,
             Action<TEnvelope> dispose)
@@ -266,7 +323,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             var identity = source.GetInstanceID() + "|" + contract.Id;
             _seen.Add(identity);
-            if (_existing.Contains(identity) || _bindings.Count >= MaximumBindings)
+            if (_existing.Contains(identity))
+            {
+                _nativeDemand.Add(identity);
+                return;
+            }
+            if (_bindings.Count >= MaximumBindings)
                 return;
             if (!contract.SupportsNativeOutput)
             {
@@ -298,6 +360,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 return;
             }
+            _nativeDemand.Add(identity);
 
             if (!TryGetAcceptedSourceOrigin(
                     source as IFoxgloveLogSource,
@@ -435,6 +498,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _stale.Clear();
                 _existing.Clear();
                 _seen.Clear();
+                _nativeDemand.Clear();
+                _observedNativeContractCount = 0;
+                _scanCompleted = false;
             }
         }
 
@@ -590,9 +656,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static bool ShouldRegisterNativePublisher(
             FoxRunRos2CustomPublisherContract contract,
-            FoxRunEndpoint defaultSource,
-            FoxRunEndpoint defaultTargets,
-            out FoxRunEndpointResolution resolution)
+            FoxRunRos2RouteEndpoint defaultSource,
+            FoxRunRos2RouteEndpoint defaultTargets,
+            out FoxRunRos2RouteResolution resolution)
         {
             if (contract == null)
             {
@@ -602,23 +668,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             resolution = contract.ResolveTopology(defaultSource, defaultTargets);
             return resolution.Success
-                   && (resolution.Topology.Targets & FoxRunEndpoint.Ros2Native) != 0;
+                   && (resolution.Route.Targets
+                       & FoxRunRos2RouteEndpoint.R2fu) != 0;
         }
 
         private void WarnOnce(string key, string message)
         {
+            if (_warnings.Count >= MaximumBindings)
+                return;
             if (_warnings.Add(key))
                 Debug.LogWarning("[FoxRun ROS2] " + message);
         }
 
         internal static void StopForNativeRuntimeShutdown()
         {
-            var instance = _instance;
-            if (instance == null)
-                return;
-            instance._stopping = true;
-            instance.SetManager(null);
-            instance.StopBindings();
+            var instances = FindObjectsByType<FoxRunRos2CustomPublisherHub>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            for (var i = 0; i < instances.Length; i++)
+            {
+                var instance = instances[i];
+                if (instance == null)
+                    continue;
+                instance._stopping = true;
+                instance.SetManager(null);
+                instance.StopBindings();
+            }
         }
 
         private static int CompareBehaviours(MonoBehaviour left, MonoBehaviour right)
@@ -650,8 +725,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _stopping = true;
             SetManager(null);
             StopBindings();
-            if (_instance == this)
-                _instance = null;
         }
 
         private sealed class CollectingRegistrar : IFoxRunRos2CustomPublisherRegistrar
@@ -660,16 +733,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly MonoBehaviour _source;
             private readonly FoxTopicBus _bus;
             private readonly FoxRunResolvedQos _inheritedQos;
-            private readonly FoxRunEndpoint _defaultSource;
-            private readonly FoxRunEndpoint _defaultTargets;
+            private readonly FoxRunRos2RouteEndpoint _defaultSource;
+            private readonly FoxRunRos2RouteEndpoint _defaultTargets;
 
             internal CollectingRegistrar(
                 FoxRunRos2CustomPublisherHub hub,
                 MonoBehaviour source,
                 FoxTopicBus bus,
                 FoxRunResolvedQos inheritedQos,
-                FoxRunEndpoint defaultSource,
-                FoxRunEndpoint defaultTargets)
+                FoxRunRos2RouteEndpoint defaultSource,
+                FoxRunRos2RouteEndpoint defaultTargets)
             {
                 _hub = hub;
                 _source = source;

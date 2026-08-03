@@ -61,11 +61,14 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         {
             var state = new FoxRunPublishSessionState();
             var snapshot = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
+                new[]
+                {
+                    new FoxRunTransportId(
+                        FoxRunRos2TransportProvider.IdValue)
+                },
                 FoxRunEncoding.JSON,
                 10f,
-                FoxRunResolvedQos.SensorData,
-                FoxRunResolvedQos.Default);
+                FoxRunDeliveryPolicy.ProviderDefault);
             var tracker = new FoxRunRos2CustomPublisherSessionTracker();
 
             Assert.True(tracker.Observe(snapshot));
@@ -87,6 +90,42 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 publishSessionAllows: true,
                 legacyComponentNativeOutputEnabled: true,
                 bridgeLifecycleIsShuttingDown: true));
+        }
+
+        [Fact]
+        public void PublisherStatusCannotReportReadyBeforeObservedDemandIsBound()
+        {
+            var beforeScan = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: false,
+                observedContracts: 0,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Starting, beforeScan.State);
+            Assert.Equal("R2FU001", beforeScan.Diagnostic?.Code);
+
+            var missingBinding = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: true,
+                observedContracts: 1,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Starting, missingBinding.State);
+            Assert.Equal(1, missingBinding.ObservedContractCount);
+            Assert.Equal(0, missingBinding.ReadyContractCount);
+            Assert.Equal("R2FU001", missingBinding.Diagnostic?.Code);
+
+            var noDemand = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: true,
+                observedContracts: 0,
+                readyContracts: 0,
+                failedContracts: 0);
+            Assert.Equal(FoxRunTransportObservedState.Ready, noDemand.State);
+            Assert.Null(noDemand.Diagnostic);
         }
 
         [Fact]

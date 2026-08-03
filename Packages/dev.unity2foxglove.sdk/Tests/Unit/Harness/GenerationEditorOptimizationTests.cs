@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Contains("private static readonly string[] UnityNativeContainerPrefixes", validator, StringComparison.Ordinal);
             Assert.DoesNotContain("new[]", TestSources.ExtractMethod(validator, "private static bool IsUnityNativeContainerTypeName"), StringComparison.Ordinal);
-            Assert.Contains("return ElementTypeName;", TestSources.ExtractMethod(model, "private string SelectCanonicalSourceType()"), StringComparison.Ordinal);
+            Assert.Contains("? ElementTypeName", TestSources.ExtractMethod(model, "private string SelectCanonicalSourceType()"), StringComparison.Ordinal);
             Assert.DoesNotContain("NormalizeCSharpTypeName(ElementTypeName)", TestSources.ExtractMethod(model, "private string SelectCanonicalSourceType()"), StringComparison.Ordinal);
             Assert.Contains("IndexOf(\"global::\", StringComparison.Ordinal)", formatter, StringComparison.Ordinal);
             Assert.Contains("IndexOf('+')", formatter, StringComparison.Ordinal);
@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, model);
 
-            Assert.Contains("\"descriptorVersion\":4", json, StringComparison.Ordinal);
+            Assert.Contains("\"descriptorVersion\":6", json, StringComparison.Ordinal);
             Assert.Contains("\"elementTypeName\":\"float\"", json, StringComparison.Ordinal);
             Assert.Contains("\"topic\":\"/vehicle/samples\"", json, StringComparison.Ordinal);
             Assert.True(comparison.IsSemanticEqual);
@@ -193,15 +193,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
             var models = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Models.cs");
-            var hasFoxRunAttr = TestSources.Slice(source, "private static bool HasFoxRunAttr", "private static MemberData ExtractMember");
-            var extractMember = TestSources.Slice(source, "private static MemberData ExtractMember", "private static bool TryReadFloatConstant");
+            var candidate = TestSources.Slice(source, "private static bool IsFoxRunCandidate", "private static bool IsServiceCandidate");
+            var extractMember = TestSources.Slice(source, "private static MemberData ExtractMember", "private static TopicEntry ReadTopic");
             var generate = TestSources.Slice(source, "private static void Generate", "private static void EmitClass");
-            var toRoslynMembers = TestSources.Slice(models, "public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers", "    internal sealed class TopicEntry");
+            var toRoslynMembers = TestSources.Slice(models, "ToRoslynMembers()", "    internal sealed class TopicEntry");
 
-            Assert.Contains("AttrAttributeName", hasFoxRunAttr, StringComparison.Ordinal);
-            Assert.Contains("AttrQualifiedNameSuffix", hasFoxRunAttr, StringComparison.Ordinal);
-            Assert.Contains("AttrQualifiedAttributeNameSuffix", hasFoxRunAttr, StringComparison.Ordinal);
-            Assert.DoesNotContain("AttrShortName +", hasFoxRunAttr, StringComparison.Ordinal);
+            Assert.Contains("HasAttributeName(", candidate, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Where(", candidate, StringComparison.Ordinal);
+            Assert.DoesNotContain(".ToList()", candidate, StringComparison.Ordinal);
             Assert.DoesNotContain(".Where(a => a.AttributeClass?.ToDisplayString() == AttrFullName)", extractMember, StringComparison.Ordinal);
             Assert.DoesNotContain(".ToList()", extractMember, StringComparison.Ordinal);
             Assert.Contains("AppendRoslynMembers", generate, StringComparison.Ordinal);
@@ -224,12 +223,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var chunkedDescriptor = TestSources.ExtractMethod(descriptor, "public static string ChunkedDescriptorCarrierSource");
             var escape = TestSources.ExtractMethod(descriptor, "public static string EscapeStringLiteral");
 
-            Assert.Contains("catch (Exception ex) when (ex is OverflowException || ex is InvalidCastException || ex is FormatException)", source, StringComparison.Ordinal);
-            Assert.Contains("roslynMemberCapacity", generate, StringComparison.Ordinal);
-            Assert.Contains("item.Topics?.Length ?? 0", generate, StringComparison.Ordinal);
+            var readFloat = TestSources.ExtractMethod(source, "private static bool TryReadFloatConstant");
+            var readInt = TestSources.ExtractMethod(source, "private static bool TryReadIntConstant");
+            Assert.Contains("exception is OverflowException", readFloat, StringComparison.Ordinal);
+            Assert.Contains("InvalidCastException", readFloat, StringComparison.Ordinal);
+            Assert.Contains("FormatException", readFloat, StringComparison.Ordinal);
+            Assert.Contains("exception is OverflowException", readInt, StringComparison.Ordinal);
+            Assert.Contains("var members =", generate, StringComparison.Ordinal);
+            Assert.Contains("item.AppendRoslynMembers(members)", generate, StringComparison.Ordinal);
             Assert.Contains("var servicesByName = new Dictionary<string, List<ServiceMethodData>>(StringComparer.Ordinal);", services, StringComparison.Ordinal);
             Assert.DoesNotContain(".GroupBy(item => item.ServiceName", services, StringComparison.Ordinal);
-            Assert.Contains("diagnostic.Target ?? string.Empty", locationFor, StringComparison.Ordinal);
+            Assert.Contains("DiagnosticDeclaringType(diagnostic)", locationFor, StringComparison.Ordinal);
+            Assert.Contains("location ?? Location.None", locationFor, StringComparison.Ordinal);
             Assert.Contains("public static readonly string DescriptorJson = string.Concat(", chunkedDescriptor, StringComparison.Ordinal);
             Assert.DoesNotContain("public static string DescriptorJson => string.Concat(", chunkedDescriptor, StringComparison.Ordinal);
             Assert.Contains("char.IsHighSurrogate(ch)", escape, StringComparison.Ordinal);
@@ -375,7 +380,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             var memberData = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunMemberData.cs");
             Assert.Contains("LooksLikeArrayType(rawType)", memberData, StringComparison.Ordinal);
-            Assert.Contains("Type-based MemberData constructor", memberData, StringComparison.Ordinal);
+            Assert.Contains("use the Type-based constructor", memberData, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -394,7 +399,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 "Ros2ForUnityCameraNativeBridge.cs",
                 "Ros2ForUnityImuNativeBridge.cs",
-                "Ros2ForUnityPointCloud2NativeBridge.cs",
+                "Ros2ForUnityPackedPointCloudBridge.cs",
                 "Ros2ForUnityTransformNativeBridge.cs"
             })
             {
@@ -413,7 +418,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var cameraBridge = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraNativeBridge.cs");
             var refreshBindings = TestSources.Slice(cameraBridge, "private void RefreshBindings()", "        private void RefreshRawImageBindings");
             var cameraInfo = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraInfoBinding.cs");
-            var pointCloudBridge = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var pointCloudBridge = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
             var transformBridge = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs");
             var builder = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2MessageBuilder.cs");
 

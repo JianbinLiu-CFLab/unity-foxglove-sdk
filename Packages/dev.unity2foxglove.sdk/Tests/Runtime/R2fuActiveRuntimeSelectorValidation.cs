@@ -25,14 +25,20 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
         private const string ReadmePath =
             "Packages/dev.unity2foxglove.ros2forunity/README.md";
-        private const string ManagerInspectorPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
+        private const string SetupDrawerPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityManagerSetupDrawer.cs";
+        private const string R2fuEditorAsmdefPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef";
+        private const string ProviderDrawerPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs";
         private const string ManagerInspectorAsmdefPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Unity.FoxgloveSDK.Editor.asmdef";
-        private const string ManagerWorkflowPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
         private const string ManagerDataTransportPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.DataTransport.cs";
+        private const string ManagerPublishDataPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs";
+        private const string DrawerRegistryPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxRunTransportProviderDrawerRegistry.cs";
         private const string RegistryPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs";
         private const string ProjectPath =
@@ -120,109 +126,220 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ManagerInspectorHostsOptionalSelector()
         {
-            var source = ReadRepoText(ManagerInspectorPath);
-            var managerInspectorSyntaxErrors = CSharpSyntaxTree.ParseText(source)
+            var source = ReadRepoText(SetupDrawerPath);
+            var setupDrawerSyntaxErrors = CSharpSyntaxTree.ParseText(source)
                 .GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .ToArray();
-            var asmdef = ReadRepoText(ManagerInspectorAsmdefPath);
-            var workflow = ReadRepoText(ManagerWorkflowPath);
+            var r2fuEditorAsmdef =
+                ReadRepoText(R2fuEditorAsmdefPath);
+            var coreAsmdef = ReadRepoText(ManagerInspectorAsmdefPath);
             var dataTransportSource = ReadRepoText(ManagerDataTransportPath);
+            var publishDataSource = ReadRepoText(ManagerPublishDataPath);
+            var drawerRegistry = ReadRepoText(DrawerRegistryPath);
+            var providerDrawer = ReadRepoText(ProviderDrawerPath);
             var guard = ReadRepoText(PlayModeGuardPath);
-            var topLevel = FindMethod(workflow, "OnInspectorGUI");
-            var dataTransport = FindMethod(dataTransportSource, "DrawDataTransportSection");
             var allManagerEditorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
-            var allNativeRuntimeSubsections = FindInvocations(allManagerEditorSources)
-                .Where(invocation => IsNativeRuntimeSubsection(invocation))
-                .ToArray();
-            var allNativeRuntimeCallbacks = FindInvocations(allManagerEditorSources)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
-                .ToArray();
-            var nativeRuntimeSubsections = FindInvocations(dataTransport)
-                .Where(invocation => IsNativeRuntimeSubsection(invocation))
-                .ToArray();
-            var nativeRuntimeCallbacks = FindInvocations(dataTransport)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
-                .ToArray();
-            var nativeDemandBranches = dataTransport?.Body?.Statements
-                .OfType<IfStatementSyntax>()
-                .Where(HasNativeDemandCondition)
-                .ToArray()
-                ?? Array.Empty<IfStatementSyntax>();
-            var branchNativeRuntimeSubsections = nativeDemandBranches
-                .SelectMany(DirectThenStatements)
-                .OfType<ExpressionStatementSyntax>()
-                .Select(statement => statement.Expression as InvocationExpressionSyntax)
-                .Where(invocation => invocation != null && IsNativeRuntimeSubsection(invocation))
-                .ToArray();
-            var legacyTopLevelRuntimeSections = FindInvocations(topLevel)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                     && (HasStringArgument(invocation, 0, "ROS2 Runtime (R2FU)")
-                                         || HasStringArgument(invocation, 0, "ROS 2 Native Runtime (R2FU)")))
-                .ToArray();
-            var topLevelRuntimeCallbacks = FindInvocations(topLevel)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
-                .ToArray();
-            var directRuntimeDraws = FindInvocations(allManagerEditorSources)
-                .Where(invocation => IsInvocationNamed(invocation, "DrawR2fuRuntimeSection"))
-                .ToArray();
 
-            Check(managerInspectorSyntaxErrors.Length == 0,
-                "146A-D0: the core optional R2FU Inspector seam remains valid C# source for Unity compilation");
+            Check(setupDrawerSyntaxErrors.Length == 0,
+                "146A-D0: the always-compiled R2FU Manager setup drawer is syntactically valid before the required Unity Batch semantic compile");
 
-            Check(source.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
-                  && source.Contains("HasGeneratedExplicitSource", StringComparison.Ordinal)
-                  && topLevel != null
-                  && allNativeRuntimeSubsections.Length == 1
-                  && allNativeRuntimeCallbacks.Length == 1
-                  && nativeRuntimeSubsections.Length == 1
-                  && nativeRuntimeCallbacks.Length == 1
-                  && nativeDemandBranches.Length == 1
-                  && branchNativeRuntimeSubsections.Length == 1
-                  && ReferenceEquals(nativeRuntimeSubsections[0], branchNativeRuntimeSubsections[0])
-                  && legacyTopLevelRuntimeSections.Length == 0
-                  && topLevelRuntimeCallbacks.Length == 0
-                  && directRuntimeDraws.Length == 0
-                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
-                  && guard.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
-                  && guard.Contains("_defaultFoxRunSubscriptionSource", StringComparison.Ordinal),
-                "146A-D1: unified native demand reaches one optional runtime selector only through the conditional Data Transport native-runtime subsection");
-            const string selectorReflectionSeam =
-                "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
-            const string diagnosticsReflectionSeam =
-                "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
-            const string customTypesupportReflectionSeam =
-                "Unity2Foxglove.Ros2ForUnity.Editor.FoxRunRos2CustomTypesupportInspector, Unity2Foxglove.Ros2ForUnity.Editor";
-            Check(source.Contains("\"" + selectorReflectionSeam + "\"", StringComparison.Ordinal)
-                  && source.Contains("\"" + diagnosticsReflectionSeam + "\"", StringComparison.Ordinal)
-                  && source.Contains("\"" + customTypesupportReflectionSeam + "\"", StringComparison.Ordinal)
-                  && source.Contains("Type.GetType(R2fuRuntimeSelectorInspectorTypeName)", StringComparison.Ordinal)
-                  && source.Contains("Type.GetType(R2fuNativeSubscriptionDiagnosticsInspectorTypeName)", StringComparison.Ordinal)
-                  && source.Contains("Type.GetType(R2fuCustomTypesupportInspectorTypeName)", StringComparison.Ordinal)
-                  && source.Contains("GetMethod", StringComparison.Ordinal),
-                "146A-D2: core SDK declares its three optional R2FU Inspector reflection endpoints explicitly");
-            Check(CountOccurrences(source, "Unity2Foxglove.Ros2ForUnity") == 6
-                  && !source.Contains("using Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
-                  && !source.Contains("global::Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
-                  && !asmdef.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal),
-                "146A-D2b: core Inspector permits only the documented reflection seam and keeps no optional R2FU assembly dependency");
-            Check(source.Contains("TargetInvocationException", StringComparison.Ordinal)
-                  && source.Contains("DrawOptionalR2fuInspectorFailure", StringComparison.Ordinal),
-                "146A-D3: optional selector failures are contained inside the Inspector UI");
+            Check(source.Contains("IFoxRunManagerSetupDrawer", StringComparison.Ordinal)
+                  && drawerRegistry.Contains("public static class FoxRunManagerSetupDrawerRegistry", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCount(
+                          source,
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Register") == 1
+                  && PhaseValidationSourceHelpers.InvocationCountInMethod(
+                      source,
+                      "Draw",
+                      "DrawActiveRuntimeSelector") == 1
+                  && PhaseValidationSourceHelpers.InvocationCount(
+                      source,
+                      "DrawActiveRuntimeSelector") == 1
+                  && dataTransportSource.Contains("DrawFoxRunTransportProviderExtensions();", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          publishDataSource,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "FoxRunManagerSetupDrawerRegistry",
+                          "Capture") == 1
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          publishDataSource,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "setupDrawer",
+                          "Draw") == 1,
+                "146A-D1: one always-compiled R2FU setup drawer owns exactly one active-runtime selector call inside the generic Manager extension");
+            Check(providerDrawer.Contains("FoxRunRos2CustomTypesupportInspector", StringComparison.Ordinal)
+                  && providerDrawer.Contains("DrawCustomTypesupportPreflight", StringComparison.Ordinal)
+                  && providerDrawer.Contains("FoxRunRos2SubscriptionDiagnosticsInspector", StringComparison.Ordinal)
+                  && providerDrawer.Contains("DrawFoxRunNativeSubscriptionDiagnostics", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers.InvocationCount(
+                      providerDrawer,
+                      "DrawActiveRuntimeSelector") == 0,
+                "146A-D2: the active-runtime-independent setup drawer is separate from native-only typesupport and subscription diagnostics");
+            Check(!allManagerEditorSources.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && !coreAsmdef.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && r2fuEditorAsmdef.Contains("\"Unity.FoxgloveSDK.Editor\"", StringComparison.Ordinal)
+                  && r2fuEditorAsmdef.Contains("\"defineConstraints\": []", StringComparison.Ordinal),
+                "146A-D2b: the core stays provider-neutral while the unconstrained R2FU Editor assembly directly hosts first-time runtime selection");
+            Check(!source.Contains("Type.GetType", StringComparison.Ordinal)
+                  && !source.Contains("GetMethod", StringComparison.Ordinal)
+                  && !source.Contains("TargetInvocationException", StringComparison.Ordinal)
+                  && source.Contains("catch (Exception exception)", StringComparison.Ordinal)
+                  && source.Contains("!(exception is ExitGUIException)", StringComparison.Ordinal)
+                  && source.Contains("MessageType.Warning", StringComparison.Ordinal),
+                "146A-D3: setup-drawer selector uses one contained compile-time call while preserving Unity IMGUI ExitGUI control flow");
             Check(!source.Contains("InnerException.Message", StringComparison.Ordinal)
-                  && !source.Contains("ex.Message", StringComparison.Ordinal),
-                "146A-D3b: optional selector failures never expose raw reflected exception messages in the Inspector");
-            Check(source.Contains("private bool HasR2fuNativeSubscriptionDemand()", StringComparison.Ordinal)
-                  && source.Contains("nativeOutputEnabled: false", StringComparison.Ordinal)
-                  && source.Contains(
-                      "var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();",
-                      StringComparison.Ordinal)
-                  && source.Contains("if (outputDemand && subscriptionDemand)", StringComparison.Ordinal),
-                "146A-D4: Inspector distinguishes simultaneous native publish and subscription demand from WebSocket-only subscriptions");
+                  && !source.Contains("exception.Message", StringComparison.Ordinal),
+                "146A-D3b: provider-owned selector integration exposes no raw reflected exception messages");
+            var ensureMethod = FindMethod(
+                publishDataSource,
+                "ShouldEnsureProvider");
+            Check(providerDrawer.Contains("FoxRunTransportCapabilities.Publish", StringComparison.Ordinal)
+                  && providerDrawer.Contains("FoxRunTransportCapabilities.Subscribe", StringComparison.Ordinal)
+                  && providerDrawer.Contains("GetComponent<", StringComparison.Ordinal)
+                  && providerDrawer.Contains("FoxRunRos2TransportProvider>()", StringComparison.Ordinal)
+                  && guard.Contains("R2fuProviderId", StringComparison.Ordinal)
+                  && guard.Contains("PublishTransportIdsSerializedProperty", StringComparison.Ordinal)
+                  && guard.Contains("SubscribeTransportIdSerializedProperty", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          publishDataSource,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "FoxRunTransportProviderDrawerRegistry",
+                          "Capture") == 1
+                  && PhaseValidationSourceHelpers
+                      .QualifiedInvocationCountInMethod(
+                          publishDataSource,
+                          "DrawFoxRunTransportProviderExtensions",
+                          "drawer",
+                          "EnsureProvider") == 1
+                  && PhaseValidationSourceHelpers.TypeHasAttribute(
+                      allManagerEditorSources,
+                      "FoxgloveManagerEditor",
+                      "CanEditMultipleObjects")
+                  && HasExactLazyProviderGuard(ensureMethod),
+                "146A-D4: one Provider traversal covers publish/subscribe capabilities while the multi-object Inspector's defensive guard keeps lazy creation fail-closed");
+            Check(PhaseValidationSourceHelpers.TypeHasAttribute(
+                      "partial class FoxgloveManagerEditor { }\n"
+                      + "[UnityEditor.CanEditMultipleObjectsAttribute]\n"
+                      + "partial class FoxgloveManagerEditor { }",
+                      "FoxgloveManagerEditor",
+                      "CanEditMultipleObjects"),
+                "146A-D4b: single-object detection scans every partial declaration and recognizes the Attribute suffix spelling");
         }
+
+        private static bool HasExactLazyProviderGuard(
+            MethodDeclarationSyntax method)
+        {
+            if (method?.Body == null
+                || method.Body.Statements.Count != 4
+                || method.Body.Statements[0]
+                    is not IfStatementSyntax falseGuard
+                || method.Body.Statements[1]
+                    is not LocalDeclarationStatementSyntax publish
+                || method.Body.Statements[2]
+                    is not LocalDeclarationStatementSyntax subscribe
+                || method.Body.Statements[3]
+                    is not ReturnStatementSyntax selectedReturn)
+            {
+                return false;
+            }
+
+            var guardReturns = falseGuard.Statement
+                .DescendantNodesAndSelf()
+                .OfType<ReturnStatementSyntax>()
+                .ToArray();
+            if (Normalize(falseGuard.Condition)
+                != "drawer == null || serializedObject.isEditingMultipleObjects"
+                || guardReturns.Length != 1
+                || guardReturns[0].Expression
+                    is not LiteralExpressionSyntax falseLiteral
+                || !falseLiteral.IsKind(
+                    SyntaxKind.FalseLiteralExpression))
+            {
+                return false;
+            }
+
+            var publishVariable =
+                publish.Declaration.Variables.SingleOrDefault();
+            var subscribeVariable =
+                subscribe.Declaration.Variables.SingleOrDefault();
+            if (publishVariable?.Identifier.ValueText
+                    != "publishSelected"
+                || subscribeVariable?.Identifier.ValueText
+                    != "subscribeSelected"
+                || publishVariable.Initializer == null
+                || subscribeVariable.Initializer == null)
+            {
+                return false;
+            }
+
+            var publishTerms = FlattenLogicalAnd(
+                    publishVariable.Initializer.Value)
+                .Select(Normalize)
+                .ToArray();
+            var subscribeTerms = FlattenLogicalAnd(
+                    subscribeVariable.Initializer.Value)
+                .Select(Normalize)
+                .ToArray();
+            var expectedPublish = new[]
+            {
+                "(drawer.Capabilities & FoxRunTransportCapabilities.Publish) != 0",
+                "publishTransportIds != null",
+                "!publishTransportIds.hasMultipleDifferentValues",
+                "SerializedStringArrayContains(publishTransportIds, drawer.TransportId)",
+            };
+            var expectedSubscribe = new[]
+            {
+                "(drawer.Capabilities & FoxRunTransportCapabilities.Subscribe) != 0",
+                "subscribeTransportId != null",
+                "!subscribeTransportId.hasMultipleDifferentValues",
+                "string.Equals(subscribeTransportId.stringValue, drawer.TransportId, System.StringComparison.Ordinal)",
+            };
+
+            return publishTerms.SequenceEqual(expectedPublish)
+                   && subscribeTerms.SequenceEqual(
+                       expectedSubscribe)
+                   && Normalize(selectedReturn.Expression)
+                   == "publishSelected || subscribeSelected"
+                   && method.DescendantNodes()
+                       .OfType<ReturnStatementSyntax>()
+                       .Count() == 2;
+        }
+
+        private static System.Collections.Generic.IEnumerable<
+            ExpressionSyntax> FlattenLogicalAnd(
+            ExpressionSyntax expression)
+        {
+            if (expression is BinaryExpressionSyntax binary
+                && binary.IsKind(
+                    SyntaxKind.LogicalAndExpression))
+            {
+                foreach (var left in FlattenLogicalAnd(
+                             binary.Left))
+                {
+                    yield return left;
+                }
+
+                foreach (var right in FlattenLogicalAnd(
+                             binary.Right))
+                {
+                    yield return right;
+                }
+
+                yield break;
+            }
+
+            yield return expression;
+        }
+
+        private static string Normalize(SyntaxNode node)
+            => node?.NormalizeWhitespace().ToFullString()
+               ?? string.Empty;
 
         private static void RuntimeSelectorUsesOneDropdown()
         {

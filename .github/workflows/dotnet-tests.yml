@@ -16,7 +16,36 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
+      - name: Checkout pinned official ROS-TCP-Connector reference
+        uses: actions/checkout@v4
+        with:
+          repository: Unity-Technologies/ROS-TCP-Connector
+          ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
+          path: third-party/ROS-TCP-Connector
+          persist-credentials: false
+
+      - name: Normalize the provenance reference origin
+        run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Phase186 Python runtime dependency
+        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -71,6 +100,9 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
+
+      - name: Run Phase186 Bridge tooling and package-composition gate
+        run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
 
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json

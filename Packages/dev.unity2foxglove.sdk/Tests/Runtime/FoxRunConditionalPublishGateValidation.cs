@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
-        private const string ExpectedCheckedInGeneratorSha256 = "78D36D85DBE6E8AD89ED531EDA3E0A336F8DDD0BA0ED26A31BCA785D40EA6F02";
+        private const string ExpectedCheckedInGeneratorSha256 = "01FFD0075B3B50D4390ECE242E1AFF095C557CE2F0003A16A9317E4E90700A37";
         private static int _passCount;
 
         public static void Validate()
@@ -75,7 +75,8 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     new("_position", "UnityEngine.Vector3", "/phase141a/position", 10f, "",
                         policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
-                        onlyIf: "TelemetryEnabled")
+                        onlyIf: "TelemetryEnabled",
+                        typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3)))
                 });
 
             Check(conditional.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal),
@@ -117,7 +118,8 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     new("conditionalPosition", "UnityEngine.Vector3", "/debug/conditional_position", 15f, "",
                         policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
-                        onlyIf: "telemetryEnabled"),
+                        onlyIf: "telemetryEnabled",
+                        typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3))),
                     new("conditionalHealth", "System.Int32", "/debug/conditional_health", 15f, "",
                         policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
                         onlyIf: "healthPublishingEnabled")
@@ -251,20 +253,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             var sources = new[]
             {
-                RuntimeConditionStubs(),
-                @"
-namespace Phase141A
-{
-    public partial class RuntimeConditionSource
-    {
-        public bool telemetryEnabled = true;
-        public bool healthPublishingEnabled = true;
-        public UnityEngine.Vector3 conditionalPosition;
-        public int conditionalHealth;
-    }
-}
-",
-                generatedSource
+                RuntimeConditionContractStub(),
+                RuntimeConditionSource(generatedSource)
             };
             var syntaxTrees = sources.Select(source => CSharpSyntaxTree.ParseText(
                 source,
@@ -286,134 +276,10 @@ namespace Phase141A
             return Assembly.Load(stream.ToArray());
         }
 
-        private static string RuntimeConditionStubs()
+        private static string RuntimeConditionContractStub()
             => @"
-using System.Collections.Generic;
-
-namespace UnityEngine
-{
-    public struct Vector3
-    {
-        public float x;
-        public float y;
-        public float z;
-    }
-}
-
-namespace UnityEngine.Scripting
-{
-    public sealed class PreserveAttribute : System.Attribute { }
-}
-
 namespace Unity.FoxgloveSDK.Components
 {
-    public enum FoxRunPolicy
-    {
-        FixedRate = 1,
-        Change = 2,
-        Trigger = 4
-    }
-
-    public readonly struct FoxgloveLogTopicInfo
-    {
-        public readonly string Topic;
-        public readonly float Hz;
-        public readonly FoxRunPolicy Policy;
-        public readonly float Tolerance;
-
-        public FoxgloveLogTopicInfo(string topic, float hz)
-        {
-            Topic = topic;
-            Hz = hz;
-            Policy = FoxRunPolicy.FixedRate;
-            Tolerance = 0f;
-        }
-
-        public FoxgloveLogTopicInfo(string topic, float hz, FoxRunPolicy policy, float tolerance)
-        {
-            Topic = topic;
-            Hz = hz;
-            Policy = policy;
-            Tolerance = tolerance;
-        }
-    }
-
-    public sealed class FoxgloveManager
-    {
-        public void PublishJson(string topic, string schemaName, object message, ulong logTimeNs) { }
-    }
-
-    public interface IFoxgloveLogSource
-    {
-        int FoxgloveLog_TopicCount { get; }
-        FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index);
-        void FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs);
-    }
-
-    public enum FoxTopicVisibility
-    {
-        LocalOnly = 0,
-        Exported = 1
-    }
-
-    public enum FoxTopicWriterPolicy
-    {
-        SingleWriter = 0,
-        MultiWriter = 1
-    }
-
-    public sealed class FoxTopicContract
-    {
-        public FoxTopicContract(string topic, string schemaName, string encoding, string canonicalType, string stableFingerprint, FoxTopicVisibility visibility, FoxTopicWriterPolicy writerPolicy)
-        {
-            Topic = topic;
-            SchemaName = schemaName;
-            Encoding = encoding;
-            CanonicalType = canonicalType;
-            StableFingerprint = stableFingerprint;
-            Visibility = visibility;
-            WriterPolicy = writerPolicy;
-        }
-
-        public string Topic { get; }
-        public string SchemaName { get; }
-        public string Encoding { get; }
-        public string CanonicalType { get; }
-        public string StableFingerprint { get; }
-        public FoxTopicVisibility Visibility { get; }
-        public FoxTopicWriterPolicy WriterPolicy { get; }
-    }
-
-    public interface IFoxgloveTopicContractSource
-    {
-        string FoxgloveLog_Origin { get; }
-        FoxTopicContract FoxgloveLog_GetContract(int index);
-    }
-
-    public sealed class FoxTopicBus
-    {
-        public bool HasSubscribers(string topic) => true;
-
-        public void Publish<T>(FoxTopicContract contract, ulong timestampNs, in T payload, string origin) { }
-    }
-
-    public sealed class FoxTopicSinkRouter
-    {
-        public bool HasSinks => true;
-
-        public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
-    }
-
-    public interface IFoxgloveTopicBusSource
-    {
-        void FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs);
-    }
-
-    public interface IFoxgloveTopicSinkSource
-    {
-        void FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs);
-    }
-
     public interface IFoxgloveLogConditionSource
     {
         bool FoxgloveLog_CanPublish(int topicIndex);
@@ -421,17 +287,64 @@ namespace Unity.FoxgloveSDK.Components
 }
 ";
 
+        private static string RuntimeConditionSource(string generatedSource)
+        {
+            const string methodMarker = "bool IFoxgloveLogConditionSource.FoxgloveLog_CanPublish(int topicIndex)";
+            var methodStart = generatedSource.IndexOf(methodMarker, StringComparison.Ordinal);
+            if (methodStart < 0)
+                throw new InvalidOperationException("Generated source does not contain the condition method.");
+
+            var bodyStart = generatedSource.IndexOf('{', methodStart);
+            if (bodyStart < 0)
+                throw new InvalidOperationException("Generated condition method has no body.");
+
+            var depth = 0;
+            var methodEnd = -1;
+            for (var index = bodyStart; index < generatedSource.Length; index++)
+            {
+                if (generatedSource[index] == '{')
+                    depth++;
+                else if (generatedSource[index] == '}' && --depth == 0)
+                {
+                    methodEnd = index + 1;
+                    break;
+                }
+            }
+
+            if (methodEnd < 0)
+                throw new InvalidOperationException("Generated condition method body is unbalanced.");
+
+            var method = generatedSource.Substring(methodStart, methodEnd - methodStart);
+            return @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Phase141A
+{
+    public sealed class RuntimeConditionSource : IFoxgloveLogConditionSource
+    {
+        public bool telemetryEnabled = true;
+        public bool healthPublishingEnabled = true;
+"
+                   + method
+                   + @"
+    }
+}
+";
+        }
+
         private static bool GeneratedConditionCodeIsRuntimeGated(string source)
         {
             return source.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal)
-                   && source.Contains("FoxgloveLog_CanPublish", StringComparison.Ordinal)
-                   && SwitchCaseContains(source, 0, "healthPublishingEnabled")
-                   && SwitchCaseContains(source, 1, "telemetryEnabled");
+                   && source.Contains("FoxgloveLog_CanPublish(int topicIndex)", StringComparison.Ordinal)
+                   && ((SwitchCaseContains(source, 0, "healthPublishingEnabled")
+                        && SwitchCaseContains(source, 1, "telemetryEnabled"))
+                       || (SwitchCaseContains(source, 0, "telemetryEnabled")
+                           && SwitchCaseContains(source, 1, "healthPublishingEnabled")));
         }
 
         private static bool SwitchCaseContains(string source, int caseIndex, string expected)
         {
-            var methodStart = source.IndexOf("FoxgloveLog_CanPublish", StringComparison.Ordinal);
+            var methodStart = source.IndexOf("FoxgloveLog_CanPublish(int topicIndex)", StringComparison.Ordinal);
             if (methodStart < 0)
                 return false;
 

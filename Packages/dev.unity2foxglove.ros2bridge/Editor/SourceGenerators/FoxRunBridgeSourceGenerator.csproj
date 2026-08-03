@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AssemblyName>Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator</AssemblyName>
+    <DefineConstants>$(DefineConstants);FOXRUN_PROVIDER_ANALYZER;FOXRUN_BRIDGE_ANALYZER</DefineConstants>
+    <NoWarn>$(NoWarn);RS2000;RS2008</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src\Shared\FoxgloveLogSourceGenerator.cs;src\Shared\FoxgloveLogSourceGenerator.Models.cs;src\Shared\FoxRunCanonicalTypeNormalizer.cs;src\Shared\FoxRunEmissionTypeNameFormatter.cs;src\Shared\FoxRunGenerationDescriptorConstants.cs;src\Shared\FoxRunGenerationModel.cs;src\Shared\FoxRunGenerationModelValidator.cs;src\Shared\FoxRunProtobufFieldNumber.cs;src\Shared\FoxRunRoslynGenerationModelLowerer.cs;src\Shared\FoxRunRoslynTypeShapeBuilder.cs;src\Shared\FoxRunTypeShape.cs;src\Shared\FoxServiceDtoRules.cs;src\Shared\FoxServiceDtoTypeNames.cs;src\Shared\FoxServiceRoslynTypeHelpers.cs;src\Shared\IdentifierUtils.cs" />
+    <Compile Include="..\FoxRun\Ros2CustomCdrEmitter.cs"
+             Link="Bridge\FoxRunBridgeSourceEmitter.cs" />
+    <Compile Include="src\FoxRunBridgeAnalyzerPipeline.cs" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

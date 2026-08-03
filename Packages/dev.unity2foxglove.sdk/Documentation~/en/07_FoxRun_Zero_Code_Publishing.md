@@ -67,8 +67,8 @@ private DebugState _debugState;
 | `Subscribe` | One selected external endpoint is the source; Unity applies accepted values on the main thread. |
 | `PublishAndSubscribe` | Both directions are generated. This is intended for debugging and integration, not as the normal production default. |
 
-One subscription declaration resolves to exactly one `Source`. Publishing may
-fan out to one or more `Targets`.
+One subscription declaration resolves to exactly one Provider ID. Publishing
+may fan out to zero or more Provider IDs.
 
 ### Policies
 
@@ -90,7 +90,7 @@ one positive gate. Members on the same topic must agree on `Policy`, `Hz`,
 
 ## 4. Rate and Admission Controls
 
-`Hz` is a boundary cadence, not a network or ROS2 discovery setting:
+`Hz` is a boundary cadence, not a transport discovery setting:
 
 - Publish: maximum generated publication cadence.
 - Subscribe: maximum main-thread application cadence after transport admission.
@@ -106,8 +106,8 @@ Delivery**, two adjacent controls have different jobs:
 - **Default Subscribe Rate Hz** is 10 Hz by default and is inherited only by
   fixed-rate declarations without a positive `Hz`.
 - **Maximum Subscribe Rate Hz (per Topic)** is the hard source-neutral
-  admission ceiling for Foxglove WebSocket and ROS 2 Native input. Excess
-  messages are dropped before avoidable DTO decode or native deep-copy work.
+  admission ceiling for every selected input Provider. Excess messages are
+  dropped before avoidable DTO decode or transport-owned copy work.
 
 A declaration override cannot exceed the admission ceiling. Accepted input is
 bounded latest-wins: if Unity cannot apply every value, the newest owned value
@@ -129,7 +129,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
-        Source = FoxRunEndpoint.Foxglove,
+        SubscribeTransportId = FoxgloveWebSocketTransport.Id,
         Policy = Change, Hz = 30,
         Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
@@ -143,17 +143,17 @@ public partial class SpeedController : MonoBehaviour
 ```
 
 Inbound targets must be writable. Generated allowlists, payload bounds,
-encoding checks, source checks, transport admission, owned latest-wins
+encoding checks, Provider checks, transport admission, owned latest-wins
 staging, and main-thread application all remain in force. A non-loopback
 listener remains fail-closed unless the Manager's explicit remote-input and
 authentication policy allows it.
 
-## 6. Directional Endpoints and Encoding
+## 6. Directional Providers and Encoding
 
-Omit `Source`, `Targets`, or `Encoding` to inherit the relevant frozen Manager
-profile. Do not write a numeric zero sentinel in user code. A full-duplex
-declaration may inherit different Foxglove encodings for publish and subscribe;
-an explicit `Encoding` applies to every Foxglove direction selected by that
+Omit `PublishTransportIds`, `SubscribeTransportId`, or `Encoding` to inherit
+the relevant frozen Manager profile. A full-duplex declaration may inherit
+different Foxglove encodings for publish and subscribe; an explicit
+`Encoding` applies to every Foxglove WebSocket direction selected by that
 declaration.
 
 ```csharp
@@ -162,53 +162,56 @@ declaration.
 private DriveCommand _command;
 ```
 
-`Source` chooses the one input source. The normal core SDK path is
-`FoxRunEndpoint.Foxglove`. `FoxRunEndpoint.Ros2Native` requires the optional
-`dev.unity2foxglove.ros2forunity` facade, one selected distro runtime package,
-and a supported native message or matching custom typesupport add-on.
-`dev.unity2foxglove.sdk` alone is the normal installation for Foxglove and
-ROS2 Bridge. `FoxRunEndpoint.Ros2Bridge` is publish-only and requires the
-manually operated localhost sidecar; it is neither a subscribe source nor a
-remote gateway.
-
-`Targets` accepts one or more endpoint flags and replaces, rather than extends,
-the Publish Profile default:
+`SubscribeTransportId` chooses the one input Provider.
+`PublishTransportIds` accepts one or more stable Provider IDs and replaces,
+rather than extends, the Publish Profile default:
 
 ```csharp
 [FoxRun("/robot/state",
-    Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native)]
+    PublishTransportIds = new[] { FoxgloveWebSocketTransport.Id })]
 private RobotState _state;
 ```
 
-JSON and Protobuf are Foxglove wire encodings. Native and Bridge targets use
-their generated ROS 2 message contracts; CDR is not a public `Encoding` option.
-Source, targets, encoding, QoS, copy budget, maximum subscribe rate, and
-directional default rates are frozen for the corresponding enabled session.
+The core SDK owns `foxglove.websocket`. Optional transport packages install
+their own Provider component, stable ID, Inspector contribution, analyzer, and
+transport-specific documentation. A missing, duplicate, unavailable, or
+capability-incompatible Provider fails closed; it never falls back to another
+route.
 
-## 7. Official ROS 2 QoS
+JSON, Protobuf, and MessagePack are Foxglove wire encodings. MessagePack
+supports `Publish`, `Subscribe`, and `PublishAndSubscribe` on the Foxglove
+WebSocket direction. Its live channels use `message_encoding=msgpack` with
+empty schema fields. MCAP preserves the exact payload bytes on a channel with
+schema id zero and no associated Schema record; unrelated JSON or Protobuf
+channels in the same recording may still own valid Schema records.
 
-QoS is portable ROS 2 vocabulary, not a distro or RMW switch. It is legal only
-when the declaration resolves at least one ROS 2 Native or Bridge direction.
-Foxglove-only declarations do not consume ROS 2 QoS.
+Typed MessagePack field discovery and editing requires the maintained
+**FoxRun Publish** extension. Built-in Foxglove panels do not currently
+visualize or author typed MessagePack. Other Providers consume their own
+transport contracts rather than MessagePack bytes.
+Provider selection, encoding, delivery intent, copy budget, maximum subscribe
+rate, and directional default rates are frozen for the corresponding enabled
+session.
+
+## 7. Transport-Neutral Delivery Intent
+
+FoxRun exposes portable delivery intent without naming a transport, runtime,
+distribution, or middleware:
 
 ```csharp
 [FoxRun("/robot/state",
-    Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
-    QoS = FoxRunQosProfile.Default,
-    Reliability = FoxRunQosReliability.BestEffort,
-    Durability = FoxRunQosDurability.TransientLocal,
-    History = FoxRunQosHistory.KeepLast,
+    Reliability = FoxRunDeliveryReliability.BestEffort,
+    Durability = FoxRunDeliveryDurability.TransientLocal,
+    History = FoxRunDeliveryHistory.KeepLast,
     Depth = 7)]
 private RobotState _state;
 ```
 
-The base profiles are `Default`, `SensorData`, and `SystemDefault`. Optional
-overrides are `Reliable` or `BestEffort`, `Volatile` or `TransientLocal`,
-`KeepLast` or `KeepAll`, and a positive Keep Last `Depth`. `SystemDefault` and
-`KeepAll` remain real transport values; they are not silently rewritten.
-`KeepAll` cannot be combined with `Depth`. Native and Bridge receive the same
-resolved portable contract and let the selected ROS 2 transport perform its
-official mapping.
+Reliability is `Reliable`, `BestEffort`, or `SystemDefault`; durability is
+`Volatile`, `TransientLocal`, or `SystemDefault`; history is `KeepLast`,
+`KeepAll`, or `SystemDefault`. `Depth` must be positive and is legal only with
+Keep Last. Each selected Provider either maps the frozen intent or rejects the
+session; core does not infer transport-specific defaults.
 
 ## 8. Explicit Triggers
 
@@ -255,12 +258,12 @@ of high-rate input:
 
 ```csharp
 using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
 using static Unity.FoxgloveSDK.Components.FoxRunFlow;
 
 public partial class ControlSamples : MonoBehaviour
 {
-    [FoxRun("/control/samples", Mode = Subscribe, Source = Foxglove)]
+    [FoxRun("/control/samples", Mode = Subscribe,
+        SubscribeTransportId = FoxgloveWebSocketTransport.Id)]
     private FoxRunStream<ControlSample> _samples =
         new FoxRunStream<ControlSample>(
             new FoxRunStreamOptions(
@@ -277,9 +280,16 @@ public partial class ControlSamples : MonoBehaviour
 ```
 
 A stream declaration is one initialized, non-static field with exactly one
-`Subscribe` attribute. `Source`, Foxglove `Encoding`, and ROS 2 QoS are legal.
-`Targets`, `Policy`, `Hz`, `Tolerance`, and `OnlyIf` are not: stream admission
-and user-driven consumption replace ordinary field scheduling.
+`Subscribe` attribute. `SubscribeTransportId`, Foxglove `Encoding`, and
+transport-neutral delivery intent are legal. `PublishTransportIds`, `Policy`,
+`Hz`, `Tolerance`, and `OnlyIf` are not: stream admission and user-driven
+consumption replace ordinary field scheduling.
+
+For MessagePack input, a topic may contain ordinary members or exactly one
+`FoxRunStream<T>`. Mixed ordinary/stream and multi-stream topologies are
+unavailable. A multi-member publish or subscribe direction must also resolve
+one normalized `Policy`, explicit/effective `Hz`, `Tolerance`, and `OnlyIf`
+schedule tuple.
 
 The parameterless stream uses capacity 1024, a finite 1000 Hz admission
 ceiling, maximum batch 128, and `DropOldest`. `Drain(Action<T>)` retains stream
@@ -314,12 +324,13 @@ public partial class RobotSummary
 3. Enter Play Mode.
 4. Connect Foxglove to `ws://127.0.0.1:8765`.
 5. Use Topics, Raw Messages, or Plot for output.
-6. Use the optional **FoxRun Publish** extension for generated writable JSON
-   and Protobuf subscription contracts.
+6. Use the optional **FoxRun Publish** extension for generated writable JSON,
+   Protobuf, and MessagePack subscription contracts.
 
 The panel discovers contracts through `/foxrun/subscription-contracts`; it
-does not guess topics or encodings. Protobuf input uses binary MessageData and
-does not fall back to JSON.
+does not guess topics or encodings. Protobuf and MessagePack input use binary
+MessageData and do not fall back to JSON. MessagePack rows retain a logical
+type shape for the custom panel while their wire schema fields remain empty.
 
 ## 13. Generated Evidence and Player Builds
 
@@ -342,9 +353,9 @@ MCAP stores this evidence as `unity2foxglove.foxrun.schema`, including
 configured schema-identity guard instead of silently applying incompatible
 FoxRun data.
 
-The broader SDK schema manifest also catalogs Protobuf and packaged ROS2
-coverage. That aggregate inventory is separate from replay governance, which
-uses the FoxRun contract identity recorded with the MCAP.
+The broader SDK schema manifest also catalogs Protobuf and installed Provider
+contributions. That aggregate inventory is separate from replay governance,
+which uses the FoxRun contract identity recorded with the MCAP.
 
 The debug overlay is non-contract diagnostics. It is not included in canonical
 hashes and is not a replay guard key.
@@ -358,14 +369,14 @@ During IL2CPP preprocessing, expect logs such as:
 
 MCAP records the external boundary representation. Replay compares the
 recorded FoxRun schema identity with the current generated identity and
-suppresses live WebSocket and native fanout while replay is authoritative.
+suppresses live Provider fanout while replay is authoritative.
 
 ## 14. Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | No topic appears | The class is `partial`, the topic starts with `/`, the component is enabled, and Play Mode is running. |
-| Subscribe receives nothing | Enable subscriptions, verify the selected source and encoding, and inspect transport-admission diagnostics. |
+| Subscribe receives nothing | Enable subscriptions, verify the selected Provider and encoding, and inspect transport-admission diagnostics. |
 | Input arrives but applies slowly | Check declaration `Hz` or the Manager's **Default Subscribe Rate Hz**. |
 | Messages are dropped | Check **Maximum Subscribe Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
 | Stream drops or retains fewer samples than offered | Check its finite `MaxInputHz`, capacity, overflow policy, `MaxBatch`, and `Stats`; every stream is intentionally bounded. |

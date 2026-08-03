@@ -104,8 +104,34 @@ namespace Unity.FoxgloveSDK.Tests
 
         // policy=1 ->Change policy triggers ChangeExpr code path
         private static FoxgloveSourceEmitter.TopicMember Change(string name, string type, string topic)
-            => new(name, type, topic, 10f, "", policy: (int)FoxRunPolicy.Change,
-                tolerance: 0.001f);
+        {
+            FoxRunTypeShape typeShape = null;
+            switch (type)
+            {
+                case "UnityEngine.Vector2":
+                    typeShape = FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector2));
+                    break;
+                case "UnityEngine.Vector3":
+                    typeShape = FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3));
+                    break;
+                case "UnityEngine.Quaternion":
+                    typeShape = FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Quaternion));
+                    break;
+                case "UnityEngine.Color":
+                    typeShape = FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Color));
+                    break;
+            }
+
+            return new FoxgloveSourceEmitter.TopicMember(
+                name,
+                type,
+                topic,
+                10f,
+                "",
+                policy: (int)FoxRunPolicy.Change,
+                tolerance: 0.001f,
+                typeShape: typeShape);
+        }
 
         private static void VerifyNoInlineHelpers()
         {

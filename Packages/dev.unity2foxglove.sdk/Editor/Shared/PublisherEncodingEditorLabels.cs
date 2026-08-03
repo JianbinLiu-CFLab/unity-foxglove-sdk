@@ -6,7 +6,6 @@
 
 using System;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEditor;
 using UnityEngine;
 
@@ -14,9 +13,8 @@ namespace Unity.FoxgloveSDK.Editor
 {
     internal static class PublisherEncodingEditorLabels
     {
-        private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "ROS2", "MsgPack" };
-        private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2", "MsgPack" };
-        private static readonly string[] BridgeOverrideLabels = { "Use Manager", "Disabled", "Enabled" };
+        private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "MsgPack" };
+        private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "MsgPack" };
         private const string MsgPackConsumerNotice =
             "MsgPack is a schemaless raw channel for custom clients. Foxglove Desktop does not currently parse or render live MsgPack panels.";
 
@@ -24,7 +22,6 @@ namespace Unity.FoxgloveSDK.Editor
         {
             AssertLabelCount<GlobalEncoding>(GlobalEncodingLabels, nameof(GlobalEncodingLabels));
             AssertLabelCount<PublisherEncodingOverride>(PublisherOverrideLabels, nameof(PublisherOverrideLabels));
-            AssertLabelCount<Ros2BridgeOutputOverride>(BridgeOverrideLabels, nameof(BridgeOverrideLabels));
         }
 
         public static void DrawGlobalEncoding(SerializedProperty property, string label)
@@ -34,7 +31,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var current = ClampIndex(property.enumValueIndex, GlobalEncodingLabels.Length);
             property.enumValueIndex = EditorGUILayout.Popup(label, current, GlobalEncodingLabels);
-            DrawMsgPackConsumerNotice((GlobalEncoding)property.enumValueIndex);
+            DrawMsgPackConsumerNotice((GlobalEncoding)property.intValue);
         }
 
         public static void DrawPublisherOverride(SerializedProperty property, string label)
@@ -44,26 +41,12 @@ namespace Unity.FoxgloveSDK.Editor
 
             var current = ClampIndex(property.enumValueIndex, PublisherOverrideLabels.Length);
             property.enumValueIndex = EditorGUILayout.Popup(label, current, PublisherOverrideLabels);
-            DrawMsgPackConsumerNotice((PublisherEncodingOverride)property.enumValueIndex);
+            DrawMsgPackConsumerNotice((PublisherEncodingOverride)property.intValue);
         }
 
         public static void DrawEffectiveEncoding(PublisherEffectiveEncoding encoding, string label)
         {
             EditorGUILayout.TextField(label, PublisherEncodingPolicy.ToDisplayEncoding(encoding));
-        }
-
-        public static void DrawRos2BridgeOverride(SerializedProperty property, string label)
-        {
-            if (property == null)
-                return;
-
-            var current = ClampIndex(property.enumValueIndex, BridgeOverrideLabels.Length);
-            property.enumValueIndex = EditorGUILayout.Popup(label, current, BridgeOverrideLabels);
-        }
-
-        public static void DrawEffectiveRos2BridgeOutput(Ros2BridgeEffectiveOutput output, string label)
-        {
-            EditorGUILayout.TextField(label, Ros2BridgeOutputPolicy.ToDisplayLabel(output));
         }
 
         private static int ClampIndex(int index, int count)

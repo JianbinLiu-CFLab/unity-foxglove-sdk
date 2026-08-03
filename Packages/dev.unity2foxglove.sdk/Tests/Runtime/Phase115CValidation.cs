@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115CValidation
     {
-        private const string ExpectedGlobalFixtureHash = "4ef64c60b17b8b02c17cc318aefe57a9eecc5772b9528e6649ecc590b6187cfd";
+        private const string ExpectedGlobalFixtureHash = "1f649388de6fd74a3fd3edf52d16e1afd9ca4566231e9f3c1fea755d1e6441ec";
         private const string SdkFixtureHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private static int _passed;
 
@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyCanonicalAndWriterHardening();
             VerifyRecordingCleanupSource();
             VerifyDebugOverlayNoThrowBoundary();
-            VerifyRos2RegistryGuard();
+            VerifyProviderRegistryBoundary();
             VerifyInspectorAndSettingsSyncSource();
             VerifyReplayIdentityPreflightSource();
 
@@ -203,16 +203,20 @@ namespace Unity.FoxgloveSDK.Tests
                 "115C-D3: debug overlay helper catches publish failures and stays non-contract");
         }
 
-        private static void VerifyRos2RegistryGuard()
+        private static void VerifyProviderRegistryBoundary()
         {
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
-            Check(builder.Contains("entries.Count != FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount", StringComparison.Ordinal)
-                  && builder.Contains("ROS2 .msg schema catalog count mismatch", StringComparison.Ordinal),
-                "115C-E1: aggregate builder guards ROS2 runtime registered count drift");
+            var model = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestModel.cs");
+            var bridgeCodecs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
+            Check(!builder.Contains("Ros2", StringComparison.Ordinal)
+                  && !model.Contains("Ros2", StringComparison.Ordinal)
+                  && !builder.Contains("cdr", StringComparison.OrdinalIgnoreCase),
+                "115C-E1: aggregate builder and model contain only neutral SDK registries");
 
-            var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FoxRunManifestBuilder.Build(Phase115BFixtureMembers()));
-            Check(aggregate.Sections.Ros2MsgRegistry.EntryCount == aggregate.Sections.Ros2MsgRegistry.SourceFileCount,
-                "115C-E2: valid ROS2 registry still builds with matching runtime registered count");
+            Check(bridgeCodecs.Contains("Ros2BridgeMcapCodecs", StringComparison.Ordinal)
+                  && bridgeCodecs.Contains("CreateFactories", StringComparison.Ordinal)
+                  && bridgeCodecs.Contains("SchemaEncoding = \"ros2msg\"", StringComparison.Ordinal),
+                "115C-E2: optional ROS schema and decode registration is Bridge-owned and explicit");
         }
 
         private static void VerifyInspectorAndSettingsSyncSource()
@@ -230,14 +234,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("private bool _dataTransportExpanded;", StringComparison.Ordinal)
                   && editor.Contains("private bool _dataTransportPublishExpanded;", StringComparison.Ordinal)
                   && editor.Contains("private bool _dataTransportSubscribeExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private bool _dataTransportNativeRuntimeExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private bool _dataTransportRos2BridgeExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _dataTransportNativeRuntimeExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _dataTransportRos2BridgeExpanded;", StringComparison.Ordinal)
                   && !editor.Contains("private bool _publishDataExpanded;", StringComparison.Ordinal)
                   && !editor.Contains("private bool _subscribeDataExpanded;", StringComparison.Ordinal)
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawFoxRunTransportProviderExtensions", StringComparison.Ordinal)
                   && editor.Contains("private bool _schemaEvidenceAdvancedExpanded;", StringComparison.Ordinal)
                   && layout.Contains("WorkflowSubsection", StringComparison.Ordinal),
-                "115C-F1: Data Transport parent and nested Inspector foldouts coexist with collapsed low-frequency schema evidence");
+                "115C-F1: provider-neutral Data Transport foldouts coexist with Provider extensions and collapsed schema evidence");
 
             Check(mcapEditor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
                   && mcapEditor.Contains("Refresh Evidence Now", StringComparison.Ordinal)

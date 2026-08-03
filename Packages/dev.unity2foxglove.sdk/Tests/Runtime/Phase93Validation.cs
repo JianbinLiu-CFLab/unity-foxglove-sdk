@@ -14,7 +14,8 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -206,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
             var productTransport = new Phase93FakeTransport();
             using (var runtime = new FoxgloveRuntime(productTransport, new SystemClock(), registry))
             {
-                runtime.Start("phase93-product-boundary", "127.0.0.1", 9393, enableCdrClientPublish: false);
+                runtime.Start("phase93-product-boundary", "127.0.0.1", 9393);
                 productTransport.SimulateConnect(1);
             }
 
@@ -216,7 +217,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var transport = new Phase93FakeTransport();
             using var session = new FoxgloveSession("phase93-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             for (var i = 0; i < samples.Count; i++)
@@ -287,15 +288,21 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var managerServer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var schemaCoverage = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
+            var bridgeCodecs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
+            var bridgeManifest = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json");
             Check(!managerSource.Contains("PublishRos2(string topic, string schemaName, IMessage message"),
                 "93I-1: Phase93 does not add IMessage Manager convenience API");
-            Check(managerServer.Contains("enableCdrClientPublish: false"),
-                "93I-2: Manager still suppresses CDR client-publish support");
-            Check(schemaCoverage.Contains("Phase 93")
-                  && schemaCoverage.Contains(FoxgloveRos2MsgSchemaCatalog.SourceFileCount + " root ROS 2")
-                  && schemaCoverage.Contains("low-level"),
-                "93I-3: schema coverage docs describe low-level full ROS2 CDR parity");
+            Check(!managerServer.Contains("EnableMessageEncoding")
+                  && !managerServer.Contains("\"cdr\"")
+                  && !managerServer.Contains("Ros2Bridge")
+                  && bridgeCodecs.Contains("runtime.EnableMessageEncoding(MessageEncoding)"),
+                "93I-2: core Manager omits CDR while Bridge enables it explicitly");
+            Check(bridgeManifest.Contains("CDR codecs")
+                  && bridgeManifest.Contains("ROS schema adapters")
+                  && FoxgloveRos2MsgSchemaCatalog.SourceFileCount > 0
+                  && FoxgloveRos2MsgSchemaCatalog.RegisteredEntries.Count >=
+                     FoxgloveRos2MsgSchemaCatalog.SourceFileCount,
+                "93I-3: Bridge package owns full ROS2 schema and CDR parity");
         }
 
         private static List<Phase93Sample> BuildSamples()

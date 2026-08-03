@@ -202,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var decoded = new McapDecodedMessage
             {
-                Payload = new McapDecodedPayload { Kind = McapDecodedPayloadKind.Ros2CdrDiagnostic }
+                Payload = new McapDecodedPayload { Kind = McapDecodedPayloadKind.Provider }
             };
             decoded.Problems.Add(new McapDecodeProblem { Severity = McapDataLoaderProblemSeverity.Warning });
 

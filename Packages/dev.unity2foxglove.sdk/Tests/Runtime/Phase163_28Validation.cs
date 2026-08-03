@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
             NativeRuntimeFailuresAreMutedDuringShutdown();
             CameraPublisherRetryLoopsAbortDuringShutdown();
             CameraMessageBuilderToleratesNullCollections();
-            Ros2TopicSinkRejectsNullPayloads();
+            R2fuProviderRejectsUntypedPayloads();
             NativeCallbackThreadAssumptionsRemainAuditable();
             PhaseWiringIsPresent();
 
@@ -33,14 +33,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void NativeBridgeShutdownFlagsAreVolatile()
         {
+            var lifecycle = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs");
             foreach (var path in NativeBridgePaths())
             {
                 var source = ReadRepoText(path);
-                Check(source.Contains("private static volatile bool _runtimeShuttingDown;", StringComparison.Ordinal)
-                      && source.Contains("private static volatile bool _playModeSceneLoaded;", StringComparison.Ordinal)
-                      && source.Contains("private static volatile bool _editorEnteredPlayMode;", StringComparison.Ordinal)
-                      && source.Contains("private static volatile bool _editorQuitting;", StringComparison.Ordinal),
-                    "163-28A: " + Path.GetFileName(path) + " uses volatile lifecycle flags for editor/runtime shutdown handoff");
+                Check(lifecycle.Contains("private static volatile bool _applicationQuitting;", StringComparison.Ordinal)
+                      && lifecycle.Contains("private static volatile bool _nativeReloadWindow;", StringComparison.Ordinal)
+                      && lifecycle.Contains("private static volatile bool _isStablePlayModeScene;", StringComparison.Ordinal)
+                      && lifecycle.Contains("private static volatile bool _editorEnteredPlayMode;", StringComparison.Ordinal)
+                      && lifecycle.Contains("private static volatile bool _editorQuitting;", StringComparison.Ordinal)
+                      && source.Contains("Ros2ForUnityNativeBridgeLifecycleGate", StringComparison.Ordinal),
+                    "163-28A: " + Path.GetFileName(path) + " delegates volatile editor/runtime shutdown state to the shared lifecycle gate");
             }
         }
 
@@ -103,24 +107,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-28E-2: CameraInfo matrix copy skips null source or destination arrays without throwing");
         }
 
-        private static void Ros2TopicSinkRejectsNullPayloads()
+        private static void R2fuProviderRejectsUntypedPayloads()
         {
-            var sink = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
-            Check(sink.Contains("payload == null", StringComparison.Ordinal)
-                  && sink.Contains("\":null-payload\"", StringComparison.Ordinal)
-                  && sink.Contains("payload was null", StringComparison.Ordinal)
-                  && !sink.Contains("payload ?? Array.Empty<byte>()", StringComparison.Ordinal),
-                "163-28F: R2FU topic sink logs and skips null payloads instead of publishing malformed empty CDR");
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
+            var binding = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs");
+            Check(provider.Contains(
+                      "R2FU routes are emitted as generated typed ROS2 bindings, not untyped byte payloads.",
+                      StringComparison.Ordinal)
+                  && provider.Contains("FoxRunTransportPublishResult.Rejected", StringComparison.Ordinal)
+                  && binding.Contains("if (ReferenceEquals(mapped, null))", StringComparison.Ordinal)
+                  && binding.Contains("return false;", StringComparison.Ordinal)
+                  && !binding.Contains("payload ?? Array.Empty<byte>()", StringComparison.Ordinal),
+                "163-28F: the R2FU Provider rejects untyped payloads and typed bindings skip null mapped messages");
         }
 
         private static void NativeCallbackThreadAssumptionsRemainAuditable()
         {
             var imu = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            var pointCloud = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var pointCloud = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs");
 
             Check(ExtractMethod(imu, "Update").Contains("nativeFrameHandler.Invoke(nativeFrame)", StringComparison.Ordinal),
                 "163-28G-1: VirtualImu native frame handoff remains on the Update drain path");
-            Check(ExtractMethod(pointCloud, "PublishCompletedPointCloud2NativePayload").Contains("PublishPointCloud2NativeFrameReady", StringComparison.Ordinal),
+            Check(ExtractMethod(pointCloud, "PublishCompletedPackedPointCloudPayload").Contains("PublishPackedPointCloudFrameReady", StringComparison.Ordinal),
                 "163-28G-2: PointCloud2 native frame handoff remains explicit after worker payload completion");
         }
 
@@ -142,7 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs",
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityImuNativeBridge.cs",
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraNativeBridge.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs"
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs"
             };
 
         private static string ExtractMethod(string source, string methodName)

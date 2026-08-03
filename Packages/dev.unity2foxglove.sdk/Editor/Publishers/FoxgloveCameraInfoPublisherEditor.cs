@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Publishers
-// Purpose: Inspector for standard sensor_msgs/msg/CameraInfo output.
+// Purpose: Inspector for provider-neutral camera calibration output.
 
 using Unity.FoxgloveSDK.Components;
 using System;
@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.HelpBox(
-                "Advanced CameraInfo Publisher for ROS2 calibration streams and compatibility scenes. Most camera users can keep this component disabled or absent unless a ROS2 tool needs sensor_msgs/msg/CameraInfo.",
+                "Advanced camera calibration publisher for transport Providers and compatibility scenes. Most camera users can keep this component disabled unless an external consumer needs intrinsics.",
                 MessageType.Info);
 
             DrawGeneralSection();
@@ -134,8 +134,6 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 DrawEnumField(serializedObject.FindProperty("_encodingOverride"), "Encoding Override");
-                DrawEnumField(serializedObject.FindProperty("_ros2BridgeOutput"), "ROS2 Bridge Output");
-                DrawStringField(serializedObject.FindProperty("_ros2BridgeTopicOverride"), "Bridge Topic Override");
             }
         }
 

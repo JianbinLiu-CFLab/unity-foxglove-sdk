@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Components
         public string DeclaringType { get; }
         public string Topic { get; }
         public string SchemaName { get; }
+        public string WireSchemaName => SchemaName;
+        public string LogicalSchemaName { get; }
         public string Encoding { get; }
         public string ContractHash { get; }
         public string BindingHash { get; }
@@ -25,6 +27,26 @@ namespace Unity.FoxgloveSDK.Components
         public float Hz { get; }
         public float Tolerance { get; }
         public IReadOnlyList<FoxRunSchemaFieldInfo> Fields { get; }
+        public bool PublishAvailable { get; }
+        public bool SubscribeAvailable { get; }
+        public string PublishUnavailableDiagnosticId { get; }
+        public string PublishUnavailableReason { get; }
+        public string SubscribeUnavailableDiagnosticId { get; }
+        public string SubscribeUnavailableReason { get; }
+        public IReadOnlyList<string> PublishTransportIds { get; }
+        public string SubscribeTransportId { get; }
+        public string UnavailableDiagnosticId
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableDiagnosticId,
+                SubscribeAvailable,
+                SubscribeUnavailableDiagnosticId);
+        public string UnavailableReason
+            => SharedUnavailableValue(
+                PublishAvailable,
+                PublishUnavailableReason,
+                SubscribeAvailable,
+                SubscribeUnavailableReason);
 
         public FoxRunSchemaContractInfo(
             string declaringType,
@@ -39,11 +61,23 @@ namespace Unity.FoxgloveSDK.Components
             float tolerance,
             IReadOnlyList<FoxRunSchemaFieldInfo> fields,
             string flow = "Publish",
-            byte[] protobufDescriptorSet = null)
+            byte[] protobufDescriptorSet = null,
+            string logicalSchemaName = "",
+            bool publishAvailable = true,
+            bool subscribeAvailable = true,
+            string unavailableDiagnosticId = "",
+            string unavailableReason = "",
+            string publishUnavailableDiagnosticId = null,
+            string publishUnavailableReason = null,
+            string subscribeUnavailableDiagnosticId = null,
+            string subscribeUnavailableReason = null,
+            IReadOnlyList<string> publishTransportIds = null,
+            string subscribeTransportId = null)
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
+            LogicalSchemaName = logicalSchemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
@@ -54,6 +88,34 @@ namespace Unity.FoxgloveSDK.Components
             Tolerance = NormalizeNonNegative(tolerance);
             Fields = new List<FoxRunSchemaFieldInfo>(fields ?? Array.Empty<FoxRunSchemaFieldInfo>()).AsReadOnly();
             ProtobufDescriptorSet = protobufDescriptorSet == null ? Array.Empty<byte>() : (byte[])protobufDescriptorSet.Clone();
+            PublishAvailable = publishAvailable;
+            SubscribeAvailable = subscribeAvailable;
+            PublishUnavailableDiagnosticId = publishAvailable
+                ? string.Empty
+                : publishUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            PublishUnavailableReason = publishAvailable
+                ? string.Empty
+                : publishUnavailableReason ?? unavailableReason ?? string.Empty;
+            SubscribeUnavailableDiagnosticId = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableDiagnosticId ?? unavailableDiagnosticId ?? string.Empty;
+            SubscribeUnavailableReason = subscribeAvailable
+                ? string.Empty
+                : subscribeUnavailableReason ?? unavailableReason ?? string.Empty;
+            PublishTransportIds = CanonicalTransportIds(publishTransportIds);
+            SubscribeTransportId = subscribeTransportId;
+        }
+
+        private static IReadOnlyList<string> CanonicalTransportIds(
+            IReadOnlyList<string> values)
+        {
+            if (values == null)
+                return null;
+
+            var canonical = new SortedSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < values.Count; index++)
+                canonical.Add(values[index] ?? string.Empty);
+            return new List<string>(canonical).AsReadOnly();
         }
 
         private static float NormalizeHz(float value)
@@ -61,5 +123,24 @@ namespace Unity.FoxgloveSDK.Components
 
         private static float NormalizeNonNegative(float value)
             => float.IsNaN(value) || value < 0f ? 0f : value;
+
+        private static string SharedUnavailableValue(
+            bool publishAvailable,
+            string publishValue,
+            bool subscribeAvailable,
+            string subscribeValue)
+        {
+            if (publishAvailable)
+                return subscribeAvailable ? string.Empty : subscribeValue;
+            if (subscribeAvailable)
+                return publishValue;
+            if (string.IsNullOrEmpty(publishValue))
+                return subscribeValue;
+            if (string.IsNullOrEmpty(subscribeValue))
+                return publishValue;
+            return string.Equals(publishValue, subscribeValue, StringComparison.Ordinal)
+                ? publishValue
+                : string.Empty;
+        }
     }
 }

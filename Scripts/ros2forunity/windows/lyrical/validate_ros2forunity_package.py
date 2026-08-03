@@ -75,6 +75,17 @@ ALLOWED_EDITOR_SUFFIXES = {
     ".meta",
 }
 
+SOURCE_GENERATOR_BUILD_SUFFIXES = {
+    ".csproj",
+    ".md",
+    ".props",
+}
+
+SOURCE_GENERATOR_ANALYZER_PATH = (
+    "Editor/SourceGenerators/analyzers/dotnet/cs/"
+    "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll"
+)
+
 FORBIDDEN_PUBLIC_PHASE_PATTERN = re.compile(r"(?<![A-Za-z0-9_])(?:Phase|phase)\s*\d{2,4}[A-Z]?\b")
 RUNTIME_TOKEN_EXEMPT_SUBDIRS = {
     "Native",
@@ -128,6 +139,20 @@ def _is_runtime_token_exempt(path: Path, runtime_root: Path) -> bool:
     except ValueError:
         return False
     return rel_parts and rel_parts[0] in RUNTIME_TOKEN_EXEMPT_SUBDIRS
+
+
+def _is_editor_source_generator_artifact(path: Path) -> bool:
+    """Allow only the package-owned Editor source-generator build surface."""
+    try:
+        relative = path.relative_to(PACKAGE).as_posix()
+    except ValueError:
+        return False
+    if relative == SOURCE_GENERATOR_ANALYZER_PATH:
+        return True
+    return (
+        relative.startswith("Editor/SourceGenerators/")
+        and path.suffix.lower() in SOURCE_GENERATOR_BUILD_SUFFIXES
+    )
 
 
 def load_json(path: Path, results: list[CheckResult], name: str) -> dict | None:
@@ -642,7 +667,10 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
     """Reject runtime binaries and imported R2FU artifacts while the manifest says not_bundled."""
     offenders: list[str] = []
     for path in iter_files(PACKAGE):
-        if path.suffix.lower() in RUNTIME_BINARY_SUFFIXES or path.name in FORBIDDEN_RUNTIME_NAMES:
+        if (
+            path.suffix.lower() in RUNTIME_BINARY_SUFFIXES
+            or path.name in FORBIDDEN_RUNTIME_NAMES
+        ) and not _is_editor_source_generator_artifact(path):
             offenders.append(rel(path))
 
     add(
@@ -657,6 +685,7 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         rel(path)
         for path in iter_files(editor)
         if path.suffix.lower() not in ALLOWED_EDITOR_SUFFIXES
+        and not _is_editor_source_generator_artifact(path)
     ] if editor.exists() else []
     editor_asmdefs = list(editor.glob("*.asmdef")) if editor.exists() else []
     editor_asmdefs_are_editor_only = True

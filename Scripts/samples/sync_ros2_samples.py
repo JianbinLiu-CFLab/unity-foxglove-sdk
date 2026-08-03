@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import os
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -147,7 +149,23 @@ def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> N
         package_file = package_root / item.path
         imported_file = imported_root / item.path
         imported_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(package_file, imported_file)
+        # Unity's asset importer uses timestamps as part of change detection.
+        # Do not preserve a package source timestamp that can predate the
+        # currently cached imported asset. Replace through a sibling temporary
+        # file because Windows sync providers can reject truncating a tracked
+        # file in place even when replacing that file is supported.
+        with tempfile.NamedTemporaryFile(
+            dir=imported_file.parent,
+            prefix=f".{imported_file.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+        try:
+            shutil.copyfile(package_file, temporary_path)
+            os.replace(temporary_path, imported_file)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
 
 def blocking_drift_after_apply(drift: list[Drift]) -> list[Drift]:

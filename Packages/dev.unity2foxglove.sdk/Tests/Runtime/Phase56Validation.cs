@@ -44,7 +44,10 @@ namespace Unity.FoxgloveSDK.Tests
             var roslynGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var buildTimeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
-            Check(roslynGenerator.Contains("FoxgloveSourceEmitter.GeneratedSourceName(ns, className)"),
+            Check(roslynGenerator.Contains("FoxgloveSourceEmitter", StringComparison.Ordinal)
+                  && roslynGenerator.Contains(".GeneratedSourceName(", StringComparison.Ordinal)
+                  && roslynGenerator.Contains("type.Namespace,", StringComparison.Ordinal)
+                  && roslynGenerator.Contains("type.ClassName)", StringComparison.Ordinal),
                 "56A-3: Roslyn generator uses shared generated source naming");
             Check(buildTimeGenerator.Contains("FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName)"),
                 "56A-4: build-time fallback uses shared generated source naming");
@@ -59,7 +62,14 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     new FoxgloveSourceEmitter.TopicMember("_1", "System.Int32", "/phase56/mixed", 10f, ""),
                     new FoxgloveSourceEmitter.TopicMember("class", "System.Int32", "/phase56/mixed", 10f, ""),
-                    new FoxgloveSourceEmitter.TopicMember("_velocity", "UnityEngine.Vector3", "/phase56/mixed", 10f, "")
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "_velocity",
+                        "UnityEngine.Vector3",
+                        "/phase56/mixed",
+                        10f,
+                        "",
+                        FoxRunGenerationDescriptorConstants.InheritEncoding,
+                        typeShape: FoxRunReflectionTypeShapeBuilder.Build(typeof(UnityEngine.Vector3)))
                 });
 
             Check(source.Contains("new Dictionary<string, object>"),

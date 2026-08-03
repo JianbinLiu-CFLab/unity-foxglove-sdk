@@ -11,6 +11,7 @@ using System.Linq;
 using System.Xml.Linq;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -54,27 +55,25 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyWireEncodingAndProviderAxes()
         {
             var wireNames = Enum.GetNames(typeof(FoxRunEncoding));
-            Check(wireNames.SequenceEqual(new[] { "Protobuf", "JSON" })
+            Check(wireNames.SequenceEqual(new[] { "Protobuf", "JSON", "MessagePack" })
                   && (int)(FoxRunEncoding)0 == 0
                   && (int)FoxRunEncoding.Protobuf == 1
-                  && (int)FoxRunEncoding.JSON == 2,
-                "FoxRun encoding exposes only Protobuf and JSON while zero remains an internal omission sentinel");
+                  && (int)FoxRunEncoding.JSON == 2
+                  && (int)FoxRunEncoding.MessagePack == 3,
+                "FoxRun encoding exposes Protobuf, JSON, and MessagePack while zero remains an internal omission sentinel");
 
-            var endpointNames = Enum.GetNames(typeof(FoxRunEndpoint));
-            var sourceProperty = typeof(FoxRunAttribute).GetProperty(
-                nameof(FoxRunAttribute.Source));
-            var targetsProperty = typeof(FoxRunAttribute).GetProperty(
-                nameof(FoxRunAttribute.Targets));
-            Check(endpointNames.SequenceEqual(
-                      new[] { "Foxglove", "Ros2Native", "Ros2Bridge" })
-                  && (int)(FoxRunEndpoint)0 == 0
-                  && (int)FoxRunEndpoint.Foxglove == 1
-                  && (int)FoxRunEndpoint.Ros2Native == 2
-                  && (int)FoxRunEndpoint.Ros2Bridge == 4
-                  && sourceProperty?.PropertyType == typeof(FoxRunEndpoint)
-                  && targetsProperty?.PropertyType == typeof(FoxRunEndpoint)
-                  && typeof(FoxRunEndpoint) != typeof(FoxRunEncoding),
-                "FoxRun Source and flagged Targets share one endpoint vocabulary separate from Encoding");
+            var publishProviders = typeof(FoxRunAttribute).GetProperty(
+                nameof(FoxRunAttribute.PublishTransportIds));
+            var subscribeProvider = typeof(FoxRunAttribute).GetProperty(
+                nameof(FoxRunAttribute.SubscribeTransportId));
+            Check(publishProviders?.PropertyType == typeof(string[])
+                  && subscribeProvider?.PropertyType == typeof(string)
+                  && FoxRunRos2TransportProvider.IdValue
+                     == "unity2foxglove.r2fu"
+                  && FoxgloveWebSocketTransport.Id
+                     == "foxglove.websocket"
+                  && typeof(FoxRunDeliveryReliability).IsEnum,
+                "FoxRun directions use stable neutral Provider IDs while R2FU owns its transport identity");
         }
 
         private static void VerifyDependencyInspectionCoverage()
@@ -189,67 +188,81 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var inbound = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
+            var providers = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
             var managerMigration = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
-            var migration = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunEncodingPolicyMigration.cs");
-            var legacyBranch = migration.IndexOf(
-                "if (serializationVersion < CurrentSerializationVersion)",
-                StringComparison.Ordinal);
-            var legacyWebSocket = migration.IndexOf(
-                "sourceDefault = FoxRunEndpoint.Foxglove;",
-                legacyBranch < 0 ? 0 : legacyBranch,
-                StringComparison.Ordinal);
-            var normalizeCall = migration.IndexOf(
-                "sourceDefault = NormalizeSubscriptionSource(sourceDefault);",
-                legacyBranch < 0 ? 0 : legacyBranch,
-                StringComparison.Ordinal);
-            var normalizeDefinition = migration.IndexOf(
-                "private static FoxRunEndpoint NormalizeSubscriptionSource",
-                StringComparison.Ordinal);
-            var preserveNative = migration.IndexOf(
-                "? FoxRunEndpoint.Ros2Native",
-                normalizeDefinition < 0 ? 0 : normalizeDefinition,
-                StringComparison.Ordinal);
-            var fallbackWebSocket = migration.IndexOf(
-                ": FoxRunEndpoint.Foxglove",
-                normalizeDefinition < 0 ? 0 : normalizeDefinition,
-                StringComparison.Ordinal);
+            var attribute = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Runtime/Components/Attributes/FoxRunAttribute.cs");
 
-            Check(inbound.Contains(
-                      "_defaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove",
+            Check(providers.Contains(
+                      "_foxRunPublishTransportIds =",
                       StringComparison.Ordinal)
-                  && managerMigration.Contains("ISerializationCallbackReceiver.OnAfterDeserialize()", StringComparison.Ordinal)
-                  && managerMigration.Contains("ref _defaultFoxRunSubscriptionSource", StringComparison.Ordinal)
-                  && legacyBranch >= 0
-                  && legacyWebSocket > legacyBranch
-                  && normalizeCall > legacyWebSocket
-                  && normalizeDefinition > normalizeCall
-                  && preserveNative > normalizeDefinition
-                  && fallbackWebSocket > preserveNative,
-                "serialized Source migration defaults legacy or invalid values to Foxglove and preserves Native");
+                  && providers.Contains(
+                      "_foxRunSubscribeTransportId =",
+                      StringComparison.Ordinal)
+                  && providers.Contains(
+                      "FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && providers.Contains(
+                      "string.IsNullOrWhiteSpace(_foxRunSubscribeTransportId)",
+                      StringComparison.Ordinal)
+                  && inbound.Contains(
+                      "DefaultFoxRunSubscribeTransportId =>",
+                      StringComparison.Ordinal)
+                  && inbound.Contains(
+                      "ConfiguredFoxRunSubscribeTransportId",
+                      StringComparison.Ordinal)
+                  && managerMigration.Contains(
+                      "ISerializationCallbackReceiver.OnAfterDeserialize()",
+                      StringComparison.Ordinal)
+                  && !managerMigration.Contains(
+                      "_defaultFoxRunSubscriptionSource",
+                      StringComparison.Ordinal)
+                  && attribute.Contains(
+                      "PublishTransportIds",
+                      StringComparison.Ordinal)
+                  && attribute.Contains(
+                      "SubscribeTransportId",
+                      StringComparison.Ordinal)
+                  && !attribute.Contains("FoxRunEndpoint", StringComparison.Ordinal),
+                "neutral Provider selections default to WebSocket and the retired serialized endpoint model is absent");
         }
 
         private static void VerifyExistingR2fuSinkRemainsOutboundOnly()
         {
-            var sink = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs");
-            Check(sink.Contains(
-                      "public sealed class Ros2R2FUTopicSink",
+            var repoRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var legacySink = Path.Combine(
+                repoRoot,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Ros2R2FUTopicSink.cs");
+            var provider = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
+            Check(!File.Exists(legacySink)
+                  && provider.Contains(
+                      "public sealed class FoxRunRos2TransportProvider",
                       StringComparison.Ordinal)
-                  && sink.Contains("IFoxTopicSink,", StringComparison.Ordinal)
-                  && sink.Contains("IRos2TopicPublisherFactory", StringComparison.Ordinal)
-                  && sink.Contains("publisher.TryPublish(", StringComparison.Ordinal)
-                  && !sink.Contains("CreateSubscription", StringComparison.Ordinal)
-                  && !sink.Contains("IUnity2FoxgloveRos2Subscription", StringComparison.Ordinal)
-                  && !sink.Contains("IRos2TopicSubscriber", StringComparison.Ordinal),
-                "existing R2FU topic sink remains outbound-only without subscription ownership");
+                  && provider.Contains(
+                      "FoxRunTransportCapabilities.Publish",
+                      StringComparison.Ordinal)
+                  && provider.Contains(
+                      "FoxRunTransportCapabilities.Subscribe",
+                      StringComparison.Ordinal)
+                  && provider.Contains(
+                      "FoxRunTransportPublishResult Publish(",
+                      StringComparison.Ordinal)
+                  && provider.Contains(
+                      "FoxRunTransportSubscribeResult Subscribe(",
+                      StringComparison.Ordinal),
+                "the retired outbound-only sink is gone and one R2FU Provider owns both directions");
         }
 
         private static void VerifyTypedGenerationAndNativeCatalogExclusion()
         {
             var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                CorePackageRoot + "/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2InputDispatchEmitter.cs");
             var router = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
             var catalog = PhaseValidationSourceHelpers.ReadRequiredRepoText(
@@ -276,14 +289,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && emitter.Contains(".TryEnqueueOwned(", StringComparison.Ordinal),
                 "generated native registration is closed-generic and supplies owned copy before apply without raw enqueue");
 
-            Check(router.Contains("info.DeclaredSource", StringComparison.Ordinal)
+            Check(router.Contains("info.SubscribeTransportId", StringComparison.Ordinal)
                   && router.Contains("!info.SupportsWebSocket", StringComparison.Ordinal)
                   && router.Contains(
-                      "topology.Topology.Source != FoxRunEndpoint.Foxglove",
+                      "FoxgloveWebSocketTransport.Id",
                       StringComparison.Ordinal)
-                  && catalog.Contains("!binding.SupportsWebSocket", StringComparison.Ordinal)
                   && catalog.Contains(
-                      "resolution.Topology.Source != FoxRunEndpoint.Foxglove",
+                      "selectedIds.Length != 1",
+                      StringComparison.Ordinal)
+                  && catalog.Contains(
+                      "FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && catalog.Contains(
+                      "bindings.Any(binding => !binding.SupportsWebSocket)",
                       StringComparison.Ordinal)
                   && !catalog.Contains("\"cdr\"", StringComparison.OrdinalIgnoreCase),
                 "byte router and subscription catalog exclude effective native contracts and never advertise cdr");
@@ -293,27 +311,20 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
-            var shipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var unshipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
+            var r2fuDiagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/FoxRunR2fuDiagnostics.cs");
+            var r2fuUnshipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
             var subscribe = new[]
             {
                 new KeyValuePair<string, string>("UnsupportedInboundShape", "FOXRUN200"),
                 new KeyValuePair<string, string>("InboundNaming", "FOXRUN202"),
                 new KeyValuePair<string, string>("InboundTargetNotWritable", "FOXRUN203"),
                 new KeyValuePair<string, string>("SharedInboundTargetNotWritable", "FOXRUN203"),
-                new KeyValuePair<string, string>("InvalidSource", "FOXRUN204"),
-                new KeyValuePair<string, string>("Ros2MessageIdentity", "FOXRUN207"),
-                new KeyValuePair<string, string>("Ros2MessageConstructor", "FOXRUN208"),
-                new KeyValuePair<string, string>("Ros2MessageNamespace", "FOXRUN209"),
-                new KeyValuePair<string, string>("Ros2SchemaMismatch", "FOXRUN210"),
-                new KeyValuePair<string, string>("Ros2MessageShape", "FOXRUN211"),
-                new KeyValuePair<string, string>("MissingNativeAssemblyReference", "FOXRUN212"),
-            };
-            var bidirectional = new[]
-            {
-                new KeyValuePair<string, string>("CustomNativeBidirectionalContract", "FOXRUN402"),
+                new KeyValuePair<string, string>("InvalidStreamDeclaration", "FOXRUN215"),
+                new KeyValuePair<string, string>("StreamInitializerMissing", "FOXRUN216"),
             };
             var infrastructure = new[]
             {
@@ -322,21 +333,46 @@ namespace Unity.FoxgloveSDK.Tests
                 new KeyValuePair<string, string>("InvalidProtobufFieldNumber", "FOXRUN603"),
                 new KeyValuePair<string, string>("MixedTopicEncoding", "FOXRUN604"),
                 new KeyValuePair<string, string>("DuplicateProtobufFieldNumber", "FOXRUN605"),
-                new KeyValuePair<string, string>("InvalidQos", "FOXRUN613"),
-                new KeyValuePair<string, string>("QosRequiresRos2Direction", "FOXRUN614"),
-                new KeyValuePair<string, string>("MixedDirectionalQosContract", "FOXRUN615"),
+                new KeyValuePair<string, string>("TriggerRateConflict", "FOXRUN609"),
+                new KeyValuePair<string, string>("GeneratedMethodConflict", "FOXRUN610"),
+                new KeyValuePair<string, string>("UnsupportedMessagePackShape", "FOXRUN616"),
+                new KeyValuePair<string, string>("MessagePackProtobufFieldNumber", "FOXRUN617"),
+                new KeyValuePair<string, string>("MessagePackInboundTopology", "FOXRUN618"),
+                new KeyValuePair<string, string>("MessagePackSchedule", "FOXRUN619"),
+                new KeyValuePair<string, string>("InvalidTransportSelection", "FOXRUN620"),
+                new KeyValuePair<string, string>("InvalidDirectionalTransport", "FOXRUN621"),
+                new KeyValuePair<string, string>("InvalidDeliveryPolicy", "FOXRUN622"),
             };
-            var retired = Enumerable.Range(23, 22)
-                .Select(number => "FOXRUN" + number.ToString("000"))
+            var retiredClosedTransport = new[]
+            {
+                "FOXRUN204",
+                "FOXRUN207",
+                "FOXRUN208",
+                "FOXRUN209",
+                "FOXRUN210",
+                "FOXRUN211",
+                "FOXRUN212",
+                "FOXRUN402",
+                "FOXRUN606",
+                "FOXRUN607",
+                "FOXRUN608",
+                "FOXRUN611",
+                "FOXRUN612",
+                "FOXRUN613",
+                "FOXRUN614",
+                "FOXRUN615",
+            };
+            var r2fuOwned = Enumerable.Range(1, 16)
+                .Select(number => "FOXR2F" + number.ToString("000"))
                 .ToArray();
 
             Check(diagnostics.Contains("#region FoxRun publish diagnostics (FOXRUN001-199)", StringComparison.Ordinal)
                   && diagnostics.Contains("#region FoxRun Subscribe diagnostics (FOXRUN200-399)", StringComparison.Ordinal)
-                  && diagnostics.Contains("#region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)", StringComparison.Ordinal)
-                  && diagnostics.Contains("#region FoxRun cross-direction diagnostics (FOXRUN600+)", StringComparison.Ordinal),
-                "FoxRun diagnostic source declares direction-readable publish, Subscribe, PublishAndSubscribe, and cross-direction ranges");
+                  && diagnostics.Contains("#region FoxRun cross-direction diagnostics (FOXRUN600+)", StringComparison.Ordinal)
+                  && !diagnostics.Contains("PublishAndSubscribe diagnostics", StringComparison.Ordinal),
+                "core FoxRun diagnostics retain only neutral publish, subscribe, and cross-direction ranges");
 
-            var expected = subscribe.Concat(bidirectional).Concat(infrastructure).ToArray();
+            var expected = subscribe.Concat(infrastructure).ToArray();
             Check(expected.All(pair => HasDiagnosticDescriptorId(diagnostics, pair.Key, pair.Value))
                   && expected.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
                   && !diagnostics.Contains("IgnoredSubscribePolicy", StringComparison.Ordinal)
@@ -372,8 +408,18 @@ namespace Unity.FoxgloveSDK.Tests
                       unshipped,
                       "FOXRUN601",
                       "Retired before release with the removed Unless declaration and remains permanently reserved.")
-                  && retired.All(id => !diagnostics.Contains(id, StringComparison.Ordinal)),
-                "FoxRun diagnostics map active rules into stable ranges while permanently reserving removed descriptors");
+                  && unshipped.Contains(
+                      "FOXRUN204, FOXRUN207-FOXRUN212, FOXRUN402, FOXRUN606-FOXRUN608, and FOXRUN611-FOXRUN615 are retired before release with the removed closed transport model and remain permanently reserved.",
+                      StringComparison.Ordinal)
+                  && retiredClosedTransport.All(id =>
+                      !diagnostics.Contains(id, StringComparison.Ordinal))
+                  && r2fuOwned.All(id =>
+                      r2fuDiagnostics.Contains(id, StringComparison.Ordinal)
+                      && r2fuUnshipped.Contains(
+                          id + " | FoxRun.R2FU |",
+                          StringComparison.Ordinal))
+                  && !r2fuUnshipped.Contains("FOXRUN", StringComparison.Ordinal),
+                "core reserves removed ROS diagnostics while the R2FU analyzer owns executable FOXR2F diagnostics");
         }
 
         private static void VerifyDiagnosticIdLegacyLedger()
@@ -409,17 +455,34 @@ namespace Unity.FoxgloveSDK.Tests
                 new KeyValuePair<string, string>("FOXRUN043", "FOXRUN212"),
                 new KeyValuePair<string, string>("FOXRUN044", "FOXRUN213"),
             };
+            var activeNeutralReplacements = new[]
+            {
+                "FOXRUN200",
+                "FOXRUN202",
+                "FOXRUN203",
+                "FOXRUN600",
+                "FOXRUN602",
+                "FOXRUN603",
+                "FOXRUN604",
+                "FOXRUN605",
+            };
 
             Check(diagnostics.Contains(
                       "Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 400, 401, and 601 are permanently retired and must never be reused.",
                       StringComparison.Ordinal)
                   && retired.All(pair => shipped.Contains(pair.Key + " | FoxRun |", StringComparison.Ordinal))
-                  && retired.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
                   && retired.All(pair => HasReleaseTrackingRow(
                       unshipped,
                       pair.Key,
-                      "Retired; renumbered as " + pair.Value + " and permanently reserved.")),
-                "FoxRun diagnostic migration retains shipped history and permanently reserves every retired ID with its replacement");
+                      "Retired; renumbered as " + pair.Value + " and permanently reserved."))
+                  && activeNeutralReplacements.All(id =>
+                      unshipped.Contains(
+                          id + " | FoxRun |",
+                          StringComparison.Ordinal))
+                  && unshipped.Contains(
+                      "FOXRUN204, FOXRUN207-FOXRUN212, FOXRUN402, FOXRUN606-FOXRUN608, and FOXRUN611-FOXRUN615 are retired before release with the removed closed transport model and remain permanently reserved.",
+                      StringComparison.Ordinal),
+                "FoxRun diagnostic migration retains shipped history while neutral replacements stay active and closed-transport replacements stay reserved");
         }
 
         private static void VerifyOptionalCompilationLanes()
@@ -473,13 +536,9 @@ namespace Unity.FoxgloveSDK.Tests
                 nativeRoot + "FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
             var lifecycleGate = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            var provider = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "FoxRun/FoxRunRos2TransportProvider.cs");
 
-            var bootstrap = PhaseValidationSourceHelpers.SourceMethod(
-                hub,
-                "private static void Bootstrap()");
-            var ensureCreated = PhaseValidationSourceHelpers.SourceMethod(
-                hub,
-                "internal static bool EnsureCreated()");
             var update = PhaseValidationSourceHelpers.SourceMethod(hub, "private void Update()");
             var applySessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
                 hub,
@@ -525,9 +584,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(bootstrapGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal),
                 "native subscription bootstrap remains closed while the native reload window would immediately shut its new host down");
 
-            Check(OccursBefore(bootstrap, "CanBootstrapBridge", "EnsureCreated()")
-                  && OccursBefore(ensureCreated, "CanBootstrapBridge", "new GameObject"),
-                "native subscription host creation remains behind the shared bootstrap gate");
+            Check(provider.Contains(
+                      "GetOrAddOwnedHub<FoxRunRos2SubscriptionHub>()",
+                      StringComparison.Ordinal)
+                  && provider.Contains(
+                      "RegisterFoxRunTransportProvider(this)",
+                      StringComparison.Ordinal)
+                  && !hub.Contains(
+                      "RuntimeInitializeOnLoadMethod",
+                      StringComparison.Ordinal)
+                  && !hub.Contains("HideAndDontSave", StringComparison.Ordinal),
+                "native subscription host is Manager-local Provider-owned without a global bootstrap object");
 
             var lifecycleWindow = update.IndexOf(
                 "IsShuttingDownForBridge(gameObject.scene)",
@@ -651,8 +718,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunRos2SubscriptionDiagnosticsInspector.cs");
             var optionalInspectorAsmdef = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef");
-            var coreInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
+            var providerDrawer = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs");
+            var providerDrawerRegistry = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Manager/FoxRunTransportProviderDrawerRegistry.cs");
+            var publishInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var subscribeInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
             var runtimeTopicsInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
@@ -710,14 +781,20 @@ namespace Unity.FoxgloveSDK.Tests
                       || diagnostics.Contains("ROS2 Native / FastDDS (DDS)", StringComparison.Ordinal))
                   && (hub.Contains("ROS2 Native / Zenoh", StringComparison.Ordinal)
                       || diagnostics.Contains("ROS2 Native / Zenoh", StringComparison.Ordinal))
-                  && coreInspector.Contains(
-                      "R2fuNativeSubscriptionDiagnosticsInspectorTypeName",
+                  && providerDrawer.Contains(
+                      "IFoxRunTransportProviderDrawer",
                       StringComparison.Ordinal)
-                   && coreInspector.Contains(
-                       "ResolveR2fuNativeSubscriptionDiagnosticsDrawMethod",
+                   && providerDrawer.Contains(
+                       "FoxRunRos2SubscriptionDiagnosticsInspector",
                        StringComparison.Ordinal)
-                   && coreInspector.Contains(
-                       "ForUnity.Native.Editor",
+                   && providerDrawer.Contains(
+                       ".DrawFoxRunNativeSubscriptionDiagnostics();",
+                       StringComparison.Ordinal)
+                   && providerDrawerRegistry.Contains(
+                       "IReadOnlyList<IFoxRunTransportProviderDrawer> Capture()",
+                       StringComparison.Ordinal)
+                   && publishInspector.Contains(
+                       "FoxRunTransportProviderDrawerRegistry.Capture()",
                        StringComparison.Ordinal)
                    && optionalInspectorAsmdef.Contains(
                        "Unity2Foxglove.Ros2ForUnity.Native",
@@ -731,24 +808,24 @@ namespace Unity.FoxgloveSDK.Tests
                    && optionalInspectorAsmdef.Contains(
                        "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
                        StringComparison.Ordinal)
-                   && subscribeInspector.Contains(
-                       "DrawOptionalR2fuNativeSubscriptionDiagnostics();",
-                       StringComparison.Ordinal),
-                "core Inspector reaches a native-constrained optional diagnostics assembly only through cached reflection and exposes safe topic/type copying");
+                   && !subscribeInspector.Contains(
+                       "R2fu",
+                       StringComparison.OrdinalIgnoreCase),
+                "the R2FU Provider drawer directly owns native diagnostics while the core Inspector remains Provider-neutral");
 
-            Check(runtimeTopicsInspector.Contains("ROS2 Native Unity Contracts", StringComparison.Ordinal)
-                  && runtimeTopicsInspector.Contains("DrawFoxRunNativeUnityContracts", StringComparison.Ordinal)
-                  && runtimeTopicsInspector.Contains("FoxRunEndpointResolver.Resolve", StringComparison.Ordinal)
-                  && runtimeTopicSummary.IndexOf(
-                      "DrawFoxRunNativeUnityContracts(manager);",
+            Check(runtimeTopicsInspector.Contains("FoxRun Runtime Topics", StringComparison.Ordinal)
+                  && runtimeTopicsInspector.Contains("Publish Topics", StringComparison.Ordinal)
+                  && runtimeTopicsInspector.Contains("Subscribe Topics", StringComparison.Ordinal)
+                  && !runtimeTopicsInspector.Contains("ROS2", StringComparison.OrdinalIgnoreCase)
+                  && !runtimeTopicsInspector.Contains("FoxRunEndpointResolver", StringComparison.Ordinal)
+                  && runtimeTopicSummary.Contains(
+                      "No generated FoxRun topic metadata is registered in this domain.",
                       StringComparison.Ordinal)
-                     < runtimeTopicSummary.IndexOf(
-                         "return;",
-                         runtimeTopicSummary.IndexOf("No generated FoxRun topic metadata", StringComparison.Ordinal),
-                         StringComparison.Ordinal)
                   && catalog.Contains("IsWebSocketEncoding", StringComparison.Ordinal)
+                  && catalog.Contains("SubscribeTransportId", StringComparison.Ordinal)
+                  && catalog.Contains("selectedIds.Length != 1", StringComparison.Ordinal)
                   && !catalog.Contains("cdr", StringComparison.OrdinalIgnoreCase),
-                "native-only Unity contract status stays visible in Runtime Topics without entering the Foxglove subscription catalog");
+                "core Runtime Topics and subscription catalog remain Provider-neutral while R2FU status stays in its drawer");
         }
 
         private static void VerifyManualOwnershipProbe()
@@ -790,30 +867,30 @@ namespace Unity.FoxgloveSDK.Tests
             Check(probe.Contains("/foxrun/phase179/string", StringComparison.Ordinal)
                   && probe.Contains("Mode = FoxRunFlow.Subscribe", StringComparison.Ordinal)
                   && probe.Contains(
-                      "Source = FoxRunEndpoint.Ros2Native",
+                      "SubscribeTransportId =",
                       StringComparison.Ordinal)
-                  && probe.Contains("QoS = FoxRunQosProfile.Default", StringComparison.Ordinal)
+                  && probe.Contains(
+                      "FoxRunRos2TransportProvider.IdValue",
+                      StringComparison.Ordinal)
                   && probe.Contains("private std_msgs.msg.String inputString;", StringComparison.Ordinal)
                   && probe.Contains(
                       "BorrowedLifetimeEvidence => borrowedLifetimeEvidence",
                       StringComparison.Ordinal),
-                "manual ownership probe declares the explicit native reliable String contract");
+                "manual ownership probe declares an explicit R2FU String subscription contract");
 
             Check(probe.Contains("[Header(\"Captured Subscription Session Policy\")]", StringComparison.Ordinal)
                   && probe.Contains("[SerializeField] private bool capturedSessionEnabled;", StringComparison.Ordinal)
                   && probe.Contains("[SerializeField] private ulong capturedSessionGeneration;", StringComparison.Ordinal)
                   && probe.Contains(
-                      "[SerializeField] private FoxRunEndpoint capturedDefaultSubscriptionSource",
+                      "[SerializeField] private string capturedDefaultSubscribeTransportId",
                       StringComparison.Ordinal)
                   && probe.Contains(
                       "[SerializeField] private FoxRunEncoding capturedFoxgloveEncoding",
                       StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private FoxRunQosProfile capturedQosProfile", StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private FoxRunQosReliability capturedQosReliability", StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private FoxRunQosDurability capturedQosDurability", StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private FoxRunQosHistory capturedQosHistory", StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private int capturedQosDepth", StringComparison.Ordinal)
-                  && probe.Contains("[SerializeField] private int capturedNativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunDeliveryReliability capturedDeliveryReliability", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunDeliveryDurability capturedDeliveryDurability", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunDeliveryHistory capturedDeliveryHistory", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private int capturedDeliveryDepth", StringComparison.Ordinal)
                   && probe.Contains("FoxRunSubscriptionSessionChanged +=", StringComparison.Ordinal)
                   && probe.Contains("FoxRunSubscriptionSessionChanged -=", StringComparison.Ordinal)
                   && OccursBefore(
@@ -831,17 +908,15 @@ namespace Unity.FoxgloveSDK.Tests
                       StringComparison.Ordinal)
                   && captureSessionPolicy.Contains("policy.SubscriptionsEnabled", StringComparison.Ordinal)
                   && captureSessionPolicy.Contains("policy.SessionGeneration", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultSource", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.FoxgloveEncoding", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Profile", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Reliability", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Durability", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.History", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Depth", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.NativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultProvider.Value", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.WebSocketEncoding", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultDeliveryPolicy.Reliability", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultDeliveryPolicy.Durability", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultDeliveryPolicy.History", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultDeliveryPolicy.Depth", StringComparison.Ordinal)
                   && !captureSessionPolicy.Contains("Create", StringComparison.Ordinal)
                   && !captureSessionPolicy.Contains("Selector", StringComparison.Ordinal),
-                "manual ownership probe captures immutable Manager session policy through symmetric event observation only");
+                "manual ownership probe captures the immutable neutral Manager session through symmetric event observation only");
 
             Check(probe.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && probe.Contains("ROS2 native subscription support is unavailable", StringComparison.Ordinal)
@@ -969,13 +1044,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("geometry_msgs.msg.Twist", StringComparison.Ordinal)
                   && sample.Contains("sensor_msgs.msg.Joy", StringComparison.Ordinal)
                   && sample.Contains("sensor_msgs.msg.Imu", StringComparison.Ordinal)
-                  && sample.Contains("Source = FoxRunEndpoint.Ros2Native", StringComparison.Ordinal)
-                  && sample.Contains("QoS = FoxRunQosProfile.Default", StringComparison.Ordinal)
-                  && sample.Contains("QoS = FoxRunQosProfile.SensorData", StringComparison.Ordinal)
+                  && CountOccurrences(
+                      sample,
+                      "FoxRunRos2TransportProvider.IdValue") == 4
+                  && !sample.Contains("FoxRunEndpoint", StringComparison.Ordinal)
                   && sample.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sample.Contains("CopyBounded", StringComparison.Ordinal)
                   && packageJson.Contains("FoxRun ROS2 Native Subscribe", StringComparison.Ordinal),
-                "public sample exposes four existing typed native Subscribe contracts with bounded Inspector copies");
+                "public sample exposes four explicit R2FU typed Subscribe contracts with bounded Inspector copies");
 
             Check(sampleReadme.Contains("phase179_humble_fastrtps_acceptance.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("phase179_jazzy_fastrtps_acceptance.py", StringComparison.Ordinal)
@@ -1112,11 +1188,18 @@ namespace Unity.FoxgloveSDK.Tests
                       "SceneManager.SetActiveScene(acceptanceScene)",
                       StringComparison.Ordinal)
                   && playerBuilder.Contains("_foxgloveOutputEnabled", StringComparison.Ordinal)
-                  && playerBuilder.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
                   && playerBuilder.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
-                  && playerBuilder.Contains("Ros2Native", StringComparison.Ordinal)
                   && playerBuilder.Contains(
-                      "manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native",
+                      "manager.GetComponent<FoxRunRos2TransportProvider>()",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "manager.gameObject.AddComponent<FoxRunRos2TransportProvider>()",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "manager.ConfigureFoxRunTransports(",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "FoxRunRos2TransportProvider.IdValue",
                       StringComparison.Ordinal)
                   && playerBuilder.Contains(
                       "UnityEditor.PackageManager.PackageInfo.FindForPackageName",
@@ -1132,7 +1215,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && playerBuilder.Contains("Phase179FoxRunRos2NativeSubscribe.exe", StringComparison.Ordinal),
                 "tracked scene builder fails closed, obtains Unity-generated sample metadata, verifies the actual acceptance scene, records one resolved runtime, and keeps Player output under repository build paths");
 
-            Check(sampleReadme.Contains("FOXRUN212", StringComparison.Ordinal)
+            Check(sampleReadme.Contains("FOXR2F007", StringComparison.Ordinal)
                   && sampleReadme.Contains("Foxglove Desktop is unrelated", StringComparison.Ordinal)
                   && sampleReadme.Contains(
                       "Generated custom DTO native Publish, Subscribe, and diagnostic full duplex",
@@ -1143,7 +1226,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("CopyFailed", StringComparison.Ordinal)
                   && packageReadme.Contains("WindowsStandalone64", StringComparison.Ordinal)
                   && packageReadme.Contains("ROS domain IDs are discovery isolation, not authentication", StringComparison.Ordinal)
-                  && packageReadme.Contains("FOXRUN212", StringComparison.Ordinal)
+                  && packageReadme.Contains("FOXR2F007", StringComparison.Ordinal)
                   && packageReadme.Contains("4 MiB", StringComparison.Ordinal)
                   && packageReadme.Contains("CopyFailed", StringComparison.Ordinal),
                 "public native-subscribe documentation states assembly, transport, copy-budget, security, Player, custom-message, and stream boundaries");
@@ -1196,7 +1279,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(item => string.Equals(item.Flag, "--phase179", StringComparison.Ordinal))
                 .ToArray();
             Check(entries.Length == 1
-                  && entries[0].Name == "FoxRun native ROS2 subscription boundary"
+                  && entries[0].Name == "FoxRun R2FU subscription Provider boundary"
                   && entries[0].Category == ValidationCategory.CiSafe
                   && entries[0].Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)
                   && entries[0].IncludeInDefault
@@ -1223,7 +1306,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(CountOccurrences(registry, "\"--phase179\"") == 1
                   && CountOccurrences(
                       project,
-                      "<Compile Include=\"FoxRunRos2NativeSubscriptionValidation.cs\" />") == 1
+                      "<Compile Include=\"FoxRunRos2NativeSubscriptionValidation.cs\"") == 1
                   && project.Contains("FoxRunRos2NativeSubscriptionValidation.cs", StringComparison.Ordinal)
                   && !project.Contains("Phase179Validation.cs", StringComparison.Ordinal)
                   && !File.Exists(numericValidationPath)

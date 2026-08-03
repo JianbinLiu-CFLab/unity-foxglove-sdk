@@ -33,7 +33,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalRosType,
             FoxRunFlow mode,
-            FoxRunEndpoint source,
+            FoxRunRos2RouteEndpoint source,
             FoxRunQosProfile qosProfile,
             bool hasExplicitQosProfile,
             FoxRunQosReliability qosReliability,
@@ -97,7 +97,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalEnvelopeType,
             FoxRunFlow mode,
-            FoxRunEndpoint source,
+            FoxRunRos2RouteEndpoint source,
             FoxRunQosProfile qosProfile,
             bool hasExplicitQosProfile,
             FoxRunQosReliability qosReliability,
@@ -169,7 +169,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalEnvelopeType,
             FoxRunFlow mode,
-            FoxRunEndpoint source,
+            FoxRunRos2RouteEndpoint source,
             FoxRunQosProfile qosProfile,
             bool hasExplicitQosProfile,
             FoxRunQosReliability qosReliability,
@@ -242,7 +242,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public float Hz { get; }
         public bool HasExplicitHz { get; }
         public float HeartbeatIntervalSeconds { get; }
-        public FoxRunEndpoint Source { get; }
+        public FoxRunRos2RouteEndpoint Source { get; }
         public FoxRunQosProfile QosProfile { get; private set; }
         public bool HasExplicitQosProfile { get; private set; }
         public FoxRunQosReliability QosReliability { get; private set; }

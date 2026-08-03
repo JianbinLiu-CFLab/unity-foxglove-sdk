@@ -61,12 +61,16 @@ namespace Unity.FoxgloveSDK.Tests
             var catalogRegistrationIndex = server.IndexOf("RegisterFoxRunSubscriptionCatalogService();", StringComparison.Ordinal);
             var runtimeStartIndex = server.IndexOf("_runtime.Start(", StringComparison.Ordinal);
 
-            Check(catalog.Contains("public const int Version = 1", StringComparison.Ordinal)
+            Check(catalog.Contains("public const int Version = 2", StringComparison.Ordinal)
                   && catalog.Contains("[\"subscriptionsEnabled\"]", StringComparison.Ordinal)
                   && catalog.Contains("if (!subscriptionsEnabled || manifest == null)", StringComparison.Ordinal)
+                  && catalog.Contains("string defaultSubscribeTransportId", StringComparison.Ordinal)
+                  && catalog.Contains("var defaultProvider = new FoxRunTransportId(", StringComparison.Ordinal)
+                  && catalog.Contains("[\"publishTransportIds\"]", StringComparison.Ordinal)
+                  && catalog.Contains("[\"subscribeTransportId\"]", StringComparison.Ordinal)
                   && catalog.Contains("includeDescriptor", StringComparison.Ordinal)
                   && catalog.Contains("protobufDescriptorBase64", StringComparison.Ordinal),
-                "176B-1: catalog returns a versioned disabled response and emits Protobuf descriptors only on demand");
+                "176B-1: catalog returns a versioned disabled response, advertises neutral Provider IDs, and emits Protobuf descriptors only on demand");
             Check(manager.Contains("/foxrun/subscription-contracts", StringComparison.Ordinal)
                   && manager.Contains("IsFoxRunInboundAuthorized", StringComparison.Ordinal)
                   && !manager.Contains("_sharedToken", StringComparison.Ordinal)
@@ -81,8 +85,11 @@ namespace Unity.FoxgloveSDK.Tests
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var subscribe = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
-            var endpointLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEndpointEditorLabels.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var drawerRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxRunTransportProviderDrawerRegistry.cs");
+            var transportId = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportId.cs");
+            var r2fuDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunR2fuProviderDrawer.cs");
+            var bridgeDrawer = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
             var services = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.FoxServices.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
 
@@ -93,47 +100,61 @@ namespace Unity.FoxgloveSDK.Tests
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Publish Data\"", StringComparison.Ordinal)
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal)
                   && !main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
-                  && subscribe.Contains("FoxRun Subscribe Profile", StringComparison.Ordinal)
-                  && subscribe.Contains("\"Source\"", StringComparison.Ordinal)
-                  && endpointLabels.Contains("SourceLabels", StringComparison.Ordinal)
-                  && endpointLabels.Contains("TargetLabels", StringComparison.Ordinal)
-                  && endpointLabels.Contains("ROS 2 Native (R2FU)", StringComparison.Ordinal)
-                  && endpointLabels.Contains("ROS 2 Bridge", StringComparison.Ordinal)
-                  && subscribe.Contains("Native Copied-Message Budget", StringComparison.Ordinal)
-                  && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled", StringComparison.Ordinal)
+                  && subscribe.Contains("\"_foxRunSubscribeTransportId\"", StringComparison.Ordinal)
+                  && subscribe.Contains("DrawSubscribeTransportSelection(source, \"Source\")", StringComparison.Ordinal)
+                  && subscribe.Contains("FoxgloveWebSocketTransport.Id", StringComparison.Ordinal)
+                  && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy", StringComparison.Ordinal)
+                  && subscribe.Contains(".SubscriptionsEnabled", StringComparison.Ordinal)
                   && subscribe.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)
                   && subscribe.Contains("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && subscribe.IndexOf("Default Subscribe Rate Hz", StringComparison.Ordinal)
                      < subscribe.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && inbound.Contains("_foxRunDefaultSubscribeRateHz = 10", StringComparison.Ordinal)
-                  && inbound.Contains("_foxRunInboundMaxMessagesPerSecondPerTopic = 60", StringComparison.Ordinal)
+                  && inbound.Contains("_foxRunInboundMaxMessagesPerSecondPerTopic", StringComparison.Ordinal)
+                  && inbound.Contains("60;", StringComparison.Ordinal)
                   && !inbound.Contains("[Header(\"FoxRun Subscription Control\")]", StringComparison.Ordinal)
-                  && publish.Contains("Component Publisher Encoding", StringComparison.Ordinal)
+                  && publish.Contains("\"_foxRunPublishTransportIds\"", StringComparison.Ordinal)
+                  && publish.Contains("\"Publish Destinations\"", StringComparison.Ordinal)
+                  && publish.Contains("FoxgloveWebSocketTransport.Id", StringComparison.Ordinal)
                   && publish.Contains("Allow Component Publisher Override", StringComparison.Ordinal)
-                  && publish.Contains("FoxRun Publish Profile", StringComparison.Ordinal)
-                  && publish.Contains("\"Targets\"", StringComparison.Ordinal)
-                  && publish.Contains("Foxglove Encoding", StringComparison.Ordinal)
-                  && !publish.Contains("Default FoxRun Publish Encoding", StringComparison.Ordinal),
-                "176C-1: Inspector exposes independent FoxRun publish Targets and subscribe Source profiles");
+                  && drawerRegistry.Contains("string TransportId { get; }", StringComparison.Ordinal)
+                  && drawerRegistry.Contains("string DisplayName { get; }", StringComparison.Ordinal)
+                  && drawerRegistry.Contains("int Order { get; }", StringComparison.Ordinal)
+                  && drawerRegistry.Contains("FoxRunTransportCapabilities Capabilities { get; }", StringComparison.Ordinal)
+                  && drawerRegistry.Contains("FoxRunEditorDefinitionRegistry<", StringComparison.Ordinal)
+                  && transportId.Contains("public const string Id = \"foxglove.websocket\"", StringComparison.Ordinal)
+                  && r2fuDrawer.Contains("FoxRunRos2TransportProvider.IdValue", StringComparison.Ordinal)
+                  && r2fuDrawer.Contains("\"ROS 2 Native (R2FU)\"", StringComparison.Ordinal)
+                  && r2fuDrawer.Contains("FoxRunTransportCapabilities.Publish", StringComparison.Ordinal)
+                  && r2fuDrawer.Contains("FoxRunTransportCapabilities.Subscribe", StringComparison.Ordinal)
+                  && bridgeDrawer.Contains("Ros2BridgeTransportProvider.ProviderId", StringComparison.Ordinal)
+                  && bridgeDrawer.Contains("\"ROS 2 Bridge\"", StringComparison.Ordinal)
+                  && bridgeDrawer.Contains("FoxRunTransportCapabilities.Publish", StringComparison.Ordinal)
+                  && bridgeDrawer.Contains("FoxRunTransportCapabilities.Subscribe", StringComparison.Ordinal)
+                  && !editorSources.Contains("FoxRunEndpointEditorLabels", StringComparison.Ordinal)
+                  && !editorSources.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && !editorSources.Contains("_ros2BridgeEnabled", StringComparison.Ordinal),
+                "176C-1: Inspector exposes one neutral publish-ID collection and one neutral subscribe-ID source while Provider drawers own display names and directional capabilities");
             Check(services.Contains("FoxRun Runtime Topics", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryHeader", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryRow", StringComparison.Ordinal)
                   && services.Contains("Publish Topics", StringComparison.Ordinal)
                   && services.Contains("Subscribe Topics", StringComparison.Ordinal)
-                  && services.Contains("Publish And Subscribe Topics", StringComparison.Ordinal)
-                  && services.Contains("Schema: ", StringComparison.Ordinal)
+                  && !services.Contains("Publish And Subscribe Topics", StringComparison.Ordinal)
+                  && services.Contains("Wire schema: ", StringComparison.Ordinal)
+                  && services.Contains("Logical schema: ", StringComparison.Ordinal)
                   && services.Contains("TopicSchemaStyle", StringComparison.Ordinal)
                   && services.Contains("wordWrap = true", StringComparison.Ordinal)
                   && services.Contains("GetTopicSchemaStyle", StringComparison.Ordinal)
                   && services.Contains("GetTopicSummaryColumns", StringComparison.Ordinal)
                   && services.Contains("GetTopicSchemaLayoutWidth", StringComparison.Ordinal)
                   && services.Contains("EditorGUILayout.GetControlRect", StringComparison.Ordinal)
-                  && !services.Contains("static readonly GUIStyle", StringComparison.Ordinal)
-                  && !services.Contains("DirectionColumnLayout", StringComparison.Ordinal)
-                  && services.Contains("GUILayout.Button(\"Copy\"", StringComparison.Ordinal),
-                "176C-2: FoxServices groups runtime topics by direction and places schema beneath each topic");
+                  && services.Contains("GUI.Button(copy, \"Copy\")", StringComparison.Ordinal)
+                  && services.Contains("if (!summary.Available)", StringComparison.Ordinal),
+                "176C-2: FoxServices groups full-duplex runtime topics into both directional views and places wire/logical schema plus availability beneath each topic");
         }
 
         private static void VerifyPublishPanelWireDiscipline()
@@ -142,6 +163,7 @@ namespace Unity.FoxgloveSDK.Tests
             var panel = ReadRepoText("Tools/foxglove-extensions/foxrun-publish-panel/src/index.ts");
             var protocol = ReadRepoText("Tools/foxglove-extensions/foxrun-publish-panel/src/protocol.ts");
             var protobuf = ReadRepoText("Tools/foxglove-extensions/foxrun-publish-panel/src/protobuf.ts");
+            var messagePack = ReadRepoText("Tools/foxglove-extensions/foxrun-publish-panel/src/msgpack.ts");
             var probe = ReadRepoText("Scripts/smoke/websocket/phase176_foxrun_publish_panel_probe.py");
             var manualProtobuf = ReadRepoText("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase175ProtobufManualAcceptance.cs");
             var manualJson = ReadRepoText("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase175JsonManualAcceptance.cs");
@@ -154,11 +176,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && panel.Contains("readFieldMessage", StringComparison.Ordinal)
                   && !panel.Contains("<textarea id=\"payload\"", StringComparison.Ordinal)
                   && panel.Contains("await directClient.publish", StringComparison.Ordinal)
-                  && protocol.Contains("encoding: \"protobuf\"", StringComparison.Ordinal)
+                  && protocol.Contains("DirectFoxRunEncoding", StringComparison.Ordinal)
+                  && protocol.Contains("encoding !== \"protobuf\" && encoding !== \"msgpack\"", StringComparison.Ordinal)
                   && protocol.Contains("MESSAGE_DATA_OPCODE = 1", StringComparison.Ordinal)
                   && protobuf.Contains("encodeProtobufMessage", StringComparison.Ordinal)
+                  && messagePack.Contains("encodeMessagePackMessage", StringComparison.Ordinal)
+                  && panel.Contains("encodeMessagePackMessage(contract.fields, message)", StringComparison.Ordinal)
                   && probe.Contains("phase175_main", StringComparison.Ordinal),
-                "176D-1: FoxRun Publish loads Unity contracts and keeps JSON and explicit binary Protobuf paths separate");
+                "176D-1: FoxRun Publish loads Unity contracts and keeps JSON, Protobuf, and MessagePack wire paths explicit and separate");
             Check(!saveState.Contains("token:", StringComparison.Ordinal)
                   && panel.Contains("if (inFlight)", StringComparison.Ordinal)
                   && panel.Contains("Skipped repeat tick", StringComparison.Ordinal)

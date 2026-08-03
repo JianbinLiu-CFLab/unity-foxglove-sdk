@@ -10,7 +10,6 @@ using System.Linq;
 using System.Threading;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -21,7 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
                 BuildSortedSdkTypedPublisherEntries,
                 LazyThreadSafetyMode.PublicationOnly);
 
-        public const int ManifestVersion = 1;
+        public const int ManifestVersion = 2;
         public const string PackageName = "Unity2Foxglove";
         public const string GeneratorName = "Unity2FoxgloveSchemaManifest";
         public const int GeneratorMajorVersion = 1;
@@ -31,13 +30,11 @@ namespace Unity.FoxgloveSDK.Editor
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 BuildFoxRunSection(foxRunManifest),
                 BuildProtobufRegistrySection(),
-                BuildRos2MsgRegistrySection(),
                 BuildSdkTypedPublishersSection());
 
             var sectionHashes = new Unity2FoxgloveSchemaManifestSectionHashes(
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(sections.FoxRun)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteProtobufRegistrySectionHashInput(sections.ProtobufRegistry)),
-                FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteRos2MsgRegistrySectionHashInput(sections.Ros2MsgRegistry)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteSdkTypedPublishersSectionHashInput(sections.SdkTypedPublishers)));
 
             var manifestWithoutHash = new Unity2FoxgloveSchemaManifest(
@@ -78,13 +75,11 @@ namespace Unity.FoxgloveSDK.Editor
             var sections = new Unity2FoxgloveSchemaManifestSections(
                 foxRun,
                 BuildProtobufRegistrySection(),
-                BuildRos2MsgRegistrySection(),
                 BuildSdkTypedPublishersSection());
 
             var sectionHashes = new Unity2FoxgloveSchemaManifestSectionHashes(
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteFoxRunSectionHashInput(sections.FoxRun)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteProtobufRegistrySectionHashInput(sections.ProtobufRegistry)),
-                FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteRos2MsgRegistrySectionHashInput(sections.Ros2MsgRegistry)),
                 FoxRunManifestHasher.Sha256Hex(Unity2FoxgloveSchemaManifestJsonWriter.WriteSdkTypedPublishersSectionHashInput(sections.SdkTypedPublishers)));
 
             var manifestWithoutHash = new Unity2FoxgloveSchemaManifest(
@@ -172,37 +167,6 @@ namespace Unity.FoxgloveSDK.Editor
                 entries);
         }
 
-        private static Unity2FoxgloveRos2MsgRegistrySection BuildRos2MsgRegistrySection()
-        {
-            var entries = FoxgloveRos2MsgSchemaCatalog.RegisteredEntries
-                .Select(entry => new Unity2FoxgloveRos2MsgRegistryEntry(
-                    entry.SchemaName,
-                    entry.SourceFile,
-                    entry.SourceSha256,
-                    entry.Category,
-                    entry.HasDedicatedJsonOrProtobufPublisher))
-                .OrderBy(entry => entry.SchemaName, StringComparer.Ordinal)
-                .ThenBy(entry => entry.SourceFile, StringComparer.Ordinal)
-                .ToList()
-                .AsReadOnly();
-
-            if (entries.Count != FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount)
-            {
-                throw new InvalidOperationException(
-                    "ROS2 .msg schema catalog count mismatch. " +
-                    $"Entries={entries.Count}, TotalRegisteredCount={FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount}.");
-            }
-
-            return new Unity2FoxgloveRos2MsgRegistrySection(
-                FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
-                FoxgloveRos2MsgSchemaCatalog.SourceSnapshot,
-                FoxgloveRos2MsgSchemaCatalog.SourceCommit,
-                FoxgloveRos2MsgSchemaCatalog.SourceTreeSha256,
-                FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount,
-                entries.Count,
-                entries);
-        }
-
         private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()
         {
             var entries = GetSortedSdkTypedPublisherEntries();
@@ -235,7 +199,6 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(entry => entry.PublisherTypeFullName, StringComparer.Ordinal)
                 .ThenBy(entry => entry.EntryKind, StringComparer.Ordinal)
                 .ThenBy(entry => entry.FoxgloveSchemaName, StringComparer.Ordinal)
-                .ThenBy(entry => entry.Ros2SchemaName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
 
@@ -249,7 +212,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (entry.IsTemplate)
                 {
-                    if (!string.IsNullOrEmpty(entry.FoxgloveSchemaName) || !string.IsNullOrEmpty(entry.Ros2SchemaName))
+                    if (!string.IsNullOrEmpty(entry.FoxgloveSchemaName))
                         throw new InvalidOperationException("Generic publisher template entries must not carry fixed schema names: " + entry.PublisherTypeFullName);
                     continue;
                 }
@@ -265,19 +228,6 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     throw new InvalidOperationException(
                         "SDK publisher catalog entry declares Foxglove encoding support without a Foxglove schema name: " +
-                        entry.PublisherTypeFullName);
-                }
-
-                if (!string.IsNullOrEmpty(entry.Ros2SchemaName)
-                    && !FoxgloveRos2MsgSchemaCatalog.TryGet(entry.Ros2SchemaName, out _))
-                {
-                    throw new InvalidOperationException("SDK publisher catalog references unknown ROS2 schema: " + entry.Ros2SchemaName);
-                }
-
-                if (entry.SupportsRos2 && string.IsNullOrEmpty(entry.Ros2SchemaName))
-                {
-                    throw new InvalidOperationException(
-                        "SDK publisher catalog entry declares ROS2 support without a ROS2 schema name: " +
                         entry.PublisherTypeFullName);
                 }
             }

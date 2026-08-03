@@ -9,9 +9,9 @@ using System;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Coarse capability flags describing what kind of destination a sink is.
-    /// Used only for diagnostics and capability-aware routing; it does not change
-    /// delivery semantics, which remain sink-specific.
+    /// Coarse capability flags describing what kind of additive destination a
+    /// sink is. Used only for diagnostics; transport routing belongs to the
+    /// neutral Provider SPI.
     /// </summary>
     [Flags]
     public enum FoxTopicSinkCapabilities
@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
         Recording = 1 << 1,
         /// <summary>Replay or playback output.</summary>
         Replay = 1 << 2,
-        /// <summary>Optional external middleware output such as ROS2.</summary>
+        /// <summary>Optional external transport output.</summary>
         External = 1 << 3,
         /// <summary>Deterministic test/observation output.</summary>
         Test = 1 << 4
@@ -79,44 +79,5 @@ namespace Unity.FoxgloveSDK.Components
     {
         /// <summary>Release resources owned by the exported <paramref name="topic"/>.</summary>
         void Unregister(string topic);
-    }
-
-    /// <summary>
-    /// Optional registration surface for sinks that must consume the immutable
-    /// session-resolved target and QoS contract.
-    /// </summary>
-    public interface IFoxTopicResolvedContractSink
-    {
-        void Register(
-            FoxTopicContract contract,
-            FoxRunResolvedPublishContract resolved);
-    }
-
-    /// <summary>
-    /// Optional target/readiness/result surface. Legacy sinks remain valid and
-    /// are adapted by the router to the historical Ros2Native route.
-    /// </summary>
-    public interface IFoxTopicTargetSink
-    {
-        FoxRunEndpoint Target { get; }
-        bool IsReady(FoxTopicContract contract, out string reason);
-        bool TryPublish(
-            FoxTopicContract contract,
-            ulong timestampNs,
-            byte[] payload,
-            string origin,
-            out string reason);
-    }
-
-    public readonly struct FoxTopicSinkPublishResult
-    {
-        internal FoxTopicSinkPublishResult(bool hadReadySink, bool succeeded)
-        {
-            HadReadySink = hadReadySink;
-            Succeeded = succeeded;
-        }
-
-        public bool HadReadySink { get; }
-        public bool Succeeded { get; }
     }
 }

@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void U2R2HealthProbeUsesBoundedWaitAndNeutralRequestId()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
             var wait = TestSources.ExtractMethod(source, "private static bool WaitOrCancel");
 
             Assert.Contains("private const string RequestIdPrefix = \"u2r2-health-\";", source, StringComparison.Ordinal);
@@ -28,9 +28,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void PointCloud2NativeFrameRecycleIsInterlocked()
+        public void PackedPointCloudFrameRecycleIsInterlocked()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudFrame.cs");
             var method = TestSources.ExtractMethod(source, "internal void RecycleData()");
 
             Assert.Contains("using System.Threading;", source, StringComparison.Ordinal);

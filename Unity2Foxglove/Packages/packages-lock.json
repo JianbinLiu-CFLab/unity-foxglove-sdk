@@ -215,6 +215,14 @@
         "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64": "0.1.0-preview.1"
       }
     },
+    "dev.unity2foxglove.ros2bridge": {
+      "version": "file:../../Packages/dev.unity2foxglove.ros2bridge",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {
+        "dev.unity2foxglove.sdk": "1.9.6"
+      }
+    },
     "dev.unity2foxglove.ros2forunity": {
       "version": "file:../../Packages/dev.unity2foxglove.ros2forunity",
       "depth": 0,

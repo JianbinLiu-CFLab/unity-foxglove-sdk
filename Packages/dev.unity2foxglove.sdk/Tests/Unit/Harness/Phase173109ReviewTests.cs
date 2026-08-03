@@ -108,8 +108,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             foreach (var path in new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunRos2InterfacePackagePreflightTests.cs",
-                "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunRos2InterfacePackageWriterTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Ros2ForUnity/FoxRunRos2InterfacePackagePreflightTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Ros2ForUnity/FoxRunRos2InterfacePackageWriterTests.cs",
             })
             {
                 var source = TestSources.Text(path);

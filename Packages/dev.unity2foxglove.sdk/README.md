@@ -22,14 +22,15 @@ Add to `Packages/manifest.json`:
 
 ## Package choices
 
-**For most Unity projects, install only this SDK package.** It already covers
-Foxglove WebSocket streaming, FoxRun over WebSocket, MCAP recording/replay,
-sensors, services, and the optional ROS2 Bridge sidecar. Direct native ROS2 is
-an opt-in capability, not a prerequisite for any of those workflows.
+**For most Unity projects, install only this SDK package.** It covers Foxglove
+WebSocket streaming, FoxRun over WebSocket, MCAP recording/replay, sensors,
+and services. ROS2 transports are opt-in companion packages, not prerequisites
+for those workflows.
 
 | If you need | Add alongside this SDK |
 | --- | --- |
 | Windows x64 Foxglove Cloud remote access | `dev.unity2foxglove.remotegateway.win64` |
+| ROS2 through the localhost sidecar bridge | `dev.unity2foxglove.ros2bridge` |
 | Direct native ROS2 using packaged standard messages | `dev.unity2foxglove.ros2forunity` and exactly one `dev.unity2foxglove.ros2forunity.runtime.<distro>.win64` package |
 | Direct native ROS2 using generated custom FoxRun DTOs | The facade, one matching runtime, `dev.unity2foxglove.foxrun.ros2.interfaces`, and the same-distro `dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.<distro>.win64` add-on |
 
@@ -59,6 +60,7 @@ public partial class MyLogger : MonoBehaviour
 - Structured data publishing (FrameTransform, SceneUpdate, CompressedImage)
 - Typed sensor publishers for PointCloud, LaserScan, and CameraCalibration
 - `[FoxRun]` attribute for generated fixed-rate, change-driven, interval, and explicit trigger publishing
+- FoxRun `Publish`, `Subscribe`, and `PublishAndSubscribe` over Foxglove WebSocket with JSON, Protobuf, or typed schemaless MessagePack; typed MessagePack authoring uses the maintained FoxRun Publish extension
 - MCAP recording and replay (LZ4/Zstd compression)
 - Paused replay scrubbing with Unity scene snapshot updates and bounded panel-history rebuilds
 - Managed WebSocket backpressure for slow clients

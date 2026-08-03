@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly string[] BridgeFiles =
         {
             "Ros2ForUnityTransformNativeBridge.cs",
-            "Ros2ForUnityPointCloud2NativeBridge.cs",
+            "Ros2ForUnityPackedPointCloudBridge.cs",
             "Ros2ForUnityImuNativeBridge.cs",
             "Ros2ForUnityCameraNativeBridge.cs",
         };
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
                 if (bridge.Contains("Transform", StringComparison.Ordinal))
                     hotSource += "\n" + RequiredMethod(source, "private void OnFrameTransformReady", bridge);
                 else if (bridge.Contains("PointCloud2", StringComparison.Ordinal))
-                    hotSource += "\n" + RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", bridge);
+                    hotSource += "\n" + RequiredMethod(source, "private void OnPackedPointCloudFrameReady", bridge);
                 else if (bridge.Contains("Imu", StringComparison.Ordinal))
                     hotSource += "\n" + RequiredMethod(source, "private void OnFrameReady", bridge);
 
@@ -159,12 +159,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloud2PublishersPrewarmOutsideFrameCallback()
         {
-            var source = ReadRepoText(NativeDir + "/Ros2ForUnityPointCloud2NativeBridge.cs");
-            var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var registerBody = RequiredMethod(source, "private void RegisterPublisherBinding", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var callbackBody = RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPointCloud2NativeBridge.cs");
-            var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var source = ReadRepoText(NativeDir + "/Ros2ForUnityPackedPointCloudBridge.cs");
+            var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var registerBody = RequiredMethod(source, "private void RegisterPublisherBinding", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var callbackBody = RequiredMethod(source, "private void OnPackedPointCloudFrameReady", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPackedPointCloudBridge.cs");
+            var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPackedPointCloudBridge.cs");
 
             Check(refreshBody.Contains("RegisterPublisherBinding(publisher)", StringComparison.Ordinal)
                   && registerBody.Contains("PrewarmPublishers(_ros2Unity)", StringComparison.Ordinal),
@@ -177,7 +177,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-PC2b: PointCloud2 bridge prewarms the optional TF anchor publisher outside frame callbacks");
             Check(deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.RawOnly", StringComparison.Ordinal)
                   && deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.ReplaceOutput", StringComparison.Ordinal)
-                  && deskewPrewarmBody.Contains("MotionCompensatedPointCloud2Topic", StringComparison.Ordinal),
+                  && deskewPrewarmBody.Contains("MotionCompensatedPackedPointCloudTopic", StringComparison.Ordinal),
                 "165-PC3: PointCloud2 bridge prewarm respects motion-compensation output policy");
             Check(callbackBody.Contains("TryEnsurePublisher(ros2Unity, frameTopic", StringComparison.Ordinal),
                 "165-PC4: PointCloud2 frame callback keeps lazy publisher creation as a configuration-change fallback");
@@ -188,12 +188,12 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var bridge in new[]
                      {
                          "Ros2ForUnityTransformNativeBridge.cs",
-                         "Ros2ForUnityPointCloud2NativeBridge.cs",
+                         "Ros2ForUnityPackedPointCloudBridge.cs",
                          "Ros2ForUnityImuNativeBridge.cs",
                      })
             {
                 var source = ReadRepoText(NativeDir + "/" + bridge);
-                var readyBody = bridge.Contains("PointCloud2", StringComparison.Ordinal)
+                var readyBody = bridge.Contains("PackedPointCloud", StringComparison.Ordinal)
                     ? RequiredMethod(source, "private void LogReady", bridge)
                     : RequiredMethod(source, "private void LogReadyOnce", bridge);
 
@@ -242,10 +242,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "IsShuttingDownForBridge(gameObject.scene)",
                 StringComparison.Ordinal);
             Check(shutdownIndex >= 0
-                  && shutdownIndex < update.IndexOf("ResolveManager();", StringComparison.Ordinal)
                   && shutdownIndex < update.IndexOf("ScanAndReconcile();", StringComparison.Ordinal)
                   && shutdownIndex < update.IndexOf("DrainBindings(", StringComparison.Ordinal),
-                "FoxRun inbound host fail-closes Update before any recovery or native work");
+                "FoxRun inbound host fail-closes Update before scan or native message work");
 
             var initGateIndex = ensureNode.IndexOf(
                 "CanInitializeNativeRuntimeForBridge(gameObject.scene)",

@@ -7,10 +7,10 @@
 using System;
 using System.Threading;
 using Foxglove.Schemas;
+using Google.Protobuf;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
@@ -25,39 +25,48 @@ namespace Unity.FoxgloveSDK.Components
             ulong unixNs,
             PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishProvider))
             {
                 publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
+                publishProvider = ShouldPrepareOrdinaryTransportPayload();
             }
-            byte[] ros2Payload = null;
+            Foxglove.PointCloud protobufMessage = null;
+            PointCloudBuildResult sharedBuild = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProto(packedLayout == null
-                    ? PointCloudMessageBuilder.SerializeProtobuf(frame)
-                    : PointCloudMessageBuilder.SerializeProtobuf(frame, packedLayout), unixNs);
-            }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = packedLayout == null
-                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
-                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
-                PublishRos2(ros2Payload, unixNs);
+                protobufMessage = packedLayout == null
+                    ? PointCloudMessageBuilder.CreateProtobuf(frame)
+                    : PointCloudMessageBuilder.CreateProtobuf(frame, packedLayout);
+                PublishProto(protobufMessage.ToByteArray(), unixNs);
             }
             else if (publishWebSocket)
             {
-                Publish(packedLayout == null
-                    ? PointCloudMessageBuilder.CreateJson(frame)
-                    : PointCloudMessageBuilder.CreateJson(frame, packedLayout), unixNs);
+                if (publishProvider)
+                {
+                    sharedBuild = packedLayout == null
+                        ? PointCloudMessageBuilder.Build(frame)
+                        : PointCloudMessageBuilder.Build(frame, packedLayout);
+                    Publish(sharedBuild.Json, unixNs);
+                }
+                else
+                {
+                    Publish(packedLayout == null
+                        ? PointCloudMessageBuilder.CreateJson(frame)
+                        : PointCloudMessageBuilder.CreateJson(frame, packedLayout), unixNs);
+                }
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                ros2Payload ??= packedLayout == null
-                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
-                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
-                PublishRos2Bridge(ros2Payload, unixNs);
+                protobufMessage ??= sharedBuild?.Protobuf
+                    ?? (packedLayout == null
+                        ? PointCloudMessageBuilder.CreateProtobuf(frame)
+                        : PointCloudMessageBuilder.CreateProtobuf(frame, packedLayout));
+                PublishOrdinaryTransport(
+                    protobufMessage,
+                    Foxglove.PointCloud.Descriptor.FullName,
+                    unixNs);
             }
         }
     }

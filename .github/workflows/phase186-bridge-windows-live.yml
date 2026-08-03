@@ -1,0 +1,36 @@
+name: Phase186 Bridge Windows live certification
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: phase186-bridge-windows-live
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: Unity plus ROS and RMW live matrix
+    runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
+    timeout-minutes: 720
+    env:
+      UNITY2FOXGLOVE_CI_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run exact-head Phase186 Windows live certification
+        shell: pwsh
+        run: python Scripts/release/run_ci.py --only phase186-bridge-windows-live
+
+      - name: Upload terminal, actor, graph, QoS, process, and cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase186-bridge-windows-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/phase186/windows-live
+          if-no-files-found: warn

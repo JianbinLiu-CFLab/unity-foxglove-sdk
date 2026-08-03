@@ -6,7 +6,6 @@
 
 using System;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -53,25 +52,6 @@ namespace Unity.FoxgloveSDK.Core
                 // Protobuf support is optional. Keep startup non-fatal, but emit
                 // one diagnostic so real schema-registration failures are visible.
                 _logger.LogWarning($"Optional protobuf schema registration failed; continuing without protobuf support: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Register bundled ROS 2 .msg schemas. If registration succeeds,
-        /// sessions advertise CDR support for explicit ros2msg channels.
-        /// </summary>
-        private void TryRegisterRos2MsgSchemas()
-        {
-            try
-            {
-                Ros2MsgSchemasSetup.RegisterSchemas(_schemaRegistry);
-                _ros2MsgSchemasRegistered = true;
-            }
-            catch (Exception ex)
-            {
-                // ROS 2 .msg schema support is optional. Keep startup non-fatal,
-                // but emit one diagnostic so real registration failures are visible.
-                _logger.LogWarning($"Optional ROS 2 .msg schema registration failed; continuing without CDR support: {ex.Message}");
             }
         }
     }

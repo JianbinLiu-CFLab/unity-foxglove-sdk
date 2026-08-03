@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -37,6 +38,157 @@ def load_module(name: str, relative: str):
 
 class SampleSyncToolingTests(unittest.TestCase):
     """Regression coverage for sample sync tooling."""
+
+    def test_ros2_bridge_sample_has_dedicated_sync_tool(self) -> None:
+        """The Bridge sample must not rely on an untracked manual copy step."""
+        script = ROOT / "Scripts/samples/sync_ros2_bridge_sample.py"
+
+        self.assertTrue(script.is_file(), script)
+
+    def test_ros2_bridge_sample_import_root_tracks_package_version(self) -> None:
+        """The checked-in imported copy must follow the Bridge manifest version."""
+        module = load_module(
+            "sync_ros2_bridge_sample_version_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "default_imported_root"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.ros2bridge"
+                / "package.json"
+            )
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps({"version": "7.6.5-preview.4"}),
+                encoding="utf-8",
+            )
+
+            imported = module.default_imported_root(root)
+
+        self.assertTrue(
+            imported.as_posix().endswith(
+                "Unity2Foxglove ROS2 Bridge/7.6.5-preview.4/ROS2 Bridge Sample"
+            )
+        )
+
+    def test_ros2_bridge_sample_sync_includes_meta_files(self) -> None:
+        """New sample assets and their GUID-bearing meta files move together."""
+        module = load_module(
+            "sync_ros2_bridge_sample_meta_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "compare_roots"))
+        self.assertTrue(hasattr(module, "apply_sync"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            imported = root / "imported"
+            package.mkdir()
+            imported.mkdir()
+            (package / "Duplex.cs").write_text("current\n", encoding="utf-8")
+            (package / "Duplex.cs.meta").write_text(
+                "guid: 0123456789abcdef0123456789abcdef\n",
+                encoding="utf-8",
+            )
+
+            drift = module.compare_roots(package, imported)
+            module.apply_sync(package, imported, drift)
+            self.assertEqual([], module.compare_roots(package, imported))
+
+    def test_ros2_bridge_sample_capture_updates_only_generated_scene(self) -> None:
+        """Unity owns scene generation while package source remains canonical."""
+        module = load_module(
+            "sync_ros2_bridge_sample_scene_under_test",
+            "Scripts/samples/sync_ros2_bridge_sample.py",
+        )
+        self.assertTrue(hasattr(module, "capture_generated_scene"))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            imported = root / "imported"
+            for sample_root in (package, imported):
+                (sample_root / "Scenes").mkdir(parents=True)
+                (sample_root / "Scripts").mkdir(parents=True)
+            (package / "Scenes/Ros2BridgeSample.unity").write_text(
+                "old scene\n",
+                encoding="utf-8",
+            )
+            (imported / "Scenes/Ros2BridgeSample.unity").write_text(
+                "unity generated scene\n",
+                encoding="utf-8",
+            )
+            (package / "Scripts/Duplex.cs").write_text(
+                "package source\n",
+                encoding="utf-8",
+            )
+            (imported / "Scripts/Duplex.cs").write_text(
+                "local drift\n",
+                encoding="utf-8",
+            )
+
+            module.capture_generated_scene(package, imported)
+
+            self.assertEqual(
+                "unity generated scene\n",
+                (package / "Scenes/Ros2BridgeSample.unity").read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertEqual(
+                "package source\n",
+                (package / "Scripts/Duplex.cs").read_text(encoding="utf-8"),
+            )
+
+    def test_full_demo_messagepack_source_and_meta_have_canonical_mappings(self) -> None:
+        """The controlled MessagePack partial must sync live -> package -> imported."""
+        module = load_module(
+            "sync_full_demo_messagepack_maps_under_test",
+            "Scripts/samples/sync_full_demo.py",
+        )
+
+        mapped = {
+            (item.demo.name, item.sample.name)
+            for item in module.FILE_MAPS
+        }
+
+        self.assertIn(
+            ("TestLog.MessagePack.cs", "TestLog.MessagePack.cs"),
+            mapped,
+        )
+        self.assertIn(
+            ("TestLog.MessagePack.cs.meta", "TestLog.MessagePack.cs.meta"),
+            mapped,
+        )
+
+    def test_full_demo_messagepack_imported_pairs_preserve_meta_parity(self) -> None:
+        """Imported sync must derive both MessagePack destinations from package mappings."""
+        module = load_module(
+            "sync_full_demo_messagepack_import_under_test",
+            "Scripts/samples/sync_full_demo.py",
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            imported = Path(temp) / "Full Demo Visualization"
+            pairs = module.imported_maps(imported, "package")
+
+        by_name = {
+            destination.name: source.name
+            for source, destination in pairs
+            if destination.name.startswith("TestLog.MessagePack")
+        }
+        self.assertEqual(
+            {
+                "TestLog.MessagePack.cs": "TestLog.MessagePack.cs",
+                "TestLog.MessagePack.cs.meta": "TestLog.MessagePack.cs.meta",
+            },
+            by_name,
+        )
 
     def test_full_demo_scene_sanitizes_portable_fields_with_variable_indentation(self) -> None:
         """Sample sync should sanitize local-only fields even if Unity changes indentation."""
@@ -129,6 +281,33 @@ class SampleSyncToolingTests(unittest.TestCase):
         ]
 
         self.assertEqual([module.Drift("changed", Path("package_owned.cs"))], module.blocking_drift_after_apply(drift))
+
+    def test_ros2_sample_apply_refreshes_imported_file_timestamp(self) -> None:
+        """Applying drift must make Unity notice the newly copied sample content."""
+        module = load_module("sync_ros2_samples_timestamp_under_test", "Scripts/samples/sync_ros2_samples.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_root = root / "package"
+            imported_root = root / "imported"
+            package_root.mkdir()
+            imported_root.mkdir()
+            package_file = package_root / "sample.cs"
+            imported_file = imported_root / "sample.cs"
+            package_file.write_text("current\n", encoding="utf-8")
+            imported_file.write_text("stale\n", encoding="utf-8")
+            old_timestamp = 946684800
+            os.utime(package_file, (old_timestamp, old_timestamp))
+            os.utime(imported_file, (old_timestamp, old_timestamp))
+
+            module.apply_sync(
+                package_root,
+                imported_root,
+                [module.Drift("changed", Path("sample.cs"))],
+            )
+
+            self.assertEqual("current\n", imported_file.read_text(encoding="utf-8"))
+            self.assertGreater(imported_file.stat().st_mtime, package_file.stat().st_mtime)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             PublicPayloadViewCannotMutateSerializedFrame();
             PublicPayloadViewReturnsFreshDefensiveCopies();
-            WriterAndRuntimeUseOwnedPayloadSnapshot();
+            WriterAndSchedulerUseOwnedPayloadSnapshot();
             PublicPayloadGetterDocumentsCopyCost();
             CommandRunnerDrainsTimedOutProcessOutput();
             HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation();
@@ -73,31 +73,38 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16B-2: mutating one public payload copy does not affect later reads");
         }
 
-        private static void WriterAndRuntimeUseOwnedPayloadSnapshot()
+        private static void WriterAndSchedulerUseOwnedPayloadSnapshot()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var schedulerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs");
 
             Check(frameSource.Contains("private readonly byte[] _payload", StringComparison.Ordinal)
+                  && frameSource.Contains("private readonly int _payloadOffset", StringComparison.Ordinal)
+                  && frameSource.Contains("private readonly int _payloadLength", StringComparison.Ordinal)
                   && frameSource.Contains("clonePayload: true", StringComparison.Ordinal)
                   && frameSource.Contains("Ros2BridgeFrame CreateOwned", StringComparison.Ordinal)
                   && frameSource.Contains("clonePayload: false", StringComparison.Ordinal)
                   && frameSource.Contains("_payload = clonePayload ? (byte[])payload.Clone() : payload", StringComparison.Ordinal)
-                  && frameSource.Contains("public byte[] Payload => (byte[])_payload.Clone()", StringComparison.Ordinal),
-                "134-16C-1: bridge frame public constructors clone payloads while the internal owned path is explicit");
+                  && frameSource.Contains("new ReadOnlyMemory<byte>(", StringComparison.Ordinal)
+                  && frameSource.Contains("_payloadOffset,", StringComparison.Ordinal)
+                  && frameSource.Contains("_payloadLength);", StringComparison.Ordinal)
+                  && frameSource.Contains("public byte[] Payload => PayloadMemory.ToArray()", StringComparison.Ordinal),
+                "134-16C-1: public frames clone payloads while owned offset/length views remain explicit");
             Check(writerSource.Contains("frame.PayloadLength", StringComparison.Ordinal)
                   && writerSource.Contains("frame.WritePayloadTo(destination)", StringComparison.Ordinal)
                   && !writerSource.Contains("stream.Write(frame.Payload", StringComparison.Ordinal),
                 "134-16C-2: bridge writer consumes the owned snapshot instead of the public copy");
-            Check(runtimeSource.Contains("frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal)
-                  && !runtimeSource.Contains("frame.Payload.Length > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal),
-                "134-16C-3: runtime queue size checks use the owned snapshot length");
+            Check(schedulerSource.Contains("measurement = Ros2BridgeFrameWriter.Measure(frame);", StringComparison.Ordinal)
+                  && schedulerSource.Contains("_ = U2R2FrameSize.Create(", StringComparison.Ordinal)
+                  && schedulerSource.Contains("measurement.PayloadBytes", StringComparison.Ordinal)
+                  && schedulerSource.Contains("return Ros2BridgeOutboundEnqueueDisposition.Oversize;", StringComparison.Ordinal),
+                "134-16C-3: scheduler admission measures owned wire bytes and classifies oversize frames");
         }
 
         private static void PublicPayloadGetterDocumentsCopyCost()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
 
             Check(frameSource.Contains("[Obsolete(", StringComparison.Ordinal)
                   && frameSource.Contains("PayloadLength", StringComparison.Ordinal)
@@ -107,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CommandRunnerDrainsTimedOutProcessOutput()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
 
             Check(source.Contains("process.Kill()", StringComparison.Ordinal)
                   && source.Contains("process.WaitForExit(Math.Max(1, timeoutMs))", StringComparison.Ordinal)
@@ -119,8 +126,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation()
         {
-            var optionsSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
-            var runnerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
+            var optionsSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            var runnerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
 
             Check(optionsSource.Contains("CancellationToken cancellationToken = default", StringComparison.Ordinal)
                   && optionsSource.Contains("public CancellationToken CancellationToken", StringComparison.Ordinal)
@@ -133,15 +140,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RuntimeConnectContractAndWorkerGenerationAreExplicit()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var shell = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
 
             Check(source.Contains("_workerGeneration", StringComparison.Ordinal)
-                  && source.Contains("WorkerLoop(generation)", StringComparison.Ordinal)
+                  && source.Contains("start.Lease.WorkerLoop(start.Generation)", StringComparison.Ordinal)
                   && source.Contains("generation != _workerGeneration", StringComparison.Ordinal),
                 "134-16G-1: bridge runtime invalidates stale workers with generation checks");
-            Check(source.Contains("Connect must use the configured host and port", StringComparison.Ordinal)
-                  && source.Contains("NormalizeLoopbackHost(host)", StringComparison.Ordinal)
-                  && source.Contains("timeoutMs <= 0", StringComparison.Ordinal),
+            Check(shell.Contains("Connect must use the configured endpoint", StringComparison.Ordinal)
+                  && shell.Contains("NormalizeLoopbackHost(host)", StringComparison.Ordinal)
+                  && shell.Contains("timeoutMs <= 0", StringComparison.Ordinal),
                 "134-16G-2: Connect validates host, port, and timeout instead of silently ignoring arguments");
         }
 
@@ -153,57 +161,46 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("class ScopedFd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
-                  && source.Contains("ScopedFd client_fd", StringComparison.Ordinal),
+                  && source.Contains("ScopedFd candidate(accepted.fd)", StringComparison.Ordinal)
+                  && source.Contains(
+                      "std::make_shared<ScopedFd>(candidate.release())",
+                      StringComparison.Ordinal),
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
-            var processClient = source.IndexOf("void process_client(", StringComparison.Ordinal);
-            var sessionBridge = processClient >= 0
+            var processOwnedClient = source.IndexOf("void process_owned_client(", StringComparison.Ordinal);
+            var generationOwnership = processOwnedClient >= 0
                 ? source.IndexOf(
-                    "BridgeNode bridge(node, payload_format);",
-                    processClient,
+                    "bridge_runtime::GenerationOwnership generation(std::move(*data_lease));",
+                    processOwnedClient,
                     StringComparison.Ordinal)
                 : -1;
-            var sessionLoop = sessionBridge >= 0
-                ? source.IndexOf("while (rclcpp::ok())", sessionBridge, StringComparison.Ordinal)
-                : -1;
-            var directSessionOwnsBridge = processClient >= 0
-                                          && sessionBridge > processClient
-                                          && sessionLoop > sessionBridge
-                                          && source.Contains(
-                                              "process_client(client_fd.get(), node, options.payload_format);",
-                                              StringComparison.Ordinal);
-            var deferredSession = source.IndexOf("class DeferredBridgeSession", StringComparison.Ordinal);
-            var deferredBridgeCreate = deferredSession >= 0
+            var generationAdoption = generationOwnership >= 0
                 ? source.IndexOf(
-                    "bridge_ = std::make_unique<BridgeNode>(node_, payload_format_);",
-                    deferredSession,
-                    StringComparison.Ordinal)
-                : -1;
-            var deferredBridgeMember = deferredSession >= 0
-                ? source.IndexOf(
-                    "std::unique_ptr<BridgeNode> bridge_;",
-                    deferredSession,
+                    "generation.adopt_entities(generation_factory())",
+                    generationOwnership,
                     StringComparison.Ordinal)
                 : -1;
             var mainEntry = source.IndexOf("int main(int argc, char ** argv)", StringComparison.Ordinal);
-            var mainLoop = mainEntry >= 0
-                ? source.IndexOf("while (rclcpp::ok())", mainEntry, StringComparison.Ordinal)
-                : -1;
-            var mainSession = mainLoop >= 0
-                ? source.IndexOf("DeferredBridgeSession session(", mainLoop, StringComparison.Ordinal)
-                : -1;
-            var deferredProcess = mainSession >= 0
+            var generationFactory = mainEntry >= 0
                 ? source.IndexOf(
-                    "process_deferred_client(client_fd.get(), session);",
-                    mainSession,
+                    "const BridgeGenerationFactory generation_factory",
+                    mainEntry,
                     StringComparison.Ordinal)
                 : -1;
-            var deferredSessionOwnsBridge = deferredSession >= 0
-                                            && deferredBridgeCreate > deferredSession
-                                            && deferredBridgeMember > deferredBridgeCreate
-                                            && mainLoop > mainEntry
-                                            && mainSession > mainLoop
-                                            && deferredProcess > mainSession;
-            Check((directSessionOwnsBridge || deferredSessionOwnsBridge)
+            var freshBridge = generationFactory >= 0
+                ? source.IndexOf(
+                    "return std::make_unique<BridgeNode>(",
+                    generationFactory,
+                    StringComparison.Ordinal)
+                : -1;
+            var workerUsesFactory = freshBridge >= 0
+                ? source.IndexOf("process_owned_client(", freshBridge, StringComparison.Ordinal)
+                : -1;
+            Check(processOwnedClient >= 0
+                  && generationOwnership > processOwnedClient
+                  && generationAdoption > generationOwnership
+                  && generationFactory > mainEntry
+                  && freshBridge > generationFactory
+                  && workerUsesFactory > freshBridge
                   && !source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal),
                 "134-16H-2: each sidecar client session owns fresh publisher maps so restarted sessions may apply replacement QoS");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
@@ -246,7 +243,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void HealthProbeValidatesFixedHeaderBeforeAllocation()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
 
             Check(source.Contains("U2R2 response magic is invalid", StringComparison.Ordinal)
                   && source.Contains("U2R2 response version is unsupported", StringComparison.Ordinal)
@@ -257,9 +254,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TopicAndFrameWritersRejectNewlinesAndReportSizes()
         {
-            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var topicProfileSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var topicProfileSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
 
             Check(frameSource.Contains("topic.IndexOf('\\r')", StringComparison.Ordinal)
                   && topicProfileSource.Contains("ContainsNewline", StringComparison.Ordinal)
@@ -267,7 +264,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !topicProfileSource.Contains("while (value.Contains(\"//\"))", StringComparison.Ordinal),
                 "134-16K-1: C# bridge topic normalization rejects newlines and collapses slashes in one pass");
             Check(writerSource.Contains("frame.PayloadLength} bytes", StringComparison.Ordinal)
-                  && writerSource.Contains("headerBytes.Length} bytes", StringComparison.Ordinal)
+                  && writerSource.Contains("Encoding.UTF8.GetByteCount(headerJson)", StringComparison.Ordinal)
+                  && writerSource.Contains("headerBytes} bytes", StringComparison.Ordinal)
                   && !writerSource.Contains("Phase 94 maximum", StringComparison.Ordinal),
                 "134-16K-2: frame writer oversize errors include actual sizes and avoid stale phase wording");
         }

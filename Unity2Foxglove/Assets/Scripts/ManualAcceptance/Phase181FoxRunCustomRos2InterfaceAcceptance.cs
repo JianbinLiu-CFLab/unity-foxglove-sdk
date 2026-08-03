@@ -54,24 +54,29 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default)]
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue
+            })]
         [SerializeField] private Phase181State _nativePublish;
 
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue)]
         [SerializeField] private Phase181State _inputPort;
 
         // The peer protocol explicitly owns the native inbound/output-loop evidence.
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue
+            })]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
 
         // Keep the declarations source-generator-visible before an add-on is

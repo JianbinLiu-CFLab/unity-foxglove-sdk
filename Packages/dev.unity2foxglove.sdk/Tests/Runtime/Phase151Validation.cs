@@ -119,13 +119,12 @@ namespace Unity.FoxgloveSDK.Tests
                 ("FoxglovePublisher.Tick", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs"),
                 ("FoxgloveManager.PublishJson", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
                 ("FoxgloveManager.PublishProto", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
-                ("FoxgloveManager.PublishRos2", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
-                ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
-                ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
-                ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
-                ("CdrBuild.PointCloud", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs"),
-                ("CdrBuild.PointCloud2", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs"),
-                ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
+                ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
+                ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
+                ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
+                ("CdrBuild.PointCloud", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs"),
+                ("CdrBuild.PointCloud2", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs"),
+                ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
                 ("VirtualLidar.Update", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs"),
                 ("VirtualLidar.ScheduleScan", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
                 // BuildPoints.Schedule marks the main-thread job scheduling boundary; the Burst job body itself stays marker-free.
@@ -133,7 +132,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ("VirtualLidar.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs"),
                 ("VirtualImu.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs"),
                 ("PointCloudWorker.EncodeDraco", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"),
-                ("PointCloudWorker.EncodePointCloud2Native", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"),
+                ("PointCloudWorker.EncodePackedPointCloud", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"),
                 ("WsSendQueue.Enqueue", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs"),
                 ("WsSendQueue.Flush", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs"),
                 ("WsFrameCodec.Encode", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsFrameCodec.cs"),
@@ -149,7 +148,13 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+            var managerPublishing = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            Check(!managerPublishing.Contains("\"FoxgloveManager.PublishRos2\"", StringComparison.Ordinal)
+                  && !managerPublishing.Contains("PublishRos2(", StringComparison.Ordinal),
+                "Core Manager exposes no retired ROS-specific profiler or publish boundary");
+
+            var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
             var serialize = ExtractMethod(pointCloud2, "public static byte[] Serialize(");
             Check(pointCloud2.Contains("static Ros2CdrSensorPointCloud2Builder()", StringComparison.Ordinal)
                   && pointCloud2.Contains("EnsureLittleEndianRuntime();", StringComparison.Ordinal)

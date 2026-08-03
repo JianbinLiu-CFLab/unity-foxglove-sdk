@@ -51,18 +51,15 @@ namespace Unity.FoxgloveSDK.Editor
     {
         public Unity2FoxgloveFoxRunSummarySection FoxRun { get; }
         public Unity2FoxgloveProtobufRegistrySection ProtobufRegistry { get; }
-        public Unity2FoxgloveRos2MsgRegistrySection Ros2MsgRegistry { get; }
         public Unity2FoxgloveSdkTypedPublishersSection SdkTypedPublishers { get; }
 
         public Unity2FoxgloveSchemaManifestSections(
             Unity2FoxgloveFoxRunSummarySection foxRun,
             Unity2FoxgloveProtobufRegistrySection protobufRegistry,
-            Unity2FoxgloveRos2MsgRegistrySection ros2MsgRegistry,
             Unity2FoxgloveSdkTypedPublishersSection sdkTypedPublishers)
         {
             FoxRun = foxRun ?? throw new ArgumentNullException(nameof(foxRun));
             ProtobufRegistry = protobufRegistry ?? throw new ArgumentNullException(nameof(protobufRegistry));
-            Ros2MsgRegistry = ros2MsgRegistry ?? throw new ArgumentNullException(nameof(ros2MsgRegistry));
             SdkTypedPublishers = sdkTypedPublishers ?? throw new ArgumentNullException(nameof(sdkTypedPublishers));
         }
     }
@@ -71,18 +68,15 @@ namespace Unity.FoxgloveSDK.Editor
     {
         public string FoxRun { get; }
         public string ProtobufRegistry { get; }
-        public string Ros2MsgRegistry { get; }
         public string SdkTypedPublishers { get; }
 
         public Unity2FoxgloveSchemaManifestSectionHashes(
             string foxRun,
             string protobufRegistry,
-            string ros2MsgRegistry,
             string sdkTypedPublishers)
         {
             FoxRun = foxRun ?? string.Empty;
             ProtobufRegistry = protobufRegistry ?? string.Empty;
-            Ros2MsgRegistry = ros2MsgRegistry ?? string.Empty;
             SdkTypedPublishers = sdkTypedPublishers ?? string.Empty;
         }
     }
@@ -172,62 +166,6 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 
-    public sealed class Unity2FoxgloveRos2MsgRegistrySection
-    {
-        public string SchemaEncoding { get; }
-        public string SourceSnapshot { get; }
-        public string SourceCommit { get; }
-        public string SourceTreeSha256 { get; }
-        public int SourceFileCount { get; }
-        public int EntryCount { get; }
-        public IReadOnlyList<Unity2FoxgloveRos2MsgRegistryEntry> Entries { get; }
-
-        public Unity2FoxgloveRos2MsgRegistrySection(
-            string schemaEncoding,
-            string sourceSnapshot,
-            string sourceCommit,
-            string sourceTreeSha256,
-            int sourceFileCount,
-            int entryCount,
-            IReadOnlyList<Unity2FoxgloveRos2MsgRegistryEntry> entries)
-        {
-            SchemaEncoding = schemaEncoding ?? string.Empty;
-            SourceSnapshot = sourceSnapshot ?? string.Empty;
-            SourceCommit = sourceCommit ?? string.Empty;
-            SourceTreeSha256 = sourceTreeSha256 ?? string.Empty;
-            SourceFileCount = sourceFileCount;
-            Entries = Unity2FoxgloveSchemaManifestModelHelpers.Copy(entries);
-            Unity2FoxgloveSchemaManifestModelHelpers.ValidateEntryCount(
-                entryCount,
-                Entries.Count,
-                nameof(Unity2FoxgloveRos2MsgRegistrySection));
-            EntryCount = entryCount;
-        }
-    }
-
-    public sealed class Unity2FoxgloveRos2MsgRegistryEntry
-    {
-        public string SchemaName { get; }
-        public string SourceFile { get; }
-        public string SourceSha256 { get; }
-        public string Category { get; }
-        public bool HasDedicatedJsonOrProtobufPublisher { get; }
-
-        public Unity2FoxgloveRos2MsgRegistryEntry(
-            string schemaName,
-            string sourceFile,
-            string sourceSha256,
-            string category,
-            bool hasDedicatedJsonOrProtobufPublisher)
-        {
-            SchemaName = schemaName ?? string.Empty;
-            SourceFile = sourceFile ?? string.Empty;
-            SourceSha256 = sourceSha256 ?? string.Empty;
-            Category = category ?? string.Empty;
-            HasDedicatedJsonOrProtobufPublisher = hasDedicatedJsonOrProtobufPublisher;
-        }
-    }
-
     public sealed class Unity2FoxgloveSdkTypedPublishersSection
     {
         public int EntryCount { get; }
@@ -253,10 +191,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string PublisherFamily { get; }
         public string DefaultTopic { get; }
         public string FoxgloveSchemaName { get; }
-        public string Ros2SchemaName { get; }
         public bool SupportsJson { get; }
         public bool SupportsProtobuf { get; }
-        public bool SupportsRos2 { get; }
         public bool SupportsMsgPack { get; }
         public bool IsTemplate { get; }
         public string ProductNote { get; }
@@ -267,10 +203,8 @@ namespace Unity.FoxgloveSDK.Editor
             string publisherFamily,
             string defaultTopic,
             string foxgloveSchemaName,
-            string ros2SchemaName,
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2,
             bool supportsMsgPack,
             bool isTemplate,
             string productNote)
@@ -280,10 +214,8 @@ namespace Unity.FoxgloveSDK.Editor
             PublisherFamily = publisherFamily ?? string.Empty;
             DefaultTopic = defaultTopic ?? string.Empty;
             FoxgloveSchemaName = foxgloveSchemaName ?? string.Empty;
-            Ros2SchemaName = ros2SchemaName ?? string.Empty;
             SupportsJson = supportsJson;
             SupportsProtobuf = supportsProtobuf;
-            SupportsRos2 = supportsRos2;
             SupportsMsgPack = supportsMsgPack;
             IsTemplate = isTemplate;
             ProductNote = productNote ?? string.Empty;

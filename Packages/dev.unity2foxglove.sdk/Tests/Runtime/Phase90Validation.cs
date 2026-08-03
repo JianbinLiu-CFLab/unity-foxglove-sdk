@@ -14,7 +14,8 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -45,9 +46,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPlannedSourceFilesExist()
         {
-            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs")),
+            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs")),
                 "90A-1: ROS2 msg schema catalog source exists");
-            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Ros2MsgSchemasSetup.cs")),
+            Check(!string.IsNullOrEmpty(ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Ros2MsgSchemasSetup.cs")),
                 "90A-2: ROS2 msg schemas setup source exists");
         }
 
@@ -118,7 +119,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase90FakeTransport();
             using var session = new FoxgloveSession("phase90-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             var serverInfo = JObject.Parse(transport.LastSentText);
@@ -155,6 +156,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new Phase90FakeTransport();
             using var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.EnableRos2BridgeSchemas();
             runtime.Start("phase90-runtime", "127.0.0.1", 9090);
             transport.SimulateConnect(1);
 
@@ -206,7 +208,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Directory.Exists(runtimeRoot), "90G-0: Runtime source root exists");
             var componentsRoot = Path.Combine(runtimeRoot, "Components");
             Check(Directory.Exists(componentsRoot), "90G-0b: Runtime Components source root exists");
-            var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
+            var catalog = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
 
             Check(SourceTreeAvoids(runtimeRoot, "class CdrWriter", "Ros2CdrPublisher"),
                 "90G-1: Phase90 does not introduce CDR writer or CDR publisher");
@@ -215,9 +218,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!catalog.Contains("HasDedicatedUnityPublisher"),
                 "90G-3: ROS2 catalog does not imply dedicated ROS2 CDR publisher support");
 
-            Check(SourceTreeContains(componentsRoot, "PublisherEffectiveEncoding.Ros2")
-                  && SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr"),
-                "90G-4: publisher output mode uses product ROS2 labeling instead of CDR internals");
+            Check(SourceTreeAvoids(
+                      componentsRoot,
+                      "PublisherEffectiveEncoding.Ros2",
+                      "TryPrepareRos2Publish",
+                      "PublishRos2")
+                  && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper")
+                  && bridgeProvider.Contains("Ros2BridgeMcapCodecs.MessageEncoding"),
+                "90G-4: core publishers stay Provider-neutral while Bridge owns CDR mapping");
             Check(catalog.Contains("deterministic startup cost", StringComparison.Ordinal)
                   && catalog.Contains("Duplicate ROS2 schema name in Foxglove catalog", StringComparison.Ordinal)
                   && catalog.Contains("Ros2StandardMsgSchemaCatalog.TryGet(schemaName, out entry)", StringComparison.Ordinal),
@@ -277,12 +285,37 @@ namespace Unity.FoxgloveSDK.Tests
                 var nameBytes = Encoding.UTF8.GetBytes(file.RelativePath);
                 sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
-                var fileBytes = File.ReadAllBytes(file.Path);
+                var fileBytes = ReadCanonicalSourceBytes(file.Path);
                 sha.TransformBlock(fileBytes, 0, fileBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
             }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             return BitConverter.ToString(sha.Hash).Replace("-", "").ToLowerInvariant();
+        }
+
+        private static byte[] ReadCanonicalSourceBytes(string path)
+        {
+            var source = File.ReadAllBytes(path);
+            if (Array.IndexOf(source, (byte)'\r') < 0)
+                return source;
+
+            var normalized = new byte[source.Length];
+            var writeIndex = 0;
+            for (var readIndex = 0; readIndex < source.Length; readIndex++)
+            {
+                if (source[readIndex] == (byte)'\r')
+                {
+                    if (readIndex + 1 < source.Length && source[readIndex + 1] == (byte)'\n')
+                        readIndex++;
+                    normalized[writeIndex++] = (byte)'\n';
+                    continue;
+                }
+
+                normalized[writeIndex++] = source[readIndex];
+            }
+
+            Array.Resize(ref normalized, writeIndex);
+            return normalized;
         }
 
         private static string ToStableRelativePath(string root, string path)

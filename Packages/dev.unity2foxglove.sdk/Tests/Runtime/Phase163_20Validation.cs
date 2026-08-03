@@ -6,7 +6,7 @@
 
 using System;
 using System.IO;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -48,8 +48,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2BridgeTransportSourceShapeIsHardened()
         {
-            var tcp = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var tcp = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
 
             Check(tcp.Contains("client = null;", StringComparison.Ordinal)
                   && tcp.Contains("client?.Dispose();", StringComparison.Ordinal)
@@ -60,9 +61,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtime.Contains("WaitOne(50)", StringComparison.Ordinal)
                   && !runtime.Contains("ManualResetEventSlim", StringComparison.Ordinal),
                 "163-20B-2: ROS2 Bridge worker uses auto-reset signaling instead of Wait/Reset races");
-            Check(runtime.Contains("constructor timeout for worker connect attempts", StringComparison.Ordinal)
-                  && runtime.Contains("constructor timeout for the actual transport send", StringComparison.Ordinal),
-                "163-20B-3: queued runtime documents its IRos2BridgeSink timeout semantics");
+            Check(shell.Contains("_sendTimeoutMs", StringComparison.Ordinal)
+                  && shell.Contains("_joinTimeoutMs", StringComparison.Ordinal)
+                  && runtime.Contains("_ownedSink.Connect(_host, _port, _sendTimeoutMs)", StringComparison.Ordinal)
+                  && runtime.Contains("sink.Send(queued.Frame, _sendTimeoutMs)", StringComparison.Ordinal),
+                "163-20B-3: queued runtime freezes connect/send/join timeouts into the detached worker lease");
         }
 
         private static void RuntimeSelectionManifestSourceShapeIsHardened()
@@ -109,7 +112,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
                   && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
                   && guard.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
-                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
+                  && guard.Contains("R2fuProviderId", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunLoadedSceneContractProbe", StringComparison.Ordinal)
+                  && guard.Contains("PublishTransportIdsSerializedProperty", StringComparison.Ordinal)
+                  && guard.Contains("SubscribeTransportIdSerializedProperty", StringComparison.Ordinal)
                   && guard.Contains("Ros2UnityComponentSuffix", StringComparison.Ordinal)
                   && !guard.Contains("\"ROS2.ROS2UnityComponent\"", StringComparison.Ordinal)
                   && guard.Contains("ShutdownShared", StringComparison.Ordinal),
@@ -160,7 +166,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2BridgeFrameExposesNonAllocatingPayloadView()
         {
-            var frame = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var frame = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
 
             Check(frame.Contains("public ReadOnlyMemory<byte> PayloadMemory", StringComparison.Ordinal),
                 "163-20G-1: ROS2 Bridge frame exposes a non-allocating public payload view");

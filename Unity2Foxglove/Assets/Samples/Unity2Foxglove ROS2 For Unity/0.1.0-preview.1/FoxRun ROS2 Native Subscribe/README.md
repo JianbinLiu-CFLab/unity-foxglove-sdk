@@ -6,8 +6,9 @@ This source-only sample demonstrates the existing ROS2 message input path. It le
 
 Add the imported native subscribe sample component to a GameObject in a scene
 that has a `FoxgloveManager`, then enable **FoxRun Subscriptions**. Every sample
-declaration explicitly selects `Source = FoxRunEndpoint.Ros2Native`, so it does
-not depend on the Subscribe Profile's default Source. Its topic constants are
+declaration explicitly selects
+`SubscribeTransportId = FoxRunRos2TransportProvider.IdValue`, so it does not
+depend on the Manager's default subscribe Provider. Its topic constants are
 fixed by the sample:
 
 | ROS2 type | Topic | Official QoS profile |
@@ -70,10 +71,10 @@ All evidence is written under `build/phase179/<profile-id>/`. A Linux, Editor, o
 ### Editor surface: exact manual sequence
 
 1. In Unity, resolve exactly the runtime shown by the selected row. In the
-   `FoxgloveManager` Inspector enable **FoxRun Subscriptions** and use the
-   imported **FoxRun ROS2 Native Subscribe** acceptance scene/component. The
-   component's declarations already select ROS2 Native as their explicit
-   Source, independently of the Subscribe Profile default.
+   `FoxgloveManager` Inspector enable **FoxRun Subscriptions**, select
+   `unity2foxglove.r2fu` as the subscribe Provider, and use the imported
+   **FoxRun ROS2 Native Subscribe** acceptance scene/component. The
+   declarations carry the same explicit Provider ID.
 2. Before entering Play Mode, start the matching Windows Editor host. It snapshots the current Editor log offset, then waits for a *new* matching READY marker; do not reuse a stale marker or token.
 
    ```powershell
@@ -127,7 +128,7 @@ Unity2Foxglove.Ros2ForUnity.Native
 <the selected runtime and generated ROS message assemblies>
 ```
 
-`FOXRUN212` (`Native generation requires the optional Native assembly reference`) means the source generator cannot see the optional Native binding assembly. Add the reference above, ensure the one selected runtime is resolved, and allow Unity to recompile. Do not work around the diagnostic by changing the contract to JSON or Protobuf.
+`FOXR2F007` (`R2FU generation requires the optional Native assembly reference`) means the source generator cannot see the optional Native binding assembly. Add the reference above, ensure the one selected runtime is resolved, and allow Unity to recompile. Do not work around the diagnostic by changing the contract to JSON or Protobuf.
 
 ## Boundaries
 

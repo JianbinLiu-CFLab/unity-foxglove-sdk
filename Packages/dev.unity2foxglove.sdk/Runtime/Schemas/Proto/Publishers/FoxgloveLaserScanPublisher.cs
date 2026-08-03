@@ -11,7 +11,7 @@ using System.Threading;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Google.Protobuf;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -51,8 +51,6 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.LaserScanSchemaName;
         public override bool SupportsProtobufEncoding => true;
-        public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.LaserScan;
 
         private void Awake()
         {
@@ -107,8 +105,9 @@ namespace Unity.FoxgloveSDK.Components
             ResolveManager();
             if (_manager == null) return;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge) return;
+            var publishProvider =
+                ShouldPrepareOrdinaryTransportPayload();
+            if (!publishWebSocket && !publishProvider) return;
 
             TryPublishScan(
                 logTimeNs,
@@ -118,7 +117,7 @@ namespace Unity.FoxgloveSDK.Components
                 ranges,
                 intensities ?? Array.Empty<double>(),
                 publishWebSocket,
-                publishBridge);
+                publishProvider);
         }
 
         private void Update()
@@ -129,8 +128,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge) return;
+            var publishProvider =
+                ShouldPrepareOrdinaryTransportPayload();
+            if (!publishWebSocket && !publishProvider) return;
 
             var ranges = ResolveRanges();
             var intensities = _intensities ?? Array.Empty<double>();
@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.Components
                 ranges,
                 intensities,
                 publishWebSocket,
-                publishBridge);
+                publishProvider);
         }
 
         private void RefreshCachedAngles()
@@ -181,11 +181,19 @@ namespace Unity.FoxgloveSDK.Components
             IEnumerable<double> ranges,
             IEnumerable<double> intensities,
             bool publishWebSocket,
-            bool publishBridge)
+            bool publishProvider)
         {
             try
             {
-                PublishScan(unixNs, frameId, startRad, endRad, ranges, intensities, publishWebSocket, publishBridge);
+                PublishScan(
+                    unixNs,
+                    frameId,
+                    startRad,
+                    endRad,
+                    ranges,
+                    intensities,
+                    publishWebSocket,
+                    publishProvider);
                 _warnedPublishFailure = false;
                 return true;
             }
@@ -209,19 +217,20 @@ namespace Unity.FoxgloveSDK.Components
             IEnumerable<double> ranges,
             IEnumerable<double> intensities,
             bool publishWebSocket,
-            bool publishBridge)
+            bool publishProvider)
         {
-            byte[] ros2Payload = null;
+            Foxglove.LaserScan providerMessage = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                var payload = LaserScanMessageBuilder.SerializeProtobuf(unixNs, frameId, startRad, endRad, ranges, intensities);
-                PublishProto(payload, unixNs);
-            }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, frameId, startRad, endRad, ranges, intensities);
-                PublishRos2(ros2Payload, unixNs);
+                providerMessage = LaserScanMessageBuilder.CreateProtobuf(
+                    unixNs,
+                    frameId,
+                    startRad,
+                    endRad,
+                    ranges,
+                    intensities);
+                PublishProto(providerMessage.ToByteArray(), unixNs);
             }
             else if (publishWebSocket)
             {
@@ -229,10 +238,19 @@ namespace Unity.FoxgloveSDK.Components
                 Publish(message, unixNs);
             }
 
-            if (publishBridge)
+            if (publishProvider)
             {
-                ros2Payload ??= Ros2CdrLaserScanBuilder.Serialize(unixNs, frameId, startRad, endRad, ranges, intensities);
-                PublishRos2Bridge(ros2Payload, unixNs);
+                providerMessage ??= LaserScanMessageBuilder.CreateProtobuf(
+                    unixNs,
+                    frameId,
+                    startRad,
+                    endRad,
+                    ranges,
+                    intensities);
+                PublishOrdinaryTransport(
+                    providerMessage,
+                    SchemaName,
+                    unixNs);
             }
         }
 

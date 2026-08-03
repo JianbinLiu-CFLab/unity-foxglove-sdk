@@ -47,10 +47,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Contains("/Runtime/Native/**/*.cs", props.Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("/Runtime/Native/FoxRun/**/*.cs", props.Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("Ros2ForUnityNativeBridgeLifecycleGate.cs", props, StringComparison.Ordinal);
+            Assert.Contains("IFoxRun*.cs", props, StringComparison.Ordinal);
+            Assert.Contains("IFoxRun*.cs", runtimeProject, StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "<Compile Include=\"../NativeCompileStubs/**/*.cs\"",
                 unitProject,
                 StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void AdapterLaneIncludesR2fuGenerationModelsWithoutNativeRuntime()
+        {
+            var props = Text("Packages/dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props")
+                .Replace('\\', '/');
+            const string editorModels =
+                "../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs";
+            var include = props.IndexOf(editorModels, StringComparison.Ordinal);
+
+            Assert.True(include >= 0);
+            var elementEnd = props.IndexOf("/>", include, StringComparison.Ordinal);
+            Assert.True(elementEnd > include);
+            var element = props.Substring(include, elementEnd - include);
+            Assert.Contains("IncludeRos2ForUnityAdapter", element, StringComparison.Ordinal);
+            Assert.Contains("IncludeRos2ForUnityNative", element, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -197,6 +216,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var hub = Text(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
                 + "FoxRunRos2CustomPublisherHub.cs");
+            var updateStart = hub.IndexOf(
+                "private void Update()",
+                StringComparison.Ordinal);
+            var lifecycleRead = updateStart < 0
+                ? -1
+                : hub.IndexOf(
+                    "IsShuttingDownForBridge(",
+                    updateStart,
+                    StringComparison.Ordinal);
+            var lifecycleRefresh = lifecycleRead < 0
+                ? -1
+                : hub.IndexOf(
+                    "CanInitializeNativeRuntimeForBridge(",
+                    lifecycleRead,
+                    StringComparison.Ordinal);
+            var publishStop = lifecycleRead < 0
+                ? -1
+                : hub.IndexOf(
+                    "ShouldStopFoxRunPublishing(",
+                    lifecycleRead,
+                    StringComparison.Ordinal);
 
             Assert.Contains(
                 "_manager.FoxRunPublishSessionChanged += OnPublishSessionChanged;",
@@ -218,6 +258,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "_publishSessionTracker.AllowsPublishing,",
                 hub,
                 StringComparison.Ordinal);
+            Assert.True(
+                lifecycleRead >= 0
+                && lifecycleRefresh > lifecycleRead
+                && publishStop > lifecycleRefresh,
+                "The custom publisher Hub must refresh a dirty lifecycle cache before treating its cached shutdown state as permanent.");
         }
 
         [Fact]
@@ -317,7 +362,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Empty(predefined.CompilerErrors);
             Assert.Empty(customReferenced.CompilerErrors);
 
-            Assert.Contains(customMissing.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(
+                customMissing.GeneratorDiagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Empty(customMissing.CompilerErrors);
             Assert.DoesNotContain(
                 customMissing.GeneratedSource,
@@ -375,14 +422,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 {
                     typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunFlow),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunEndpoint),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosProfile),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2RouteEndpoint),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosProfile),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosReliability),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosReliability),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosDurability),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosDurability),
                     typeof(bool),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosHistory),
+                    typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunQosHistory),
                     typeof(bool),
                     typeof(int),
                     typeof(bool),
@@ -482,8 +529,8 @@ namespace Demo
     {
         [Unity.FoxgloveSDK.Components.FoxRun(""/native/string"",
             Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
-            Source = Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
-            QoS = Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData,
+            SubscribeTransportId = ""unity2foxglove.r2fu"",
+            Reliability = Unity.FoxgloveSDK.Components.FoxRunDeliveryReliability.BestEffort,
             SchemaName = ""std_msgs/msg/String"")]
         private std_msgs.msg.String _incoming;
     }
@@ -506,7 +553,8 @@ namespace Demo
                 references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
-                new[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
+                Unity.FoxgloveSDK.UnitTests.Harness.FoxRunAnalyzerTestComposition
+                    .LegacyCombined(),
                 parseOptions: parseOptions);
             driver = driver.RunGeneratorsAndUpdateCompilation(
                 compilation,
@@ -543,7 +591,22 @@ namespace Demo
                     "FoxRunRos2CopyBudget.cs",
                     "FoxRunRos2GeneratedContract.cs"
                 }
-                .Select(file => CSharpSyntaxTree.ParseText(Text(nativeRoot + file), parseOptions));
+                .Select(file => CSharpSyntaxTree.ParseText(
+                    Text(nativeRoot + file),
+                    parseOptions))
+                .Concat(new[]
+                {
+                    CSharpSyntaxTree.ParseText(
+                        Text(
+                            "Packages/dev.unity2foxglove.ros2forunity/"
+                            + "Runtime/FoxRunRos2Qos.cs"),
+                        parseOptions),
+                    CSharpSyntaxTree.ParseText(
+                        "namespace Unity2Foxglove.Ros2ForUnity.Native"
+                        + "{ public enum FoxRunRos2RouteEndpoint"
+                        + "{ WebSocket = 1, R2fu = 2 } }",
+                        parseOptions)
+                });
             var compilation = CSharpCompilation.Create(
                 "Unity2Foxglove.Ros2ForUnity.Native",
                 trees,
@@ -580,13 +643,9 @@ namespace Demo
                     "FoxRunPolicy.cs",
                     Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
                     "FoxRunEncoding.cs",
-                    "FoxRunEndpoint.cs",
-                    "FoxRunQosProfile.cs",
-                    "FoxRunQosReliability.cs",
-                    "FoxRunQosDurability.cs",
-                    "FoxRunQosHistory.cs",
-                    Path.Combine("..", "FoxRun", "FoxRunResolvedQos.cs"),
-                    Path.Combine("..", "FoxRun", "FoxRunRos2QosProfileResolver.cs")
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportId.cs"),
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunTransportContracts.cs"),
+                    Path.Combine("..", "FoxRun", "Transport", "FoxRunGeneratedMemberAccess.cs")
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(attributeRoot, file))));
             var compilation = CSharpCompilation.Create(

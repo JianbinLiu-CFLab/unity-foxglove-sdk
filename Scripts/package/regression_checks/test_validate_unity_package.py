@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
@@ -119,6 +120,46 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
 
         self.assertTrue(results[-1].ok)
+
+    def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
+        """A distributable Bridge sample includes its behavior, builder, and guide."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            package.mkdir()
+            (package / "package.json").write_text(
+                '{"name":"dev.unity2foxglove.ros2bridge",'
+                '"version":"0.1.0-preview.1",'
+                '"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"},'
+                '"samples":[{"displayName":"ROS2 Bridge Sample",'
+                '"path":"Samples~/Ros2BridgeSample"}]}',
+                encoding="utf-8",
+            )
+            old_required = (
+                "Runtime/Unity2Foxglove.Ros2Bridge.asmdef",
+                "Editor/Unity2Foxglove.Ros2Bridge.Editor.asmdef",
+                "Tests/Unity2Foxglove.Ros2Bridge.Tests.asmdef",
+                "Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity",
+                "Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef",
+                "Editor/SourceGenerators/analyzers/dotnet/cs/Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll",
+            )
+            for relative in old_required:
+                asset = package / relative
+                asset.parent.mkdir(parents=True, exist_ok=True)
+                asset.write_bytes(b"{}")
+                Path(str(asset) + ".meta").write_text("guid: test\n", encoding="utf-8")
+
+            self.validator.ROS2_BRIDGE_PACKAGE = package
+            results = []
+            self.validator.check_ros2_bridge_package(results)
+
+        required = next(
+            item for item in results
+            if item.name == "ROS2 Bridge required assets and metas"
+        )
+        self.assertFalse(required.ok)
+        self.assertIn("Ros2BridgeSampleDuplex.cs", required.detail)
+        self.assertIn("Ros2BridgeSampleSceneBuilder.cs", required.detail)
+        self.assertIn("PHASE186_BREAKING_UPGRADE.md", required.detail)
 
     def test_optional_package_boundaries_reject_remote_gateway_publish_sentinel(self) -> None:
         """Preview native packages should not carry stale publish-blocker sentinel text."""
@@ -341,6 +382,56 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
 
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
+
+    def test_msbuild_compile_include_normalizes_windows_separators(self) -> None:
+        """MSBuild Include paths must resolve identically on Windows and POSIX hosts."""
+        self.assertEqual(
+            "src/Shared/FoxRunGenerationModel.cs",
+            self.validator._normalize_compile_include(
+                r"src\Shared\FoxRunGenerationModel.cs"
+            ),
+        )
+
+    def test_provider_analyzers_use_owned_explicit_sources_and_roslyn_only_dependencies(self) -> None:
+        """Provider analyzers must not compile core trees or carry runtime codec dependencies."""
+        projects = (
+            ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/FoxRunR2fuSourceGenerator.csproj",
+            ROOT
+            / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/FoxRunBridgeSourceGenerator.csproj",
+        )
+        for project in projects:
+            package_root = project.parents[2].resolve()
+            root = ET.parse(project).getroot()
+            dependencies = {
+                node.attrib["Include"]
+                for node in root.findall(".//PackageReference")
+            }
+            self.assertEqual(
+                {
+                    "Microsoft.CodeAnalysis.Analyzers",
+                    "Microsoft.CodeAnalysis.CSharp",
+                },
+                dependencies,
+                project,
+            )
+            self.assertFalse(root.findall(".//ProjectReference"), project)
+            self.assertFalse(root.findall(".//Reference"), project)
+            for node in root.findall(".//Compile"):
+                for include in node.attrib.get("Include", "").split(";"):
+                    include = include.strip()
+                    if not include:
+                        continue
+                    self.assertNotIn("*", include, project)
+                    source = (project.parent / include).resolve()
+                    self.assertTrue(
+                        source.is_relative_to(package_root),
+                        f"{project}: non-owned source {include}",
+                    )
+
+    def test_validator_exposes_the_locked_provider_contract_gate(self) -> None:
+        """Freshness must include dependencies, ledgers, IDs, hint parity, and analyzer sets."""
+        self.assertTrue(self.validator.validate_analyzer_contracts(("core", "r2fu", "ros2bridge")))
 
     def test_missing_analyzer_dependency_is_reported_before_hash_comparison(self) -> None:
         """A source generator dependency must ship beside the analyzer DLL for Unity to load it."""

@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var source = ReadRepoText(relativePath);
                 Check(source.Contains("public static class Phase138CPointCloud2MessageBuilder", StringComparison.Ordinal)
-                      && source.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal),
+                      && source.Contains("Build(PackedPointCloudFrame frame", StringComparison.Ordinal),
                     "163-54F-1: Phase138C PointCloud2 smoke builder exists: " + Path.GetFileName(relativePath));
             }
         }

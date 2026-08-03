@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(publisher, "_nativeDracoMaxPublishRateHz", 6f);
             SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Default demo path stays WebSocket/Protobuf-friendly. Switch this
-            // publisher to PointCloud2 Native manually when validating ROS2/SLAM.
+            // publisher to a packed Provider manually when validating an external SLAM path.
             SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.Draco);
             SetPrivateField(publisher, "_topic", "/unity/point_cloud_draco");
             SetPrivateField(publisher, "_frameId", "os_lidar");
@@ -151,8 +151,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(sensorCameraPublisher, "_manager", manager);
             SetPrivateField(sensorCameraPublisher, "_sensorUnitProfile", sensorUnit);
             SetPrivateField(sensorCameraPublisher, "_useSharedSensorClock", true);
-            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2CompressedImage", false);
-            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2RawImage", false);
             SetPrivateField(sensorCameraPublisher, "_topic", "/unity/sensor/camera/image/compressed");
             SetPrivateField(sensorCameraPublisher, "_frameId", "os_camera");
             SetPrivateField(sensorCameraPublisher, "_width", 640);
@@ -192,8 +190,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(demoCameraPublisher, "_frameId", "unity_camera");
             SetPrivateField(demoCameraPublisher, "_width", 640);
             SetPrivateField(demoCameraPublisher, "_height", 480);
-            SetPrivateField(demoCameraPublisher, "_publishStandardRos2CompressedImage", false);
-            SetPrivateField(demoCameraPublisher, "_publishStandardRos2RawImage", false);
 
             // 7. Verify FoxgloveManager.Runtime then enable publishing.
             var runtime = manager.Runtime;

@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/IO/Mcap/DataLoader
-// Purpose: Decoder registry and built-in JSON/ROS2 diagnostic decoders.
+// Purpose: Decoder registry and SDK-owned built-in decoders.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json.Linq;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -115,16 +114,30 @@ namespace Unity.FoxgloveSDK.IO
                 if (_options.FailurePolicy == McapDecodeFailurePolicy.Throw)
                     throw;
 
-                if (TryDecodeRos2CdrDiagnosticFallback(raw, out var fallback, out var fallbackException))
+                Exception fallbackException = null;
+                if (decoder is IMcapMessageDecoderFailureFallback fallback)
                 {
-                    decoded.Payload = fallback;
-                    decoded.Problems.Add(CreateProblem(
-                        raw,
-                        "McapRos2CdrTypedDecodeFailed",
-                        ex.Message,
-                        ex,
-                        McapDataLoaderProblemSeverity.Warning));
-                    return decoded;
+                    try
+                    {
+                        var recovered = fallback.DecodeFallback(raw);
+                        if (recovered != null)
+                        {
+                            decoded.Payload = recovered;
+                            if (decoded.Payload.RawData == null || decoded.Payload.RawData.Length == 0)
+                                decoded.Payload.RawData = raw.Data ?? Array.Empty<byte>();
+                            decoded.Problems.Add(CreateProblem(
+                                raw,
+                                fallback.FailureProblemCode,
+                                ex.Message,
+                                ex,
+                                McapDataLoaderProblemSeverity.Warning));
+                            return decoded;
+                        }
+                    }
+                    catch (Exception recoveryException)
+                    {
+                        fallbackException = recoveryException;
+                    }
                 }
 
                 decoded.Payload = new McapDecodedPayload
@@ -143,7 +156,7 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     decoded.Problems.Add(CreateProblem(
                         raw,
-                        "McapRos2CdrDiagnosticFallbackFailed",
+                        "McapDecodeDiagnosticFallbackFailed",
                         fallbackException.Message,
                         fallbackException,
                         McapDataLoaderProblemSeverity.Warning));
@@ -220,10 +233,6 @@ namespace Unity.FoxgloveSDK.IO
             var protobufFactory = TryCreateProtobufFactory();
             if (protobufFactory != null)
                 factories.Add(protobufFactory);
-            var ros2TypedFactory = TryCreateRos2CdrTypedFactory();
-            if (ros2TypedFactory != null)
-                factories.Add(ros2TypedFactory);
-            factories.Add(new McapRos2CdrDiagnosticDecoderFactory());
             return factories;
         }
 
@@ -232,13 +241,6 @@ namespace Unity.FoxgloveSDK.IO
             return TryCreateAssemblyFactory(
                 "Unity.FoxgloveSDK.IO.McapFoxgloveProtobufDecoderFactory",
                 "Unity.FoxgloveSDK.Proto");
-        }
-
-        private static IMcapMessageDecoderFactory TryCreateRos2CdrTypedFactory()
-        {
-            return TryCreateAssemblyFactory(
-                "Unity.FoxgloveSDK.IO.McapRos2CdrTypedDecoderFactory",
-                "Unity.FoxgloveSDK.Ros2Msg.Generated");
         }
 
         private static IMcapMessageDecoderFactory TryCreateAssemblyFactory(string typeName, string preferredAssemblyName)
@@ -281,36 +283,6 @@ namespace Unity.FoxgloveSDK.IO
         {
             lock (FactoryDiagnosticsGate)
                 FactoryDiagnostics.Add(message ?? string.Empty);
-        }
-
-        private bool TryDecodeRos2CdrDiagnosticFallback(
-            McapDataLoaderMessage raw,
-            out McapDecodedPayload payload,
-            out Exception exception)
-        {
-            payload = null;
-            exception = null;
-            _channels.TryGetValue(raw.ChannelId, out var channel);
-            if (channel == null)
-                return false;
-
-            _schemas.TryGetValue(channel.SchemaId, out var schema);
-            if (!string.Equals(channel.MessageEncoding, "cdr", StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (!string.Equals(schema?.Encoding, FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            try
-            {
-                payload = new McapRos2CdrDiagnosticDecoder(schema?.Name ?? string.Empty).Decode(raw);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-                payload = null;
-                return false;
-            }
         }
 
         private static McapDecodeProblem CreateProblem(
@@ -362,56 +334,4 @@ namespace Unity.FoxgloveSDK.IO
         }
     }
 
-    internal sealed class McapRos2CdrDiagnosticDecoderFactory : IMcapMessageDecoderFactory
-    {
-        public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
-        {
-            if (!string.Equals(channel?.MessageEncoding, "cdr", StringComparison.OrdinalIgnoreCase))
-                return null;
-            if (!string.Equals(schema?.Encoding, FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return new McapRos2CdrDiagnosticDecoder(schema?.Name ?? string.Empty);
-        }
-    }
-
-    internal sealed class McapRos2CdrDiagnosticDecoder : IMcapMessageDecoder
-    {
-        private readonly string _schemaName;
-        private readonly bool _schemaKnown;
-
-        public McapRos2CdrDiagnosticDecoder(string schemaName)
-        {
-            _schemaName = schemaName ?? string.Empty;
-            _schemaKnown = FoxgloveRos2MsgSchemaCatalog.TryGet(_schemaName, out _);
-        }
-
-        public McapDecodedPayload Decode(McapDataLoaderMessage message)
-        {
-            var raw = message?.Data ?? Array.Empty<byte>();
-            if (raw.Length < 4)
-                throw new InvalidDataException("ROS2 CDR payload is shorter than the four-byte encapsulation header.");
-
-            var encapsulation = (ushort)((raw[0] << 8) | raw[1]);
-            if (encapsulation > 3)
-                throw new InvalidDataException("ROS2 CDR encapsulation kind is not recognized: " + encapsulation + ".");
-
-            var diagnostic = new McapRos2CdrDiagnosticPayload
-            {
-                SchemaName = _schemaName,
-                SchemaKnown = _schemaKnown,
-                EncapsulationKind = encapsulation,
-                IsLittleEndian = encapsulation == 1 || encapsulation == 3,
-                PayloadByteLength = raw.Length,
-                DataByteLength = raw.Length - 4
-            };
-
-            return new McapDecodedPayload
-            {
-                Kind = McapDecodedPayloadKind.Ros2CdrDiagnostic,
-                Value = diagnostic,
-                Text = "schema=" + _schemaName + ";cdr=" + encapsulation + ";bytes=" + raw.Length,
-                RawData = raw
-            };
-        }
-    }
 }

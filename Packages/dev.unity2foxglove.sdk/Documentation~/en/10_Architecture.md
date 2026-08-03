@@ -24,7 +24,7 @@ Main pieces:
 1. A Unity component gathers data.
 2. The component resolves a `FoxgloveManager`.
 3. The Manager registers a schema/channel if needed.
-4. The component publishes Protobuf, JSON, or ROS2 CDR payloads, depending on the Manager and publisher encoding settings.
+4. The component publishes a supported core payload (Protobuf, JSON, or MessagePack), or raises a transport-neutral frame for an installed Provider.
 5. `FoxgloveSession` sends data over the WebSocket transport.
 6. Foxglove Desktop renders the topic.
 
@@ -61,6 +61,15 @@ In Editor, FoxRun uses a Roslyn source generator. For Player builds, a pre-build
 
 Runtime publishing uses generated accessors, not runtime reflection.
 
+The FoxRun-specific generated WebSocket path supports JSON, Protobuf, and
+typed MessagePack for publish, subscribe, and full duplex. MessagePack output
+uses the maintained deterministic writer; input uses the maintained bounded
+reader and a generated transactional apply path. Its wire schema is empty and
+MCAP records the exact bytes with schema id zero. Typed editing belongs to the
+custom FoxRun Publish extension. Optional ROS Providers own their generated
+DTO/CDR paths outside the core SDK. This does not imply that ordinary component
+publishers gained MessagePack support.
+
 Generated files are meant to be build artifacts, not hand-edited source.
 
 ## 9. Transport Backpressure
@@ -73,7 +82,9 @@ Client-originated subscribe and client advertise requests are also budgeted. A s
 
 Replay callbacks are collected while the replay cursor is locked and drained after the lock is released. Listener exceptions are isolated per handler: a failing listener is logged and later listeners still run. This differs from the default C# multicast delegate behavior and is intentional so one scene listener cannot stall replay delivery.
 
-Several public APIs return defensive copies to protect runtime state. Protobuf descriptor lookups clone descriptor bytes, and `Ros2BridgeFrame.Payload` returns a fresh payload copy on every call. Hot-path bridge internals use `PayloadLength` and `WritePayloadTo`; external callers that need repeated inspection should cache one `Payload` result instead of repeatedly reading the property.
+Several public APIs return defensive copies to protect runtime state.
+Protobuf descriptor lookups clone descriptor bytes. Companion packages apply
+their own ownership rules to transport-specific frame payloads.
 
 ## 10. Secure WebSocket Mode
 
@@ -85,7 +96,12 @@ The optional query token is a lightweight connection gate. It is protected in tr
 
 ## 11. IL2CPP Preservation
 
-Unity2Foxglove supports Protobuf, JSON, and productized ROS2 CDR channels. Protobuf is the default for publishers that support it; JSON remains available for compatibility, debugging, and JSON-only publishers. ROS2 uses `ros2msg` schema metadata with CDR payloads for the supported publisher set. IL2CPP builds still need preservation rules for Newtonsoft.Json and the SDK runtime assembly because the package keeps JSON paths available.
+The core SDK supports Protobuf, JSON, and typed MessagePack where a publisher
+declares that encoding. Protobuf is the default for publishers that support it;
+JSON remains available for compatibility, debugging, and JSON-only publishers.
+Optional Providers own additional wire formats. IL2CPP builds still need
+preservation rules for Newtonsoft.Json and the SDK runtime assembly because
+the package keeps JSON paths available.
 
 The practical build checklist is in [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md).
 

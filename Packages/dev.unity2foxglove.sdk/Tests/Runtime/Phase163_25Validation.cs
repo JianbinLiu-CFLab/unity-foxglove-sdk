@@ -33,6 +33,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var bridgeProviderDrawer = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2BridgeProviderDrawer.cs");
+            var bridgeHealthDrawer = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
             var managerDisable = Slice(manager, "private void OnDisable()", "private void CacheSerializedProperties()");
 
             Check(drawer.Contains("McapReplayPreflightDrawer : IDisposable", StringComparison.Ordinal)
@@ -44,8 +48,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && drawer.Contains("_pendingLatestSerializedObject = null", StringComparison.Ordinal),
                 "163-25A-2: MCAP preflight cleanup drops update callbacks and stale serialized targets");
             Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
-                  && managerDisable.Contains("_ros2BridgeHealthDrawer.Dispose();", StringComparison.Ordinal),
-                "163-25A-3: manager editor disables MCAP preflight drawer with other sub-drawers from its single lifecycle owner");
+                  && !manager.Contains("_ros2BridgeHealthDrawer", StringComparison.Ordinal)
+                  && bridgeProviderDrawer.Contains("private readonly Ros2BridgeHealthDrawer", StringComparison.Ordinal)
+                  && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += CancelHealthCheck", StringComparison.Ordinal),
+                "163-25A-3: core Manager owns MCAP cleanup while the Bridge package owns health-drawer cleanup");
             Check(drawer.Contains("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   && drawer.IndexOf("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   < drawer.IndexOf("using var indexed = McapIndexedReader.OpenRead(path);", StringComparison.Ordinal),
@@ -97,12 +103,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
 
-            Check(camera.Contains("private bool _showRos2Outputs;", StringComparison.Ordinal)
-                  && camera.Contains("private bool _showAdvancedJpeg;", StringComparison.Ordinal)
+            Check(camera.Contains("private bool _showAdvancedJpeg;", StringComparison.Ordinal)
                   && camera.Contains("private bool _showDiagnostics;", StringComparison.Ordinal)
-                  && camera.Contains("private void DrawRos2OutputsSection(", StringComparison.Ordinal)
-                  && !camera.Contains("private static void DrawRos2OutputsSection(", StringComparison.Ordinal)
-                  && !camera.Contains("private static bool _showRos2Outputs", StringComparison.Ordinal),
+                  && !camera.Contains("private static bool _showAdvancedJpeg", StringComparison.Ordinal)
+                  && !camera.Contains("private static bool _showDiagnostics", StringComparison.Ordinal)
+                  && !camera.Contains("_showRos2Outputs", StringComparison.Ordinal),
                 "163-25E-1: camera publisher foldout state is instance-scoped");
             Check(Slice(camera, "private void OnDisable()", "private static GUIContent Label").Contains("_openH264CheckTask = null;", StringComparison.Ordinal),
                 "163-25E-2: camera publisher editor drops OpenH264 task reference on disable");

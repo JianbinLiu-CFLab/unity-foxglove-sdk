@@ -7,6 +7,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -407,6 +409,121 @@ namespace Unity.FoxgloveSDK.Tests
         public static bool SourceMethodContains(string source, string methodName, string needle)
             => SourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
 
+        public static int InvocationCountInMethod(
+            string source,
+            string methodName,
+            string invocationName)
+            => QualifiedInvocationCountInMethod(
+                source,
+                methodName,
+                receiverName: null,
+                invocationName);
+
+        public static int QualifiedInvocationCountInMethod(
+            string source,
+            string methodName,
+            string receiverName,
+            string invocationName)
+        {
+            var methods = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method =>
+                    string.Equals(
+                        method.Identifier.ValueText,
+                        methodName,
+                        StringComparison.Ordinal))
+                .ToArray();
+            if (methods.Length != 1)
+                return -1;
+
+            return methods[0]
+                .DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Count(invocation =>
+                    InvocationMatches(
+                        invocation,
+                        receiverName,
+                        invocationName));
+        }
+
+        public static int InvocationCount(
+            string source,
+            string invocationName)
+            => QualifiedInvocationCount(
+                source,
+                receiverName: null,
+                invocationName);
+
+        public static int QualifiedInvocationCount(
+            string source,
+            string receiverName,
+            string invocationName)
+            => CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Count(invocation =>
+                    InvocationMatches(
+                        invocation,
+                        receiverName,
+                        invocationName));
+
+        public static bool TypeHasAttribute(
+            string source,
+            string typeName,
+            string attributeName)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (string.IsNullOrWhiteSpace(typeName))
+                throw new ArgumentException(
+                    "Type name cannot be empty.",
+                    nameof(typeName));
+            if (string.IsNullOrWhiteSpace(attributeName))
+                throw new ArgumentException(
+                    "Attribute name cannot be empty.",
+                    nameof(attributeName));
+
+            var shortName = attributeName.EndsWith(
+                "Attribute",
+                StringComparison.Ordinal)
+                ? attributeName.Substring(
+                    0,
+                    attributeName.Length - "Attribute".Length)
+                : attributeName;
+            var fullName = shortName + "Attribute";
+            return CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Where(type =>
+                    string.Equals(
+                        type.Identifier.ValueText,
+                        typeName,
+                        StringComparison.Ordinal))
+                .SelectMany(type =>
+                    type.AttributeLists)
+                .SelectMany(list => list.Attributes)
+                .Any(attribute =>
+                {
+                    var identifier = attribute.Name
+                        .DescendantNodesAndSelf()
+                        .OfType<IdentifierNameSyntax>()
+                        .LastOrDefault()
+                        ?.Identifier.ValueText;
+                    return string.Equals(
+                               identifier,
+                               shortName,
+                               StringComparison.Ordinal)
+                           || string.Equals(
+                               identifier,
+                               fullName,
+                               StringComparison.Ordinal);
+                });
+        }
+
         public static string SourceMethod(string source, string methodName)
         {
             var start = source.IndexOf(methodName, StringComparison.Ordinal);
@@ -443,6 +560,34 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return string.Empty;
+        }
+
+        private static bool InvocationMatches(
+            InvocationExpressionSyntax invocation,
+            string receiverName,
+            string invocationName)
+        {
+            if (invocation?.Expression
+                is IdentifierNameSyntax identifier)
+            {
+                return receiverName == null
+                       && identifier.Identifier.ValueText
+                       == invocationName;
+            }
+
+            if (invocation?.Expression
+                is not MemberAccessExpressionSyntax memberAccess)
+            {
+                return false;
+            }
+
+            return memberAccess.Name.Identifier.ValueText
+                   == invocationName
+                   && (receiverName == null
+                       || string.Equals(
+                           memberAccess.Expression.ToString(),
+                           receiverName,
+                           StringComparison.Ordinal));
         }
 
         private static int FindNextCodeChar(string source, int start, char target)

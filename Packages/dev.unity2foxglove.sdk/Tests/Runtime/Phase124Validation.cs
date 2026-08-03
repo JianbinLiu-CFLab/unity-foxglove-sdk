@@ -12,6 +12,7 @@ using System.Text;
 using Google.Protobuf;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
+using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -61,8 +62,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "124-A3: decoder interfaces exist");
             Check(Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Json)
                   && Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Protobuf)
-                  && Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Ros2CdrDiagnostic),
-                "124-A4: decoded payload kind enum covers JSON/protobuf/ROS2 diagnostic");
+                  && Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Provider),
+                "124-A4: decoded payload kind enum covers JSON, protobuf, and explicit Provider decoders");
             Check(new McapDecodeOptions().FailurePolicy == McapDecodeFailurePolicy.RawWithProblem,
                 "124-A5: default decode failure policy is non-breaking RawWithProblem");
 
@@ -102,8 +103,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Topics = new List<string> { "/phase124/ros2" }
             }).Single();
-            var diagnostic = ros2.Payload.Value as McapRos2CdrDiagnosticPayload;
-            Check(ros2.Payload.Kind == McapDecodedPayloadKind.Ros2CdrDiagnostic
+            var diagnostic = ros2.Payload.Value as Ros2CdrDiagnosticPayload;
+            Check(ros2.Payload.Kind == McapDecodedPayloadKind.Provider
                   && diagnostic != null
                   && diagnostic.SchemaKnown
                   && diagnostic.EncapsulationKind == 1

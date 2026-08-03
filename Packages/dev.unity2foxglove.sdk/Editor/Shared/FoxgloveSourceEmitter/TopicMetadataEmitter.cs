@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Emits the <c>FoxgloveLog_GetTopic</c> switch method and provides
     /// publish-mode literal translation for generated FoxRun partial classes.
     /// </summary>
-    internal static class TopicMetadataEmitter
+    public static class TopicMetadataEmitter
     {
         private static readonly object Sha256Gate = new();
         // Process-lifetime generator helper: keep one SHA256 instance to support
@@ -45,36 +45,44 @@ namespace Unity.FoxgloveSDK.Editor
                 var mode = topicModes[topics[i]];
                 var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
-                var endpoint = fields[0];
+                var declaration = fields[0];
+                var hasExplicitDelivery =
+                    HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Reliability)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Durability)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.History)
+                    || HasExplicit(
+                        declaration,
+                        FoxRunNamedArgumentPresence.Depth);
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, declaredEncoding: {11}, hasExplicitEncoding: {12}, qosProfile: {13}, hasExplicitQosProfile: {14}, qosReliability: {15}, hasExplicitReliability: {16}, qosDurability: {17}, hasExplicitDurability: {18}, qosHistory: {19}, hasExplicitHistory: {20}, qosDepth: {21}, hasExplicitDepth: {22}, hasExplicitHz: {23});",
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, publishTransportIds: {7}, subscribeTransportId: {8}, declaredEncoding: {9}, hasExplicitEncoding: {10}, deliveryPolicy: new FoxRunDeliveryPolicy({11}, {12}, {13}, {14}), hasExplicitDeliveryPolicy: {15}, hasExplicitHz: {16});",
                     pad,
                     i,
                     topic,
                     hz,
                     PolicyLiteral(mode),
                     tolerance,
-                    endpoint.Mode,
-                    InputDispatchEmitter.SourceLiteral(endpoint.Source),
+                    declaration.Mode,
+                    TransportIdsLiteral(
+                        declaration.PublishTransportIds),
+                    NullableStringLiteral(
+                        declaration.SubscribeTransportId),
+                    EncodingLiteral(declaration.Encoding),
                     InputDispatchEmitter.BoolLiteral(
-                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Source)
-                        == FoxRunNamedArgumentPresence.Source),
-                    InputDispatchEmitter.TargetsLiteral(endpoint.Targets),
+                        HasExplicit(
+                            declaration,
+                            FoxRunNamedArgumentPresence.Encoding)),
+                    ReliabilityLiteral(declaration.Reliability),
+                    DurabilityLiteral(declaration.Durability),
+                    HistoryLiteral(declaration.History),
+                    declaration.Depth,
                     InputDispatchEmitter.BoolLiteral(
-                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
-                        == FoxRunNamedArgumentPresence.Targets),
-                    EncodingLiteral(endpoint.Encoding),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Encoding)),
-                    QosProfileLiteral(endpoint.QosProfile),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.QoS)),
-                    QosReliabilityLiteral(endpoint.QosReliability),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Reliability)),
-                    QosDurabilityLiteral(endpoint.QosDurability),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Durability)),
-                    QosHistoryLiteral(endpoint.QosHistory),
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.History)),
-                    endpoint.QosDepth,
-                    InputDispatchEmitter.BoolLiteral(HasExplicit(endpoint, FoxRunNamedArgumentPresence.Depth)),
+                        hasExplicitDelivery),
                     InputDispatchEmitter.BoolLiteral(hasExplicitHz)));
             }
             sb.AppendLine($"{pad}            default: return default;");
@@ -85,11 +93,30 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Emits the optional Phase153 topic contract surface. Contracts are
-        /// generated constants so runtime registration does not need
-        /// reflection, model walking, or Editor-only helpers.
+        /// generated as stable readonly instances so runtime registration and
+        /// hot-path wire views do not need reflection, model walking,
+        /// per-publication allocation, or Editor-only helpers.
         /// </summary>
         internal static void EmitGetContract(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var topic = topics[i];
+                var fields = topicMap[topic];
+                var schema = fields.FirstOrDefault(
+                    field => !string.IsNullOrEmpty(field.SchemaName))
+                    ?.SchemaName ?? "";
+                var encoding = EffectiveEncoding(fields);
+                var canonical = CanonicalTopicShape(
+                    topic,
+                    schema,
+                    encoding,
+                    fields);
+                var fingerprint = Sha256Hex(canonical);
+                sb.AppendLine(
+                    $"{pad}    private static readonly FoxTopicContract __foxRunContract_{i} = new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+            }
+            sb.AppendLine();
             sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;");
             sb.AppendLine();
             sb.AppendLine($"{pad}    FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)");
@@ -98,14 +125,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        {{");
             for (int i = 0; i < topics.Count; i++)
             {
-                var topic = topics[i];
-                var fields = topicMap[topic];
-                var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "";
-                var encoding = EffectiveEncoding(fields);
-                var canonical = CanonicalTopicShape(topic, schema, encoding, fields);
-                var fingerprint = Sha256Hex(canonical);
                 sb.AppendLine(
-                    $"{pad}            case {i}: return new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+                    $"{pad}            case {i}: return __foxRunContract_{i};");
             }
             sb.AppendLine($"{pad}            default: return null;");
             sb.AppendLine($"{pad}        }}");
@@ -139,9 +160,36 @@ namespace Unity.FoxgloveSDK.Editor
                     throw new InvalidOperationException("FoxRun topic members must share one declared wire encoding.");
             }
 
-            return string.Equals(declared, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
-                ? FoxRunGenerationDescriptorConstants.ProtobufEncoding
-                : FoxRunGenerationDescriptorConstants.JsonEncoding;
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
+            }
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.MessagePackEncoding;
+            }
+            if (string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    declared,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    StringComparison.Ordinal))
+            {
+                return FoxRunGenerationDescriptorConstants.JsonEncoding;
+            }
+
+            throw new InvalidOperationException(
+                "FoxRun topic declares unsupported wire encoding '"
+                + (declared ?? string.Empty)
+                + "'.");
         }
 
         internal static bool IsInherited(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
@@ -163,79 +211,129 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunNamedArgumentPresence presence)
             => (member.NamedArgumentPresence & presence) == presence;
 
-        private static string EncodingLiteral(string value)
+        internal static string EncodingLiteral(string value)
         {
             if (string.Equals(value, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
                 return "FoxRunEncoding.Protobuf";
             if (string.Equals(value, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal))
                 return "FoxRunEncoding.JSON";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.MessagePackEncoding, StringComparison.Ordinal))
+                return "FoxRunEncoding.MessagePack";
             return "(FoxRunEncoding)0";
         }
 
-        private static string QosProfileLiteral(string value)
+        internal static string ReliabilityLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.Default";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SensorData";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal))
-                return "FoxRunQosProfile.SystemDefault";
-            return "(FoxRunQosProfile)0";
+            if (string.Equals(value, "reliable", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.Reliable";
+            if (string.Equals(value, "best-effort", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.BestEffort";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryReliability.SystemDefault";
+            return "FoxRunDeliveryReliability.ProviderDefault";
         }
 
-        private static string QosReliabilityLiteral(string value)
+        internal static string DurabilityLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableQosReliability, StringComparison.Ordinal))
-                return "FoxRunQosReliability.Reliable";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.BestEffortQosReliability, StringComparison.Ordinal))
-                return "FoxRunQosReliability.BestEffort";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosReliability.SystemDefault";
-            return "(FoxRunQosReliability)0";
+            if (string.Equals(value, "volatile", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.Volatile";
+            if (string.Equals(value, "transient-local", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.TransientLocal";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryDurability.SystemDefault";
+            return "FoxRunDeliveryDurability.ProviderDefault";
         }
 
-        private static string QosDurabilityLiteral(string value)
+        internal static string HistoryLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.VolatileQosDurability, StringComparison.Ordinal))
-                return "FoxRunQosDurability.Volatile";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, StringComparison.Ordinal))
-                return "FoxRunQosDurability.TransientLocal";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosDurability.SystemDefault";
-            return "(FoxRunQosDurability)0";
+            if (string.Equals(value, "keep-last", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepLast";
+            if (string.Equals(value, "keep-all", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.KeepAll";
+            if (string.Equals(value, "system-default", StringComparison.Ordinal))
+                return "FoxRunDeliveryHistory.SystemDefault";
+            return "FoxRunDeliveryHistory.ProviderDefault";
         }
 
-        private static string QosHistoryLiteral(string value)
+        internal static string TransportIdsLiteral(
+            IReadOnlyList<string> values)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepLastQosHistory, StringComparison.Ordinal))
-                return "FoxRunQosHistory.KeepLast";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.KeepAllQosHistory, StringComparison.Ordinal))
-                return "FoxRunQosHistory.KeepAll";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal))
-                return "FoxRunQosHistory.SystemDefault";
-            return "(FoxRunQosHistory)0";
+            if (values == null)
+                return "null";
+            return "new string[] { "
+                   + string.Join(
+                       ", ",
+                       values.Select(
+                           value =>
+                               "\""
+                               + StringLiteralEmitter
+                                   .CSharpStringLiteral(value)
+                               + "\""))
+                   + " }";
         }
 
-        private static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        internal static string NullableStringLiteral(string value)
+            => value == null
+                ? "null"
+                : "\""
+                  + StringLiteralEmitter.CSharpStringLiteral(value)
+                  + "\"";
+
+        internal static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var sb = new StringBuilder();
-            sb.Append("topic=").Append(topic ?? string.Empty).Append('\n');
-            sb.Append("encoding=").Append(encoding ?? string.Empty).Append('\n');
-            sb.Append("schema=").Append(schema ?? string.Empty).Append('\n');
-            sb.Append("fields=");
-            for (var i = 0; i < fields.Count; i++)
+            sb.Append("v2|topic=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                topic);
+            sb.Append("|encoding=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                encoding);
+            sb.Append("|schema=");
+            FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                sb,
+                schema);
+            var orderedFields = fields
+                .OrderBy(
+                    field => field.JsonFieldName,
+                    StringComparer.Ordinal)
+                .ThenBy(
+                    field => field.MemberName,
+                    StringComparer.Ordinal)
+                .ToList();
+            sb.Append("|fields=")
+                .Append(
+                    orderedFields.Count.ToString(
+                        CultureInfo.InvariantCulture));
+            foreach (var field in orderedFields)
             {
-                if (i > 0)
-                    sb.Append(';');
-                var field = fields[i];
-                sb.Append(field.JsonFieldName);
-                sb.Append(':');
-                sb.Append(field.CanonicalType);
+                sb.Append("|field|json=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.JsonFieldName);
+                sb.Append("|member=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.MemberName);
+                sb.Append("|canonical=");
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    field.CanonicalType);
+                sb.Append("|shape=");
+                var identity = FoxRunTypeShapeIdentityFormatter.Build(
+                    field.TypeShape
+                    ?? FoxRunTypeShape.Canonical(field.CanonicalType),
+                    includeUsageTraits: true);
+                FoxRunTypeShapeIdentityFormatter.AppendLengthPrefixed(
+                    sb,
+                    identity);
             }
+            sb.Append("|end");
             return sb.ToString();
         }
 
-        internal static string Sha256Hex(string value)
+        public static string Sha256Hex(string value)
         {
             var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
             byte[] hash;

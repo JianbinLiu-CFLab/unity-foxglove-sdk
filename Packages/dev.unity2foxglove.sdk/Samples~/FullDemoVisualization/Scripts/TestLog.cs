@@ -43,6 +43,8 @@ public partial class TestLog : MonoBehaviour
     public bool isPaused = false;
     private bool healthPublishingEnabled => !isPaused;
 
+    partial void UpdateMessagePackProbe();
+
     [FoxRun("/debug/conditional_position", Hz = 15, OnlyIf = nameof(telemetryEnabled))]
     public Vector3 conditionalPosition;
 
@@ -75,5 +77,6 @@ public partial class TestLog : MonoBehaviour
         _health = 95f + Mathf.Sin(Time.time * 0.75f) * 5f;
         conditionalPosition = trackedPosition;
         conditionalHealth = Mathf.RoundToInt(_health);
+        UpdateMessagePackProbe();
     }
 }

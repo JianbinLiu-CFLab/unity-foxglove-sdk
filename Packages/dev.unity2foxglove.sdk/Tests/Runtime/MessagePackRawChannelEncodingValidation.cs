@@ -41,23 +41,20 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check((int)GlobalEncoding.Json == 0
                   && (int)GlobalEncoding.Protobuf == 1
-                  && (int)GlobalEncoding.Ros2 == 2
                   && (int)GlobalEncoding.MsgPack == 3,
-                "168-1: GlobalEncoding appends MsgPack without renumbering existing values");
+                "168-1: GlobalEncoding preserves the shipped JSON, Protobuf, and MsgPack values");
 
             Check((int)PublisherEncodingOverride.UseManager == 0
                   && (int)PublisherEncodingOverride.Json == 1
                   && (int)PublisherEncodingOverride.Protobuf == 2
-                  && (int)PublisherEncodingOverride.Ros2 == 3
                   && (int)PublisherEncodingOverride.MsgPack == 4,
-                "168-2: PublisherEncodingOverride appends MsgPack without renumbering existing values");
+                "168-2: PublisherEncodingOverride preserves the shipped neutral values");
 
             Check((int)PublisherEffectiveEncoding.Json == 0
                   && (int)PublisherEffectiveEncoding.Protobuf == 1
                   && (int)PublisherEffectiveEncoding.Unsupported == 2
-                  && (int)PublisherEffectiveEncoding.Ros2 == 3
                   && (int)PublisherEffectiveEncoding.MsgPack == 4,
-                "168-3: PublisherEffectiveEncoding keeps Unsupported stable and appends MsgPack");
+                "168-3: PublisherEffectiveEncoding keeps Unsupported and MsgPack stable");
 
             Check(PublisherEncodingPolicy.ToDisplayEncoding(PublisherEffectiveEncoding.MsgPack) == "MsgPack"
                   && PublisherEncodingPolicy.ToProtocolEncoding(PublisherEffectiveEncoding.MsgPack) == "msgpack"
@@ -70,7 +67,6 @@ namespace Unity.FoxgloveSDK.Tests
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true,
                 supportsMsgPack: true);
             Check(managerDefault.Requested == PublisherEffectiveEncoding.MsgPack
                   && managerDefault.Effective == PublisherEffectiveEncoding.MsgPack
@@ -78,14 +74,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "168-5: manager default MsgPack resolves when supported");
 
             var fallback = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+                GlobalEncoding.Protobuf,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.UseManager,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: false,
                 supportsMsgPack: true);
-            Check(fallback.Requested == PublisherEffectiveEncoding.Ros2
+            Check(fallback.Requested == PublisherEffectiveEncoding.Protobuf
                   && fallback.Effective == PublisherEffectiveEncoding.MsgPack
                   && fallback.FellBack,
                 "168-6: fallback preference chooses MsgPack before JSON when protobuf is unavailable");
@@ -212,8 +207,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "168-15: Inspector encoding labels expose MsgPack with custom-client expectations");
             Check(editorLabels.Contains("AssertLabelCount<GlobalEncoding>", StringComparison.Ordinal)
                   && editorLabels.Contains("AssertLabelCount<PublisherEncodingOverride>", StringComparison.Ordinal)
-                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeOutputOverride>", StringComparison.Ordinal),
-                "168-15b: Inspector encoding label arrays assert enum cardinality");
+                  && !editorLabels.Contains("Ros2BridgeOutputOverride", StringComparison.Ordinal),
+                "168-15b: core Inspector encoding labels assert core enum cardinality without a Bridge dependency");
 
             Check(publisherEncoding.Contains("Fallback order intentionally keeps MsgPack before JSON", StringComparison.Ordinal),
                 "168-15B: encoding fallback order documents the MsgPack before JSON choice");

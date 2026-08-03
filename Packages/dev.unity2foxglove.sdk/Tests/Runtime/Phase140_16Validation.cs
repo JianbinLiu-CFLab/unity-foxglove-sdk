@@ -10,7 +10,7 @@ using System.IO;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2PointCloudMapsPackedFieldTypesThroughARejectingHelper()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
+            var source = Read("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
             Check(source.Contains("private static byte MapDatatype(PointCloudPackedNumericType type)", StringComparison.Ordinal)
                   && source.Contains("throw new NotSupportedException(\"Unsupported PointCloud packed numeric type: \" + type)", StringComparison.Ordinal)
                   && source.Contains("writer.WriteUInt8(MapDatatype(field.Type));", StringComparison.Ordinal),

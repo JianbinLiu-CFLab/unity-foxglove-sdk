@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/PointCloud
-// Purpose: Shared packed PointCloud.data construction for JSON/protobuf/CDR builders.
+// Purpose: Shared packed point-cloud data construction for serializers.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Schemas.PointCloud
@@ -45,8 +46,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     }
 
     /// <summary>Packed PointCloud.data bytes plus their field layout.</summary>
-    public sealed class PointCloudPackedData
+    public sealed class PointCloudPackedData : IDisposable
     {
+        private int _recycled;
+
         /// <summary>Create packed point-cloud data.</summary>
         public PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data)
             : this(pointStride, fields, data, ownsPooledData: false, validPointCount: null, preferPooledDataRetention: false)
@@ -103,9 +106,20 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         internal bool PreferPooledDataRetention { get; }
 
         internal void RecycleData()
+            => Dispose();
+
+        /// <summary>
+        /// Returns an owned pooled buffer exactly once. Calling this for data
+        /// returned by <see cref="PointCloudPackedDataBuilder.Build(PointCloudFrame)"/>
+        /// is a safe no-op.
+        /// </summary>
+        public void Dispose()
         {
-            if (OwnsPooledData)
+            if (OwnsPooledData
+                && Interlocked.Exchange(ref _recycled, 1) == 0)
+            {
                 PointCloudPackedByteBufferPool.Return(Data, PreferPooledDataRetention);
+            }
         }
     }
 
@@ -125,7 +139,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return Build(frame, layout);
         }
 
-        internal static PointCloudPackedData Build(PointCloudFrame frame, PointCloudLayout layout)
+        /// <summary>Build packed point bytes using a previously resolved layout.</summary>
+        public static PointCloudPackedData Build(
+            PointCloudFrame frame,
+            PointCloudLayout layout)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
@@ -136,7 +153,13 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return new PointCloudPackedData(layout.Stride, layout.Fields, data);
         }
 
-        internal static PointCloudPackedData BuildPooled(PointCloudFrame frame, PointCloudLayout layout)
+        /// <summary>
+        /// Build packed point bytes in a pooled buffer. The returned value must
+        /// be disposed after the payload has been consumed.
+        /// </summary>
+        public static PointCloudPackedData BuildPooled(
+            PointCloudFrame frame,
+            PointCloudLayout layout)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
@@ -153,7 +176,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 preferPooledDataRetention: true);
         }
 
-        internal static PointCloudLayout BuildLayout(PointCloudFrame frame)
+        /// <summary>Resolve the immutable packed layout for a point-cloud frame.</summary>
+        public static PointCloudLayout BuildLayout(PointCloudFrame frame)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));

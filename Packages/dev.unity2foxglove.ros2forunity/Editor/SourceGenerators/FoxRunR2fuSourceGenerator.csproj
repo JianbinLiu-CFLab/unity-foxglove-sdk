@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AssemblyName>Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator</AssemblyName>
+    <DefineConstants>$(DefineConstants);FOXRUN_PROVIDER_ANALYZER;FOXRUN_R2FU_ANALYZER</DefineConstants>
+    <NoWarn>$(NoWarn);RS2000;RS2008</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src\Shared\FoxgloveLogSourceGenerator.cs;src\Shared\FoxgloveLogSourceGenerator.Models.cs;src\Shared\FoxRunCanonicalTypeNormalizer.cs;src\Shared\FoxRunEmissionTypeNameFormatter.cs;src\Shared\FoxRunGenerationDescriptorConstants.cs;src\Shared\FoxRunGenerationModel.cs;src\Shared\FoxRunGenerationModelValidator.cs;src\Shared\FoxRunProtobufFieldNumber.cs;src\Shared\FoxRunRoslynGenerationModelLowerer.cs;src\Shared\FoxRunRoslynTypeShapeBuilder.cs;src\Shared\FoxRunTypeShape.cs;src\Shared\FoxServiceDtoRules.cs;src\Shared\FoxServiceDtoTypeNames.cs;src\Shared\FoxServiceRoslynTypeHelpers.cs;src\Shared\IdentifierUtils.cs;src\Shared\StringLiteralEmitter.cs;src\Shared\TypeExprEmitter.cs" />
+    <Compile Include="..\Native\FoxRun\IFoxRunR2fuEmitterMember.cs;..\Native\FoxRun\Ros2InputDispatchEmitter.cs;..\Native\FoxRun\Ros2CustomDtoMapperEmitter.cs;..\Native\FoxRun\Ros2CustomPublishEmitter.cs;..\Native\FoxRun\FoxRunRos2MessageShape.cs;..\Native\FoxRun\FoxRunRos2CustomDtoShape.cs;..\Native\FoxRun\FoxRunRos2CustomNamingPolicy.cs;..\Native\FoxRun\FoxRunRos2CustomIdentity.cs;src\FoxRunR2fuAnalyzerPipeline.cs;src\FoxRunR2fuAnalyzerUtilities.cs;src\FoxRunR2fuDiagnostics.cs;src\FoxRunRoslynRos2MessageShapeBuilder.cs;src\FoxRunRoslynRos2CustomDtoShapeBuilder.cs"
+             LinkBase="R2fuSourceGenerators" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

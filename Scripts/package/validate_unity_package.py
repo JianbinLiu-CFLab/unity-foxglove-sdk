@@ -35,6 +35,9 @@ EMPTY_RESULT_NAME_WIDTH = 0
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
+ROS2_BRIDGE_PACKAGE = (
+    ROOT / "Packages" / "dev.unity2foxglove.ros2bridge"
+)
 REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
 ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
@@ -50,7 +53,6 @@ UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
 EXPECTED_SAMPLES = {
     "Basic Visualization": "Samples~/BasicVisualization",
     "Full Demo Visualization": "Samples~/FullDemoVisualization",
-    "ROS2 Bridge Sample": "Samples~/Ros2BridgeSample",
     "Virtual LiDAR Maze Demo": "Samples~/Virtual LiDAR Maze Demo",
 }
 EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)
@@ -228,6 +230,96 @@ def load_package_json(results: list[CheckResult]) -> dict:
         return {}
     add(results, "package.json parses", True, rel(path))
     return data
+
+
+def check_ros2_bridge_package(results: list[CheckResult]) -> None:
+    """Validate the extracted optional Bridge package and its one sample."""
+    manifest = ROS2_BRIDGE_PACKAGE / "package.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        add(
+            results,
+            "ROS2 Bridge package.json parses",
+            False,
+            f"{rel(manifest)}: {exc}",
+        )
+        return
+
+    dependencies = data.get("dependencies")
+    samples = data.get("samples")
+    sample = samples[0] if isinstance(samples, list) and len(samples) == 1 else {}
+    add(
+        results,
+        "ROS2 Bridge package identity",
+        data.get("name") == "dev.unity2foxglove.ros2bridge"
+        and data.get("version") == "0.1.0-preview.1",
+        f"name={data.get('name')}, version={data.get('version')}",
+    )
+    add(
+        results,
+        "ROS2 Bridge dependency boundary",
+        isinstance(dependencies, dict)
+        and set(dependencies) == {"dev.unity2foxglove.sdk"},
+        f"dependencies={sorted(dependencies) if isinstance(dependencies, dict) else 'n/a'}",
+    )
+    add(
+        results,
+        "ROS2 Bridge sample declaration",
+        sample.get("displayName") == "ROS2 Bridge Sample"
+        and sample.get("path") == "Samples~/Ros2BridgeSample"
+        and (ROS2_BRIDGE_PACKAGE / "Samples~/Ros2BridgeSample").is_dir(),
+        f"sample={sample}",
+    )
+
+    required = (
+        ("Runtime/Unity2Foxglove.Ros2Bridge.asmdef", True),
+        ("Editor/Unity2Foxglove.Ros2Bridge.Editor.asmdef", True),
+        ("Tests/Unity2Foxglove.Ros2Bridge.Tests.asmdef", True),
+        ("Documentation~/en/PHASE186_BREAKING_UPGRADE.md", False),
+        ("Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", True),
+        ("Samples~/Ros2BridgeSample/Scripts/Unity2Foxglove.Ros2Bridge.Sample.asmdef", True),
+        ("Samples~/Ros2BridgeSample/Scripts/Ros2BridgeSampleDuplex.cs", True),
+        ("Samples~/Ros2BridgeSample/Editor/Unity2Foxglove.Ros2Bridge.Sample.Editor.asmdef", True),
+        ("Samples~/Ros2BridgeSample/Editor/Ros2BridgeSampleSceneBuilder.cs", True),
+        ("Editor/SourceGenerators/analyzers/dotnet/cs/Unity2Foxglove.Ros2Bridge.FoxRunSourceGenerator.dll", True),
+    )
+    missing = [
+        path
+        for path, requires_meta in required
+        if not (ROS2_BRIDGE_PACKAGE / path).is_file()
+        or (
+            requires_meta
+            and not Path(str(ROS2_BRIDGE_PACKAGE / path) + ".meta").is_file()
+        )
+    ]
+    add(
+        results,
+        "ROS2 Bridge required assets and metas",
+        not missing,
+        "complete" if not missing else f"missing={missing}",
+    )
+
+    sample_sync = ROOT / "Scripts" / "samples" / "sync_ros2_bridge_sample.py"
+    add(
+        results,
+        "ROS2 Bridge dedicated sample sync tool",
+        sample_sync.is_file(),
+        rel(sample_sync),
+    )
+
+    cross_references = []
+    for asmdef in ROS2_BRIDGE_PACKAGE.rglob("*.asmdef"):
+        if "Unity2Foxglove.Ros2ForUnity" in asmdef.read_text(
+            encoding="utf-8"
+        ):
+            cross_references.append(rel(asmdef))
+    add(
+        results,
+        "ROS2 Bridge has no R2FU assembly reference",
+        not cross_references,
+        "none" if not cross_references else f"offenders={cross_references}",
+    )
 
 
 def check_package_identity(results: list[CheckResult], data: dict) -> None:
@@ -625,6 +717,7 @@ def main() -> int:
     if data:
         check_package_identity(results, data)
         check_dependent_package_versions(results, data)
+    check_ros2_bridge_package(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
     check_sample_meta(results, samples_files)

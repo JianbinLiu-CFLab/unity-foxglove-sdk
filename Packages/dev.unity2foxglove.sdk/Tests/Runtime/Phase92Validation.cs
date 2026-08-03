@@ -15,7 +15,8 @@ using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -84,7 +85,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var files = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs",
                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase92Validation.cs",
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/PublisherEncodingEditorLabels.cs",
             };
@@ -97,179 +98,203 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check((int)GlobalEncoding.Json == 0
                   && (int)GlobalEncoding.Protobuf == 1
-                  && (int)GlobalEncoding.Ros2 == 2,
-                "92B-1: GlobalEncoding preserves serialized values and adds ROS2");
+                  && (int)GlobalEncoding.MsgPack == 3,
+                "92B-1: core encoding policy contains only Foxglove wire encodings");
             Check((int)PublisherEncodingOverride.UseManager == 0
                   && (int)PublisherEncodingOverride.Json == 1
                   && (int)PublisherEncodingOverride.Protobuf == 2
-                  && (int)PublisherEncodingOverride.Ros2 == 3,
-                "92B-2: PublisherEncodingOverride preserves serialized values and adds ROS2");
+                  && (int)PublisherEncodingOverride.MsgPack == 4,
+                "92B-2: per-publisher overrides contain only Foxglove wire encodings");
             Check((int)PublisherEffectiveEncoding.Json == 0
                   && (int)PublisherEffectiveEncoding.Protobuf == 1
                   && (int)PublisherEffectiveEncoding.Unsupported == 2
-                  && (int)PublisherEffectiveEncoding.Ros2 == 3,
-                "92B-3: PublisherEffectiveEncoding preserves old Unsupported value");
+                  && (int)PublisherEffectiveEncoding.MsgPack == 4,
+                "92B-3: effective encoding preserves Unsupported and MsgPack values");
 
-            Check(PublisherEncodingPolicy.ToDisplayEncoding(PublisherEffectiveEncoding.Ros2) == "ROS2"
-                  && PublisherEncodingPolicy.ToProtocolEncoding(PublisherEffectiveEncoding.Ros2) == "cdr"
-                  && PublisherEncodingPolicy.ToSchemaEncoding(PublisherEffectiveEncoding.Ros2) == "ros2msg",
-                "92B-4: ROS2 display/protocol/schema labels are split");
+            Check(Ros2BridgeMcapCodecs.MessageEncoding == "cdr"
+                  && Ros2BridgeMcapCodecs.SchemaEncoding == "ros2msg",
+                "92B-4: Bridge owns its CDR and schema labels");
 
-            var ros2Supported = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+            var msgPackSupported = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.MsgPack,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true);
-            Check(ros2Supported.Effective == PublisherEffectiveEncoding.Ros2 && !ros2Supported.FellBack,
-                "92B-5: global ROS2 resolves to ROS2 when supported");
+                supportsMsgPack: true);
+            Check(msgPackSupported.Effective == PublisherEffectiveEncoding.MsgPack && !msgPackSupported.FellBack,
+                "92B-5: global MessagePack resolves when supported");
 
-            var videoFallback = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+            var protobufFallback = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.MsgPack,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: false,
                 supportsProtobuf: true,
-                supportsRos2: false);
-            Check(videoFallback.Requested == PublisherEffectiveEncoding.Ros2
-                  && videoFallback.Effective == PublisherEffectiveEncoding.Protobuf
-                  && videoFallback.FellBack
-                  && videoFallback.RequestedLabel == "ROS2"
-                  && videoFallback.EffectiveLabel == "Protobuf",
-                "92B-6: unsupported ROS2 falls back to Protobuf with product labels");
+                supportsMsgPack: false);
+            Check(protobufFallback.Requested == PublisherEffectiveEncoding.MsgPack
+                  && protobufFallback.Effective == PublisherEffectiveEncoding.Protobuf
+                  && protobufFallback.FellBack,
+                "92B-6: unsupported MessagePack falls back to Protobuf");
 
             var jsonFallback = PublisherEncodingPolicy.Resolve(
-                GlobalEncoding.Ros2,
+                GlobalEncoding.Protobuf,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: true,
                 supportsProtobuf: false,
-                supportsRos2: false);
+                supportsMsgPack: false);
             Check(jsonFallback.Effective == PublisherEffectiveEncoding.Json && jsonFallback.EffectiveLabel == "JSON",
-                "92B-7: unsupported ROS2 falls back to JSON when Protobuf is unavailable");
+                "92B-7: unsupported Protobuf falls back to JSON");
 
-            var overrideRos2 = PublisherEncodingPolicy.Resolve(
+            var overrideMsgPack = PublisherEncodingPolicy.Resolve(
                 GlobalEncoding.Protobuf,
                 allowPublisherOverride: true,
-                PublisherEncodingOverride.Ros2,
+                PublisherEncodingOverride.MsgPack,
                 supportsJson: true,
                 supportsProtobuf: true,
-                supportsRos2: true);
-            Check(overrideRos2.Requested == PublisherEffectiveEncoding.Ros2 && overrideRos2.Effective == PublisherEffectiveEncoding.Ros2,
-                "92B-8: per-publisher ROS2 override resolves");
+                supportsMsgPack: true);
+            Check(overrideMsgPack.Requested == PublisherEffectiveEncoding.MsgPack
+                  && overrideMsgPack.Effective == PublisherEffectiveEncoding.MsgPack,
+                "92B-8: per-publisher MessagePack override resolves");
         }
 
         private static void VerifyManagerProductPath()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var managerProviders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
             var managerServer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/SessionFactory.cs");
-            Check(managerSource.Contains("TryPrepareRos2Publish"),
-                "92C-1: manager exposes product ROS2 preflight");
-            Check(managerSource.Contains("public void PublishRos2(string topic, string schemaName, byte[] payload, ulong logTimeNs)"),
-                "92C-2: manager exposes product PublishRos2 helper");
-            Check(managerSource.Contains("var key = (topic, schemaName, CdrEncoding, Ros2MsgSchemaEncoding);"),
-                "92C-3: ROS2 channel cache key includes schema encoding");
-            Check(managerSource.Contains("FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _)"),
-                "92C-4: manager validates ROS2 schema names against catalog");
-            Check(managerSource.Contains("_runtime.PublishRos2Cdr(channelId, payload, logTimeNs);")
-                  && !managerSource.Contains("_runtime.PublishRos2Cdr(channelId, payload ??"),
-                "92C-5: product ROS2 publish preserves payload validation");
-            Check(runtimeSource.Contains("bool enableCdrClientPublish = true")
-                  && factorySource.Contains("enableCdrClientPublish && ros2MsgSchemasRegistered"),
-                "92C-6: runtime can suppress CDR advertisement for product sessions");
-            Check(managerServer.Contains("_runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false)"),
-                "92C-7: manager keeps CDR out of client-publish supportedEncodings");
+            Check(publisherBase.Contains("ShouldPrepareOrdinaryTransportPayload")
+                  && managerProviders.Contains("HasOrdinaryTransportDemand"),
+                "92C-1: core publisher preflight uses frozen ordinary Provider demand");
+            Check(publisherBase.Contains("PublishOrdinaryTransport")
+                  && managerProviders.Contains("PublishOrdinaryTransports"),
+                "92C-2: core publisher exposes neutral ordinary Provider fanout");
+            Check(managerProviders.Contains("new FoxRunTransportPublishRoute")
+                  && managerProviders.Contains("contribution.MessageEncoding")
+                  && managerProviders.Contains("contribution.SchemaEncoding")
+                  && managerProviders.Contains("request.DeliveryPolicy"),
+                "92C-3: Provider route carries topic, schema encodings, and delivery policy");
+            Check(bridgeProvider.Contains("TryMapOrdinary")
+                  && bridgeProvider.Contains("MatchesLogicalType")
+                  && bridgeProvider.Contains("FoxgloveRos2MsgSchemaCatalog.TryGet")
+                  && bridgeProvider.Contains("IFoxRunOrdinaryPayloadMapper"),
+                "92C-4: Bridge Provider validates and maps supported logical schemas");
+            Check(bridgeProvider.Contains("Ros2CdrPayloadValidator.Validate(payload);")
+                  && !bridgeProvider.Contains("payload ??="),
+                "92C-5: Bridge Provider preserves strict CDR payload validation");
+            Check(runtimeSource.Contains("_additionalMessageEncodings")
+                  && runtimeSource.Contains("EnableMessageEncoding")
+                  && factorySource.Contains("additionalMessageEncodings")
+                  && factorySource.Contains("session.EnableMessageEncoding(encoding)"),
+                "92C-6: optional packages explicitly add non-core message encodings");
+            Check(!managerServer.Contains("\"cdr\"")
+                  && !managerServer.Contains("Ros2Bridge")
+                  && !managerProviders.Contains("Ros2Bridge"),
+                "92C-7: core Manager keeps Bridge CDR out of its default session");
             Check(!managerServer.Contains("RegisterRos2InteractivePublishTargetChannels")
-                  && !managerSource.Contains("Ros2InteractivePublishSchemas"),
+                  && !managerProviders.Contains("Ros2InteractivePublishSchemas"),
                 "92C-8: manager does not add fake ROS navigation publish topics");
         }
 
         private static void VerifyPublisherIntegration()
         {
-            var schemaNames = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
+            var schemaNames = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
+            var bridgeProvider = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
             foreach (var mapping in ProductSchemaMappings())
                 Check(schemaNames.Contains(mapping.sourceToken),
                     "92D-1: schema mapping contains " + mapping.schemaName);
 
+            Check(bridgeProvider.Contains("Ros2CdrSerializerRegistry.TryGetByClrType")
+                  && bridgeProvider.Contains("Ros2BridgeOrdinaryLogicalSchema.Matches")
+                  && bridgeProvider.Contains("serializer.Serialize(message)"),
+                "92D-1b: Bridge Provider maps registered Foxglove protobuf publisher schemas");
+
             CheckPublisher(
                 "FoxgloveTransformPublisher.cs",
-                "Ros2PublisherSchemaNames.FrameTransform",
-                "Ros2CdrFrameTransformBuilder.Serialize",
-                "PublishRos2");
+                "CreateProtobufTransform");
             CheckPublisher(
                 "FoxgloveSceneCubePublisher.cs",
-                "Ros2PublisherSchemaNames.SceneUpdate",
-                "Ros2CdrSceneUpdateBuilder.Serialize",
-                "PublishRos2");
+                "CreateProtobufSceneUpdate");
             CheckPublisher(
                 "FoxgloveCameraPublisher.cs",
-                "Ros2PublisherSchemaNames.CompressedImage",
-                "Ros2CdrCompressedImageBuilder.Serialize",
-                "PublishRos2");
+                "SensorCompressedImageFrame");
             CheckPublisher(
                 "FoxgloveCameraCalibrationPublisher.cs",
-                "Ros2PublisherSchemaNames.CameraCalibration",
-                "Ros2CdrCameraCalibrationBuilder.Serialize",
-                "PublishRos2");
+                "CameraCalibrationMessageBuilder.CreateProtobuf");
             CheckPublisher(
                 "FoxgloveLaserScanPublisher.cs",
-                "Ros2PublisherSchemaNames.LaserScan",
-                "Ros2CdrLaserScanBuilder.Serialize",
-                "PublishRos2");
+                "LaserScanMessageBuilder.CreateProtobuf");
 
             var camera = ReadPublisher("FoxgloveCameraPublisher.cs");
-            Check(camera.Contains("SupportsRos2Encoding => ActiveProfile.Mode == CameraOutputMode.Jpeg"),
-                "92D-2: camera ROS2 support is limited to JPEG mode");
+            Check(camera.Contains("CameraOutputMode.Jpeg")
+                  && camera.Contains("PublishOrdinaryTransport")
+                  && camera.Contains("SensorCompressedImageFrame")
+                  && !camera.Contains("PublishRos2"),
+                "92D-2: camera exposes JPEG values through the neutral Provider boundary");
 
             var pointCloud = ReadPublisher("FoxglovePointCloudPublisher.cs")
                 + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Raw.cs")
                 + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Draco.cs")
-                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.PointCloud2Native.cs")
+                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.PackedPointCloud.cs")
                 + "\n" + ReadPublisher("PointCloudOutputMode.cs");
             var pointCloudWorkers = ReadPublisher("PointCloudWorkerEncoders.cs");
-            Check(pointCloud.Contains("Ros2PublisherSchemaNames.PointCloud")
-                  && pointCloud.Contains("Ros2PublisherSchemaNames.CompressedPointCloud")
-                  && pointCloud.Contains("Ros2CdrPointCloudBuilder.Serialize")
+            Check(pointCloud.Contains("PublishOrdinaryTransport")
+                  && pointCloud.Contains("PackedPointCloudFrame")
                   && pointCloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
-                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest")
-                  && pointCloudWorkers.Contains("Ros2CdrSensorPointCloud2Builder.Serialize")
-                  && pointCloudWorkers.Contains("Ros2CdrCompressedPointCloudBuilder.Serialize")
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest")
+                  && pointCloudWorkers.Contains("CompressedPointCloudMessageBuilder.CreateProtobuf")
                   && pointCloudWorkers.Contains("DracoPointCloudNativeEncoder.TryEncode")
+                  && bridgeProvider.Contains("request.Value is PackedPointCloudFrame")
+                  && bridgeProvider.Contains("Ros2CdrSensorPointCloud2Builder.Serialize")
+                  && !pointCloud.Contains("Ros2Cdr")
+                  && !pointCloudWorkers.Contains("Ros2Cdr")
                   && !pointCloud.Contains("new byte[] { 1, 2, 3, 4 }")
                   && !pointCloudWorkers.Contains("new byte[] { 1, 2, 3, 4 }"),
-                "92D-3: point-cloud raw and Draco modes map to distinct real ROS2 payload paths");
+                "92D-3: point-cloud modes hand neutral values to Bridge-owned CDR mappings");
 
             var spike = ReadPublisher("FoxgloveCompressedPointCloudPublisher.cs");
-            Check(spike.Contains("SupportsRos2Encoding => false"),
-                "92D-4: legacy Draco spike publisher remains protobuf-only");
+            Check(!spike.Contains("PublishOrdinaryTransport"),
+                "92D-4: legacy Draco spike publisher stays outside Provider fanout");
         }
 
         private static void VerifyInspectorUx()
         {
             var labels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/PublisherEncodingEditorLabels.cs");
-            Check(labels.Contains("\"ROS2\"") && labels.Contains("DrawGlobalEncoding") && labels.Contains("DrawPublisherOverride"),
-                "92E-1: shared editor labels force visible ROS2 text");
+            Check(labels.Contains("\"JSON\"")
+                  && labels.Contains("\"Protobuf\"")
+                  && labels.Contains("\"MsgPack\"")
+                  && labels.Contains("DrawGlobalEncoding")
+                  && labels.Contains("DrawPublisherOverride")
+                  && !labels.Contains("\"ROS2\"")
+                  && !labels.Contains("\"CDR\""),
+                "92E-1: core encoding labels expose only Foxglove wire encodings");
 
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var publisherBaseEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
-            Check(publishDataEditor.Contains("DrawGlobalEncodingProperty(\"_defaultPublisherEncoding\"")
+            Check(publishDataEditor.Contains("DrawGlobalEncodingProperty(")
+                  && publishDataEditor.Contains("\"_defaultPublisherEncoding\"")
                   && publisherBaseEditor.Contains("PublisherEncodingEditorLabels.DrawPublisherOverride")
-                  && publisherBaseEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding"),
-                "92E-2: manager/base publisher inspector uses product encoding labels");
+                  && publisherBaseEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding")
+                  && publishDataEditor.Contains("FoxRunTransportProviderDrawerRegistry.Capture"),
+                "92E-2: Manager and publisher inspectors combine encoding labels with Provider extensions");
             Check(cameraEditor.Contains("PublisherEncodingEditorLabels.DrawPublisherOverride")
                   && cameraEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding")
+                  && cameraEditor.Contains("Provider Payload")
+                  && !cameraEditor.Contains("ROS2")
                   && !cameraEditor.Contains("cdr"),
-                "92E-3: camera inspector does not expose cdr wording");
-            Check(pointCloudEditor.Contains("Protobuf and ROS2")
+                "92E-3: camera inspector exposes Provider-neutral payload controls");
+            Check(pointCloudEditor.Contains("Packed Provider Frame")
                   && pointCloudEditor.Contains("PublisherEncodingEditorLabels.DrawPublisherOverride")
-                  && pointCloudEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding"),
-                "92E-4: point-cloud inspector advertises Draco ROS2 support");
+                  && pointCloudEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding")
+                  && !pointCloudEditor.Contains("ROS2"),
+                "92E-4: point-cloud inspector advertises Provider-neutral handoff");
         }
 
         private static void VerifyWebSocketMcapAndReplay()
@@ -281,7 +306,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase92FakeTransport();
             using var session = new FoxgloveSession("phase92-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             for (var i = 0; i < samples.Count; i++)
@@ -334,10 +359,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDocsAndBoundaries()
         {
-            var schemaCoverage = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
+            var bridgeManifest = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json");
+            var sensorDocs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/14_Typed_Sensor_Publishers.md");
             var readme = ReadRepoText("README.md");
-            Check(schemaCoverage.Contains("ROS2") && schemaCoverage.Contains("CompressedPointCloud"),
-                "92G-1: schema coverage docs mention productized ROS2 coverage");
+            Check(bridgeManifest.Contains("CDR codecs")
+                  && bridgeManifest.Contains("ROS schema adapters")
+                  && sensorDocs.Contains("companion Providers")
+                  && sensorDocs.Contains("CompressedPointCloud"),
+                "92G-1: Bridge manifest and sensor docs describe Provider-owned ROS2 coverage");
             Check(readme.Contains("ROS2") || readme.Contains("ROS 2"),
                 "92G-2: README mentions user-facing ROS2 output");
 
@@ -346,17 +375,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "92G-3: existing scenes still default to Protobuf");
         }
 
-        private static void CheckPublisher(string fileName, string schemaNameToken, string builderToken, string publishToken)
+        private static void CheckPublisher(string fileName, string builderToken)
         {
             var source = ReadPublisher(fileName);
             var builderSource = fileName == "FoxgloveCameraPublisher.cs"
                 ? source + ReadPublisher("CameraSensorProfileResolver.cs")
                 : source;
-            Check(source.Contains("SupportsRos2Encoding")
-                  && source.Contains(schemaNameToken)
+            Check(source.Contains("publishProvider")
                   && builderSource.Contains(builderToken)
-                  && source.Contains(publishToken),
-                "92D-source: " + fileName + " productizes ROS2");
+                  && source.Contains("PublishOrdinaryTransport")
+                  && !source.Contains("PublishRos2")
+                  && !source.Contains("Ros2Cdr"),
+                "92D-source: " + fileName + " exposes a neutral Provider value");
         }
 
         private static List<Phase92Sample> BuildProductSamples()

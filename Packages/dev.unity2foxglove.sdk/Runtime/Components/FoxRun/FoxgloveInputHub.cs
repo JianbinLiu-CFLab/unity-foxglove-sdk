@@ -101,14 +101,12 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding -= OnClientMessage;
-                _manager.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
             }
             _manager = manager;
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding += OnClientMessage;
-                _manager.FoxRunPublishSessionChanged += OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
             }
             ApplyManagerPolicy();
@@ -123,19 +121,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
-            _router.DefaultPublishTargets = _manager.ActiveFoxRunPublishTargets;
             ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);
-        }
-
-        private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
-        {
-            _router.DefaultPublishTargets = policy != null && policy.SessionActive
-                ? policy.DefaultTargets
-                : _manager != null
-                    ? _manager.ActiveFoxRunPublishTargets
-                    : FoxRunEndpoint.Foxglove;
-            RebuildRouterRegistrationsForActiveSession();
         }
 
         private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
@@ -153,8 +139,11 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _subscriptionsEnabled = policy.SubscriptionsEnabled;
-            _router.DefaultSubscriptionSource = policy.DefaultSource;
-            _router.DefaultSubscriptionEncoding = policy.FoxgloveEncoding;
+            _router.DefaultSubscribeTransportId =
+                policy.DefaultProvider.Value;
+            _router.DefaultSubscriptionEncoding =
+                policy.WebSocketEncoding;
+            _router.MaxPayloadBytes = policy.MaxPayloadBytes;
             _router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;
             _inheritedSubscribeRateHz = policy.DefaultSubscribeRateHz;
         }

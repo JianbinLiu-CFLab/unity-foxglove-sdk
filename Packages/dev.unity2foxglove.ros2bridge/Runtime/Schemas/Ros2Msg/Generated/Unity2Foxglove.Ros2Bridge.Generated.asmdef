@@ -1,0 +1,18 @@
+{
+  "name": "Unity2Foxglove.Ros2Bridge.Generated",
+  "rootNamespace": "Unity2Foxglove.Ros2Bridge",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Proto.Generated",
+    "Unity.FoxgloveSDK.Sensors",
+    "Unity2Foxglove.Ros2Bridge"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [
+    "WebGL"
+  ],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

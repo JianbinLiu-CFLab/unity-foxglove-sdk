@@ -330,7 +330,7 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var bridge in new[]
             {
                 "Ros2ForUnityTransformNativeBridge.cs",
-                "Ros2ForUnityPointCloud2NativeBridge.cs",
+                "Ros2ForUnityPackedPointCloudBridge.cs",
                 "Ros2ForUnityImuNativeBridge.cs",
                 "Ros2ForUnityCameraNativeBridge.cs",
             })

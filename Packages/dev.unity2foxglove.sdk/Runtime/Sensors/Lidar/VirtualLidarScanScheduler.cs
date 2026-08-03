@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Components
 
                 // Rays are cast from the current tick pose. The build job always keeps
                 // active scan-reference coordinates and only computes acquisition-time
-                // coordinates for raw PointCloud2 Native or deskew consumers.
+                // coordinates for raw PackedPointCloud Native or deskew consumers.
                 var queryParams = new QueryParameters(layerMask.value);
                 var acquisitionWorldToLocal = computeAcquisitionFrame
                     ? CoordinateConverterFloat3.RigidWorldToLocal(worldPos, worldRot)

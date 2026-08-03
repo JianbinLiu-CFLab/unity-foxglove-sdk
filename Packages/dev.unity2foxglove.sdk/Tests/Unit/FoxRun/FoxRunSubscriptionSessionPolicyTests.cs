@@ -10,191 +10,100 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
     public sealed class FoxRunSubscriptionSessionPolicyTests
     {
+        private static readonly FoxRunTransportId Provider =
+            new FoxRunTransportId("unity2foxglove.test");
+        private static readonly FoxRunDeliveryPolicy Delivery =
+            new FoxRunDeliveryPolicy(
+                FoxRunDeliveryReliability.Reliable,
+                FoxRunDeliveryDurability.Volatile,
+                FoxRunDeliveryHistory.KeepLast,
+                7);
+
         [Fact]
         public void InitialStateExposesANonNullDisabledSnapshot()
         {
             var state = new FoxRunSubscriptionSessionState();
 
-            Assert.NotNull(state.Current);
             Assert.False(state.Current.SubscriptionsEnabled);
             Assert.Equal(0UL, state.Current.SessionGeneration);
+            Assert.Equal(
+                FoxgloveWebSocketTransport.TransportId,
+                state.Current.DefaultProvider);
         }
 
         [Fact]
-        public void ActiveSnapshotCapturesIndependentMaximumAndDefaultSubscribeRates()
+        public void ActiveSnapshotCapturesProviderEncodingDeliveryAndBounds()
         {
             var state = new FoxRunSubscriptionSessionState();
 
             var policy = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
-                FoxRunEncoding.JSON,
-                FoxRunResolvedQos.SensorData,
-                8 * 1024 * 1024,
+                Provider,
+                FoxRunEncoding.MessagePack,
+                Delivery,
                 transportAdmissionRateLimitHz: 120,
-                defaultSubscribeRateHz: 37);
+                defaultSubscribeRateHz: 37,
+                maxPayloadBytes: 8 * 1024 * 1024);
 
-            Assert.Equal(1UL, policy.SessionGeneration);
             Assert.True(policy.SubscriptionsEnabled);
-            Assert.Equal(FoxRunEndpoint.Ros2Native, policy.DefaultSource);
-            Assert.Equal(FoxRunEncoding.JSON, policy.FoxgloveEncoding);
-            Assert.Equal(FoxRunResolvedQos.SensorData, policy.DefaultRos2Qos);
-            Assert.Equal(8 * 1024 * 1024, policy.NativeCopyBudgetBytes);
+            Assert.Equal(Provider, policy.DefaultProvider);
+            Assert.Equal(FoxRunEncoding.MessagePack, policy.WebSocketEncoding);
+            Assert.Equal(Delivery, policy.DefaultDeliveryPolicy);
             Assert.Equal(120, policy.TransportAdmissionRateLimitHz);
             Assert.Equal(37, policy.DefaultSubscribeRateHz);
-
-            var properties = typeof(FoxRunSubscriptionSessionPolicy)
-                .GetProperties(BindingFlags.Instance | BindingFlags.Public);
-            Assert.Equal(8, properties.Length);
-            Assert.All(properties, property => Assert.False(property.CanWrite));
+            Assert.Equal(8 * 1024 * 1024, policy.MaxPayloadBytes);
+            Assert.All(
+                typeof(FoxRunSubscriptionSessionPolicy).GetProperties(
+                    BindingFlags.Instance | BindingFlags.Public),
+                property => Assert.False(property.CanWrite));
         }
 
         [Fact]
-        public void NativeProviderRetainsAnIndependentWebSocketEncoding()
+        public void RepeatedBeginFreezesThenEndRecapturesAndNormalizesBounds()
         {
             var state = new FoxRunSubscriptionSessionState();
-
-            var policy = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
+            var first = state.BeginIfNeeded(
+                Provider,
                 FoxRunEncoding.Protobuf,
-                FoxRunResolvedQos.Default,
-                4 * 1024 * 1024,
-                120,
-                60);
-
-            Assert.Equal(FoxRunEndpoint.Ros2Native, policy.DefaultSource);
-            Assert.Equal(FoxRunEncoding.Protobuf, policy.FoxgloveEncoding);
-        }
-
-        [Fact]
-        public void BeginRejectsAnUnspecifiedProfileSource()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-
-            Assert.Throws<ArgumentOutOfRangeException>(() => state.BeginIfNeeded(
-                    (FoxRunEndpoint)0,
-                    FoxRunEncoding.JSON,
-                    FoxRunResolvedQos.Default,
-                    0,
-                    0,
-                    0));
-        }
-
-        [Fact]
-        public void BeginNormalizesResourceLimits()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-
-            var policy = state.BeginIfNeeded(
-                FoxRunEndpoint.Foxglove,
+                Delivery,
+                60,
+                10,
+                4096);
+            var repeated = state.BeginIfNeeded(
+                FoxgloveWebSocketTransport.TransportId,
                 FoxRunEncoding.JSON,
-                FoxRunResolvedQos.SystemDefault,
+                FoxRunDeliveryPolicy.ProviderDefault,
+                1,
+                1,
+                1);
+            Assert.Same(first, repeated);
+
+            state.End();
+            var second = state.BeginIfNeeded(
+                FoxgloveWebSocketTransport.TransportId,
+                FoxRunEncoding.JSON,
+                FoxRunDeliveryPolicy.ProviderDefault,
                 0,
                 0,
                 0);
 
-            Assert.Equal(FoxRunEndpoint.Foxglove, policy.DefaultSource);
-            Assert.Equal(FoxRunResolvedQos.SystemDefault, policy.DefaultRos2Qos);
-            Assert.Equal(4 * 1024 * 1024, policy.NativeCopyBudgetBytes);
-            Assert.Equal(1, policy.TransportAdmissionRateLimitHz);
-            Assert.Equal(1, policy.DefaultSubscribeRateHz);
-        }
-
-        [Fact]
-        public void RepeatedBeginFreezesTheOriginalSnapshotAndGeneration()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-            var firstQos = new FoxRunResolvedQos(
-                FoxRunQosProfile.Default,
-                FoxRunQosReliability.Reliable,
-                FoxRunQosDurability.TransientLocal,
-                FoxRunQosHistory.KeepLast,
-                3);
-            var first = state.BeginIfNeeded(
-                FoxRunEndpoint.Foxglove,
-                FoxRunEncoding.JSON,
-                firstQos,
-                2 * 1024 * 1024,
-                90,
-                25);
-
-            var repeated = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
-                FoxRunEncoding.Protobuf,
-                FoxRunResolvedQos.SensorData,
-                16 * 1024 * 1024,
-                240,
-                120);
-
-            Assert.Same(first, repeated);
-            Assert.Equal(1UL, repeated.SessionGeneration);
-            Assert.Equal(FoxRunEndpoint.Foxglove, repeated.DefaultSource);
-            Assert.Equal(FoxRunEncoding.JSON, repeated.FoxgloveEncoding);
-            Assert.Equal(firstQos, repeated.DefaultRos2Qos);
-            Assert.Equal(2 * 1024 * 1024, repeated.NativeCopyBudgetBytes);
-            Assert.Equal(90, repeated.TransportAdmissionRateLimitHz);
-            Assert.Equal(25, repeated.DefaultSubscribeRateHz);
-        }
-
-        [Fact]
-        public void EndIsIdempotentAndKeepsTheCurrentGeneration()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-            var active = state.BeginIfNeeded(
-                FoxRunEndpoint.Foxglove,
-                FoxRunEncoding.Protobuf,
-                FoxRunResolvedQos.Default,
-                4 * 1024 * 1024,
-                120,
-                60);
-
-            var disabled = state.End();
-            var repeated = state.End();
-
-            Assert.False(disabled.SubscriptionsEnabled);
-            Assert.Equal(active.SessionGeneration, disabled.SessionGeneration);
-            Assert.Same(disabled, repeated);
-        }
-
-        [Fact]
-        public void ReenableAdvancesTheSessionGeneration()
-        {
-            var state = new FoxRunSubscriptionSessionState();
-            var first = state.BeginIfNeeded(
-                FoxRunEndpoint.Foxglove,
-                FoxRunEncoding.Protobuf,
-                FoxRunResolvedQos.Default,
-                4 * 1024 * 1024,
-                120,
-                60);
-            state.End();
-
-            var second = state.BeginIfNeeded(
-                FoxRunEndpoint.Ros2Native,
-                FoxRunEncoding.JSON,
-                FoxRunResolvedQos.SystemDefault,
-                8 * 1024 * 1024,
-                90,
-                30);
-
             Assert.Equal(first.SessionGeneration + 1UL, second.SessionGeneration);
-            Assert.Equal(FoxRunResolvedQos.SystemDefault, second.DefaultRos2Qos);
+            Assert.Equal(1, second.TransportAdmissionRateLimitHz);
+            Assert.Equal(1, second.DefaultSubscribeRateHz);
+            Assert.Equal(1, second.MaxPayloadBytes);
         }
 
         [Fact]
-        public void BeginningAfterMaxGenerationFailsClosedWithoutMutatingState()
+        public void BeginningAfterMaxGenerationFailsClosed()
         {
             var state = new FoxRunSubscriptionSessionState(ulong.MaxValue);
-            var before = state.Current;
 
-            Assert.Throws<InvalidOperationException>(() => state.BeginIfNeeded(
-                    FoxRunEndpoint.Foxglove,
+            Assert.Throws<InvalidOperationException>(() =>
+                state.BeginIfNeeded(
+                    Provider,
                     FoxRunEncoding.Protobuf,
-                    FoxRunResolvedQos.Default,
-                    4 * 1024 * 1024,
-                    120,
-                    60));
-
-            Assert.Same(before, state.Current);
+                    Delivery,
+                    60,
+                    10));
             Assert.False(state.Current.SubscriptionsEnabled);
             Assert.Equal(ulong.MaxValue, state.Current.SessionGeneration);
         }

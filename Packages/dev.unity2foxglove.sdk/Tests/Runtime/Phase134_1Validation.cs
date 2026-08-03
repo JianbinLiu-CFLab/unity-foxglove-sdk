@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyClientEventQueueOverflowWarning();
             VerifyReplayEmptyPathRestoresLivePublishers();
             VerifyManagerInspectorAndRuntimeBounds();
-            VerifyRos2BridgeWarningThrottling();
+            VerifyProviderPublishFailureIsolation();
             VerifyLoggerSeverityPrefixes();
             VerifyRecordingAndAssetBudgetHardening();
             VerifySerializedSecretsAreNotCommitted();
@@ -173,22 +173,25 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-1G-4: recording chunk size is guarded in Inspector and runtime setup");
         }
 
-        private static void VerifyRos2BridgeWarningThrottling()
+        private static void VerifyProviderPublishFailureIsolation()
         {
             var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
-            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
+            var fanout = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportContributions.cs");
+            var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
 
-            Check(warningState.Contains("LastRos2BridgePublishWarningKey", StringComparison.Ordinal)
-                  && warningState.Contains("LastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
-                  && warningState.Contains("Ros2BridgePublishWarningGate", StringComparison.Ordinal),
-                "134-1H-1: manager tracks ROS2 bridge warning throttle state behind a single gate");
-            Check(publishing.Contains("WarnRos2BridgePublishSkipped(reason)", StringComparison.Ordinal)
-                  && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
-                  && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && publishing.Contains("lock (_warningDebounceState.Ros2BridgePublishWarningGate)", StringComparison.Ordinal)
-                  && publishing.Contains("WarningDebouncer.ShouldEmitKeyedCooldown", StringComparison.Ordinal)
-                  && !publishing.Contains("Interlocked.Read(ref _warningDebounceState.LastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
-                "134-1H-2: ROS2 bridge publish failures use an atomic bounded warning path");
+            Check(!warningState.Contains("Ros2Bridge", StringComparison.Ordinal)
+                  && !warningState.Contains("ROS2", StringComparison.Ordinal),
+                "134-1H-1: core manager warning state remains transport-provider neutral");
+            Check(fanout.Contains("catch (Exception exception)", StringComparison.Ordinal)
+                  && fanout.Contains("FoxRunTransportPublishResult.Failed(", StringComparison.Ordinal)
+                  && fanout.Contains("case FoxRunTransportRouteResultState.Rejected:", StringComparison.Ordinal)
+                  && fanout.Contains("case FoxRunTransportRouteResultState.Unavailable:", StringComparison.Ordinal)
+                  && fanout.Contains("case FoxRunTransportRouteResultState.Failed:", StringComparison.Ordinal)
+                  && publisher.Contains("result.Accepted == 0", StringComparison.Ordinal)
+                  && publisher.Contains("result.Failed + result.Rejected > 0", StringComparison.Ordinal)
+                  && publisher.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
+                  && publisher.Contains("!string.Equals(", StringComparison.Ordinal),
+                "134-1H-2: provider publish failures are isolated, counted, and reported through bounded warning state");
         }
 
         private static void VerifyLoggerSeverityPrefixes()

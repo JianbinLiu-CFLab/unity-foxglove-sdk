@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import subprocess
@@ -38,6 +39,58 @@ def load_module(name: str, relative: str):
 
 class SchemaToolingTests(unittest.TestCase):
     """Regression coverage for schema helper tooling."""
+
+    def test_schema_generators_default_to_bridge_package(self) -> None:
+        """Default generation must not recreate ROS-owned sources in the core SDK."""
+        catalog = load_module(
+            "schema_catalog_default_output",
+            "Scripts/schema/generate_ros2_msg_schema_catalog.py",
+        )
+        cdr = load_module(
+            "cdr_generator_default_output",
+            "Scripts/schema/generate_ros2_cdr_serializers.py",
+        )
+        bridge_root = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2bridge"
+            / "Runtime"
+            / "Schemas"
+            / "Ros2Msg"
+        )
+
+        self.assertEqual(
+            bridge_root / "FoxgloveRos2MsgSchemaCatalog.cs",
+            catalog.DEFAULT_OUTPUT,
+        )
+        self.assertEqual(bridge_root / "Generated", cdr.DEFAULT_OUTPUT_DIR)
+
+    def test_schema_generators_emit_bridge_owned_namespace(self) -> None:
+        """Generated ROS schema/CDR types must remain owned by the Bridge package."""
+        catalog = load_module(
+            "schema_catalog_bridge_namespace",
+            "Scripts/schema/generate_ros2_msg_schema_catalog.py",
+        )
+        cdr = load_module(
+            "cdr_generator_bridge_namespace",
+            "Scripts/schema/generate_ros2_cdr_serializers.py",
+        )
+        expected = "namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg"
+
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "FoxgloveRos2MsgSchemaCatalog.cs"
+            catalog.generate(catalog.DEFAULT_INPUT, output)
+            self.assertIn(expected, output.read_text(encoding="utf-8"))
+
+        generated_cdr = (
+            cdr.generate_serializers([]),
+            cdr.generate_deserializers([]),
+            cdr.generate_samples([]),
+            cdr.generate_registry([]),
+            cdr.generate_deserializer_registry([]),
+        )
+        for source in generated_cdr:
+            self.assertIn(expected, source)
 
     def test_cdr_generator_emits_null_guards_for_required_nested_geometry(self) -> None:
         """Generated nested geometry writers should not silently zero null values."""
@@ -240,6 +293,26 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertEqual("", commit)
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
+
+    def test_schema_catalog_hashes_are_checkout_line_ending_independent(self) -> None:
+        """The same Git schema content must hash identically on Windows and Linux."""
+
+        module = load_module(
+            "schema_catalog_line_endings",
+            "Scripts/schema/generate_ros2_msg_schema_catalog.py",
+        )
+        source = Path("Log.msg")
+        lf_bytes = b"uint8 DEBUG=1\nstring message\n"
+        crlf_bytes = lf_bytes.replace(b"\n", b"\r\n")
+
+        lf_digest = module.source_tree_sha([source], {source: lf_bytes})
+        crlf_digest = module.source_tree_sha([source], {source: crlf_bytes})
+
+        self.assertEqual(lf_digest, crlf_digest)
+        self.assertEqual(
+            hashlib.sha256(lf_bytes).hexdigest(),
+            module.source_file_sha(crlf_bytes),
+        )
 
     def test_schema_catalog_reports_missing_schema_names(self) -> None:
         """Snapshot validation should name missing and extra .msg files."""

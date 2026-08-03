@@ -15,8 +15,9 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const string PackageName = "Unity2Foxglove";
         private const string GeneratorName = "FoxRun";
-        private const string JsonEncoding = "json";
-        private const string ProtobufEncoding = "protobuf";
+        private const string JsonEncoding = FoxRunGenerationDescriptorConstants.JsonEncoding;
+        private const string ProtobufEncoding = FoxRunGenerationDescriptorConstants.ProtobufEncoding;
+        private const string MessagePackEncoding = FoxRunGenerationDescriptorConstants.MessagePackEncoding;
 
         public static FoxRunCanonicalManifest Build(
             IReadOnlyList<FoxRunManifestMember> members,
@@ -24,7 +25,7 @@ namespace Unity.FoxgloveSDK.Editor
             int generatorMajorVersion = 1)
         {
             var source = members ?? Array.Empty<FoxRunManifestMember>();
-            var types = BuildTypes(source);
+            var types = BuildTypes(source, manifestVersion);
             var sectionHashInput = FoxRunManifestJsonWriter.WriteFoxRunSectionHashInput(types);
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
@@ -45,7 +46,6 @@ namespace Unity.FoxgloveSDK.Editor
             var subscriptions = new FoxRunManifestSubscriptionSection(
                 subscriptionHash,
                 subscriptionBindings);
-            var customNativeContracts = BuildCustomNativeContracts(source);
             var sections = new FoxRunManifestSections(section, subscriptions);
             var generator = new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion);
             var globalHash = FoxRunManifestHasher.Sha256Hex(
@@ -60,27 +60,20 @@ namespace Unity.FoxgloveSDK.Editor
                 PackageName,
                 generator,
                 sections,
-                globalHash,
-                customNativeContracts);
+                globalHash);
         }
 
-        private static IReadOnlyList<FoxRunManifestType> BuildTypes(IReadOnlyList<FoxRunManifestMember> members)
+        private static IReadOnlyList<FoxRunManifestType> BuildTypes(
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
             return members
-                .Where(member => member.GeneratesWebSocketCodec
-                                 // A custom DTO P&S contract has native input
-                                 // but still deliberately exposes its selected
-                                 // JSON/Protobuf contract as WebSocket output.
-                                 // Subscribe native contracts remain absent
-                                 // so this never creates a fallback input path.
-                                 && (!string.Equals(
-                                         member.Source,
-                                         FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                                         StringComparison.Ordinal)
-                                     || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
+                .Where(member => member.GeneratesWebSocketCodec)
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
-                .Select(group => new FoxRunManifestType(group.Key, BuildContracts(group.Key, group.ToList())))
+                .Select(group => new FoxRunManifestType(
+                    group.Key,
+                    BuildContracts(group.Key, group.ToList(), manifestVersion)))
                 .ToList()
                 .AsReadOnly();
         }
@@ -96,22 +89,13 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.Source,
-                    member.QosProfile,
+                    member.PublishTransportIds,
+                    member.SubscribeTransportId,
+                    member.Reliability,
+                    member.Durability,
+                    member.History,
+                    member.Depth,
                     member.GeneratesWebSocketCodec,
-                    member.GeneratesRos2NativeRegistration,
-                    ResolveNativeType(member),
-                    ResolvePackagedCanonicalRosType(member),
-                    ResolvePackagedCopyShapeIdentity(member),
-                    member.Ros2ContractKind,
-                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
-                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member),
-                    member.Targets,
-                    member.QosReliability,
-                    member.QosDurability,
-                    member.QosHistory,
-                    member.QosDepth,
                     member.IsStream))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
@@ -120,85 +104,87 @@ namespace Unity.FoxgloveSDK.Editor
                 .AsReadOnly();
         }
 
-        private static IReadOnlyList<FoxRunManifestCustomNativeContract> BuildCustomNativeContracts(
-            IReadOnlyList<FoxRunManifestMember> members)
-        {
-            return members
-                .Where(member => member.GeneratesRos2NativeRegistration
-                                 && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto)
-                .Select(member => new FoxRunManifestCustomNativeContract(
-                    DeclaringType(member),
-                    member.MemberName,
-                    member.Topic,
-                    FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.Source,
-                    member.QosProfile,
-                    true,
-                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
-                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member),
-                    member.Targets,
-                    member.QosReliability,
-                    member.QosDurability,
-                    member.QosHistory,
-                    member.QosDepth))
-                .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
-                .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
-                .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)
-                .ToList()
-                .AsReadOnly();
-        }
-
-        private static string ResolveNativeType(FoxRunManifestMember member)
-        {
-            if (!member.GeneratesRos2NativeRegistration)
-                return string.Empty;
-
-            return member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.FullyQualifiedTypeName ?? member.TypeName
-                : member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
-                    ? member.Ros2CustomDtoShape?.FullyQualifiedTypeName ?? member.TypeName
-                    : member.TypeName;
-        }
-
-        private static string ResolvePackagedCanonicalRosType(FoxRunManifestMember member)
-            => member.GeneratesRos2NativeRegistration
-               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.CanonicalRosType ?? string.Empty
-                : string.Empty;
-
-        private static string ResolvePackagedCopyShapeIdentity(FoxRunManifestMember member)
-            => member.GeneratesRos2NativeRegistration
-               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
-                ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
-                : string.Empty;
-
-        private static string ResolveCustomEnvelopeIdentity(FoxRunManifestMember member)
-        {
-            if (!member.GeneratesRos2NativeRegistration
-                || member.Ros2ContractKind != FoxRunRos2ContractKind.CustomDto
-                || string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity))
-            {
-                return string.Empty;
-            }
-
-            return FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName(member.Ros2CustomDtoShape.PayloadIdentity);
-        }
-
         private static IReadOnlyList<FoxRunManifestContract> BuildContracts(
             string declaringType,
-            IReadOnlyList<FoxRunManifestMember> members)
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
-            return members
+            var contracts = new List<FoxRunManifestContract>();
+            var groups = members
                 .SelectMany(member => ResolveEncodings(member).Select(encoding => new MemberEncodingVariant(member, encoding)))
-                .GroupBy(variant => new ContractKey(
+                .GroupBy(variant => new BaseContractKey(
                     variant.Member.Topic,
                     ResolveContractSchemaName(declaringType, variant.Member, variant.Encoding),
                     variant.Encoding))
                 .OrderBy(group => group.Key.Topic, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.SchemaName, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.Encoding, StringComparer.Ordinal)
-                .Select(group => BuildContract(declaringType, group.Key, group.Select(variant => variant.Member).ToList()))
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                var groupedMembers = group.Select(variant => variant.Member).ToList();
+                var flows = groupedMembers.Select(member => member.Flow).Distinct().ToList();
+                var directionScoped = string.Equals(
+                                          group.Key.Encoding,
+                                          MessagePackEncoding,
+                                          StringComparison.Ordinal)
+                                      || flows.Count > 1;
+                if (!directionScoped)
+                {
+                    contracts.Add(BuildContract(
+                        declaringType,
+                        new ContractKey(
+                            group.Key.Topic,
+                            group.Key.SchemaName,
+                            group.Key.Encoding,
+                            FoxRunGenerationMember.FlowToName(flows.Count == 0 ? 1 : flows[0]),
+                            directionScoped: false),
+                        groupedMembers,
+                        manifestVersion));
+                    continue;
+                }
+
+                var publishMembers = groupedMembers
+                    .Where(member => SupportsPublish(member.Flow))
+                    .ToList();
+                if (publishMembers.Count > 0)
+                {
+                    contracts.Add(BuildContract(
+                        declaringType,
+                        new ContractKey(
+                            group.Key.Topic,
+                            group.Key.SchemaName,
+                            group.Key.Encoding,
+                            "Publish",
+                            directionScoped: true),
+                        publishMembers,
+                        manifestVersion));
+                }
+
+                var subscribeMembers = groupedMembers
+                    .Where(member => SupportsSubscribe(member.Flow))
+                    .ToList();
+                if (subscribeMembers.Count > 0)
+                {
+                    contracts.Add(BuildContract(
+                        declaringType,
+                        new ContractKey(
+                            group.Key.Topic,
+                            group.Key.SchemaName,
+                            group.Key.Encoding,
+                            "Subscribe",
+                            directionScoped: true),
+                        subscribeMembers,
+                        manifestVersion));
+                }
+            }
+
+            return contracts
+                .OrderBy(contract => contract.Topic, StringComparer.Ordinal)
+                .ThenBy(contract => contract.SchemaName, StringComparer.Ordinal)
+                .ThenBy(contract => contract.Encoding, StringComparer.Ordinal)
+                .ThenBy(contract => contract.Flow, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
         }
@@ -208,6 +194,9 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunManifestMember member,
             string encoding)
         {
+            if (string.Equals(encoding, MessagePackEncoding, StringComparison.Ordinal))
+                return string.Empty;
+
             if (!string.Equals(encoding, ProtobufEncoding, StringComparison.Ordinal))
                 return member.SchemaName ?? string.Empty;
 
@@ -220,7 +209,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunManifestContract BuildContract(
             string declaringType,
             ContractKey key,
-            IReadOnlyList<FoxRunManifestMember> members)
+            IReadOnlyList<FoxRunManifestMember> members,
+            int manifestVersion)
         {
             var fields = members
                 .Select(member => BuildField(member, key.Encoding == ProtobufEncoding))
@@ -230,20 +220,50 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList();
             ValidateJsonFieldNames(declaringType, key, fields);
             var policy = BuildPolicy(members);
-            var flow = BuildFlow(members);
+            var flow = key.Flow;
+            var logicalSchemaName = ResolveLogicalSchemaName(
+                declaringType,
+                members);
+            var availability = ResolveAvailability(
+                members,
+                key.Encoding,
+                key.DirectionScoped ? key.Flow : string.Empty);
+            var includesTransportSelection = manifestVersion >= 4;
+            var publishTransportIds = includesTransportSelection
+                ? ResolvePublishTransportIds(members)
+                : null;
+            var subscribeTransportId = includesTransportSelection
+                ? ResolveSubscribeTransportId(members)
+                : null;
             var contractHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteContractHashInput(
                     declaringType,
                     key.SchemaName,
                     key.Encoding,
                     fields,
-                    flow));
+                    flow,
+                    logicalSchemaName,
+                    availability.PublishAvailable,
+                    availability.SubscribeAvailable,
+                    availability.UnavailableDiagnosticId,
+                    availability.UnavailableReason,
+                    availability.PublishUnavailableDiagnosticId,
+                    availability.PublishUnavailableReason,
+                    availability.SubscribeUnavailableDiagnosticId,
+                    availability.SubscribeUnavailableReason,
+                    includesTransportSelection,
+                    publishTransportIds,
+                    subscribeTransportId));
             var bindingHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteBindingHashInput(
                     declaringType,
                     key.Topic,
                     key.SchemaName,
-                    key.Encoding));
+                    key.Encoding,
+                    key.DirectionScoped ? key.Flow : string.Empty,
+                    includesTransportSelection,
+                    publishTransportIds,
+                    subscribeTransportId));
             var policyHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WritePolicyHashInput(policy));
 
@@ -257,10 +277,40 @@ namespace Unity.FoxgloveSDK.Editor
                 policyHash,
                 fields.AsReadOnly(),
                 policy,
-                flow);
+                flow,
+                logicalSchemaName,
+                availability.PublishAvailable,
+                availability.SubscribeAvailable,
+                availability.UnavailableDiagnosticId,
+                availability.UnavailableReason,
+                availability.PublishUnavailableDiagnosticId,
+                availability.PublishUnavailableReason,
+                availability.SubscribeUnavailableDiagnosticId,
+                availability.SubscribeUnavailableReason,
+                includesTransportSelection,
+                publishTransportIds,
+                subscribeTransportId);
         }
 
-        private static FoxRunManifestField BuildField(FoxRunManifestMember member, bool includeProtobufFieldNumber)
+        private static IReadOnlyList<string> ResolvePublishTransportIds(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var first = members.FirstOrDefault(member =>
+                member.Flow == (int)FoxRunFlow.Publish
+                || member.Flow == (int)FoxRunFlow.PublishAndSubscribe);
+            return first?.PublishTransportIds;
+        }
+
+        private static string ResolveSubscribeTransportId(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var first = members.FirstOrDefault(member =>
+                member.Flow == (int)FoxRunFlow.Subscribe
+                || member.Flow == (int)FoxRunFlow.PublishAndSubscribe);
+            return first?.SubscribeTransportId;
+        }
+
+        private static FoxRunManifestField BuildField(FoxRunManifestMember member, bool includeProtobufMetadata)
         {
             var sourceType = ResolveFieldSourceType(member);
             var normalized = FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType);
@@ -276,9 +326,121 @@ namespace Unity.FoxgloveSDK.Editor
                 nullable,
                 member.IsArray,
                 member.IsAggregateMember,
-                includeProtobufFieldNumber ? member.ProtobufFieldNumber : 0,
-                includeProtobufFieldNumber ? member.ProtobufTypeShape : null);
+                0,
+                member.TypeShape,
+                member.NormalizedSchedule,
+                includeProtobufMetadata ? member.ProtobufMetadata : null);
         }
+
+        private static string ResolveLogicalSchemaName(
+            string declaringType,
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var explicitNames = members
+                .Select(member => (member.SchemaName ?? string.Empty).Trim())
+                .Where(name => name.Length > 0)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+            if (explicitNames.Count == 1)
+                return explicitNames[0];
+            if (explicitNames.Count > 1)
+                return declaringType;
+
+            var shapeNames = members
+                .Select(member => FoxRunLogicalSchemaNameResolver.ResolveMember(
+                    string.Empty,
+                    member.TypeShape))
+                .Where(name => name.Length > 0)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+            return shapeNames.Count == 1
+                ? shapeNames[0]
+                : declaringType;
+        }
+
+        private static FoxRunEncodingVariantAvailability ResolveAvailability(
+            IReadOnlyList<FoxRunManifestMember> members,
+            string encoding,
+            string directionalFlow)
+        {
+            var variants = members
+                .SelectMany(member => member.EncodingVariants
+                    .Where(variant => string.Equals(
+                        variant.Encoding,
+                        encoding,
+                        StringComparison.Ordinal)))
+                .ToList();
+            if (variants.Count == 0)
+            {
+                var publishDirection = string.Equals(
+                    directionalFlow,
+                    "Publish",
+                    StringComparison.Ordinal);
+                var subscribeDirection = string.Equals(
+                    directionalFlow,
+                    "Subscribe",
+                    StringComparison.Ordinal);
+                return new FoxRunEncodingVariantAvailability(
+                    encoding,
+                    publishAvailable: false,
+                    subscribeAvailable: false,
+                    publishUnavailableDiagnosticId: subscribeDirection ? string.Empty : "FOXRUN616",
+                    publishUnavailableReason:
+                        subscribeDirection
+                            ? string.Empty
+                            : "The generated encoding variant has no matching availability metadata.",
+                    subscribeUnavailableDiagnosticId: publishDirection ? string.Empty : "FOXRUN616",
+                    subscribeUnavailableReason:
+                        publishDirection
+                            ? string.Empty
+                            : "The generated encoding variant has no matching availability metadata.");
+            }
+
+            var publishUnavailable = variants.FirstOrDefault(variant =>
+                !variant.PublishAvailable
+                && !string.IsNullOrEmpty(variant.PublishUnavailableDiagnosticId));
+            var subscribeUnavailable = variants.FirstOrDefault(variant =>
+                !variant.SubscribeAvailable
+                && !string.IsNullOrEmpty(variant.SubscribeUnavailableDiagnosticId));
+            var isPublishDirection = string.Equals(
+                directionalFlow,
+                "Publish",
+                StringComparison.Ordinal);
+            var isSubscribeDirection = string.Equals(
+                directionalFlow,
+                "Subscribe",
+                StringComparison.Ordinal);
+            return new FoxRunEncodingVariantAvailability(
+                encoding,
+                !isSubscribeDirection && variants.All(variant => variant.PublishAvailable),
+                !isPublishDirection && variants.All(variant => variant.SubscribeAvailable),
+                publishUnavailableDiagnosticId:
+                    isSubscribeDirection
+                        ? string.Empty
+                        : publishUnavailable?.PublishUnavailableDiagnosticId ?? string.Empty,
+                publishUnavailableReason:
+                    isSubscribeDirection
+                        ? string.Empty
+                        : publishUnavailable?.PublishUnavailableReason ?? string.Empty,
+                subscribeUnavailableDiagnosticId:
+                    isPublishDirection
+                        ? string.Empty
+                        : subscribeUnavailable?.SubscribeUnavailableDiagnosticId ?? string.Empty,
+                subscribeUnavailableReason:
+                    isPublishDirection
+                        ? string.Empty
+                        : subscribeUnavailable?.SubscribeUnavailableReason ?? string.Empty);
+        }
+
+        private static bool SupportsPublish(int flow)
+            => flow == (int)FoxRunFlow.Publish
+               || flow == (int)FoxRunFlow.PublishAndSubscribe;
+
+        private static bool SupportsSubscribe(int flow)
+            => flow == (int)FoxRunFlow.Subscribe
+               || flow == (int)FoxRunFlow.PublishAndSubscribe;
 
         private static IEnumerable<string> ResolveEncodings(FoxRunManifestMember member)
         {
@@ -287,6 +449,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case 0:
                     yield return JsonEncoding;
                     yield return ProtobufEncoding;
+                    yield return MessagePackEncoding;
                     yield break;
                 case 1:
                     yield return ProtobufEncoding;
@@ -294,9 +457,12 @@ namespace Unity.FoxgloveSDK.Editor
                 case 2:
                     yield return JsonEncoding;
                     yield break;
+                case 3:
+                    yield return MessagePackEncoding;
+                    yield break;
                 default:
                     throw new InvalidOperationException(
-                        "FoxRun manifest wire encoding is outside the supported range 0..2 for "
+                        "FoxRun manifest wire encoding is outside the supported range 0..3 for "
                         + DeclaringType(member) + "." + member.MemberName + ".");
             }
         }
@@ -422,20 +588,20 @@ namespace Unity.FoxgloveSDK.Editor
                 : "field";
         }
 
-        private readonly struct ContractKey : IEquatable<ContractKey>
+        private readonly struct BaseContractKey : IEquatable<BaseContractKey>
         {
             public readonly string Topic;
             public readonly string SchemaName;
             public readonly string Encoding;
 
-            public ContractKey(string topic, string schemaName, string encoding)
+            public BaseContractKey(string topic, string schemaName, string encoding)
             {
                 Topic = topic ?? string.Empty;
                 SchemaName = schemaName ?? string.Empty;
                 Encoding = encoding ?? string.Empty;
             }
 
-            public bool Equals(ContractKey other)
+            public bool Equals(BaseContractKey other)
             {
                 return string.Equals(Topic, other.Topic, StringComparison.Ordinal)
                        && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
@@ -443,7 +609,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             public override bool Equals(object obj)
-                => obj is ContractKey other && Equals(other);
+                => obj is BaseContractKey other && Equals(other);
 
             public override int GetHashCode()
             {
@@ -454,6 +620,29 @@ namespace Unity.FoxgloveSDK.Editor
                     hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Encoding);
                     return hash;
                 }
+            }
+        }
+
+        private readonly struct ContractKey
+        {
+            public readonly string Topic;
+            public readonly string SchemaName;
+            public readonly string Encoding;
+            public readonly string Flow;
+            public readonly bool DirectionScoped;
+
+            public ContractKey(
+                string topic,
+                string schemaName,
+                string encoding,
+                string flow,
+                bool directionScoped)
+            {
+                Topic = topic ?? string.Empty;
+                SchemaName = schemaName ?? string.Empty;
+                Encoding = encoding ?? string.Empty;
+                Flow = flow ?? string.Empty;
+                DirectionScoped = directionScoped;
             }
         }
 

@@ -14,14 +14,14 @@ namespace Unity.FoxgloveSDK.Components
     {
         internal static void RunDisable(
             Action endSubscriptionSession,
-            Action stopRos2BridgeRuntime,
+            Action endTransportSession,
             Action stopServer,
             Action endPublishSession,
             Action resetOutputModeWatch,
             Action resetProfiler)
             => RunMandatoryCleanup(
                 endSubscriptionSession,
-                stopRos2BridgeRuntime,
+                endTransportSession,
                 stopServer,
                 endPublishSession,
                 resetOutputModeWatch,
@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Components
         internal static void RunDestroy(
             Action endSubscriptionSession,
             Action stopServer,
-            Action disposeRos2BridgeRuntime,
+            Action endTransportSession,
             Action disposeReplayCursorEndpoint,
             Action disposeCertificateDistributor,
             Action disposeRuntime,
@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Components
             => RunMandatoryCleanup(
                 endSubscriptionSession,
                 stopServer,
-                disposeRos2BridgeRuntime,
+                endTransportSession,
                 disposeReplayCursorEndpoint,
                 disposeCertificateDistributor,
                 disposeRuntime,

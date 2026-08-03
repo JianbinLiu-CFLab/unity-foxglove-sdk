@@ -242,13 +242,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static bool IsEligible(FoxgloveCameraPublisher publisher)
             => publisher != null
-               && publisher.isActiveAndEnabled
-               && publisher.IsStandardRos2CompressedImageOutput;
+               && publisher.isActiveAndEnabled;
 
         private static bool IsRawEligible(FoxgloveCameraPublisher publisher)
             => publisher != null
-               && publisher.isActiveAndEnabled
-               && publisher.IsStandardRos2RawImageOutput;
+               && publisher.isActiveAndEnabled;
 
         private static bool IsEligible(FoxgloveCameraInfoPublisher publisher)
             => publisher != null && publisher.isActiveAndEnabled;

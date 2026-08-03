@@ -13,41 +13,23 @@ shared `map -> base_link -> os_sensor -> os_lidar/os_imu/os_camera` frame tree.
 Alternatively, add the maze demo bootstrap component to an empty GameObject and
 press Play to build the same scene at runtime.
 
-## Product ROS2 Native Path
+## Transport boundary
 
-For SLAM consumers, use the normal product Inspector path:
+This SDK sample stays on the core Foxglove WebSocket path. Optional ROS2
+delivery belongs to the companion transport packages; follow the selected
+package's sample and upgrade guide instead of adding transport-specific fields
+to this scene.
 
-- On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.
-- On `Lidar-IMU-Unit`, keep `FoxglovePointCloudPublisher` in `PointCloud2 Native`.
-- The point cloud publishes on `/unity/point_cloud2` in frame `os_lidar`.
-- `CartCameraMount` publishes compressed camera images on
-  `/unity/sensor/camera/image/compressed` in frame `os_camera`.
-- `CartCameraMount` publishes camera info on
-  `/unity/sensor/camera/camera_info` in frame `os_camera`.
-- Camera timestamps use the same shared sensor clock as LiDAR and IMU.
-- CameraInfo can publish a `/tf` anchor from `os_sensor` to `os_camera`.
-
-No diagnostic smoke component is required for the product path.
+The inactive `CartCameraMount` demonstrates the shared sensor profile and
+clock. Its camera and camera-info topics are
+`/unity/sensor/camera/image/compressed` and
+`/unity/sensor/camera/camera_info`.
 
 ## Foxglove
 
 - Open the 3D panel and set **Display frame** to `map`.
 - The car drives through the static maze; raise the point cloud **Decay time**
   to accumulate scanned walls into a map.
-
-## RViz2
-
-Use `map` or `os_sensor` as the fixed frame when TF is visible. The image and
-camera-info topics are intended for ROS2/RViz2 tools that consume standard camera
-schemas:
-
-```text
-/unity/point_cloud2
-/unity/sensor/camera/image/compressed
-/unity/sensor/camera/camera_info
-/imu/data
-/tf
-```
 
 ## Sensor Unit Profile
 
@@ -77,10 +59,8 @@ Set `_useAutoWander` on the vehicle controller for a hands-free demo.
 
 - The demo defaults to `OS-1-32`, `1024x10`, `columnStep=1`, a 32768 point
   budget, and a per-`FixedUpdate` raycast budget.
-- `PointCloud2 Native` preserves SLAM fields such as `ring`, `time_offset`, and
-  absolute-ns `t`.
-- Camera image output uses the async camera pipeline and standard compressed
-  image schema when ROS2 output is enabled.
+- Draco point clouds remain compact on the Foxglove WebSocket path.
+- Camera image output uses the asynchronous core camera pipeline.
 
 ## Limitations
 

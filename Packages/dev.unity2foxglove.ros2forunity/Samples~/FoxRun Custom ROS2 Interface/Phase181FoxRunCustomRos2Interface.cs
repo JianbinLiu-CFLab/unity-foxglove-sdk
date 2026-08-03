@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 // IMPORTANT: The following DTO names are the static interface identity locked
 // by dev.unity2foxglove.foxrun.ros2.interfaces v1. Do not rename their
@@ -65,16 +66,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
-            Targets = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default)]
+            PublishTransportIds = new[]
+            {
+                FoxRunRos2TransportProvider.IdValue
+            })]
         [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
         [Tooltip("The selected native ROS2 runtime applies this custom DTO on Unity's main thread.")]
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
-            Source = FoxRunEndpoint.Ros2Native,
-            QoS = FoxRunQosProfile.Default)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue)]
         [SerializeField] private Phase181State _inputPort;
 
         /// <summary>
@@ -88,9 +91,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
-            Source = FoxRunEndpoint.Ros2Native,
-            Targets = FoxRunEndpoint.Foxglove,
-            QoS = FoxRunQosProfile.Default)]
+            SubscribeTransportId =
+                FoxRunRos2TransportProvider.IdValue,
+            PublishTransportIds = new[]
+            {
+                FoxgloveWebSocketTransport.Id
+            })]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
 
         private void Reset()

@@ -5,7 +5,7 @@
 # Purpose: Generate the Unity runtime catalog for official Foxglove ROS 2 .msg schemas.
 # Usage: python Scripts/schema/generate_ros2_msg_schema_catalog.py
 # Inputs: third-party/foxglove-sdk/schemas/ros2/*.msg by default.
-# Outputs: Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs.
+# Outputs: Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs.
 """Generate the Unity runtime catalog for official Foxglove ROS 2 .msg schemas."""
 
 from __future__ import annotations
@@ -24,13 +24,14 @@ DEFAULT_INPUT = REPO_ROOT / "third-party" / "foxglove-sdk" / "schemas" / "ros2"
 DEFAULT_OUTPUT = (
     REPO_ROOT
     / "Packages"
-    / "dev.unity2foxglove.sdk"
+    / "dev.unity2foxglove.ros2bridge"
     / "Runtime"
     / "Schemas"
     / "Ros2Msg"
     / "FoxgloveRos2MsgSchemaCatalog.cs"
 )
 SCHEMA_ENCODING = "ros2msg"
+CSHARP_NAMESPACE = "Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg"
 
 
 # Minimal ROS 2 common message definitions referenced by the official Foxglove
@@ -203,13 +204,25 @@ def validate_schema_files(files: list[Path], input_dir: Path) -> None:
         )
 
 
+def canonical_source_bytes(data: bytes) -> bytes:
+    """Normalize text line endings before computing checkout-independent hashes."""
+
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def source_file_sha(data: bytes) -> str:
+    """Hash one source file after canonical line-ending normalization."""
+
+    return hashlib.sha256(canonical_source_bytes(data)).hexdigest()
+
+
 def source_tree_sha(files: list[Path], file_bytes: dict[Path, bytes]) -> str:
-    """Compute a deterministic SHA-256 over sorted root filenames and bytes."""
+    """Compute a deterministic SHA-256 independent of checkout line endings."""
     sha = hashlib.sha256()
     for path in files:
         sha.update(path.name.encode("utf-8"))
         sha.update(b"\0")
-        sha.update(file_bytes[path])
+        sha.update(canonical_source_bytes(file_bytes[path]))
         sha.update(b"\0")
     return sha.hexdigest()
 
@@ -278,7 +291,7 @@ def generate(input_dir: Path, output: Path) -> str:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
         content = merged_schema(local_sources[name], local_sources, root_name=name)
-        source_sha = hashlib.sha256(file_bytes[path]).hexdigest()
+        source_sha = source_file_sha(file_bytes[path])
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"
         content_literal = csharp_base64_literal(content, "                    ")
@@ -307,7 +320,7 @@ using System.Collections.Generic;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 
-namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
+namespace {CSHARP_NAMESPACE}
 {{
     /// <summary>One official Foxglove ROS 2 .msg schema catalog entry.</summary>
     public sealed class FoxgloveRos2MsgSchemaCatalogEntry
@@ -341,7 +354,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Source root .msg filename from the Foxglove SDK snapshot.</summary>
         public string SourceFile {{ get; }}
 
-        /// <summary>SHA-256 of the source root .msg file.</summary>
+        /// <summary>SHA-256 of the source root .msg text after LF line-ending normalization.</summary>
         public string SourceSha256 {{ get; }}
 
         /// <summary>Coarse schema category used for documentation.</summary>

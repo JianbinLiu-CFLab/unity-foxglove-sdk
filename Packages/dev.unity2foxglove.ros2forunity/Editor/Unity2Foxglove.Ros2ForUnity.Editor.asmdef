@@ -4,6 +4,7 @@
   "references": [
     "Newtonsoft.Json",
     "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Editor",
     "Unity2Foxglove.Ros2ForUnity"
   ],
   "includePlatforms": [

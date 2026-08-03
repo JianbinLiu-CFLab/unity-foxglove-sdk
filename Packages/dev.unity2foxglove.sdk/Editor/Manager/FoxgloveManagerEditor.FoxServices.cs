@@ -82,107 +82,11 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox(
                     "No generated FoxRun topic metadata is registered in this domain.",
                     MessageType.Info);
-                // A Ros2Native-only contract deliberately has no Foxglove
-                // WebSocket codec summary, but must remain inspectable.
-                DrawFoxRunNativeUnityContracts(manager);
                 return;
             }
 
             DrawFoxRunTopicGroup("Publish Topics", summaries, "Publish");
             DrawFoxRunTopicGroup("Subscribe Topics", summaries, "Subscribe");
-            DrawFoxRunTopicGroup("Publish And Subscribe Topics", summaries, "PublishAndSubscribe");
-            DrawFoxRunNativeUnityContracts(manager);
-        }
-
-        private static void DrawFoxRunNativeUnityContracts(FoxgloveManager manager)
-        {
-            var manifest = FoxRunSchemaInfoRegistry.Current;
-            var bindings = manifest?.SubscriptionBindings;
-            if (bindings == null || bindings.Count == 0)
-                return;
-
-            var defaultProvider = manager == null
-                ? FoxRunEndpoint.Foxglove
-                : manager.ActiveFoxRunSubscriptionSource;
-            var nativeBindings = new System.Collections.Generic.List<FoxRunSchemaSubscriptionBindingInfo>();
-            for (var i = 0; i < bindings.Count; i++)
-            {
-                var binding = bindings[i];
-                if (binding == null
-                    || !string.Equals(binding.Flow, "Subscribe", System.StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (binding.DeclaredSource == FoxRunEndpoint.Ros2Native
-                    || (defaultProvider == FoxRunEndpoint.Ros2Native
-                        && binding.SupportsRos2Native))
-                {
-                    nativeBindings.Add(binding);
-                }
-            }
-
-            if (nativeBindings.Count == 0)
-                return;
-
-            EditorGUILayout.Space();
-            FoxgloveManagerInspectorLayout.Subheader("ROS2 Native Unity Contracts");
-            EditorGUILayout.HelpBox(
-                "These are Unity ROS2 Native input contracts. They are intentionally not Foxglove subscription-catalog entries; live binding state appears under Subscribe Data diagnostics.",
-                MessageType.Info);
-
-            foreach (var binding in nativeBindings)
-                DrawFoxRunNativeUnityContract(binding, defaultProvider);
-        }
-
-        private static void DrawFoxRunNativeUnityContract(
-            FoxRunSchemaSubscriptionBindingInfo binding,
-            FoxRunEndpoint defaultProvider)
-        {
-            var resolution = FoxRunEndpointResolver.Resolve(
-                FoxRunFlow.Subscribe,
-                binding.DeclaredSource,
-                hasExplicitSource: binding.DeclaredSource != 0,
-                declaredTargets: 0,
-                hasExplicitTargets: false,
-                declaredEncoding: 0,
-                hasExplicitEncoding: false,
-                defaultSource: defaultProvider,
-                defaultTargets: FoxRunEndpoint.Foxglove,
-                publishDefaultEncoding: FoxRunEncoding.Protobuf,
-                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
-            var status = resolution.Success
-                         && resolution.Topology.Source == FoxRunEndpoint.Ros2Native
-                         && binding.SupportsRos2Native
-                ? "Native subscription eligible"
-                : string.IsNullOrWhiteSpace(resolution.DiagnosticMessage)
-                    ? "Native subscription unavailable"
-                    : resolution.DiagnosticMessage;
-
-            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    EditorGUILayout.SelectableLabel(binding.Topic, EditorStyles.textField);
-                    if (GUILayout.Button("Copy Topic", GUILayout.Width(82)))
-                        EditorGUIUtility.systemCopyBuffer = binding.Topic ?? string.Empty;
-                }
-
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.TextField("CLR Type", binding.NativeType ?? binding.DeclaringType ?? string.Empty);
-                    EditorGUILayout.TextField("Canonical ROS Type", binding.CanonicalRosType ?? string.Empty);
-                    EditorGUILayout.TextField(
-                        "QoS",
-                        FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
-                            binding.QosProfile,
-                            binding.QosReliability,
-                            binding.QosDurability,
-                            binding.QosHistory,
-                            binding.QosDepth));
-                    EditorGUILayout.TextField("Status", status);
-                }
-            }
         }
 
         private static void DrawFoxRunTopicGroup(
@@ -224,8 +128,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DrawFoxRunTopicSummaryRow(FoxRunTopicSummary summary)
         {
-            var schemaName = string.IsNullOrEmpty(summary.SchemaName) ? "(schemaless)" : summary.SchemaName;
-            var schemaContent = new GUIContent("Schema: " + schemaName, schemaName);
+            var wireSchemaName = string.IsNullOrEmpty(summary.WireSchemaName)
+                ? "(schemaless)"
+                : summary.WireSchemaName;
+            var logicalSchemaName = string.IsNullOrEmpty(summary.LogicalSchemaName)
+                ? "(unspecified)"
+                : summary.LogicalSchemaName;
+            var schemaContent = new GUIContent(
+                "Wire schema: " + wireSchemaName + "  |  Logical schema: " + logicalSchemaName,
+                summary.WireSchemaName);
             var schemaStyle = GetTopicSchemaStyle();
             var row = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
             GetTopicSummaryColumns(row, out var topic, out var declared, out var effective, out var copy);
@@ -240,6 +151,16 @@ namespace Unity.FoxgloveSDK.Editor
                 schemaStyle.CalcHeight(schemaContent, GetTopicSchemaLayoutWidth()));
             schemaRow.width = topic.width;
             EditorGUI.LabelField(schemaRow, schemaContent, schemaStyle);
+            if (!summary.Available)
+            {
+                EditorGUILayout.HelpBox(
+                    (string.IsNullOrEmpty(summary.UnavailableDiagnosticId)
+                        ? "FoxRun encoding variant unavailable"
+                        : summary.UnavailableDiagnosticId)
+                    + ": "
+                    + summary.UnavailableReason,
+                    MessageType.Error);
+            }
         }
 
         private const float CopyButtonWidth = 54f;

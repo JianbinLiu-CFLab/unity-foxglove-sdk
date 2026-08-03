@@ -236,18 +236,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-E1: optional Runtime factory remains host-agnostic and unavailable by default");
 
             var offenders = TextFiles(OptionalRuntime)
-                .Where(path => !IsAllowedRuntimeTokenSource(path))
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
                     return OptionalRuntimeForbiddenTokenList
-                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Where(token =>
+                            text.Contains(token, StringComparison.Ordinal)
+                            && !IsAllowedRuntimeToken(
+                                path,
+                                token,
+                                text))
                         .Select(token => Rel(path) + " -> " + token);
                 })
                 .ToList();
 
             Check(offenders.Count == 0,
-                "110-E2: optional Runtime has no UnityEngine, ROS2, or generated message references"
+                "110-E2: optional Runtime isolates Provider-owned Unity serialization and upstream ROS2 references"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
         }
 
@@ -450,6 +454,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsOptionalPackageRuntimeBinary(string path)
         {
+            if (IsOwnedOptionalEditorAnalyzer(path))
+                return false;
+
             if (!path.StartsWith(OptionalPackage + "/", StringComparison.Ordinal))
                 return false;
 
@@ -462,6 +469,13 @@ namespace Unity.FoxgloveSDK.Tests
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
         }
+
+        private static bool IsOwnedOptionalEditorAnalyzer(string path)
+            => path.Equals(
+                OptionalPackage
+                + "/Editor/SourceGenerators/analyzers/dotnet/cs/"
+                + "Unity2Foxglove.Ros2ForUnity.FoxRunSourceGenerator.dll",
+                StringComparison.Ordinal);
 
         private static bool IsAllowedRuntimePackageFile(string path)
         {
@@ -503,10 +517,24 @@ namespace Unity.FoxgloveSDK.Tests
             return Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
         }
 
-        private static bool IsAllowedRuntimeTokenSource(string path)
+        private static bool IsAllowedRuntimeToken(
+            string path,
+            string token,
+            string text)
         {
             var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
-            return relative.StartsWith(OptionalRuntimeNative, StringComparison.Ordinal);
+            if (relative.StartsWith(OptionalRuntimeNative, StringComparison.Ordinal))
+                return true;
+
+            return relative.Equals(
+                       OptionalRuntime + "/FoxRunRos2Qos.cs",
+                       StringComparison.Ordinal)
+                   && token.Equals(
+                       "UnityEngine",
+                       StringComparison.Ordinal)
+                   && text.Contains(
+                       "#if UNITY_5_3_OR_NEWER",
+                       StringComparison.Ordinal);
         }
 
         private static void Check(bool condition, string message)

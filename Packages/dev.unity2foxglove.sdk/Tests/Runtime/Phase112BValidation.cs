@@ -265,8 +265,8 @@ namespace Unity.FoxgloveSDK.Tests
                     0.001f)
             });
 
-            Check(manifest.Sections.FoxRun.ManifestHash == "cff942e33353cec4b011b7792845b396c137b0813b3bf64a9f2dd5fb5e4b8695"
-                  && manifest.GlobalManifestHash == "4ef64c60b17b8b02c17cc318aefe57a9eecc5772b9528e6649ecc590b6187cfd",
+            Check(manifest.Sections.FoxRun.ManifestHash == "b35e6b56c8dd0da65b5d32b0835f130ae577bba655eefca8eef4fb66ddfec116"
+                  && manifest.GlobalManifestHash == "1f649388de6fd74a3fd3edf52d16e1afd9ca4566231e9f3c1fea755d1e6441ec",
                 "112B-D1: FixedRate fixture section and global manifest hashes are deterministic");
         }
 

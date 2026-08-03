@@ -237,6 +237,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var helper = Slice(source, "protected bool ShouldPreparePublishPayload()", "private PublisherEncodingResolution ResolvePublisherEncoding");
+            var ordinaryProviderHelper =
+                ExtractMethodBody(
+                    source,
+                    "protected bool ShouldPrepareOrdinaryTransportPayload()");
 
             Check(source.Contains("protected bool ShouldPreparePublishPayload()"),
                 "73E-1: publisher base exposes default preflight helper");
@@ -248,10 +252,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "73E-4: preflight preserves fallback warnings");
             Check(helper.Contains("WarnEncodingMismatch"),
                 "73E-5: preflight preserves mismatch warnings");
-            Check(helper.Contains("PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding)")
-                  && helper.Contains("PublisherEffectiveEncoding.Ros2")
-                  && helper.Contains("TryPrepareRos2Publish"),
-                "73E-6: preflight maps publisher encoding to wire encoding strings");
+            Check(source.Contains("PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding)")
+                  && !source.Contains("PublisherEffectiveEncoding.Ros2")
+                  && !source.Contains("TryPrepareRos2Publish")
+                  && ordinaryProviderHelper.Contains("_manager.HasOrdinaryTransportDemand"),
+                "73E-6: WebSocket preflight maps wire encodings while ordinary Provider demand stays separate");
             Check(helper.Contains("TryPrepareSchemaPublish"),
                 "73E-7: preflight delegates registration and demand to manager");
         }
@@ -272,7 +277,7 @@ namespace Unity.FoxgloveSDK.Tests
             var transformSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
             var transformUpdate = Slice(transformSource, "protected override void Update()", "protected override FrameTransformMessage CreateMessage()");
             CheckOrdered(transformUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73F-6: transform publisher preflights after cadence");
-            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "PublishProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
+            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "CreateProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
             CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs, pos, rot)", "73F-8: transform publisher preflights before JSON transform creation");
 
             var calibrationSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraCalibrationPublisher.cs");
@@ -299,7 +304,7 @@ namespace Unity.FoxgloveSDK.Tests
             var sceneSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             var sceneUpdate = Slice(sceneSource, "protected override void Update()", "protected override SceneUpdateMessage CreateMessage()");
             CheckOrdered(sceneUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73G-5: scene cube preflights after cadence");
-            CheckOrdered(sceneUpdate, "ShouldPrepareAnyPublishPayload(", "PublishProtobufSceneUpdate", "73G-6: scene cube preflights before protobuf scene construction");
+            CheckOrdered(sceneUpdate, "ShouldPrepareAnyPublishPayload(", "CreateProtobufSceneUpdate", "73G-6: scene cube preflights before protobuf scene construction");
             CheckOrdered(sceneUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs)", "73G-7: scene cube preflights before JSON scene construction");
 
             var pointSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");

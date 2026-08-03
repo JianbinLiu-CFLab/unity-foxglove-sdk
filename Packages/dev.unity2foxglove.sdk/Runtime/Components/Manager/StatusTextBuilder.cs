@@ -26,7 +26,5 @@ namespace Unity.FoxgloveSDK.Components
         internal static string CreateServerStartedMessage(string connectionUrl)
             => "[Foxglove] Server started on " + connectionUrl;
 
-        internal static string CreateRos2BridgeDisabledWarning(string reason)
-            => "[Foxglove] ROS2 Bridge disabled: " + reason;
     }
 }

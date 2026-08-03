@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Components
         public bool Array { get; }
         public bool Aggregate { get; }
         public int ProtobufFieldNumber { get; }
+        public FoxRunTypeShapeInfo TypeShape { get; }
+        public FoxRunNormalizedScheduleInfo NormalizedSchedule { get; }
 
         public FoxRunSchemaFieldInfo(
             string jsonName,
@@ -26,7 +28,9 @@ namespace Unity.FoxgloveSDK.Components
             bool nullable,
             bool array,
             bool aggregate = false,
-            int protobufFieldNumber = 0)
+            int protobufFieldNumber = 0,
+            FoxRunTypeShapeInfo typeShape = null,
+            FoxRunNormalizedScheduleInfo normalizedSchedule = null)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -36,6 +40,8 @@ namespace Unity.FoxgloveSDK.Components
             Array = array;
             Aggregate = aggregate;
             ProtobufFieldNumber = protobufFieldNumber;
+            TypeShape = typeShape;
+            NormalizedSchedule = normalizedSchedule;
         }
     }
 }

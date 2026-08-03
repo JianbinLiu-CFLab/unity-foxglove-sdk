@@ -8,7 +8,12 @@ This page covers dedicated Unity components for:
 - `foxglove.LaserScan`
 - `foxglove.CameraCalibration`
 
-Each raw typed sensor component supports JSON, Protobuf, and ROS2. Protobuf is preferred for dependency-free high-rate sensor streams because binary arrays are sent as protobuf bytes or repeated numeric fields instead of JSON text. ROS2 uses official Foxglove `ros2msg` schemas with CDR payloads for workflows that need ROS 2-compatible schema metadata in Foxglove or MCAP.
+Each raw typed sensor component supports JSON and Protobuf. Protobuf is
+preferred for dependency-free high-rate sensor streams because binary arrays
+are sent as protobuf bytes or repeated numeric fields instead of JSON text.
+MessagePack is also available where the individual publisher declares support.
+ROS transports are supplied by opt-in companion Providers rather than by a
+core publisher encoding.
 
 ## 2. Encoding Behavior
 
@@ -16,10 +21,13 @@ The components follow the same publisher encoding policy as the rest of the pack
 
 - If `FoxgloveManager` uses `Protobuf`, these publishers advertise protobuf schemas and publish protobuf payloads.
 - If `FoxgloveManager` uses `Json`, they advertise JSON schemas and publish JSON payloads.
-- If `FoxgloveManager` uses `ROS2`, productized publishers advertise `ros2msg` schemas and publish CDR payloads.
 - If per-publisher overrides are enabled, each component can override the manager default.
 
-This means you can switch raw sensor publishing between JSON, Protobuf, and ROS2 from the Inspector without changing scene scripts. Optional compressed modes may exclude JSON when their Foxglove schema requires binary payloads.
+This means you can switch supported core encodings from the Inspector without
+changing scene scripts. Optional compressed modes may exclude JSON when their
+Foxglove schema requires binary payloads. Provider-only modes expose a neutral
+frame to an installed companion and publish nothing if no matching Provider is
+available.
 
 ## 3. Point Cloud Publisher
 
@@ -29,8 +37,9 @@ Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side poi
 
 | Mode | Default topic | Schema | Encoding | Dependency |
 |---|---|---|---|---|
-| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` or `foxglove_msgs/msg/PointCloud` | JSON, Protobuf, or ROS2 | none |
-| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` or `foxglove_msgs/msg/CompressedPointCloud` | Protobuf or ROS2 | bundled Windows native plugin |
+| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` | JSON or Protobuf | none |
+| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` | Protobuf | bundled Windows native plugin |
+| `Packed Provider Frame` | `/unity/point_cloud_packed` | `unity2foxglove.PackedPointCloud` | Provider handoff only | matching optional Provider |
 
 Raw mode is the default and dependency-free path.
 
@@ -72,7 +81,10 @@ pointCloudPublisher.SetFrame(frame);
 
 In Draco mode, the same sampled `PointCloudFrame` is encoded by the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. The publisher emits `foxglove.CompressedPointCloud` with format = `draco`. If the native plugin is missing or incompatible, Draco mode logs a warning and publishes nothing until the plugin is restored or the component is switched back to raw mode.
 
-Draco native encode runs on a worker thread, but the main thread still prepares QoS, clones the sampled frame for background encode, drains completed results, and packs Raw/ROS2 payloads when those outputs are active. Use the opt-in performance diagnostics, test with `Check Draco`, and keep raw mode available for dependency-free or full-stride ROS2 point clouds.
+Draco native encode runs on a worker thread, but the main thread still prepares
+sampling policy, clones the sampled frame for background encode, and drains
+completed results. Use the opt-in performance diagnostics, test with
+`Check Draco`, and keep raw mode available for the dependency-free path.
 
 ### 3.1 Field Layout
 

@@ -129,6 +129,7 @@ GameObject:
   m_Component:
   - component: {fileID: 976954320}
   - component: {fileID: 976954319}
+  - component: {fileID: 976954321}
   m_Layer: 0
   m_Name: FoxgloveManager
   m_TagString: Untagged
@@ -146,21 +147,22 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _publishCadenceDiagnosticsEnabled: 0
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
   _frameStallDiagnosticsEnabled: 0
   _frameStallDiagnosticsThresholdMs: 200
   _frameStallStageTimingDiagnosticsEnabled: 0
-  _foxRunPolicySerializationVersion: 2
+  _foxRunPolicySerializationVersion: 1
   _coordinateTransportPolicySerializationVersion: 1
   _defaultFoxRunPublishEncoding: 1
+  _foxRunPublishTransportIds:
+  - foxglove.websocket
+  - unity2foxglove.r2fu
+  _foxRunSubscribeTransportId: unity2foxglove.r2fu
   _defaultFoxRunEncoding: 1
   _defaultFoxRunSubscriptionEncoding: 1
-  _defaultFoxRunEndpoint: 2
-  _defaultFoxRunRos2Qos: 1
-  _foxRunRos2NativeCopyBudgetBytes: 4194304
   _enableFoxRunInbound: 1
   _allowRemoteFoxRunInboundWithSharedToken: 0
   _foxRunInboundMaxPayloadBytes: 65536
@@ -174,25 +176,10 @@ MonoBehaviour:
   _transportMode: 2
   _transportModeBeforeOutputDisabled: 0
   _foxgloveOutputEnabled: 0
-  _ros2NativeEnabled: 1
   _profilingEnabled: 0
   _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 2
   _allowPublisherOverride: 1
-  _ros2BridgeEnabled: 0
-  _ros2BridgeHost: 127.0.0.1
-  _ros2BridgePort: 8767
-  _ros2BridgeAutoConnect: 1
-  _defaultRos2BridgeOutputEnabled: 0
-  _allowPublisherRos2BridgeOverride: 1
-  _ros2BridgeNamespace: 
-  _ros2BridgeQosPreset: 0
-  _ros2BridgeCustomReliability: 0
-  _ros2BridgeCustomDurability: 0
-  _ros2BridgeCustomDepth: 10
-  _ros2BridgeQueueCapacity: 1024
-  _ros2BridgeReconnectIntervalMs: 1000
-  _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 1
   _outputCoordinateMode: 1
   _inputCoordinateMode: 1
@@ -202,35 +189,35 @@ MonoBehaviour:
   _playbackDurationSeconds: 60
   _enableRecording: 0
   _recordingPrefix: foxglove
-  _recordingDirectory: 
+  _recordingDirectory:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath: 
+  _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _enableRemoteMcapFileServer: 0
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
-  _remoteMcapFileServerToken: 
+  _remoteMcapFileServerToken:
   _enableReplayCursorBridge: 0
   _replayCursorBridgeHost: 127.0.0.1
   _replayCursorBridgePort: 8892
-  _replayCursorBridgeToken: 
+  _replayCursorBridgeToken:
   _identityModeSource: 0
   _identityModeOverride: 0
   _projectSettingsIdentityMode: 0
   _schemaEvidenceRoot: Assets/Generated
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins: []
-  _certificatePfxPath: 
-  _certificatePassword: 
+  _certificatePfxPath:
+  _certificatePassword:
   _rootCaDistributorEnabled: 0
   _rootCaDistributorHost: 127.0.0.1
   _rootCaDistributorPort: 8766
-  _rootCaFilePath: 
-  _sharedToken: 
+  _rootCaFilePath:
+  _sharedToken:
 --- !u!4 &976954320
 Transform:
   m_ObjectHideFlags: 0
@@ -246,6 +233,39 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &976954321
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 976954318}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f32d8c60e0a74de4be305ea53029c531, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Unity2Foxglove.Ros2ForUnity.Native::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2TransportProvider
+  _publishQos:
+    _profile: 1
+    _overrideReliability: 0
+    _reliability: 2
+    _overrideDurability: 0
+    _durability: 2
+    _overrideHistory: 0
+    _history: 2
+    _overrideDepth: 0
+    _depth: 10
+  _subscribeQos:
+    _profile: 1
+    _overrideReliability: 0
+    _reliability: 2
+    _overrideDurability: 0
+    _durability: 2
+    _overrideHistory: 0
+    _history: 2
+    _overrideDepth: 0
+    _depth: 10
+  _nativeCopyBudgetBytes: 4194304
 --- !u!1 &1023821933
 GameObject:
   m_ObjectHideFlags: 0
@@ -273,16 +293,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: efc4ea469b491584d825a9f7ec91fe56, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase181FoxRunCustomRos2InterfaceAcceptance
   _manager: {fileID: 976954319}
   _status: Waiting for custom native ROS2 registration.
   _emittedMarkerCount: 0
-  _runtime: 
-  _rmwImplementation: 
+  _runtime:
+  _rmwImplementation:
   _interfaceDigestPrefix: 120864853239
-  _subscribeMessage: 
-  _subscribeNestedLabel: 
+  _subscribeMessage:
+  _subscribeNestedLabel:
   _subscribeCount: 0
   _subscribeByteCount: 0
   _subscribeSequenceCount: 0
@@ -299,9 +319,9 @@ MonoBehaviour:
   _bidirectionalApplied: 0
   _localOriginDrops: 0
   _sessionGeneration: 0
-  _lastErrorCode: 
+  _lastErrorCode:
   _playerAutoQuitRequested: 0
-  _playerToken: 
+  _playerToken:
   _playerAutoQuitTimeoutSeconds: 120
 --- !u!4 &1023821935
 Transform:

@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_lastEncodingFallbackWarningKey", StringComparison.Ordinal)
                   && source.Contains("_lastEncodingMismatchWarningKey", StringComparison.Ordinal)
                   && source.Contains("_lastPublishTopicWarningKey", StringComparison.Ordinal)
-                  && source.Contains("_lastRos2BridgeTopicWarningKey", StringComparison.Ordinal),
+                  && source.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal),
                 "163-14A-5: warning dedupe state is split by warning category");
             Check(source.Contains("fresh cadence window", StringComparison.Ordinal),
                 "163-14A-6: OnEnable documents immediate first scheduled publish behavior");
@@ -53,20 +53,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Ros2SchemaValidationIsNonThrowingForPublishPaths()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
-            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
+            var provider = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
+            var manager = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
+            var publisher = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
 
-            Check(manager.Contains("TryGetOrRegisterRos2MsgSchemaChannel", StringComparison.Ordinal)
-                  && manager.Contains("TryValidateRos2SchemaName", StringComparison.Ordinal)
-                  && manager.Contains("WarnInvalidRos2Schema", StringComparison.Ordinal),
-                "163-14B-1: ROS2 publisher paths have non-throwing schema validation helpers");
-            Check(MethodContains(manager, "public bool TryPrepareRos2Publish", "TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId"),
-                "163-14B-2: ROS2 prepare returns false instead of throwing for bad schemas");
-            Check(MethodContains(manager, "public void PublishRos2(string topic", "TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId"),
-                "163-14B-3: direct ROS2 publish returns after warning instead of throwing for bad schemas");
-            Check(warningState.Contains("LastInvalidRos2SchemaWarningKey", StringComparison.Ordinal)
-                  && manager.Contains("_warningDebounceState.LastInvalidRos2SchemaWarningKey", StringComparison.Ordinal),
-                "163-14B-4: invalid ROS2 schema warnings are deduplicated independently");
+            Check(MethodContains(provider, "public bool TryMap(", "return TryMapOrdinary(")
+                  && MethodContains(provider, "public bool TryMap(", "reason = Bound(exception.Message);")
+                  && MethodContains(provider, "public bool TryMap(", "return false;"),
+                "163-14B-1: ROS2 Bridge Provider mapping fails closed with a bounded reason");
+            Check(MethodContains(provider, "public FoxRunTransportPublishResult Publish(", "FoxRunTransportPublishResult.Rejected(")
+                  && MethodContains(provider, "public FoxRunTransportPublishResult Publish(", "FoxRunTransportPublishResult.Failed("),
+                "163-14B-2: ROS2 Bridge Provider classifies invalid wire contracts without throwing");
+            Check(MethodContains(manager, "public FoxRunTransportPublishResult PublishOrdinaryTransport(", "return FoxRunTransportPublishResult.Rejected(reason);")
+                  && MethodContains(manager, "public FoxRunTransportPublishResult PublishOrdinaryTransport(", "return FoxRunTransportPublishResult.Failed(exception.Message);"),
+                "163-14B-3: core ordinary Provider boundary converts mapping and publish failures to results");
+            Check(publisher.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
+                  && publisher.Contains("Provider fanout rejected", StringComparison.Ordinal),
+                "163-14B-4: invalid Provider mapping warnings are deduplicated independently");
         }
 
         private static void SystemInfoPublisherClampsEffectiveRateOnlyAtRuntime()
@@ -93,15 +99,22 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var transportProviders = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var managerLifecycle = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
             Check(publisher.Contains("protected virtual void OnDisable() { }", StringComparison.Ordinal),
                 "163-14D-1: publisher disable does not unadvertise shared session channels without ref counts");
             Check(manager.Contains("_channelCache[key] = id;", StringComparison.Ordinal)
-                  && manager.Contains("var key = (topic, schemaName, CdrEncoding, Ros2MsgSchemaEncoding);", StringComparison.Ordinal),
-                "163-14D-2: channel cache remains keyed by full topic/schema/encoding identity");
-            Check(server.Contains("_channelCache.Clear();", StringComparison.Ordinal),
-                "163-14D-3: channel cache lifecycle remains scoped to StopServer session teardown");
+                  && manager.Contains("var key = (topic, schemaName, encoding, \"\");", StringComparison.Ordinal)
+                  && transportProviders.Contains("contribution.MessageEncoding", StringComparison.Ordinal)
+                  && transportProviders.Contains("contribution.SchemaEncoding", StringComparison.Ordinal),
+                "163-14D-2: WebSocket cache and Provider routes preserve their full wire identities");
+            Check(server.Contains("_channelCache.Clear();", StringComparison.Ordinal)
+                  && managerLifecycle.Contains("EndFoxRunTransportSession", StringComparison.Ordinal),
+                "163-14D-3: WebSocket channels and Provider sessions are both bounded by Manager teardown");
         }
 
         private static void PhaseWiringIsPresent()

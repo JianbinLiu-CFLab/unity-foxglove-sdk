@@ -5,6 +5,7 @@
 // Purpose: Compile-only Unity host surface for the optional facade and focused Native lanes.
 
 using System;
+using System.Collections.Generic;
 
 namespace UnityEngine
 {
@@ -31,8 +32,17 @@ namespace UnityEngine
         public DefaultExecutionOrderAttribute(int order) { }
     }
 
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class DisallowMultipleComponentAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class SerializeField : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class MinAttribute : Attribute
+    {
+        public MinAttribute(float min) { }
+    }
 
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class RuntimeInitializeOnLoadMethodAttribute : Attribute
@@ -59,7 +69,7 @@ namespace UnityEngine
     {
         public GameObject(string objectName) { name = objectName; }
         public UnityEngine.SceneManagement.Scene scene { get; set; }
-        public T AddComponent<T>() where T : new() => new T();
+        public T AddComponent<T>() => default;
     }
 
     public class MonoBehaviour : Object
@@ -85,6 +95,7 @@ namespace UnityEngine
     public static class Debug
     {
         public static void LogWarning(object message) { }
+        public static void LogException(Exception exception) { }
     }
 }
 
@@ -129,27 +140,26 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxgloveManager
     {
         public bool IsRunning { get; set; }
-        public bool Ros2NativeEnabled { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
         public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy { get; set; }
+        public FoxRunTransportSessionSnapshot ActiveFoxRunTransportSession { get; set; }
+        public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds { get; set; } =
+            Array.Empty<FoxRunTransportId>();
         public float ActiveFoxRunDefaultPublishRateHz { get; set; } = 10f;
-        public FoxRunEndpoint ActiveFoxRunPublishTargets { get; set; } = FoxRunEndpoint.Foxglove;
         public FoxRunEncoding ActiveFoxRunPublishEncoding { get; set; } = FoxRunEncoding.Protobuf;
-        public FoxRunEndpoint ActiveFoxRunSubscriptionSource { get; set; } = FoxRunEndpoint.Foxglove;
         public FoxRunEncoding ActiveFoxRunSubscriptionEncoding { get; set; } = FoxRunEncoding.Protobuf;
-        public FoxRunResolvedQos DefaultFoxRunNativePublishQos { get; set; } =
-            FoxRunResolvedQos.Default;
-        public FoxRunResolvedQos ActiveFoxRunNativePublishQos =>
-            ActiveFoxRunPublishSessionPolicy != null
-            && ActiveFoxRunPublishSessionPolicy.SessionActive
-                ? ActiveFoxRunPublishSessionPolicy.NativeRos2Qos
-                : DefaultFoxRunNativePublishQos;
-        public FoxRunResolvedQos ActiveFoxRunBridgePublishQos { get; set; } =
-            FoxRunResolvedQos.Default;
         public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }
         public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
         public event Action<FoxRunSubscriptionSessionPolicy> FoxRunSubscriptionSessionChanged;
+
+        public FoxRunTransportRegistrationResult RegisterFoxRunTransportProvider(
+            IFoxRunTransportProvider provider)
+            => FoxRunTransportRegistrationResult.Added;
+
+        public bool UnregisterFoxRunTransportProvider(
+            IFoxRunTransportProvider provider)
+            => true;
 
         public FoxRunEncoding ResolveFoxRunEncoding(
             FoxRunEncoding declaredEncoding,
@@ -174,34 +184,13 @@ namespace Unity.FoxgloveSDK.Components
             byte[] payload,
             ulong logTimeNs) { }
 
-        public bool TryPrepareFoxRunRos2BridgePublish(
+        public void PublishFoxRunMessagePackBytes(
             string topic,
-            string schemaName,
-            FoxRunResolvedQos qos,
-            out string effectiveTopic,
-            out string reason)
-        {
-            effectiveTopic = topic ?? string.Empty;
-            reason = string.Empty;
-            return false;
-        }
-
-        public bool TryPublishFoxRunRos2BridgeCdr(
-            string topic,
-            string schemaName,
             byte[] payload,
-            ulong logTimeNs,
-            FoxRunResolvedQos qos,
-            out string reason)
-        {
-            reason = string.Empty;
-            return false;
-        }
+            ulong logTimeNs) { }
 
-        public bool TryPrepareFoxRunRos2Recording(
+        public bool TryPrepareFoxRunMessagePackRecording(
             string topic,
-            string schemaName,
-            string schemaContent,
             out uint channelId,
             out string reason)
         {
@@ -210,10 +199,8 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
-        public bool TryPublishFoxRunRos2Recording(
+        public bool TryPublishFoxRunMessagePackRecording(
             string topic,
-            string schemaName,
-            string schemaContent,
             byte[] payload,
             ulong logTimeNs,
             out string reason)
@@ -222,7 +209,36 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        public FoxRunGeneratedTransportFanoutResult PublishGeneratedTransports(
+            IFoxRunGeneratedTransportSource source,
+            int topicIndex,
+            string topic,
+            IReadOnlyList<string> explicitTransportIds,
+            ulong logTimeNs,
+            string suppressedTransportId = "",
+            ulong suppressedGeneration = 0)
+            => default;
+
+        internal bool IsActiveFoxRunPublishTransport(
+            string transportId,
+            ulong generation)
+            => false;
+
         public void RaiseFoxRunPublishSessionChanged()
             => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);
     }
+}
+
+namespace Unity2Foxglove.Ros2ForUnity.Native
+{
+#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
+    /// <summary>
+    /// Adapter-lane identity surface for the runtime-gated Provider component.
+    /// The native lane compiles the real component instead.
+    /// </summary>
+    public sealed class FoxRunRos2TransportProvider
+    {
+        public const string IdValue = "unity2foxglove.r2fu";
+    }
+#endif
 }

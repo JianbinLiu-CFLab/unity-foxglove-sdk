@@ -16,9 +16,14 @@
 
 #include <atomic>
 #include <array>
+#include <condition_variable>
 #include <exception>
+#include <fstream>
 #include <limits>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 // Include the production translation unit directly to exercise internal parser helpers.
 #define UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
@@ -26,6 +31,94 @@
 
 namespace
 {
+#ifndef U2R2_PROTOCOL_FIXTURE_PATH
+#error "U2R2_PROTOCOL_FIXTURE_PATH must identify the shared v1 authority fixture"
+#endif
+
+nlohmann::json LoadV1AuthorityFixture()
+{
+  std::ifstream input(U2R2_PROTOCOL_FIXTURE_PATH, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error(
+            std::string("unable to open shared U2R2 v1 authority fixture: ") +
+            U2R2_PROTOCOL_FIXTURE_PATH);
+  }
+  nlohmann::json fixture;
+  input >> fixture;
+  return fixture;
+}
+
+std::vector<uint8_t> HexToBytes(const std::string & hex)
+{
+  if (hex.size() % 2 != 0) {
+    throw std::runtime_error("fixture hex contains an incomplete byte");
+  }
+  std::vector<uint8_t> bytes;
+  bytes.reserve(hex.size() / 2);
+  for (size_t offset = 0; offset < hex.size(); offset += 2) {
+    bytes.push_back(static_cast<uint8_t>(
+      std::stoul(hex.substr(offset, 2), nullptr, 16)));
+  }
+  return bytes;
+}
+
+RawFrame ReadFixtureFrame(const nlohmann::json & vector)
+{
+  const auto bytes = HexToBytes(vector.at("frameHex").get<std::string>());
+  if (bytes.size() < 16 ||
+    bytes[0] != 'U' || bytes[1] != '2' || bytes[2] != 'R' || bytes[3] != '2')
+  {
+    throw std::runtime_error("fixture frame has an invalid fixed header");
+  }
+  const auto header_length = read_u32_le(&bytes[8]);
+  const auto payload_length = read_u32_le(&bytes[12]);
+  if (bytes.size() != 16U + header_length + payload_length) {
+    throw std::runtime_error("fixture frame length does not match its fixed header");
+  }
+  const std::string header_json(
+    bytes.begin() + 16,
+    bytes.begin() + 16 + header_length);
+  if (header_json != vector.at("headerJson").get<std::string>()) {
+    throw std::runtime_error("fixture frame JSON does not match headerJson");
+  }
+
+  RawFrame raw;
+  raw.header = nlohmann::json::parse(header_json);
+  raw.payload.assign(bytes.begin() + 16 + header_length, bytes.end());
+  if (raw.header != vector.at("header")) {
+    throw std::runtime_error("fixture frame JSON does not match structured header");
+  }
+  if (raw.payload.size() != vector.at("payloadLength").get<size_t>()) {
+    throw std::runtime_error("fixture payload length does not match structured metadata");
+  }
+  return raw;
+}
+
+std::vector<uint8_t> ReadSocketBytes(SocketHandle socket, size_t count)
+{
+  std::vector<uint8_t> bytes(count, 0);
+  size_t offset = 0;
+  while (offset < count) {
+    const auto received = receive_socket(socket, bytes.data() + offset, count - offset);
+    if (received <= 0) {
+      throw std::runtime_error("fixture response socket closed before the frame completed");
+    }
+    offset += static_cast<size_t>(received);
+  }
+  return bytes;
+}
+
+std::vector<uint8_t> ReadSocketWireFrame(SocketHandle socket)
+{
+  auto bytes = ReadSocketBytes(socket, 16);
+  const auto header_length = read_u32_le(&bytes[8]);
+  const auto payload_length = read_u32_le(&bytes[12]);
+  const auto remainder =
+    ReadSocketBytes(socket, header_length + payload_length);
+  bytes.insert(bytes.end(), remainder.begin(), remainder.end());
+  return bytes;
+}
+
 struct WireQosContract
 {
   std::string profile = "default";
@@ -162,6 +255,126 @@ int ShutdownSocketWrite(SocketHandle socket)
 #endif
 }
 }  // namespace
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCppProtocol)
+{
+  const auto fixture = LoadV1AuthorityFixture();
+  ASSERT_EQ(1, fixture.at("fixtureVersion").get<int>());
+  const auto & limits = fixture.at("limits");
+  EXPECT_EQ(16, limits.at("fixedHeaderBytes").get<int>());
+  EXPECT_EQ(kMaxHeaderBytes, limits.at("maxJsonHeaderBytes").get<uint32_t>());
+  EXPECT_EQ(kMaxPayloadBytes, limits.at("maxPayloadBytes").get<uint32_t>());
+  EXPECT_EQ(1024, limits.at("defaultQueueCapacityFrames").get<int>());
+  EXPECT_EQ(68719476736ULL, limits.at("maxQueuedPayloadBytes").get<uint64_t>());
+  EXPECT_EQ(1, limits.at("activeConnectionCount").get<int>());
+  EXPECT_EQ(4, limits.at("listenBacklog").get<int>());
+  EXPECT_EQ(
+    std::chrono::milliseconds(5000),
+    std::chrono::duration_cast<std::chrono::milliseconds>(kReadStallTimeout));
+
+  const auto & health = fixture.at("health");
+  const auto health_request = ReadFixtureFrame(health.at("request"));
+  EXPECT_EQ("health_ping", health_request.header.at("op").get<std::string>());
+  EXPECT_EQ(
+    health.at("requestId").get<std::string>(),
+    health_request.header.at("requestId").get<std::string>());
+  EXPECT_EQ(
+    kHealthProtocolVersion,
+    health_request.header.at("protocolVersion").get<int>());
+  EXPECT_TRUE(health_request.payload.empty());
+
+  {
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    const auto expected = HexToBytes(
+      health.at("response").at("sidecarFrameHex").get<std::string>());
+    write_health_pong_ok(writer.get(), health.at("requestId").get<std::string>());
+    EXPECT_EQ(expected, ReadSocketBytes(reader.get(), expected.size()));
+  }
+
+  const auto & preparation = fixture.at("preparePublisher");
+  const auto preparation_request = parse_prepare_publisher_frame(
+    ReadFixtureFrame(preparation.at("request")));
+  EXPECT_EQ(
+    preparation.at("requestId").get<std::string>(),
+    preparation_request.request_id);
+  EXPECT_EQ(
+    preparation.at("topic").get<std::string>(),
+    preparation_request.frame.topic);
+  EXPECT_EQ(
+    preparation.at("schemaName").get<std::string>(),
+    preparation_request.frame.schema_name);
+  EXPECT_EQ("default", preparation_request.frame.profile);
+  EXPECT_EQ("reliable", preparation_request.frame.reliability);
+  EXPECT_EQ("volatile", preparation_request.frame.durability);
+  EXPECT_EQ("keep_last", preparation_request.frame.history);
+  EXPECT_EQ(10, preparation_request.frame.depth);
+
+  {
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    const auto expected = HexToBytes(
+      preparation.at("response").at("sidecarFrameHex").get<std::string>());
+    write_u2r2_frame(
+      writer.get(),
+      publisher_ready_ok(preparation_request.request_id),
+      {});
+    EXPECT_EQ(expected, ReadSocketBytes(reader.get(), expected.size()));
+  }
+
+  const auto & publish = fixture.at("publish");
+  const auto publish_frame = parse_publish_frame(
+    ReadFixtureFrame(publish.at("frame")));
+  EXPECT_EQ(publish.at("topic").get<std::string>(), publish_frame.topic);
+  EXPECT_EQ(publish.at("schemaName").get<std::string>(), publish_frame.schema_name);
+  EXPECT_EQ(publish.at("encoding").get<std::string>(), publish_frame.encoding);
+  EXPECT_EQ(publish.at("logTimeNs").get<uint64_t>(), publish_frame.log_time_ns);
+  EXPECT_EQ(publish.at("sequence").get<uint64_t>(), publish_frame.sequence);
+  EXPECT_EQ(
+    HexToBytes(publish.at("payloadHex").get<std::string>()),
+    publish_frame.payload);
+
+  // Phase186-A froze these v1 entries as a documented case catalog.
+  // Executable negative actions live under v2.negativeVectors and are driven
+  // by test_u2r2_protocol.cpp in both language implementations.
+  const std::array<std::string, 19> expected_negative_ids = {
+    "bad_magic",
+    "bad_version",
+    "bad_flags",
+    "oversized_header",
+    "oversized_payload",
+    "truncated_fixed",
+    "truncated_header",
+    "truncated_payload",
+    "partial_payload_stall",
+    "duplicate_operation",
+    "unknown_operation",
+    "illegal_sequence",
+    "invalid_utf8",
+    "trailing_json_root",
+    "invalid_topic",
+    "invalid_type",
+    "invalid_delivery_policy",
+    "correlation_mismatch",
+    "peer_close"
+  };
+  const auto & negative_vectors = fixture.at("negativeVectors");
+  ASSERT_EQ(expected_negative_ids.size(), negative_vectors.size());
+  for (size_t index = 0; index < expected_negative_ids.size(); ++index) {
+    EXPECT_EQ(
+      expected_negative_ids[index],
+      negative_vectors[index].at("id").get<std::string>());
+    EXPECT_EQ(
+      "reject",
+      negative_vectors[index].at("expected").get<std::string>());
+  }
+}
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, ValidatesTopicNames)
 {
@@ -917,6 +1130,572 @@ TEST(
   context->shutdown("phase184 deferred process node test complete");
 }
 
+namespace
+{
+namespace bridge_runtime = unity2foxglove::ros2_bridge::runtime;
+namespace u2r2 = unity2foxglove::ros2_bridge::u2r2;
+
+struct GenerationPublisherLifetime final
+{
+  explicit GenerationPublisherLifetime(std::atomic<size_t> & destruction_count)
+  : destruction_count_(&destruction_count)
+  {
+  }
+
+  ~GenerationPublisherLifetime()
+  {
+    ++(*destruction_count_);
+  }
+
+  std::atomic<size_t> * destruction_count_;
+};
+}  // namespace
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  AccountedWireReadHoldsExactlyOneFullFrameLeaseUntilCompletion)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::BridgeSessionProtocol protocol(
+    u2r2::ProtocolLimits::defaults());
+  const auto wire = u2r2::encode_frame(
+    {
+      {"op", "health_ping"},
+      {"protocolVersion", 1},
+      {"requestId", "phase186c-accounted-read"},
+    },
+    {});
+  std::optional<AccountedWireFrame> received;
+  std::exception_ptr reader_error;
+  std::thread reader(
+    [&]() {
+      try {
+        received.emplace(
+          read_accounted_wire_frame(
+            server_socket.get(),
+            protocol,
+            []() {return true;}));
+      } catch (...) {
+        reader_error = std::current_exception();
+      }
+    });
+
+  write_all(
+    client_socket.get(),
+    std::vector<uint8_t>(wire.begin(), wire.begin() + 16));
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (
+    protocol.in_flight_bytes() == 0 &&
+    std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
+  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+
+  write_all(
+    client_socket.get(),
+    std::vector<uint8_t>(wire.begin() + 16, wire.end()));
+  reader.join();
+
+  ASSERT_EQ(nullptr, reader_error);
+  ASSERT_TRUE(received.has_value());
+  EXPECT_EQ(wire, received->bytes);
+  EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
+  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+  received.reset();
+  EXPECT_EQ(0U, protocol.in_flight_bytes());
+  EXPECT_EQ(0U, protocol.transient_bytes());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  AccountedWireWriteConsumesFrozenWallClockDeadline)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  const int socket_buffer_bytes = 1024;
+  ASSERT_EQ(
+    0,
+    set_socket_option(
+      client_socket.get(),
+      SOL_SOCKET,
+      SO_SNDBUF,
+      &socket_buffer_bytes,
+      static_cast<SocketLength>(sizeof(socket_buffer_bytes))));
+  ASSERT_EQ(
+    0,
+    set_socket_option(
+      server_socket.get(),
+      SOL_SOCKET,
+      SO_RCVBUF,
+      &socket_buffer_bytes,
+      static_cast<SocketLength>(sizeof(socket_buffer_bytes))));
+
+  const auto limits = u2r2::ProtocolLimits::defaults().with({
+    {"writeTimeoutMs", 25},
+  });
+  size_t buffered_bytes = 0;
+  {
+    ScopedNonBlockingSocket non_blocking(client_socket.get());
+    const std::vector<uint8_t> fill(64U * 1024U, 0x5a);
+    while (true) {
+      const auto sent =
+        send_socket(client_socket.get(), fill.data(), fill.size());
+      if (sent > 0) {
+        buffered_bytes += static_cast<size_t>(sent);
+        ASSERT_LT(buffered_bytes, 256U * 1024U * 1024U)
+          << "the test could not saturate the loopback send window";
+        continue;
+      }
+      const auto error = last_socket_error();
+      ASSERT_TRUE(socket_error_is_retryable_timeout(error))
+        << "unexpected socket error while saturating the send window: "
+        << socket_error_text(error);
+      break;
+    }
+  }
+  ASSERT_GT(buffered_bytes, 0U);
+
+  const std::vector<uint8_t> blocked_response(1024U, 0x5a);
+  const auto started = std::chrono::steady_clock::now();
+  try {
+    write_all_accounted(
+      client_socket.get(),
+      blocked_response,
+      limits);
+    FAIL() << "a blocked U2R2 write ignored its frozen wall-clock deadline";
+  } catch (const u2r2::ProtocolError & error) {
+    EXPECT_EQ("timeout", error.code());
+    EXPECT_TRUE(error.terminal());
+  }
+  EXPECT_LT(
+    std::chrono::steady_clock::now() - started,
+    std::chrono::seconds(2));
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  AccountedWireReadConsumesPartialAndIdleWallClockDeadlines)
+{
+  const auto expect_timeout =
+    [](
+    u2r2::TimeoutKind idle_timeout,
+    const u2r2::ProtocolLimits & limits,
+    const std::vector<uint8_t> & prefix) {
+      const auto sockets = MakeConnectedSocketPair();
+      ASSERT_NE(kInvalidSocket, sockets[0]);
+      ASSERT_NE(kInvalidSocket, sockets[1]);
+      ScopedFd client_socket(sockets[0]);
+      ScopedFd server_socket(sockets[1]);
+      configure_client_timeouts(client_socket.get());
+      configure_client_timeouts(server_socket.get());
+
+      bridge_runtime::BridgeSessionProtocol protocol(limits);
+      std::atomic<bool> reader_done{false};
+      std::exception_ptr reader_error;
+      std::thread reader(
+        [&]() {
+          try {
+            (void)read_accounted_wire_frame(
+              server_socket.get(),
+              protocol,
+              []() {return true;},
+              idle_timeout);
+          } catch (...) {
+            reader_error = std::current_exception();
+          }
+          reader_done.store(true);
+        });
+      if (!prefix.empty()) {
+        write_all(client_socket.get(), prefix);
+      }
+
+      const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+      while (
+        !reader_done.load() &&
+        std::chrono::steady_clock::now() < deadline)
+      {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+      const bool completed_before_forced_close = reader_done.load();
+      if (!completed_before_forced_close) {
+        shutdown_socket_both(client_socket.get());
+      }
+      reader.join();
+
+      EXPECT_TRUE(completed_before_forced_close);
+      ASSERT_NE(nullptr, reader_error);
+      try {
+        std::rethrow_exception(reader_error);
+        FAIL() << "the accounted read ignored its frozen wall-clock deadline";
+      } catch (const u2r2::ProtocolError & error) {
+        EXPECT_EQ("timeout", error.code());
+        EXPECT_TRUE(error.terminal());
+      }
+    };
+
+  expect_timeout(
+    u2r2::TimeoutKind::read,
+    u2r2::ProtocolLimits::defaults().with({
+      {"readTimeoutMs", 25},
+    }),
+    {});
+  expect_timeout(
+    u2r2::TimeoutKind::handshake,
+    u2r2::ProtocolLimits::defaults().with({
+      {"partialFrameTimeoutMs", 25},
+    }),
+    {'U'});
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedPreclassificationHandshakeTimesOutBeforeRoleOrGenerationAllocation)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  const auto limits = u2r2::ProtocolLimits::defaults().with({
+    {"handshakeTimeoutMs", 25},
+  });
+  bridge_runtime::ProcessConnectionAuthority authority(limits);
+  std::atomic<size_t> generation_count{0};
+  std::atomic<bool> server_done{false};
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() -> std::unique_ptr<BridgeNode> {
+      ++generation_count;
+      throw std::runtime_error("handshake timeout must not create a generation");
+    };
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186c_handshake_timeout_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+      server_done.store(true);
+    });
+
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (
+    !server_done.load() &&
+    std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  const bool completed_before_forced_close = server_done.load();
+  if (!completed_before_forced_close) {
+    shutdown_socket_both(client_socket.get());
+  }
+  server.join();
+
+  EXPECT_TRUE(completed_before_forced_close);
+  ASSERT_NE(nullptr, server_error);
+  try {
+    std::rethrow_exception(server_error);
+    FAIL() << "idle preclassification unexpectedly completed";
+  } catch (const u2r2::ProtocolError & error) {
+    EXPECT_EQ("timeout", error.code());
+    EXPECT_TRUE(error.terminal());
+  }
+  EXPECT_EQ(0U, generation_count.load());
+  EXPECT_EQ(0U, authority.classified_count());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedLegacyHealthProbeIsOneShotAndDoesNotCreatePublisherGeneration)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::atomic<size_t> generation_count{0};
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() -> std::unique_ptr<BridgeNode> {
+      ++generation_count;
+      throw std::runtime_error("legacy health must not create a ROS generation");
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186c_v1_probe_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+
+  const auto health_request = u2r2::encode_frame(
+    {
+      {"op", "health_ping"},
+      {"protocolVersion", 1},
+      {"requestId", "phase186c-health"},
+    },
+    {});
+  write_all(client_socket.get(), health_request);
+  const auto response = u2r2::decode_frame(
+    ReadSocketWireFrame(client_socket.get()));
+  server.join();
+
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ("health_pong", response.header.at("op").get<std::string>());
+  EXPECT_EQ(
+    "phase186c-health",
+    response.header.at("requestId").get<std::string>());
+  EXPECT_EQ("ok", response.header.at("status").get<std::string>());
+  EXPECT_EQ(0U, generation_count.load());
+  EXPECT_EQ(0U, authority.classified_count());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2PreparationAndPublishReplayMutateOnceAndTearDownGeneration)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::atomic<size_t> generation_count{0};
+  std::atomic<size_t> publisher_create_count{0};
+  std::atomic<size_t> publisher_destroy_count{0};
+  std::atomic<size_t> publish_count{0};
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() -> std::unique_ptr<BridgeNode> {
+      ++generation_count;
+      GenericPublisherFactory publisher_factory =
+        [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+          ++publisher_create_count;
+          auto lifetime = std::make_shared<GenerationPublisherLifetime>(
+            publisher_destroy_count);
+          return [lifetime, &publish_count](
+            const rclcpp::SerializedMessage &) {
+              ++publish_count;
+            };
+        };
+      return std::make_unique<BridgeNode>(
+        PayloadFormat::CdrWithEncapsulation,
+        std::move(publisher_factory));
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186c_v2_replay_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+
+  const auto hello = u2r2::encode_frame(
+    {
+      {"op", "hello"},
+      {"protocolVersion", 2},
+      {"requestId", 1},
+      {"clientName", "phase186c-smoke"},
+      {"capabilities", nlohmann::json::array({"publish"})},
+    },
+    {});
+  write_all(client_socket.get(), hello);
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  const auto prepare = u2r2::encode_frame(
+    {
+      {"op", "prepare_publisher"},
+      {"protocolVersion", 2},
+      {"requestId", 2},
+      {"sessionId", hello_ack.session_id},
+      {"connectionGeneration", hello_ack.connection_generation},
+      {"topic", "/phase186/v2/state"},
+      {"schemaName", "std_msgs/msg/String"},
+      {"encoding", "cdr"},
+      {"qos", {
+          {"profile", "default"},
+          {"reliability", "reliable"},
+          {"durability", "volatile"},
+          {"history", "keep_last"},
+          {"depth", 10},
+        }},
+    },
+    {});
+  write_all(client_socket.get(), prepare);
+  const auto first_ready = ReadSocketWireFrame(client_socket.get());
+  write_all(client_socket.get(), prepare);
+  const auto replayed_ready = ReadSocketWireFrame(client_socket.get());
+  EXPECT_EQ(first_ready, replayed_ready);
+  const auto ready =
+    u2r2::parse_v2(u2r2::decode_frame(first_ready));
+  EXPECT_EQ(u2r2::Operation::PublisherReady, ready.operation);
+  EXPECT_EQ("ok", ready.status);
+
+  const auto publish = u2r2::encode_frame(
+    {
+      {"op", "publish"},
+      {"protocolVersion", 2},
+      {"requestId", 3},
+      {"messageId", 41},
+      {"sessionId", hello_ack.session_id},
+      {"connectionGeneration", hello_ack.connection_generation},
+      {"topic", "/phase186/v2/state"},
+      {"schemaName", "std_msgs/msg/String"},
+      {"encoding", "cdr"},
+      {"logTimeNs", 186},
+      {"sequence", 41},
+      {"qos", {
+          {"profile", "default"},
+          {"reliability", "reliable"},
+          {"durability", "volatile"},
+          {"history", "keep_last"},
+          {"depth", 10},
+        }},
+    },
+    {0x00, 0x01, 0x00, 0x00, 0x01});
+  write_all(client_socket.get(), publish);
+  const auto first_result = ReadSocketWireFrame(client_socket.get());
+  write_all(client_socket.get(), publish);
+  const auto replayed_result = ReadSocketWireFrame(client_socket.get());
+  EXPECT_EQ(first_result, replayed_result);
+  const auto result =
+    u2r2::parse_v2(u2r2::decode_frame(first_result));
+  EXPECT_EQ(u2r2::Operation::PublishResult, result.operation);
+  EXPECT_EQ("ok", result.status);
+  EXPECT_EQ(41U, result.message_id);
+
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  server.join();
+
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(1U, generation_count.load());
+  EXPECT_EQ(1U, publisher_create_count.load());
+  EXPECT_EQ(1U, publish_count.load());
+  EXPECT_EQ(1U, publisher_destroy_count.load());
+  EXPECT_EQ(0U, authority.classified_count());
+  auto replacement =
+    authority.try_acquire_role(u2r2::ConnectionRole::data_session);
+  ASSERT_TRUE(replacement.has_value());
+  replacement->release();
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2SecondDataSessionGetsStableBusyWithoutCreatingGeneration)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  auto active_data =
+    authority.try_acquire_role(u2r2::ConnectionRole::data_session);
+  ASSERT_TRUE(active_data.has_value());
+
+  std::atomic<size_t> generation_count{0};
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() -> std::unique_ptr<BridgeNode> {
+      ++generation_count;
+      throw std::runtime_error("busy session must not create a ROS generation");
+    };
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186c_v2_busy_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "hello"},
+        {"protocolVersion", 2},
+        {"requestId", 91},
+        {"clientName", "phase186c-busy"},
+        {"capabilities", nlohmann::json::array({"publish"})},
+      },
+      {}));
+  const auto response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  server.join();
+
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(u2r2::Operation::Busy, response.operation);
+  EXPECT_EQ(91U, response.request_id);
+  EXPECT_EQ("error", response.status);
+  EXPECT_EQ("busy", response.error_code);
+  EXPECT_TRUE(response.terminal);
+  EXPECT_EQ(0U, generation_count.load());
+  EXPECT_EQ(1U, authority.classified_count());
+  active_data->release();
+  EXPECT_EQ(0U, authority.classified_count());
+}
+
 TEST(
   Unity2FoxgloveRos2BridgeProtocol,
   LegacyPublishContractFailureDoesNotDropHealthyPublishersInTheSameSession)
@@ -980,6 +1759,36 @@ TEST(
     }
   }
   EXPECT_EQ(1U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  LegacyPublisherCapacityFailsBeforeASecondPublisherFactoryMutation)
+{
+  size_t publisher_creations = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+      ++publisher_creations;
+      return [](const rclcpp::SerializedMessage &) {};
+    };
+  BridgeNode bridge(
+    PayloadFormat::CdrWithEncapsulation,
+    std::move(factory),
+    1);
+
+  EXPECT_NO_THROW(bridge.prepare(
+      parse_prepare_publisher_frame(
+        MakePreparePublisherRawFrame(
+          "capacity-1",
+          "/phase186/v1/first")).frame));
+  EXPECT_THROW(
+    bridge.prepare(
+      parse_prepare_publisher_frame(
+        MakePreparePublisherRawFrame(
+          "capacity-2",
+          "/phase186/v1/second")).frame),
+    std::runtime_error);
+  EXPECT_EQ(1U, publisher_creations);
 }
 
 TEST(
@@ -1405,4 +2214,252 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, MakesKeepLastQosWithNonDefaultDepth)
   EXPECT_EQ(RMW_QOS_POLICY_DURABILITY_VOLATILE, qos.durability);
   EXPECT_EQ(RMW_QOS_POLICY_HISTORY_KEEP_LAST, qos.history);
   EXPECT_EQ(37U, qos.depth);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  GenericSubscriptionReceivesExactExternalSerializedCdr)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase186_d_sidecar_subscription_probe",
+    context);
+  BridgeNode bridge(
+    ros_owner.require_node(),
+    PayloadFormat::CdrWithEncapsulation);
+  const u2r2::ContractIdentity identity(
+    u2r2::ContractKey(41U, 7U),
+    u2r2::ContractDirection::subscribe,
+    "/phase186/d/external",
+    "std_msgs/msg/String",
+    u2r2::Qos{
+      "default", "reliable", "volatile", "keep_last", 10U});
+
+  std::mutex received_mutex;
+  std::condition_variable received_changed;
+  std::vector<uint8_t> received;
+  uint64_t receive_time_ns = 0;
+  auto subscription = bridge.subscribe(
+    identity,
+    [&](const uint8_t * data,
+      size_t size,
+      uint64_t time_ns,
+      bridge_runtime::BridgeSampleOrigin origin) {
+      EXPECT_EQ(bridge_runtime::BridgeSampleOrigin::external, origin);
+      {
+        std::lock_guard<std::mutex> lock(received_mutex);
+        received.assign(data, data + size);
+        receive_time_ns = time_ns;
+      }
+      received_changed.notify_all();
+      return bridge_runtime::BridgeSerializedAdmission::accepted;
+    });
+
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto external = std::make_shared<rclcpp::Node>(
+    "phase186_d_external_publisher_probe",
+    options);
+  auto publisher = external->create_generic_publisher(
+    identity.topic,
+    identity.schema_name,
+    rclcpp::QoS(10));
+  const auto discovery_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() == 0 &&
+    std::chrono::steady_clock::now() < discovery_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GT(publisher->get_subscription_count(), 0U);
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  rclcpp::SerializedMessage serialized(payload.size());
+  auto & raw = serialized.get_rcl_serialized_message();
+  ASSERT_GE(raw.buffer_capacity, payload.size());
+  std::memcpy(raw.buffer, payload.data(), payload.size());
+  raw.buffer_length = payload.size();
+  publisher->publish(serialized);
+
+  {
+    std::unique_lock<std::mutex> lock(received_mutex);
+    ASSERT_TRUE(received_changed.wait_for(
+        lock,
+        std::chrono::seconds(5),
+        [&]() {return !received.empty();}));
+  }
+  EXPECT_EQ(payload, received);
+  EXPECT_GT(receive_time_ns, 0U);
+
+  subscription.reset();
+  publisher.reset();
+  external.reset();
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase186-D external subscription probe complete");
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2SubscriptionStreamsExternalCdrThroughTheSingleSocketWriter)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase186_d_owned_subscription_probe",
+    context);
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    [&]() {
+      return std::make_unique<BridgeNode>(
+        ros_owner.require_node(),
+        PayloadFormat::CdrWithEncapsulation);
+    };
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase186_d_owned_subscription_test"),
+          [context]() {return rclcpp::ok(context);});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "hello"},
+        {"protocolVersion", 2},
+        {"requestId", 1},
+        {"clientName", "phase186-d-subscription"},
+        {"capabilities", nlohmann::json::array({"subscribe"})},
+      },
+      {}));
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  const std::string topic = "/phase186/d/owned_external";
+  const std::string schema = "std_msgs/msg/String";
+  const auto registration = u2r2::encode_frame(
+    {
+      {"op", "register_subscription"},
+      {"protocolVersion", 2},
+      {"requestId", 2},
+      {"sessionId", hello_ack.session_id},
+      {"connectionGeneration", hello_ack.connection_generation},
+      {"contractId", 41},
+      {"topic", topic},
+      {"schemaName", schema},
+      {"encoding", "cdr"},
+      {"qos", {
+          {"profile", "default"},
+          {"reliability", "reliable"},
+          {"durability", "volatile"},
+          {"history", "keep_last"},
+          {"depth", 10},
+        }},
+    },
+    {});
+  write_all(client_socket.get(), registration);
+  const auto ready = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::SubscriptionReady, ready.operation);
+  ASSERT_EQ("ok", ready.status);
+  ASSERT_EQ(41U, ready.contract_id);
+
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto external = std::make_shared<rclcpp::Node>(
+    "phase186_d_owned_external_publisher",
+    options);
+  auto publisher = external->create_generic_publisher(
+    topic,
+    schema,
+    rclcpp::QoS(10));
+  const auto discovery_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() == 0 &&
+    std::chrono::steady_clock::now() < discovery_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GT(publisher->get_subscription_count(), 0U);
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  rclcpp::SerializedMessage serialized(payload.size());
+  auto & raw = serialized.get_rcl_serialized_message();
+  ASSERT_GE(raw.buffer_capacity, payload.size());
+  std::memcpy(raw.buffer, payload.data(), payload.size());
+  raw.buffer_length = payload.size();
+  publisher->publish(serialized);
+
+  const auto message_wire = ReadSocketWireFrame(client_socket.get());
+  const auto message_frame = u2r2::decode_frame(message_wire);
+  const auto message = u2r2::parse_v2(message_frame);
+  EXPECT_EQ(u2r2::Operation::Message, message.operation);
+  EXPECT_EQ(41U, message.contract_id);
+  EXPECT_EQ(1U, message.sequence);
+  EXPECT_EQ(topic, message.topic);
+  EXPECT_EQ(schema, message.schema_name);
+  EXPECT_EQ(payload, message_frame.payload);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "unregister_subscription"},
+        {"protocolVersion", 2},
+        {"requestId", 3},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"contractId", 41},
+      },
+      {}));
+  const auto removed = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::SubscriptionRemoved, removed.operation);
+  EXPECT_EQ("ok", removed.status);
+  EXPECT_EQ(41U, removed.contract_id);
+
+  const auto removal_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (
+    publisher->get_subscription_count() != 0 &&
+    std::chrono::steady_clock::now() < removal_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(0U, publisher->get_subscription_count());
+
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  server.join();
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(0U, authority.classified_count());
+
+  publisher.reset();
+  external.reset();
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase186-D owned subscription probe complete");
 }

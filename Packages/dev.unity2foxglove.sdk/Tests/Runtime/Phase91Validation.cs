@@ -14,7 +14,8 @@ using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
+using Unity2Foxglove.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Util;
 using Foxglove.Schemas;
@@ -84,16 +85,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var files = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrGeometryWriter.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrPayloadValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCompressedImageBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCompressedPointCloudBuilder.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrGeometryWriter.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrPayloadValidator.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCompressedImageBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCompressedPointCloudBuilder.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs",
             };
 
@@ -394,7 +395,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase91FakeTransport();
             using var session = new FoxgloveSession("phase91-session", transport, schemaRegistry: registry);
-            session.EnableCdr();
+            session.EnableRos2BridgeSchemas();
             transport.SimulateConnect(1);
 
             for (var i = 0; i < samples.Count; i++)
@@ -457,20 +458,22 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Directory.Exists(componentsRoot), "91G-0: Runtime Components source root exists");
             Check(Directory.Exists(publishersRoot), "91G-0b: Runtime Proto publisher source root exists");
 
-            var managerPublishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
-            var sessionText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var bridgeCodecs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
 
             Check(SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr", "GlobalEncoding.Cdr"),
                 "91G-1: Phase91 does not add publisher or global CDR output modes");
             Check(SourceTreeAvoids(publishersRoot, "PublishRos2Cdr"),
                 "91G-2: product publishers do not call the low-level ROS2 CDR helper directly");
-            Check(managerPublishing.Contains("GetOrRegisterRos2MsgSchemaChannel")
-                  && !managerPublishing.Contains("GetOrRegisterSchemaChannel(topic, schemaName, CdrEncoding)"),
-                "91G-3: manager uses a dedicated ros2msg CDR channel helper");
-            var publishRos2CdrBody = SourceMethodBody(sessionText, "PublishRos2Cdr");
-            Check(publishRos2CdrBody.Contains("Ros2CdrPayloadValidator.Validate(payload);", StringComparison.Ordinal)
+            Check(bridgeCodecs.Contains("RegisterRos2MsgSchemaChannel")
+                  && bridgeCodecs.Contains("runtime.RegisterSchemaChannel")
+                  && bridgeCodecs.Contains("session.RegisterSchemaChannel")
+                  && bridgeCodecs.Contains("MessageEncoding")
+                  && bridgeCodecs.Contains("SchemaEncoding"),
+                "91G-3: Bridge package owns explicit ros2msg CDR channel helpers");
+            var publishRos2CdrBody = SourceMethodBody(bridgeCodecs, "PublishRos2Cdr");
+            Check(publishRos2CdrBody.Contains("Validate(payload);", StringComparison.Ordinal)
                   && !publishRos2CdrBody.Contains("payload ??=", StringComparison.Ordinal),
-                "91G-4: PublishRos2Cdr validates payload without null-coalescing to empty");
+                "91G-4: Bridge-owned PublishRos2Cdr validates payload without null-coalescing to empty");
         }
 
         private static List<Phase91Sample> BuildSamples()

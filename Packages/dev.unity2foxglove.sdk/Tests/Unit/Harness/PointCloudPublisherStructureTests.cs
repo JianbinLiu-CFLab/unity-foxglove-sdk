@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         private static readonly string[] ExpectedPartials =
         {
             "FoxglovePointCloudPublisher.Draco.cs",
-            "FoxglovePointCloudPublisher.PointCloud2Native.cs",
+            "FoxglovePointCloudPublisher.PackedPointCloud.cs",
             "FoxglovePointCloudPublisher.MotionCompensation.cs",
             "FoxglovePointCloudPublisher.Raw.cs",
             "FoxglovePointCloudPublisher.Diagnostics.cs"
@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             Assert.Contains("TryQueueVirtualLidarDracoFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs"), StringComparison.Ordinal);
-            Assert.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs"), StringComparison.Ordinal);
+            Assert.Contains("TryQueueVirtualLidarPackedPointCloudFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PackedPointCloud.cs"), StringComparison.Ordinal);
             Assert.Contains("ResolveMotionCompensationSettings", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs"), StringComparison.Ordinal);
             Assert.Contains("PublishRawFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs"), StringComparison.Ordinal);
             Assert.Contains("LogPointCloudDiagnosticMessage", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs"), StringComparison.Ordinal);
@@ -48,17 +48,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void PointCloudRos2SchemaNameComesFromOutputProfile()
+        public void PointCloudSchemaNameComesFromNeutralOutputProfile()
         {
             var profile = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
             var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
 
-            Assert.Contains("public string Ros2SchemaName { get; }", profile, StringComparison.Ordinal);
-            Assert.Contains("Ros2PublisherSchemaNames.CompressedPointCloud", profile, StringComparison.Ordinal);
-            Assert.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", profile, StringComparison.Ordinal);
-            Assert.Contains("Ros2PublisherSchemaNames.PointCloud", profile, StringComparison.Ordinal);
-            Assert.Contains("protected override string Ros2SchemaName => ActiveProfile.Ros2SchemaName;", publisher, StringComparison.Ordinal);
-            Assert.DoesNotContain("switch (_outputMode)", TestSources.Slice(publisher, "protected override string Ros2SchemaName", "protected override bool SupportsJsonEncoding"), StringComparison.Ordinal);
+            Assert.Contains("public string SchemaName { get; }", profile, StringComparison.Ordinal);
+            Assert.Contains("PointCloudOutputModeDefaults.DracoSchema", profile, StringComparison.Ordinal);
+            Assert.Contains("PointCloudOutputModeDefaults.PackedPointCloudSchema", profile, StringComparison.Ordinal);
+            Assert.Contains("PointCloudOutputModeDefaults.RawSchema", profile, StringComparison.Ordinal);
+            Assert.Contains("protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;", publisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("switch (_outputMode)", TestSources.Slice(publisher, "protected override string SchemaName", "public override bool SupportsJsonEncoding"), StringComparison.Ordinal);
         }
 
         [Fact]

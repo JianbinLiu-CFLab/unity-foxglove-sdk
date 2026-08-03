@@ -28,6 +28,10 @@ RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
 MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
 LOCAL_ENTRYPOINT_VALIDATOR_PATH = ROOT / "Scripts" / "package" / "validate_local_entrypoints.py"
+PHASE186_WINDOWS_LIVE_WORKFLOW_PATH = (
+    ROOT / ".github" / "workflows" / "phase186-bridge-windows-live.yml"
+)
+DOTNET_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "dotnet-tests.yml"
 
 
 def load_module(name: str, path: Path):
@@ -370,6 +374,15 @@ class RunCiTests(unittest.TestCase):
             "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance",
             "Phase184 Foxglove Desktop live coordinator regressions",
         ),
+    )
+    PHASE186_BRIDGE_TOOLING_SUITES = (
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance_protocol",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_live",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_certification",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_build",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_capability_probe",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance",
     )
 
     def setUp(self) -> None:
@@ -716,6 +729,7 @@ class RunCiTests(unittest.TestCase):
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
                 "phase184-acceptance-tooling",
+                "phase186-bridge-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",
@@ -728,7 +742,11 @@ class RunCiTests(unittest.TestCase):
                 job.command,
         )
         self.assertEqual(
-            {"mcap-conformance", "phase184-acceptance-tooling"},
+            {
+                "mcap-conformance",
+                "phase184-acceptance-tooling",
+                "phase186-bridge-tooling",
+            },
             {job.name for job in jobs if job.disable_timeout},
         )
 
@@ -861,6 +879,124 @@ class RunCiTests(unittest.TestCase):
             tuple(job.command),
         )
 
+    def test_phase186_bridge_tooling_selector_is_default_but_live_is_not(self) -> None:
+        """Ordinary CI runs static tooling; provisioned live work stays explicit."""
+
+        jobs = self.run_ci.build_default_ci_jobs(
+            types.SimpleNamespace(skip_analyzer=False)
+        )
+        names = [job.name for job in jobs]
+        self.assertIn("phase186-bridge-tooling", names)
+        self.assertNotIn("phase186-bridge-windows-live", names)
+        tooling = next(job for job in jobs if job.name == "phase186-bridge-tooling")
+        self.assertTrue(tooling.disable_timeout)
+
+    def test_phase186_bridge_tooling_selector_runs_exact_static_suites_and_matrix(self) -> None:
+        """The tooling selector must never launch Unity, a sidecar, or a ROS peer."""
+
+        with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "phase186-bridge-tooling"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(
+            [
+                [sys.executable, "-m", "unittest", module]
+                for module in self.PHASE186_BRIDGE_TOOLING_SUITES
+            ]
+            + [
+                [sys.executable, "Scripts/package/validate_phase186_package_matrix.py"],
+                [sys.executable, "-m", "Scripts.smoke.foxrun.phase186_provenance"],
+            ],
+            commands,
+        )
+        flattened = " ".join(part for command in commands for part in command)
+        self.assertNotIn(
+            [
+                sys.executable,
+                "-m",
+                "Scripts.smoke.foxrun.phase186_bridge_certification",
+            ],
+            commands,
+        )
+        self.assertNotIn("phase186_bridge_acceptance --case", flattened)
+
+    def test_phase186_bridge_windows_live_selector_runs_exact_certification(self) -> None:
+        """The live selector must bind certification identity to the current SHA."""
+
+        head = "a" * 40
+        with mock.patch.object(self.run_ci, "current_git_head", return_value=head):
+            with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["run_ci.py", "--only", "phase186-bridge-windows-live"],
+                ):
+                    self.assertEqual(0, self.run_ci.main())
+
+        self.assertEqual(1, run.call_count)
+        command = run.call_args.args[0]
+        self.assertEqual(
+            [
+                sys.executable,
+                "-m",
+                "Scripts.smoke.foxrun.phase186_bridge_certification",
+                "--expected-head",
+                head,
+                "--output-root",
+                "build/phase186/windows-live",
+                "--run-id",
+                self.run_ci.phase186_certification_run_id(head),
+            ],
+            command,
+        )
+        self.assertTrue(run.call_args.kwargs["disable_timeout"])
+
+    def test_phase186_bridge_windows_live_not_run_is_not_promoted_to_pass(self) -> None:
+        """Any nonzero certification result, including NOT RUN, fails the selector."""
+
+        with mock.patch.object(self.run_ci, "current_git_head", return_value="b" * 40):
+            with mock.patch.object(self.run_ci, "run", return_value=False):
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["run_ci.py", "--only", "phase186-bridge-windows-live"],
+                ):
+                    self.assertEqual(1, self.run_ci.main())
+
+    def test_phase186_selectors_are_named_in_help(self) -> None:
+        """Both honest Phase186 lanes must be discoverable without reading the plan."""
+
+        with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with self.assertRaises(SystemExit) as context:
+                    self.run_ci.main()
+
+        self.assertEqual(0, context.exception.code)
+        rendered = stdout.getvalue()
+        self.assertIn("phase186-bridge-tooling", rendered)
+        self.assertIn("phase186-bridge-windows-live", rendered)
+
+    def test_phase186_workflows_keep_tooling_and_provisioned_live_separate(self) -> None:
+        """Hosted CI runs tooling while live certification requires a labeled owner."""
+
+        dotnet_workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "run_ci.py --only phase186-bridge-tooling",
+            dotnet_workflow,
+        )
+        live_workflow = PHASE186_WINDOWS_LIVE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", live_workflow)
+        self.assertIn("unity2foxglove-phase186-live", live_workflow)
+        self.assertIn("run_ci.py --only phase186-bridge-windows-live", live_workflow)
+        self.assertIn("build/phase186/windows-live", live_workflow)
+        self.assertNotRegex(live_workflow, r"(?m)^\s+push:")
+        self.assertNotRegex(live_workflow, r"(?m)^\s+pull_request:")
+
     def test_only_help_lists_dotnet_lane_selectors(self) -> None:
         """CLI help should expose each direct dotnet lane selector."""
         with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
@@ -889,6 +1025,7 @@ class RunCiTests(unittest.TestCase):
                 "phase179-ros2-regression": None,
                 "phase181-ros2-regression": None,
                 "phase184-acceptance-tooling": None,
+                "phase186-bridge-tooling": None,
                 "mcap-conformance": None,
                 "packages": None,
                 "boundary": None,
@@ -1386,6 +1523,7 @@ class RunCiTests(unittest.TestCase):
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
                 "phase184-acceptance-tooling",
+                "phase186-bridge-tooling",
                 "mcap-conformance",
                 "packages",
                 "boundary",

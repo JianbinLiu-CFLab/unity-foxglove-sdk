@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "State",
                 "unity2foxglove_foxrun_interfaces_v1/msg/Phase181StateEnvelope",
                 FoxRunFlow.PublishAndSubscribe,
-                FoxRunEndpoint.Ros2Native,
+                FoxRunRos2RouteEndpoint.R2fu,
                 FoxRunQosProfile.Default,
                 hasExplicitQosProfile: true,
                 qosReliability: default,

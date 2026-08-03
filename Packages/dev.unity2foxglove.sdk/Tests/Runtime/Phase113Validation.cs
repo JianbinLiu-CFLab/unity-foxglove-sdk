@@ -19,8 +19,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase113Validation
     {
-        private const string ExpectedGlobalFixtureHash = "4ef64c60b17b8b02c17cc318aefe57a9eecc5772b9528e6649ecc590b6187cfd";
-        private const string ExpectedFoxRunFixtureHash = "cff942e33353cec4b011b7792845b396c137b0813b3bf64a9f2dd5fb5e4b8695";
+        private const string ExpectedGlobalFixtureHash = "1f649388de6fd74a3fd3edf52d16e1afd9ca4566231e9f3c1fea755d1e6441ec";
+        private const string ExpectedFoxRunFixtureHash = "b35e6b56c8dd0da65b5d32b0835f130ae577bba655eefca8eef4fb66ddfec116";
         private const string SchemaWriterPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunSchemaInfoWriter.cs";
         private const string CodeGeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs";
         private const string BuildPreprocessPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs";

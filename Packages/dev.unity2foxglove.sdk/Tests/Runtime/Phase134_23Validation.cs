@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 134-23 validation for core SDK sample package import boundaries.
+// Purpose: Phase 134-23 validation for split SDK and Provider sample import boundaries.
 
 using System;
 using System.IO;
@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string PackageRoot = "Packages/dev.unity2foxglove.sdk";
         private const string SamplesRoot = PackageRoot + "/Samples~";
+        private const string BridgePackageRoot = "Packages/dev.unity2foxglove.ros2bridge";
+        private const string BridgeSamplesRoot = BridgePackageRoot + "/Samples~";
         private const string ReleaseValidator = "Scripts/package/validate_unity_package.py";
 
         private static int _passed;
@@ -43,40 +45,44 @@ namespace Unity.FoxgloveSDK.Tests
             var packageJson = JObject.Parse(ReadRepoFile(PackageRoot + "/package.json"));
             var samples = packageJson["samples"] as JArray
                           ?? throw new InvalidOperationException("package.json samples must be an array");
+            var bridgePackageJson = JObject.Parse(ReadRepoFile(BridgePackageRoot + "/package.json"));
+            var bridgeSamples = bridgePackageJson["samples"] as JArray
+                                ?? throw new InvalidOperationException("Bridge package.json samples must be an array");
 
-            Check(samples.Count == 4, "134-23-A1: package.json declares exactly four importable core SDK samples");
-            VerifySampleDeclaration(samples, "Basic Visualization", "Samples~/BasicVisualization");
-            VerifySampleDeclaration(samples, "Full Demo Visualization", "Samples~/FullDemoVisualization");
-            VerifySampleDeclaration(samples, "ROS2 Bridge Sample", "Samples~/Ros2BridgeSample");
-            VerifySampleDeclaration(samples, "Virtual LiDAR Maze Demo", "Samples~/Virtual LiDAR Maze Demo");
+            Check(samples.Count == 3 && bridgeSamples.Count == 1,
+                "134-23-A1: core declares three neutral samples and Bridge declares its one Provider sample");
+            VerifySampleDeclaration(samples, PackageRoot, "Basic Visualization", "Samples~/BasicVisualization");
+            VerifySampleDeclaration(samples, PackageRoot, "Full Demo Visualization", "Samples~/FullDemoVisualization");
+            VerifySampleDeclaration(bridgeSamples, BridgePackageRoot, "ROS2 Bridge Sample", "Samples~/Ros2BridgeSample");
+            VerifySampleDeclaration(samples, PackageRoot, "Virtual LiDAR Maze Demo", "Samples~/Virtual LiDAR Maze Demo");
         }
 
         private static void VerifySampleImportAssets()
         {
-            RequireSampleFile("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-B1: Basic sample layout asset exists");
-            RequireSampleFile("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-B2: Basic sample scene exists");
-            RequireSampleFile("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-B3: Full demo layout asset exists");
-            RequireSampleFile("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-B5: Full demo scene exists");
-            RequireSampleFile("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-B6: Full demo setup script exists");
-            RequireSampleFile("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-B7: ROS2 bridge sample layout asset exists");
-            RequireSampleFile("Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", "134-23-B8: ROS2 bridge sample scene exists");
-            RequireSampleFile("Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs", "134-23-B9: ROS2 bridge sample controller exists");
-            RequireSampleFile("Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs", "134-23-B10: ROS2 bridge point cloud helper exists");
-            RequireSampleFile("Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs", "134-23-B11: ROS2 bridge laser scan helper exists");
+            RequireSampleFile(SamplesRoot, "BasicVisualization/FoxgloveSimpleLayout.json", "134-23-B1: Basic sample layout asset exists");
+            RequireSampleFile(SamplesRoot, "BasicVisualization/Scenes/BasicVisualization.unity", "134-23-B2: Basic sample scene exists");
+            RequireSampleFile(SamplesRoot, "FullDemoVisualization/FoxgloveFullLayout.json", "134-23-B3: Full demo layout asset exists");
+            RequireSampleFile(SamplesRoot, "FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-B5: Full demo scene exists");
+            RequireSampleFile(SamplesRoot, "FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-B6: Full demo setup script exists");
+            RequireSampleFile(BridgeSamplesRoot, "Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-B7: ROS2 bridge sample layout asset exists");
+            RequireSampleFile(BridgeSamplesRoot, "Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", "134-23-B8: ROS2 bridge sample scene exists");
+            RequireSampleFile(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs", "134-23-B9: ROS2 bridge sample controller exists");
+            RequireSampleFile(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs", "134-23-B10: ROS2 bridge point cloud helper exists");
+            RequireSampleFile(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs", "134-23-B11: ROS2 bridge laser scan helper exists");
         }
 
         private static void VerifySampleMetaCoverage()
         {
-            VerifyMetaSidecar("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-C1: Basic layout has Unity meta sidecar");
-            VerifyMetaSidecar("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-C2: Basic scene has Unity meta sidecar");
-            VerifyMetaSidecar("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-C3: Full demo layout has Unity meta sidecar");
-            VerifyMetaSidecar("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-C5: Full demo scene has Unity meta sidecar");
-            VerifyMetaSidecar("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-C6: Full demo setup has Unity meta sidecar");
-            VerifyMetaSidecar("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-C7: ROS2 bridge layout has Unity meta sidecar");
-            VerifyMetaSidecar("Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", "134-23-C8: ROS2 bridge scene has Unity meta sidecar");
-            VerifyMetaSidecar("Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs", "134-23-C9: ROS2 bridge controller has Unity meta sidecar");
-            VerifyMetaSidecar("Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs", "134-23-C10: ROS2 bridge point cloud helper has Unity meta sidecar");
-            VerifyMetaSidecar("Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs", "134-23-C11: ROS2 bridge laser scan helper has Unity meta sidecar");
+            VerifyMetaSidecar(SamplesRoot, "BasicVisualization/FoxgloveSimpleLayout.json", "134-23-C1: Basic layout has Unity meta sidecar");
+            VerifyMetaSidecar(SamplesRoot, "BasicVisualization/Scenes/BasicVisualization.unity", "134-23-C2: Basic scene has Unity meta sidecar");
+            VerifyMetaSidecar(SamplesRoot, "FullDemoVisualization/FoxgloveFullLayout.json", "134-23-C3: Full demo layout has Unity meta sidecar");
+            VerifyMetaSidecar(SamplesRoot, "FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-C5: Full demo scene has Unity meta sidecar");
+            VerifyMetaSidecar(SamplesRoot, "FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-C6: Full demo setup has Unity meta sidecar");
+            VerifyMetaSidecar(BridgeSamplesRoot, "Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-C7: ROS2 bridge layout has Unity meta sidecar");
+            VerifyMetaSidecar(BridgeSamplesRoot, "Ros2BridgeSample/Scenes/Ros2BridgeSample.unity", "134-23-C8: ROS2 bridge scene has Unity meta sidecar");
+            VerifyMetaSidecar(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSampleController.cs", "134-23-C9: ROS2 bridge controller has Unity meta sidecar");
+            VerifyMetaSidecar(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs", "134-23-C10: ROS2 bridge point cloud helper has Unity meta sidecar");
+            VerifyMetaSidecar(BridgeSamplesRoot, "Ros2BridgeSample/Scripts/Ros2BridgeSampleLaserScan.cs", "134-23-C11: ROS2 bridge laser scan helper has Unity meta sidecar");
         }
 
         private static void VerifyReleaseValidatorKeepsSampleChecks()
@@ -88,8 +94,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-23-D1: release validator keeps explicit Samples~ package boundary");
             Check(validator.Contains("\"Basic Visualization\": \"Samples~/BasicVisualization\"", StringComparison.Ordinal)
                   && validator.Contains("\"Full Demo Visualization\": \"Samples~/FullDemoVisualization\"", StringComparison.Ordinal)
-                  && validator.Contains("\"ROS2 Bridge Sample\": \"Samples~/Ros2BridgeSample\"", StringComparison.Ordinal),
-                "134-23-D2: release validator checks all core SDK sample declarations");
+                  && validator.Contains("\"Virtual LiDAR Maze Demo\": \"Samples~/Virtual LiDAR Maze Demo\"", StringComparison.Ordinal)
+                  && validator.Contains("ROS2_BRIDGE_PACKAGE", StringComparison.Ordinal)
+                  && validator.Contains("\"ROS2 Bridge Sample\"", StringComparison.Ordinal)
+                  && validator.Contains("\"Samples~/Ros2BridgeSample\"", StringComparison.Ordinal),
+                "134-23-D2: release validator checks neutral core and Bridge Provider sample declarations");
             Check(validator.Contains("check_sample_meta(results, samples_files)", StringComparison.Ordinal)
                   && validator.Contains("check_sample_boundaries(results)", StringComparison.Ordinal)
                   && validator.Contains("check_forbidden_sample_artifacts(results, samples_entries)", StringComparison.Ordinal),
@@ -121,7 +130,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("float.IsInfinity", StringComparison.Ordinal),
                 "134-23-E3: Full demo setup clamps and rejects invalid scale values");
 
-            var pointCloud = ReadRepoFile(SamplesRoot + "/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
+            var pointCloud = ReadRepoFile(BridgeSamplesRoot + "/Ros2BridgeSample/Scripts/Ros2BridgeSamplePointCloud.cs");
             Check(pointCloud.Contains("[SerializeField, Min(8)] private int _pointCount = 96;", StringComparison.Ordinal)
                   && pointCloud.Contains("_points = new Transform[_pointCount];", StringComparison.Ordinal)
                   && pointCloud.Contains("private void Awake()", StringComparison.Ordinal),
@@ -197,7 +206,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-23-F15: FoxRun trigger sample logs are editor/development-only");
         }
 
-        private static void VerifySampleDeclaration(JArray samples, string displayName, string expectedPath)
+        private static void VerifySampleDeclaration(
+            JArray samples,
+            string packageRoot,
+            string displayName,
+            string expectedPath)
         {
             foreach (var item in samples)
             {
@@ -205,7 +218,7 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     Check(string.Equals((string)item["path"], expectedPath, StringComparison.Ordinal),
                         "134-23-A2: package.json sample path is stable for " + displayName);
-                    Check(Directory.Exists(RepoPath(PackageRoot + "/" + expectedPath)),
+                    Check(Directory.Exists(RepoPath(packageRoot + "/" + expectedPath)),
                         "134-23-A3: package.json sample directory exists for " + displayName);
                     return;
                 }
@@ -214,14 +227,20 @@ namespace Unity.FoxgloveSDK.Tests
             throw new InvalidOperationException("Missing package.json sample declaration: " + displayName);
         }
 
-        private static void RequireSampleFile(string relativePath, string checkName)
+        private static void RequireSampleFile(
+            string samplesRoot,
+            string relativePath,
+            string checkName)
         {
-            Check(File.Exists(RepoPath(SamplesRoot + "/" + relativePath)), checkName);
+            Check(File.Exists(RepoPath(samplesRoot + "/" + relativePath)), checkName);
         }
 
-        private static void VerifyMetaSidecar(string relativePath, string checkName)
+        private static void VerifyMetaSidecar(
+            string samplesRoot,
+            string relativePath,
+            string checkName)
         {
-            Check(File.Exists(RepoPath(SamplesRoot + "/" + relativePath + ".meta")), checkName);
+            Check(File.Exists(RepoPath(samplesRoot + "/" + relativePath + ".meta")), checkName);
         }
 
         private static string ReadRepoFile(string relativePath)

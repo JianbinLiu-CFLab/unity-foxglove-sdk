@@ -116,7 +116,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "84D-7: PublishFrame preflights demand before voxel/QoS preparation");
 
             Check(publisherSource.Contains("PublishRawFrame")
-                  && publisherSource.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && rawSource.Contains("PointCloudMessageBuilder.CreateProtobuf(frame)")
+                  && rawSource.Contains("protobufMessage.ToByteArray()")
                   && publisherSource.Contains("PointCloudMessageBuilder.CreateJson(frame)")
                   && publisherSource.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
                   && publisherSource.Contains("PublishDracoFrame(frame, unixNs)"),
