@@ -151,9 +151,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(controller.Contains("[SerializeField] private bool _enableRemoteGateway;", StringComparison.Ordinal)
                   && controller.Contains("FOXGLOVE_DEVICE_TOKEN", StringComparison.Ordinal)
                   && controller.Contains("EditorUserSettings", StringComparison.Ordinal)
-                  && controller.Contains("token in a scene", StringComparison.Ordinal)
+                  && !controller.Contains("[SerializeField] private string _deviceToken", StringComparison.Ordinal)
                   && controller.Contains("Foxglove Cloud", StringComparison.Ordinal),
-                "171-14: controller is default-off and warns about serialized token fallback");
+                "171-14: controller is default-off and keeps device tokens out of serialized scene fields");
 
             var logLines = controller.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 .Where(line => line.Contains("Debug.Log", StringComparison.Ordinal));
@@ -189,7 +189,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && callbacks.Contains("RemoteGatewayEventQueue", StringComparison.Ordinal)
                   && callbacks.Contains("Interlocked.Exchange(ref _disposed, 1)", StringComparison.Ordinal)
                   && callbacks.Contains("Volatile.Read(ref _disposed)", StringComparison.Ordinal)
-                  && callbacks.Contains("fail closed instead of dereferencing a freed", StringComparison.Ordinal)
+                  && callbacks.Contains("_selfHandle.IsAllocated", StringComparison.Ordinal)
+                  && callbacks.Contains("_selfHandle.Free()", StringComparison.Ordinal)
+                  && callbacks.Contains("blocking GatewayStop", StringComparison.Ordinal)
                   && !callbacks.Contains("UnityEngine.", StringComparison.Ordinal),
                 "171-18: native callbacks are fail-closed marshaled events and do not touch Unity APIs");
 

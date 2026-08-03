@@ -39,17 +39,38 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private bool _warnedMissingToken;
         private bool _warnedMissingManager;
         private bool _starting;
+        private bool _startupFaulted;
         private bool _managerLookupAttempted;
+        private IRemoteGatewayStartupNativeApi _startupNativeApi = RemoteGatewayStartupNativeApi.Instance;
+        private IRemoteGatewayStartupNativeApi _activeContextNativeApi;
 
         public bool EnableRemoteGateway
         {
             get => _enableRemoteGateway;
-            set => _enableRemoteGateway = value;
+            set
+            {
+                _enableRemoteGateway = value;
+                if (!value)
+                    _startupFaulted = false;
+            }
         }
 
         public string ConnectionStatus => _connectionStatus;
         public long MirroredMessageCount => _mirrorSink?.MirroredMessageCount ?? 0L;
         public long DroppedMessageCount => _mirrorSink?.DroppedMessageCount ?? 0L;
+        internal bool StartupFaultedForTests => _startupFaulted;
+        internal bool HasOwnedResourcesForTests
+            => _events != null || _callbacks != null || _handle != null || _mirrorSink != null || _context != IntPtr.Zero;
+        internal IRemoteGatewayStartupNativeApi StartupNativeApiForTests
+        {
+            set
+            {
+                if (HasOwnedResourcesForTests)
+                    throw new InvalidOperationException("Cannot replace the startup native API while gateway resources are owned.");
+
+                _startupNativeApi = value ?? throw new ArgumentNullException(nameof(value));
+            }
+        }
 
         private void Reset()
         {
@@ -58,6 +79,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void OnEnable()
         {
+            _startupFaulted = false;
             EnsureManager();
         }
 
@@ -68,12 +90,22 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (_enableRemoteGateway)
                 TryStartGateway();
             else
+            {
                 StopGateway();
+                _startupFaulted = false;
+            }
         }
 
         private void OnDisable()
         {
-            StopGateway();
+            try
+            {
+                StopGateway();
+            }
+            finally
+            {
+                _startupFaulted = false;
+            }
         }
 
         private void OnDestroy()
@@ -88,7 +120,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void TryStartGateway()
         {
-            if (_handle != null || _starting)
+            if (_handle != null || _starting || _startupFaulted)
                 return;
             if (!RemoteGatewayLifecycleGate.CanStartNativeGateway())
                 return;
@@ -107,10 +139,22 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 return;
             }
 
+            TryStartGatewayWithToken(token);
+        }
+
+        internal void TryStartGatewayWithToken(string deviceToken)
+        {
+            if (_handle != null || _starting || _startupFaulted)
+                return;
+
             _starting = true;
             try
             {
-                StartGateway(token);
+                StartGateway(deviceToken);
+            }
+            catch (Exception exception) when (IsNativeStartupException(exception))
+            {
+                RecordStartupFault("native binding threw " + exception.GetType().Name);
             }
             finally
             {
@@ -120,44 +164,87 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void StartGateway(string deviceToken)
         {
-            _events = new RemoteGatewayEventQueue(Math.Max(1, _eventQueueCapacity));
-            _callbacks = new RemoteGatewayCallbacks(_events);
-            _context = RemoteGatewayNativeMethods.ContextNew();
-            var callbacks = _callbacks.CreateNative();
+            var nativeApi = _startupNativeApi;
+            var events = new RemoteGatewayEventQueue(Math.Max(1, _eventQueueCapacity));
+            RemoteGatewayCallbacks callbacks = null;
+            RemoteGatewayHandle handle = null;
+            RemoteGatewayMirrorSink mirrorSink = null;
+            var context = IntPtr.Zero;
+            var mirrorAttached = false;
+            var committed = false;
 
-            using (var name = PinnedUtf8String.Create(string.IsNullOrWhiteSpace(_deviceName) ? "Unity2Foxglove" : _deviceName.Trim()))
-            using (var token = PinnedUtf8String.Create(deviceToken))
-            using (var apiUrl = PinnedUtf8String.Create(string.Empty))
-            using (var encodings = PinnedStringArray.Create("json", "protobuf", "cdr"))
-            using (var callbackPtr = NativeStructPointer.Create(callbacks))
+            try
             {
-                var options = new RemoteGatewayNativeMethods.FoxgloveGatewayOptions
+                context = nativeApi.ContextNew();
+                if (context == IntPtr.Zero)
                 {
-                    Context = _context,
-                    Name = name.Value,
-                    DeviceToken = token.Value,
-                    Callbacks = callbackPtr.Pointer,
-                    Capabilities = RemoteGatewayCapabilityPolicy.CreateOutboundOnlyCapabilities(),
-                    SupportedEncodings = encodings.Pointer,
-                    SupportedEncodingsCount = (UIntPtr)encodings.Count,
-                    FoxgloveApiUrl = apiUrl.Value
-                };
-
-                var error = RemoteGatewayNativeMethods.GatewayStart(ref options, out var nativeGateway);
-                if (error != RemoteGatewayNativeMethods.FoxgloveError.Ok || nativeGateway == IntPtr.Zero)
-                {
-                    CleanupFailedStart();
-                    Debug.LogWarning("[Foxglove] Remote gateway failed to start: " + error);
+                    RecordStartupFault("native context allocation returned null");
                     return;
                 }
 
-                _handle = new RemoteGatewayHandle(nativeGateway);
-                var registry = new RemoteGatewayChannelRegistry(_context, () => _handle?.SinkId ?? 0UL);
-                _mirrorSink = new RemoteGatewayMirrorSink(registry);
-                _mirrorSink.Enable();
-                _manager.SetMirrorSink(_mirrorSink);
-                _connectionStatus = _handle.ConnectionStatus.ToString();
+                callbacks = new RemoteGatewayCallbacks(events);
+                var nativeCallbacks = callbacks.CreateNative();
+
+                using (var name = PinnedUtf8String.Create(string.IsNullOrWhiteSpace(_deviceName) ? "Unity2Foxglove" : _deviceName.Trim()))
+                using (var token = PinnedUtf8String.Create(deviceToken))
+                using (var apiUrl = PinnedUtf8String.Create(string.Empty))
+                using (var encodings = PinnedStringArray.Create("json", "protobuf", "cdr"))
+                using (var callbackPtr = NativeStructPointer.Create(nativeCallbacks))
+                {
+                    var options = new RemoteGatewayNativeMethods.FoxgloveGatewayOptions
+                    {
+                        Context = context,
+                        Name = name.Value,
+                        DeviceToken = token.Value,
+                        Callbacks = callbackPtr.Pointer,
+                        Capabilities = RemoteGatewayCapabilityPolicy.CreateOutboundOnlyCapabilities(),
+                        SupportedEncodings = encodings.Pointer,
+                        SupportedEncodingsCount = (UIntPtr)encodings.Count,
+                        FoxgloveApiUrl = apiUrl.Value
+                    };
+
+                    var error = nativeApi.GatewayStart(ref options, out var nativeGateway);
+                    if (nativeGateway != IntPtr.Zero)
+                        handle = new RemoteGatewayHandle(nativeGateway);
+                    if (error != RemoteGatewayNativeMethods.FoxgloveError.Ok || handle == null)
+                    {
+                        RecordStartupFault("native gateway returned " + error);
+                        return;
+                    }
+                }
+
+                var activeHandle = handle;
+                var registry = new RemoteGatewayChannelRegistry(context, () => activeHandle.SinkId);
+                mirrorSink = new RemoteGatewayMirrorSink(registry);
+                var connectionStatus = handle.ConnectionStatus.ToString();
+                mirrorSink.Enable();
+                _manager.SetMirrorSink(mirrorSink);
+                mirrorAttached = true;
+
+                _events = events;
+                _callbacks = callbacks;
+                _handle = handle;
+                _mirrorSink = mirrorSink;
+                _context = context;
+                _activeContextNativeApi = nativeApi;
+                _connectionStatus = connectionStatus;
+                committed = true;
                 Debug.Log("[Foxglove] Remote gateway started. Publishing to Foxglove Cloud.");
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    try
+                    {
+                        if (mirrorAttached)
+                            _manager?.SetMirrorSink(null);
+                    }
+                    finally
+                    {
+                        DisposeStagedStart(mirrorSink, handle, context, callbacks, nativeApi);
+                    }
+                }
             }
         }
 
@@ -168,50 +255,103 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (!RemoteGatewayLifecycleGate.CanStopNativeGateway())
                 return;
 
-            _manager?.SetMirrorSink(null);
-            _mirrorSink?.Dispose();
-            _mirrorSink = null;
-
+            var mirrorSink = _mirrorSink;
             var handle = _handle;
             var context = _context;
             var callbacks = _callbacks;
+            var nativeApi = _activeContextNativeApi ?? _startupNativeApi;
+            _mirrorSink = null;
             _handle = null;
             _context = IntPtr.Zero;
             _callbacks = null;
+            _activeContextNativeApi = null;
             _connectionStatus = "ShuttingDown";
 
             try
             {
-                // GatewayStop is blocking; callback roots must outlive it across reload/quit paths.
-                handle?.Dispose();
+                try
+                {
+                    _manager?.SetMirrorSink(null);
+                }
+                finally
+                {
+                    mirrorSink?.Dispose();
+                }
             }
             finally
             {
-                if (context != IntPtr.Zero)
-                    RemoteGatewayNativeMethods.ContextFree(context);
-                callbacks?.Dispose();
-                _events = null;
-                _connectionStatus = "Shutdown";
+                try
+                {
+                    // GatewayStop is blocking; callback roots must outlive it across reload/quit paths.
+                    handle?.Dispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        if (context != IntPtr.Zero)
+                            nativeApi.ContextFree(context);
+                    }
+                    finally
+                    {
+                        callbacks?.Dispose();
+                        _events = null;
+                        _connectionStatus = "Shutdown";
+                    }
+                }
             }
-
         }
 
-        private void CleanupFailedStart()
+        private void RecordStartupFault(string reason)
         {
-            _mirrorSink?.Dispose();
-            _mirrorSink = null;
-            _handle?.Dispose();
-            _handle = null;
-            if (_context != IntPtr.Zero)
-            {
-                RemoteGatewayNativeMethods.ContextFree(_context);
-                _context = IntPtr.Zero;
-            }
+            if (_startupFaulted)
+                return;
 
-            _callbacks?.Dispose();
-            _callbacks = null;
-            _events = null;
-            _connectionStatus = "Shutdown";
+            _startupFaulted = true;
+            _connectionStatus = "Faulted";
+            Debug.LogWarning(
+                "[Foxglove] Remote gateway startup failed and is blocked until disabled and re-enabled: " + reason);
+        }
+
+        private static bool IsNativeStartupException(Exception exception)
+            => exception is DllNotFoundException
+               || exception is EntryPointNotFoundException
+               || exception is BadImageFormatException
+               || exception is MarshalDirectiveException
+               || exception is SEHException;
+
+        private static void DisposeStagedStart(
+            RemoteGatewayMirrorSink mirrorSink,
+            RemoteGatewayHandle handle,
+            IntPtr context,
+            RemoteGatewayCallbacks callbacks,
+            IRemoteGatewayStartupNativeApi nativeApi)
+        {
+            try
+            {
+                mirrorSink?.Dispose();
+            }
+            finally
+            {
+                try
+                {
+                    // A nonzero gateway returned alongside an error still owns a
+                    // blocking stop before its context and callback root can retire.
+                    handle?.Dispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        if (context != IntPtr.Zero)
+                            nativeApi.ContextFree(context);
+                    }
+                    finally
+                    {
+                        callbacks?.Dispose();
+                    }
+                }
+            }
         }
 
         private void DrainGatewayEvents()
