@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -33,6 +34,21 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         private static readonly MethodInfo TryPublishMethod =
             typeof(FoxgloveLogHub).GetMethod(
                 "TryPublish",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static readonly FieldInfo SourcesField =
+            typeof(FoxgloveLogHub).GetField(
+                "_sources",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static readonly FieldInfo IteratingField =
+            typeof(FoxgloveLogHub).GetField(
+                "_iterating",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static readonly MethodInfo ApplyDeferredMethod =
+            typeof(FoxgloveLogHub).GetMethod(
+                "ApplyDeferred",
                 BindingFlags.Instance | BindingFlags.NonPublic);
 
         [Fact]
@@ -139,6 +155,49 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal(0, fixture.Source.WebSocketEncodingSets);
         }
 
+        [Fact]
+        public void ReentrantTriggerDefersRegistrationUntilSourceEnumerationCompletes()
+        {
+            using var fixture = new Fixture(
+                activeProviderIds: new[]
+                {
+                    FoxgloveWebSocketTransport.TransportId
+                },
+                nextSessionProviderIds: new[]
+                {
+                    FoxgloveWebSocketTransport.TransportId
+                });
+            Assert.NotNull(SourcesField);
+            Assert.NotNull(IteratingField);
+            Assert.NotNull(ApplyDeferredMethod);
+
+            var sources = Assert.IsAssignableFrom<IDictionary>(
+                SourcesField.GetValue(fixture.Hub));
+            var enumerator = sources.GetEnumerator();
+            Assert.True(enumerator.MoveNext());
+            var deferred = new RecordingSource(
+                FoxTopicVisibility.LocalOnly,
+                "/phase187/reentrant-trigger",
+                "phase187-reentrant-trigger-source");
+
+            IteratingField.SetValue(fixture.Hub, true);
+            FoxgloveLogHub.RegisterSource(deferred);
+            var publishedSynchronously =
+                FoxgloveLogHub.Trigger(deferred, 0);
+
+            Assert.Null(Record.Exception(
+                () => enumerator.MoveNext()));
+            Assert.False(publishedSynchronously);
+            Assert.False(sources.Contains(deferred));
+            Assert.Equal(0, deferred.WebSocketPublishes);
+
+            IteratingField.SetValue(fixture.Hub, false);
+            ApplyDeferredMethod.Invoke(fixture.Hub, null);
+
+            Assert.True(sources.Contains(deferred));
+            Assert.Equal(1, deferred.WebSocketPublishes);
+        }
+
         private sealed class Fixture : IDisposable
         {
             private readonly FoxgloveLogHub _hub;
@@ -209,6 +268,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             internal RecordingSource Source { get; }
             internal RecordingSink Sink { get; }
+            internal FoxgloveLogHub Hub => _hub;
 
             internal bool Publish()
                 => (bool)TryPublishMethod.Invoke(
@@ -238,14 +298,17 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             private readonly FoxTopicContract _contract;
 
             internal RecordingSource(
-                FoxTopicVisibility visibility)
+                FoxTopicVisibility visibility,
+                string topic = "/phase186/frozen-provider",
+                string origin = "phase186-frozen-provider-source")
             {
+                Origin = origin;
                 _contract = new FoxTopicContract(
-                    "/phase186/frozen-provider",
+                    topic,
                     string.Empty,
                     "msgpack",
                     "phase186.frozen-provider",
-                    "phase186-frozen-provider",
+                    origin,
                     visibility,
                     FoxTopicWriterPolicy.SingleWriter);
             }
@@ -258,8 +321,9 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             public int FoxgloveLog_TopicCount => 1;
 
-            public string FoxgloveLog_Origin =>
-                "phase186-frozen-provider-source";
+            public string Origin { get; }
+
+            public string FoxgloveLog_Origin => Origin;
 
             public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(
                 int index)
