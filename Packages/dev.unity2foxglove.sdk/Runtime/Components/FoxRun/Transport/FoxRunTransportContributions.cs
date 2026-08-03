@@ -529,6 +529,11 @@ namespace Unity.FoxgloveSDK.Components
                     case FoxRunTransportRouteResultState.Failed:
                         failed++;
                         break;
+                    default:
+                        // Fail closed so the aggregate remains exhaustive and
+                        // callers emit their bounded Provider-failure warning.
+                        failed++;
+                        break;
                 }
             }
 
