@@ -77,6 +77,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 () => transport.Requests.Any(item =>
                     item.Message.Operation == U2R2Operation.Hello),
                 "the duplex hello did not complete");
+            WaitUntil(
+                () => transport.HealthProbeUnavailable,
+                "the scripted socket probe false negative was not published");
             Assert.False(
                 transport.IsConnected,
                 "the transport probe did not reproduce its concurrent-reader false negative");
@@ -407,6 +410,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             internal int ConnectCount
                 => Volatile.Read(ref _connectCount);
+
+            internal bool HealthProbeUnavailable
+                => Volatile.Read(ref _healthProbeUnavailable) != 0;
 
             internal int LegacyV2ExchangeCount
                 => Volatile.Read(
