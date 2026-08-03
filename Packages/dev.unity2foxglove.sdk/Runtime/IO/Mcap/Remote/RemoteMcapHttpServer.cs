@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/IO/Mcap/Remote
-// Purpose: Disposable loopback HTTP server for Foxglove Remote Data Loader MCAP access.
+// Purpose: Disposable bounded HTTP server for Foxglove Remote Data Loader MCAP access.
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -12,11 +13,12 @@ using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.IO
 {
-    /// <summary>Serves one configured MCAP file on loopback using the Phase139B Remote Data Loader routes.</summary>
+    /// <summary>Serves one configured MCAP file using the Phase139B Remote Data Loader routes.</summary>
     public sealed class RemoteMcapHttpServer : IDisposable
     {
         private const int MinTcpPort = 1;
         private const int MaxTcpPort = 65535;
+        private const int MaxConcurrentRequests = 8;
         private static readonly TimeSpan StartupProbeTimeout = TimeSpan.FromMilliseconds(500);
         private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromMilliseconds(50);
 
@@ -33,6 +35,13 @@ namespace Unity.FoxgloveSDK.IO
                 throw new ArgumentOutOfRangeException(nameof(options.Port), "Remote MCAP HTTP port must be between 1 and 65535.");
             if (string.IsNullOrEmpty(options.McapPath))
                 throw new ArgumentException("Remote MCAP HTTP server requires one MCAP path.", nameof(options));
+            if (!RemoteMcapHttpOptions.IsLoopbackHost(options.Host)
+                && string.IsNullOrWhiteSpace(options.RequiredBearerToken))
+            {
+                throw new ArgumentException(
+                    "Remote MCAP non-loopback hosts require a bearer token before the listener can start.",
+                    nameof(options));
+            }
 
             Options = options;
             BaseUrl = options.BaseUrl;
@@ -70,13 +79,13 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Options used to start this server.</summary>
         public RemoteMcapHttpOptions Options { get; }
 
-        /// <summary>Normalized loopback base URL for manifest and data routes.</summary>
+        /// <summary>Normalized listener base URL for manifest and data routes.</summary>
         public string BaseUrl { get; }
 
         /// <summary>True while the listener has not been disposed and is still accepting connections.</summary>
         public bool IsRunning => !_disposed && _listener.IsListening;
 
-        /// <summary>Starts a disposable loopback Remote Data Loader server.</summary>
+        /// <summary>Starts a disposable Remote Data Loader server.</summary>
         public static RemoteMcapHttpServer Start(RemoteMcapHttpOptions options)
         {
             return new RemoteMcapHttpServer(options);
@@ -162,36 +171,96 @@ namespace Unity.FoxgloveSDK.IO
 
         private async Task ListenLoopAsync(RemoteMcapHttpRouter router, CancellationToken token)
         {
-            while (!token.IsCancellationRequested)
+            var activeRequests = new List<Task>(MaxConcurrentRequests);
+            try
             {
-                HttpListenerContext context;
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    context = await _listener.GetContextAsync().ConfigureAwait(false);
-                }
-                catch
-                {
-                    if (token.IsCancellationRequested || !_listener.IsListening)
-                        break;
-                    continue;
-                }
-
-                try
-                {
-                    await router.HandleAsync(context, token).ConfigureAwait(false);
-                }
-                catch
-                {
+                    HttpListenerContext context;
                     try
                     {
-                        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                        context.Response.OutputStream.Close();
+                        context = await _listener.GetContextAsync().ConfigureAwait(false);
                     }
                     catch
                     {
-                        // If the client disconnected, the request is already over.
+                        if (token.IsCancellationRequested || !_listener.IsListening)
+                            break;
+                        continue;
+                    }
+
+                    RemoveCompletedRequests(activeRequests);
+                    if (activeRequests.Count >= MaxConcurrentRequests)
+                    {
+                        RejectBusy(context);
+                        continue;
+                    }
+
+                    activeRequests.Add(
+                        HandleRequestAsync(
+                            router,
+                            context,
+                            token));
+                }
+            }
+            finally
+            {
+                if (activeRequests.Count > 0)
+                {
+                    try
+                    {
+                        await Task.WhenAll(activeRequests).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Every request owns its response cleanup; shutdown remains best effort.
                     }
                 }
+            }
+        }
+
+        private static async Task HandleRequestAsync(
+            RemoteMcapHttpRouter router,
+            HttpListenerContext context,
+            CancellationToken token)
+        {
+            try
+            {
+                await router.HandleAsync(context, token).ConfigureAwait(false);
+            }
+            catch
+            {
+                try
+                {
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    context.Response.OutputStream.Close();
+                }
+                catch
+                {
+                    // If the client disconnected, the request is already over.
+                }
+            }
+        }
+
+        private static void RemoveCompletedRequests(List<Task> requests)
+        {
+            for (var index = requests.Count - 1; index >= 0; index--)
+            {
+                if (requests[index].IsCompleted)
+                    requests.RemoveAt(index);
+            }
+        }
+
+        private static void RejectBusy(HttpListenerContext context)
+        {
+            try
+            {
+                context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
+                context.Response.ContentLength64 = 0;
+                context.Response.OutputStream.Close();
+            }
+            catch
+            {
+                // A disconnected overload request needs no further cleanup.
             }
         }
     }
