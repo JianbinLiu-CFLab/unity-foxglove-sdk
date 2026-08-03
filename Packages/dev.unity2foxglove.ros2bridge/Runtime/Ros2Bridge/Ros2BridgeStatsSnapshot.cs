@@ -132,6 +132,7 @@ namespace Unity2Foxglove.Ros2Bridge
             int readyContracts,
             int pendingContracts,
             int rejectedContracts,
+            bool schedulerTerminal,
             string lastReason)
         {
             ValidateCounts(
@@ -143,16 +144,24 @@ namespace Unity2Foxglove.Ros2Bridge
             ReadyContracts = readyContracts;
             PendingContracts = pendingContracts;
             RejectedContracts = rejectedContracts;
+            SchedulerTerminal = schedulerTerminal;
             LastReason = lastReason ?? string.Empty;
         }
 
         internal static Ros2BridgePublisherObservationSnapshot Empty { get; } =
-            new Ros2BridgePublisherObservationSnapshot(0, 0, 0, 0, string.Empty);
+            new Ros2BridgePublisherObservationSnapshot(
+                0,
+                0,
+                0,
+                0,
+                schedulerTerminal: false,
+                string.Empty);
 
         internal int ObservedContracts { get; }
         internal int ReadyContracts { get; }
         internal int PendingContracts { get; }
         internal int RejectedContracts { get; }
+        internal bool SchedulerTerminal { get; }
         internal string LastReason { get; }
 
         private static void ValidateCounts(
@@ -279,6 +288,22 @@ namespace Unity2Foxglove.Ros2Bridge
             Ros2BridgeStatsSnapshot stats,
             Ros2BridgePublisherObservationSnapshot observation)
         {
+            if (observation.SchedulerTerminal
+                && stats.Enabled
+                && lifecycle != Ros2BridgeRuntimeLifecycleState.Stopped
+                && lifecycle != Ros2BridgeRuntimeLifecycleState.Stopping)
+            {
+                return Direction(
+                    FoxRunTransportDirection.Publish,
+                    FoxRunTransportObservedState.Failed,
+                    observation.ObservedContracts,
+                    ready: 0,
+                    failed: observation.ObservedContracts,
+                    "ROS2BRIDGE007",
+                    Reason(
+                        observation.LastReason,
+                        "The ROS2 Bridge outbound scheduler is terminal."));
+            }
             if (!stats.Connected)
             {
                 return Disconnected(

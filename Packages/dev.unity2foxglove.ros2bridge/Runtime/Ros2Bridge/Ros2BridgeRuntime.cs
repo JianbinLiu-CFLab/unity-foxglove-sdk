@@ -74,6 +74,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private InFlightPreparation _inFlightPreparation;
         private bool _hasInFlightPreparation;
         private bool _workerExited;
+        private bool _outboundTerminalHandled;
         private bool _retired;
         private bool _finalized;
         private int _resourcesDisposed;
@@ -423,6 +424,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         reason =
                             "ROS2 Bridge outbound scheduler faulted.";
                         _failedFrames++;
+                        _signal.Set();
                         return false;
                     default:
                         throw new InvalidOperationException(
@@ -534,11 +536,20 @@ namespace Unity2Foxglove.Ros2Bridge
                     selectedSchema = pair.Key.SchemaName;
                     selectedReason = pair.Value.Reason;
                 }
+                var schedulerTerminal =
+                    _outbound.TryGetTerminalState(
+                        out var schedulerFault);
+                if (schedulerTerminal)
+                {
+                    selectedReason = BoundRuntimeDiagnostic(
+                        OutboundTerminalReason(schedulerFault));
+                }
                 return new Ros2BridgePublisherObservationSnapshot(
                     _preparations.Count,
                     ready,
                     pending,
                     rejected,
+                    schedulerTerminal,
                     selectedReason);
             }
         }
@@ -649,8 +660,13 @@ namespace Unity2Foxglove.Ros2Bridge
                     if (ShouldStop(generation))
                         return;
 
+                    if (TryHandleOutboundTerminal(generation))
+                        return;
+
                     if (!EnsureConnected(generation))
                     {
+                        if (TryHandleOutboundTerminal(generation))
+                            return;
                         _signal.WaitOne(_reconnectIntervalMs);
                         continue;
                     }
@@ -660,6 +676,8 @@ namespace Unity2Foxglove.Ros2Bridge
 
                     if (!_outbound.TryBeginWrite(out var outboundLease))
                     {
+                        if (TryHandleOutboundTerminal(generation))
+                            return;
                         _signal.WaitOne(50);
                         continue;
                     }
@@ -785,6 +803,12 @@ namespace Unity2Foxglove.Ros2Bridge
                                                                     nameof(
                                                                         Ros2BridgeWorkerLease));
                                                         }
+                                                        if (TryHandleOutboundTerminal(
+                                                                generation))
+                                                        {
+                                                            throw new
+                                                                OutboundTerminalException();
+                                                        }
                                                         _signal.WaitOne(10);
                                                     }
                                                     return
@@ -832,6 +856,11 @@ namespace Unity2Foxglove.Ros2Bridge
                                     {
                                         if (ShouldStop(generation))
                                             return;
+                                        if (TryHandleOutboundTerminal(
+                                                generation))
+                                        {
+                                            return;
+                                        }
                                         _signal.WaitOne(10);
                                     }
 
@@ -890,6 +919,10 @@ namespace Unity2Foxglove.Ros2Bridge
                                     return;
                                 _lastError = string.Empty;
                             }
+                        }
+                        catch (OutboundTerminalException)
+                        {
+                            return;
                         }
                         catch (U2R2ProtocolException ex)
                             when (!ex.Terminal)
@@ -1941,6 +1974,75 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        private bool TryHandleOutboundTerminal(long generation)
+        {
+            if (!_outbound.TryGetTerminalState(
+                    out var terminalFault))
+            {
+                return false;
+            }
+
+            IRos2BridgeSink sink = null;
+            Ros2BridgeConnection duplexConnection = null;
+            string reason = null;
+            var transition = false;
+            lock (_gate)
+            {
+                if (_stopRequested
+                    || !_enabled
+                    || generation != _workerGeneration)
+                {
+                    return true;
+                }
+                if (!_outboundTerminalHandled)
+                {
+                    _outboundTerminalHandled = true;
+                    transition = true;
+                    reason = BoundRuntimeDiagnostic(
+                        OutboundTerminalReason(terminalFault));
+                    _lastError = reason;
+                    _connected = false;
+                    _connecting = false;
+                    _lastDisconnectedUnixMs = NowUnixMs();
+                    _nextConnectAttemptUnixMs = long.MaxValue;
+                    sink = _sink ?? _ownedSink;
+                    _sink = null;
+                    duplexConnection = _duplexConnection;
+                    InvalidatePreparationsLocked();
+                    ClearProtocolSessionLocked();
+                }
+            }
+
+            if (!transition)
+                return true;
+
+            _subscriptionPipeline?.Disconnect();
+            if (duplexConnection != null)
+            {
+                duplexConnection.Abort(
+                    new IOException(reason));
+            }
+            else
+            {
+                DisconnectSink(sink);
+            }
+            return true;
+        }
+
+        private static string OutboundTerminalReason(
+            Exception terminalFault)
+        {
+            if (terminalFault == null)
+            {
+                return
+                    "ROS2 Bridge outbound scheduler closed unexpectedly.";
+            }
+            return string.IsNullOrWhiteSpace(terminalFault.Message)
+                ? "ROS2 Bridge outbound scheduler faulted."
+                : "ROS2 Bridge outbound scheduler faulted: "
+                  + terminalFault.Message;
+        }
+
         private static void DisconnectSink(IRos2BridgeSink sink)
         {
             if (sink == null)
@@ -1983,6 +2085,11 @@ namespace Unity2Foxglove.Ros2Bridge
                        out lease))
             {
                 if (ShouldStop(workerGeneration))
+                {
+                    lease = null;
+                    return false;
+                }
+                if (_outbound.TryGetTerminalState(out _))
                 {
                     lease = null;
                     return false;
@@ -2077,6 +2184,10 @@ namespace Unity2Foxglove.Ros2Bridge
 
             internal Ros2BridgeWorkerLease Lease { get; }
             internal long Generation { get; }
+        }
+
+        private sealed class OutboundTerminalException : Exception
+        {
         }
 
         private sealed class PublisherPreparationEntry

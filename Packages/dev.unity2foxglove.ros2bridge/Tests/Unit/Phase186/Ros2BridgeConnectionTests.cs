@@ -98,6 +98,51 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void TerminalOutboundSchedulerCannotMapPublishReady()
+        {
+            var stats = new Ros2BridgeStatsSnapshot(
+                enabled: true,
+                connected: true,
+                connecting: false,
+                queuedFrames: 0,
+                sentFrames: 0,
+                droppedFrames: 1,
+                failedFrames: 1,
+                lastError: string.Empty,
+                lastConnectedUnixMs: 187,
+                lastDisconnectedUnixMs: 0);
+
+            var status = Ros2BridgeTransportStatusMapper.Create(
+                generation: 187,
+                FoxRunTransportCapabilities.Publish,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                hasInboundPipeline: false,
+                new Ros2BridgePublisherObservationSnapshot(
+                    observedContracts: 2,
+                    readyContracts: 2,
+                    pendingContracts: 0,
+                    rejectedContracts: 0,
+                    schedulerTerminal: true,
+                    lastReason:
+                        "ROS2 Bridge outbound scheduler faulted: encoder invariant"),
+                Ros2BridgeSubscriptionObservationSnapshot.Empty);
+
+            Assert.Equal(
+                FoxRunTransportObservedState.Failed,
+                status.Publish.State);
+            Assert.False(status.Publish.IsReady);
+            Assert.Equal(0, status.Publish.ReadyContractCount);
+            Assert.Equal(2, status.Publish.FailedContractCount);
+            var diagnostic = Assert.Single(status.Diagnostics);
+            Assert.Equal("ROS2BRIDGE007", diagnostic.Code);
+            Assert.Contains(
+                "encoder invariant",
+                diagnostic.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CleanupAttemptsEveryActionAndPreservesFirstFailure()
         {
             var order = new System.Collections.Generic.List<int>();

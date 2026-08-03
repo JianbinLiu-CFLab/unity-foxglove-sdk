@@ -232,6 +232,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.Equal(expectedBytes, close.ClearedDataBytes);
             Assert.Equal(close, scheduler.LastCloseResult);
             Assert.Equal(default, scheduler.Close());
+            Assert.True(
+                scheduler.TryGetTerminalState(
+                    out var closeFault));
+            Assert.Null(closeFault);
             Assert.Equal(2UL, scheduler.Counters.Dropped);
             Assert.Equal(
                 Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop,
@@ -406,6 +410,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(scheduler.IsFaulted);
             Assert.True(scheduler.IsClosed);
             Assert.Same(terminal, scheduler.TerminalFault);
+            Assert.True(
+                scheduler.TryGetTerminalState(
+                    out var observedTerminal));
+            Assert.Same(terminal, observedTerminal);
             Assert.Equal(1UL, scheduler.Counters.Oversize);
             Assert.Equal(1UL, scheduler.Counters.Faulted);
             Assert.Equal(1UL, scheduler.Counters.Dropped);

@@ -400,6 +400,16 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        internal bool TryGetTerminalState(
+            out Exception terminalFault)
+        {
+            lock (_gate)
+            {
+                terminalFault = _terminalFault;
+                return _closed;
+            }
+        }
+
         internal Ros2BridgeOutboundCloseResult LastCloseResult
         {
             get
