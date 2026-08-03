@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publishMessages = PhaseValidationSourceHelpers.SourceMethod(source, "private void PublishMessages");
             var tryGetReplayTopic = PhaseValidationSourceHelpers.SourceMethod(source, "private bool TryGetReplayTopic");
             var createContext = PhaseValidationSourceHelpers.SourceMethod(source, "private ReplayMessageContext CreateReplayMessageContext");
-            var channelContext = PhaseValidationSourceHelpers.SourceMethod(source, "private readonly struct ReplayChannelContext");
+            var channelContext = PhaseValidationSourceHelpers.SourceType(source, "private readonly struct ReplayChannelContext");
 
             Check(source.Contains("private Dictionary<ushort, ReplayChannelContext> _channelContextMap", StringComparison.Ordinal)
                   && source.Contains("_channelContextMap = new Dictionary<ushort, ReplayChannelContext>()", StringComparison.Ordinal)

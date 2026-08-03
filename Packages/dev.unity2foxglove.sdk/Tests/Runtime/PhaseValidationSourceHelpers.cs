@@ -7,6 +7,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -525,41 +526,127 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string SourceMethod(string source, string methodName)
+            => SourceDeclaration(source, methodName, IsSourceMethodDeclaration);
+
+        public static string SourceType(string source, string typeName)
+            => SourceDeclaration(source, typeName, node => node is TypeDeclarationSyntax);
+
+        private static string SourceDeclaration(
+            string source,
+            string requestedDeclaration,
+            Func<SyntaxNode, bool> declarationFilter)
         {
-            var start = source.IndexOf(methodName, StringComparison.Ordinal);
-            if (start < 0)
+            if (string.IsNullOrEmpty(source) || string.IsNullOrWhiteSpace(requestedDeclaration))
                 return string.Empty;
 
-            var braceStart = FindNextCodeChar(source, start, '{');
-            if (braceStart < 0)
+            var matches = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .Where(declarationFilter)
+                .Where(declaration => !declaration.ContainsDiagnostics)
+                .Where(declaration => SourceDeclarationMatches(source, declaration, requestedDeclaration))
+                .ToArray();
+            if (matches.Length != 1)
                 return string.Empty;
 
-            var depth = 0;
-            var state = SourceScanState.Code;
-            for (var i = braceStart; i < source.Length; i++)
+            var match = matches[0];
+            return source.Substring(match.SpanStart, match.Span.Length);
+        }
+
+        private static bool IsSourceMethodDeclaration(SyntaxNode node)
+            => node is MethodDeclarationSyntax
+               || node is ConstructorDeclarationSyntax
+               || node is LocalFunctionStatementSyntax;
+
+        private static bool SourceDeclarationMatches(
+            string source,
+            SyntaxNode declaration,
+            string requestedDeclaration)
+        {
+            var identifier = declaration switch
             {
-                if (!TryAdvanceSourceScanState(source, ref i, ref state))
-                    continue;
+                MethodDeclarationSyntax method => method.Identifier.ValueText,
+                ConstructorDeclarationSyntax constructor => constructor.Identifier.ValueText,
+                LocalFunctionStatementSyntax localFunction => localFunction.Identifier.ValueText,
+                TypeDeclarationSyntax type => type.Identifier.ValueText,
+                _ => string.Empty
+            };
 
-                if (state != SourceScanState.Code)
-                    continue;
+            if (SyntaxFacts.IsValidIdentifier(requestedDeclaration))
+                return string.Equals(identifier, requestedDeclaration, StringComparison.Ordinal);
+            if (!ContainsIdentifierToken(requestedDeclaration, identifier))
+                return false;
 
-                var current = source[i];
-                if (current == '{')
+            var headerEnd = declaration switch
+            {
+                MethodDeclarationSyntax method => SourceMethodHeaderEnd(
+                    method.Body?.OpenBraceToken.SpanStart,
+                    method.ExpressionBody?.ArrowToken.SpanStart,
+                    method.SemicolonToken.SpanStart),
+                ConstructorDeclarationSyntax constructor => SourceMethodHeaderEnd(
+                    constructor.Body?.OpenBraceToken.SpanStart,
+                    constructor.ExpressionBody?.ArrowToken.SpanStart,
+                    constructor.SemicolonToken.SpanStart),
+                LocalFunctionStatementSyntax localFunction => SourceMethodHeaderEnd(
+                    localFunction.Body?.OpenBraceToken.SpanStart,
+                    localFunction.ExpressionBody?.ArrowToken.SpanStart,
+                    localFunction.SemicolonToken.SpanStart),
+                TypeDeclarationSyntax type => type.OpenBraceToken.SpanStart,
+                _ => -1
+            };
+            if (headerEnd < declaration.SpanStart)
+                return false;
+
+            var header = source.Substring(declaration.SpanStart, headerEnd - declaration.SpanStart);
+            return CollapseSourceWhitespace(header)
+                .Contains(CollapseSourceWhitespace(requestedDeclaration), StringComparison.Ordinal);
+        }
+
+        private static int SourceMethodHeaderEnd(int? bodyStart, int? expressionBodyStart, int semicolonStart)
+            => bodyStart ?? expressionBodyStart ?? semicolonStart;
+
+        private static string CollapseSourceWhitespace(string value)
+        {
+            var result = new StringBuilder(value.Length);
+            var pendingSpace = false;
+            foreach (var current in value)
+            {
+                if (char.IsWhiteSpace(current))
                 {
-                    depth++;
+                    pendingSpace = result.Length > 0;
                     continue;
                 }
 
-                if (current != '}')
-                    continue;
-
-                depth--;
-                if (depth == 0)
-                    return source.Substring(start, i - start + 1);
+                if (pendingSpace)
+                    result.Append(' ');
+                result.Append(current);
+                pendingSpace = false;
             }
 
-            return string.Empty;
+            return result.ToString();
+        }
+
+        private static bool ContainsIdentifierToken(string value, string identifier)
+        {
+            var offset = 0;
+            while (offset < value.Length)
+            {
+                var index = value.IndexOf(identifier, offset, StringComparison.Ordinal);
+                if (index < 0)
+                    return false;
+
+                var beforeIsIdentifier = index > 0
+                                         && SyntaxFacts.IsIdentifierPartCharacter(value[index - 1]);
+                var afterIndex = index + identifier.Length;
+                var afterIsIdentifier = afterIndex < value.Length
+                                        && SyntaxFacts.IsIdentifierPartCharacter(value[afterIndex]);
+                if (!beforeIsIdentifier && !afterIsIdentifier)
+                    return true;
+
+                offset = index + identifier.Length;
+            }
+
+            return false;
         }
 
         private static bool InvocationMatches(
@@ -590,119 +677,5 @@ namespace Unity.FoxgloveSDK.Tests
                            StringComparison.Ordinal));
         }
 
-        private static int FindNextCodeChar(string source, int start, char target)
-        {
-            var state = SourceScanState.Code;
-            for (var i = start; i < source.Length; i++)
-            {
-                if (!TryAdvanceSourceScanState(source, ref i, ref state))
-                    continue;
-
-                if (state == SourceScanState.Code && source[i] == target)
-                    return i;
-            }
-
-            return -1;
-        }
-
-        private static bool TryAdvanceSourceScanState(string source, ref int index, ref SourceScanState state)
-        {
-            var current = source[index];
-            var next = index + 1 < source.Length ? source[index + 1] : '\0';
-
-            switch (state)
-            {
-                case SourceScanState.LineComment:
-                    if (current == '\n' || current == '\r')
-                        state = SourceScanState.Code;
-                    return false;
-
-                case SourceScanState.BlockComment:
-                    if (current == '*' && next == '/')
-                    {
-                        index++;
-                        state = SourceScanState.Code;
-                    }
-                    return false;
-
-                case SourceScanState.String:
-                    if (current == '\\')
-                    {
-                        index++;
-                        return false;
-                    }
-
-                    if (current == '"')
-                        state = SourceScanState.Code;
-                    return false;
-
-                case SourceScanState.VerbatimString:
-                    if (current == '"' && next == '"')
-                    {
-                        index++;
-                        return false;
-                    }
-
-                    if (current == '"')
-                        state = SourceScanState.Code;
-                    return false;
-
-                case SourceScanState.Character:
-                    if (current == '\\')
-                    {
-                        index++;
-                        return false;
-                    }
-
-                    if (current == '\'')
-                        state = SourceScanState.Code;
-                    return false;
-            }
-
-            if (current == '/' && next == '/')
-            {
-                index++;
-                state = SourceScanState.LineComment;
-                return false;
-            }
-
-            if (current == '/' && next == '*')
-            {
-                index++;
-                state = SourceScanState.BlockComment;
-                return false;
-            }
-
-            if (current == '@' && next == '"')
-            {
-                index++;
-                state = SourceScanState.VerbatimString;
-                return false;
-            }
-
-            if (current == '"')
-            {
-                state = SourceScanState.String;
-                return false;
-            }
-
-            if (current == '\'')
-            {
-                state = SourceScanState.Character;
-                return false;
-            }
-
-            return true;
-        }
-
-        private enum SourceScanState
-        {
-            Code,
-            LineComment,
-            BlockComment,
-            String,
-            VerbatimString,
-            Character
-        }
     }
 }

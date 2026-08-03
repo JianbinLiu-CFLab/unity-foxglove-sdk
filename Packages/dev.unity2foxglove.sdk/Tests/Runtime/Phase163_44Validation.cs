@@ -44,6 +44,13 @@ namespace Unity.FoxgloveSDK.Tests
             const string source =
 @"class Sample
 {
+    // Target is declared below.
+    void Caller()
+    {
+        var methodName = ""Target"";
+        Target();
+    }
+
     void Target()
     {
         var text = ""{ not a block }"";
@@ -60,10 +67,35 @@ namespace Unity.FoxgloveSDK.Tests
 }";
 
             var method = PhaseValidationSourceHelpers.SourceMethod(source, "Target");
+            Check(method.TrimStart().StartsWith("void Target()", StringComparison.Ordinal),
+                "163-44B-1: SourceMethod anchors the requested declaration rather than earlier trivia or invocations");
             Check(method.Contains("Other();", StringComparison.Ordinal),
-                "163-44B-1: SourceMethod extracts the requested method body");
+                "163-44B-2: SourceMethod extracts the requested method body");
             Check(!method.Contains("Dangerous();", StringComparison.Ordinal),
-                "163-44B-2: SourceMethod stops at the requested method boundary");
+                "163-44B-3: SourceMethod stops at the requested method boundary");
+
+            const string overloaded =
+@"class Sample
+{
+    void Target(int value) { IntOnly(); }
+    void Target(string value) { StringOnly(); }
+}";
+            Check(string.IsNullOrEmpty(PhaseValidationSourceHelpers.SourceMethod(overloaded, "Target")),
+                "163-44B-4: SourceMethod rejects an ambiguous bare method name");
+            Check(PhaseValidationSourceHelpers.SourceMethod(overloaded, "void Target(int value)")
+                    .Contains("IntOnly();", StringComparison.Ordinal),
+                "163-44B-5: SourceMethod accepts a signature that selects one overload");
+
+            const string prefixedNames =
+@"class Sample
+{
+    void Target() { ExactName(); }
+    void TargetExtended() { ExtendedName(); }
+}";
+            var exactPrefix = PhaseValidationSourceHelpers.SourceMethod(prefixedNames, "void Target");
+            Check(exactPrefix.Contains("ExactName();", StringComparison.Ordinal)
+                  && !exactPrefix.Contains("ExtendedName();", StringComparison.Ordinal),
+                "163-44B-6: SourceMethod does not confuse an identifier with a longer prefixed sibling");
 
             const string unbalanced =
 @"class Sample
@@ -77,7 +109,20 @@ namespace Unity.FoxgloveSDK.Tests
         Dangerous();
     }";
             Check(!PhaseValidationSourceHelpers.SourceMethodContains(unbalanced, "Target", "Dangerous();"),
-                "163-44B-3: SourceMethodContains fails closed on unbalanced method braces");
+                "163-44B-7: SourceMethodContains fails closed on unbalanced method braces");
+
+            const string nestedType =
+@"class Outer
+{
+    private sealed class Runner
+    {
+        private void Work() { NestedBody(); }
+    }
+}";
+            var runner = PhaseValidationSourceHelpers.SourceType(nestedType, "private sealed class Runner");
+            Check(PhaseValidationSourceHelpers.SourceMethod(runner, "private void Work()")
+                    .Contains("NestedBody();", StringComparison.Ordinal),
+                "163-44B-8: SourceType supports declaration-scoped method checks");
         }
 
         private static void VerifyProgramLifecycle(string repoRoot)
@@ -87,7 +132,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && program.Contains("finally\n        {\n            TempMcapHelper.Cleanup();", StringComparison.Ordinal),
                 "163-44C-1: Main cleans TempMcapHelper for every CLI entrypoint");
             var runTests = PhaseValidationSourceHelpers.SourceMethod(program, "RunTests");
-            Check(!runTests.Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal),
+            Check(runTests.TrimStart().StartsWith("static int RunTests(bool includeLocalEvidence)", StringComparison.Ordinal)
+                  && !runTests.Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal),
                 "163-44C-2: RunTests leaves TempMcapHelper cleanup ownership to Main");
             Check(program.Contains("--demo and --demo3d require --serve.", StringComparison.Ordinal),
                 "163-44C-3: demo-only flags report the required --serve parent mode");

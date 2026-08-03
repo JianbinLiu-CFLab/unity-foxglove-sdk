@@ -188,14 +188,14 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void RuntimeSourceMethodScannerIgnoresTrivia()
+        public void RuntimeSourceMethodScannerUsesUnambiguousDeclarations()
         {
             var text = LoadRuntimeSource("PhaseValidationSourceHelpers.cs");
 
-            Assert.Contains("SourceScanState.String", text, StringComparison.Ordinal);
-            Assert.Contains("SourceScanState.LineComment", text, StringComparison.Ordinal);
-            Assert.Contains("SourceScanState.BlockComment", text, StringComparison.Ordinal);
-            Assert.Contains("return string.Empty;", text, StringComparison.Ordinal);
+            Assert.Contains("SourceDeclaration(source, methodName, IsSourceMethodDeclaration)", text, StringComparison.Ordinal);
+            Assert.Contains("declaration.ContainsDiagnostics", text, StringComparison.Ordinal);
+            Assert.Contains("matches.Length != 1", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("source.IndexOf(methodName", text, StringComparison.Ordinal);
         }
 
         [Fact]
