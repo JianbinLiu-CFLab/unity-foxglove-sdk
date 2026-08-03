@@ -80,7 +80,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 new Dictionary<
                     IFoxRunBridgeGeneratedSubscribeSource,
                     string>();
-        private float _nextGeneratedSourceScanTime;
+        private double _nextGeneratedSourceScanTime;
 
         public FoxRunTransportId Id { get; } =
             new FoxRunTransportId(ProviderId);
@@ -144,9 +144,11 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             session.PumpInbound(maxFrames: 64);
-            if (Time.unscaledTime < _nextGeneratedSourceScanTime)
+            if (!Ros2BridgeGeneratedSourceScanGate.TryAdvance(
+                    Time.unscaledTimeAsDouble,
+                    ref _nextGeneratedSourceScanTime))
                 return;
-            _nextGeneratedSourceScanTime = Time.unscaledTime + 0.5f;
+
             SynchronizeGeneratedSources(session);
         }
 

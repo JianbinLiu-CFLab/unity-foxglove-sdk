@@ -22,7 +22,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const string DefaultCompressedImageTopic = "/unity/sensor/camera/image/compressed";
         private const string DefaultRawImageTopic = "/unity/sensor/camera/image/raw";
         private const string DefaultCameraInfoTopic = "/unity/sensor/camera/camera_info";
-        private const float ScanIntervalSeconds = 0.5f;
         private const int MaxNodeCreateAttempts = 4;
         private const int WarningIntervalFrames = 240;
 
@@ -36,7 +35,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly HashSet<int> _infoSeen = new HashSet<int>();
         private readonly List<int> _staleBindings = new List<int>();
         private ROS2UnityComponent _ros2Unity;
-        private float _nextScanAt;
+        private double _nextScanAt;
         private int _ros2FailureCount;
         private bool _warnedRos2Unavailable;
         private bool _isStopping;
@@ -108,10 +107,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
                 return;
 
-            if (Time.unscaledTime < _nextScanAt)
+            if (!Ros2ForUnityNativeScanGate.TryAdvance(
+                    Time.unscaledTimeAsDouble,
+                    ref _nextScanAt))
                 return;
 
-            _nextScanAt = Time.unscaledTime + ScanIntervalSeconds;
             RefreshBindings();
         }
 

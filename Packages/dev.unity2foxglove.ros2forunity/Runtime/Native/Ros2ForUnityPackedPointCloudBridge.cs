@@ -23,11 +23,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     {
         private const string BridgeObjectName = "Unity2Foxglove R2FU PointCloud2 Native Bridge";
         private const string TfAnchorTopic = "/tf";
-        private const float ScanIntervalSeconds = 0.5f;
         private const int MaxNodeCreateAttempts = 4;
         private const int WarningIntervalFrames = 240;
         private const double ZenohBackpressurePublishSlowThresholdMs = 40D;
-        private const float ZenohBackpressureCooldownSeconds = 0.15f;
+        private const double ZenohBackpressureCooldownSeconds = 0.15D;
 
         private static Ros2ForUnityPackedPointCloudBridge _instance;
 
@@ -38,7 +37,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             new List<FoxglovePointCloudPublisher>(16);
         private readonly List<int> _stale = new List<int>();
         private ROS2UnityComponent _ros2Unity;
-        private float _nextScanAt;
+        private double _nextScanAt;
         private int _ros2FailureCount;
         private bool _warnedRos2Unavailable;
         private bool _isStopping;
@@ -117,10 +116,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
                 return;
 
-            if (Time.unscaledTime < _nextScanAt)
+            if (!Ros2ForUnityNativeScanGate.TryAdvance(
+                    Time.unscaledTimeAsDouble,
+                    ref _nextScanAt))
                 return;
 
-            _nextScanAt = Time.unscaledTime + ScanIntervalSeconds;
             RefreshBindings();
         }
 
@@ -314,7 +314,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly bool _usesZenohRmw;
             private ROS2Node _node;
             private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
-            private float _zenohBackpressureSuppressUntil;
+            private double _zenohBackpressureSuppressUntil;
             private bool _subscribed;
             private bool _warnedPublishFailure;
             private bool _warnedUnexpectedTopic;
@@ -511,7 +511,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private bool ShouldSkipZenohBackpressureFrame()
             {
                 return _usesZenohRmw
-                       && Time.unscaledTime < _zenohBackpressureSuppressUntil;
+                       && Time.unscaledTimeAsDouble < _zenohBackpressureSuppressUntil;
             }
 
             private void UpdateZenohBackpressure(double publishMs)
@@ -519,7 +519,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (!_usesZenohRmw || publishMs < ZenohBackpressurePublishSlowThresholdMs)
                     return;
 
-                _zenohBackpressureSuppressUntil = Time.unscaledTime + ZenohBackpressureCooldownSeconds;
+                _zenohBackpressureSuppressUntil =
+                    Time.unscaledTimeAsDouble + ZenohBackpressureCooldownSeconds;
             }
 
             private static bool IsZenohRmwActive()
