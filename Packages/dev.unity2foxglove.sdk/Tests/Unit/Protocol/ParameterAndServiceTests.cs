@@ -8,11 +8,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
@@ -290,6 +292,53 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ServiceCallResponseSendFailureDoesNotDropLaterResponses()
+        {
+            var fake = new Phase6FakeTransport { ThrowBinaryForClientId = 1 };
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.Services.Register(new ServiceDescriptor
+            {
+                Name = "/test", Type = "/test",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            });
+
+            EnqueueCompletedCall(session, serviceId, clientId: 1, callId: 10);
+            EnqueueCompletedCall(session, serviceId, clientId: 2, callId: 20);
+
+            session.DrainServiceCalls();
+
+            var response = Assert.Single(fake.SentBinaries(2));
+            Assert.Equal(20u, BinaryEncoding.ReadU32LE(response, 5));
+        }
+
+        [Fact]
+        public void ServiceCallRecordingFailureDoesNotDropLaterResponses()
+        {
+            var fake = new Phase6FakeTransport();
+            var clock = new ThrowOnceClock();
+            var session = new FoxgloveSession("Test", fake, clock);
+            var serviceId = session.Services.Register(new ServiceDescriptor
+            {
+                Name = "/test", Type = "/test",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            });
+            using var stream = new MemoryStream();
+            using var recorder = new McapRecorder(stream);
+            session.SetRecorder(recorder);
+
+            EnqueueCompletedCall(session, serviceId, clientId: 1, callId: 10);
+            EnqueueCompletedCall(session, serviceId, clientId: 2, callId: 20);
+            clock.ThrowOnNextRead = true;
+
+            session.DrainServiceCalls();
+
+            Assert.Single(fake.SentBinaries(1));
+            Assert.Single(fake.SentBinaries(2));
+        }
+
+        [Fact]
         public void ServiceCallTimeout()
         {
             var fake = new Phase6FakeTransport();
@@ -331,6 +380,35 @@ namespace Unity.FoxgloveSDK.UnitTests
             return frame;
         }
 
+        private static void EnqueueCompletedCall(
+            FoxgloveSession session,
+            uint serviceId,
+            uint clientId,
+            uint callId)
+        {
+            session.Services.Enqueue(serviceId, callId, clientId, "json", Encoding.UTF8.GetBytes("{}"));
+            session.Services.CompleteResponse(clientId, callId, "json", Encoding.UTF8.GetBytes("{\"ok\":true}"));
+        }
+
+        private sealed class ThrowOnceClock : IFoxgloveClock
+        {
+            public bool ThrowOnNextRead { get; set; }
+
+            public ulong NowNs
+            {
+                get
+                {
+                    if (ThrowOnNextRead)
+                    {
+                        ThrowOnNextRead = false;
+                        throw new InvalidOperationException("Injected clock failure.");
+                    }
+
+                    return 1;
+                }
+            }
+        }
+
         private sealed class Phase6FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -341,6 +419,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             private readonly Dictionary<uint, List<string>> _sentTexts = new();
             private readonly Dictionary<uint, List<byte[]>> _sentBinaries = new();
             public readonly List<string> BroadcastTexts = new();
+            public uint? ThrowBinaryForClientId { get; set; }
 
             public void Start(string host, int port) { }
             public void Stop() { }
@@ -352,6 +431,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
             public void SendBinary(uint clientId, byte[] data)
             {
+                if (ThrowBinaryForClientId == clientId)
+                    throw new InvalidOperationException("Injected binary send failure.");
                 if (!_sentBinaries.ContainsKey(clientId)) _sentBinaries[clientId] = new();
                 _sentBinaries[clientId].Add(data);
             }
