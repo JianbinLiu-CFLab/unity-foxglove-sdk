@@ -1229,6 +1229,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
             while (true)
             {
+                var reconnectRequired = false;
                 lock (_gate)
                 {
                     if (_stopRequested
@@ -1239,6 +1240,7 @@ namespace Unity2Foxglove.Ros2Bridge
                             "ROS2 Bridge stopped while publisher preparation was pending.";
                         return false;
                     }
+                    reconnectRequired = !_connected || _sink == null;
                     if (!_preparations.TryGetValue(key, out var entry))
                     {
                         reason =
@@ -1263,7 +1265,23 @@ namespace Unity2Foxglove.Ros2Bridge
                         return true;
                     }
 
-                    QueuePreparationLocked(key, entry);
+                    if (!reconnectRequired)
+                        QueuePreparationLocked(key, entry);
+                }
+
+                if (reconnectRequired)
+                {
+                    if (!EnsureConnected(workerGeneration))
+                    {
+                        if (ShouldStop(workerGeneration))
+                        {
+                            reason =
+                                "ROS2 Bridge stopped while publisher preparation was pending.";
+                            return false;
+                        }
+                        _signal.WaitOne(10);
+                    }
+                    continue;
                 }
 
                 if (!ProcessNextPreparation(workerGeneration))

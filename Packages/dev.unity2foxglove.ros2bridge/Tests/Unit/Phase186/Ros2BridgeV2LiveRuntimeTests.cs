@@ -403,6 +403,64 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void PreparationDisconnectAfterWriteLeaseReconnectsWithoutLosingFrame()
+        {
+            using var transport = new ScriptedTransport(
+                ScriptMode.DisconnectDuringLeasedPreparation);
+            using var runtime = Runtime(transport);
+            runtime.Start(enabled: true, autoConnect: true);
+            WaitFor(
+                () => runtime.IsConnected,
+                "the initial v2 session did not connect");
+            WaitForPublisherReady(runtime);
+
+            var worker = RequiredField(
+                typeof(Ros2BridgeRuntime),
+                "_run").GetValue(runtime);
+            Assert.NotNull(worker);
+            var workerGate = RequiredField(
+                worker.GetType(),
+                "_gate").GetValue(worker);
+            Assert.NotNull(workerGate);
+            var invalidate = worker.GetType().GetMethod(
+                "InvalidatePreparationsLocked",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException(
+                    "The worker preparation invalidation seam is missing.");
+
+            lock (workerGate)
+            {
+                Assert.True(
+                    runtime.TryEnqueuePrepared(
+                        Frame(sequence: 12),
+                        out var reason),
+                    reason);
+                invalidate.Invoke(worker, null);
+            }
+
+            WaitFor(
+                () => transport.ConnectCount == 2,
+                "the leased preparation failure did not return to reconnect");
+            Assert.True(
+                transport.SecondPreparationObserved.Wait(
+                    TimeSpan.FromSeconds(3)),
+                "the replacement session did not replay publisher preparation");
+            WaitFor(
+                () => runtime.GetStatsSnapshot().SentFrames == 1,
+                "the leased frame was lost across preparation reconnect");
+
+            var publish = Assert.Single(
+                transport.V2Requests,
+                request => request.Message.Operation
+                           == U2R2Operation.Publish);
+            Assert.Equal(2, publish.Connection);
+            var stats = runtime.GetStatsSnapshot();
+            Assert.Equal(0, stats.DroppedFrames);
+            Assert.Equal(0, stats.FailedFrames);
+            Assert.Equal(0, stats.FaultedFrames);
+        }
+
+        [Fact]
         public void TransientContentionRetriesWithoutLosingAcceptedFrame()
         {
             using var transport = new ScriptedTransport(
@@ -558,6 +616,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             CleanEofBeforeHelloResponse = 8,
             ReconnectBeforePublish = 9,
             HoldPreparation = 10,
+            DisconnectDuringLeasedPreparation = 11,
         }
 
         private sealed class CapturedV2Request
@@ -610,6 +669,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             private int _disconnectCount;
             private int _currentConnection;
             private int _legacySendCount;
+            private int _preparationCount;
 
             internal ScriptedTransport(ScriptMode mode)
             {
@@ -866,6 +926,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 U2R2ProtocolLimits limits,
                 int connection)
             {
+                var preparation = Interlocked.Increment(
+                    ref _preparationCount);
                 PreparationEntered.Set();
                 if (!AllowPreparationAck.Wait(TimeSpan.FromSeconds(5)))
                 {
@@ -879,6 +941,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         checked(request.ConnectionGeneration + 1),
                         limits);
                 }
+                if (_mode == ScriptMode.DisconnectDuringLeasedPreparation
+                    && preparation == 2)
+                {
+                    Volatile.Write(ref _connected, 0);
+                    throw new IOException(
+                        "The scripted publisher preparation connection closed.");
+                }
 
                 var response = PublisherReady(
                     request,
@@ -890,6 +959,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         Volatile.Write(ref _connected, 0);
                     else if (connection == 2)
                         SecondPreparationObserved.Set();
+                }
+                else if (
+                    _mode
+                    == ScriptMode.DisconnectDuringLeasedPreparation
+                    && connection == 2)
+                {
+                    SecondPreparationObserved.Set();
                 }
                 return response;
             }
