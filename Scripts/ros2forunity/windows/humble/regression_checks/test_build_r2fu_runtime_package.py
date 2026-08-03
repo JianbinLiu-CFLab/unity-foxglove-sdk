@@ -343,6 +343,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             copy_count = 0
 
             def fail_restore_copy(source, destination, *args, **kwargs):
+                """Fail the restore copy after allowing the backup copy."""
                 nonlocal copy_count
                 copy_count += 1
                 if copy_count == 2:

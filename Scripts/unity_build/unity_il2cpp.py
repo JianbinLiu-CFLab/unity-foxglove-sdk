@@ -371,9 +371,12 @@ class _WindowsKillOnCloseJob:
     """Own one Windows process tree through a kill-on-close Job Object."""
 
     def __init__(self) -> None:
+        """Create and configure an empty kill-on-close Job Object."""
         from ctypes import wintypes
 
         class IoCounters(ctypes.Structure):
+            """Mirror the Windows IO_COUNTERS structure."""
+
             _fields_ = [
                 ("read_operation_count", ctypes.c_ulonglong),
                 ("write_operation_count", ctypes.c_ulonglong),
@@ -384,6 +387,8 @@ class _WindowsKillOnCloseJob:
             ]
 
         class BasicLimitInformation(ctypes.Structure):
+            """Mirror the Windows JOBOBJECT_BASIC_LIMIT_INFORMATION structure."""
+
             _fields_ = [
                 ("per_process_user_time_limit", ctypes.c_longlong),
                 ("per_job_user_time_limit", ctypes.c_longlong),
@@ -397,6 +402,8 @@ class _WindowsKillOnCloseJob:
             ]
 
         class ExtendedLimitInformation(ctypes.Structure):
+            """Mirror the Windows JOBOBJECT_EXTENDED_LIMIT_INFORMATION structure."""
+
             _fields_ = [
                 ("basic_limit_information", BasicLimitInformation),
                 ("io_info", IoCounters),
@@ -507,6 +514,8 @@ def _resume_suspended_windows_process(process_id: int) -> None:
     from ctypes import wintypes
 
     class ThreadEntry32(ctypes.Structure):
+        """Mirror the Windows THREADENTRY32 structure."""
+
         _fields_ = [
             ("size", wintypes.DWORD),
             ("usage_count", wintypes.DWORD),
@@ -601,6 +610,7 @@ class OwnedProcessTree:
         windows_job: Optional[_WindowsKillOnCloseJob] = None,
         posix_process_group_id: Optional[int] = None,
     ) -> None:
+        """Record one launched process and its platform ownership boundary."""
         self.process = process
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
