@@ -56,7 +56,9 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxTopicBus
     {
         private readonly Dictionary<string, Registration> _registrations = new Dictionary<string, Registration>(StringComparer.Ordinal);
-        private readonly Dictionary<string, List<ISubscription>> _subscriptions = new Dictionary<string, List<ISubscription>>(StringComparer.Ordinal);
+        // Subscription arrays are replaced on every add/remove so each publish
+        // observes the exact main-thread subscriber snapshot present at entry.
+        private readonly Dictionary<string, ISubscription[]> _subscriptions = new Dictionary<string, ISubscription[]>(StringComparer.Ordinal);
         private readonly HashSet<SubscriberFaultKey> _reportedSubscriberFaults = new HashSet<SubscriberFaultKey>();
         private int _nextSubscriptionId;
 
@@ -143,13 +145,9 @@ namespace Unity.FoxgloveSDK.Components
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            if (!_subscriptions.TryGetValue(topic, out var list))
-            {
-                list = new List<ISubscription>();
-                _subscriptions.Add(topic, list);
-            }
-
-            list.Add(new Subscription<T>(++_nextSubscriptionId, callback));
+            AddSubscription(
+                topic,
+                new Subscription<T>(++_nextSubscriptionId, callback));
         }
 
         /// <summary>
@@ -168,34 +166,28 @@ namespace Unity.FoxgloveSDK.Components
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            if (!_subscriptions.TryGetValue(topic, out var list))
-            {
-                list = new List<ISubscription>();
-                _subscriptions.Add(topic, list);
-            }
-
-            list.Add(new ResultSubscription<T>(
-                ++_nextSubscriptionId,
-                origin,
-                callback));
+            AddSubscription(
+                topic,
+                new ResultSubscription<T>(
+                    ++_nextSubscriptionId,
+                    origin,
+                    callback));
         }
 
         public bool Unsubscribe<T>(string topic, Action<FoxTopicEnvelope<T>> callback)
         {
             if (string.IsNullOrWhiteSpace(topic) || callback == null)
                 return false;
-            if (!_subscriptions.TryGetValue(topic, out var list))
+            if (!_subscriptions.TryGetValue(topic, out var snapshot))
                 return false;
 
-            for (var i = list.Count - 1; i >= 0; i--)
+            for (var i = snapshot.Length - 1; i >= 0; i--)
             {
-                if (list[i] is Subscription<T> typedSubscription
+                if (snapshot[i] is Subscription<T> typedSubscription
                     && typedSubscription.Matches(callback))
                 {
                     var subscriptionId = typedSubscription.Id;
-                    list.RemoveAt(i);
-                    if (list.Count == 0)
-                        _subscriptions.Remove(topic);
+                    RemoveSubscriptionAt(topic, snapshot, i);
                     RemoveReportedFaults(subscriptionId, topic);
                     return true;
                 }
@@ -213,18 +205,16 @@ namespace Unity.FoxgloveSDK.Components
                 || string.IsNullOrWhiteSpace(origin)
                 || callback == null)
                 return false;
-            if (!_subscriptions.TryGetValue(topic, out var list))
+            if (!_subscriptions.TryGetValue(topic, out var snapshot))
                 return false;
 
-            for (var i = list.Count - 1; i >= 0; i--)
+            for (var i = snapshot.Length - 1; i >= 0; i--)
             {
-                if (list[i] is ResultSubscription<T> typedSubscription
+                if (snapshot[i] is ResultSubscription<T> typedSubscription
                     && typedSubscription.Matches(origin, callback))
                 {
                     var subscriptionId = typedSubscription.Id;
-                    list.RemoveAt(i);
-                    if (list.Count == 0)
-                        _subscriptions.Remove(topic);
+                    RemoveSubscriptionAt(topic, snapshot, i);
                     RemoveReportedFaults(subscriptionId, topic);
                     return true;
                 }
@@ -235,8 +225,8 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool HasSubscribers(string topic)
             => topic != null
-               && _subscriptions.TryGetValue(topic, out var list)
-               && list.Count > 0;
+               && _subscriptions.TryGetValue(topic, out var snapshot)
+               && snapshot.Length > 0;
 
         /// <summary>
         /// Whether an exact ordinary observer is subscribed for the requested
@@ -246,11 +236,11 @@ namespace Unity.FoxgloveSDK.Components
         public bool HasObservers<T>(string topic)
         {
             if (topic == null
-                || !_subscriptions.TryGetValue(topic, out var list))
+                || !_subscriptions.TryGetValue(topic, out var snapshot))
                 return false;
-            for (var index = 0; index < list.Count; index++)
+            for (var index = 0; index < snapshot.Length; index++)
             {
-                if (list[index] is Subscription<T>)
+                if (snapshot[index] is Subscription<T>)
                     return true;
             }
             return false;
@@ -264,11 +254,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (topic == null
                 || string.IsNullOrWhiteSpace(origin)
-                || !_subscriptions.TryGetValue(topic, out var list))
+                || !_subscriptions.TryGetValue(topic, out var snapshot))
                 return false;
-            for (var index = 0; index < list.Count; index++)
+            for (var index = 0; index < snapshot.Length; index++)
             {
-                if (list[index] is ResultSubscription<T> subscription
+                if (snapshot[index] is ResultSubscription<T> subscription
                     && subscription.AcceptsOrigin(origin))
                     return true;
             }
@@ -288,7 +278,7 @@ namespace Unity.FoxgloveSDK.Components
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
 
-            if (!_subscriptions.TryGetValue(contract.Topic, out var list) || list.Count == 0)
+            if (!_subscriptions.TryGetValue(contract.Topic, out var snapshot) || snapshot.Length == 0)
                 return default;
 
             var envelope = new FoxTopicEnvelope<T>(
@@ -300,9 +290,9 @@ namespace Unity.FoxgloveSDK.Components
             var matched = 0;
             var succeeded = 0;
             var failed = 0;
-            for (var i = 0; i < list.Count; i++)
+            for (var i = 0; i < snapshot.Length; i++)
             {
-                var subscription = list[i];
+                var subscription = snapshot[i];
                 if (subscription is Subscription<T> typedSubscription)
                 {
                     matched++;
@@ -368,8 +358,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
-            if (!_subscriptions.TryGetValue(contract.Topic, out var list)
-                || list.Count == 0)
+            if (!_subscriptions.TryGetValue(contract.Topic, out var snapshot)
+                || snapshot.Length == 0)
             {
                 return;
             }
@@ -380,9 +370,9 @@ namespace Unity.FoxgloveSDK.Components
                 payload,
                 origin,
                 sequence);
-            for (var index = 0; index < list.Count; index++)
+            for (var index = 0; index < snapshot.Length; index++)
             {
-                if (list[index] is Subscription<T> observer)
+                if (snapshot[index] is Subscription<T> observer)
                 {
                     if (!observer.TryInvoke(envelope, out var exception))
                     {
@@ -397,10 +387,10 @@ namespace Unity.FoxgloveSDK.Components
 
                 // Result-bearing callbacks describe a selected transport and
                 // run only through PublishToResultSubscribers.
-                if (list[index] is IResultSubscription)
+                if (snapshot[index] is IResultSubscription)
                     continue;
 
-                var subscription = list[index];
+                var subscription = snapshot[index];
                 if (HasReportedFault(
                         subscription.Id,
                         contract.Topic,
@@ -435,8 +425,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
-            if (!_subscriptions.TryGetValue(contract.Topic, out var list)
-                || list.Count == 0)
+            if (!_subscriptions.TryGetValue(contract.Topic, out var snapshot)
+                || snapshot.Length == 0)
             {
                 return default;
             }
@@ -450,9 +440,9 @@ namespace Unity.FoxgloveSDK.Components
             var matched = 0;
             var succeeded = 0;
             var failed = 0;
-            for (var index = 0; index < list.Count; index++)
+            for (var index = 0; index < snapshot.Length; index++)
             {
-                if (!(list[index] is ResultSubscription<T> subscription))
+                if (!(snapshot[index] is ResultSubscription<T> subscription))
                     continue;
                 if (!subscription.AcceptsOrigin(origin))
                     continue;
@@ -476,6 +466,43 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return new FoxTopicPublishResult(matched, succeeded, failed);
+        }
+
+        private void AddSubscription(string topic, ISubscription subscription)
+        {
+            if (!_subscriptions.TryGetValue(topic, out var snapshot))
+            {
+                _subscriptions.Add(topic, new[] { subscription });
+                return;
+            }
+
+            var replacement = new ISubscription[snapshot.Length + 1];
+            Array.Copy(snapshot, replacement, snapshot.Length);
+            replacement[snapshot.Length] = subscription;
+            _subscriptions[topic] = replacement;
+        }
+
+        private void RemoveSubscriptionAt(string topic, ISubscription[] snapshot, int index)
+        {
+            if (snapshot.Length == 1)
+            {
+                _subscriptions.Remove(topic);
+                return;
+            }
+
+            var replacement = new ISubscription[snapshot.Length - 1];
+            if (index > 0)
+                Array.Copy(snapshot, 0, replacement, 0, index);
+            if (index < snapshot.Length - 1)
+            {
+                Array.Copy(
+                    snapshot,
+                    index + 1,
+                    replacement,
+                    index,
+                    snapshot.Length - index - 1);
+            }
+            _subscriptions[topic] = replacement;
         }
 
         private void ReportSubscriberFault(int subscriptionId, string topic, string origin, Exception exception)
