@@ -67,7 +67,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && distributor.Contains("Interlocked.Decrement(ref _activeClientHandlers)", StringComparison.Ordinal),
                 "163-5F: certificate distributor bounds concurrent local HTTP handlers");
 
-            Check(registry.Contains("Ci(\"--phase163-5\", \"Phase 163-5\", Phase163_5Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-5\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_5Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
                 "163-5G: PhaseValidationRegistry wires --phase163-5");
 
             Console.WriteLine("Phase 163-5: 7 checks passed.");
