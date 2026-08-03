@@ -180,6 +180,21 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             fixture.refresh_inventory()
             self._assert_invalid(fixture)
 
+    def test_legacy_plugin_importer_rejects_values_bound_to_wrong_platforms(self) -> None:
+        """Require every legacy importer safety value in its owning platform entry."""
+        inverted = _plugin_importer_meta().replace(
+            "Any:\n    second:\n      enabled: 0",
+            "Any:\n    second:\n      enabled: 1",
+        ).replace(
+            "Editor: Editor\n    second:\n      enabled: 1",
+            "Editor: Editor\n    second:\n      enabled: 0",
+        ).replace(
+            "Standalone: Windows\n    second:\n      enabled: 1",
+            "Standalone: Windows\n    second:\n      enabled: 0",
+        )
+
+        self.assertFalse(common._has_restricted_windows_plugin_importer(inverted))
+
     def test_invalid_json_and_missing_license_notice_fail_closed(self) -> None:
         """Verify invalid json and missing license notice fail closed."""
         with self.subTest("invalid json"), self._fixture() as fixture:
