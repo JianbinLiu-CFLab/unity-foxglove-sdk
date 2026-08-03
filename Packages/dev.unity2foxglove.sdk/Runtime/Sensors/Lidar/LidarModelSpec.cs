@@ -5,6 +5,7 @@
 // Purpose: Defines immutable LiDAR model metadata used by scan pattern creation.
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
@@ -40,10 +41,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public readonly double FovBottomDeg;
 
         /// <summary>Optional per-ring beam altitude angles in degrees; <c>null</c> means use a uniform vertical distribution.</summary>
-        public readonly double[] BeamAltitudeAnglesDeg;
+        public readonly IReadOnlyList<double> BeamAltitudeAnglesDeg;
 
         /// <summary>Optional vendor mode names such as <c>1024x10</c> or <c>2048x10</c>.</summary>
-        public readonly string[] Modes;
+        public readonly IReadOnlyList<string> Modes;
 
         /// <summary>Horizontal field-of-view angle in degrees for non-repetitive scanners.</summary>
         public readonly double FovHDeg;
@@ -105,8 +106,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             RateHz = rateHz;
             FovTopDeg = fovTopDeg;
             FovBottomDeg = fovBottomDeg;
-            BeamAltitudeAnglesDeg = beamAltitudeAnglesDeg;
-            Modes = modes;
+            BeamAltitudeAnglesDeg = CloneReadOnly(beamAltitudeAnglesDeg);
+            Modes = CloneReadOnly(modes);
             FovHDeg = fovHDeg;
             FovVDeg = fovVDeg;
             BeamsPerFrame = beamsPerFrame;
@@ -118,6 +119,14 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             ImuToSensorRotation = imuToSensorRotation ?? tIlRotation ?? Quaternion.Identity;
             TIlTranslationMeters = ImuToSensorTranslationMeters;
             TIlRotation = ImuToSensorRotation;
+        }
+
+        private static IReadOnlyList<T> CloneReadOnly<T>(T[] values)
+        {
+            if (values == null)
+                return null;
+
+            return Array.AsReadOnly((T[])values.Clone());
         }
 
         /// <summary>Create an Ouster-style spinning LiDAR model.</summary>
@@ -161,4 +170,3 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 fovHDeg, fovVDeg, beamsPerFrame, minRange, maxRange);
     }
 }
-

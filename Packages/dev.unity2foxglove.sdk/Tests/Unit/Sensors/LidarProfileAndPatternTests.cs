@@ -157,6 +157,47 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(0.25, profile.MinRangeMeters, 9);
         }
 
+        [Theory]
+        [InlineData("{\"beam_altitude_angles\":[\"bad\"]}")]
+        [InlineData("{\"beam_altitude_angles\":[{}]}")]
+        [InlineData("{\"beam_altitude_angles\":[null]}")]
+        [InlineData("{\"beam_altitude_angles\":[NaN]}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"pixels_per_column\":\"bad\"}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"pixels_per_column\":9223372036854775808}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"columns_per_frame\":null}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"columns_per_packet\":{}}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"lidar_origin_to_beam_origin_mm\":\"bad\"}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"min_range_m\":{}}")]
+        [InlineData("{\"beam_altitude_angles\":[0],\"lidar_mode\":{}}")]
+        public void MetadataJson_MalformedScalarReturnsBoundedFailure(string json)
+        {
+            LidarProfile profile = null;
+            string error = null;
+            var parsed = false;
+
+            var exception = Record.Exception(() =>
+                parsed = LidarProfileLoader.TryParseFromJson(
+                    json, "1024x10", out profile, out error));
+
+            Assert.Null(exception);
+            Assert.False(parsed);
+            Assert.Null(profile);
+            Assert.False(string.IsNullOrWhiteSpace(error));
+            Assert.InRange(error.Length, 1, 256);
+        }
+
+        [Fact]
+        public void MetadataJson_RejectsBeamArraysAboveAllocationBound()
+        {
+            var angles = string.Join(",", System.Linq.Enumerable.Repeat("0", 4097));
+            var json = $"{{\"beam_altitude_angles\":[{angles}]}}";
+
+            Assert.False(LidarProfileLoader.TryParseFromJson(
+                json, "1024x10", out var profile, out var error));
+            Assert.Null(profile);
+            Assert.Contains("beam_altitude_angles", error, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void LidarProfileValidateRejectsMissingBeamArrays()
         {

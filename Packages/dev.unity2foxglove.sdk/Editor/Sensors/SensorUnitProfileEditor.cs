@@ -4,6 +4,7 @@
 // Module: Editor/Sensors
 
 using System;
+using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 using UnityEditor;
@@ -156,13 +157,14 @@ namespace Unity.FoxgloveSDK.Editor
                 _model.stringValue = modelNames[newModelIdx];
 
             var spec = models[newModelIdx];
-            if (spec.Modes != null && spec.Modes.Length > 0)
+            if (spec.Modes != null && spec.Modes.Count > 0)
             {
-                var modeIdx = Array.IndexOf(spec.Modes, _mode.stringValue);
+                var modeOptions = spec.Modes.ToArray();
+                var modeIdx = Array.IndexOf(modeOptions, _mode.stringValue);
                 if (modeIdx < 0) modeIdx = 0;
-                var newModeIdx = EditorGUILayout.Popup("Mode", modeIdx, spec.Modes);
-                if (newModeIdx != modeIdx || _mode.stringValue != spec.Modes[newModeIdx])
-                    _mode.stringValue = spec.Modes[newModeIdx];
+                var newModeIdx = EditorGUILayout.Popup("Mode", modeIdx, modeOptions);
+                if (newModeIdx != modeIdx || _mode.stringValue != modeOptions[newModeIdx])
+                    _mode.stringValue = modeOptions[newModeIdx];
             }
         }
 
