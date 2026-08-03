@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit
-// Purpose: OpenH264 helper protocol timestamp behavior.
+// Purpose: Video encoder sidecar timestamp behavior.
 
 using System.Reflection;
 using Foxglove.Schemas.Video;
@@ -74,6 +74,68 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
             Assert.Equal(600UL, accessUnit.TimestampNs);
+            Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
+        }
+
+        [Fact]
+        public void FfmpegH264FullOutputQueueConsumesDroppedTimestamp()
+        {
+            var sidecar = new FfmpegH264EncoderSidecar();
+
+            for (var i = 1; i <= 5; i++)
+            {
+                sidecar.EnqueueTimestampForTests((ulong)i * 100UL);
+                sidecar.AcceptEncodedAccessUnitForTests(new[] { (byte)i });
+            }
+
+            Assert.Equal(1, sidecar.AccessUnitsDropped);
+            Assert.Equal(4, sidecar.OutputQueueDepth);
+            Assert.Contains("output queue full", sidecar.LastDiagnosticLine);
+
+            for (var i = 1; i <= 4; i++)
+            {
+                Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var queued));
+                Assert.Equal((ulong)i * 100UL, queued.TimestampNs);
+            }
+
+            sidecar.EnqueueTimestampForTests(600UL);
+            sidecar.AcceptEncodedAccessUnitForTests(new byte[] { 6 });
+
+            Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
+            Assert.Equal(600UL, accessUnit.TimestampNs);
+            Assert.Equal(0, sidecar.PendingTimestampCountForTests);
+            Assert.Equal(5, sidecar.AccessUnitsProduced);
+            Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
+        }
+
+        [Fact]
+        public void FfmpegH265FullOutputQueueConsumesDroppedTimestamp()
+        {
+            var sidecar = new FfmpegH265EncoderSidecar();
+
+            for (var i = 1; i <= 5; i++)
+            {
+                sidecar.EnqueueTimestampForTests((ulong)i * 100UL);
+                sidecar.AcceptEncodedAccessUnitForTests(new[] { (byte)i });
+            }
+
+            Assert.Equal(1, sidecar.AccessUnitsDropped);
+            Assert.Equal(4, sidecar.OutputQueueDepth);
+            Assert.Contains("output queue full", sidecar.LastDiagnosticLine);
+
+            for (var i = 1; i <= 4; i++)
+            {
+                Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var queued));
+                Assert.Equal((ulong)i * 100UL, queued.TimestampNs);
+            }
+
+            sidecar.EnqueueTimestampForTests(600UL);
+            sidecar.AcceptEncodedAccessUnitForTests(new byte[] { 6 });
+
+            Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
+            Assert.Equal(600UL, accessUnit.TimestampNs);
+            Assert.Equal(0, sidecar.PendingTimestampCountForTests);
+            Assert.Equal(5, sidecar.AccessUnitsProduced);
             Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
         }
 

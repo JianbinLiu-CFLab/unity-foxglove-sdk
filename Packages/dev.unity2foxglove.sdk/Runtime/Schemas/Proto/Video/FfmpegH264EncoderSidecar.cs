@@ -74,6 +74,7 @@ namespace Foxglove.Schemas.Video
         public long TimestampQueueUnderflows => Interlocked.Read(ref _timestampQueueUnderflows);
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
+        internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
         public string LastStderrLine
         {
             get => Volatile.Read(ref _lastStderrLine);
@@ -450,6 +451,12 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
+                // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency
+                // and B-frames disabled, output order is expected to match input order;
+                // consume one capture timestamp for every parsed access unit, including
+                // an access unit dropped because the bounded output queue is full. This
+                // remains an approximation until a PTS-bearing sidecar protocol exists.
+                var hasTimestamp = _encodedFrameTimestamps.TryDequeue(out var capturedNs);
                 if (_outputCount >= _maxOutputQueue)
                 {
                     LastStderrLine = "FFmpeg H.264 output queue full; capture admission is holding new frames.";
@@ -457,12 +464,8 @@ namespace Foxglove.Schemas.Video
                     return;
                 }
 
-                // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency
-                // and B-frames disabled, output order is expected to match input order;
-                // this queue remains an accepted approximation until a PTS-bearing
-                // sidecar protocol replaces the rawvideo stdin/stdout contract.
                 var timestampNs = 0UL;
-                if (_encodedFrameTimestamps.TryDequeue(out var capturedNs))
+                if (hasTimestamp)
                 {
                     timestampNs = capturedNs;
                 }
@@ -475,6 +478,22 @@ namespace Foxglove.Schemas.Video
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsProduced);
             }
+        }
+
+        internal void AcceptEncodedAccessUnitForTests(byte[] accessUnit)
+        {
+            if (accessUnit == null)
+                throw new ArgumentNullException(nameof(accessUnit));
+
+            if (accessUnit.Length == 0)
+                throw new ArgumentException("FFmpeg H.264 access unit must not be empty.", nameof(accessUnit));
+
+            EnqueueAccessUnit(accessUnit);
+        }
+
+        internal void EnqueueTimestampForTests(ulong timestampNs)
+        {
+            _encodedFrameTimestamps.Enqueue(timestampNs);
         }
 
         private void DrainInputQueue()
