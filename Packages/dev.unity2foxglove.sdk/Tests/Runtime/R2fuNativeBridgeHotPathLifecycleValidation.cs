@@ -315,6 +315,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var body = PhaseValidationSourceHelpers.SourceMethod(source, signature);
             if (body.Length == 0)
+            {
+                const string activePackageSource =
+                    "#define UNITY2FOXGLOVE_ROS2_FOR_UNITY\n#define UNITY_EDITOR\n";
+                body = PhaseValidationSourceHelpers.SourceMethod(
+                    activePackageSource + source,
+                    signature);
+            }
+            if (body.Length == 0)
                 throw new InvalidOperationException("[FAIL] missing method in " + fileName + ": " + signature);
             return body;
         }
