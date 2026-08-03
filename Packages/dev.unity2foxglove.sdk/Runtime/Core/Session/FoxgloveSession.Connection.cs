@@ -142,10 +142,16 @@ namespace Unity.FoxgloveSDK.Core
         // ── ClientPublish ──
 
         private void HandleClientAdvertise(uint clientId, string json)
-            => _clientPublish.Advertise(clientId, json);
+        {
+            lock (_channelLifecycleLock)
+                _clientPublish.Advertise(clientId, json);
+        }
 
         private void HandleClientUnadvertise(uint clientId, string json)
-            => _clientPublish.Unadvertise(clientId, json);
+        {
+            lock (_channelLifecycleLock)
+                _clientPublish.Unadvertise(clientId, json);
+        }
 
         /// <summary>
         /// Decode a ClientPublish binary frame and dispatch to
