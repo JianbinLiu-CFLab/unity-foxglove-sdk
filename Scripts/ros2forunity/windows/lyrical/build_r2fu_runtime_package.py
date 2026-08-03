@@ -1568,6 +1568,7 @@ def build_package(paths: BuildPaths) -> None:
     snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)
+    snapshot_safe_to_remove = False
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
@@ -1583,11 +1584,23 @@ def build_package(paths: BuildPaths) -> None:
         patch_deps_json_sha512(paths.package)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
-    except Exception:
-        restore_package_dir(paths.package, snapshot)
+        snapshot_safe_to_remove = True
+    except Exception as generation_error:
+        try:
+            restore_package_dir(paths.package, snapshot)
+        except Exception as rollback_error:
+            snapshot_path = str(snapshot) if snapshot is not None else "<not available>"
+            raise RuntimeError(
+                "Runtime package generation failed "
+                f"({type(generation_error).__name__}: {generation_error}); rollback also failed "
+                f"({type(rollback_error).__name__}: {rollback_error}). "
+                f"Rollback snapshot preserved for manual recovery: {snapshot_path}"
+            ) from rollback_error
+        snapshot_safe_to_remove = True
         raise
     finally:
-        remove_package_snapshot(snapshot)
+        if snapshot_safe_to_remove:
+            remove_package_snapshot(snapshot)
 
 
 def main(argv: list[str]) -> int:
