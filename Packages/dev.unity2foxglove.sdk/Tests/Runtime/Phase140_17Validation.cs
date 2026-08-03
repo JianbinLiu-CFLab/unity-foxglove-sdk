@@ -93,10 +93,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var onEnable = Slice(source, "private void OnEnable()", "private void OnDisable()");
+            var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
             Check(onEnable.Contains("_hasLastVelocity = false", StringComparison.Ordinal)
                   && onEnable.Contains("_hasEpoch = false", StringComparison.Ordinal)
                   && onEnable.Contains("_nextSampleIndex = 0", StringComparison.Ordinal),
                 "140-17C-1: VirtualImu OnEnable resets velocity and epoch state after re-enable");
+            Check(source.Contains("private bool _initialized", StringComparison.Ordinal)
+                  && onEnable.Contains("_initialized && _globalPhysicsRateHzOverride > 0", StringComparison.Ordinal)
+                  && onEnable.Contains("ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
+                  && apply.Contains("if (_didSetFixedDelta)", StringComparison.Ordinal),
+                "140-17C-2: VirtualImu reacquires exactly one global physics-rate lease after re-enable");
         }
 
         private static void RosettePositiveElevationUsesYUpSensorFrame()

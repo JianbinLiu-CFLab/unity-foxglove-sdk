@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySubStepGridForDownsampling();
             VerifyTimestampGridMonotonicAndUniform();
             VerifyQueueCapacityDefaults();
+            VerifyExtremeRateTickWorkIsBounded();
 
             Console.WriteLine($"Phase 138F: {_passed} checks passed.");
             Console.WriteLine();
@@ -92,6 +93,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "138F-13: high target queue capacity is clamped to maximum");
         }
 
+        private static void VerifyExtremeRateTickWorkIsBounded()
+        {
+            var plan = ImuSubStep.PlanTickSamples(0.0, 1.0, int.MaxValue, 0, 512);
+
+            Check(ImuSubStep.NormalizeRateHz(int.MaxValue) == ImuSubStep.MaxSupportedRateHz,
+                "138F-14: extreme target rate is clamped to the supported 5000Hz ceiling");
+            Check(plan.SampleCount == 512 && plan.SkippedSampleCount == 4_489,
+                "138F-15: one delayed physics tick performs at most the bounded queue capacity");
+            Check(plan.FirstSampleIndex == 4_489 && plan.NextSampleIndex == 5_001,
+                "138F-16: bounded catch-up keeps the newest due samples and advances past skipped work");
+        }
+
         private static List<double> CollectSampleTimes(int targetRateHz, double dt, int tickCount)
         {
             var tickStart = 0.0;
@@ -104,15 +117,21 @@ namespace Unity.FoxgloveSDK.Tests
                 tickEnd += dt;
                 tickStart = tickEnd - dt;
 
-                nextIndex = ImuSubStep.AlignSampleIndexToTickStart(tickStart, targetRateHz, nextIndex);
-                while (ImuSubStep.TryGetSampleTime(targetRateHz, nextIndex, out var sampleTime))
+                var plan = ImuSubStep.PlanTickSamples(
+                    tickStart,
+                    tickEnd,
+                    targetRateHz,
+                    nextIndex,
+                    maxSamples: 512);
+                for (var sampleOffset = 0; sampleOffset < plan.SampleCount; sampleOffset++)
                 {
-                    if (sampleTime > tickEnd + SampleTimeToleranceSeconds)
-                        break;
+                    var sampleIndex = plan.FirstSampleIndex + sampleOffset;
+                    ImuSubStep.TryGetSampleTime(targetRateHz, sampleIndex, out var sampleTime);
 
                     times.Add(sampleTime);
-                    nextIndex++;
                 }
+
+                nextIndex = plan.NextSampleIndex;
             }
 
             return times;

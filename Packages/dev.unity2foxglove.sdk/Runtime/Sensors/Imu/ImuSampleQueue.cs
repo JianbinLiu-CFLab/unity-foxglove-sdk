@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Number of samples currently queued.</summary>
         public int Count => _count;
 
-        /// <summary>Total number of oldest samples overwritten since the last resize.</summary>
+        /// <summary>Total number of oldest samples dropped since the last resize.</summary>
         public long DroppedCount => _droppedCount;
 
         /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
@@ -86,7 +86,18 @@ namespace Unity.FoxgloveSDK.Components
 
             _items[_head] = sample;
             _head = (_head + 1) % _items.Length;
-            _droppedCount++;
+            RecordDropped(1);
+        }
+
+        /// <summary>Account for samples omitted before admission, saturating at the counter limit.</summary>
+        public void RecordDropped(long count)
+        {
+            if (count <= 0 || _droppedCount == long.MaxValue)
+                return;
+
+            _droppedCount = count >= long.MaxValue - _droppedCount
+                ? long.MaxValue
+                : _droppedCount + count;
         }
 
         /// <summary>Try to remove and return the oldest queued sample.</summary>

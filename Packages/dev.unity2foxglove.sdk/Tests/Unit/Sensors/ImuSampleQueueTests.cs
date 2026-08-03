@@ -4,8 +4,10 @@
 // Module: Tests/Unit
 // Purpose: Bounded IMU sample queue behavior checks.
 
+using System;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Imu;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
 using Xunit;
 
@@ -121,6 +123,81 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(queue.TryDequeue(out var second));
             Assert.Equal(20UL, first.TimestampNs);
             Assert.Equal(30UL, second.TimestampNs);
+        }
+
+        [Fact]
+        public void ExtremeTargetRateIsNormalizedAndTickWorkIsBounded()
+        {
+            Assert.Equal(ImuSubStep.MaxSupportedRateHz, ImuSubStep.NormalizeRateHz(int.MaxValue));
+
+            var plan = ImuSubStep.PlanTickSamples(
+                tickStartSeconds: 0.0,
+                tickEndSeconds: 1.0,
+                targetRateHz: int.MaxValue,
+                nextSampleIndex: 0,
+                maxSamples: 512);
+
+            Assert.Equal(512, plan.SampleCount);
+            Assert.Equal(4_489, plan.FirstSampleIndex);
+            Assert.Equal(4_489, plan.SkippedSampleCount);
+            Assert.Equal(5_001, plan.NextSampleIndex);
+            Assert.True(
+                ImuSubStep.SampleTimestampNs(0, plan.FirstSampleIndex, int.MaxValue)
+                < ImuSubStep.SampleTimestampNs(0, plan.NextSampleIndex - 1, int.MaxValue));
+        }
+
+        [Theory]
+        [InlineData(double.NaN, 0)]
+        [InlineData(double.NegativeInfinity, 0)]
+        [InlineData(-1.0, 0)]
+        [InlineData(0.0, 0)]
+        [InlineData(200.0, 200)]
+        [InlineData(double.PositiveInfinity, ImuSubStep.MaxSupportedRateHz)]
+        public void RateNormalizationHandlesNonFiniteAndOutOfRangeValues(double requested, int expected)
+        {
+            Assert.Equal(expected, ImuSubStep.NormalizeRateHz(requested));
+        }
+
+        [Fact]
+        public void ExplicitlySkippedSamplesUseSaturatingDropAccounting()
+        {
+            var queue = new ImuSampleQueue();
+
+            queue.RecordDropped(17);
+            queue.RecordDropped(long.MaxValue);
+            queue.RecordDropped(1);
+
+            Assert.Equal(long.MaxValue, queue.DroppedCount);
+        }
+
+        [Fact]
+        public void VirtualImuReacquiresItsPhysicsOverrideAndUsesBoundedTickPlanning()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var onEnable = TestSources.Slice(source, "private void OnEnable()", "private void OnDisable()");
+            var apply = TestSources.Slice(
+                source,
+                "private void ApplyGlobalPhysicsRateOverride",
+                "private void RestoreFixedDeltaTime()");
+            var fixedUpdate = TestSources.Slice(source, "private void FixedUpdate()", "private void Update()");
+
+            Assert.Contains("private bool _initialized", source, StringComparison.Ordinal);
+            Assert.Contains("_initialized && _globalPhysicsRateHzOverride > 0", onEnable, StringComparison.Ordinal);
+            Assert.Contains("ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride)", onEnable, StringComparison.Ordinal);
+            Assert.Contains("if (_didSetFixedDelta)", apply, StringComparison.Ordinal);
+            Assert.Contains("ImuSubStep.PlanTickSamples", fixedUpdate, StringComparison.Ordinal);
+            Assert.DoesNotContain("while (ImuSubStep.TryGetSampleTime", fixedUpdate, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void VirtualImuDropLogDeadlineUsesDoublePrecisionClock()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+
+            Assert.Contains("private double _nextDroppedSamplesLogTime", source, StringComparison.Ordinal);
+            Assert.Contains("Time.unscaledTimeAsDouble", source, StringComparison.Ordinal);
         }
 
         private static ImuSample Sample(ulong timestampNs)
