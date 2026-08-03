@@ -48,7 +48,7 @@ ROS_PACKAGE_NAME = "unity2foxglove_foxrun_interfaces_v1"
 STANDARD_ROS_PACKAGE_NAME = "foxglove_msgs"
 STANDARD_SCHEMA_TYPE = "foxglove_msgs/msg/Log"
 STANDARD_SCHEMA_DIGEST = (
-    "1cacf4b47ef1c6306f00c673ed283837f80c9f1b67ffa8ecf3a0929f62e6c5fd"
+    "13566915f24162eab241ef8df32ed199c1c8748c2252b359b7bf0253cd866e44"
 )
 SUMMARY_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -191,7 +191,7 @@ def load_standard_schema_authority(
         / "FoxgloveRos2MsgSchemaCatalog.cs"
     )
     try:
-        source_bytes = source.read_bytes()
+        source_bytes = canonical_schema_bytes(source.read_bytes())
         source_text = source_bytes.decode("utf-8")
         catalog_text = catalog.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -218,6 +218,12 @@ def load_standard_schema_authority(
         "sourceText": source_text,
         "sourceBytes": source_bytes,
     }
+
+
+def canonical_schema_bytes(value: bytes) -> bytes:
+    """Normalize generated ROS schema text before hashing and staging it."""
+
+    return value.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 def build_overlay_colcon_command(
@@ -782,7 +788,8 @@ def reset_cmake_build_for_runtime_alias(
 
     physical = pathlib.Path(physical_build)
     runtime = pathlib.Path(runtime_build)
-    if physical.name.casefold() != "cpp-build" or runtime.name.casefold() != "cpp-build":
+    runtime_name = pathlib.PureWindowsPath(str(runtime)).name
+    if physical.name.casefold() != "cpp-build" or runtime_name.casefold() != "cpp-build":
         raise BridgeBuildFailure("CMake cache reset target is not cpp-build")
     cache = physical / "CMakeCache.txt"
     if not cache.is_file():

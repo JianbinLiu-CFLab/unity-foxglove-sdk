@@ -157,8 +157,12 @@ importlib.import_module("phase186_bridge_build")
             authority["canonicalType"],
         )
         self.assertEqual(
-            "1cacf4b47ef1c6306f00c673ed283837f80c9f1b67ffa8ecf3a0929f62e6c5fd",
+            "13566915f24162eab241ef8df32ed199c1c8748c2252b359b7bf0253cd866e44",
             authority["sourceDigest"],
+        )
+        self.assertEqual(
+            build.canonical_schema_bytes(b"string value\n"),
+            build.canonical_schema_bytes(b"string value\r\n"),
         )
 
         with tempfile.TemporaryDirectory() as temp:

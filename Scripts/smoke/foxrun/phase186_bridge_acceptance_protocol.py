@@ -54,6 +54,7 @@ _TOPIC = re.compile(r"\A/(?:[A-Za-z_][A-Za-z0-9_]*/)*[A-Za-z_][A-Za-z0-9_]*\Z")
 _FORBIDDEN_OBSERVATION_SOURCES = frozenset(
     {"cached", "configuration", "unit-test", "skipped", "fixture"}
 )
+_SYNTHETIC_EVIDENCE_ROOT = pathlib.Path(__file__).resolve().parent / "__test_evidence__"
 
 
 class ProtocolFailure(RuntimeError):
@@ -733,7 +734,7 @@ def _actor_for_tests(index: int, logical_role: str) -> dict[str, Any]:
     """Handle actor for tests for Phase186 acceptance."""
     return {
         "pid": 1000 + index,
-        "executable": rf"C:\owned\actor{index}.exe",
+        "executable": str(_SYNTHETIC_EVIDENCE_ROOT / f"actor{index}.exe"),
         "started": True,
         "ready": True,
         "identityVerified": True,
@@ -772,7 +773,7 @@ def make_pass_summary_for_tests(
         name: {
             "observed": True,
             "source": "live",
-            "path": rf"C:\evidence\{name}.json",
+            "path": str(_SYNTHETIC_EVIDENCE_ROOT / f"{name}.json"),
         }
         for name in sorted(contract.required_observations)
     }

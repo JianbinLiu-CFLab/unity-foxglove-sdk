@@ -218,6 +218,16 @@ class Phase186ProvenanceTests(unittest.TestCase):
         )
         self.assertIn(f"ref: {REFERENCE_REVISION}", test_job)
         self.assertIn("path: third-party/ROS-TCP-Connector", test_job)
+        self.assertIn(
+            "git -C third-party/ROS-TCP-Connector remote set-url origin "
+            + REFERENCE_REMOTE,
+            test_job,
+        )
+        self.assertIn(
+            "python3 -m pip install --disable-pip-version-check --no-input "
+            "psutil==7.0.0",
+            test_job,
+        )
 
     def test_repository_rejects_noncanonical_ledger_path_even_when_payload_claims_canonical(
         self,
