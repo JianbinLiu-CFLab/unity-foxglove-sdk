@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/" + fileName);
 
             Check(source.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
-                  && source.Contains("accepted approximation", StringComparison.Ordinal),
+                  && source.Contains("remains an approximation until a PTS-bearing sidecar protocol exists", StringComparison.Ordinal),
                 description);
         }
 
