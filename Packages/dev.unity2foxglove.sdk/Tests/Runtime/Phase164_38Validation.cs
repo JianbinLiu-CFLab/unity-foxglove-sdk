@@ -33,10 +33,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !source.Contains("private byte[] _readBodyBuffer", StringComparison.Ordinal),
                 "164-38A-1: cursor endpoint rents a per-request body buffer instead of sharing a mutable field");
             Check(source.Contains("private static readonly byte[] DuplicateCursorResponseBytes", StringComparison.Ordinal)
-                  && handle.Contains("TryWrite(context, 409, DuplicateCursorResponseBytes)", StringComparison.Ordinal),
+                  && handle.Contains("TryWrite(context, 409, DuplicateCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-38A-2: duplicate cursor responses use cached UTF-8 bytes");
             Check(source.Contains("private static readonly byte[] AcceptedCursorResponseBytes", StringComparison.Ordinal)
-                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes)", StringComparison.Ordinal),
+                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-38A-3: accepted cursor responses keep cached UTF-8 bytes");
         }
 
