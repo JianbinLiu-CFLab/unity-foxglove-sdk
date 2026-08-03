@@ -83,7 +83,13 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Drain()
         {
-            while (true)
+            int controlsToDrain;
+            lock (_playbackControlsLock)
+                controlsToDrain = _pendingPlaybackControls.Count;
+
+            // Bound one owner tick to the controls that were pending when it began.
+            // Concurrent or re-entrant arrivals remain queued for the next tick.
+            while (controlsToDrain-- > 0)
             {
                 PendingPlaybackControl request;
                 lock (_playbackControlsLock)
