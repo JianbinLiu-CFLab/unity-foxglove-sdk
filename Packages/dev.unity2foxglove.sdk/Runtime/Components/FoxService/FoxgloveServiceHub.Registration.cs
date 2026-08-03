@@ -157,10 +157,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private void TrackTemporarilyUnavailableSource(IFoxgloveServiceSource source)
         {
-            if (source is MonoBehaviour behaviour
-                && behaviour != null
-                && !_temporarilyUnavailableSources.Contains(source))
-                _temporarilyUnavailableSources.Add(source);
+            if (ReferenceEquals(source, null) || _temporarilyUnavailableSources.Contains(source))
+                return;
+            if (source is MonoBehaviour behaviour && behaviour == null)
+                return;
+
+            _temporarilyUnavailableSources.Add(source);
         }
 
         private void ReregisterReenabledSources()
@@ -169,14 +171,23 @@ namespace Unity.FoxgloveSDK.Components
             for (var i = _temporarilyUnavailableSources.Count - 1; i >= 0; i--)
             {
                 var source = _temporarilyUnavailableSources[i];
-                if (source is not MonoBehaviour behaviour || behaviour == null)
+                if (ReferenceEquals(source, null))
                 {
                     _temporarilyUnavailableSources.RemoveAt(i);
                     continue;
                 }
 
-                if (!behaviour.isActiveAndEnabled)
-                    continue;
+                if (source is MonoBehaviour behaviour)
+                {
+                    if (behaviour == null)
+                    {
+                        _temporarilyUnavailableSources.RemoveAt(i);
+                        continue;
+                    }
+
+                    if (!behaviour.isActiveAndEnabled)
+                        continue;
+                }
 
                 _temporarilyUnavailableSources.RemoveAt(i);
                 RegisterSourceNow(source);
@@ -236,6 +247,14 @@ namespace Unity.FoxgloveSDK.Components
             _descriptorsBySource.Clear();
             _ownersByServiceName.Clear();
             _warnedFailures.Clear();
+        }
+
+        private void SuspendRegistrationsForRestart()
+        {
+            foreach (var source in _serviceIdsBySource.Keys)
+                TrackTemporarilyUnavailableSource(source);
+
+            UnregisterAll();
         }
 
         private void ReleaseServiceNamesByOwner(IFoxgloveServiceSource source)
