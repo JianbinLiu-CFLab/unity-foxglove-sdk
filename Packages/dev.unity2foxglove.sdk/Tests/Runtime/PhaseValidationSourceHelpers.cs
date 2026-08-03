@@ -526,20 +526,44 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string SourceMethod(string source, string methodName)
-            => SourceDeclaration(source, methodName, IsSourceMethodDeclaration);
+            => SourceDeclaration(
+                source,
+                methodName,
+                IsSourceMethodDeclaration,
+                CSharpParseOptions.Default);
+
+        public static string SourceMethodWithPreprocessorSymbols(
+            string source,
+            string methodName,
+            params string[] preprocessorSymbols)
+        {
+            if (preprocessorSymbols == null || preprocessorSymbols.Length == 0)
+                return string.Empty;
+
+            return SourceDeclaration(
+                source,
+                methodName,
+                IsSourceMethodDeclaration,
+                CSharpParseOptions.Default.WithPreprocessorSymbols(preprocessorSymbols));
+        }
 
         public static string SourceType(string source, string typeName)
-            => SourceDeclaration(source, typeName, node => node is TypeDeclarationSyntax);
+            => SourceDeclaration(
+                source,
+                typeName,
+                node => node is TypeDeclarationSyntax,
+                CSharpParseOptions.Default);
 
         private static string SourceDeclaration(
             string source,
             string requestedDeclaration,
-            Func<SyntaxNode, bool> declarationFilter)
+            Func<SyntaxNode, bool> declarationFilter,
+            CSharpParseOptions parseOptions)
         {
             if (string.IsNullOrEmpty(source) || string.IsNullOrWhiteSpace(requestedDeclaration))
                 return string.Empty;
 
-            var matches = CSharpSyntaxTree.ParseText(source)
+            var matches = CSharpSyntaxTree.ParseText(source, parseOptions)
                 .GetRoot()
                 .DescendantNodes()
                 .Where(declarationFilter)

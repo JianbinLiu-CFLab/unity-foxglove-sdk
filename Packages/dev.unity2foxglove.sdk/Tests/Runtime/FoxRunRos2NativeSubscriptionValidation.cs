@@ -542,37 +542,47 @@ namespace Unity.FoxgloveSDK.Tests
             var provider = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "FoxRun/FoxRunRos2TransportProvider.cs");
 
-            var update = PhaseValidationSourceHelpers.SourceMethod(hub, "private void Update()");
-            var applySessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
+            var update = RequiredRos2ForUnityMethod(hub, "private void Update()", "FoxRunRos2SubscriptionHub.cs");
+            var applySessionPolicy = RequiredRos2ForUnityMethod(
                 hub,
-                "private void ApplySessionPolicy(FoxRunSubscriptionSessionPolicy policy)");
-            var ensureNode = PhaseValidationSourceHelpers.SourceMethod(
+                "private void ApplySessionPolicy(FoxRunSubscriptionSessionPolicy policy)",
+                "FoxRunRos2SubscriptionHub.cs");
+            var ensureNode = RequiredRos2ForUnityMethod(
                 hub,
-                "private bool TryEnsureNodeOwner");
-            var scan = PhaseValidationSourceHelpers.SourceMethod(
+                "private bool TryEnsureNodeOwner",
+                "FoxRunRos2SubscriptionHub.cs");
+            var scan = RequiredRos2ForUnityMethod(
                 hub,
-                "private void ScanAndReconcile()");
-            var addBinding = PhaseValidationSourceHelpers.SourceMethod(
+                "private void ScanAndReconcile()",
+                "FoxRunRos2SubscriptionHub.cs");
+            var addBinding = RequiredRos2ForUnityMethod(
                 hub,
-                "private void AddBinding<T>");
-            var nativeAdmission = PhaseValidationSourceHelpers.SourceMethod(
+                "private void AddBinding<T>",
+                "FoxRunRos2SubscriptionHub.cs");
+            var nativeAdmission = RequiredRos2ForUnityMethod(
                 hub,
-                "internal bool CanUseNativeRuntimeNow()");
-            var beginShutdown = PhaseValidationSourceHelpers.SourceMethod(
+                "internal bool CanUseNativeRuntimeNow()",
+                "FoxRunRos2SubscriptionHub.cs");
+            var beginShutdown = RequiredRos2ForUnityMethod(
                 hub,
-                "private void BeginShutdown()");
-            var onDisable = PhaseValidationSourceHelpers.SourceMethod(
+                "private void BeginShutdown()",
+                "FoxRunRos2SubscriptionHub.cs");
+            var onDisable = RequiredRos2ForUnityMethod(
                 hub,
-                "private void OnDisable()");
-            var callback = PhaseValidationSourceHelpers.SourceMethod(
+                "private void OnDisable()",
+                "FoxRunRos2SubscriptionHub.cs");
+            var callback = RequiredRos2ForUnityMethod(
                 binding,
-                "private void OnBorrowedMessage");
-            var stop = PhaseValidationSourceHelpers.SourceMethod(
+                "private void OnBorrowedMessage",
+                "FoxRunRos2SubscriptionBinding.cs");
+            var stop = RequiredRos2ForUnityMethod(
                 binding,
-                "private void StopCore");
-            var backendRegister = PhaseValidationSourceHelpers.SourceMethod(
+                "private void StopCore",
+                "FoxRunRos2SubscriptionBinding.cs");
+            var backendRegister = RequiredRos2ForUnityMethod(
                 backend,
-                "public FoxRunRos2NativeBackendRegistration Register<T>");
+                "public FoxRunRos2NativeBackendRegistration Register<T>",
+                "Ros2ForUnityFoxRunInboundBackend.cs");
             var bootstrapGateStart = lifecycleGate.IndexOf(
                 "internal static bool CanBootstrapBridge",
                 StringComparison.Ordinal);
@@ -843,24 +853,38 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs");
             var slot = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2OwnedLatestSlot.cs");
-            var armBurst = PhaseValidationSourceHelpers.SourceMethod(
+            var armBurst = RequiredRos2ForUnityMethod(
                 probe,
-                "public void ArmBurstAttempt()");
-            var emitBurst = PhaseValidationSourceHelpers.SourceMethod(
+                "public void ArmBurstAttempt()",
+                "Phase179Ros2OwnershipProbe.cs");
+            var emitBurst = RequiredRos2ForUnityMethod(
                 probe,
-                "private void TryEmitBurstLatestMarker");
-            var observe = PhaseValidationSourceHelpers.SourceMethod(
+                "private void TryEmitBurstLatestMarker",
+                "Phase179Ros2OwnershipProbe.cs");
+            var observe = RequiredRos2ForUnityMethod(
                 probe,
-                "private void ObserveGeneratedOwnedCopy()");
-            var attachSessionObserver = PhaseValidationSourceHelpers.SourceMethod(
+                "private void ObserveGeneratedOwnedCopy()",
+                "Phase179Ros2OwnershipProbe.cs");
+            var attachSessionObserver = RequiredRos2ForUnityMethod(
                 probe,
-                "private void AttachManagerSessionPolicyObserver()");
-            var detachSessionObserver = PhaseValidationSourceHelpers.SourceMethod(
+                "private void AttachManagerSessionPolicyObserver()",
+                "Phase179Ros2OwnershipProbe.cs");
+            var detachSessionObserver = RequiredRos2ForUnityMethod(
                 probe,
-                "private void DetachManagerSessionPolicyObserver()");
-            var captureSessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
+                "private void DetachManagerSessionPolicyObserver()",
+                "Phase179Ros2OwnershipProbe.cs");
+            var captureSessionPolicy = RequiredRos2ForUnityMethod(
                 probe,
-                "private void CaptureManagerSessionPolicy(");
+                "private void CaptureManagerSessionPolicy(",
+                "Phase179Ros2OwnershipProbe.cs");
+            var onEnable = RequiredRos2ForUnityMethod(
+                probe,
+                "private void OnEnable()",
+                "Phase179Ros2OwnershipProbe.cs");
+            var onDisable = RequiredRos2ForUnityMethod(
+                probe,
+                "private void OnDisable()",
+                "Phase179Ros2OwnershipProbe.cs");
             var repoRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
             var probeMetaAbsolute = Path.Combine(
                 repoRoot,
@@ -897,11 +921,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && probe.Contains("FoxRunSubscriptionSessionChanged +=", StringComparison.Ordinal)
                   && probe.Contains("FoxRunSubscriptionSessionChanged -=", StringComparison.Ordinal)
                   && OccursBefore(
-                      PhaseValidationSourceHelpers.SourceMethod(probe, "private void OnEnable()"),
+                      onEnable,
                       "AttachManagerSessionPolicyObserver();",
                       "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY")
-                  && PhaseValidationSourceHelpers.SourceMethod(probe, "private void OnDisable()")
-                      .Contains("DetachManagerSessionPolicyObserver();", StringComparison.Ordinal)
+                  && onDisable.Contains("DetachManagerSessionPolicyObserver();", StringComparison.Ordinal)
                   && attachSessionObserver.Contains(
                       "ActiveFoxRunSubscriptionSessionPolicy",
                       StringComparison.Ordinal)
@@ -1134,9 +1157,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && phase179ScriptMetadataPaths.All(HasCompleteUnityScriptMetadata),
                 "Unity-generated Phase179 sample, scene, and manual-acceptance metadata use valid unique GUIDs and complete script importers");
 
-            var refreshReadyMarker = PhaseValidationSourceHelpers.SourceMethod(
+            var refreshReadyMarker = RequiredRos2ForUnityMethod(
                 acceptance,
-                "private void EmitReadyMarkerWhenRuntimeIsObserved()");
+                "private void EmitReadyMarkerWhenRuntimeIsObserved()",
+                "Phase179FoxRunRos2NativeSubscribeAcceptance.cs");
             Check(refreshReadyMarker.Contains(
                       "snapshot.State != FoxRunRos2SubscriptionBindingState.Ready",
                       StringComparison.Ordinal)
@@ -1554,6 +1578,20 @@ namespace Unity.FoxgloveSDK.Tests
             var firstIndex = source.IndexOf(first, StringComparison.Ordinal);
             var secondIndex = source.IndexOf(second, StringComparison.Ordinal);
             return firstIndex >= 0 && secondIndex > firstIndex;
+        }
+
+        private static string RequiredRos2ForUnityMethod(
+            string source,
+            string signature,
+            string fileName)
+        {
+            var method = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(
+                source,
+                signature,
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY");
+            if (method.Length == 0)
+                throw new InvalidOperationException("[FAIL] missing active R2FU method in " + fileName + ": " + signature);
+            return method;
         }
 
         private static int CountOccurrences(string source, string value)
