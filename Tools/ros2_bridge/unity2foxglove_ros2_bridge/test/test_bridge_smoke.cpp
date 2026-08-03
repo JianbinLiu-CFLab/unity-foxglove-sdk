@@ -256,6 +256,34 @@ int ShutdownSocketWrite(SocketHandle socket)
 #endif
 }
 
+class SocketThreadJoiner final
+{
+public:
+  SocketThreadJoiner(SocketHandle socket, std::thread & thread)
+  : socket_(socket), thread_(thread)
+  {
+  }
+
+  ~SocketThreadJoiner()
+  {
+    if (!thread_.joinable()) {
+      return;
+    }
+    shutdown_socket_both(socket_);
+    try {
+      thread_.join();
+    } catch (...) {
+    }
+  }
+
+  SocketThreadJoiner(const SocketThreadJoiner &) = delete;
+  SocketThreadJoiner & operator=(const SocketThreadJoiner &) = delete;
+
+private:
+  SocketHandle socket_;
+  std::thread & thread_;
+};
+
 const nlohmann::json & ExecutableV1BaseVector(
   const nlohmann::json & fixture,
   const std::string & base_frame)
@@ -1953,6 +1981,137 @@ TEST(
     authority.try_acquire_role(u2r2::ConnectionRole::data_session);
   ASSERT_TRUE(replacement.has_value());
   replacement->release();
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2NonterminalParseAndReplayErrorsRespondAndSessionContinues)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    []() -> std::unique_ptr<BridgeNode> {
+      GenericPublisherFactory publisher_factory =
+        [](const std::string &, const std::string &, const rclcpp::QoS &) {
+          return [](const rclcpp::SerializedMessage &) {};
+        };
+      return std::make_unique<BridgeNode>(
+        PayloadFormat::CdrWithEncapsulation,
+        std::move(publisher_factory));
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase187_v2_error_response_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+  SocketThreadJoiner server_joiner(client_socket.get(), server);
+
+  const auto hello = u2r2::encode_frame(
+    {
+      {"op", "hello"},
+      {"protocolVersion", 2},
+      {"requestId", 10},
+      {"clientName", "phase187-error-recovery"},
+      {"capabilities", nlohmann::json::array({"publish"})},
+    },
+    {});
+  write_all(client_socket.get(), hello);
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  const auto prepare_request = [&](uint64_t request_id) {
+    return u2r2::encode_frame(
+      {
+        {"op", "prepare_publisher"},
+        {"protocolVersion", 2},
+        {"requestId", request_id},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"topic", "/phase187/v2/stale"},
+        {"schemaName", "std_msgs/msg/String"},
+        {"encoding", "cdr"},
+        {"qos", {
+            {"profile", "default"},
+            {"reliability", "reliable"},
+            {"durability", "volatile"},
+            {"history", "keep_last"},
+            {"depth", 10},
+          }},
+      },
+      {});
+  };
+  const auto health_request = [&](uint64_t request_id) {
+    return u2r2::encode_frame(
+      {
+        {"op", "health_ping"},
+        {"protocolVersion", 2},
+        {"requestId", request_id},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+      },
+      {});
+  };
+
+  const auto stale_prepare = prepare_request(9);
+  write_all(client_socket.get(), stale_prepare);
+  const auto stale_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::PublisherReady, stale_response.operation);
+  EXPECT_EQ(9U, stale_response.request_id);
+  EXPECT_EQ("error", stale_response.status);
+  EXPECT_EQ("stale_request", stale_response.error_code);
+  EXPECT_FALSE(stale_response.terminal);
+
+  const auto health = health_request(20);
+  write_all(client_socket.get(), health);
+  const auto health_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, health_response.operation);
+  EXPECT_EQ(20U, health_response.request_id);
+  EXPECT_EQ("ok", health_response.status);
+
+  const auto replay_stale_prepare = prepare_request(12);
+  write_all(client_socket.get(), replay_stale_prepare);
+  const auto replay_stale_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(
+    u2r2::Operation::PublisherReady,
+    replay_stale_response.operation);
+  EXPECT_EQ(12U, replay_stale_response.request_id);
+  EXPECT_EQ("error", replay_stale_response.status);
+  EXPECT_EQ("stale_request", replay_stale_response.error_code);
+  EXPECT_FALSE(replay_stale_response.terminal);
+
+  write_all(client_socket.get(), health_request(21));
+  const auto recovered = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, recovered.operation);
+  EXPECT_EQ(21U, recovered.request_id);
+  EXPECT_EQ("ok", recovered.status);
+
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  server.join();
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(0U, authority.classified_count());
 }
 
 TEST(

@@ -2321,6 +2321,110 @@ std::vector<uint8_t> encode_v2_error_response(
     protocol.limits());
 }
 
+struct V2ErrorResponseRoute final
+{
+  u2r2::Operation operation;
+  const char * name;
+};
+
+std::optional<V2ErrorResponseRoute> v2_error_response_route(
+  u2r2::Operation request_operation,
+  const std::string & error_code)
+{
+  std::optional<V2ErrorResponseRoute> route;
+  switch (request_operation) {
+    case u2r2::Operation::PreparePublisher:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::PublisherReady,
+        "publisher_ready"};
+      break;
+    case u2r2::Operation::Publish:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::PublishResult,
+        "publish_result"};
+      break;
+    case u2r2::Operation::RegisterSubscription:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::SubscriptionReady,
+        "subscription_ready"};
+      break;
+    case u2r2::Operation::UnregisterSubscription:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::SubscriptionRemoved,
+        "subscription_removed"};
+      break;
+    default:
+      break;
+  }
+  if (
+    route &&
+    u2r2::is_stable_error_allowed_for_response(
+      error_code,
+      route->operation))
+  {
+    return route;
+  }
+  if (u2r2::is_stable_error_allowed_for_response(
+      error_code,
+      u2r2::Operation::Fault))
+  {
+    return V2ErrorResponseRoute{u2r2::Operation::Fault, "fault"};
+  }
+  return std::nullopt;
+}
+
+bool schedule_v2_protocol_error(
+  const std::vector<uint8_t> & request_wire,
+  const u2r2::ProtocolError & error,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const RosContextOk & context_ok)
+{
+  u2r2::Message request;
+  try {
+    request = u2r2::parse_v2(
+      u2r2::decode_frame(request_wire, protocol.limits()));
+  } catch (...) {
+    return false;
+  }
+  if (!request.is_request) {
+    return false;
+  }
+  const auto route = v2_error_response_route(
+    request.operation,
+    error.code());
+  if (!route) {
+    return false;
+  }
+
+  const auto response = encode_v2_error_response(
+    protocol,
+    request,
+    route->name,
+    error.code().c_str(),
+    error.what());
+  const auto deadline =
+    std::chrono::steady_clock::now() +
+    std::chrono::milliseconds(protocol.limits().join_timeout_ms());
+  while (context_ok()) {
+    try {
+      protocol.enqueue_control(
+        "protocol-error:" + std::to_string(request.request_id),
+        response);
+      return true;
+    } catch (const u2r2::ProtocolError & enqueue_error) {
+      if (
+        enqueue_error.code() != "capacity_exceeded" ||
+        enqueue_error.terminal() ||
+        std::chrono::steady_clock::now() >= deadline)
+      {
+        return false;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return false;
+}
+
 BridgeFrame bridge_frame_from_v2_wire(
   const std::vector<uint8_t> & wire,
   u2r2::Operation operation,
@@ -2548,48 +2652,59 @@ void run_owned_v2_data_session(
     while (context_ok()) {
       const auto wire =
         read_accounted_wire_frame(client_fd, protocol, context_ok);
-      const auto request = protocol.parse_v2_request(wire.bytes);
-      if (request.operation == u2r2::Operation::RegisterSubscription) {
-        (void)protocol.register_subscription(
+      try {
+        const auto request = protocol.parse_v2_request(wire.bytes);
+        if (request.operation == u2r2::Operation::RegisterSubscription) {
+          (void)protocol.register_subscription(
+            wire.bytes,
+            request,
+            kControlResponseReservationBytes,
+            [&](const u2r2::ContractIdentity & identity,
+              bridge_runtime::BridgeSerializedCallback callback) {
+              return require_bridge().subscribe(
+                identity,
+                std::move(callback));
+            });
+          continue;
+        }
+        if (request.operation == u2r2::Operation::UnregisterSubscription) {
+          (void)protocol.unregister_subscription(
+            wire.bytes,
+            request,
+            kControlResponseReservationBytes);
+          continue;
+        }
+        std::optional<BridgeFrame> bridge_frame;
+        if (
+          request.operation == u2r2::Operation::PreparePublisher ||
+          request.operation == u2r2::Operation::Publish)
+        {
+          bridge_frame.emplace(bridge_frame_from_v2_wire(
+              wire.bytes,
+              request.operation,
+              protocol.limits()));
+        }
+        (void)protocol.execute_replayable(
           wire.bytes,
           request,
           kControlResponseReservationBytes,
-          [&](const u2r2::ContractIdentity & identity,
-            bridge_runtime::BridgeSerializedCallback callback) {
-            return require_bridge().subscribe(
-              identity,
-              std::move(callback));
+          [&]() {
+            return dispatch_owned_v2_request(
+              request,
+              bridge_frame ? &*bridge_frame : nullptr,
+              protocol,
+              require_bridge);
           });
-        continue;
-      }
-      if (request.operation == u2r2::Operation::UnregisterSubscription) {
-        (void)protocol.unregister_subscription(
+      } catch (const u2r2::ProtocolError & error) {
+        const auto responded = schedule_v2_protocol_error(
           wire.bytes,
-          request,
-          kControlResponseReservationBytes);
-        continue;
+          error,
+          protocol,
+          context_ok);
+        if (!responded || error.terminal()) {
+          throw;
+        }
       }
-      std::optional<BridgeFrame> bridge_frame;
-      if (
-        request.operation == u2r2::Operation::PreparePublisher ||
-        request.operation == u2r2::Operation::Publish)
-      {
-        bridge_frame.emplace(bridge_frame_from_v2_wire(
-            wire.bytes,
-            request.operation,
-            protocol.limits()));
-      }
-      (void)protocol.execute_replayable(
-        wire.bytes,
-        request,
-        kControlResponseReservationBytes,
-        [&]() {
-          return dispatch_owned_v2_request(
-            request,
-            bridge_frame ? &*bridge_frame : nullptr,
-            protocol,
-            require_bridge);
-        });
     }
   } catch (const ClientClosedException &) {
   } catch (...) {
