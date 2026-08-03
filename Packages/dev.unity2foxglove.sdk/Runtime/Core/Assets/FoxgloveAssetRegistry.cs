@@ -99,6 +99,8 @@ namespace Unity.FoxgloveSDK.Core
                 { error = $"Path is a directory: {uri}"; return false; }
                 if (!File.Exists(resolved))
                 { error = $"File not found: {uri}"; return false; }
+                if (ContainsReparsePoint(normalizedRoot, resolved))
+                { error = $"Asset path contains a reparse point: {uri}"; return false; }
                 var fi = new FileInfo(resolved);
                 if (fi.Length > bestRoot.MaxBytes)
                 { error = $"File exceeds size limit ({bestRoot.MaxBytes} bytes): {fi.Length}"; return false; }
@@ -190,6 +192,26 @@ namespace Unity.FoxgloveSDK.Core
             || ex is UnauthorizedAccessException
             || ex is System.Security.SecurityException
             || ex is UriFormatException;
+
+        private static bool ContainsReparsePoint(string normalizedRoot, string resolved)
+        {
+            var current = normalizedRoot;
+            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                return true;
+
+            var relative = resolved.Substring(normalizedRoot.Length)
+                .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            foreach (var component in relative.Split(
+                         new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = Path.Combine(current, component);
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    return true;
+            }
+
+            return false;
+        }
 
         private static string NormalizeUriPrefix(string uriPrefix)
         {
