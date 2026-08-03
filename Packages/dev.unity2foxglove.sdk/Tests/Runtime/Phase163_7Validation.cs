@@ -124,7 +124,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void McapRecorderDroppedFinalChunkRecoveryKeepsIndexesWithoutStatistics()
         {
             var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
-            var recovery = Slice(source, "private void WriteRecoverableTrailerAfterDroppedFinalChunk()", "/// <summary>");
+            var recovery = Slice(source, "private void WriteRecoverableTrailerAfterDroppedChunk()", "/// <summary>");
 
             Check(source.Contains("BuildFinalSummary(bool includeStatistics)", StringComparison.Ordinal)
                   && recovery.Contains("McapSummarySerializer.WriteSummaryAndFooter", StringComparison.Ordinal)
