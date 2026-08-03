@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import contextlib
 import io
+import os
 import pathlib
 import struct
 import tempfile
@@ -1347,7 +1348,7 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                 "161",
                 "jazzy",
             )
-            paths = environment["PATH"].split(";")
+            paths = environment["PATH"].split(os.pathsep)
             self.assertIn(str(pixi_bin), paths)
             self.assertIn("ros-base", paths)
             self.assertNotIn("ambient", paths)

@@ -223,6 +223,8 @@ class Phase186ProvenanceTests(unittest.TestCase):
             + REFERENCE_REMOTE,
             test_job,
         )
+        self.assertIn("uses: actions/setup-python@v5", test_job)
+        self.assertIn('python-version: "3.12"', test_job)
         self.assertIn(
             "python3 -m pip install --disable-pip-version-check --no-input "
             "psutil==7.0.0",
