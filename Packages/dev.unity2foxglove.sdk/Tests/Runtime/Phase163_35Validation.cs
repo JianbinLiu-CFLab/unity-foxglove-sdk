@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var tests = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/PointCloudHotPathAllocationTests.cs");
 
-            Check(tests.Contains("PointCloud2BuilderUsesExactOwnedArray", StringComparison.Ordinal)
+            Check(tests.Contains("PointCloud2BuilderUsesOwnedArrayWithoutPooledFrameData", StringComparison.Ordinal)
                   && tests.Contains("PointCloud2BuilderPacksOnlyValidPointsIntoExactSizedData", StringComparison.Ordinal)
                   && tests.Contains("DracoEncoderUsesPooledXyzWithoutSizingOutputFromRentalLength", StringComparison.Ordinal)
                   && tests.Contains("DoesNotContain(\"stream.ToArray()\"", StringComparison.Ordinal)
