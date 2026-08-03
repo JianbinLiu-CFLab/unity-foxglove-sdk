@@ -1483,6 +1483,59 @@ TEST(
   context->shutdown("phase184 deferred process node test complete");
 }
 
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  AccountedIdleReadStopsWhenTheOwningContextStops)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::BridgeSessionProtocol protocol(
+    u2r2::ProtocolLimits::defaults());
+  std::atomic<bool> context_ok{true};
+  std::atomic<int> outcome{0};
+  std::thread reader(
+    [&]() {
+      try {
+        (void)read_accounted_wire_frame(
+          server_socket.get(),
+          protocol,
+          [&]() {return context_ok.load();});
+        outcome.store(1);
+      } catch (const ClientClosedException &) {
+        outcome.store(2);
+      } catch (...) {
+        outcome.store(3);
+      }
+    });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  context_ok.store(false);
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (
+    outcome.load() == 0 &&
+    std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  const bool stopped_before_socket_close = outcome.load() != 0;
+  if (!stopped_before_socket_close) {
+    EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  }
+  reader.join();
+
+  EXPECT_TRUE(stopped_before_socket_close);
+  EXPECT_EQ(2, outcome.load());
+  EXPECT_EQ(0U, protocol.in_flight_bytes());
+  EXPECT_EQ(0U, protocol.transient_bytes());
+}
+
 namespace
 {
 namespace bridge_runtime = unity2foxglove::ros2_bridge::runtime;
