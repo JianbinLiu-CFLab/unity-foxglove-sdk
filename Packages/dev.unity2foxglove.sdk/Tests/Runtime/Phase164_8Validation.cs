@@ -50,7 +50,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && handle.Contains("result.Success && string.Equals(result.Message, \"Cursor accepted.\"", StringComparison.Ordinal)
                   && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-8B-1: common accepted cursor responses use pre-encoded bytes");
-            Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+            Check(readBody.Contains("var maxBodyBytes = generation.Options.MaxBodyBytes", StringComparison.Ordinal)
+                  && readBody.Contains("ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
                   && readBody.Contains("encoding.GetString(buffer, 0, total)", StringComparison.Ordinal)
                   && !endpoint.Contains("private byte[] _readBodyBuffer", StringComparison.Ordinal)

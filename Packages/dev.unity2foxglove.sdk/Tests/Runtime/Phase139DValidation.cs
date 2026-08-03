@@ -142,7 +142,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && endpointSource.Contains("Bearer ", StringComparison.Ordinal),
                 "139D-4D: cursor endpoint supports an optional bearer token");
             var optionsBranch = endpointSource.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal);
-            var authGate = endpointSource.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal);
+            var authGate = endpointSource.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal);
             Check(endpointSource.Contains("Access-Control-Allow-Origin", StringComparison.Ordinal)
                   && optionsBranch >= 0
                   && authGate >= 0

@@ -27,7 +27,8 @@ namespace Unity.FoxgloveSDK.Tests
             var handle = PhaseValidationSourceHelpers.SourceMethod(source, "private void Handle");
 
             Check(source.Contains("using System.Buffers;", StringComparison.Ordinal)
-                  && readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+                  && readBody.Contains("var maxBodyBytes = generation.Options.MaxBodyBytes", StringComparison.Ordinal)
+                  && readBody.Contains("ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
                   && !source.Contains("private byte[] _readBodyBuffer", StringComparison.Ordinal),
                 "164-38A-1: cursor endpoint rents a per-request body buffer instead of sharing a mutable field");
@@ -42,7 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCursorEndpointAvoidsCorsTrimAllocationsOnAllowCheck()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
-            var cors = PhaseValidationSourceHelpers.SourceMethod(source, "private bool IsCorsOriginAllowed(string origin)");
+            var cors = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool IsCorsOriginAllowed(");
             var bounds = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool TryGetOriginBounds");
 
             Check(cors.Contains("TryGetOriginBounds(origin, out var start, out var length)", StringComparison.Ordinal)

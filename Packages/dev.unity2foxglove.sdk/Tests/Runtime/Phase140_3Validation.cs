@@ -120,8 +120,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ReplayCursorEndpointRestrictsCorsAndEscapesJson()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
-            var stop = ExtractMethodBody(source, "public void Stop()");
-            var isCorsOriginAllowed = ExtractMethodBody(source, "private bool IsCorsOriginAllowed(string origin)");
+            var stop = ExtractMethodBody(source, "private void StopNoLock()");
+            var isCorsOriginAllowed = ExtractMethodBody(source, "private static bool IsCorsOriginAllowed(");
 
             Check(source.Contains("IsCorsOriginAllowed", StringComparison.Ordinal)
                   && !source.Contains("Access-Control-Allow-Origin\"] = \"*\"", StringComparison.Ordinal),
@@ -129,7 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("https://app.foxglove.dev", StringComparison.Ordinal),
                 "140-3D-2: replay cursor endpoint keeps the hosted Foxglove origin in the default allowlist");
             Check(source.Contains("TryWrite(context, 401", StringComparison.Ordinal)
-                  && source.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal)
+                  && source.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal)
                   > source.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal),
                 "140-3D-3: cursor endpoint answers browser OPTIONS preflight before bearer authorization");
             Check(source.Contains("JsonEscape", StringComparison.Ordinal)
@@ -139,11 +139,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && Ordered(isCorsOriginAllowed, "if (!TryGetOriginBounds(origin, out var start, out var length))", "return false;")
                   && Ordered(isCorsOriginAllowed, "return false;", "foreach (var allowedOrigin"),
                 "140-3D-5: replay cursor endpoint rejects malformed non-empty Origin headers");
-            Check(Ordered(stop, "listener.Stop();", "listener.Close();")
-                  && Ordered(stop, "listener.Close();", "finally")
-                  && stop.Substring(stop.IndexOf("finally", StringComparison.Ordinal))
-                      .Contains("_queue = null;", StringComparison.Ordinal),
-                "140-3D-6: replay cursor endpoint closes listener before clearing in-flight delegates");
+            Check(Ordered(stop, "generation.RequestStop();", "generation.Listener.Stop();")
+                  && Ordered(stop, "generation.Listener.Close();", "generation.Worker.Join")
+                  && Ordered(stop, "generation.Worker.Join", "_generation = null;"),
+                "140-3D-6: replay cursor endpoint closes and joins the captured worker before releasing its generation");
         }
 
         private static void ExternalCursorEnabledCheckIsSynchronized()

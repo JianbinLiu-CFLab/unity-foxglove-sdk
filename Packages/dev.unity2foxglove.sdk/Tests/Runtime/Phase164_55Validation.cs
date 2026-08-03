@@ -48,27 +48,31 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCursorEndpointUsesPooledBodyAndPreencodedResponses()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
-            var readBody = ExtractMethodBody(source, "private string ReadBody(HttpListenerRequest request)");
+            var readBody = ExtractMethodBody(source, "private string ReadBody(");
 
             Check(source.Contains("private static readonly byte[] AcceptedCursorResponseBytes", StringComparison.Ordinal)
                   && source.Contains("private static readonly byte[] DuplicateCursorResponseBytes", StringComparison.Ordinal),
                 "164-55B-1: cursor endpoint pre-encodes common fixed responses");
-            Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+            Check(readBody.Contains("var maxBodyBytes = generation.Options.MaxBodyBytes", StringComparison.Ordinal)
+                  && readBody.Contains("ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
-                  && !readBody.Contains("new char[_options.MaxBodyBytes + 1]", StringComparison.Ordinal),
+                  && !readBody.Contains("new char[maxBodyBytes + 1]", StringComparison.Ordinal),
                 "164-55B-2: cursor endpoint rents request body buffers");
         }
 
         private static void VerifyCursorEndpointResolvesCorsOncePerHandledRequest()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
-            var handle = ExtractMethodBody(source, "private void Handle(HttpListenerContext context)");
+            var handle = ExtractMethodBody(
+                source,
+                "private void Handle(WorkerGeneration generation, HttpListenerContext context)");
             var tryWriteBytes = ExtractMethodBody(source, "private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes, CorsDecision cors)");
 
             Check(source.Contains("private readonly struct CorsDecision", StringComparison.Ordinal)
-                  && source.Contains("private CorsDecision ResolveCors(HttpListenerRequest request)", StringComparison.Ordinal),
+                  && source.Contains("private CorsDecision ResolveCors(", StringComparison.Ordinal)
+                  && source.Contains("WorkerGeneration generation", StringComparison.Ordinal),
                 "164-55C-1: cursor endpoint caches CORS decision in a small value type");
-            Check(Count(handle, "ResolveCors(context.Request)") == 1
+            Check(Count(handle, "ResolveCors(generation, context.Request)") == 1
                   && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal)
                   && handle.Contains("TryWrite(context, 204, string.Empty, cors)", StringComparison.Ordinal),
                 "164-55C-2: cursor endpoint resolves CORS once and passes it through hot responses");

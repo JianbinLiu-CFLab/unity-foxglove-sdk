@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var endpoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
             var optionsBranch = endpoint.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal);
-            var authGate = endpoint.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal);
+            var authGate = endpoint.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal);
 
             Check(optionsBranch >= 0 && authGate >= 0 && optionsBranch < authGate,
                 "163-55A-1: cursor endpoint handles CORS preflight before bearer-token auth");
