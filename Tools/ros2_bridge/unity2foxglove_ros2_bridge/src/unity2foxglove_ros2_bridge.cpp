@@ -1358,11 +1358,10 @@ AccountedWireFrame read_accounted_wire_frame(
             "no in-flight read capacity remains for the U2R2 frame",
             false);
   }
-  const auto transient_bytes = u2r2::checked_add(
-    frame_size.total_bytes(),
-    frame_size.total_bytes(),
-    protocol.limits().max_transient_bytes(),
-    "sidecar frame parsing");
+  // The raw wire vector is already charged to the in-flight reader budget.
+  // Charge one additional frame for decode/model materialization so the other
+  // default transient frame remains available to reverse-direction callbacks.
+  const auto transient_bytes = frame_size.total_bytes();
   auto transient_lease =
     protocol.try_reserve_transient(transient_bytes);
   if (!transient_lease) {

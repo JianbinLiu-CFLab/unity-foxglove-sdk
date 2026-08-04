@@ -1605,7 +1605,7 @@ TEST(
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
-  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+  EXPECT_EQ(wire.size(), protocol.transient_bytes());
 
   write_all(
     client_socket.get(),
@@ -1616,7 +1616,7 @@ TEST(
   ASSERT_TRUE(received.has_value());
   EXPECT_EQ(wire, received->bytes);
   EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
-  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+  EXPECT_EQ(wire.size(), protocol.transient_bytes());
   received.reset();
   EXPECT_EQ(0U, protocol.in_flight_bytes());
   EXPECT_EQ(0U, protocol.transient_bytes());
