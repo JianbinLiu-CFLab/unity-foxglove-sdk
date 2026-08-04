@@ -8,7 +8,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2Bridge.Protocol;
@@ -135,6 +137,87 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 new[] { 2 },
                 transport.LegacyRawWriteConnections);
             Assert.Equal(0, transport.LegacyV2ExchangeCount);
+            Assert.False(
+                transport.IsDisposed,
+                "v1 fallback reused a transport after disposing it");
+        }
+
+        [Fact]
+        public async Task AbandonedStartedConnectionReturnsItsReservedWorkerSlots()
+        {
+            var providerId = new FoxRunTransportId(
+                "unity2foxglove.ros2bridge.abandoned-duplex");
+            var owner =
+                FoxRunTransportRetirementOwner.CreateForTests(3);
+            Assert.True(
+                owner.TryReserveExclusive(
+                    providerId,
+                    FoxRunTransportDirection.Publish,
+                    generation: 1,
+                    workerCount: 3,
+                    out var reservation));
+            var transport = new DuplexTransport(
+                DuplexMode.HoldHelloResponse);
+            var worker = new Ros2BridgeWorkerLease(
+                "127.0.0.1",
+                port: 8765,
+                queueCapacity: 8,
+                reconnectIntervalMs: 20,
+                sendTimeoutMs: 1000,
+                transport,
+                reservation,
+                "abandoned-duplex",
+                requiresSubscription: false,
+                enableDuplexSession: true,
+                sessionGeneration: 1,
+                Ros2BridgeStatsSnapshot.Disabled);
+            FoxRunTransportRetirementReservation replacement = null;
+            try
+            {
+                SetPrivateField(worker, "_enabled", true);
+                SetPrivateField(worker, "_workerGeneration", 1L);
+                var ensureConnected =
+                    typeof(Ros2BridgeWorkerLease).GetMethod(
+                        "EnsureConnected",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException(
+                        "The Bridge EnsureConnected boundary is missing.");
+                var connect = Task.Factory.StartNew(
+                    () => (bool)ensureConnected.Invoke(
+                        worker,
+                        new object[] { 1L }),
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+                Assert.True(
+                    transport.HelloWritten.Wait(TimeSpan.FromSeconds(5)),
+                    "the owned connection did not start its hello");
+
+                var gate = RequiredPrivateField(
+                    typeof(Ros2BridgeWorkerLease),
+                    "_gate").GetValue(worker);
+                lock (gate)
+                    SetPrivateField(worker, "_stopRequested", true);
+                transport.AllowHelloResponse.Set();
+
+                Assert.False(await connect);
+                Assert.True(reservation.TryReturn(workerIndex: 0));
+                Assert.True(
+                    owner.TryReserveExclusive(
+                        providerId,
+                        FoxRunTransportDirection.Publish,
+                        generation: 2,
+                        workerCount: 3,
+                        out replacement),
+                    "the abandoned connection retained reader/writer retirement slots");
+            }
+            finally
+            {
+                transport.AllowHelloResponse.Set();
+                replacement?.Dispose();
+                worker.Dispose();
+                reservation.Dispose();
+            }
         }
 
         [Fact]
@@ -334,12 +417,32 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 failure);
         }
 
+        private static FieldInfo RequiredPrivateField(
+            Type type,
+            string name)
+            => type.GetField(
+                   name,
+                   BindingFlags.Instance | BindingFlags.NonPublic)
+               ?? throw new InvalidOperationException(
+                   "Required Bridge field is missing: "
+                   + type.FullName
+                   + "."
+                   + name);
+
+        private static void SetPrivateField<T>(
+            object owner,
+            string name,
+            T value)
+            => RequiredPrivateField(owner.GetType(), name)
+                .SetValue(owner, value);
+
         private enum DuplexMode : byte
         {
             Happy = 1,
             V2Incompatible = 2,
             DisconnectAfterFirstPreparation = 3,
             FalseNegativeHealthProbeAfterHello = 4,
+            HoldHelloResponse = 5,
         }
 
         private sealed class CapturedRequest
@@ -397,6 +500,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             private int _connectCount;
             private int _legacyV2ExchangeCount;
             private int _healthProbeUnavailable;
+            private int _disposed;
 
             internal DuplexTransport(DuplexMode mode)
             {
@@ -413,6 +517,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             internal bool HealthProbeUnavailable
                 => Volatile.Read(ref _healthProbeUnavailable) != 0;
+
+            internal bool IsDisposed
+                => Volatile.Read(ref _disposed) != 0;
+
+            internal ManualResetEventSlim HelloWritten { get; } =
+                new ManualResetEventSlim(false);
+
+            internal ManualResetEventSlim AllowHelloResponse { get; } =
+                new ManualResetEventSlim(false);
 
             internal int LegacyV2ExchangeCount
                 => Volatile.Read(
@@ -462,6 +575,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 int port,
                 int timeoutMs)
             {
+                if (IsDisposed)
+                    throw new ObjectDisposedException(
+                        nameof(DuplexTransport));
                 _ = host;
                 _ = port;
                 _ = timeoutMs;
@@ -565,6 +681,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                             request));
                 }
 
+                if (_mode == DuplexMode.HoldHelloResponse
+                    && request.Operation == U2R2Operation.Hello)
+                {
+                    HelloWritten.Set();
+                    if (!AllowHelloResponse.Wait(
+                            TimeSpan.FromSeconds(5)))
+                    {
+                        throw new TimeoutException(
+                            "The test did not release the duplex hello response.");
+                    }
+                }
+
                 if (_mode == DuplexMode.V2Incompatible
                     && request.Operation
                     == U2R2Operation.Hello)
@@ -646,7 +774,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 }
             }
 
-            public void Dispose() => Disconnect();
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                    return;
+                AllowHelloResponse.Set();
+                Disconnect();
+                HelloWritten.Dispose();
+                AllowHelloResponse.Dispose();
+            }
 
             private static byte[] Response(
                 U2R2Message request,

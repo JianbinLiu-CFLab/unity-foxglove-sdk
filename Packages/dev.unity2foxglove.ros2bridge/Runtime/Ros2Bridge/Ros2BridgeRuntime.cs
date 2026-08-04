@@ -1090,7 +1090,8 @@ namespace Unity2Foxglove.Ros2Bridge
                         readerRetirementIndex: 1,
                         writerRetirementIndex: 2,
                         retirementIdentity:
-                            _workerIdentity + "/duplex");
+                            _workerIdentity + "/duplex",
+                        disposeTransport: false);
                     try
                     {
                         v2Session = duplexConnection.Start();
@@ -1210,9 +1211,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 if (abandon)
                 {
                     _subscriptionPipeline?.Disconnect();
-                    duplexConnection?.Abort(
-                        new ObjectDisposedException(
-                            nameof(Ros2BridgeWorkerLease)));
+                    duplexConnection?.Dispose();
                     DisconnectSink(_ownedSink);
                     return false;
                 }
