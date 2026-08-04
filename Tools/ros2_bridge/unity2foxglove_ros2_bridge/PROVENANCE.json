@@ -69,7 +69,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2OutboundAuthority.cs",
-      "sha256": "7ba827999ddcf6561fb8064b4fafdff999d7478a096e55b360dd8118b4ac0c69",
+      "sha256": "cfba16e2149532d37cb0af3e43f07f0dc636deb222f0848f06324f7687c0cfc5",
       "classification": "original",
       "influence": "Original C# bounded outbound scheduling authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
