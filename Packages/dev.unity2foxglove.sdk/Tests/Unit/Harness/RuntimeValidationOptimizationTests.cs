@@ -38,15 +38,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase100CachesMethodSignatureRegexesByMethodName()
+        public void Phase100DelegatesMethodExtractionToSharedRoslynParser()
         {
             var source = TestSources.Runtime("Phase100Validation.cs");
-            var method = TestSources.Slice(source, "private static int FindMethodSignature", "        private static void Check");
+            var method = TestSources.Slice(source, "private static string ExtractMethodBody", "        private static string ReadRepoText");
 
-            Assert.Contains("private static readonly Dictionary<string, Regex> MethodSignatureRegexes", source, StringComparison.Ordinal);
-            Assert.Contains("lock (MethodSignatureRegexes)", method, StringComparison.Ordinal);
-            Assert.Contains("MethodSignatureRegexes.TryGetValue(methodName, out", method, StringComparison.Ordinal);
-            Assert.Contains("regex.Match(source)", method, StringComparison.Ordinal);
+            Assert.Contains("PhaseValidationSourceHelpers.SourceMethod(source, methodName)", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("FindMethodSignature", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("MethodSignatureRegexes", source, StringComparison.Ordinal);
         }
 
         [Fact]
