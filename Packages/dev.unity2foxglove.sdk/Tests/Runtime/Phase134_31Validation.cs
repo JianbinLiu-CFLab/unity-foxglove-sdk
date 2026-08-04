@@ -49,8 +49,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("\"--timeout-minutes\"", StringComparison.Ordinal)
                   && source.Contains("EXIT_TIMEOUT = 124", StringComparison.Ordinal),
                 "134-31A-2: Unity IL2CPP runner exposes a bounded process timeout");
-            Check(source.Contains("terminate_process(process)", StringComparison.Ordinal)
-                  && source.Contains("Unity timed out after", StringComparison.Ordinal),
+            Check(source.Contains("process_tree = start_owned_process(cmd, root)", StringComparison.Ordinal)
+                  && source.Contains("residual_pids = terminate_process(process_tree)", StringComparison.Ordinal)
+                  && source.Contains("Unity timed out after", StringComparison.Ordinal)
+                  && source.Contains("terminating owned process tree", StringComparison.Ordinal),
                 "134-31A-3: Unity IL2CPP timeout path terminates the hung process with a clear diagnostic");
         }
 
