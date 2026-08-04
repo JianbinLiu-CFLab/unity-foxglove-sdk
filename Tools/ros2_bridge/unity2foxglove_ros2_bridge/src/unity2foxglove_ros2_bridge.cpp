@@ -1777,6 +1777,86 @@ private:
   std::array<std::atomic<uint64_t>, 6U> counts_{};
 };
 
+enum class BridgePublisherLifecycleStage
+{
+  created,
+  retired,
+};
+
+using BridgePublisherLifecycleObserver = std::function<void(
+    BridgePublisherLifecycleStage,
+    const rmw_gid_t &,
+    std::weak_ptr<rclcpp::GenericPublisher>,
+    std::weak_ptr<bridge_runtime::BridgeOriginRegistry>)>;
+
+class BridgeLocalPublisher final
+{
+public:
+  BridgeLocalPublisher(
+    std::shared_ptr<rclcpp::GenericPublisher> publisher,
+    std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry,
+    BridgePublisherLifecycleObserver lifecycle_observer)
+  : publisher_(std::move(publisher)),
+    origin_registry_(std::move(origin_registry)),
+    lifecycle_observer_(std::move(lifecycle_observer))
+  {
+    if (!publisher_) {
+      throw std::invalid_argument("Bridge local publisher is required");
+    }
+    if (!origin_registry_) {
+      throw std::invalid_argument("Bridge origin registry is required");
+    }
+    gid_ = publisher_->get_gid();
+    notify(BridgePublisherLifecycleStage::created, publisher_, origin_registry_);
+  }
+
+  ~BridgeLocalPublisher()
+  {
+    const std::weak_ptr<rclcpp::GenericPublisher> publisher_lifetime =
+      publisher_;
+    const std::weak_ptr<bridge_runtime::BridgeOriginRegistry>
+      registry_lifetime = origin_registry_;
+    // Keep origin authority alive until the publisher can no longer emit.
+    publisher_.reset();
+    notify(
+      BridgePublisherLifecycleStage::retired,
+      publisher_lifetime,
+      registry_lifetime);
+  }
+
+  void publish(const rclcpp::SerializedMessage & message)
+  {
+    std::call_once(
+      origin_registered_,
+      [&]() {
+        origin_registry_->register_local(gid_);
+      });
+    publisher_->publish(message);
+  }
+
+private:
+  void notify(
+    BridgePublisherLifecycleStage stage,
+    std::weak_ptr<rclcpp::GenericPublisher> publisher,
+    std::weak_ptr<bridge_runtime::BridgeOriginRegistry> registry) noexcept
+  {
+    if (!lifecycle_observer_) {
+      return;
+    }
+    try {
+      lifecycle_observer_(stage, gid_, std::move(publisher), std::move(registry));
+    } catch (...) {
+      // Test/diagnostic observation cannot alter publisher ownership.
+    }
+  }
+
+  std::shared_ptr<rclcpp::GenericPublisher> publisher_;
+  std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry_;
+  BridgePublisherLifecycleObserver lifecycle_observer_;
+  std::once_flag origin_registered_;
+  rmw_gid_t gid_{};
+};
+
 class BridgeNode
 {
 public:
@@ -1785,7 +1865,8 @@ public:
     PayloadFormat payload_format,
     uint64_t maximum_publishers =
     u2r2::ProtocolLimits::defaults().max_contracts(),
-    BridgeAdmissionDiagnosticSink admission_diagnostic_sink = {})
+    BridgeAdmissionDiagnosticSink admission_diagnostic_sink = {},
+    BridgePublisherLifecycleObserver publisher_lifecycle_observer = {})
   : node_(std::move(node)),
     payload_format_(payload_format),
     origin_registry_(
@@ -1820,27 +1901,22 @@ public:
     const auto publisher_node = node_;
     const auto origin_registry = origin_registry_;
     publisher_factory_ =
-      [publisher_node, origin_registry](
+      [publisher_node,
+      origin_registry,
+      publisher_lifecycle_observer = std::move(publisher_lifecycle_observer)](
       const std::string & topic,
       const std::string & message_type,
       const rclcpp::QoS & qos)
       {
         // create_generic_publisher performs the rosidl_typesupport_cpp lookup
         // for the exact canonical message type before returning a publisher.
-        auto publisher =
-          publisher_node->create_generic_publisher(topic, message_type, qos);
-        auto origin_registered = std::make_shared<std::once_flag>();
-        return [
-          publisher = std::move(publisher),
+        auto publisher = std::make_shared<BridgeLocalPublisher>(
+          publisher_node->create_generic_publisher(topic, message_type, qos),
           origin_registry,
-          origin_registered](
+          publisher_lifecycle_observer);
+        return [publisher = std::move(publisher)](
           const rclcpp::SerializedMessage & message)
           {
-            std::call_once(
-              *origin_registered,
-              [&]() {
-                origin_registry->register_local(publisher->get_gid());
-              });
             publisher->publish(message);
           };
       };
@@ -1865,6 +1941,14 @@ public:
       throw std::invalid_argument("publisher capacity must be positive");
     }
   }
+
+#ifdef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
+  std::weak_ptr<bridge_runtime::BridgeOriginRegistry>
+  origin_registry_for_testing() const noexcept
+  {
+    return origin_registry_;
+  }
+#endif
 
   PublisherContractDisposition prepare(const BridgeFrame & frame)
   {

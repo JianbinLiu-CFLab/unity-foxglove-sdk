@@ -103,29 +103,161 @@ TEST(BridgeOriginRegistry, ClassifiesLocalExternalMissingAndAmbiguousGids)
   EXPECT_EQ(runtime::BridgeSampleOrigin::ambiguous, origins.classify(local));
 }
 
-TEST(BridgeOriginRegistry, ReconnectOwnsOnlyTheCurrentPublisherGeneration)
+TEST(
+  BridgeGenerationOwnership,
+  ConsecutiveBridgeNodesRetirePublisherBeforeOriginRegistry)
 {
-  const auto first_gid = MakeGid(0x20U);
-  const auto second_gid = MakeGid(0x40U);
-  std::weak_ptr<runtime::BridgeOriginRegistry> retired;
+  struct LifecycleEvidence
   {
-    auto first =
-      std::make_shared<runtime::BridgeOriginRegistry>(2U);
-    first->register_local(first_gid);
-    retired = first;
-    EXPECT_EQ(runtime::BridgeSampleOrigin::local, first->classify(first_gid));
-  }
-  EXPECT_TRUE(retired.expired());
+    size_t created{0U};
+    size_t retired{0U};
+    rmw_gid_t gid{};
+    std::weak_ptr<rclcpp::GenericPublisher> publisher;
+    std::weak_ptr<runtime::BridgeOriginRegistry> registry;
+    bool publisher_expired_at_retirement{false};
+    bool registry_alive_at_retirement{false};
+    runtime::BridgeSampleOrigin retired_classification{
+      runtime::BridgeSampleOrigin::missing};
+  };
 
-  runtime::BridgeOriginRegistry replacement(2U);
-  replacement.register_local(second_gid);
-  EXPECT_EQ(1U, replacement.size());
-  EXPECT_EQ(
-    runtime::BridgeSampleOrigin::external,
-    replacement.classify(first_gid));
+  const auto observe = [](LifecycleEvidence & evidence) {
+      return [&evidence](
+        BridgePublisherLifecycleStage stage,
+        const rmw_gid_t & gid,
+        std::weak_ptr<rclcpp::GenericPublisher> publisher,
+        std::weak_ptr<runtime::BridgeOriginRegistry> registry) {
+          evidence.gid = gid;
+          evidence.publisher = publisher;
+          evidence.registry = registry;
+          if (stage == BridgePublisherLifecycleStage::created) {
+            ++evidence.created;
+            return;
+          }
+          ++evidence.retired;
+          evidence.publisher_expired_at_retirement = publisher.expired();
+          evidence.registry_alive_at_retirement = !registry.expired();
+          if (auto origin = registry.lock()) {
+            evidence.retired_classification = origin->classify(gid);
+          }
+        };
+    };
+  const auto frame_for = [](const std::string & topic) {
+      BridgeFrame frame;
+      frame.topic = topic;
+      frame.schema_name = "std_msgs/msg/String";
+      frame.encoding = "cdr";
+      frame.profile = "default";
+      frame.reliability = "reliable";
+      frame.durability = "volatile";
+      frame.history = "keep_last";
+      frame.depth = 10;
+      frame.payload = {
+        0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+        0x41U, 0x00U};
+      return frame;
+    };
+
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase187_generation_origin_probe",
+    context);
+  runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+
+  LifecycleEvidence first_evidence;
+  auto first_data =
+    authority.try_acquire_role(u2r2::ConnectionRole::data_session);
+  ASSERT_TRUE(first_data.has_value());
+  runtime::GenerationOwnership first_generation(std::move(*first_data));
+  auto first_bridge = std::make_unique<BridgeNode>(
+    ros_owner.require_node(),
+    PayloadFormat::CdrWithEncapsulation,
+    u2r2::ProtocolLimits::defaults().max_contracts(),
+    BridgeAdmissionDiagnosticSink{},
+    observe(first_evidence));
+  auto & first = first_generation.adopt_entities(std::move(first_bridge));
+  const auto first_registry = first.origin_registry_for_testing();
+  auto first_frame = frame_for("/phase187/generation/first");
+  first.prepare(first_frame);
+  ASSERT_EQ(1U, first_evidence.created);
+  ASSERT_FALSE(first_evidence.publisher.expired());
+  first.publish_prepared(first_frame);
+  {
+    auto registry = first_registry.lock();
+    ASSERT_TRUE(registry);
+    EXPECT_EQ(1U, registry->size());
+    EXPECT_EQ(
+      runtime::BridgeSampleOrigin::local,
+      registry->classify(first_evidence.gid));
+  }
+
+  EXPECT_TRUE(first_generation.release());
+  EXPECT_EQ(1U, first_evidence.retired);
+  EXPECT_TRUE(first_evidence.publisher_expired_at_retirement);
+  EXPECT_TRUE(first_evidence.registry_alive_at_retirement);
   EXPECT_EQ(
     runtime::BridgeSampleOrigin::local,
-    replacement.classify(second_gid));
+    first_evidence.retired_classification);
+  EXPECT_TRUE(first_evidence.publisher.expired());
+  EXPECT_TRUE(first_registry.expired());
+
+  LifecycleEvidence second_evidence;
+  auto second_data =
+    authority.try_acquire_role(u2r2::ConnectionRole::data_session);
+  ASSERT_TRUE(second_data.has_value());
+  runtime::GenerationOwnership second_generation(std::move(*second_data));
+  auto second_bridge = std::make_unique<BridgeNode>(
+    ros_owner.require_node(),
+    PayloadFormat::CdrWithEncapsulation,
+    u2r2::ProtocolLimits::defaults().max_contracts(),
+    BridgeAdmissionDiagnosticSink{},
+    observe(second_evidence));
+  auto & second = second_generation.adopt_entities(std::move(second_bridge));
+  const auto second_registry = second.origin_registry_for_testing();
+  {
+    auto registry = second_registry.lock();
+    ASSERT_TRUE(registry);
+    EXPECT_EQ(0U, registry->size());
+    EXPECT_EQ(
+      runtime::BridgeSampleOrigin::external,
+      registry->classify(first_evidence.gid));
+  }
+
+  auto second_frame = frame_for("/phase187/generation/second");
+  second.prepare(second_frame);
+  ASSERT_EQ(1U, second_evidence.created);
+  ASSERT_FALSE(second_evidence.publisher.expired());
+  EXPECT_NE(
+    0,
+    std::memcmp(
+      first_evidence.gid.data,
+      second_evidence.gid.data,
+      RMW_GID_STORAGE_SIZE));
+  second.publish_prepared(second_frame);
+  {
+    auto registry = second_registry.lock();
+    ASSERT_TRUE(registry);
+    EXPECT_EQ(1U, registry->size());
+    EXPECT_EQ(
+      runtime::BridgeSampleOrigin::external,
+      registry->classify(first_evidence.gid));
+    EXPECT_EQ(
+      runtime::BridgeSampleOrigin::local,
+      registry->classify(second_evidence.gid));
+  }
+
+  EXPECT_TRUE(second_generation.release());
+  EXPECT_EQ(1U, second_evidence.retired);
+  EXPECT_TRUE(second_evidence.publisher_expired_at_retirement);
+  EXPECT_TRUE(second_evidence.registry_alive_at_retirement);
+  EXPECT_EQ(
+    runtime::BridgeSampleOrigin::local,
+    second_evidence.retired_classification);
+  EXPECT_TRUE(second_evidence.publisher.expired());
+  EXPECT_TRUE(second_registry.expired());
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase187 generation origin probe complete");
 }
 
 TEST(BridgeOriginRegistry, InvalidOriginCountsAreSeparateFromQueuePressure)
