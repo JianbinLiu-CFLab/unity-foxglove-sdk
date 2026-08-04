@@ -383,6 +383,35 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
 
+    def test_composition_tests_receive_cli_msbuild_properties(self) -> None:
+        """The nested composition lane must keep the caller's isolated output roots."""
+        properties = [
+            "-p:BaseOutputPath=C:/ci/analyzer/bin/",
+            "-p:BaseIntermediateOutputPath=C:/ci/analyzer/obj/",
+        ]
+        argv = [
+            "validate_source_generator_dll.py",
+            *("--msbuild-prop=" + prop for prop in properties),
+        ]
+
+        with mock.patch.object(
+            self.validator,
+            "validate_analyzer_contracts",
+            return_value=True,
+        ):
+            with mock.patch.object(
+                self.validator,
+                "validate_or_update",
+                return_value=0,
+            ):
+                with mock.patch.object(self.validator.subprocess, "run") as run:
+                    with mock.patch("sys.argv", argv):
+                        self.assertEqual(0, self.validator.main())
+
+        command = run.call_args.args[0]
+        for prop in properties:
+            self.assertIn(prop, command)
+
     def test_msbuild_compile_include_normalizes_windows_separators(self) -> None:
         """MSBuild Include paths must resolve identically on Windows and POSIX hosts."""
         self.assertEqual(

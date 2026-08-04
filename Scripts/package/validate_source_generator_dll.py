@@ -444,7 +444,7 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
     return True
 
 
-def run_analyzer_composition_tests() -> bool:
+def run_analyzer_composition_tests(msbuild_props: list[str]) -> bool:
     """Execute the four analyzer sets plus physical/Roslyn parity fixture."""
     command = [
         "dotnet",
@@ -457,6 +457,7 @@ def run_analyzer_composition_tests() -> bool:
         "--no-restore",
         "-p:IncludeRos2ForUnityNative=true",
         "-p:IncludeRos2Bridge=true",
+        *msbuild_props,
         "--filter",
         "FullyQualifiedName~FoxRunAnalyzerCompositionContractTests",
         "--verbosity",
@@ -602,7 +603,9 @@ def main() -> int:
         if result != 0:
             return result
 
-    if args.target == "all" and not run_analyzer_composition_tests():
+    if args.target == "all" and not run_analyzer_composition_tests(
+        args.msbuild_prop
+    ):
         return 1
     return 0
 

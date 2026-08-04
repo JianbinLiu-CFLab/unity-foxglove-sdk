@@ -20,15 +20,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
     [Trait("Domain", "R2fuEditorRestart")]
     public sealed class Ros2ForUnityEditorRestartRelayTests
     {
+        private static readonly TimeSpan ReplacementLaunchTimeout =
+            TimeSpan.FromSeconds(30);
+
         [Fact]
         public void WindowsRelayWaitsForThePreviousEditorAndProjectLockBeforeLaunchingUnity()
         {
+            var previousEditorProcessId = CurrentProcessId();
             var replacement = CreateReplacementStartInfo();
 
             var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
                 isWindows: true,
                 relayExecutable: @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                previousEditorProcessId: 4242,
+                previousEditorProcessId: previousEditorProcessId,
                 editorExecutable: @"C:\Program Files\Unity\Editor\Unity.exe",
                 projectDirectory: @"D:\repo\Unity2Foxglove",
                 replacementStartInfo: replacement);
@@ -39,8 +43,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.False(relay.UseShellExecute);
             Assert.True(relay.CreateNoWindow);
             Assert.Equal(@"D:\repo\Unity2Foxglove", relay.WorkingDirectory);
-            Assert.Equal("4242", relay.EnvironmentVariables[
-                Ros2ForUnityEditorRestartRelay.PreviousEditorProcessIdEnvironmentVariable]);
+            Assert.Equal(
+                previousEditorProcessId.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                relay.EnvironmentVariables[
+                    Ros2ForUnityEditorRestartRelay.PreviousEditorProcessIdEnvironmentVariable]);
             Assert.Equal(@"C:\Program Files\Unity\Editor\Unity.exe", relay.EnvironmentVariables[
                 Ros2ForUnityEditorRestartRelay.EditorExecutableEnvironmentVariable]);
             Assert.Equal(@"D:\repo\Unity2Foxglove", relay.EnvironmentVariables[
@@ -56,12 +63,104 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void WindowsRelayPinsThePreviousEditorProcessIdentity()
+        {
+            using (var current = Process.GetCurrentProcess())
+            {
+                var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                    isWindows: true,
+                    relayExecutable: @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                    previousEditorProcessId: current.Id,
+                    editorExecutable: @"C:\Program Files\Unity\Editor\Unity.exe",
+                    projectDirectory: @"D:\repo\Unity2Foxglove",
+                    replacementStartInfo: CreateReplacementStartInfo());
+
+                Assert.Equal(
+                    current.StartTime.ToFileTimeUtc().ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    relay.EnvironmentVariables[
+                        Ros2ForUnityEditorRestartRelay
+                            .PreviousEditorStartFileTimeEnvironmentVariable]);
+                Assert.Contains(
+                    "$previousEditor.StartTime.ToFileTimeUtc()",
+                    DecodePowerShellScript(relay.Arguments),
+                    StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void WindowsRelayDoesNotWaitForAReusedProcessId()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+
+            var root = Path.Combine(
+                RepositoryBuildTestRoot(),
+                "u2f-editor-restart-relay-identity-" + Guid.NewGuid().ToString("N"));
+            var projectDirectory = Path.Combine(root, "Unity2Foxglove");
+            var markerPath = Path.Combine(root, "replacement-started.txt");
+            var targetScript = Path.Combine(root, "replacement.cmd");
+            Process previousEditor = null;
+            Process relayProcess = null;
+            try
+            {
+                Directory.CreateDirectory(projectDirectory);
+                File.WriteAllText(
+                    targetScript,
+                    "@echo off\r\n> \"" + markerPath + "\" echo replacement\r\n");
+                previousEditor = StartSleepingPowerShell(
+                    WindowsPowerShellExecutable(),
+                    seconds: 30);
+                var relayStartInfo = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                    isWindows: true,
+                    relayExecutable: WindowsPowerShellExecutable(),
+                    previousEditorProcessId: previousEditor.Id,
+                    editorExecutable: targetScript,
+                    projectDirectory: projectDirectory,
+                    replacementStartInfo: CreateReplacementStartInfo());
+                relayStartInfo.EnvironmentVariables[
+                    Ros2ForUnityEditorRestartRelay
+                        .PreviousEditorStartFileTimeEnvironmentVariable] = "0";
+                relayProcess = StartRelayWithoutWindowSuppression(relayStartInfo);
+
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => File.Exists(markerPath),
+                        TimeSpan.FromSeconds(5)),
+                    "The relay waited for a different process that reused the previous Editor PID.");
+                Assert.False(
+                    previousEditor.HasExited,
+                    "The process-identity fixture exited before proving the relay skipped it.");
+            }
+            finally
+            {
+                if (previousEditor != null)
+                {
+                    if (!previousEditor.HasExited)
+                        previousEditor.Kill();
+                    previousEditor.Dispose();
+                }
+                if (relayProcess != null)
+                {
+                    if (!relayProcess.HasExited)
+                    {
+                        if (!relayProcess.WaitForExit(5000))
+                            relayProcess.Kill();
+                    }
+                    relayProcess.Dispose();
+                }
+                if (Directory.Exists(root))
+                    DeleteDirectoryWhenReleased(root);
+            }
+        }
+
+        [Fact]
         public void WindowsRelayQuotesTheSpacedProjectPathBeforeStartingUnity()
         {
             var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
                 isWindows: true,
                 relayExecutable: @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                previousEditorProcessId: 4242,
+                previousEditorProcessId: CurrentProcessId(),
                 editorExecutable: @"C:\Program Files\Unity\Editor\Unity.exe",
                 projectDirectory: @"D:\repo with spaces\Unity2Foxglove",
                 replacementStartInfo: CreateReplacementStartInfo());
@@ -74,10 +173,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         [Fact]
         public void PosixRelayWaitsForThePreviousEditorAndProjectLockBeforeExecingUnity()
         {
+            var previousEditorProcessId = CurrentProcessId();
             var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
                 isWindows: false,
                 relayExecutable: "/bin/sh",
-                previousEditorProcessId: 4242,
+                previousEditorProcessId: previousEditorProcessId,
                 editorExecutable: "/Applications/Unity/Unity.app/Contents/MacOS/Unity",
                 projectDirectory: "/repo/Unity2Foxglove",
                 replacementStartInfo: CreateReplacementStartInfo());
@@ -88,8 +188,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Contains("kill -0 \"$previous_editor_process_id\"", relay.Arguments, StringComparison.Ordinal);
             Assert.Contains("[ -e \"$lock_path\" ]", relay.Arguments, StringComparison.Ordinal);
             Assert.Contains("exec \"$editor_executable\" -projectPath \"$project_directory\"", relay.Arguments, StringComparison.Ordinal);
-            Assert.Equal("4242", relay.EnvironmentVariables[
-                Ros2ForUnityEditorRestartRelay.PreviousEditorProcessIdEnvironmentVariable]);
+            Assert.Equal(
+                previousEditorProcessId.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                relay.EnvironmentVariables[
+                    Ros2ForUnityEditorRestartRelay.PreviousEditorProcessIdEnvironmentVariable]);
         }
 
         [Fact]
@@ -113,14 +216,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 File.WriteAllText(lockPath, "held");
                 File.WriteAllText(targetScript, "@echo off\r\n> \"" + markerPath + "\" echo replacement\r\n");
                 previousEditor = StartSleepingPowerShell(WindowsPowerShellExecutable());
-                relayProcess = Process.Start(Ros2ForUnityEditorRestartRelay.CreateStartInfo(
-                    isWindows: true,
-                    relayExecutable: WindowsPowerShellExecutable(),
-                    previousEditorProcessId: previousEditor.Id,
-                    editorExecutable: targetScript,
-                    projectDirectory: projectDirectory,
-                    replacementStartInfo: CreateReplacementStartInfo()));
-                Assert.NotNull(relayProcess);
+                relayProcess = StartRelayWithoutWindowSuppression(
+                    Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                        isWindows: true,
+                        relayExecutable: WindowsPowerShellExecutable(),
+                        previousEditorProcessId: previousEditor.Id,
+                        editorExecutable: targetScript,
+                        projectDirectory: projectDirectory,
+                        replacementStartInfo: CreateReplacementStartInfo()));
 
                 Thread.Sleep(200);
                 Assert.False(File.Exists(markerPath), "The relay launched Unity before the previous Editor exited.");
@@ -131,7 +234,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
                 File.Delete(lockPath);
                 Assert.True(
-                    SpinWait.SpinUntil(() => File.Exists(markerPath), TimeSpan.FromSeconds(10)),
+                    SpinWait.SpinUntil(() => File.Exists(markerPath), ReplacementLaunchTimeout),
                     "The relay did not launch the replacement after the previous Editor and project lock were gone.");
             }
             finally
@@ -145,7 +248,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 if (relayProcess != null)
                 {
                     if (!relayProcess.HasExited)
-                        relayProcess.WaitForExit(5000);
+                    {
+                        if (!relayProcess.WaitForExit(5000))
+                            relayProcess.Kill();
+                    }
                     relayProcess.Dispose();
                 }
                 if (Directory.Exists(root))
@@ -177,17 +283,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     + "echo [%~2]\r\n"
                     + "echo [%~3]\r\n"
                     + ") > \"" + markerPath + "\"\r\n");
-                previousEditor = StartExitedPowerShell(WindowsPowerShellExecutable());
-                relayProcess = Process.Start(Ros2ForUnityEditorRestartRelay.CreateStartInfo(
-                    isWindows: true,
-                    relayExecutable: WindowsPowerShellExecutable(),
-                    previousEditorProcessId: previousEditor.Id,
-                    editorExecutable: targetScript,
-                    projectDirectory: projectDirectory,
-                    replacementStartInfo: CreateReplacementStartInfo()));
-                Assert.NotNull(relayProcess);
+                previousEditor = StartSleepingPowerShell(WindowsPowerShellExecutable());
+                relayProcess = StartRelayWithoutWindowSuppression(
+                    Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                        isWindows: true,
+                        relayExecutable: WindowsPowerShellExecutable(),
+                        previousEditorProcessId: previousEditor.Id,
+                        editorExecutable: targetScript,
+                        projectDirectory: projectDirectory,
+                        replacementStartInfo: CreateReplacementStartInfo()));
+                previousEditor.WaitForExit();
                 Assert.True(
-                    SpinWait.SpinUntil(() => File.Exists(markerPath), TimeSpan.FromSeconds(10)),
+                    SpinWait.SpinUntil(() => File.Exists(markerPath), ReplacementLaunchTimeout),
                     "The relay did not start the replacement argument fixture.");
                 Assert.True(
                     relayProcess.WaitForExit(5000),
@@ -205,11 +312,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             finally
             {
                 if (previousEditor != null)
+                {
+                    if (!previousEditor.HasExited)
+                        previousEditor.Kill();
                     previousEditor.Dispose();
+                }
                 if (relayProcess != null)
                 {
                     if (!relayProcess.HasExited)
-                        relayProcess.WaitForExit(5000);
+                    {
+                        if (!relayProcess.WaitForExit(5000))
+                            relayProcess.Kill();
+                    }
                     relayProcess.Dispose();
                 }
                 if (Directory.Exists(root))
@@ -265,34 +379,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
         }
 
-        private static Process StartSleepingPowerShell(string powershell)
+        private static Process StartSleepingPowerShell(
+            string powershell,
+            int seconds = 2)
         {
-            var command = Convert.ToBase64String(Encoding.Unicode.GetBytes("Start-Sleep -Seconds 2"));
+            var command = Convert.ToBase64String(
+                Encoding.Unicode.GetBytes(
+                    "Start-Sleep -Seconds "
+                    + seconds.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture)));
             var startInfo = new ProcessStartInfo
             {
                 FileName = powershell,
-                Arguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + command,
+                Arguments = "-NoLogo -NoProfile -NonInteractive -EncodedCommand " + command,
                 UseShellExecute = false,
-                CreateNoWindow = true,
+                CreateNoWindow = false,
             };
             return Process.Start(startInfo)
                    ?? throw new InvalidOperationException("Could not start the isolated relay fixture process.");
         }
 
-        private static Process StartExitedPowerShell(string powershell)
+        private static Process StartRelayWithoutWindowSuppression(ProcessStartInfo startInfo)
         {
-            var command = Convert.ToBase64String(Encoding.Unicode.GetBytes("exit 0"));
-            var startInfo = new ProcessStartInfo
+            // Window suppression is asserted above. Execute the same encoded relay script
+            // without hidden-process flags so endpoint protection cannot suspend the
+            // behavioral fixture before its process/lock assertions run.
+            const string hiddenWindowArgument = "-WindowStyle Hidden ";
+            Assert.True(startInfo.CreateNoWindow);
+            Assert.Contains(hiddenWindowArgument, startInfo.Arguments, StringComparison.Ordinal);
+            startInfo.CreateNoWindow = false;
+            startInfo.Arguments = startInfo.Arguments.Replace(
+                hiddenWindowArgument,
+                string.Empty,
+                StringComparison.Ordinal);
+            return Process.Start(startInfo)
+                   ?? throw new InvalidOperationException("Could not start the restart relay fixture.");
+        }
+
+        private static int CurrentProcessId()
+        {
+            using (var process = Process.GetCurrentProcess())
             {
-                FileName = powershell,
-                Arguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + command,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            var process = Process.Start(startInfo)
-                          ?? throw new InvalidOperationException("Could not start the isolated exited-process fixture.");
-            process.WaitForExit();
-            return process;
+                return process.Id;
+            }
         }
 
         private static string WindowsPowerShellExecutable()
