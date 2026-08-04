@@ -15,12 +15,16 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "unity2foxglove_ros2_bridge/bridge_origin.hpp"
@@ -200,6 +204,118 @@ TEST(BridgeOriginRegistry, InvalidOriginCountsAreSeparateFromQueuePressure)
   EXPECT_EQ(2U, stats.invalid_origin);
   EXPECT_EQ(0U, stats.capacity_rejected);
   EXPECT_EQ(0U, stats.accepted);
+}
+
+TEST(
+  BridgeAdmissionDiagnostics,
+  ProductionSubscriptionCallbackReportsEveryRejectionAtBoundedIntervals)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  bridge_runtime::ProcessRosOwner ros_owner(
+    "phase187_admission_diagnostic_probe",
+    context);
+
+  using Admission = runtime::BridgeSerializedAdmission;
+  using Diagnostic = std::tuple<std::string, Admission, uint64_t>;
+  std::mutex diagnostic_mutex;
+  std::vector<Diagnostic> diagnostics;
+  BridgeNode bridge(
+    ros_owner.require_node(),
+    PayloadFormat::CdrWithEncapsulation,
+    u2r2::ProtocolLimits::defaults().max_contracts(),
+    [&](const std::string & topic, Admission admission, uint64_t count) {
+      std::lock_guard<std::mutex> lock(diagnostic_mutex);
+      diagnostics.emplace_back(topic, admission, count);
+    });
+
+  const std::string topic = "/phase187/admission_diagnostics";
+  const std::string schema = "std_msgs/msg/String";
+  const u2r2::ContractIdentity identity(
+    u2r2::ContractKey(52U, 10U),
+    u2r2::ContractDirection::subscribe,
+    topic,
+    schema,
+    DefaultQos());
+  const std::array<Admission, 7U> dispositions{
+    Admission::inactive,
+    Admission::unsupported_representation,
+    Admission::payload_too_large,
+    Admission::capacity_rejected,
+    Admission::suppressed_local,
+    Admission::invalid_origin,
+    Admission::accepted};
+  constexpr size_t kSamplesPerDisposition = 5U;
+  std::atomic<size_t> callback_count{0U};
+  auto subscription = bridge.subscribe(
+    identity,
+    [&](const uint8_t *, size_t, uint64_t, runtime::BridgeSampleOrigin) {
+      const auto index = callback_count.fetch_add(1U);
+      return dispositions[index / kSamplesPerDisposition];
+    });
+  ASSERT_TRUE(subscription);
+
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto external = std::make_shared<rclcpp::Node>(
+    "phase187_admission_diagnostic_external",
+    options);
+  auto publisher = external->create_generic_publisher(
+    topic,
+    schema,
+    rclcpp::QoS(10).reliable());
+  ASSERT_TRUE(WaitUntil([&]() {
+      return publisher->get_subscription_count() > 0U;
+    }));
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  rclcpp::SerializedMessage serialized(payload.size());
+  auto & raw = serialized.get_rcl_serialized_message();
+  ASSERT_GE(raw.buffer_capacity, payload.size());
+  std::memcpy(raw.buffer, payload.data(), payload.size());
+  raw.buffer_length = payload.size();
+
+  const auto sample_count = dispositions.size() * kSamplesPerDisposition;
+  for (size_t index = 0U; index < sample_count; ++index) {
+    publisher->publish(serialized);
+    ASSERT_TRUE(WaitUntil([&]() {
+        return callback_count.load() > index;
+      }));
+  }
+
+  std::vector<Diagnostic> observed;
+  {
+    std::lock_guard<std::mutex> lock(diagnostic_mutex);
+    observed = diagnostics;
+  }
+  ASSERT_EQ(18U, observed.size());
+  for (size_t disposition_index = 0U;
+    disposition_index + 1U < dispositions.size();
+    ++disposition_index)
+  {
+    std::vector<uint64_t> counts;
+    for (const auto & diagnostic : observed) {
+      if (std::get<1>(diagnostic) == dispositions[disposition_index]) {
+        EXPECT_EQ(topic, std::get<0>(diagnostic));
+        counts.push_back(std::get<2>(diagnostic));
+      }
+    }
+    EXPECT_EQ((std::vector<uint64_t>{1U, 2U, 4U}), counts);
+  }
+  EXPECT_TRUE(std::none_of(
+      observed.begin(),
+      observed.end(),
+      [](const Diagnostic & diagnostic) {
+        return std::get<1>(diagnostic) == Admission::accepted;
+      }));
+
+  publisher.reset();
+  external.reset();
+  subscription.reset();
+  EXPECT_TRUE(ros_owner.stop());
+  context->shutdown("Phase187 admission diagnostic probe complete");
 }
 
 TEST(

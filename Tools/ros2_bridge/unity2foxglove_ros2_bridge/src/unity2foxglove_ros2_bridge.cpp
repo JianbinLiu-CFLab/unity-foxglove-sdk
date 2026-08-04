@@ -1676,6 +1676,107 @@ private:
 };
 #endif
 
+using BridgeAdmissionDiagnosticSink = std::function<void(
+    const std::string &,
+    bridge_runtime::BridgeSerializedAdmission,
+    uint64_t)>;
+
+const char * bridge_admission_name(
+  bridge_runtime::BridgeSerializedAdmission admission)
+{
+  using Admission = bridge_runtime::BridgeSerializedAdmission;
+  switch (admission) {
+    case Admission::accepted:
+      return "accepted";
+    case Admission::inactive:
+      return "inactive";
+    case Admission::unsupported_representation:
+      return "unsupported_representation";
+    case Admission::payload_too_large:
+      return "payload_too_large";
+    case Admission::capacity_rejected:
+      return "capacity_rejected";
+    case Admission::suppressed_local:
+      return "suppressed_local";
+    case Admission::invalid_origin:
+      return "invalid_origin";
+  }
+  return "unknown";
+}
+
+class BridgeAdmissionDiagnostics final
+{
+public:
+  BridgeAdmissionDiagnostics(
+    std::string topic,
+    BridgeAdmissionDiagnosticSink sink)
+  : topic_(std::move(topic)), sink_(std::move(sink))
+  {
+  }
+
+  void observe(bridge_runtime::BridgeSerializedAdmission admission) noexcept
+  {
+    const auto index = rejection_index(admission);
+    if (!index || !sink_) {
+      return;
+    }
+    const auto count = saturating_increment(counts_[*index]);
+    if ((count & (count - 1U)) != 0U) {
+      return;
+    }
+    try {
+      sink_(topic_, admission, count);
+    } catch (...) {
+      // Diagnostics must never turn a rejected sample into a callback failure.
+    }
+  }
+
+private:
+  static std::optional<size_t> rejection_index(
+    bridge_runtime::BridgeSerializedAdmission admission) noexcept
+  {
+    using Admission = bridge_runtime::BridgeSerializedAdmission;
+    switch (admission) {
+      case Admission::inactive:
+        return 0U;
+      case Admission::unsupported_representation:
+        return 1U;
+      case Admission::payload_too_large:
+        return 2U;
+      case Admission::capacity_rejected:
+        return 3U;
+      case Admission::suppressed_local:
+        return 4U;
+      case Admission::invalid_origin:
+        return 5U;
+      case Admission::accepted:
+        return std::nullopt;
+    }
+    return std::nullopt;
+  }
+
+  static uint64_t saturating_increment(
+    std::atomic<uint64_t> & counter) noexcept
+  {
+    auto current = counter.load(std::memory_order_relaxed);
+    while (current != std::numeric_limits<uint64_t>::max()) {
+      if (counter.compare_exchange_weak(
+          current,
+          current + 1U,
+          std::memory_order_relaxed,
+          std::memory_order_relaxed))
+      {
+        return current + 1U;
+      }
+    }
+    return current;
+  }
+
+  std::string topic_;
+  BridgeAdmissionDiagnosticSink sink_;
+  std::array<std::atomic<uint64_t>, 6U> counts_{};
+};
+
 class BridgeNode
 {
 public:
@@ -1683,12 +1784,14 @@ public:
     rclcpp::Node::SharedPtr node,
     PayloadFormat payload_format,
     uint64_t maximum_publishers =
-    u2r2::ProtocolLimits::defaults().max_contracts())
+    u2r2::ProtocolLimits::defaults().max_contracts(),
+    BridgeAdmissionDiagnosticSink admission_diagnostic_sink = {})
   : node_(std::move(node)),
     payload_format_(payload_format),
     origin_registry_(
       std::make_shared<bridge_runtime::BridgeOriginRegistry>(
         maximum_publishers)),
+    admission_diagnostic_sink_(std::move(admission_diagnostic_sink)),
     maximum_publishers_(maximum_publishers)
   {
     if (!node_) {
@@ -1696,6 +1799,22 @@ public:
     }
     if (maximum_publishers_ == 0) {
       throw std::invalid_argument("publisher capacity must be positive");
+    }
+    if (!admission_diagnostic_sink_) {
+      const auto logger = node_->get_logger();
+      admission_diagnostic_sink_ =
+        [logger](
+        const std::string & topic,
+        bridge_runtime::BridgeSerializedAdmission admission,
+        uint64_t count) {
+          RCLCPP_WARN(
+            logger,
+            "[unity2foxglove_ros2_bridge] rejected ROS subscription "
+            "sample topic='%s' reason=%s count=%llu",
+            topic.c_str(),
+            bridge_admission_name(admission),
+            static_cast<unsigned long long>(count));
+        };
     }
 
     const auto publisher_node = node_;
@@ -1860,8 +1979,15 @@ public:
     auto qos = make_qos(contract);
     const auto logger = node_->get_logger();
     const auto origin_registry = origin_registry_;
+    auto admission_diagnostics =
+      std::make_shared<BridgeAdmissionDiagnostics>(
+      identity.topic,
+      admission_diagnostic_sink_);
     auto receive =
-      [callback = std::move(callback), logger, origin_registry](
+      [callback = std::move(callback),
+      logger,
+      origin_registry,
+      admission_diagnostics = std::move(admission_diagnostics)](
         std::shared_ptr<rclcpp::SerializedMessage> message,
         const rclcpp::MessageInfo & info) {
         if (!message) {
@@ -1872,12 +1998,13 @@ public:
         const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count();
         try {
-          (void)callback(
+          const auto admission = callback(
             serialized.buffer,
             serialized.buffer_length,
             now < 0 ? 0U : static_cast<uint64_t>(now),
             origin_registry->classify(
               info.get_rmw_message_info().publisher_gid));
+          admission_diagnostics->observe(admission);
         } catch (const std::exception & error) {
           RCLCPP_ERROR(
             logger,
@@ -1935,6 +2062,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
   std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry_;
+  BridgeAdmissionDiagnosticSink admission_diagnostic_sink_;
   GenericPublisherFactory publisher_factory_;
   uint64_t maximum_publishers_;
   PublisherContractRegistry publisher_contracts_;
