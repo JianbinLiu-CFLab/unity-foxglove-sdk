@@ -21,6 +21,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         internal const string PreviousEditorProcessIdEnvironmentVariable =
             "UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_PID";
+        internal const string PreviousEditorStartFileTimeEnvironmentVariable =
+            "UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_START_FILETIME";
         internal const string EditorExecutableEnvironmentVariable =
             "UNITY2FOXGLOVE_RESTART_EDITOR_EXECUTABLE";
         internal const string ProjectDirectoryEnvironmentVariable =
@@ -28,10 +30,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private const string WindowsRelayScript = @"
 $previousEditorProcessId = [int]$env:UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_PID
+$previousEditorStartFileTime = [long]$env:UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_START_FILETIME
 $editorExecutable = $env:UNITY2FOXGLOVE_RESTART_EDITOR_EXECUTABLE
 $projectDirectory = $env:UNITY2FOXGLOVE_RESTART_PROJECT_DIRECTORY
 $previousEditor = Get-Process -Id $previousEditorProcessId -ErrorAction SilentlyContinue
+$previousEditorIdentityMatches = $false
 if ($null -ne $previousEditor) {
+    try {
+        $previousEditorIdentityMatches = $previousEditor.StartTime.ToFileTimeUtc() -eq $previousEditorStartFileTime
+    } catch {
+        $previousEditorIdentityMatches = $false
+    }
+}
+if ($previousEditorIdentityMatches) {
     $previousEditor.WaitForExit()
 }
 $lockPath = Join-Path $projectDirectory 'Temp\UnityLockfile'
@@ -39,6 +50,7 @@ while (Test-Path -LiteralPath $lockPath) {
     Start-Sleep -Milliseconds 100
 }
 Remove-Item Env:UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_PID -ErrorAction SilentlyContinue
+Remove-Item Env:UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_START_FILETIME -ErrorAction SilentlyContinue
 Remove-Item Env:UNITY2FOXGLOVE_RESTART_EDITOR_EXECUTABLE -ErrorAction SilentlyContinue
 Remove-Item Env:UNITY2FOXGLOVE_RESTART_PROJECT_DIRECTORY -ErrorAction SilentlyContinue
 $projectArgument = '""' + $projectDirectory + '""'
@@ -57,6 +69,7 @@ while [ -e ""$lock_path"" ]; do
     sleep 1
 done
 unset UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_PID
+unset UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_START_FILETIME
 unset UNITY2FOXGLOVE_RESTART_EDITOR_EXECUTABLE
 unset UNITY2FOXGLOVE_RESTART_PROJECT_DIRECTORY
 exec ""$editor_executable"" -projectPath ""$project_directory""
@@ -81,6 +94,12 @@ exec ""$editor_executable"" -projectPath ""$project_directory""
             if (replacementStartInfo == null)
                 throw new ArgumentNullException(nameof(replacementStartInfo));
 
+            long previousEditorStartFileTime;
+            using (var previousEditor = Process.GetProcessById(previousEditorProcessId))
+            {
+                previousEditorStartFileTime = previousEditor.StartTime.ToFileTimeUtc();
+            }
+
             var relayStartInfo = new ProcessStartInfo
             {
                 FileName = relayExecutable,
@@ -91,6 +110,8 @@ exec ""$editor_executable"" -projectPath ""$project_directory""
             CopyEnvironment(replacementStartInfo, relayStartInfo);
             relayStartInfo.EnvironmentVariables[PreviousEditorProcessIdEnvironmentVariable] =
                 previousEditorProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            relayStartInfo.EnvironmentVariables[PreviousEditorStartFileTimeEnvironmentVariable] =
+                previousEditorStartFileTime.ToString(System.Globalization.CultureInfo.InvariantCulture);
             relayStartInfo.EnvironmentVariables[EditorExecutableEnvironmentVariable] = editorExecutable;
             relayStartInfo.EnvironmentVariables[ProjectDirectoryEnvironmentVariable] = projectDirectory;
             relayStartInfo.Arguments = isWindows

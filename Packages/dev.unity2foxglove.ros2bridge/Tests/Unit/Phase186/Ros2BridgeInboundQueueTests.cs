@@ -242,6 +242,42 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void InvalidSessionSnapshotDoesNotDisplaceCurrentOwnedFrames()
+        {
+            var active = Contract(11, "binding-a");
+            var invalid = Contract(
+                12,
+                "binding-b",
+                direction: FoxRunTransportDirection.Publish);
+            var released = new List<ulong>();
+            using var queue = Queue(
+                new[] { active },
+                maxPayloadBytes: 8,
+                maxTotalBytes: 16,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: 16);
+            Assert.True(queue.TryAccept(
+                Frame(active, sequence: 1, released)).IsAccepted);
+
+            Assert.Throws<ArgumentException>(
+                () => queue.BeginSession(
+                    "phase186-invalid",
+                    connectionGeneration: 20,
+                    new Ros2BridgeSessionContractSnapshot(
+                        generation: 7,
+                        new[] { invalid })));
+
+            Assert.Empty(released);
+            Assert.True(queue.TryBeginApply(out var apply));
+            using (apply)
+            {
+                Assert.Equal(11UL, apply.Frame.Contract.ContractId);
+                apply.MarkApplied();
+            }
+            Assert.Single(released);
+        }
+
+        [Fact]
         public void RevokingOneContractDropsOnlyItsQueuedAndInFlightOwnership()
         {
             var first = Contract(11, "binding-a", "/phase186/a");
@@ -336,11 +372,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         private static Ros2BridgeSessionContract Contract(
             ulong contractId,
             string bindingId,
-            string topic = "/phase186/inbound")
+            string topic = "/phase186/inbound",
+            FoxRunTransportDirection direction =
+                FoxRunTransportDirection.Subscribe)
             => new Ros2BridgeSessionContract(
                 new FoxRunTransportId(
                     "unity2foxglove.ros2bridge"),
-                FoxRunTransportDirection.Subscribe,
+                direction,
                 topic,
                 "phase186_msgs/msg/Inbound",
                 FoxRunResolvedQos.Default,

@@ -21,6 +21,7 @@ namespace Unity2Foxglove.Ros2Bridge
     {
         private readonly object _gate = new object();
         private readonly IRos2BridgeSessionTransport _transport;
+        private readonly bool _disposeTransport;
         private readonly U2R2ProtocolLimits _limits;
         private readonly bool _requiresSubscription;
         private readonly int _writerCapacity;
@@ -76,10 +77,12 @@ namespace Unity2Foxglove.Ros2Bridge
                 retirement = null,
             int readerRetirementIndex = -1,
             int writerRetirementIndex = -1,
-            string retirementIdentity = null)
+            string retirementIdentity = null,
+            bool disposeTransport = true)
         {
             _transport = transport
                 ?? throw new ArgumentNullException(nameof(transport));
+            _disposeTransport = disposeTransport;
             _limits = limits
                 ?? throw new ArgumentNullException(nameof(limits));
             if (writerCapacity <= 0
@@ -1149,13 +1152,16 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             Exception first = null;
-            try
+            if (_disposeTransport)
             {
-                _transport.Dispose();
-            }
-            catch (Exception exception)
-            {
-                first = exception;
+                try
+                {
+                    _transport.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    first = exception;
+                }
             }
             try
             {

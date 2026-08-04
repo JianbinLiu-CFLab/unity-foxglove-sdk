@@ -271,6 +271,17 @@ namespace Unity2Foxglove.Ros2Bridge
             }
             if (contracts == null)
                 throw new ArgumentNullException(nameof(contracts));
+            foreach (var contract in contracts.Contracts)
+            {
+                if (contract.Direction
+                    != Unity.FoxgloveSDK.Components
+                        .FoxRunTransportDirection.Subscribe)
+                {
+                    throw new ArgumentException(
+                        "The inbound queue accepts subscription contracts only.",
+                        nameof(contracts));
+                }
+            }
 
             Ros2BridgeInboundFrame[] displaced;
             lock (_gate)
@@ -281,14 +292,6 @@ namespace Unity2Foxglove.Ros2Bridge
                 _sequences.Clear();
                 foreach (var contract in contracts.Contracts)
                 {
-                    if (contract.Direction
-                        != Unity.FoxgloveSDK.Components
-                            .FoxRunTransportDirection.Subscribe)
-                    {
-                        throw new ArgumentException(
-                            "The inbound queue accepts subscription contracts only.",
-                            nameof(contracts));
-                    }
                     _active.Add(contract.ContractId, contract);
                     _sequences.Add(
                         contract.ContractId,
