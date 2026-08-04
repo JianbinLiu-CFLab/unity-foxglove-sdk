@@ -12,6 +12,10 @@ on:
       - "Plan/**"
       - "**.md"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Checkout pinned official Foxglove schema reference
         uses: actions/checkout@v4
@@ -66,7 +71,7 @@ jobs:
         run: corepack enable
 
       - name: Restore Roslyn analyzer project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
 
       - name: Build Roslyn analyzer DLL for freshness check
         run: dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj -c Release -o build/SourceGenerators/Release/netstandard2.0 --no-restore
@@ -75,7 +80,7 @@ jobs:
         run: python3 Scripts/package/validate_source_generator_dll.py
 
       - name: Restore runtime test project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Run validation suite
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
@@ -108,7 +113,7 @@ jobs:
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
 
       - name: Restore xUnit unit test project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
 
       - name: Run xUnit unit tests
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
@@ -137,13 +142,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0"
 
       - name: Restore optional ROS2 adapter xUnit lane
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true
 
       - name: Run optional ROS2 adapter xUnit gate
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true --logger "trx;LogFileName=unit-tests-adapter.trx" --results-directory build/TestResults/OptionalRos2Adapter
@@ -161,13 +168,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0"
 
       - name: Restore optional ROS2 Native xUnit lane
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true
 
       - name: Run optional ROS2 Native xUnit gate
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --logger "trx;LogFileName=unit-tests-native.trx" --results-directory build/TestResults/OptionalRos2Native
@@ -188,6 +197,8 @@ jobs:
         run: git config --global core.longpaths true
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Validate Phase181 Win64 custom ROS2 typesupport identities
         run: |
@@ -201,7 +212,7 @@ jobs:
           dotnet-version: "10.0"
 
       - name: Restore Roslyn analyzer project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
 
       - name: Build Roslyn analyzer DLL for freshness check
         run: dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj -c Release -o build/SourceGenerators/Release/netstandard2.0 --no-restore
@@ -210,7 +221,7 @@ jobs:
         run: python Scripts/package/validate_source_generator_dll.py
 
       - name: Restore runtime test project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj --ignore-failed-sources
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Verify checked-in analyzer DLL freshness
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase115f

@@ -12,11 +12,17 @@ on:
       - "Plan/**"
       - "**.md"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Validate release package
         run: python3 Scripts/package/validate_unity_package.py

@@ -34,9 +34,18 @@ LOCAL_ENTRYPOINT_VALIDATOR_PATH = ROOT / "Scripts" / "package" / "validate_local
 PHASE186_WINDOWS_LIVE_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "phase186-bridge-windows-live.yml"
 )
+DOCS_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "docs-check.yml"
 DOTNET_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "dotnet-tests.yml"
+PACKAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "package-check.yml"
 REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
+)
+WORKFLOW_PATHS = (
+    DOCS_WORKFLOW_PATH,
+    DOTNET_WORKFLOW_PATH,
+    PACKAGE_WORKFLOW_PATH,
+    PHASE186_WINDOWS_LIVE_WORKFLOW_PATH,
+    REPOSITORY_BOUNDARY_WORKFLOW_PATH,
 )
 
 
@@ -467,6 +476,38 @@ class RunCiTests(unittest.TestCase):
                     block,
                     f"{event} does not schedule the boundary job for {private_path}",
                 )
+
+    def test_workflow_checkouts_never_persist_repository_credentials(self) -> None:
+        """Read-only CI jobs must remove checkout credentials from every workspace."""
+
+        for path in WORKFLOW_PATHS:
+            workflow = path.read_text(encoding="utf-8")
+            checkout_count = workflow.count("uses: actions/checkout@v4")
+            hardened_count = workflow.count("persist-credentials: false")
+            self.assertGreater(checkout_count, 0, path.name)
+            self.assertEqual(
+                checkout_count,
+                hardened_count,
+                f"every checkout in {path.name} must disable credential persistence",
+            )
+
+    def test_ci_dotnet_restore_fails_when_the_only_feed_is_unavailable(self) -> None:
+        """CI restore must not suppress failure of the repository's sole NuGet feed."""
+
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("--ignore-failed-sources", workflow)
+
+    def test_heavy_pull_request_workflows_cancel_superseded_runs(self) -> None:
+        """Superseded dotnet and package runs should release hosted CI capacity."""
+
+        for path in (DOTNET_WORKFLOW_PATH, PACKAGE_WORKFLOW_PATH):
+            workflow = path.read_text(encoding="utf-8")
+            self.assertRegex(workflow, r"(?m)^concurrency:\s*$")
+            self.assertIn(
+                "group: ${{ github.workflow }}-${{ github.ref }}",
+                workflow,
+            )
+            self.assertIn("cancel-in-progress: true", workflow)
 
     def test_run_ci_includes_schema_generated_output_freshness(self) -> None:
         """Local CI should reject stale committed schema generator outputs."""
