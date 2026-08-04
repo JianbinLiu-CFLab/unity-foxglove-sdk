@@ -118,6 +118,74 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void OutOfRangeLockIntegerReturnsTypedInvalidSource()
+        {
+            WithTempPackage((repoRoot, packageRoot) =>
+            {
+                var model = BuildModel(typeof(Phase181State));
+                FoxRunRos2InterfacePackageWriter.Generate(repoRoot, packageRoot, model);
+                var lockPath = Path.Combine(
+                    packageRoot,
+                    "RuntimeSupport",
+                    "foxrun-ros2-interface-lock.json");
+                var source = File.ReadAllText(lockPath);
+                var malformed = source.Replace(
+                    "\"interfaceRevision\":1",
+                    "\"interfaceRevision\":2147483648",
+                    StringComparison.Ordinal);
+                Assert.NotEqual(source, malformed);
+                File.WriteAllText(lockPath, malformed);
+
+                var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                    packageRoot,
+                    model);
+
+                Assert.Equal(
+                    FoxRunRos2InterfaceSourcePreflightState.InvalidSource,
+                    result.State);
+                Assert.Equal(
+                    FoxRunRos2InterfaceSourcePreflightDiagnosticCode.SourceLockInvalid,
+                    result.DiagnosticCode);
+            });
+        }
+
+        [Fact]
+        public void UnreadableRecordedMessageReturnsTypedInvalidSource()
+        {
+            WithTempPackage((repoRoot, packageRoot) =>
+            {
+                var model = BuildModel(typeof(Phase181State));
+                var generated = FoxRunRos2InterfacePackageWriter.Generate(
+                    repoRoot,
+                    packageRoot,
+                    model);
+                var payload = Path.Combine(
+                    packageRoot,
+                    "Ros2Package~",
+                    "msg",
+                    generated.Lock.Contracts[0].PayloadMessageName + ".msg");
+
+                using (new FileStream(
+                           payload,
+                           FileMode.Open,
+                           FileAccess.ReadWrite,
+                           FileShare.None))
+                {
+                    var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                        packageRoot,
+                        model);
+
+                    Assert.Equal(
+                        FoxRunRos2InterfaceSourcePreflightState.InvalidSource,
+                        result.State);
+                    Assert.Equal(
+                        FoxRunRos2InterfaceSourcePreflightDiagnosticCode.SourceLockInvalid,
+                        result.DiagnosticCode);
+                }
+            });
+        }
+
+        [Fact]
         public void SchemaChangeRequiresAnExplicitRevisionRatherThanStaleOverwrite()
         {
             WithTempPackage((repoRoot, packageRoot) =>

@@ -230,7 +230,16 @@ namespace Unity.FoxgloveSDK.Editor
             var token = value?[propertyName];
             if (token == null || token.Type != JTokenType.Integer)
                 throw new FormatException("Lock property '" + propertyName + "' must be an integer.");
-            return checked((int)token);
+            try
+            {
+                return checked((int)token);
+            }
+            catch (OverflowException exception)
+            {
+                throw new FormatException(
+                    "Lock property '" + propertyName + "' must fit in a signed 32-bit integer.",
+                    exception);
+            }
         }
     }
 }

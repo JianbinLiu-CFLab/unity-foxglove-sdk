@@ -85,7 +85,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 s_nativeSessionStopped = true;
         }
 
-        internal static void ResetForTests()
+        [UnityEngine.RuntimeInitializeOnLoadMethod(
+            UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        internal static void ResetForSubsystemRegistration()
         {
             lock (s_gate)
             {
@@ -93,6 +95,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 s_invalidRegistration = false;
                 s_nativeSessionStopped = false;
             }
+        }
+
+        internal static void ResetForTests()
+        {
+            ResetForSubsystemRegistration();
         }
 
         private static bool IsValid(IFoxRunRos2CustomTypesupportCatalog catalog)

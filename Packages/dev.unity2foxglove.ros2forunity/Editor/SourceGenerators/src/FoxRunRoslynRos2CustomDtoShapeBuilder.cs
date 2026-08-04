@@ -108,18 +108,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return;
             }
 
-            if (!rosNames.Add(rosName))
-            {
-                AddUnsupported(path, "Custom ROS2 DTO member name collides after ROS snake_case conversion: '" + rosName + "'.", diagnostics);
-                return;
-            }
-
             if (!CanRead(member) || !CanWrite(member))
             {
                 diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
                     FoxRunRos2CustomDtoDiagnostic.NonWritableInboundMember,
                     path,
                     "Custom ROS2 DTO members must be readable and writable for native inbound application."));
+                return;
+            }
+
+            if (!rosNames.Add(rosName))
+            {
+                AddUnsupported(path, "Custom ROS2 DTO member name collides after ROS snake_case conversion: '" + rosName + "'.", diagnostics);
                 return;
             }
 

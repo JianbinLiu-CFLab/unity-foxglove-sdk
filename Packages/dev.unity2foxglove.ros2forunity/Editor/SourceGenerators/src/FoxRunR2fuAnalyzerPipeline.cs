@@ -86,12 +86,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         ? item.Ros2MessageShape?.Diagnostics
                         : item.Ros2CustomDtoShape?.Diagnostics);
 
+                var hasSubscribeDirection = item.Topics.Any(topic =>
+                    topic.Mode == 2 || topic.Mode == 3);
                 if (HasUsableShape(item)
-                    && item.Topics.Any(topic =>
-                        topic.Mode == 2 || topic.Mode == 3)
                     && (!compilationEvidence
                             .HasNativeAssemblyReference
-                        || (item.IsStream
+                        || (hasSubscribeDirection
+                            && item.IsStream
                             && !compilationEvidence
                                 .HasStreamRegistrarSeam)))
                 {
