@@ -192,6 +192,7 @@ struct BridgeSessionProtocol::Impl final
   std::mutex subscriptions_mutex;
   std::unordered_map<uint64_t, SubscriptionRecord> subscriptions;
   std::unordered_map<std::string, std::string> prepared_publishers;
+  bool draining{false};
   bool closed{false};
 
   std::vector<uint8_t> response_bytes(
@@ -229,15 +230,16 @@ struct BridgeSessionProtocol::Impl final
       response_bytes(operation, request_id, "error", 0, &error));
   }
 
-  void close()
+  void begin_drain()
   {
-    if (closed) {
+    if (draining || closed) {
       return;
     }
-    closed = true;
+    draining = true;
     if (outbound) {
       outbound->close();
     }
+    writer.begin_drain();
     std::vector<SubscriptionRecord> retained;
     {
       std::lock_guard<std::mutex> lock(subscriptions_mutex);
@@ -254,6 +256,15 @@ struct BridgeSessionProtocol::Impl final
       }
       record.entity.reset();
     }
+  }
+
+  void close()
+  {
+    if (closed) {
+      return;
+    }
+    begin_drain();
+    closed = true;
     contracts.close(writer.scheduler(), replay);
     writer.close();
   }
@@ -827,6 +838,11 @@ bool BridgeSessionProtocol::wait_for_writer_change(
     impl_->writer_lease,
     observed_generation,
     timeout);
+}
+
+void BridgeSessionProtocol::begin_drain()
+{
+  impl_->begin_drain();
 }
 
 void BridgeSessionProtocol::close()

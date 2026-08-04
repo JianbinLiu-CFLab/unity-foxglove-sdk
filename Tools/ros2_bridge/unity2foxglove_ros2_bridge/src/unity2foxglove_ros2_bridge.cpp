@@ -2201,14 +2201,22 @@ public:
   {
     bool expected = false;
     if (stopped_.compare_exchange_strong(expected, true)) {
-      stop_requested_.store(true);
       try {
-        protocol_.close();
+        protocol_.begin_drain();
       } catch (...) {
+        try {
+          protocol_.close();
+        } catch (...) {
+        }
       }
+      stop_requested_.store(true);
     }
     if (thread_.joinable()) {
       thread_.join();
+    }
+    try {
+      protocol_.close();
+    } catch (...) {
     }
   }
 
@@ -2228,9 +2236,9 @@ private:
   void run() noexcept
   {
     try {
-      while (!stop_requested_.load()) {
+      while (true) {
         const auto observed = protocol_.wake_generation();
-        while (!stop_requested_.load()) {
+        while (true) {
           auto write = protocol_.try_begin_write();
           if (!write) {
             break;
@@ -2246,8 +2254,10 @@ private:
           }
           write->release();
         }
+        if (stop_requested_.load()) {
+          break;
+        }
         if (
-          stop_requested_.load() ||
           protocol_.wake_generation() != observed)
         {
           continue;

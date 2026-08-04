@@ -105,6 +105,7 @@ public:
   bool wait_for_writer_change(
     uint64_t observed_generation,
     std::chrono::milliseconds timeout);
+  void begin_drain();
   void close();
   uint64_t transient_bytes() const;
   uint64_t in_flight_bytes() const;

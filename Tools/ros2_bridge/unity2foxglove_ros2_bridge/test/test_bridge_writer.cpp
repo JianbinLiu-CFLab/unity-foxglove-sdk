@@ -109,4 +109,37 @@ TEST(BridgeWriterCore, CloseWakesWaiterAndRejectsFutureWriterWork)
   EXPECT_FALSE(writer.try_attach_writer().has_value());
   EXPECT_FALSE(writer.try_begin_write(*lease).has_value());
 }
+
+TEST(BridgeWriterCore, DrainRejectsAdmissionsButPreservesCommittedFrames)
+{
+  runtime::BridgeWriterCore writer(u2r2::ProtocolLimits::defaults());
+  auto lease = writer.try_attach_writer();
+  ASSERT_TRUE(lease.has_value());
+  writer.enqueue_control("committed", {7U, 8U, 9U});
+  const auto observed = writer.wake_generation();
+
+  writer.begin_drain();
+
+  EXPECT_GT(writer.wake_generation(), observed);
+  EXPECT_FALSE(writer.try_attach_writer().has_value());
+  EXPECT_FALSE(writer.try_reserve_control(1U).has_value());
+  EXPECT_FALSE(writer.try_reserve_data({1U, 1U}, 1U).has_value());
+  EXPECT_FALSE(writer.try_reserve_transient(1U).has_value());
+  EXPECT_FALSE(writer.try_begin_read(1U).has_value());
+  EXPECT_EQ(
+    u2r2::EnqueueDisposition::rejected,
+    writer.enqueue_data(
+      u2r2::OutboundFrame::data(
+        "late",
+        {1U, 1U},
+        1U,
+        {1U}),
+      u2r2::QueueOverflowPolicy::reject));
+
+  auto committed = writer.try_begin_write(*lease);
+  ASSERT_TRUE(committed.has_value());
+  EXPECT_EQ(std::vector<uint8_t>({7U, 8U, 9U}), committed->frame().bytes());
+  committed->release();
+  EXPECT_FALSE(writer.try_begin_write(*lease).has_value());
+}
 }  // namespace

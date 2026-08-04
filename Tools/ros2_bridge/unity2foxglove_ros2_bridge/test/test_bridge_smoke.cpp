@@ -2169,6 +2169,89 @@ TEST(
 
 TEST(
   Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2PeerHalfCloseDrainsCommittedUnknownContractResponse)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    []() -> std::unique_ptr<BridgeNode> {
+      GenericPublisherFactory publisher_factory =
+        [](const std::string &, const std::string &, const rclcpp::QoS &) {
+          return [](const rclcpp::SerializedMessage &) {};
+        };
+      return std::make_unique<BridgeNode>(
+        PayloadFormat::CdrWithEncapsulation,
+        std::move(publisher_factory));
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase187_v2_half_close_drain_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+  SocketThreadJoiner server_joiner(client_socket.get(), server);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "hello"},
+        {"protocolVersion", 2},
+        {"requestId", 30},
+        {"clientName", "phase187-half-close-drain"},
+        {"capabilities", nlohmann::json::array({"subscribe"})},
+      },
+      {}));
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "unregister_subscription"},
+        {"protocolVersion", 2},
+        {"requestId", 31},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"contractId", 404},
+      },
+      {}));
+  ASSERT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+
+  const auto response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  server.join();
+
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(u2r2::Operation::SubscriptionRemoved, response.operation);
+  EXPECT_EQ(31U, response.request_id);
+  EXPECT_EQ("error", response.status);
+  EXPECT_EQ("unknown_contract", response.error_code);
+  EXPECT_TRUE(response.terminal);
+  EXPECT_EQ(0U, authority.classified_count());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
   OwnedV2SecondDataSessionGetsStableBusyWithoutCreatingGeneration)
 {
   const auto sockets = MakeConnectedSocketPair();
