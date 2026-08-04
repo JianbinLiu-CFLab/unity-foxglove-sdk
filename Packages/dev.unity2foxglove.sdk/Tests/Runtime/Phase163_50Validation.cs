@@ -31,10 +31,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-50A-2: FoxService DTO type-name helpers accept reflection generic names");
 
             var phase100 = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase100Validation.cs");
-            Check(phase100.Contains("FindMethodSignature(source, methodName)", StringComparison.Ordinal)
-                  && phase100.Contains("PhaseValidationSourceHelpers.SourceMethod(source.Substring(signatureIndex), methodName)", StringComparison.Ordinal)
+            Check(phase100.Contains("PhaseValidationSourceHelpers.SourceMethod(source, methodName)", StringComparison.Ordinal)
+                  && !phase100.Contains("FindMethodSignature", StringComparison.Ordinal)
+                  && !phase100.Contains("MethodSignatureRegexes", StringComparison.Ordinal)
                   && !phase100.Contains("if (source[i] == '{') depth++", StringComparison.Ordinal),
-                "163-50B-1: Phase100 method extraction uses string/comment-aware source scanning");
+                "163-50B-1: Phase100 method extraction delegates to the shared Roslyn source scanner");
 
             var phase113 = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase113Validation.cs");
             Check(phase113.Contains("var value = $\\\"value={x}\\\"", StringComparison.Ordinal)

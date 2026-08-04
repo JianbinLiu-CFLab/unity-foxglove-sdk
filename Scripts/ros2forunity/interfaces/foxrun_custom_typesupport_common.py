@@ -528,19 +528,21 @@ def _has_restricted_windows_plugin_importer(text: str) -> bool:
     if "PluginImporter:" not in text:
         return False
 
-    # Unity's older list-of-pairs serialization keeps ``first`` and
-    # ``second`` at the same indentation as the platform key.  Retain its
-    # explicit checks rather than pretending it has the Unity 6000 mapping
-    # structure parsed below.
-    if (
-        "Any:" in text
-        and "enabled: 0" in text
-        and "Editor: Editor" in text
-        and "Standalone: Windows" in text
-        and "enabled: 1" in text
-        and "CPU: x86_64" in text
-    ):
-        return True
+    legacy_any = _legacy_plugin_importer_platform_entry(text, "Any:")
+    legacy_editor = _legacy_plugin_importer_platform_entry(text, "Editor: Editor")
+    legacy_windows = _legacy_plugin_importer_platform_entry(text, "Standalone: Windows")
+    if legacy_any is not None or legacy_editor is not None or legacy_windows is not None:
+        return (
+            legacy_any is not None
+            and "enabled: 0" in legacy_any
+            and legacy_editor is not None
+            and "enabled: 1" in legacy_editor
+            and "CPU: x86_64" in legacy_editor
+            and "OS: Windows" in legacy_editor
+            and legacy_windows is not None
+            and "enabled: 1" in legacy_windows
+            and "CPU: x86_64" in legacy_windows
+        )
 
     any_block = _plugin_importer_platform_block(text, ("Any:",))
     editor_block = _plugin_importer_platform_block(text, ("Editor: Editor", "Editor:"))
@@ -556,6 +558,31 @@ def _has_restricted_windows_plugin_importer(text: str) -> bool:
 
     unity6000_win64 = _plugin_importer_platform_block(text, ("Win64:",))
     return unity6000_win64 is not None and "enabled: 1" in unity6000_win64
+
+
+def _legacy_plugin_importer_platform_entry(text: str, header: str) -> str | None:
+    """Return the owning list-of-pairs entry for one legacy platform key."""
+
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != header:
+            continue
+        item_index = index - 1
+        while item_index >= 0 and lines[item_index].strip() != "- first:":
+            item_index -= 1
+        if item_index < 0:
+            continue
+        item_indentation = len(lines[item_index]) - len(lines[item_index].lstrip(" "))
+        block = [lines[item_index]]
+        for following in lines[item_index + 1 :]:
+            following_indentation = len(following) - len(following.lstrip(" "))
+            if following.strip() and following_indentation <= item_indentation:
+                break
+            block.append(following)
+        candidate = "\n".join(block)
+        if header in candidate:
+            return candidate
+    return None
 
 
 def _plugin_importer_platform_block(text: str, headers: tuple[str, ...]) -> str | None:

@@ -14,6 +14,7 @@ import {
   initPanel,
   isBeforeTime,
   readPanelState,
+  sendCursor,
   shouldSendCursor,
   summarizeResponseText,
   tokenEndpointWarningMessage,
@@ -72,6 +73,54 @@ describe("Unity Replay Sync panel helpers", () => {
 
     expect(summary).toHaveLength(41);
     expect(summary.endsWith("…")).toBe(true);
+  });
+
+  test("sendCursor does not consume a successful response body", async () => {
+    const getReader = vi.fn();
+    const cancel = vi.fn(async () => undefined);
+    const text = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      body: { getReader, cancel },
+      text,
+    } as unknown as Response)));
+
+    const payload = buildPayload({ currentTime: { sec: 1, nsec: 2 } }, 1)!;
+    await expect(sendCursor("http://127.0.0.1/cursor", "", payload)).resolves.toEqual({
+      ok: true,
+      message: "Unity is following Foxglove",
+    });
+    expect(getReader).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  test("sendCursor cancels an oversized error response after a bounded prefix", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn()
+      .mockResolvedValueOnce({ done: false, value: encoder.encode("x".repeat(512)) })
+      .mockResolvedValueOnce({ done: false, value: encoder.encode("x".repeat(512)) })
+      .mockResolvedValueOnce({ done: false, value: encoder.encode("must-not-be-read") });
+    const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
+    const text = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false,
+      status: 413,
+      body: { getReader: () => ({ read, cancel, releaseLock }) },
+      text,
+    } as unknown as Response)));
+
+    const payload = buildPayload({ currentTime: { sec: 1, nsec: 2 } }, 1)!;
+    await expect(sendCursor("http://127.0.0.1/cursor", "", payload)).resolves.toEqual({
+      ok: false,
+      message: `Unity rejected replay time (HTTP 413): ${"x".repeat(200)}\u2026`,
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(releaseLock).toHaveBeenCalledTimes(1);
+    expect(text).not.toHaveBeenCalled();
   });
 
   test("readPanelState restores safe persisted fields but not token", () => {

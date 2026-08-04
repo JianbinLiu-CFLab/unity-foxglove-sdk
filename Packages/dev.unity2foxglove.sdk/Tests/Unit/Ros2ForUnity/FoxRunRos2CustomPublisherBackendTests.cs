@@ -8,6 +8,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -174,6 +176,76 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             nextPublisher.ReleaseNodeOwnership();
             Assert.Equal(2, driver.ReleaseNodeCount);
         }
+
+        [Fact]
+        public async Task CustomTransportLeaseTrackerReservesOwnerBeforeBackendAcquisition()
+        {
+            var driver = new FakeNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var createdOwners = 0;
+            var tracker = new FoxRunRos2CustomNativeTransportLeaseTracker(
+                () =>
+                {
+                    Interlocked.Increment(ref createdOwners);
+                    return owner;
+                });
+
+            Assert.True(tracker.TryAcquireSubscriptionBackend(out var first));
+            var ownerSync = PrivateField<object>(owner, "_sync");
+            var trackerSync = PrivateField<object>(tracker, "_sync");
+            using var acquisitionStarted = new ManualResetEventSlim(false);
+            IFoxRunRos2NativePublisherBackend second = null;
+            var acquired = false;
+            Task acquisition = null;
+
+            Monitor.Enter(ownerSync);
+            try
+            {
+                acquisition = Task.Run(
+                    () =>
+                    {
+                        acquisitionStarted.Set();
+                        acquired = tracker.TryAcquirePublisherBackend(out second);
+                    });
+                Assert.True(acquisitionStarted.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () =>
+                        {
+                            lock (trackerSync)
+                                return PrivateField<int>(tracker, "_leaseCount") == 2;
+                        },
+                        TimeSpan.FromSeconds(5)),
+                    "Selecting the shared owner must reserve its tracker lease before backend acquisition can block.");
+                Assert.Equal(1, Volatile.Read(ref createdOwners));
+            }
+            finally
+            {
+                Monitor.Exit(ownerSync);
+            }
+
+            Assert.Same(
+                acquisition,
+                await Task.WhenAny(
+                    acquisition,
+                    Task.Delay(TimeSpan.FromSeconds(5))));
+            await acquisition;
+            Assert.True(acquired);
+            Assert.NotNull(second);
+            first.ReleaseNodeOwnership();
+            Assert.Equal(0, driver.ReleaseNodeCount);
+            second.ReleaseNodeOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(1, Volatile.Read(ref createdOwners));
+        }
+
+        private static T PrivateField<T>(object instance, string name)
+            => (T)(instance.GetType().GetField(
+                       name,
+                       BindingFlags.Instance | BindingFlags.NonPublic)
+                   ?? throw new InvalidOperationException(
+                       $"Private field '{name}' was not found on {instance.GetType().FullName}."))
+                .GetValue(instance);
 
         private static FoxRunRos2CustomPublisherContract Contract()
             => new FoxRunRos2CustomPublisherContract(

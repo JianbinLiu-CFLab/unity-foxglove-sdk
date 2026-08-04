@@ -7,7 +7,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
+using Unity.FoxgloveSDK.Components;
 using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests
@@ -164,6 +166,101 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.Equal(0, stopped.DisposalFailures);
         }
 
+        [Fact]
+        public void TerminalSchedulerFaultCleansOnceAndStopsWorkerProgress()
+        {
+            var sink = new GatedRecordingSink();
+            using var runtime = Runtime(sink, queueCapacity: 8);
+            runtime.Start(enabled: true, autoConnect: true);
+            Assert.True(
+                sink.ConnectEntered.Wait(TimeSpan.FromSeconds(2)),
+                "worker did not enter Connect");
+
+            Enqueue(runtime, Frame("/phase187/terminal", 1));
+            var scheduler = OutboundScheduler(runtime);
+            var worker = WorkerThread(runtime);
+            Assert.True(worker.IsAlive);
+            var terminal = new InvalidOperationException(
+                "encoder invariant");
+            scheduler.Fault(terminal);
+            scheduler.Fault(new InvalidOperationException("duplicate"));
+
+            Assert.True(scheduler.IsClosed);
+            Assert.True(scheduler.IsFaulted);
+            Assert.Same(terminal, scheduler.TerminalFault);
+            Assert.Equal(1UL, scheduler.Counters.Faulted);
+            Assert.Equal(1UL, scheduler.Counters.Dropped);
+            Assert.Equal(1UL, scheduler.LastCloseResult.ClearedDataDepth);
+            Assert.True(
+                runtime.GetPublisherObservationSnapshot().SchedulerTerminal);
+
+            var status = Ros2BridgeTransportStatusMapper.Create(
+                generation: 187,
+                FoxRunTransportCapabilities.Publish,
+                runtime.LifecycleState,
+                runtime.GetStatsSnapshot(),
+                runtime.HasInboundPipeline,
+                runtime.GetPublisherObservationSnapshot(),
+                Ros2BridgeSubscriptionObservationSnapshot.Empty);
+            Assert.Equal(
+                FoxRunTransportObservedState.Failed,
+                status.Publish.State);
+            Assert.Contains(
+                status.Diagnostics,
+                diagnostic => diagnostic.Code == "ROS2BRIDGE007");
+
+            sink.ReleaseConnect.Set();
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => !runtime.IsConnected
+                          && sink.DisconnectCount == 1
+                          && !worker.IsAlive,
+                    TimeSpan.FromSeconds(2)),
+                "terminal scheduler did not stop connected worker progress");
+            Assert.False(
+                SpinWait.SpinUntil(
+                    () => sink.ConnectCount > 1
+                          || sink.DisconnectCount > 1,
+                    TimeSpan.FromMilliseconds(200)),
+                "terminal scheduler was observed more than once");
+            Assert.Equal(1UL, scheduler.Counters.Faulted);
+            Assert.Equal(1UL, scheduler.Counters.Dropped);
+            Assert.Contains(
+                "encoder invariant",
+                runtime.GetStatsSnapshot().LastError,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void EmptySchedulerWaitRemainsRetryable()
+        {
+            var sink = new GatedRecordingSink();
+            using var runtime = Runtime(sink, queueCapacity: 8);
+            runtime.Start(enabled: true, autoConnect: true);
+            Assert.True(
+                sink.ConnectEntered.Wait(TimeSpan.FromSeconds(2)),
+                "worker did not enter Connect");
+            sink.ReleaseConnect.Set();
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => runtime.IsConnected,
+                    TimeSpan.FromSeconds(2)),
+                "worker did not connect");
+
+            Assert.False(
+                SpinWait.SpinUntil(
+                    () => !runtime.IsConnected
+                          || sink.DisconnectCount != 0,
+                    TimeSpan.FromMilliseconds(200)),
+                "an empty retryable scheduler stopped the worker");
+            Enqueue(runtime, Frame("/phase187/retryable", 1));
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => sink.SentCount == 1,
+                    TimeSpan.FromSeconds(2)),
+                "worker did not resume after retryable empty polling");
+        }
+
         private static Ros2BridgeRuntime Runtime(
             IRos2BridgeSink sink,
             int queueCapacity)
@@ -195,12 +292,46 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 reason);
         }
 
+        private static Ros2BridgeOutboundScheduler OutboundScheduler(
+            Ros2BridgeRuntime runtime)
+        {
+            var run = WorkerLease(runtime);
+            var outboundField = typeof(Ros2BridgeWorkerLease).GetField(
+                "_outbound",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return Assert.IsType<Ros2BridgeOutboundScheduler>(
+                outboundField?.GetValue(run));
+        }
+
+        private static Thread WorkerThread(
+            Ros2BridgeRuntime runtime)
+        {
+            var run = WorkerLease(runtime);
+            var workerField = typeof(Ros2BridgeWorkerLease).GetField(
+                "_worker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return Assert.IsType<Thread>(
+                workerField?.GetValue(run));
+        }
+
+        private static Ros2BridgeWorkerLease WorkerLease(
+            Ros2BridgeRuntime runtime)
+        {
+            var runField = typeof(Ros2BridgeRuntime).GetField(
+                "_run",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return Assert.IsType<Ros2BridgeWorkerLease>(
+                runField?.GetValue(runtime));
+        }
+
         private sealed class GatedRecordingSink : IRos2BridgeSink
         {
             private readonly object _gate = new object();
             private readonly List<Ros2BridgeFrame> _sent =
                 new List<Ros2BridgeFrame>();
             private int _connected;
+            private int _connectCount;
+            private int _disconnectCount;
 
             internal ManualResetEventSlim ConnectEntered { get; } =
                 new ManualResetEventSlim(false);
@@ -220,6 +351,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 }
             }
 
+            internal int ConnectCount =>
+                Volatile.Read(ref _connectCount);
+
+            internal int DisconnectCount =>
+                Volatile.Read(ref _disconnectCount);
+
             public void Connect(
                 string host,
                 int port,
@@ -228,6 +365,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 _ = host;
                 _ = port;
                 _ = timeoutMs;
+                Interlocked.Increment(ref _connectCount);
                 ConnectEntered.Set();
                 if (!ReleaseConnect.Wait(TimeSpan.FromSeconds(3)))
                 {
@@ -249,6 +387,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             public void Disconnect()
             {
+                Interlocked.Increment(ref _disconnectCount);
                 Volatile.Write(ref _connected, 0);
                 ReleaseConnect.Set();
             }

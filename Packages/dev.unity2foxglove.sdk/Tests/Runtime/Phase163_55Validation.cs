@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var endpoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
             var optionsBranch = endpoint.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal);
-            var authGate = endpoint.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal);
+            var authGate = endpoint.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal);
 
             Check(optionsBranch >= 0 && authGate >= 0 && optionsBranch < authGate,
                 "163-55A-1: cursor endpoint handles CORS preflight before bearer-token auth");
@@ -137,7 +137,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("Phase163_55Validation.cs", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase163-55\", \"Phase 163-55\", Phase163_55Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
+                  && registry.Contains("Ci(\"--phase163-55\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_55Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
                 "163-55F-1: Phase163-55 validation is compiled and registered");
         }
 

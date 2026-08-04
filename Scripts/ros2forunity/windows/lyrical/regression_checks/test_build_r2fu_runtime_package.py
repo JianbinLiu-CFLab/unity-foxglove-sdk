@@ -90,6 +90,29 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             target = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
             self.assertEqual("ok", target.read_text(encoding="utf-8"))
 
+    def test_normalize_ros2cs_plugin_roots_rewrites_both_package_copies(self) -> None:
+        """Generated metadata must not retain the artifact producer's absolute plugin path."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            metadata_files = (
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    '<ros2cs><plugins root="D:\\producer\\plugins" runtime_file_count="1"><file>a.dll</file></plugins></ros2cs>',
+                    encoding="utf-8",
+                )
+
+            self.builder.normalize_ros2cs_plugin_roots(package)
+
+            for path in metadata_files:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn('<plugins root="." runtime_file_count="1">', text)
+                self.assertIn("<file>a.dll</file>", text)
+                self.assertNotIn("D:\\producer", text)
+
     def test_patch_deps_json_sha512_updates_inventory_hash(self) -> None:
         """Generated deps.json files should carry integrity hints and matching inventory hashes."""
         with tempfile.TemporaryDirectory() as temp:
@@ -630,6 +653,49 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             self.assertTrue(sentinel.exists())
             self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
+            rollback_root = root / "build" / "r2fu-runtime-package-rollback"
+            self.assertEqual([], list(rollback_root.iterdir()))
+
+    def test_build_package_preserves_snapshot_when_rollback_fails(self) -> None:
+        """A failed rollback must retain the only recoverable copy of the old package."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "Packages" / self.builder.PACKAGE_NAME
+            package.mkdir(parents=True)
+            (package / "sentinel.txt").write_text("keep", encoding="utf-8")
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            artifact = self.builder.RuntimeArtifact(
+                name=self.builder.ARTIFACT_NAME,
+                sha256="0" * 64,
+                size=1,
+                inventory_file_count=1,
+            )
+            real_copytree = self.builder.shutil.copytree
+            copy_count = 0
+
+            def fail_restore_copy(source, destination, *args, **kwargs):
+                """Fail the restore copy after allowing the backup copy."""
+                nonlocal copy_count
+                copy_count += 1
+                if copy_count == 2:
+                    raise OSError("restore copy failed")
+                return real_copytree(source, destination, *args, **kwargs)
+
+            with mock.patch.object(self.builder, "ROOT", root):
+                with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
+                    with mock.patch.object(self.builder, "extract_runtime", side_effect=RuntimeError("generation failed")):
+                        with mock.patch.object(self.builder.shutil, "copytree", side_effect=fail_restore_copy):
+                            with self.assertRaises(RuntimeError) as raised:
+                                self.builder.build_package(paths)
+
+            rollback_root = root / "build" / "r2fu-runtime-package-rollback"
+            snapshots = list(rollback_root.iterdir())
+            self.assertEqual(1, len(snapshots), f"expected one preserved snapshot, got {snapshots}")
+            snapshot = snapshots[0]
+            self.assertEqual("keep", (snapshot / "sentinel.txt").read_text(encoding="utf-8"))
+            self.assertIn("generation failed", str(raised.exception))
+            self.assertIn("restore copy failed", str(raised.exception))
+            self.assertIn(str(snapshot), str(raised.exception))
 
     def test_build_package_keeps_existing_package_if_reset_fails(self) -> None:
         """Rollback should not mask reset_package_dir path-safety failures."""

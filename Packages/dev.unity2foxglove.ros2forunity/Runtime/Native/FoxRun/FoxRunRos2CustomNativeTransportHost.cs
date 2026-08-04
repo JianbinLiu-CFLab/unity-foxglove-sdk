@@ -33,20 +33,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal bool TryAcquireSubscriptionBackend(out IFoxRunRos2NativeBackend backend)
         {
             backend = null;
-            if (!TryAcquireOwner(out var owner, out var releaseAfterFailure))
+            if (!TryReserveOwner(out var owner))
                 return false;
 
             try
             {
                 var inner = owner.AcquireBackend();
-                lock (_sync)
-                    checked { _leaseCount++; }
                 backend = new SubscriptionLease(inner, ReleaseLease);
                 return true;
             }
             catch (Exception)
             {
-                ReleaseOwnerAfterAcquireFailure(owner, releaseAfterFailure);
+                ReleaseLease();
                 return false;
             }
         }
@@ -54,69 +52,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal bool TryAcquirePublisherBackend(out IFoxRunRos2NativePublisherBackend backend)
         {
             backend = null;
-            if (!TryAcquireOwner(out var owner, out var releaseAfterFailure))
+            if (!TryReserveOwner(out var owner))
                 return false;
 
             try
             {
                 var inner = owner.AcquirePublisherBackend();
-                lock (_sync)
-                    checked { _leaseCount++; }
                 backend = new PublisherLease(inner, ReleaseLease);
                 return true;
             }
             catch (Exception)
             {
-                ReleaseOwnerAfterAcquireFailure(owner, releaseAfterFailure);
+                ReleaseLease();
                 return false;
             }
         }
 
-        private bool TryAcquireOwner(
-            out Ros2ForUnityFoxRunNodeOwner owner,
-            out bool releaseAfterFailure)
+        private bool TryReserveOwner(out Ros2ForUnityFoxRunNodeOwner owner)
         {
             owner = null;
-            releaseAfterFailure = false;
             lock (_sync)
             {
                 owner = _owner;
-                if (owner != null)
-                    return true;
-
-                try
-                {
-                    owner = _createOwner();
-                }
-                catch (Exception)
-                {
-                    return false;
-                }
-
                 if (owner == null)
-                    return false;
+                {
+                    try
+                    {
+                        owner = _createOwner();
+                    }
+                    catch (Exception)
+                    {
+                        return false;
+                    }
 
-                _owner = owner;
-                releaseAfterFailure = true;
+                    if (owner == null)
+                        return false;
+
+                    _owner = owner;
+                }
+
+                if (_leaseCount == int.MaxValue)
+                {
+                    owner = null;
+                    return false;
+                }
+
+                // Reserve ownership before leaving the tracker lock. The
+                // selected owner therefore cannot be detached while its
+                // concrete backend acquisition is still in progress.
+                _leaseCount++;
                 return true;
             }
-        }
-
-        private void ReleaseOwnerAfterAcquireFailure(
-            Ros2ForUnityFoxRunNodeOwner owner,
-            bool releaseAfterFailure)
-        {
-            if (!releaseAfterFailure)
-                return;
-
-            lock (_sync)
-            {
-                if (_leaseCount != 0 || !ReferenceEquals(_owner, owner))
-                    return;
-                _owner = null;
-            }
-
-            owner.ReleaseHostOwnership();
         }
 
         private void ReleaseLease()

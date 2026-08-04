@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -89,9 +90,9 @@ namespace Unity.FoxgloveSDK.Tests
             var pluginMetadata = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/metadata_ros2cs.xml");
             var nativeMetadata = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/metadata_ros2cs.xml");
             Check(pluginMetadata.Contains("<ros2>humble</ros2>", StringComparison.Ordinal)
-                  && pluginMetadata.Contains("<desc>v0.6.0-humble-preview.1-51-gb77c088</desc>", StringComparison.Ordinal)
+                  && pluginMetadata.Contains("<desc>v0.9.0</desc>", StringComparison.Ordinal)
                   && nativeMetadata.Contains("<ros2>humble</ros2>", StringComparison.Ordinal)
-                  && nativeMetadata.Contains("<desc>v0.6.0-humble-preview.1-51-gb77c088</desc>", StringComparison.Ordinal),
+                  && nativeMetadata.Contains("<desc>v0.9.0</desc>", StringComparison.Ordinal),
                 "160-A6b: Humble ros2cs metadata distro and description agree");
             Check(pluginMetadata.Contains("<plugins root=\".\"", StringComparison.Ordinal)
                   && nativeMetadata.Contains("<plugins root=\".\"", StringComparison.Ordinal)
@@ -123,9 +124,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && !runtimeSource.Contains("ThrowIfUninitialized", StringComparison.Ordinal)
                   && runtimeSource.Contains("LoadMetadata() must complete before metadata-backed properties are read.", StringComparison.Ordinal),
                 "160-A7c: Humble ROS2ForUnity avoids duplicate standalone env setup and stale reload handlers");
-            Check(runtimeSource.Contains("not performed from a finalizer", StringComparison.Ordinal)
+            var dispose = ExtractMethodBody(runtimeSource, "Dispose");
+            Check(runtimeSource.Contains("internal class ROS2ForUnity : IDisposable", StringComparison.Ordinal)
+                  && dispose.Contains("DestroyROS2ForUnity();", StringComparison.Ordinal)
+                  && dispose.Contains("GC.SuppressFinalize(this);", StringComparison.Ordinal)
                   && !runtimeSource.Contains("~ROS2ForUnity", StringComparison.Ordinal),
-                "160-A7d: Humble ROS2ForUnity documents deterministic Dispose without native finalizer shutdown");
+                "160-A7d: Humble ROS2ForUnity implements deterministic Dispose without a native finalizer");
 
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
@@ -383,10 +387,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string[] RuntimePackageKeys(string json)
         {
-            var matches = Regex.Matches(
-                json ?? string.Empty,
-                "\"(dev\\.unity2foxglove\\.ros2forunity\\.runtime\\.[^\"]+)\"\\s*:");
-            return matches.Cast<Match>().Select(match => match.Groups[1].Value).ToArray();
+            const string runtimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
+            var dependencies = JObject.Parse(json ?? string.Empty)["dependencies"] as JObject;
+            return dependencies?.Properties()
+                .Select(property => property.Name)
+                .Where(name => name.StartsWith(runtimePackagePrefix, StringComparison.Ordinal))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray()
+                ?? Array.Empty<string>();
         }
 
         private static string RuntimeId(string runtimeManifest)

@@ -97,9 +97,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CursorPreflightRunsBeforeBearerAuthorization()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
-            var handle = Slice(source, "private void Handle(HttpListenerContext context)", "private bool IsAuthorized");
+            var handle = Slice(
+                source,
+                "private void Handle(WorkerGeneration generation, HttpListenerContext context)",
+                "private static bool IsAuthorized");
             var optionsIndex = handle.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal);
-            var authIndex = handle.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal);
+            var authIndex = handle.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal);
 
             Check(optionsIndex >= 0
                   && authIndex >= 0

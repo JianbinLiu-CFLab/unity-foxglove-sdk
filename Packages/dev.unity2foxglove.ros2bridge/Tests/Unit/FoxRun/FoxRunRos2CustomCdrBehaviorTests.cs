@@ -677,45 +677,52 @@ namespace Phase186
         }
 
         [Fact]
-        public void GeneratedBuilderAcceptsTheLargestPayloadWithinFourMiBAndRejectsTheFirstLargerPayload()
+        public void GeneratedBuilderRejectsSequenceAboveTheDeclaredItemBudget()
+        {
+            var values = new FixtureValues
+            {
+                Bytes = new byte[
+                    FoxRunBridgeCustomDtoBudgetPolicy.MaximumSequenceItems + 1],
+            };
+
+            var actual = Contract.Value.Build(
+                values,
+                "phase187-sequence-budget",
+                sequence: 1UL,
+                nowNs: 0UL);
+
+            Assert.False(actual.Success);
+            Assert.Null(actual.Payload);
+            Assert.Contains(
+                "item budget",
+                actual.Reason,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void GeneratedBuilderAcceptsTheItemLimitAndRetainsTheFourMiBByteBudget()
         {
             const string origin = "phase184-four-mib-boundary";
             const ulong sequence = 1UL;
             const ulong nowNs = 0UL;
-            var boundaryValues = new FixtureValues();
-            var acceptedByteCount = FindLargestByteSequenceWithinLimit(
-                boundaryValues,
-                origin,
-                sequence,
-                nowNs,
-                MaximumPayloadBytes);
-            var rejectedByteCount = checked(acceptedByteCount + 1);
-            var acceptedSize = MeasureOracle(
-                boundaryValues,
-                origin,
-                sequence,
-                nowNs,
-                acceptedByteCount);
-            var rejectedSize = MeasureOracle(
-                boundaryValues,
-                origin,
-                sequence,
-                nowNs,
-                rejectedByteCount);
-
-            Assert.InRange(acceptedSize, MaximumPayloadBytes - 8, MaximumPayloadBytes);
-            Assert.True(rejectedSize > MaximumPayloadBytes);
-
-            boundaryValues.Bytes = new byte[acceptedByteCount];
+            var boundaryValues = new FixtureValues
+            {
+                Bytes = new byte[
+                    FoxRunBridgeCustomDtoBudgetPolicy.MaximumSequenceItems],
+            };
             var accepted = Contract.Value.Build(boundaryValues, origin, sequence, nowNs);
             Assert.True(accepted.Success, accepted.Reason);
-            Assert.Equal(acceptedSize, accepted.Payload.Length);
+            Assert.InRange(accepted.Payload.Length, 1, MaximumPayloadBytes);
 
-            boundaryValues.Bytes = new byte[rejectedByteCount];
+            boundaryValues.Bytes = Array.Empty<byte>();
+            boundaryValues.Message = new string('x', MaximumPayloadBytes);
             var rejected = Contract.Value.Build(boundaryValues, origin, sequence, nowNs);
             Assert.False(rejected.Success);
             Assert.Null(rejected.Payload);
-            Assert.False(string.IsNullOrWhiteSpace(rejected.Reason));
+            Assert.Contains(
+                "byte budget",
+                rejected.Reason,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private static GeneratedContract CompileGeneratedContract()
@@ -1164,54 +1171,13 @@ namespace Phase186
             return new OracleResult(writer.ToArray(), offsets);
         }
 
-        private static int MeasureOracle(
-            FixtureValues values,
-            string origin,
-            ulong sequence,
-            ulong nowNs,
-            int byteCount)
-        {
-            var writer = new OracleSizeWriter();
-            WriteCanonicalEnvelope(
-                writer,
-                values,
-                origin,
-                sequence,
-                nowNs,
-                presenceOffsets: null,
-                byteCountOverride: byteCount);
-            return writer.Position;
-        }
-
-        private static int FindLargestByteSequenceWithinLimit(
-            FixtureValues values,
-            string origin,
-            ulong sequence,
-            ulong nowNs,
-            int maximumBytes)
-        {
-            var low = 0;
-            var high = maximumBytes;
-            while (low < high)
-            {
-                var candidate = low + ((high - low + 1) / 2);
-                if (MeasureOracle(values, origin, sequence, nowNs, candidate) <= maximumBytes)
-                    low = candidate;
-                else
-                    high = candidate - 1;
-            }
-
-            return low;
-        }
-
         private static void WriteCanonicalEnvelope(
             IOracleWriter writer,
             FixtureValues values,
             string origin,
             ulong sequence,
             ulong nowNs,
-            IDictionary<string, int> presenceOffsets,
-            int? byteCountOverride = null)
+            IDictionary<string, int> presenceOffsets)
         {
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
@@ -1224,9 +1190,9 @@ namespace Phase186
             writer.WriteInt32((int)seconds);
             writer.WriteUInt32((uint)(nowNs % 1_000_000_000UL));
 
-            var byteCount = byteCountOverride ?? (values.Bytes == null ? 0 : values.Bytes.Length);
+            var byteCount = values.Bytes == null ? 0 : values.Bytes.Length;
             writer.WriteByteSequence(values.Bytes, byteCount);
-            RecordPresence(writer, presenceOffsets, "bytes", byteCountOverride.HasValue || values.Bytes != null);
+            RecordPresence(writer, presenceOffsets, "bytes", values.Bytes != null);
 
             writer.WriteInt32(values.Count);
             writer.WriteInt32(values.Kind);
@@ -1719,70 +1685,5 @@ namespace Phase186
             }
         }
 
-        private sealed class OracleSizeWriter : IOracleWriter
-        {
-            private const int AlignmentOrigin = 4;
-            private int _position = AlignmentOrigin;
-
-            public int Position => _position;
-
-            public void WriteBool(bool value) => _position++;
-
-            public void WriteUInt16(ushort value)
-            {
-                Align(2);
-                _position += 2;
-            }
-
-            public void WriteInt32(int value)
-            {
-                Align(4);
-                _position += 4;
-            }
-
-            public void WriteUInt32(uint value)
-            {
-                Align(4);
-                _position += 4;
-            }
-
-            public void WriteInt64(long value)
-            {
-                Align(8);
-                _position += 8;
-            }
-
-            public void WriteUInt64(ulong value)
-            {
-                Align(8);
-                _position += 8;
-            }
-
-            public void WriteString(string value)
-            {
-                Align(4);
-                _position = checked(_position + 4 + Encoding.UTF8.GetByteCount(value ?? string.Empty) + 1);
-            }
-
-            public void WriteByteSequence(byte[] values, int count)
-            {
-                WriteSequenceLength(count);
-                _position = checked(_position + count);
-            }
-
-            public void WriteSequenceLength(int count)
-            {
-                if (count < 0)
-                    throw new ArgumentOutOfRangeException(nameof(count));
-                WriteUInt32((uint)count);
-            }
-
-            private void Align(int alignment)
-            {
-                var relative = (_position - AlignmentOrigin) % alignment;
-                if (relative != 0)
-                    _position += alignment - relative;
-            }
-        }
     }
 }

@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <condition_variable>
@@ -254,6 +255,335 @@ int ShutdownSocketWrite(SocketHandle socket)
   return ::shutdown(socket, SHUT_WR);
 #endif
 }
+
+class SocketThreadJoiner final
+{
+public:
+  SocketThreadJoiner(SocketHandle socket, std::thread & thread)
+  : socket_(socket), thread_(thread)
+  {
+  }
+
+  ~SocketThreadJoiner()
+  {
+    if (!thread_.joinable()) {
+      return;
+    }
+    shutdown_socket_both(socket_);
+    try {
+      thread_.join();
+    } catch (...) {
+    }
+  }
+
+  SocketThreadJoiner(const SocketThreadJoiner &) = delete;
+  SocketThreadJoiner & operator=(const SocketThreadJoiner &) = delete;
+
+private:
+  SocketHandle socket_;
+  std::thread & thread_;
+};
+
+const nlohmann::json & ExecutableV1BaseVector(
+  const nlohmann::json & fixture,
+  const std::string & base_frame)
+{
+  if (base_frame == "preparePublisher.request") {
+    return fixture.at("preparePublisher").at("request");
+  }
+  if (base_frame == "preparePublisher.response") {
+    return fixture.at("preparePublisher").at("response");
+  }
+  if (base_frame == "publish.frame") {
+    return fixture.at("publish").at("frame");
+  }
+  throw std::runtime_error(
+          "unknown executable v1 base frame: " + base_frame);
+}
+
+std::vector<uint8_t> ExecutableV1BaseFrame(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  return HexToBytes(
+    ExecutableV1BaseVector(
+      fixture,
+      vector.at("baseFrame").get<std::string>())
+    .at("frameHex").get<std::string>());
+}
+
+void SetU32At(std::vector<uint8_t> & bytes, size_t offset, uint32_t value)
+{
+  if (offset + 4U > bytes.size()) {
+    throw std::runtime_error("executable v1 u32 patch is outside the frame");
+  }
+  bytes[offset] = static_cast<uint8_t>(value & 0xffU);
+  bytes[offset + 1U] = static_cast<uint8_t>((value >> 8U) & 0xffU);
+  bytes[offset + 2U] = static_cast<uint8_t>((value >> 16U) & 0xffU);
+  bytes[offset + 3U] = static_cast<uint8_t>((value >> 24U) & 0xffU);
+}
+
+void ReadExecutableV1Body(
+  const std::vector<uint8_t> & frame,
+  std::vector<uint8_t> & header,
+  std::vector<uint8_t> & payload)
+{
+  if (frame.size() < 16U) {
+    throw std::runtime_error("executable v1 base frame is too short");
+  }
+  const auto header_length = read_u32_le(&frame[8]);
+  const auto payload_length = read_u32_le(&frame[12]);
+  if (
+    frame.size() !=
+    16U + static_cast<size_t>(header_length) +
+    static_cast<size_t>(payload_length))
+  {
+    throw std::runtime_error(
+            "executable v1 base frame has inconsistent lengths");
+  }
+  header.assign(
+    frame.begin() + 16,
+    frame.begin() + 16 + header_length);
+  payload.assign(
+    frame.begin() + 16 + header_length,
+    frame.end());
+}
+
+std::vector<uint8_t> RebuildExecutableV1Frame(
+  const std::vector<uint8_t> & base,
+  const std::vector<uint8_t> & header,
+  const std::vector<uint8_t> & payload)
+{
+  if (base.size() < 16U ||
+    header.size() > std::numeric_limits<uint32_t>::max() ||
+    payload.size() > std::numeric_limits<uint32_t>::max())
+  {
+    throw std::runtime_error("executable v1 rebuild input is invalid");
+  }
+  std::vector<uint8_t> frame(
+    16U + header.size() + payload.size(),
+    0U);
+  std::copy_n(base.begin(), 16, frame.begin());
+  SetU32At(frame, 8, static_cast<uint32_t>(header.size()));
+  SetU32At(frame, 12, static_cast<uint32_t>(payload.size()));
+  std::copy(header.begin(), header.end(), frame.begin() + 16);
+  std::copy(
+    payload.begin(),
+    payload.end(),
+    frame.begin() + 16 + header.size());
+  return frame;
+}
+
+std::vector<uint8_t> BuildExecutableV1Wire(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  auto frame = ExecutableV1BaseFrame(fixture, vector);
+  const auto action = vector.at("action").get<std::string>();
+  if (action == "patch_frame") {
+    const auto replacement =
+      HexToBytes(vector.at("replacementHex").get<std::string>());
+    const auto offset = vector.at("offset").get<size_t>();
+    if (offset + replacement.size() > frame.size()) {
+      throw std::runtime_error("executable v1 patch is outside the frame");
+    }
+    std::copy(
+      replacement.begin(),
+      replacement.end(),
+      frame.begin() + offset);
+    return frame;
+  }
+  if (action == "truncate_frame" || action == "stream_frame") {
+    size_t length;
+    if (vector.contains("length")) {
+      length = vector.at("length").get<size_t>();
+    } else {
+      const auto trim = vector.at("trimBytes").get<size_t>();
+      if (trim >= frame.size()) {
+        throw std::runtime_error("executable v1 trim removes the whole frame");
+      }
+      length = frame.size() - trim;
+    }
+    if (length >= frame.size()) {
+      throw std::runtime_error("executable v1 truncation is not shorter");
+    }
+    frame.resize(length);
+    return frame;
+  }
+  if (action == "patch_json") {
+    auto decoded = u2r2::decode_frame(frame);
+    const auto path = vector.at("path").get<std::string>();
+    if (path == "qos.history") {
+      decoded.header.at("qos")["history"] = vector.at("value");
+    } else if (path.find('.') == std::string::npos) {
+      decoded.header[path] = vector.at("value");
+    } else {
+      throw std::runtime_error(
+              "unsupported executable v1 JSON path: " + path);
+    }
+    return u2r2::encode_frame(decoded.header, decoded.payload);
+  }
+
+  std::vector<uint8_t> header;
+  std::vector<uint8_t> payload;
+  ReadExecutableV1Body(frame, header, payload);
+  if (action == "duplicate_json_property") {
+    if (header.empty() || header.front() != '{') {
+      throw std::runtime_error(
+              "executable v1 duplicate base header is not an object");
+    }
+    const auto prefix =
+      nlohmann::json(vector.at("property").get<std::string>()).dump() +
+      ":" + vector.at("value").dump() + ",";
+    header.insert(
+      header.begin() + 1,
+      prefix.begin(),
+      prefix.end());
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  if (action == "replace_header_utf8") {
+    const auto needle_text = vector.at("needle").get<std::string>();
+    const std::vector<uint8_t> needle(
+      needle_text.begin(),
+      needle_text.end());
+    const auto replacement =
+      HexToBytes(vector.at("replacementHex").get<std::string>());
+    const auto found = std::search(
+      header.begin(),
+      header.end(),
+      needle.begin(),
+      needle.end());
+    if (found == header.end() || replacement.size() > needle.size()) {
+      throw std::runtime_error(
+              "executable v1 UTF-8 replacement target is invalid");
+    }
+    std::copy(replacement.begin(), replacement.end(), found);
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  if (action == "append_json_root") {
+    const auto suffix = vector.at("suffix").get<std::string>();
+    header.insert(header.end(), suffix.begin(), suffix.end());
+    return RebuildExecutableV1Frame(frame, header, payload);
+  }
+  throw std::runtime_error("unknown executable v1 action: " + action);
+}
+
+std::string ExpectedCppV1FailureFragment(const std::string & failure)
+{
+  if (failure == "magic") {
+    return "magic";
+  }
+  if (failure == "version" || failure == "flags") {
+    return "envelope version or reserved flags";
+  }
+  if (failure == "header_length") {
+    return "JSON header length is out of range";
+  }
+  if (failure == "payload_length") {
+    return "payload length is out of range";
+  }
+  if (failure == "fixed_header") {
+    return "shorter than its fixed header";
+  }
+  if (failure == "header_completion" || failure == "payload_completion") {
+    return "truncated or trailing bytes";
+  }
+  if (failure == "duplicate_property") {
+    return "duplicate property";
+  }
+  if (failure == "operation") {
+    return "first legacy U2R2 frame";
+  }
+  if (failure == "utf8" || failure == "json_root") {
+    return "JSON header is invalid";
+  }
+  if (failure == "topic") {
+    return "topic";
+  }
+  if (failure == "schema_name") {
+    return "schemaName";
+  }
+  if (failure == "qos") {
+    return "qos.depth";
+  }
+  throw std::runtime_error(
+          "unknown executable C++ v1 failure classification: " + failure);
+}
+
+void ExpectExecutableV1NegativeRejected(
+  const nlohmann::json & fixture,
+  const nlohmann::json & vector)
+{
+  const auto action = vector.at("action").get<std::string>();
+  const auto expected_failure =
+    vector.at("expectedFailure").get<std::string>();
+  if (action == "stream_frame") {
+    const auto wire = BuildExecutableV1Wire(fixture, vector);
+    const auto sockets = MakeConnectedSocketPair();
+    ASSERT_NE(kInvalidSocket, sockets[0]);
+    ASSERT_NE(kInvalidSocket, sockets[1]);
+    ScopedFd writer(sockets[0]);
+    ScopedFd reader(sockets[1]);
+    configure_client_timeouts(reader.get());
+    write_all(writer.get(), wire);
+    const auto termination = vector.at("termination").get<std::string>();
+    const auto limits = termination == "timeout"
+      ? u2r2::ProtocolLimits::defaults().with({
+          {"partialFrameTimeoutMs", vector.at("timeoutMs").get<uint64_t>()},
+        })
+      : u2r2::ProtocolLimits::defaults();
+    if (termination == "eof") {
+      ASSERT_EQ(0, ShutdownSocketWrite(writer.get()));
+    } else if (termination != "timeout") {
+      FAIL() << "unknown executable v1 stream termination: " << termination;
+    }
+    bridge_runtime::BridgeSessionProtocol protocol(limits);
+    if (termination == "timeout") {
+      try {
+        (void)read_accounted_wire_frame(
+          reader.get(),
+          protocol,
+          []() {return true;});
+        FAIL() << "partial executable v1 frame did not time out";
+      } catch (const u2r2::ProtocolError & error) {
+        EXPECT_EQ("timeout", error.code());
+        EXPECT_TRUE(error.terminal());
+      }
+      EXPECT_EQ("partial_payload_timeout", expected_failure);
+    } else {
+      EXPECT_THROW(
+        (void)read_accounted_wire_frame(
+          reader.get(),
+          protocol,
+          []() {return true;}),
+        ClientClosedException);
+      EXPECT_EQ("peer_close", expected_failure);
+    }
+    return;
+  }
+
+  const auto wire = BuildExecutableV1Wire(fixture, vector);
+  std::string rejection;
+  try {
+    if (
+      expected_failure == "topic" ||
+      expected_failure == "schema_name" ||
+      expected_failure == "qos")
+    {
+      (void)parse_prepare_publisher_frame(
+        raw_frame_from_wire(wire, u2r2::ProtocolLimits::defaults()));
+    } else {
+      (void)u2r2::parse_legacy_v1_first_frame(wire);
+    }
+  } catch (const std::exception & error) {
+    rejection = error.what();
+  }
+  EXPECT_FALSE(rejection.empty());
+  EXPECT_NE(
+    std::string::npos,
+    rejection.find(ExpectedCppV1FailureFragment(expected_failure)))
+    << rejection;
+}
 }  // namespace
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCppProtocol)
@@ -340,9 +670,6 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
     HexToBytes(publish.at("payloadHex").get<std::string>()),
     publish_frame.payload);
 
-  // Phase186-A froze these v1 entries as a documented case catalog.
-  // Executable negative actions live under v2.negativeVectors and are driven
-  // by test_u2r2_protocol.cpp in both language implementations.
   const std::array<std::string, 19> expected_negative_ids = {
     "bad_magic",
     "bad_version",
@@ -373,6 +700,32 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
     EXPECT_EQ(
       "reject",
       negative_vectors[index].at("expected").get<std::string>());
+  }
+
+  const auto & execution =
+    fixture.at("v2").at("legacyV1NegativeExecution");
+  EXPECT_EQ(1, execution.at("schemaVersion").get<int>());
+  EXPECT_EQ("negativeVectors", execution.at("catalog").get<std::string>());
+  const auto & executable_vectors = execution.at("vectors");
+  ASSERT_EQ(expected_negative_ids.size(), executable_vectors.size());
+  for (size_t index = 0; index < executable_vectors.size(); ++index) {
+    const auto & vector = executable_vectors[index];
+    EXPECT_EQ(
+      expected_negative_ids[index],
+      vector.at("id").get<std::string>());
+    ASSERT_TRUE(vector.at("action").is_string());
+    ASSERT_FALSE(vector.at("action").get<std::string>().empty());
+    ASSERT_TRUE(vector.at("expectedFailure").is_string());
+    ASSERT_FALSE(vector.at("expectedFailure").get<std::string>().empty());
+    const auto & consumers = vector.at("consumers");
+    ASSERT_TRUE(consumers.is_array());
+    ASSERT_FALSE(consumers.empty());
+    const auto consumes_cpp =
+      std::find(consumers.begin(), consumers.end(), "cpp") !=
+      consumers.end();
+    if (consumes_cpp) {
+      ExpectExecutableV1NegativeRejected(fixture, vector);
+    }
   }
 }
 
@@ -1130,6 +1483,59 @@ TEST(
   context->shutdown("phase184 deferred process node test complete");
 }
 
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  AccountedIdleReadStopsWhenTheOwningContextStops)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::BridgeSessionProtocol protocol(
+    u2r2::ProtocolLimits::defaults());
+  std::atomic<bool> context_ok{true};
+  std::atomic<int> outcome{0};
+  std::thread reader(
+    [&]() {
+      try {
+        (void)read_accounted_wire_frame(
+          server_socket.get(),
+          protocol,
+          [&]() {return context_ok.load();});
+        outcome.store(1);
+      } catch (const ClientClosedException &) {
+        outcome.store(2);
+      } catch (...) {
+        outcome.store(3);
+      }
+    });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  context_ok.store(false);
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (
+    outcome.load() == 0 &&
+    std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  const bool stopped_before_socket_close = outcome.load() != 0;
+  if (!stopped_before_socket_close) {
+    EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  }
+  reader.join();
+
+  EXPECT_TRUE(stopped_before_socket_close);
+  EXPECT_EQ(2, outcome.load());
+  EXPECT_EQ(0U, protocol.in_flight_bytes());
+  EXPECT_EQ(0U, protocol.transient_bytes());
+}
+
 namespace
 {
 namespace bridge_runtime = unity2foxglove::ros2_bridge::runtime;
@@ -1199,7 +1605,7 @@ TEST(
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
-  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+  EXPECT_EQ(wire.size(), protocol.transient_bytes());
 
   write_all(
     client_socket.get(),
@@ -1210,7 +1616,7 @@ TEST(
   ASSERT_TRUE(received.has_value());
   EXPECT_EQ(wire, received->bytes);
   EXPECT_EQ(wire.size(), protocol.in_flight_bytes());
-  EXPECT_EQ(wire.size() * 2U, protocol.transient_bytes());
+  EXPECT_EQ(wire.size(), protocol.transient_bytes());
   received.reset();
   EXPECT_EQ(0U, protocol.in_flight_bytes());
   EXPECT_EQ(0U, protocol.transient_bytes());
@@ -1628,6 +2034,220 @@ TEST(
     authority.try_acquire_role(u2r2::ConnectionRole::data_session);
   ASSERT_TRUE(replacement.has_value());
   replacement->release();
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2NonterminalParseAndReplayErrorsRespondAndSessionContinues)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    []() -> std::unique_ptr<BridgeNode> {
+      GenericPublisherFactory publisher_factory =
+        [](const std::string &, const std::string &, const rclcpp::QoS &) {
+          return [](const rclcpp::SerializedMessage &) {};
+        };
+      return std::make_unique<BridgeNode>(
+        PayloadFormat::CdrWithEncapsulation,
+        std::move(publisher_factory));
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase187_v2_error_response_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+  SocketThreadJoiner server_joiner(client_socket.get(), server);
+
+  const auto hello = u2r2::encode_frame(
+    {
+      {"op", "hello"},
+      {"protocolVersion", 2},
+      {"requestId", 10},
+      {"clientName", "phase187-error-recovery"},
+      {"capabilities", nlohmann::json::array({"publish"})},
+    },
+    {});
+  write_all(client_socket.get(), hello);
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  const auto prepare_request = [&](uint64_t request_id) {
+    return u2r2::encode_frame(
+      {
+        {"op", "prepare_publisher"},
+        {"protocolVersion", 2},
+        {"requestId", request_id},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"topic", "/phase187/v2/stale"},
+        {"schemaName", "std_msgs/msg/String"},
+        {"encoding", "cdr"},
+        {"qos", {
+            {"profile", "default"},
+            {"reliability", "reliable"},
+            {"durability", "volatile"},
+            {"history", "keep_last"},
+            {"depth", 10},
+          }},
+      },
+      {});
+  };
+  const auto health_request = [&](uint64_t request_id) {
+    return u2r2::encode_frame(
+      {
+        {"op", "health_ping"},
+        {"protocolVersion", 2},
+        {"requestId", request_id},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+      },
+      {});
+  };
+
+  const auto stale_prepare = prepare_request(9);
+  write_all(client_socket.get(), stale_prepare);
+  const auto stale_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::PublisherReady, stale_response.operation);
+  EXPECT_EQ(9U, stale_response.request_id);
+  EXPECT_EQ("error", stale_response.status);
+  EXPECT_EQ("stale_request", stale_response.error_code);
+  EXPECT_FALSE(stale_response.terminal);
+
+  const auto health = health_request(20);
+  write_all(client_socket.get(), health);
+  const auto health_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, health_response.operation);
+  EXPECT_EQ(20U, health_response.request_id);
+  EXPECT_EQ("ok", health_response.status);
+
+  const auto replay_stale_prepare = prepare_request(12);
+  write_all(client_socket.get(), replay_stale_prepare);
+  const auto replay_stale_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(
+    u2r2::Operation::PublisherReady,
+    replay_stale_response.operation);
+  EXPECT_EQ(12U, replay_stale_response.request_id);
+  EXPECT_EQ("error", replay_stale_response.status);
+  EXPECT_EQ("stale_request", replay_stale_response.error_code);
+  EXPECT_FALSE(replay_stale_response.terminal);
+
+  write_all(client_socket.get(), health_request(21));
+  const auto recovered = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, recovered.operation);
+  EXPECT_EQ(21U, recovered.request_id);
+  EXPECT_EQ("ok", recovered.status);
+
+  EXPECT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+  server.join();
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(0U, authority.classified_count());
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  OwnedV2PeerHalfCloseDrainsCommittedUnknownContractResponse)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  bridge_runtime::ProcessConnectionAuthority authority(
+    u2r2::ProtocolLimits::defaults());
+  std::exception_ptr server_error;
+  BridgeGenerationFactory generation_factory =
+    []() -> std::unique_ptr<BridgeNode> {
+      GenericPublisherFactory publisher_factory =
+        [](const std::string &, const std::string &, const rclcpp::QoS &) {
+          return [](const rclcpp::SerializedMessage &) {};
+        };
+      return std::make_unique<BridgeNode>(
+        PayloadFormat::CdrWithEncapsulation,
+        std::move(publisher_factory));
+    };
+
+  std::thread server(
+    [&]() {
+      try {
+        process_owned_client(
+          server_socket.get(),
+          authority,
+          generation_factory,
+          rclcpp::get_logger("phase187_v2_half_close_drain_test"),
+          []() {return true;});
+      } catch (...) {
+        server_error = std::current_exception();
+      }
+    });
+  SocketThreadJoiner server_joiner(client_socket.get(), server);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "hello"},
+        {"protocolVersion", 2},
+        {"requestId", 30},
+        {"clientName", "phase187-half-close-drain"},
+        {"capabilities", nlohmann::json::array({"subscribe"})},
+      },
+      {}));
+  const auto hello_ack = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  ASSERT_EQ(u2r2::Operation::HelloAck, hello_ack.operation);
+
+  write_all(
+    client_socket.get(),
+    u2r2::encode_frame(
+      {
+        {"op", "unregister_subscription"},
+        {"protocolVersion", 2},
+        {"requestId", 31},
+        {"sessionId", hello_ack.session_id},
+        {"connectionGeneration", hello_ack.connection_generation},
+        {"contractId", 404},
+      },
+      {}));
+  ASSERT_EQ(0, ShutdownSocketWrite(client_socket.get()));
+
+  const auto response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  server.join();
+
+  ASSERT_EQ(nullptr, server_error);
+  EXPECT_EQ(u2r2::Operation::SubscriptionRemoved, response.operation);
+  EXPECT_EQ(31U, response.request_id);
+  EXPECT_EQ("error", response.status);
+  EXPECT_EQ("unknown_contract", response.error_code);
+  EXPECT_TRUE(response.terminal);
+  EXPECT_EQ(0U, authority.classified_count());
 }
 
 TEST(

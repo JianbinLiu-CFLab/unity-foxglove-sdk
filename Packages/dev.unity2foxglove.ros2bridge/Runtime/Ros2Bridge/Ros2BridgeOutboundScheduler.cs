@@ -200,6 +200,61 @@ namespace Unity2Foxglove.Ros2Bridge
         }
     }
 
+    internal sealed class Ros2BridgePreparedOutboundEnqueue : IDisposable
+    {
+        private readonly Ros2BridgeOutboundScheduler _owner;
+        private U2R2ByteLease _transientLease;
+        private int _settled;
+
+        internal Ros2BridgePreparedOutboundEnqueue(
+            Ros2BridgeOutboundScheduler owner,
+            Ros2BridgeFrame frame,
+            Ros2BridgeFrameMeasurement measurement,
+            byte[] encodedWire,
+            U2R2ByteLease transientLease)
+        {
+            _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+            Frame = frame ?? throw new ArgumentNullException(nameof(frame));
+            Measurement = measurement;
+            EncodedWire = encodedWire
+                          ?? throw new ArgumentNullException(nameof(encodedWire));
+            _transientLease = transientLease
+                              ?? throw new ArgumentNullException(nameof(transientLease));
+        }
+
+        internal Ros2BridgeFrame Frame { get; }
+        internal Ros2BridgeFrameMeasurement Measurement { get; }
+        internal byte[] EncodedWire { get; }
+
+        internal U2R2ByteLease TakeForCommit(
+            Ros2BridgeOutboundScheduler owner)
+        {
+            if (!ReferenceEquals(_owner, owner))
+            {
+                throw new InvalidOperationException(
+                    "The prepared ROS 2 Bridge frame belongs to another scheduler.");
+            }
+            if (Interlocked.CompareExchange(ref _settled, 1, 0) != 0)
+            {
+                throw new InvalidOperationException(
+                    "The prepared ROS 2 Bridge frame is already settled.");
+            }
+            return Interlocked.Exchange(ref _transientLease, null)
+                   ?? throw new InvalidOperationException(
+                       "The prepared ROS 2 Bridge frame has no transient lease.");
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.CompareExchange(ref _settled, 1, 0) != 0)
+                return;
+            var transientLease =
+                Interlocked.Exchange(ref _transientLease, null);
+            if (transientLease != null)
+                _owner.CancelPrepared(transientLease);
+        }
+    }
+
     internal sealed class Ros2BridgeOutboundScheduler : IDisposable
     {
         internal sealed class QueueEntry
@@ -400,6 +455,16 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
+        internal bool TryGetTerminalState(
+            out Exception terminalFault)
+        {
+            lock (_gate)
+            {
+                terminalFault = _terminalFault;
+                return _closed;
+            }
+        }
+
         internal Ros2BridgeOutboundCloseResult LastCloseResult
         {
             get
@@ -415,13 +480,33 @@ namespace Unity2Foxglove.Ros2Bridge
             bool requiresPreparation = false,
             long enqueueConnectionGeneration = 0)
         {
+            ValidateOverflowPolicy(overflowPolicy);
+            var disposition = PrepareEnqueue(
+                frame,
+                out var prepared);
+            if (disposition != Ros2BridgeOutboundEnqueueDisposition.Accepted)
+                return disposition;
+            using (prepared)
+            {
+                return CommitPrepared(
+                    prepared,
+                    overflowPolicy,
+                    requiresPreparation,
+                    enqueueConnectionGeneration);
+            }
+        }
+
+        internal Ros2BridgeOutboundEnqueueDisposition PrepareEnqueue(
+            Ros2BridgeFrame frame,
+            out Ros2BridgePreparedOutboundEnqueue prepared)
+        {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
-            ValidateOverflowPolicy(overflowPolicy);
+            prepared = null;
+            var identity = new ContractIdentity(frame);
 
             lock (_gate)
             {
-                var identity = new ContractIdentity(frame);
                 var existingContract = FindContract(identity);
                 if (_terminalFault != null)
                 {
@@ -433,123 +518,210 @@ namespace Unity2Foxglove.Ros2Bridge
                     IncrementRejectedAfterStop(existingContract);
                     return Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop;
                 }
-
-                Ros2BridgeFrameMeasurement measurement;
-                try
-                {
-                    measurement = Ros2BridgeFrameWriter.Measure(frame);
-                    _ = U2R2FrameSize.Create(
-                        _limits,
-                        checked((ulong)measurement.HeaderBytes),
-                        checked((ulong)measurement.PayloadBytes));
-                }
-                catch (ArgumentException)
-                {
-                    IncrementOversize(existingContract);
-                    return Ros2BridgeOutboundEnqueueDisposition.Oversize;
-                }
-                catch (U2R2ProtocolException error)
-                    when (string.Equals(
-                        error.ErrorCode,
-                        "capacity_exceeded",
-                        StringComparison.Ordinal))
-                {
-                    IncrementOversize(existingContract);
-                    return Ros2BridgeOutboundEnqueueDisposition.Oversize;
-                }
-                catch (Exception error)
-                {
-                    FaultCore(error);
-                    IncrementContractFaulted(existingContract);
-                    return Ros2BridgeOutboundEnqueueDisposition.Faulted;
-                }
-
-                if (!TryGetOrCreateContract(
-                        identity,
-                        out var contract,
-                        out var contractCreated))
+                if (existingContract == null
+                    && (checked((ulong)_contracts.Count) >= _limits.MaxContracts
+                        || _lastContractId == ulong.MaxValue))
                 {
                     IncrementBackpressureRejected(null);
                     return Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected;
                 }
+            }
 
-                ulong transientBytes;
-                try
+            Ros2BridgeFrameMeasurement measurement;
+            try
+            {
+                measurement = Ros2BridgeFrameWriter.Measure(frame);
+                _ = U2R2FrameSize.Create(
+                    _limits,
+                    checked((ulong)measurement.HeaderBytes),
+                    checked((ulong)measurement.PayloadBytes));
+            }
+            catch (ArgumentException)
+            {
+                lock (_gate)
                 {
-                    transientBytes = checked(
-                        2UL
-                        * checked((ulong)measurement.TotalWireBytes));
+                    IncrementOversize(FindContract(identity));
                 }
-                catch (Exception error)
+                return Ros2BridgeOutboundEnqueueDisposition.Oversize;
+            }
+            catch (U2R2ProtocolException error)
+                when (string.Equals(
+                    error.ErrorCode,
+                    "capacity_exceeded",
+                    StringComparison.Ordinal))
+            {
+                lock (_gate)
                 {
-                    RemoveProvisionalContract(
-                        identity,
-                        contract,
-                        contractCreated);
+                    IncrementOversize(FindContract(identity));
+                }
+                return Ros2BridgeOutboundEnqueueDisposition.Oversize;
+            }
+            catch (Exception error)
+            {
+                lock (_gate)
+                {
+                    var existingContract = FindContract(identity);
                     FaultCore(error);
-                    IncrementContractFaulted(contract);
+                    IncrementContractFaulted(existingContract);
+                }
+                return Ros2BridgeOutboundEnqueueDisposition.Faulted;
+            }
+
+            U2R2ByteLease transientLease;
+            lock (_gate)
+            {
+                var existingContract = FindContract(identity);
+                if (_terminalFault != null)
+                {
+                    IncrementFaulted(existingContract);
                     return Ros2BridgeOutboundEnqueueDisposition.Faulted;
                 }
-
-                if (!_inner.TryReserveTransient(
-                        transientBytes,
-                        out var transientLease))
+                if (_closed)
                 {
-                    IncrementBackpressureRejected(contract);
-                    RemoveProvisionalContract(
-                        identity,
-                        contract,
-                        contractCreated);
+                    IncrementRejectedAfterStop(existingContract);
+                    return Ros2BridgeOutboundEnqueueDisposition.RejectedAfterStop;
+                }
+                if (existingContract == null
+                    && (checked((ulong)_contracts.Count) >= _limits.MaxContracts
+                        || _lastContractId == ulong.MaxValue))
+                {
+                    IncrementBackpressureRejected(null);
                     return Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected;
                 }
+                if (!_inner.TryReserveTransient(
+                        checked((ulong)measurement.TotalWireBytes),
+                        out transientLease))
+                {
+                    IncrementBackpressureRejected(existingContract);
+                    return Ros2BridgeOutboundEnqueueDisposition.BackpressureRejected;
+                }
+            }
 
-                Ros2BridgeOutboundEnqueueDisposition disposition;
-                var admitted = false;
+            try
+            {
+                var encodedWire = Ros2BridgeFrameWriter.EncodeOwned(
+                    frame,
+                    measurement);
+                prepared = new Ros2BridgePreparedOutboundEnqueue(
+                    this,
+                    frame,
+                    measurement,
+                    encodedWire,
+                    transientLease);
+                return Ros2BridgeOutboundEnqueueDisposition.Accepted;
+            }
+            catch (Exception error)
+            {
+                lock (_gate)
+                {
+                    var existingContract = FindContract(identity);
+                    if (!TryReleaseTransient(
+                            transientLease,
+                            existingContract))
+                    {
+                        return Ros2BridgeOutboundEnqueueDisposition.Faulted;
+                    }
+                    FaultCore(error);
+                    IncrementContractFaulted(existingContract);
+                }
+                return Ros2BridgeOutboundEnqueueDisposition.Faulted;
+            }
+        }
+
+        internal Ros2BridgeOutboundEnqueueDisposition CommitPrepared(
+            Ros2BridgePreparedOutboundEnqueue prepared,
+            U2R2QueueOverflowPolicy overflowPolicy,
+            bool requiresPreparation = false,
+            long enqueueConnectionGeneration = 0)
+        {
+            if (prepared == null)
+                throw new ArgumentNullException(nameof(prepared));
+            ValidateOverflowPolicy(overflowPolicy);
+
+            lock (_gate)
+            {
+                var transientLease = prepared.TakeForCommit(this);
+                var identity = new ContractIdentity(prepared.Frame);
+                var existingContract = FindContract(identity);
+                ContractState contract = null;
+                var disposition =
+                    Ros2BridgeOutboundEnqueueDisposition.Faulted;
                 try
                 {
-                    disposition = EnqueueMeasured(
-                        contract,
-                        frame,
-                        measurement,
-                        overflowPolicy,
-                        requiresPreparation,
-                        enqueueConnectionGeneration);
-                    admitted = disposition
-                               != Ros2BridgeOutboundEnqueueDisposition
-                                   .BackpressureRejected
-                               && disposition
-                               != Ros2BridgeOutboundEnqueueDisposition
-                                   .Faulted;
+                    if (_terminalFault != null)
+                    {
+                        IncrementFaulted(existingContract);
+                        disposition =
+                            Ros2BridgeOutboundEnqueueDisposition.Faulted;
+                    }
+                    else if (_closed)
+                    {
+                        IncrementRejectedAfterStop(existingContract);
+                        disposition = Ros2BridgeOutboundEnqueueDisposition
+                            .RejectedAfterStop;
+                    }
+                    else if (!TryGetOrCreateContract(
+                                 identity,
+                                 out contract,
+                                 out var contractCreated))
+                    {
+                        IncrementBackpressureRejected(null);
+                        disposition = Ros2BridgeOutboundEnqueueDisposition
+                            .BackpressureRejected;
+                    }
+                    else
+                    {
+                        var admitted = false;
+                        try
+                        {
+                            disposition = EnqueuePreparedCore(
+                                contract,
+                                prepared,
+                                overflowPolicy,
+                                requiresPreparation,
+                                enqueueConnectionGeneration);
+                            admitted = disposition
+                                       != Ros2BridgeOutboundEnqueueDisposition
+                                           .BackpressureRejected
+                                       && disposition
+                                       != Ros2BridgeOutboundEnqueueDisposition
+                                           .Faulted;
+                        }
+                        catch (Exception error)
+                        {
+                            FaultCore(error);
+                            IncrementContractFaulted(contract);
+                            disposition = Ros2BridgeOutboundEnqueueDisposition
+                                .Faulted;
+                        }
+                        if (!admitted)
+                        {
+                            RemoveProvisionalContract(
+                                identity,
+                                contract,
+                                contractCreated);
+                        }
+                    }
                 }
-                catch (Exception error)
+                finally
                 {
-                    FaultCore(error);
-                    IncrementContractFaulted(contract);
-                    disposition =
-                        Ros2BridgeOutboundEnqueueDisposition.Faulted;
-                }
-
-                if (!admitted)
-                {
-                    RemoveProvisionalContract(
-                        identity,
-                        contract,
-                        contractCreated);
-                }
-
-                try
-                {
-                    transientLease.Dispose();
-                }
-                catch (Exception error)
-                {
-                    IncrementDisposalFailure(contract);
-                    FaultCore(error);
-                    IncrementContractFaulted(contract);
-                    disposition =
-                        Ros2BridgeOutboundEnqueueDisposition.Faulted;
+                    if (!TryReleaseTransient(transientLease, contract))
+                    {
+                        disposition =
+                            Ros2BridgeOutboundEnqueueDisposition.Faulted;
+                    }
                 }
                 return disposition;
+            }
+        }
+
+        internal void CancelPrepared(U2R2ByteLease transientLease)
+        {
+            if (transientLease == null)
+                return;
+            lock (_gate)
+            {
+                _ = TryReleaseTransient(transientLease, null);
             }
         }
 
@@ -742,24 +914,22 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        private Ros2BridgeOutboundEnqueueDisposition EnqueueMeasured(
+        private Ros2BridgeOutboundEnqueueDisposition EnqueuePreparedCore(
             ContractState contract,
-            Ros2BridgeFrame frame,
-            Ros2BridgeFrameMeasurement measurement,
+            Ros2BridgePreparedOutboundEnqueue prepared,
             U2R2QueueOverflowPolicy overflowPolicy,
             bool requiresPreparation,
             long enqueueConnectionGeneration)
         {
-            var encodedWire = Ros2BridgeFrameWriter.EncodeOwned(
-                frame,
-                measurement);
+            var frame = prepared.Frame;
+            var measurement = prepared.Measurement;
             var token = NextToken();
             var sequence = NextSequence(contract);
-            var outbound = U2R2OutboundFrame.Data(
+            var outbound = U2R2OutboundFrame.DataOwned(
                 token,
                 contract.Key,
                 sequence,
-                encodedWire);
+                prepared.EncodedWire);
             if (!MemoryMarshal.TryGetArray(
                     outbound.Bytes,
                     out ArraySegment<byte> ownedWire)
@@ -827,6 +997,24 @@ namespace Unity2Foxglove.Ros2Bridge
                     return Ros2BridgeOutboundEnqueueDisposition.ReplacedLatest;
                 default:
                     return Ros2BridgeOutboundEnqueueDisposition.Accepted;
+            }
+        }
+
+        private bool TryReleaseTransient(
+            U2R2ByteLease transientLease,
+            ContractState contract)
+        {
+            try
+            {
+                transientLease.Dispose();
+                return true;
+            }
+            catch (Exception error)
+            {
+                IncrementDisposalFailure(contract);
+                FaultCore(error);
+                IncrementContractFaulted(contract);
+                return false;
             }
         }
 

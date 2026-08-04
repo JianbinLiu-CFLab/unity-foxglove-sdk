@@ -60,12 +60,11 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            // The owner must call blocking GatewayStop first. Native callbacks
-            // receive this GCHandle as their context and may still be in flight
-            // until the gateway has fully stopped. Keep the handle allocated
-            // after disposal so a late native callback can still resolve the
-            // managed object and fail closed instead of dereferencing a freed
-            // GCHandle context during Editor reload or process shutdown.
+            // The owner must call blocking GatewayStop before disposing callbacks
+            // that were handed to a live gateway. Once stop returns, the native
+            // callback contract is quiescent and this self-root must be released.
+            if (_selfHandle.IsAllocated)
+                _selfHandle.Free();
         }
 
         private void Enqueue(RemoteGatewayEvent item)

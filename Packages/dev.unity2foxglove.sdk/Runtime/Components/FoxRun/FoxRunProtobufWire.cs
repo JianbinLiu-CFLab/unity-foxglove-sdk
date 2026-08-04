@@ -185,6 +185,11 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Primitive wire reader used by generated FoxRun Protobuf inputs.</summary>
     public static class FoxRunInboundProtobuf
     {
+        private const ulong MaximumFieldNumber = 536_870_911UL;
+        private static readonly Encoding StrictUtf8 = new UTF8Encoding(
+            encoderShouldEmitUTF8Identifier: false,
+            throwOnInvalidBytes: true);
+
         public static bool TryReadFields(byte[] payload, IList<FoxRunProtobufField> fields, out string error)
         {
             if (fields == null)
@@ -195,15 +200,14 @@ namespace Unity.FoxgloveSDK.Components
             var position = 0;
             while (position < payload.Length)
             {
-                if (!TryReadVarint(payload, ref position, out var tag) || tag == 0)
+                if (!TryReadVarint(payload, ref position, out var tag)
+                    || !TryDecodeTag(tag, out var number, out var wireType))
                 {
                     error = "Malformed Protobuf field tag.";
                     return false;
                 }
 
-                var number = (int)(tag >> 3);
-                var wireType = (int)(tag & 7);
-                if (number <= 0 || !TryReadValue(payload, ref position, wireType, out var value))
+                if (!TryReadValue(payload, ref position, wireType, out var value))
                 {
                     error = "Malformed Protobuf field value.";
                     return false;
@@ -299,17 +303,7 @@ namespace Unity.FoxgloveSDK.Components
                 error = "Protobuf wire type does not match string.";
                 return false;
             }
-            try
-            {
-                value = Encoding.UTF8.GetString(field.Value ?? Array.Empty<byte>());
-                error = string.Empty;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                error = "Invalid Protobuf UTF-8 string: " + ex.Message;
-                return false;
-            }
+            return TryDecodeUtf8(field.Value, out value, out error);
         }
 
         public static bool TryDecodeMessage(FoxRunProtobufField field, out byte[] value, out string error)
@@ -599,16 +593,7 @@ namespace Unity.FoxgloveSDK.Components
             value = string.Empty;
             if (!TryReadBytes(payload, fieldNumber, out var bytes, out error))
                 return false;
-            try
-            {
-                value = Encoding.UTF8.GetString(bytes);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                error = "Invalid Protobuf UTF-8 string: " + ex.Message;
-                return false;
-            }
+            return TryDecodeUtf8(bytes, out value, out error);
         }
         public static bool TryRead(byte[] payload, int fieldNumber, out Vector2 value, out string error)
         {
@@ -711,9 +696,9 @@ namespace Unity.FoxgloveSDK.Components
             var position = 0; var found = false;
             while (position < payload.Length)
             {
-                if (!TryReadVarint(payload, ref position, out var tag) || tag == 0)
+                if (!TryReadVarint(payload, ref position, out var tag)
+                    || !TryDecodeTag(tag, out var number, out var wireType))
                 { error = "Malformed Protobuf field tag."; return false; }
-                var number = (int)(tag >> 3); var wireType = (int)(tag & 7);
                 if (!TryReadValue(payload, ref position, wireType, out var candidate))
                 { error = "Malformed Protobuf field value."; return false; }
                 if (number != fieldNumber) continue;
@@ -753,10 +738,44 @@ namespace Unity.FoxgloveSDK.Components
             for (var shift = 0; shift < 64; shift += 7)
             {
                 if (position >= payload.Length) return false;
-                var b = payload[position++]; value |= (ulong)(b & 0x7f) << shift;
+                var b = payload[position++];
+                if (shift == 63)
+                {
+                    if ((b & 0xfe) != 0) return false;
+                    value |= (ulong)b << shift;
+                    return true;
+                }
+                value |= (ulong)(b & 0x7f) << shift;
                 if ((b & 0x80) == 0) return true;
             }
             return false;
+        }
+
+        private static bool TryDecodeTag(ulong tag, out int fieldNumber, out int wireType)
+        {
+            fieldNumber = 0;
+            wireType = (int)(tag & 7);
+            var rawFieldNumber = tag >> 3;
+            if (rawFieldNumber == 0 || rawFieldNumber > MaximumFieldNumber)
+                return false;
+            fieldNumber = (int)rawFieldNumber;
+            return true;
+        }
+
+        private static bool TryDecodeUtf8(byte[] bytes, out string value, out string error)
+        {
+            value = string.Empty;
+            try
+            {
+                value = StrictUtf8.GetString(bytes ?? Array.Empty<byte>());
+                error = string.Empty;
+                return true;
+            }
+            catch (DecoderFallbackException ex)
+            {
+                error = "Invalid Protobuf UTF-8 string: " + ex.Message;
+                return false;
+            }
         }
 
         private static byte[] Slice(byte[] value, int offset, int count)

@@ -727,9 +727,6 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "peer_close"
             };
             var negativeVectors = Assert.IsType<JArray>(fixture["negativeVectors"]);
-            // Phase186-A froze these v1 entries as a documented case catalog.
-            // Executable negative bytes/actions live under v2.negativeVectors
-            // and are driven by U2R2ProtocolV2Tests in both languages.
             Assert.Equal(
                 expectedNegativeIds,
                 negativeVectors
@@ -739,6 +736,38 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.All(
                 negativeVectors.Values<JObject>(),
                 vector => Assert.Equal("reject", vector.Value<string>("expected")));
+
+            var execution = Assert.IsType<JObject>(
+                fixture["v2"]?["legacyV1NegativeExecution"]);
+            Assert.Equal(1, execution.Value<int>("schemaVersion"));
+            Assert.Equal("negativeVectors", execution.Value<string>("catalog"));
+            var executableVectors = Assert.IsType<JArray>(execution["vectors"])
+                .Values<JObject>()
+                .ToArray();
+            Assert.Equal(
+                expectedNegativeIds,
+                executableVectors
+                    .Select(vector => vector.Value<string>("id"))
+                    .ToArray());
+            Assert.All(
+                executableVectors,
+                vector =>
+                {
+                    Assert.False(string.IsNullOrWhiteSpace(
+                        vector.Value<string>("action")));
+                    Assert.False(string.IsNullOrWhiteSpace(
+                        vector.Value<string>("expectedFailure")));
+                    Assert.NotEmpty(
+                        Assert.IsType<JArray>(vector["consumers"])
+                            .Values<string>());
+                });
+            foreach (var vector in executableVectors.Where(
+                         vector => Assert.IsType<JArray>(vector["consumers"])
+                             .Values<string>()
+                             .Contains("csharp", StringComparer.Ordinal)))
+            {
+                AssertExecutableV1NegativeRejected(fixture, vector);
+            }
         }
 
         [Fact]
@@ -1167,6 +1196,359 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(
                 vector.Value<int>("payloadLength"),
                 checked((int)ReadUInt32LE(actual, 12)));
+        }
+
+        private static void AssertExecutableV1NegativeRejected(
+            JObject fixture,
+            JObject vector)
+        {
+            var action = vector.Value<string>("action");
+            var expectedFailure = vector.Value<string>("expectedFailure");
+            if (string.Equals(
+                    action,
+                    "publish_before_publisher_ready",
+                    StringComparison.Ordinal))
+            {
+                AssertPublishBeforeReadyRejected(fixture, expectedFailure);
+                return;
+            }
+
+            var wire = BuildExecutableV1Wire(fixture, vector);
+            if (string.Equals(action, "stream_frame", StringComparison.Ordinal))
+            {
+                Assert.Equal("eof", vector.Value<string>("termination"));
+                using var stream = new MemoryStream(wire, writable: false);
+                var exception = Assert.Throws<EndOfStreamException>(
+                    () => Ros2BridgePublisherPreparationCodec.ReadFrame(stream));
+                Assert.Contains(
+                    "closed",
+                    exception.Message,
+                    StringComparison.OrdinalIgnoreCase);
+                Assert.Equal("peer_close", expectedFailure);
+                return;
+            }
+
+            Action decode;
+            if (string.Equals(
+                    vector.Value<string>("baseFrame"),
+                    "preparePublisher.response",
+                    StringComparison.Ordinal))
+            {
+                decode = () => Ros2BridgePublisherPreparationCodec.ParseResponse(
+                    wire,
+                    vector.Value<string>("expectedRequestId"));
+            }
+            else if (string.Equals(expectedFailure, "payload_length", StringComparison.Ordinal)
+                     || string.Equals(expectedFailure, "payload_completion", StringComparison.Ordinal))
+            {
+                decode = () => Ros2BridgeU2R2HealthCodec.ParseHealthPong(
+                    wire,
+                    fixture["health"]?.Value<string>("requestId"));
+            }
+            else
+            {
+                decode = () => Ros2BridgePublisherPreparationCodec.ParseRequest(wire);
+            }
+
+            var rejection = Record.Exception(decode);
+            Assert.True(
+                rejection != null,
+                "Executable v1 negative vector was accepted: "
+                + vector.Value<string>("id"));
+            Assert.Contains(
+                ExpectedCSharpV1FailureFragment(expectedFailure),
+                rejection.Message,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void AssertPublishBeforeReadyRejected(
+            JObject fixture,
+            string expectedFailure)
+        {
+            Assert.Equal("publisher_readiness", expectedFailure);
+            var publish = Assert.IsType<JObject>(fixture["publish"]);
+            using var responseGate = new ManualResetEventSlim(false);
+            var transport = new PreparationTransport("ok")
+            {
+                ResponseGate = responseGate
+            };
+            using (var runtime = Runtime(() => transport))
+            {
+                try
+                {
+                    runtime.Start(enabled: true, autoConnect: true);
+                    var readiness = runtime.PreparePublisher(
+                        publish.Value<string>("topic"),
+                        publish.Value<string>("schemaName"),
+                        ReadAuthorityQos(
+                            Assert.IsType<JObject>(publish["qos"])),
+                        out _);
+                    Assert.Equal(
+                        Ros2BridgePublisherReadiness.Pending,
+                        readiness);
+                    Assert.False(
+                        runtime.TryEnqueuePrepared(
+                            Ros2BridgeFrame.CreateValidated(
+                                publish.Value<string>("topic"),
+                                publish.Value<string>("schemaName"),
+                                publish.Value<string>("encoding"),
+                                publish.Value<ulong>("logTimeNs"),
+                                publish.Value<ulong>("sequence"),
+                                HexToBytes(publish.Value<string>("payloadHex")),
+                                ReadAuthorityQos(
+                                    Assert.IsType<JObject>(publish["qos"]))),
+                            out var reason));
+                    Assert.Contains(
+                        "pending",
+                        reason,
+                        StringComparison.OrdinalIgnoreCase);
+                    Assert.Empty(transport.SentFrames);
+                }
+                finally
+                {
+                    responseGate.Set();
+                }
+            }
+        }
+
+        private static string ExpectedCSharpV1FailureFragment(string failure)
+            => failure switch
+            {
+                "magic" => "magic",
+                "version" => "version",
+                "flags" => "flags",
+                "header_length" => "header length",
+                "payload_length" => "payload length exceeds maximum",
+                "fixed_header" => "too short",
+                "header_completion" => "frame length",
+                "payload_completion" => "frame length",
+                "duplicate_property" => "duplicate",
+                "operation" => "op must be prepare_publisher",
+                "utf8" => "UTF-8",
+                "json_root" => "JSON",
+                "topic" => "topic",
+                "schema_name" => "schemaName",
+                "qos" => "QoS",
+                "request_id" => "requestId does not match",
+                _ => throw new FormatException(
+                    "Unknown executable v1 failure classification: " + failure)
+            };
+
+        private static byte[] BuildExecutableV1Wire(
+            JObject fixture,
+            JObject vector)
+        {
+            var action = vector.Value<string>("action");
+            var baseFrame = ReadExecutableV1BaseFrame(
+                fixture,
+                vector.Value<string>("baseFrame"));
+            switch (action)
+            {
+                case "patch_frame":
+                {
+                    var replacement = HexToBytes(
+                        vector.Value<string>("replacementHex"));
+                    var offset = vector.Value<int>("offset");
+                    Assert.InRange(offset, 0, baseFrame.Length);
+                    Assert.True(offset + replacement.Length <= baseFrame.Length);
+                    Buffer.BlockCopy(
+                        replacement,
+                        0,
+                        baseFrame,
+                        offset,
+                        replacement.Length);
+                    return baseFrame;
+                }
+                case "truncate_frame":
+                case "stream_frame":
+                {
+                    var length = vector["length"] != null
+                        ? vector.Value<int>("length")
+                        : checked(
+                            baseFrame.Length
+                            - vector.Value<int>("trimBytes"));
+                    Assert.InRange(length, 0, baseFrame.Length - 1);
+                    Array.Resize(ref baseFrame, length);
+                    return baseFrame;
+                }
+                case "patch_json":
+                {
+                    ReadExecutableV1Body(
+                        baseFrame,
+                        out var headerBytes,
+                        out var payload);
+                    var header = JObject.Parse(
+                        Encoding.UTF8.GetString(headerBytes));
+                    var path = vector.Value<string>("path")
+                        .Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+                    Assert.NotEmpty(path);
+                    var current = header;
+                    for (var index = 0; index + 1 < path.Length; index++)
+                        current = Assert.IsType<JObject>(current[path[index]]);
+                    current[path[path.Length - 1]] = vector["value"]?.DeepClone();
+                    return RebuildExecutableV1Frame(
+                        baseFrame,
+                        Encoding.UTF8.GetBytes(
+                            JsonConvert.SerializeObject(
+                                header,
+                                Formatting.None)),
+                        payload);
+                }
+                case "duplicate_json_property":
+                {
+                    ReadExecutableV1Body(
+                        baseFrame,
+                        out var headerBytes,
+                        out var payload);
+                    Assert.Equal((byte)'{', headerBytes[0]);
+                    var prefix = Encoding.UTF8.GetBytes(
+                        JsonConvert.SerializeObject(
+                            vector.Value<string>("property"))
+                        + ":"
+                        + JsonConvert.SerializeObject(
+                            vector.Value<string>("value"))
+                        + ",");
+                    var duplicate = new byte[
+                        checked(headerBytes.Length + prefix.Length)];
+                    duplicate[0] = headerBytes[0];
+                    Buffer.BlockCopy(prefix, 0, duplicate, 1, prefix.Length);
+                    Buffer.BlockCopy(
+                        headerBytes,
+                        1,
+                        duplicate,
+                        1 + prefix.Length,
+                        headerBytes.Length - 1);
+                    return RebuildExecutableV1Frame(
+                        baseFrame,
+                        duplicate,
+                        payload);
+                }
+                case "replace_header_utf8":
+                {
+                    ReadExecutableV1Body(
+                        baseFrame,
+                        out var headerBytes,
+                        out var payload);
+                    var needle = Encoding.UTF8.GetBytes(
+                        vector.Value<string>("needle"));
+                    var replacement = HexToBytes(
+                        vector.Value<string>("replacementHex"));
+                    var offset = FindBytes(headerBytes, needle);
+                    Assert.True(offset >= 0);
+                    Assert.True(replacement.Length <= needle.Length);
+                    Buffer.BlockCopy(
+                        replacement,
+                        0,
+                        headerBytes,
+                        offset,
+                        replacement.Length);
+                    return RebuildExecutableV1Frame(
+                        baseFrame,
+                        headerBytes,
+                        payload);
+                }
+                case "append_json_root":
+                {
+                    ReadExecutableV1Body(
+                        baseFrame,
+                        out var headerBytes,
+                        out var payload);
+                    var suffix = Encoding.UTF8.GetBytes(
+                        vector.Value<string>("suffix"));
+                    var appended = new byte[
+                        checked(headerBytes.Length + suffix.Length)];
+                    Buffer.BlockCopy(
+                        headerBytes,
+                        0,
+                        appended,
+                        0,
+                        headerBytes.Length);
+                    Buffer.BlockCopy(
+                        suffix,
+                        0,
+                        appended,
+                        headerBytes.Length,
+                        suffix.Length);
+                    return RebuildExecutableV1Frame(
+                        baseFrame,
+                        appended,
+                        payload);
+                }
+                default:
+                    throw new FormatException(
+                        "Unknown executable v1 action: " + action);
+            }
+        }
+
+        private static byte[] ReadExecutableV1BaseFrame(
+            JObject fixture,
+            string baseFrame)
+        {
+            var vector = Assert.IsType<JObject>(fixture.SelectToken(baseFrame));
+            return HexToBytes(vector.Value<string>("frameHex"));
+        }
+
+        private static void ReadExecutableV1Body(
+            byte[] frame,
+            out byte[] header,
+            out byte[] payload)
+        {
+            Assert.True(frame != null && frame.Length >= 16);
+            var headerLength = checked((int)ReadUInt32LE(frame, 8));
+            var payloadLength = checked((int)ReadUInt32LE(frame, 12));
+            Assert.Equal(
+                checked(16 + headerLength + payloadLength),
+                frame.Length);
+            header = new byte[headerLength];
+            payload = new byte[payloadLength];
+            Buffer.BlockCopy(frame, 16, header, 0, headerLength);
+            Buffer.BlockCopy(
+                frame,
+                16 + headerLength,
+                payload,
+                0,
+                payloadLength);
+        }
+
+        private static byte[] RebuildExecutableV1Frame(
+            byte[] baseFrame,
+            byte[] header,
+            byte[] payload)
+        {
+            var frame = new byte[checked(16 + header.Length + payload.Length)];
+            Buffer.BlockCopy(baseFrame, 0, frame, 0, 16);
+            WriteUInt32LE(frame, 8, checked((uint)header.Length));
+            WriteUInt32LE(frame, 12, checked((uint)payload.Length));
+            Buffer.BlockCopy(header, 0, frame, 16, header.Length);
+            Buffer.BlockCopy(
+                payload,
+                0,
+                frame,
+                16 + header.Length,
+                payload.Length);
+            return frame;
+        }
+
+        private static int FindBytes(byte[] haystack, byte[] needle)
+        {
+            if (needle == null || needle.Length == 0)
+                return -1;
+            for (var offset = 0;
+                 offset + needle.Length <= haystack.Length;
+                 offset++)
+            {
+                var matches = true;
+                for (var index = 0; index < needle.Length; index++)
+                {
+                    if (haystack[offset + index] == needle[index])
+                        continue;
+                    matches = false;
+                    break;
+                }
+                if (matches)
+                    return offset;
+            }
+            return -1;
         }
 
         private static FoxRunResolvedQos ReadAuthorityQos(JObject qos)

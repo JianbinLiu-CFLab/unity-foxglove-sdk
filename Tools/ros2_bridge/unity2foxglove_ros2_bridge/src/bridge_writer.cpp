@@ -20,6 +20,7 @@ struct WriterState final
 {
   mutable std::mutex mutex;
   std::condition_variable changed;
+  bool draining{false};
   bool closed{false};
   bool claimed{false};
   uint64_t wake_generation{0};
@@ -111,7 +112,11 @@ BridgeWriterCore::~BridgeWriterCore()
 std::optional<BridgeWriterLease> BridgeWriterCore::try_attach_writer()
 {
   const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-  if (impl_->state->closed || impl_->state->claimed) {
+  if (
+    impl_->state->draining ||
+    impl_->state->closed ||
+    impl_->state->claimed)
+  {
     return std::nullopt;
   }
   impl_->state->claimed = true;
@@ -165,6 +170,19 @@ void BridgeWriterCore::notify()
   impl_->state->changed.notify_one();
 }
 
+void BridgeWriterCore::begin_drain()
+{
+  {
+    const std::lock_guard<std::mutex> lock(impl_->state->mutex);
+    if (impl_->state->draining || impl_->state->closed) {
+      return;
+    }
+    impl_->state->draining = true;
+    ++impl_->state->wake_generation;
+  }
+  impl_->state->changed.notify_all();
+}
+
 void BridgeWriterCore::close()
 {
   {
@@ -188,7 +206,7 @@ std::optional<u2r2::ControlReservation>
 BridgeWriterCore::try_reserve_control(uint64_t bytes)
 {
   const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-  if (impl_->state->closed) {
+  if (impl_->state->draining || impl_->state->closed) {
     return std::nullopt;
   }
   return impl_->scheduler.try_reserve_control(bytes);
@@ -200,7 +218,7 @@ BridgeWriterCore::try_reserve_data(
   uint64_t bytes)
 {
   const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-  if (impl_->state->closed) {
+  if (impl_->state->draining || impl_->state->closed) {
     return std::nullopt;
   }
   return impl_->scheduler.try_reserve_data(key, bytes);
@@ -231,7 +249,7 @@ u2r2::EnqueueDisposition BridgeWriterCore::enqueue_data(
 {
   {
     const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-    if (impl_->state->closed) {
+    if (impl_->state->draining || impl_->state->closed) {
       return u2r2::EnqueueDisposition::rejected;
     }
   }
@@ -247,7 +265,7 @@ std::optional<u2r2::ByteLease>
 BridgeWriterCore::try_reserve_transient(uint64_t bytes)
 {
   const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-  if (impl_->state->closed) {
+  if (impl_->state->draining || impl_->state->closed) {
     return std::nullopt;
   }
   return impl_->scheduler.try_reserve_transient(bytes);
@@ -257,7 +275,7 @@ std::optional<u2r2::ByteLease>
 BridgeWriterCore::try_begin_read(uint64_t bytes)
 {
   const std::lock_guard<std::mutex> lock(impl_->state->mutex);
-  if (impl_->state->closed) {
+  if (impl_->state->draining || impl_->state->closed) {
     return std::nullopt;
   }
   return impl_->scheduler.try_begin_read(bytes);

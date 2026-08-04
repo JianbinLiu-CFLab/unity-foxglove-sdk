@@ -66,9 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(onEnable.Contains("_publishRateState = default;", StringComparison.Ordinal),
                 "140-4B-1: publisher OnEnable resets fixed-rate scheduler state");
-            Check(onEnable.Contains("_lastEncodingWarningKey = null;", StringComparison.Ordinal)
-                  && onEnable.Contains("_lastBridgeWarningKey = null;", StringComparison.Ordinal)
-                  && onEnable.Contains("_lastTopicWarningKey = null;", StringComparison.Ordinal),
+            Check(onEnable.Contains("_lastEncodingFallbackWarningKey = 0;", StringComparison.Ordinal)
+                  && onEnable.Contains("_lastEncodingMismatchWarningKey = 0;", StringComparison.Ordinal)
+                  && onEnable.Contains("_lastPublishTopicWarningKey = null;", StringComparison.Ordinal)
+                  && onEnable.Contains("_lastOrdinaryTransportWarningKey = null;", StringComparison.Ordinal),
                 "140-4B-2: publisher OnEnable resets de-duplicated warning keys");
         }
 

@@ -33,6 +33,9 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopForcedCloseWaitMs = 1000;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
         private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
+        private const ushort ProtocolErrorCloseCode = 1002;
+        private const ushort InvalidPayloadDataCloseCode = 1007;
+        private const ushort MessageTooBigCloseCode = 1009;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -148,7 +151,6 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
-                Interlocked.Exchange(ref _nextClientId, 0);
                 cts?.Dispose();
             }
         }
@@ -598,8 +600,17 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    var frame = conn.ReadFrame();
-                    if (frame == null) break;
+                    var frame = conn.ReadFrame(out var readResult);
+                    if (frame == null)
+                    {
+                        if (readResult == WsFrameReadResult.ProtocolError)
+                            CloseProtocolError(clientId, conn, ProtocolErrorCloseCode);
+                        else if (readResult == WsFrameReadResult.InvalidPayloadData)
+                            CloseProtocolError(clientId, conn, InvalidPayloadDataCloseCode);
+                        else if (readResult == WsFrameReadResult.MessageTooBig)
+                            CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
+                        break;
+                    }
 
                     conn.TouchActivity();
                     switch (frame.Opcode)
@@ -615,7 +626,10 @@ namespace Unity.FoxgloveSDK.Transport
                             if (frame.Fin)
                             {
                                 if (frame.Opcode == WsOpcode.Text)
-                                    OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(frame.Payload));
+                                {
+                                    if (!TryDispatchText(clientId, conn, frame.Payload))
+                                        return;
+                                }
                                 else
                                     OnBinaryReceived?.Invoke(clientId, frame.Payload);
                                 break;
@@ -661,7 +675,10 @@ namespace Unity.FoxgloveSDK.Transport
                                 fragmentedFrames = 0;
 
                                 if (fragmentedOpcode == WsOpcode.Text)
-                                    OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(payload));
+                                {
+                                    if (!TryDispatchText(clientId, conn, payload))
+                                        return;
+                                }
                                 else
                                     OnBinaryReceived?.Invoke(clientId, payload);
                                 fragmentedOpcode = 0;
@@ -702,16 +719,35 @@ namespace Unity.FoxgloveSDK.Transport
             return true;
         }
 
-        private void CloseProtocolError(uint clientId, WsConnection conn)
+        private bool TryDispatchText(uint clientId, WsConnection conn, byte[] payload)
         {
-            HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+            if (!WsFrameCodec.TryDecodeUtf8(payload, 0, payload?.Length ?? 0, out var text))
+            {
+                CloseProtocolError(clientId, conn, InvalidPayloadDataCloseCode);
+                return false;
+            }
+
+            OnTextReceived?.Invoke(clientId, text);
+            return true;
+        }
+
+        private void CloseProtocolError(
+            uint clientId,
+            WsConnection conn,
+            ushort statusCode = ProtocolErrorCloseCode)
+        {
+            HandleEnqueueResult(clientId, conn, conn.SendClose(statusCode), "SendClose");
             conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
         }
 
         /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>
         private void DisconnectClient(uint clientId, WsConnection conn)
         {
-            if (!_clients.TryRemove(clientId, out _)) return;
+            if (!TryRemoveClient(clientId, conn))
+            {
+                try { conn?.Dispose(); } catch { }
+                return;
+            }
             Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             Interlocked.Increment(ref _totalDisconnectedClients);
             try
@@ -730,9 +766,27 @@ namespace Unity.FoxgloveSDK.Transport
 
         private void RemoveUnannouncedClient(uint clientId, WsConnection conn)
         {
-            if (!_clients.TryRemove(clientId, out _)) return;
+            if (!TryRemoveClient(clientId, conn))
+            {
+                CloseUnannouncedClient(conn);
+                return;
+            }
             Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             CloseUnannouncedClient(conn);
+        }
+
+        private bool TryRemoveClient(uint clientId, WsConnection expectedConnection)
+        {
+            lock (_clientAdmissionLock)
+            {
+                if (!_clients.TryGetValue(clientId, out var currentConnection)
+                    || !ReferenceEquals(currentConnection, expectedConnection))
+                {
+                    return false;
+                }
+
+                return _clients.TryRemove(clientId, out _);
+            }
         }
 
         private static void CloseUnannouncedClient(WsConnection conn)

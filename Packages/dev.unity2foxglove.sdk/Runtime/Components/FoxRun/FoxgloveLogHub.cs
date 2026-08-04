@@ -141,6 +141,8 @@ namespace Unity.FoxgloveSDK.Components
             new List<IFoxgloveLogSource>();
         private readonly List<IFoxgloveLogSource> _deferredRemoves =
             new List<IFoxgloveLogSource>();
+        private readonly List<DeferredTrigger> _deferredTriggers =
+            new List<DeferredTrigger>();
         private readonly FoxTopicBus _topicBus = new FoxTopicBus();
         private readonly FoxTopicSinkRouter _sinkRouter =
             new FoxTopicSinkRouter();
@@ -215,6 +217,14 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 return false;
             var instance = EnsureInstance();
+            if (instance._iterating)
+            {
+                instance.QueueAdd(source);
+                instance._deferredTriggers.Add(
+                    new DeferredTrigger(source, topicIndex));
+                return false;
+            }
+
             instance.ApplyDeferred();
             if (!instance._sources.ContainsKey(source))
                 instance.AddSourceNow(source);
@@ -815,12 +825,35 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_iterating)
                 return;
-            foreach (var source in _deferredRemoves)
-                RemoveSourceNow(source);
-            _deferredRemoves.Clear();
-            foreach (var source in _deferredAdds)
-                AddSourceNow(source);
-            _deferredAdds.Clear();
+
+            if (_deferredRemoves.Count > 0)
+            {
+                var removes = _deferredRemoves.ToArray();
+                _deferredRemoves.Clear();
+                foreach (var source in removes)
+                    RemoveSourceNow(source);
+            }
+
+            if (_deferredAdds.Count > 0)
+            {
+                var adds = _deferredAdds.ToArray();
+                _deferredAdds.Clear();
+                foreach (var source in adds)
+                    AddSourceNow(source);
+            }
+
+            if (_deferredTriggers.Count > 0)
+            {
+                var triggers = _deferredTriggers.ToArray();
+                _deferredTriggers.Clear();
+                foreach (var trigger in triggers)
+                {
+                    TryPublish(
+                        trigger.Source,
+                        trigger.TopicIndex,
+                        explicitTrigger: true);
+                }
+            }
         }
 
         private bool AddSourceNow(
@@ -1084,6 +1117,20 @@ namespace Unity.FoxgloveSDK.Components
             internal bool[] Accepted { get; }
             internal FoxTopicContract[] Contracts { get; }
             internal string Origin { get; }
+        }
+
+        private readonly struct DeferredTrigger
+        {
+            internal DeferredTrigger(
+                IFoxgloveLogSource source,
+                int topicIndex)
+            {
+                Source = source;
+                TopicIndex = topicIndex;
+            }
+
+            internal IFoxgloveLogSource Source { get; }
+            internal int TopicIndex { get; }
         }
     }
 }

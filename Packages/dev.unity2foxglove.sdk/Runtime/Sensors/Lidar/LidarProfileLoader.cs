@@ -16,6 +16,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     public static class LidarProfileLoader
     {
         private const double DegToRad = Math.PI / 180.0;
+        private const int MaxMetadataBeamCount = 4096;
+        private const int MaxMetadataColumns = 1_048_576;
+        private const long MaxMetadataRayCount = 16L * 1024L * 1024L;
 
         /// <summary>
         /// Build a spinning-LiDAR profile with beams evenly spaced across a vertical
@@ -64,7 +67,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             return parts.Length == 2
                 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out columns)
                 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out rateHz)
-                && columns > 0 && rateHz > 0;
+                && columns > 0
+                && rateHz > 0
+                && !double.IsNaN(rateHz)
+                && !double.IsInfinity(rateHz);
         }
 
         /// <summary>
@@ -132,16 +138,27 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
-            JObject root;
             try
             {
-                root = JObject.Parse(json);
+                var root = JObject.Parse(json);
+                return TryParseFromRoot(root, mode, out profile, out error);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsRecoverableMetadataException(ex))
             {
-                error = $"Failed to parse JSON: {ex.Message}";
+                profile = null;
+                error = $"Failed to parse LiDAR metadata ({ex.GetType().Name}).";
                 return false;
             }
+        }
+
+        private static bool TryParseFromRoot(
+            JObject root,
+            string mode,
+            out LidarProfile profile,
+            out string error)
+        {
+            profile = null;
+            error = null;
 
             // Schema-tolerant: handles legacy flat metadata (beam angles + lidar_mode
             // at top level, pixels under "data_format") and v2/v3 nested metadata
@@ -155,7 +172,13 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             JToken FromFormat(string key) => df?[key] ?? root[key];
 
             // lidar_mode: JSON value wins; fall back to the mode argument.
-            var lidarModeStr = (cfg?["lidar_mode"] ?? root["lidar_mode"])?.Value<string>();
+            var lidarModeToken = cfg?["lidar_mode"] ?? root["lidar_mode"];
+            string lidarModeStr = null;
+            if (lidarModeToken != null && !TryReadString(lidarModeToken, out lidarModeStr))
+            {
+                error = "Invalid \"lidar_mode\" value; expected a string.";
+                return false;
+            }
             if (string.IsNullOrWhiteSpace(lidarModeStr))
                 lidarModeStr = mode;
             if (string.IsNullOrWhiteSpace(lidarModeStr))
@@ -166,6 +189,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             if (!TryParseMode(lidarModeStr, out var modeColumns, out var scanRateHz))
             {
                 error = $"Unknown lidar mode format: \"{lidarModeStr}\". Expected \"<columns>x<rate>\" (e.g. \"1024x10\").";
+                return false;
+            }
+            if (modeColumns > MaxMetadataColumns)
+            {
+                error = $"Unsupported lidar mode \"{lidarModeStr}\": column count exceeds {MaxMetadataColumns}.";
                 return false;
             }
             if (scanRateHz > 30.0)
@@ -180,14 +208,31 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 error = "Missing or invalid \"beam_altitude_angles\" array.";
                 return false;
             }
+            if (altArray.Count > MaxMetadataBeamCount)
+            {
+                error = $"\"beam_altitude_angles\" exceeds the {MaxMetadataBeamCount}-beam limit.";
+                return false;
+            }
             var altitude = new double[altArray.Count];
             for (var i = 0; i < altArray.Count; i++)
-                altitude[i] = altArray[i].Value<double>() * DegToRad;
+            {
+                if (!TryReadFiniteDouble(altArray[i], out var altitudeDeg))
+                {
+                    error = $"Invalid \"beam_altitude_angles\" value at index {i}.";
+                    return false;
+                }
+                altitude[i] = altitudeDeg * DegToRad;
+            }
 
             // pixels_per_column: from data_format/lidar_data_format/top level; else infer.
-            var pixelsPerColumn = FromFormat("pixels_per_column")?.Value<int?>() ?? altArray.Count;
-            if (pixelsPerColumn <= 0)
-                pixelsPerColumn = altArray.Count;
+            var pixelsToken = FromFormat("pixels_per_column");
+            var pixelsPerColumn = altArray.Count;
+            if (pixelsToken != null
+                && !TryReadBoundedPositiveInt(pixelsToken, MaxMetadataBeamCount, out pixelsPerColumn))
+            {
+                error = $"Invalid \"pixels_per_column\" value; expected 1..{MaxMetadataBeamCount}.";
+                return false;
+            }
             if (pixelsPerColumn != altArray.Count)
             {
                 error = $"beam_altitude_angles length ({altArray.Count}) does not match pixels_per_column ({pixelsPerColumn}).";
@@ -196,7 +241,13 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
             // beam_azimuth_angles (optional -> zeros)
             double[] azimuth;
-            if (FromBeam("beam_azimuth_angles") is JArray azmArray && azmArray.Count > 0)
+            var azimuthToken = FromBeam("beam_azimuth_angles");
+            if (azimuthToken != null && !(azimuthToken is JArray))
+            {
+                error = "Invalid \"beam_azimuth_angles\" value; expected an array.";
+                return false;
+            }
+            if (azimuthToken is JArray azmArray && azmArray.Count > 0)
             {
                 if (azmArray.Count != pixelsPerColumn)
                 {
@@ -205,21 +256,74 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 }
                 azimuth = new double[azmArray.Count];
                 for (var i = 0; i < azmArray.Count; i++)
-                    azimuth[i] = azmArray[i].Value<double>() * DegToRad;
+                {
+                    if (!TryReadFiniteDouble(azmArray[i], out var azimuthDeg))
+                    {
+                        error = $"Invalid \"beam_azimuth_angles\" value at index {i}.";
+                        return false;
+                    }
+                    azimuth[i] = azimuthDeg * DegToRad;
+                }
             }
             else
             {
                 azimuth = new double[pixelsPerColumn];
             }
 
-            var columnsPerFrame = FromFormat("columns_per_frame")?.Value<int?>() ?? modeColumns;
-            var columnsPerPacket = FromFormat("columns_per_packet")?.Value<int?>() ?? 16;
-            var originMm = FromBeam("lidar_origin_to_beam_origin_mm")?.Value<double?>();
-            var originOffset = originMm.HasValue ? originMm.Value / 1000.0 : 0.03618;
-            var prodLine = (info?["prod_line"] ?? root["prod_line"])?.Value<string>() ?? "OS-1";
-            var minRangeMeters = ResolveMinRangeMeters(
-                cfg?["min_range_m"] ?? info?["min_range_m"] ?? root["min_range_m"],
-                prodLine);
+            var columnsPerFrame = modeColumns;
+            var columnsPerFrameToken = FromFormat("columns_per_frame");
+            if (columnsPerFrameToken != null
+                && !TryReadBoundedPositiveInt(columnsPerFrameToken, MaxMetadataColumns, out columnsPerFrame))
+            {
+                error = $"Invalid \"columns_per_frame\" value; expected 1..{MaxMetadataColumns}.";
+                return false;
+            }
+
+            var columnsPerPacket = 16;
+            var columnsPerPacketToken = FromFormat("columns_per_packet");
+            if (columnsPerPacketToken != null
+                && !TryReadBoundedPositiveInt(columnsPerPacketToken, MaxMetadataColumns, out columnsPerPacket))
+            {
+                error = $"Invalid \"columns_per_packet\" value; expected 1..{MaxMetadataColumns}.";
+                return false;
+            }
+
+            var originOffset = 0.03618;
+            var originToken = FromBeam("lidar_origin_to_beam_origin_mm");
+            if (originToken != null)
+            {
+                if (!TryReadFiniteDouble(originToken, out var originMm))
+                {
+                    error = "Invalid \"lidar_origin_to_beam_origin_mm\" value; expected a finite number.";
+                    return false;
+                }
+                originOffset = originMm / 1000.0;
+            }
+
+            var prodLine = "OS-1";
+            var prodLineToken = info?["prod_line"] ?? root["prod_line"];
+            if (prodLineToken != null && !TryReadString(prodLineToken, out prodLine))
+            {
+                error = "Invalid \"prod_line\" value; expected a string.";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(prodLine))
+                prodLine = "OS-1";
+
+            if (!TryResolveMinRangeMeters(
+                    cfg?["min_range_m"] ?? info?["min_range_m"] ?? root["min_range_m"],
+                    prodLine,
+                    out var minRangeMeters))
+            {
+                error = "Invalid \"min_range_m\" value; expected a finite non-negative number.";
+                return false;
+            }
+
+            if ((long)pixelsPerColumn * columnsPerFrame > MaxMetadataRayCount)
+            {
+                error = $"LiDAR metadata exceeds the {MaxMetadataRayCount}-ray geometry limit.";
+                return false;
+            }
 
             profile = new LidarProfile
             {
@@ -244,26 +348,84 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             return true;
         }
 
-        private static double ResolveMinRangeMeters(JToken minRangeToken, string productLine)
+        private static bool TryResolveMinRangeMeters(
+            JToken minRangeToken,
+            string productLine,
+            out double minRangeMeters)
         {
             if (minRangeToken != null)
             {
-                var explicitMinRange = minRangeToken.Value<double>();
-                if (!double.IsNaN(explicitMinRange)
-                    && !double.IsInfinity(explicitMinRange)
-                    && explicitMinRange >= 0.0)
-                {
-                    return explicitMinRange;
-                }
+                if (!TryReadFiniteDouble(minRangeToken, out minRangeMeters)
+                    || minRangeMeters < 0.0)
+                    return false;
+
+                return true;
             }
 
             if (!string.IsNullOrWhiteSpace(productLine)
                 && LidarModelRegistry.TryGet(LidarVendor.Ouster, productLine, out var spec))
             {
-                return spec.MinRangeMeters;
+                minRangeMeters = spec.MinRangeMeters;
+                return true;
             }
 
-            return 0.7;
+            minRangeMeters = 0.7;
+            return true;
+        }
+
+        private static bool TryReadString(JToken token, out string value)
+        {
+            if (token?.Type != JTokenType.String)
+            {
+                value = null;
+                return false;
+            }
+
+            value = (string)((JValue)token).Value;
+            return true;
+        }
+
+        private static bool TryReadFiniteDouble(JToken token, out double value)
+        {
+            value = 0.0;
+            if (token == null || (token.Type != JTokenType.Integer && token.Type != JTokenType.Float))
+                return false;
+
+            return double.TryParse(
+                       token.ToString(Newtonsoft.Json.Formatting.None),
+                       NumberStyles.Float,
+                       CultureInfo.InvariantCulture,
+                       out value)
+                   && !double.IsNaN(value)
+                   && !double.IsInfinity(value);
+        }
+
+        private static bool TryReadBoundedPositiveInt(JToken token, int maximum, out int value)
+        {
+            value = 0;
+            if (token?.Type != JTokenType.Integer
+                || !long.TryParse(
+                    token.ToString(Newtonsoft.Json.Formatting.None),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsed)
+                || parsed <= 0
+                || parsed > maximum)
+            {
+                return false;
+            }
+
+            value = (int)parsed;
+            return true;
+        }
+
+        private static bool IsRecoverableMetadataException(Exception ex)
+        {
+            return ex is Newtonsoft.Json.JsonException
+                   || ex is FormatException
+                   || ex is InvalidCastException
+                   || ex is OverflowException
+                   || ex is ArgumentException;
         }
     }
 }

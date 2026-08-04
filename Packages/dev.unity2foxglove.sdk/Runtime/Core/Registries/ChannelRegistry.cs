@@ -28,20 +28,21 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (channel == null) throw new ArgumentNullException(nameof(channel));
 
+            var snapshot = channel.CreateImmutableSnapshot();
             AdvertiseChannel overwritten = null;
             lock (_lock)
             {
-                if (_channels.TryGetValue(channel.Id, out var existing)
-                    && IsConflictingDescriptor(existing, channel))
+                if (_channels.TryGetValue(snapshot.Id, out var existing)
+                    && IsConflictingDescriptor(existing, snapshot))
                 {
                     overwritten = existing;
                 }
 
-                _channels[channel.Id] = channel;
+                _channels[snapshot.Id] = snapshot;
             }
 
             if (overwritten != null)
-                ChannelOverwritten?.Invoke(overwritten, channel);
+                ChannelOverwritten?.Invoke(overwritten, snapshot);
         }
 
         /// <summary>Remove a channel by ID.</summary>
@@ -53,7 +54,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Get a channel descriptor by ID, or null.</summary>
+        /// <summary>Get an immutable channel descriptor snapshot by ID, or null.</summary>
         public AdvertiseChannel Get(uint channelId)
         {
             lock (_lock)
@@ -62,7 +63,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Snapshot of all registered channels.</summary>
+        /// <summary>Snapshot of all registered immutable channel descriptors.</summary>
         public List<AdvertiseChannel> GetAll()
         {
             lock (_lock)

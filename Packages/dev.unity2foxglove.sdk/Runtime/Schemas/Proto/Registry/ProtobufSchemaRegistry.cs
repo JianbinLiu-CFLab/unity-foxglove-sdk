@@ -111,16 +111,46 @@ namespace Foxglove.Schemas
         private void BuildDescriptorMap(FileDescriptorSet fds)
         {
             // Build lookup: proto file name -> FileDescriptorProto.
-            var fileMap = new Dictionary<string, FileDescriptorProto>();
+            var fileMap = new Dictionary<string, FileDescriptorProto>(StringComparer.Ordinal);
             foreach (var file in fds.File)
             {
-                if (file.Name != null)
-                    fileMap[file.Name] = file;
+                if (string.IsNullOrEmpty(file.Name))
+                    throw new InvalidDataException("FileDescriptorSet contains a descriptor with no file name.");
+                if (!fileMap.TryAdd(file.Name, file))
+                    throw new InvalidDataException(
+                        $"FileDescriptorSet contains duplicate file name '{file.Name}'.");
             }
 
             foreach (var file in fds.File)
             {
-                if (file.Name == null || file.MessageType.Count == 0)
+                foreach (var dependency in file.Dependency)
+                {
+                    if (!fileMap.ContainsKey(dependency))
+                    {
+                        throw new InvalidDataException(
+                            $"Descriptor file '{file.Name}' requires missing dependency '{dependency}'.");
+                    }
+                }
+            }
+
+            var messageOwners = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var file in fds.File)
+            {
+                foreach (var message in file.MessageType)
+                {
+                    var fullName = GetFullMessageName(file, message);
+                    if (messageOwners.TryGetValue(fullName, out var firstOwner))
+                    {
+                        throw new InvalidDataException(
+                            $"Protobuf message '{fullName}' is declared by both '{firstOwner}' and '{file.Name}'.");
+                    }
+                    messageOwners.Add(fullName, file.Name);
+                }
+            }
+
+            foreach (var file in fds.File)
+            {
+                if (file.MessageType.Count == 0)
                     continue;
 
                 // Collect transitive dependencies in dependency-first order so
@@ -131,23 +161,23 @@ namespace Foxglove.Schemas
                 // Build a minimal FileDescriptorSet.
                 var subset = new FileDescriptorSet();
                 foreach (var depName in neededFiles)
-                {
-                    if (fileMap.TryGetValue(depName, out var depFile))
-                        subset.File.Add(depFile);
-                }
+                    subset.File.Add(fileMap[depName]);
 
                 var subsetBytes = subset.ToByteArray();
 
                 // Map each top-level message to this FileDescriptorSet.
                 foreach (var msg in file.MessageType)
                 {
-                    var fullName = string.IsNullOrEmpty(file.Package)
-                        ? msg.Name
-                        : $"{file.Package}.{msg.Name}";
-                    _descriptors[fullName] = new DescriptorEntry(subsetBytes);
+                    var fullName = GetFullMessageName(file, msg);
+                    _descriptors.Add(fullName, new DescriptorEntry(subsetBytes));
                 }
             }
         }
+
+        private static string GetFullMessageName(FileDescriptorProto file, DescriptorProto message)
+            => string.IsNullOrEmpty(file.Package)
+                ? message.Name
+                : $"{file.Package}.{message.Name}";
 
         private static void CollectDependencies(string fileName,
             Dictionary<string, FileDescriptorProto> fileMap,
@@ -170,7 +200,10 @@ namespace Foxglove.Schemas
                     continue;
 
                 if (!fileMap.TryGetValue(frame.FileName, out var file))
-                    continue;
+                {
+                    throw new InvalidDataException(
+                        $"Descriptor dependency '{frame.FileName}' is missing from the FileDescriptorSet.");
+                }
 
                 stack.Push(new DependencyFrame(frame.FileName, postOrder: true));
                 for (var i = file.Dependency.Count - 1; i >= 0; i--)

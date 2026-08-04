@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase105Validation.cs");
             var windowBefore = SourceMethod(source, "private static LineWindow WindowBefore(");
-            var lineWindow = SourceMethod(source, "private readonly struct LineWindow");
+            var lineWindow = PhaseValidationSourceHelpers.SourceType(source, "private readonly struct LineWindow");
             var readText = SourceMethod(source, "private static string ReadRepoText(string relativePath)");
 
             Check(source.Contains("private readonly struct LineWindow", StringComparison.Ordinal)

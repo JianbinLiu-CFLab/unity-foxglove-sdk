@@ -20,6 +20,8 @@ namespace Unity.FoxgloveSDK.Protocol
         private static readonly byte[] JsonEncodingBytes = System.Text.Encoding.UTF8.GetBytes("json");
         private static readonly byte[] ProtobufEncodingBytes = System.Text.Encoding.UTF8.GetBytes("protobuf");
         private static readonly byte[] Ros1EncodingBytes = System.Text.Encoding.UTF8.GetBytes("ros1");
+        private static readonly System.Text.UTF8Encoding StrictUtf8 =
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         private static readonly ConcurrentDictionary<string, byte[]> CustomServiceEncodingBytes =
             new ConcurrentDictionary<string, byte[]>(StringComparer.Ordinal);
 
@@ -132,7 +134,8 @@ namespace Unity.FoxgloveSDK.Protocol
             if (encodingLengthInt > data.Length - 13)
                 return false;
 
-            encoding = System.Text.Encoding.UTF8.GetString(data, 13, encodingLengthInt);
+            if (!TryDecodeStrictUtf8(data, 13, encodingLengthInt, out encoding))
+                return false;
             var payloadOffset = 13 + encodingLengthInt;
             payload = new byte[data.Length - payloadOffset];
             Buffer.BlockCopy(data, payloadOffset, payload, 0, payload.Length);
@@ -297,9 +300,24 @@ namespace Unity.FoxgloveSDK.Protocol
             if (idLen > int.MaxValue) return false;
             if (idLen > MaxPlaybackRequestIdBytes) return false;
             var idLenInt = (int)idLen;
-            if (idLenInt > data.Length - 19) return false;
-            requestId = idLenInt > 0 ? System.Text.Encoding.UTF8.GetString(data, 19, idLenInt) : null;
+            if (idLenInt != data.Length - 19) return false;
+            if (idLenInt > 0 && !TryDecodeStrictUtf8(data, 19, idLenInt, out requestId))
+                return false;
             return true;
+        }
+
+        private static bool TryDecodeStrictUtf8(byte[] data, int offset, int length, out string value)
+        {
+            try
+            {
+                value = StrictUtf8.GetString(data, offset, length);
+                return true;
+            }
+            catch (System.Text.DecoderFallbackException)
+            {
+                value = null;
+                return false;
+            }
         }
 
         /// <summary>Encode a PlaybackState binary frame.</summary>

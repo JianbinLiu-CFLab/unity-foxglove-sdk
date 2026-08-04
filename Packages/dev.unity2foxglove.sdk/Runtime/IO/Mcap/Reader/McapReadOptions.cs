@@ -55,9 +55,9 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Maximum number of matching messages to keep. Values less than or
         /// equal to zero mean unlimited. <see cref="McapReadOrder.FileOrder"/>
-        /// keeps the first matching messages encountered in the file;
-        /// log-time orders keep the latest or earliest messages according to
-        /// their sort direction.
+        /// keeps the first matching messages encountered in the file. Both
+        /// log-time orders retain the latest matching messages, then return
+        /// that retained subset in the requested ascending or descending order.
         /// </summary>
         public int MaxMessages = 0;
 

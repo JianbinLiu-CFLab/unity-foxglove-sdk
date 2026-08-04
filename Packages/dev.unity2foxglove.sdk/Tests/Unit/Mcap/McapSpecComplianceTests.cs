@@ -208,6 +208,84 @@ namespace Unity.FoxgloveSDK.UnitTests
 
         [Fact]
         [Trait("Evidence", "FaultInjection")]
+        public void UnchunkedPartialMessageWriteRollsBackBeforeRetry()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(
+                stream,
+                null,
+                new McapWriterOptions
+                {
+                    UseChunking = false,
+                    RepeatSchemas = true,
+                    RepeatChannels = true,
+                    UseStatistics = true,
+                    UseSummaryOffsets = true
+                },
+                leaveOpen: true);
+
+            recorder.AddChannel(1, "/mcap/direct-fault", "json", "mcap.DirectFault", "jsonschema", "{}");
+            stream.ThrowOnceAfterWrittenBytes(3);
+            Assert.Throws<IOException>(() => recorder.WriteMessage(1, 10, new byte[] { 1, 2, 3, 4 }));
+
+            recorder.WriteMessage(1, 20, new byte[] { 5, 6, 7, 8 });
+            recorder.Close();
+
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.NotNull(summary.Statistics);
+            Assert.Equal(1UL, summary.Statistics.MessageCount);
+            Assert.Equal(1UL, summary.Statistics.ChannelMessageCounts[1]);
+
+            var messages = ReadMessages(stream);
+            var message = Assert.Single(messages);
+            Assert.Equal(0U, message.Sequence);
+            Assert.Equal(20UL, message.LogTime);
+        }
+
+        [Fact]
+        public void ReplaySnapshotKeepsGreatestSameChannelMessageKey()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-mcap-snapshot-order-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                           stream,
+                           null,
+                           new McapWriterOptions
+                           {
+                               UseChunking = true,
+                               ChunkSizeBytes = 1024 * 1024,
+                               IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message
+                           },
+                           leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/mcap/snapshot", "json", "mcap.Snapshot", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.WriteMessage(1, 50, new byte[] { 50 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var snapshot = engine.Snapshot(100, new List<McapMessage>());
+
+                var message = Assert.Single(snapshot);
+                Assert.Equal(100UL, message.LogTime);
+                Assert.Equal(new byte[] { 100 }, message.Data);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void FirstChunkFailureRecoversCanonicalEmptyRecording()
         {
             var clean = CreateFaultMatrixFixture();

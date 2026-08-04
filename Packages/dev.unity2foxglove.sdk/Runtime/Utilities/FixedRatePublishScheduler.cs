@@ -37,6 +37,15 @@ namespace Unity.FoxgloveSDK.Util
             ref FixedRatePublishState state,
             bool nonPositivePublishesEveryFrame)
         {
+            if (double.IsNaN(nowSec)
+                || double.IsInfinity(nowSec)
+                || float.IsNaN(rateHz)
+                || float.IsInfinity(rateHz))
+            {
+                state = default;
+                return false;
+            }
+
             if (rateHz <= 0f)
             {
                 state = default;

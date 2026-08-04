@@ -145,6 +145,8 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public sealed class UnityReplayCursorEndpoint : IDisposable
     {
+        private const int WorkerJoinTimeoutMilliseconds = 500;
+
         private static readonly byte[] AcceptedCursorResponseBytes =
             Encoding.UTF8.GetBytes("{\"accepted\":true,\"message\":\"Cursor accepted.\"}");
         private static readonly byte[] DuplicateCursorResponseBytes =
@@ -163,12 +165,36 @@ namespace Unity.FoxgloveSDK.Core
             public string ResponseOrigin { get; }
         }
 
+        private sealed class WorkerGeneration
+        {
+            private int _stopRequested;
+
+            public WorkerGeneration(
+                HttpListener listener,
+                UnityReplayCursorEndpointOptions options,
+                Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue,
+                Func<ReplayCursorState> stateProvider)
+            {
+                Listener = listener ?? throw new ArgumentNullException(nameof(listener));
+                Options = options;
+                Queue = queue ?? throw new ArgumentNullException(nameof(queue));
+                StateProvider = stateProvider;
+            }
+
+            public HttpListener Listener { get; }
+            public UnityReplayCursorEndpointOptions Options { get; }
+            public Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> Queue { get; }
+            public Func<ReplayCursorState> StateProvider { get; }
+            public Thread Worker { get; set; }
+            public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
+
+            public void RequestStop() => Interlocked.Exchange(ref _stopRequested, 1);
+        }
+
         private readonly IFoxgloveLogger _logger;
-        private volatile HttpListener _listener;
-        private Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> _queue;
-        private Func<ReplayCursorState> _stateProvider;
+        private readonly object _lifecycleGate = new object();
+        private volatile WorkerGeneration _generation;
         private volatile bool _running;
-        private UnityReplayCursorEndpointOptions _options;
 
         /// <summary>Create an endpoint with an optional logger.</summary>
         public UnityReplayCursorEndpoint(IFoxgloveLogger logger = null)
@@ -185,103 +211,179 @@ namespace Unity.FoxgloveSDK.Core
             Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue,
             Func<ReplayCursorState> stateProvider = null)
         {
-            Stop();
-            if (!options.Enabled)
+            lock (_lifecycleGate)
             {
-                return;
-            }
+                StopNoLock();
+                if (!options.Enabled)
+                {
+                    return;
+                }
 
-            if (!options.IsLoopbackAllowedHost(options.Host))
-            {
-                throw new InvalidOperationException("Replay cursor endpoint only supports loopback hosts by default.");
-            }
+                if (!options.IsLoopbackAllowedHost(options.Host))
+                {
+                    throw new InvalidOperationException("Replay cursor endpoint only supports loopback hosts by default.");
+                }
 
-            if (queue == null)
-            {
-                throw new ArgumentNullException(nameof(queue));
-            }
+                if (queue == null)
+                {
+                    throw new ArgumentNullException(nameof(queue));
+                }
 
-            _options = options;
-            _queue = queue;
-            _stateProvider = stateProvider;
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
-            _listener.Start();
-            _running = true;
-            ThreadPool.QueueUserWorkItem(_ => ListenLoop());
+                var listener = new HttpListener();
+                listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
+                try
+                {
+                    listener.Start();
+                    var generation = new WorkerGeneration(listener, options, queue, stateProvider);
+                    generation.Worker = new Thread(() => ListenLoop(generation))
+                    {
+                        IsBackground = true,
+                        Name = "Unity replay cursor endpoint"
+                    };
+
+                    _generation = generation;
+                    _running = true;
+                    try
+                    {
+                        generation.Worker.Start();
+                    }
+                    catch
+                    {
+                        _running = false;
+                        _generation = null;
+                        generation.RequestStop();
+                        throw;
+                    }
+                }
+                catch
+                {
+                    try
+                    {
+                        listener.Close();
+                    }
+                    catch
+                    {
+                        // Preserve the original startup failure.
+                    }
+                    throw;
+                }
+            }
         }
 
         /// <summary>Stop listening and release the socket.</summary>
         public void Stop()
         {
-            _running = false;
-            var listener = _listener;
-            _listener = null;
-            if (listener == null)
+            lock (_lifecycleGate)
             {
-                _queue = null;
-                _stateProvider = null;
+                StopNoLock();
+            }
+        }
+
+        private void StopNoLock()
+        {
+            _running = false;
+            var generation = _generation;
+            if (generation == null)
+            {
                 return;
+            }
+
+            generation.RequestStop();
+
+            try
+            {
+                generation.Listener.Stop();
+            }
+            catch
+            {
+                // Stop is best-effort during Unity lifecycle teardown.
             }
 
             try
             {
-                listener.Stop();
-                listener.Close();
+                generation.Listener.Close();
             }
             catch
             {
-                // Stop/Close is best-effort during Unity lifecycle teardown.
+                // Close is best-effort during Unity lifecycle teardown.
+            }
+
+            if (generation.Worker != null
+                && generation.Worker != Thread.CurrentThread
+                && generation.Worker.IsAlive
+                && !generation.Worker.Join(WorkerJoinTimeoutMilliseconds))
+            {
+                _logger?.LogWarning(
+                    "Replay cursor endpoint worker did not retire within the bounded stop wait.");
+            }
+
+            _generation = null;
+        }
+
+        private void ListenLoop(WorkerGeneration generation)
+        {
+            try
+            {
+                while (!generation.StopRequested)
+                {
+                    HttpListenerContext context = null;
+                    try
+                    {
+                        context = generation.Listener.GetContext();
+                        if (context != null)
+                        {
+                            if (generation.StopRequested)
+                            {
+                                return;
+                            }
+
+                            Handle(generation, context);
+                        }
+                    }
+                    catch (HttpListenerException)
+                    {
+                        return;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (generation.StopRequested)
+                        {
+                            return;
+                        }
+
+                        _logger?.LogWarning("Replay cursor endpoint request failed: " + ex.Message);
+                        if (context != null)
+                        {
+                            var cors = ResolveCors(generation, context.Request);
+                            TryWrite(context, 500, "{\"error\":\"internal error\"}", cors);
+                        }
+                    }
+                }
             }
             finally
             {
-                _queue = null;
-                _stateProvider = null;
-            }
-        }
-
-        private void ListenLoop()
-        {
-            while (_running)
-            {
-                HttpListenerContext context = null;
-                try
+                if (ReferenceEquals(_generation, generation))
                 {
-                    context = _listener?.GetContext();
-                    if (context != null)
-                    {
-                        Handle(context);
-                    }
-                }
-                catch (HttpListenerException)
-                {
-                    return;
-                }
-                catch (ObjectDisposedException)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning("Replay cursor endpoint request failed: " + ex.Message);
-                    if (context != null)
-                    {
-                        TryWrite(context, 500, "{\"error\":\"internal error\"}");
-                    }
+                    _running = false;
                 }
             }
         }
 
-        private void Handle(HttpListenerContext context)
+        private void Handle(WorkerGeneration generation, HttpListenerContext context)
         {
-            var cors = ResolveCors(context.Request);
+            var options = generation.Options;
+            var cors = ResolveCors(generation, context.Request);
             if (!IPAddress.IsLoopback(context.Request.RemoteEndPoint.Address))
             {
                 TryWrite(context, 403, "{\"error\":\"loopback only\"}", cors);
                 return;
             }
 
-            if (!string.Equals(context.Request.Url.AbsolutePath, _options.Path, StringComparison.Ordinal))
+            if (!string.Equals(context.Request.Url.AbsolutePath, options.Path, StringComparison.Ordinal))
             {
                 TryWrite(context, 404, "{\"error\":\"not found\"}", cors);
                 return;
@@ -299,7 +401,7 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (!IsAuthorized(context.Request))
+            if (!IsAuthorized(context.Request, options))
             {
                 TryWrite(context, 401, "{\"error\":\"unauthorized\"}", cors);
                 return;
@@ -307,7 +409,13 @@ namespace Unity.FoxgloveSDK.Core
 
             if (string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
-                var state = _stateProvider?.Invoke() ?? ReplayCursorState.Unavailable("Replay cursor state provider is unavailable.");
+                if (generation.StopRequested)
+                {
+                    return;
+                }
+
+                var state = generation.StateProvider?.Invoke()
+                            ?? ReplayCursorState.Unavailable("Replay cursor state provider is unavailable.");
                 TryWrite(context, 200, state.ToJson(), cors);
                 return;
             }
@@ -318,13 +426,13 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (context.Request.ContentLength64 > _options.MaxBodyBytes)
+            if (context.Request.ContentLength64 > options.MaxBodyBytes)
             {
                 TryWrite(context, 413, "{\"error\":\"request body too large\"}", cors);
                 return;
             }
 
-            var body = ReadBody(context.Request);
+            var body = ReadBody(generation, context.Request);
             if (body == null)
             {
                 TryWrite(context, 413, "{\"error\":\"request body too large\"}", cors);
@@ -337,7 +445,12 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            var result = _queue?.Invoke(request) ?? new UnityReplayCursorEndpointQueueResult(false, "Cursor queue is unavailable.");
+            if (generation.StopRequested)
+            {
+                return;
+            }
+
+            var result = generation.Queue(request);
             if (result.Success && string.Equals(result.Message, "Cursor accepted.", StringComparison.Ordinal))
             {
                 TryWrite(context, 202, AcceptedCursorResponseBytes, cors);
@@ -356,20 +469,24 @@ namespace Unity.FoxgloveSDK.Core
                 cors);
         }
 
-        private bool IsAuthorized(HttpListenerRequest request)
+        private static bool IsAuthorized(
+            HttpListenerRequest request,
+            UnityReplayCursorEndpointOptions options)
         {
-            if (string.IsNullOrEmpty(_options.BearerToken))
+            if (string.IsNullOrEmpty(options.BearerToken))
             {
                 return true;
             }
 
             return string.Equals(
                 request.Headers["Authorization"],
-                "Bearer " + _options.BearerToken,
+                "Bearer " + options.BearerToken,
                 StringComparison.Ordinal);
         }
 
-        private CorsDecision ResolveCors(HttpListenerRequest request)
+        private CorsDecision ResolveCors(
+            WorkerGeneration generation,
+            HttpListenerRequest request)
         {
             var origin = request?.Headers["Origin"];
             if (string.IsNullOrWhiteSpace(origin))
@@ -377,7 +494,7 @@ namespace Unity.FoxgloveSDK.Core
                 return new CorsDecision(true, string.Empty);
             }
 
-            if (!IsCorsOriginAllowed(origin))
+            if (!IsCorsOriginAllowed(origin, generation.Options.AllowedCorsOrigins))
             {
                 return new CorsDecision(false, string.Empty);
             }
@@ -385,7 +502,9 @@ namespace Unity.FoxgloveSDK.Core
             return new CorsDecision(true, NormalizeOriginForHeader(origin));
         }
 
-        private bool IsCorsOriginAllowed(string origin)
+        private static bool IsCorsOriginAllowed(
+            string origin,
+            IReadOnlyList<string> allowedCorsOrigins)
         {
             if (string.IsNullOrWhiteSpace(origin))
             {
@@ -397,7 +516,7 @@ namespace Unity.FoxgloveSDK.Core
                 return false;
             }
 
-            foreach (var allowedOrigin in _options.AllowedCorsOrigins)
+            foreach (var allowedOrigin in allowedCorsOrigins)
             {
                 if (length == allowedOrigin.Length
                     && string.Compare(origin, start, allowedOrigin, 0, length, StringComparison.OrdinalIgnoreCase) == 0)
@@ -409,10 +528,13 @@ namespace Unity.FoxgloveSDK.Core
             return false;
         }
 
-        private string ReadBody(HttpListenerRequest request)
+        private string ReadBody(
+            WorkerGeneration generation,
+            HttpListenerRequest request)
         {
             var encoding = request.ContentEncoding ?? Encoding.UTF8;
-            var buffer = ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1);
+            var maxBodyBytes = generation.Options.MaxBodyBytes;
+            var buffer = ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1);
             try
             {
                 var total = 0;
@@ -420,7 +542,7 @@ namespace Unity.FoxgloveSDK.Core
                 while ((read = request.InputStream.Read(buffer, total, buffer.Length - total)) > 0)
                 {
                     total += read;
-                    if (total > _options.MaxBodyBytes)
+                    if (total > maxBodyBytes)
                     {
                         return null;
                     }
@@ -432,11 +554,6 @@ namespace Unity.FoxgloveSDK.Core
             {
                 ArrayPool<byte>.Shared.Return(buffer);
             }
-        }
-
-        private void TryWrite(HttpListenerContext context, int statusCode, string body)
-        {
-            TryWrite(context, statusCode, body, ResolveCors(context.Request));
         }
 
         private void TryWrite(HttpListenerContext context, int statusCode, string body, CorsDecision cors)

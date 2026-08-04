@@ -113,6 +113,9 @@ namespace Unity.FoxgloveSDK.Tests
             var reactivation = PhaseValidationSourceHelpers.SourceMethod(
                 hub,
                 "private void ReregisterReenabledSources()");
+            var suspension = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void SuspendRegistrationsForRestart()");
 
             Check(hub.Contains("_temporarilyUnavailableSources", StringComparison.Ordinal),
                 "141B-21a: FoxgloveServiceHub retains previously registered disabled MonoBehaviour sources for reactivation");
@@ -131,6 +134,11 @@ namespace Unity.FoxgloveSDK.Tests
             var reregister = reactivation.IndexOf("RegisterSourceNow(source)", StringComparison.Ordinal);
             Check(finalRemoval >= 0 && reregister > finalRemoval,
                 "141B-21e: a re-enabled source leaves the parked list before its service is re-registered");
+            Check(suspension.Contains("foreach (var source in _serviceIdsBySource.Keys)", StringComparison.Ordinal)
+                  && suspension.Contains("TrackTemporarilyUnavailableSource(source)", StringComparison.Ordinal)
+                  && suspension.Contains("UnregisterAll();", StringComparison.Ordinal)
+                  && hub.Contains("SuspendRegistrationsForRestart();", StringComparison.Ordinal),
+                "141B-21f: manager suspension retains live service sources before active IDs are cleared");
         }
 
         private static void VerifyRoslynGeneratorEmitsDirectServiceWrappers()

@@ -152,8 +152,12 @@ namespace Unity.FoxgloveSDK.Tests
                     "165-B2: " + bridge + " no longer owns duplicate scene/editor lifecycle helpers");
                 CheckHotPathFreeOfSceneQueries(hotSource, "165-B3: " + bridge + " hot paths avoid scene queries and path/name backup checks");
                 Check(!updateBody.Contains("FindObjectsByType", StringComparison.Ordinal)
-                      && updateBody.IndexOf("Time.unscaledTime", StringComparison.Ordinal) < updateBody.IndexOf("RefreshBindings();", StringComparison.Ordinal),
-                    "165-B4: " + bridge + " object scans remain behind the scan interval gate");
+                      && updateBody.Contains("Ros2ForUnityNativeScanGate.TryAdvance", StringComparison.Ordinal)
+                      && updateBody.Contains("Time.unscaledTimeAsDouble", StringComparison.Ordinal)
+                      && !updateBody.Contains("Time.unscaledTime <", StringComparison.Ordinal)
+                      && updateBody.IndexOf("Ros2ForUnityNativeScanGate.TryAdvance", StringComparison.Ordinal)
+                         < updateBody.IndexOf("RefreshBindings();", StringComparison.Ordinal),
+                    "165-B4: " + bridge + " object scans remain behind the double-precision scan interval gate");
             }
         }
 
@@ -310,6 +314,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static string RequiredMethod(string source, string signature, string fileName)
         {
             var body = PhaseValidationSourceHelpers.SourceMethod(source, signature);
+            if (body.Length == 0)
+            {
+                const string activePackageSource =
+                    "#define UNITY2FOXGLOVE_ROS2_FOR_UNITY\n#define UNITY_EDITOR\n";
+                body = PhaseValidationSourceHelpers.SourceMethod(
+                    activePackageSource + source,
+                    signature);
+            }
             if (body.Length == 0)
                 throw new InvalidOperationException("[FAIL] missing method in " + fileName + ": " + signature);
             return body;

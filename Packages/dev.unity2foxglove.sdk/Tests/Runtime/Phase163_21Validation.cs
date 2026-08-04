@@ -58,7 +58,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is InvalidCastException)", StringComparison.Ordinal),
                 "163-21B-3: FoxRun vector numeric conversion failures are reported without escaping");
             Check(source.Contains("private static readonly JsonLoadSettings LoadSettings", StringComparison.Ordinal)
-                  && source.Contains("JToken.Parse(json, LoadSettings)", StringComparison.Ordinal)
+                  && source.Contains("MaxDepth = MaxTypeHintScanDepth", StringComparison.Ordinal)
+                  && source.Contains("JToken.ReadFrom(jsonReader, LoadSettings)", StringComparison.Ordinal)
                   && source.Contains("intended for low-frequency FoxRun control inputs", StringComparison.Ordinal),
                 "163-21B-4: FoxRun inbound decoder reuses load settings and documents per-call JSON allocations");
         }
@@ -66,25 +67,29 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SinkRouterRequiresRegisteredLiveContracts()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxTopicSinkRouter.cs");
-            var publish = PhaseValidationSourceHelpers.SourceMethod(source, "public void Publish");
+            var publish = PhaseValidationSourceHelpers.SourceMethod(source, "public void PublishCompatible");
 
-            Check(publish.Contains("_contracts.TryGetValue(contract.Topic", StringComparison.Ordinal)
-                  && publish.Contains("ReferenceEquals(registeredContract, contract)", StringComparison.Ordinal),
-                "163-21C-1: FoxTopicSinkRouter ignores stale or never-registered contract references");
+            Check(publish.Contains("_contracts.TryGetValue(", StringComparison.Ordinal)
+                  && publish.Contains("contract.Topic", StringComparison.Ordinal)
+                  && publish.Contains("ContractsMatch(", StringComparison.Ordinal),
+                "163-21C-1: FoxTopicSinkRouter ignores unregistered or mismatched contracts");
         }
 
         private static void ClientMessagesAreDeliveredOnManagerUpdate()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var dispatchState = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ClientEventDispatchState.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var update = PhaseValidationSourceHelpers.SourceMethod(manager, "private void Update");
             var drain = PhaseValidationSourceHelpers.SourceMethod(clientEvents, "private void DrainClientEventQueue");
 
             Check(server.Contains("EnqueueClientMessageEvent(ClientEvent.Message", StringComparison.Ordinal)
                   && update.Contains("DrainClientEventQueue(_clientMessageEvents)", StringComparison.Ordinal)
-                  && drain.Contains("OnClientMessage?.Invoke", StringComparison.Ordinal),
-                "163-21D-1: Foxglove client messages are queued by transport callbacks and invoked from manager Update");
+                  && drain.Contains("_clientEventDispatchState.Invoke(", StringComparison.Ordinal)
+                  && dispatchState.Contains("subscribers.GetInvocationList()", StringComparison.Ordinal),
+                "163-21D-1: Foxglove client messages are queued by transport callbacks and isolated per subscriber from manager Update");
         }
 
         private static void PhaseWiringIsPresent()

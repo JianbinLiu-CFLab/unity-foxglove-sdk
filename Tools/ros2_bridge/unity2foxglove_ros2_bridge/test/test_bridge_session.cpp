@@ -452,6 +452,71 @@ TEST(BridgeV2Session, RegistrationReadyReplayMessageAndRemovalAreOneTransaction)
   EXPECT_EQ(1, entity_destructions);
 }
 
+TEST(BridgeV2Session, MaximumInboundParseReservationLeavesReverseDataProgress)
+{
+  const auto limits = u2r2::ProtocolLimits::defaults();
+  runtime::ProcessConnectionAuthority process(limits);
+  auto session = ActiveV2Session(
+    process,
+    limits,
+    nlohmann::json::array({"subscribe"}));
+  const auto registration_wire = V2Register(session, 2);
+  const auto registration = session.parse_v2_request(registration_wire);
+  runtime::BridgeSerializedCallback callback;
+
+  ASSERT_EQ(
+    runtime::BridgeSubscriptionCommand::applied,
+    session.register_subscription(
+      registration_wire,
+      registration,
+      4096U,
+      [&](const u2r2::ContractIdentity &,
+        runtime::BridgeSerializedCallback admitted) {
+        callback = std::move(admitted);
+        return std::make_shared<int>(1);
+      }));
+  auto ready = session.try_begin_write();
+  ASSERT_TRUE(ready.has_value());
+  ready->release();
+
+  const auto maximum_frame = u2r2::FrameSize::create(
+    limits,
+    limits.max_header_bytes(),
+    limits.max_payload_bytes()).total_bytes();
+  auto inbound_wire = session.try_begin_read(maximum_frame);
+  auto inbound_parse = session.try_reserve_transient(maximum_frame);
+  ASSERT_TRUE(inbound_wire.has_value());
+  ASSERT_TRUE(inbound_parse.has_value());
+  EXPECT_EQ(maximum_frame, session.in_flight_bytes());
+  EXPECT_EQ(maximum_frame, session.transient_bytes());
+
+  const std::vector<uint8_t> payload{
+    0x00U, 0x01U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x41U, 0x00U};
+  ASSERT_TRUE(callback);
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::accepted,
+    callback(
+      payload.data(),
+      payload.size(),
+      187U,
+      runtime::BridgeSampleOrigin::external));
+  EXPECT_EQ(maximum_frame, session.transient_bytes());
+
+  auto message = session.try_begin_write();
+  ASSERT_TRUE(message.has_value());
+  EXPECT_EQ(
+    u2r2::Operation::Message,
+    u2r2::parse_v2(u2r2::decode_frame(message->frame().bytes())).operation);
+  EXPECT_GT(session.in_flight_bytes(), maximum_frame);
+  message->release();
+  EXPECT_EQ(maximum_frame, session.in_flight_bytes());
+  inbound_wire->release();
+  inbound_parse->release();
+  EXPECT_EQ(0U, session.in_flight_bytes());
+  EXPECT_EQ(0U, session.transient_bytes());
+}
+
 TEST(BridgeV2Session, SubscriptionCreationFailureIsCorrelatedAndSessionRemainsUsable)
 {
   runtime::ProcessConnectionAuthority process(

@@ -24,6 +24,10 @@ namespace Unity.FoxgloveSDK.Tests
             var unitTests = Read(root, "Packages/dev.unity2foxglove.sdk/Tests/Unit/Transport/TransportStatsSnapshotTests.cs");
             var phase28 = Read(root, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase28Validation.cs");
             var registry = Read(root, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var stop = PhaseValidationSourceHelpers.SourceMethod(backend, "public virtual void Stop()");
+            var broadcastText = PhaseValidationSourceHelpers.SourceMethod(backend, "public void BroadcastText(string json)");
+            var broadcastBinary = PhaseValidationSourceHelpers.SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
+            var broadcastDataBinary = PhaseValidationSourceHelpers.SourceMethod(backend, "public void BroadcastDataBinary(byte[] data)");
 
             Check(backend.Contains("private Task _acceptLoopTask;", StringComparison.Ordinal)
                   && backend.Contains("Interlocked.Exchange(ref _stopping, 1);", StringComparison.Ordinal)
@@ -36,11 +40,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && backend.Contains("private bool IsStopping => Volatile.Read(ref _stopping) != 0;", StringComparison.Ordinal),
                 "163-5B: late clients cannot register or fire connect events during Stop");
 
-            Check(backend.Contains("Interlocked.Exchange(ref _nextClientId, 0);", StringComparison.Ordinal)
-                  && backend.Contains("foreach (var (id, conn) in _clients.ToArray())", StringComparison.Ordinal)
+            Check(backend.Contains("Interlocked.Increment(ref _nextClientId)", StringComparison.Ordinal)
+                  && !backend.Contains("Interlocked.Exchange(ref _nextClientId, 0);", StringComparison.Ordinal)
+                  && stop.Contains("var clients = _clients.ToArray();", StringComparison.Ordinal)
+                  && broadcastText.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
+                  && broadcastBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
+                  && broadcastDataBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
+                  && !broadcastText.Contains("ToArray()", StringComparison.Ordinal)
+                  && !broadcastBinary.Contains("ToArray()", StringComparison.Ordinal)
+                  && !broadcastDataBinary.Contains("ToArray()", StringComparison.Ordinal)
                   && backend.Contains("long activeDropped = 0;", StringComparison.Ordinal)
                   && backend.Contains("Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped", StringComparison.Ordinal),
-                "163-5C: client ids, broadcast iteration, and dropped-frame stats are stable across lifecycle snapshots");
+                "163-5C: client ids stay process-monotonic, Stop snapshots clients, broadcasts enumerate live clients, and dropped-frame stats remain stable");
 
             Check(queue.Contains("frame.SizeBytes <= _maxQueuedBytes - _queuedBytes", StringComparison.Ordinal)
                   && unitTests.Contains("QueueByteCapacityCheckDoesNotOverflowNearIntMax", StringComparison.Ordinal),
@@ -56,7 +67,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && distributor.Contains("Interlocked.Decrement(ref _activeClientHandlers)", StringComparison.Ordinal),
                 "163-5F: certificate distributor bounds concurrent local HTTP handlers");
 
-            Check(registry.Contains("Ci(\"--phase163-5\", \"Phase 163-5\", Phase163_5Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-5\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_5Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
                 "163-5G: PhaseValidationRegistry wires --phase163-5");
 
             Console.WriteLine("Phase 163-5: 7 checks passed.");

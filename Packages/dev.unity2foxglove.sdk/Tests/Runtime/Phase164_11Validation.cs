@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publishMessages = PhaseValidationSourceHelpers.SourceMethod(source, "private void PublishMessages");
             var tryGetReplayTopic = PhaseValidationSourceHelpers.SourceMethod(source, "private bool TryGetReplayTopic");
             var createContext = PhaseValidationSourceHelpers.SourceMethod(source, "private ReplayMessageContext CreateReplayMessageContext");
-            var channelContext = PhaseValidationSourceHelpers.SourceMethod(source, "private readonly struct ReplayChannelContext");
+            var channelContext = PhaseValidationSourceHelpers.SourceType(source, "private readonly struct ReplayChannelContext");
 
             Check(source.Contains("private Dictionary<ushort, ReplayChannelContext> _channelContextMap", StringComparison.Ordinal)
                   && source.Contains("_channelContextMap = new Dictionary<ushort, ReplayChannelContext>()", StringComparison.Ordinal)
@@ -107,9 +107,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("private static readonly byte[] AcceptedCursorResponseBytes", StringComparison.Ordinal)
                   && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-11D-1: cursor endpoint keeps cached accepted response bytes");
-            Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+            Check(readBody.Contains("var maxBodyBytes = generation.Options.MaxBodyBytes", StringComparison.Ordinal)
+                  && readBody.Contains("ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
-                  && !readBody.Contains("new char[_options.MaxBodyBytes + 1]", StringComparison.Ordinal),
+                  && !readBody.Contains("new char[maxBodyBytes + 1]", StringComparison.Ordinal),
                 "164-11D-2: cursor endpoint keeps request body reads on pooled byte buffers");
         }
 

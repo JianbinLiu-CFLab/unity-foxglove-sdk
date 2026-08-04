@@ -28,20 +28,22 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
 
-            Check(source.Contains("private volatile HttpListener _listener;", StringComparison.Ordinal),
-                "163-38A-1: cursor endpoint listener field is volatile for cross-thread shutdown");
+            Check(source.Contains("public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;", StringComparison.Ordinal)
+                  && source.Contains("Interlocked.Exchange(ref _stopRequested, 1)", StringComparison.Ordinal),
+                "163-38A-1: cursor endpoint publishes generation shutdown through atomic memory boundaries");
             Check(source.Contains("Access-Control-Allow-Private-Network", StringComparison.Ordinal),
                 "163-38A-2: cursor endpoint emits Private Network Access CORS header");
-            Check(source.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+            Check(source.Contains("var maxBodyBytes = generation.Options.MaxBodyBytes", StringComparison.Ordinal)
+                  && source.Contains("ArrayPool<byte>.Shared.Rent(maxBodyBytes + 1)", StringComparison.Ordinal)
                   && source.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
-                  && source.Contains("total > _options.MaxBodyBytes", StringComparison.Ordinal)
-                  && !source.Contains("new char[_options.MaxBodyBytes + 1]", StringComparison.Ordinal),
+                  && source.Contains("total > maxBodyBytes", StringComparison.Ordinal)
+                  && !source.Contains("new char[maxBodyBytes + 1]", StringComparison.Ordinal),
                 "163-38A-3: cursor endpoint enforces request body limit in bytes");
             Check(source.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal)
-                  < source.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal),
+                  < source.IndexOf("IsAuthorized(context.Request, options)", StringComparison.Ordinal),
                 "163-38A-4: browser OPTIONS preflight is answered before bearer authorization");
             Check(source.Contains("TryWrite(context, 401", StringComparison.Ordinal)
-                  && source.Contains("IsCorsOriginAllowed(origin)", StringComparison.Ordinal),
+                  && source.Contains("IsCorsOriginAllowed(origin, generation.Options.AllowedCorsOrigins)", StringComparison.Ordinal),
                 "163-38A-5: TryWrite keeps CORS headers available for early error responses");
         }
 
@@ -85,7 +87,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase163_38Validation.cs", StringComparison.Ordinal),
                 "163-38D-1: runtime test project compiles Phase163_38Validation");
-            Check(registry.Contains("Ci(\"--phase163-38\", \"Phase 163-38\", Phase163_38Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-38\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_38Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
                 "163-38D-2: validation registry exposes --phase163-38");
         }
 

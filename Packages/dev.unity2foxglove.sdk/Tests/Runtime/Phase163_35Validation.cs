@@ -6,6 +6,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -44,13 +47,21 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CoordinateConverterFloat3IsPureStatic()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/CoordinateConverterFloat3.cs");
+            var syntax = CSharpSyntaxTree.ParseText(
+                source,
+                CSharpParseOptions.Default.WithPreprocessorSymbols("UNITY_5_3_OR_NEWER"));
+            var converter = syntax.GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .FirstOrDefault(candidate => candidate.Identifier.ValueText == "CoordinateConverterFloat3");
 
-            Check(source.Contains("public static class CoordinateConverterFloat3", StringComparison.Ordinal)
+            Check(converter != null
+                  && source.Contains("public static class CoordinateConverterFloat3", StringComparison.Ordinal)
                   && source.Contains("public static float3 UnityToFoxglovePosition(float3 pos)", StringComparison.Ordinal)
                   && source.Contains("public static float3 FoxgloveToUnityPosition(float3 pos)", StringComparison.Ordinal)
                   && source.Contains("public static float4x4 ToFloat4x4(this Matrix4x4 matrix)", StringComparison.Ordinal)
                   && !source.Contains("[SerializeField]", StringComparison.Ordinal)
-                  && !source.Contains("private static", StringComparison.Ordinal),
+                  && !converter.Members.OfType<FieldDeclarationSyntax>().Any(),
                 "163-35B: float3 coordinate converter is stateless static math");
         }
 
@@ -91,7 +102,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var tests = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/PointCloudHotPathAllocationTests.cs");
 
-            Check(tests.Contains("PointCloud2BuilderUsesExactOwnedArray", StringComparison.Ordinal)
+            Check(tests.Contains("PointCloud2BuilderUsesOwnedArrayWithoutPooledFrameData", StringComparison.Ordinal)
                   && tests.Contains("PointCloud2BuilderPacksOnlyValidPointsIntoExactSizedData", StringComparison.Ordinal)
                   && tests.Contains("DracoEncoderUsesPooledXyzWithoutSizingOutputFromRentalLength", StringComparison.Ordinal)
                   && tests.Contains("DoesNotContain(\"stream.ToArray()\"", StringComparison.Ordinal)

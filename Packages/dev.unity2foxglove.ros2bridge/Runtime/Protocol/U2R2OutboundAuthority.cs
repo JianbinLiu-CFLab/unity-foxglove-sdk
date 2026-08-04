@@ -74,13 +74,18 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             bool isControl,
             U2R2ContractKey contract,
             ulong sequence,
-            byte[] bytes)
+            byte[] bytes,
+            bool cloneBytes)
         {
             Token = token ?? throw new ArgumentNullException(nameof(token));
             IsControl = isControl;
             Contract = contract;
             Sequence = sequence;
-            _bytes = bytes == null ? Array.Empty<byte>() : (byte[])bytes.Clone();
+            _bytes = bytes == null
+                ? Array.Empty<byte>()
+                : cloneBytes
+                    ? (byte[])bytes.Clone()
+                    : bytes;
         }
 
         public string Token { get; }
@@ -96,13 +101,39 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 isControl: true,
                 default,
                 0,
-                bytes);
+                bytes,
+                cloneBytes: true);
 
         public static U2R2OutboundFrame Data(
             string token,
             U2R2ContractKey contract,
             ulong sequence,
             byte[] bytes)
+            => CreateData(
+                token,
+                contract,
+                sequence,
+                bytes,
+                cloneBytes: true);
+
+        internal static U2R2OutboundFrame DataOwned(
+            string token,
+            U2R2ContractKey contract,
+            ulong sequence,
+            byte[] bytes)
+            => CreateData(
+                token,
+                contract,
+                sequence,
+                bytes,
+                cloneBytes: false);
+
+        private static U2R2OutboundFrame CreateData(
+            string token,
+            U2R2ContractKey contract,
+            ulong sequence,
+            byte[] bytes,
+            bool cloneBytes)
         {
             if (sequence == 0)
             {
@@ -116,7 +147,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 isControl: false,
                 contract,
                 sequence,
-                bytes);
+                bytes,
+                cloneBytes);
         }
     }
 

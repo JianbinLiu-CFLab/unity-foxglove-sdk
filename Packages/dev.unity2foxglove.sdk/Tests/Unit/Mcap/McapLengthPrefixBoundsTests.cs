@@ -52,6 +52,29 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StringDecodersRejectMalformedUtf8()
+        {
+            var invalidUtf8 = new byte[] { 0xC3, 0x28 };
+            var prefixed = BuildPrefixed(invalidUtf8);
+            var offset = 0;
+
+            var binaryError = Assert.Throws<InvalidDataException>(() =>
+                McapBinaryReader.ReadString(prefixed, ref offset));
+            Assert.Contains("UTF-8", binaryError.Message, StringComparison.OrdinalIgnoreCase);
+
+            using var schema = new MemoryStream();
+            McapWriter.WriteU16(schema, 1);
+            McapWriter.WriteLengthPrefixedBytes(schema, invalidUtf8);
+            McapWriter.WriteString(schema, "jsonschema");
+            McapWriter.WriteLengthPrefixedBytes(schema, Encoding.UTF8.GetBytes("{}"));
+
+            var recordError = Assert.Throws<InvalidDataException>(() =>
+                McapRecordDecoder.DecodeSchema(schema.ToArray()));
+            Assert.Contains("schema name", recordError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("UTF-8", recordError.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void OversizedStringLengthPrefixesThrowInvalidDataException()
         {
             foreach (var length in BadLengths())

@@ -8,7 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -72,6 +75,63 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
 
             Assert.Equal("original", Encoding.UTF8.GetString(Assert.Single(result.Messages).Data));
             Assert.Equal("input", Assert.Single(result.Summary.Channels).Metadata["unity2foxglove.direction"]);
+        }
+
+        [Fact]
+        public void AdvertiseAndUnadvertiseShareTheDisconnectLifecycleGate()
+        {
+            var transport = new ClientPublishTransport();
+            using var session = new FoxgloveSession("session-client-lifecycle", transport);
+            var lifecycleGate = typeof(FoxgloveSession)
+                .GetField("_channelLifecycleLock", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(session);
+            Assert.NotNull(lifecycleGate);
+
+            AssertWaitsForLifecycleGate(
+                lifecycleGate,
+                () => transport.ReceiveText(11,
+                    "{\"op\":\"advertise\",\"channels\":[{\"id\":1,\"topic\":\"/phase187/client\",\"encoding\":\"json\"}]}"));
+
+            AssertWaitsForLifecycleGate(
+                lifecycleGate,
+                () => transport.ReceiveText(11,
+                    "{\"op\":\"unadvertise\",\"channelIds\":[1]}"));
+        }
+
+        private static void AssertWaitsForLifecycleGate(object lifecycleGate, Action operation)
+        {
+            using var started = new ManualResetEventSlim();
+            using var finished = new ManualResetEventSlim();
+            Task task = null;
+
+            Monitor.Enter(lifecycleGate);
+            try
+            {
+                task = Task.Run(() =>
+                {
+                    started.Set();
+                    try
+                    {
+                        operation();
+                    }
+                    finally
+                    {
+                        finished.Set();
+                    }
+                });
+
+                Assert.True(started.Wait(TimeSpan.FromSeconds(5)), "Concurrent lifecycle operation did not start.");
+                Assert.False(
+                    finished.Wait(TimeSpan.FromMilliseconds(250)),
+                    "Client publish lifecycle operation bypassed the session disconnect gate.");
+            }
+            finally
+            {
+                Monitor.Exit(lifecycleGate);
+            }
+
+            Assert.True(finished.Wait(TimeSpan.FromSeconds(5)), "Lifecycle operation did not resume after gate release.");
+            task.GetAwaiter().GetResult();
         }
 
         private static byte[] ClientMessageFrame(uint channelId, string payload)

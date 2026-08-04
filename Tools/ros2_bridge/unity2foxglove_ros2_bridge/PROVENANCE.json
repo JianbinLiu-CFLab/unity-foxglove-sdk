@@ -56,7 +56,7 @@
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
-      "sha256": "1965fc38f1e9c075c68f6e62298f8a76d87bb1e0488db0ca521d51b076ef61ed",
+      "sha256": "507727473a36519cb30cf4e04e55b7b5e958010e1f7d454d2320a0badd866359",
       "classification": "original",
       "influence": "Original package-facing protocol, limits, compatibility, and clean-room documentation."
     },
@@ -69,14 +69,14 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2OutboundAuthority.cs",
-      "sha256": "7ba827999ddcf6561fb8064b4fafdff999d7478a096e55b360dd8118b4ac0c69",
+      "sha256": "cfba16e2149532d37cb0af3e43f07f0dc636deb222f0848f06324f7687c0cfc5",
       "classification": "original",
       "influence": "Original C# bounded outbound scheduling authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
-      "sha256": "1edbb788c63196b782b889e85981482a51f49a295abea00dbafb5e72ff662e72",
+      "sha256": "7ad55fe3dcba4012f5cc04203b96c04f8c43197960007042a728a7c1dcfe7b32",
       "classification": "original",
       "influence": "Original strict C# U2R2 v2 frame codec.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -136,7 +136,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",
-      "sha256": "0a543ca57641c63c2978f8bc7303fc39149db9b10c8347296beb99965bff3cf3",
+      "sha256": "25b578ca848e88ba2cf1aa2d46ae02f6fca437af265760f1f4d92ae6e6b33bc7",
       "classification": "original",
       "influence": "Original sidecar protocol, limits, compatibility, and clean-room documentation."
     },
@@ -170,7 +170,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json",
-      "sha256": "fcd39ccda5759817d854a9ea5ab5214a22b362e5e7653bfeb8deb8dc7544edfd",
+      "sha256": "b7792fed2fe969d00428c6fa9db13f8636a96c79ccb0c1b8effe127365b8d776",
       "classification": "original",
       "influence": "Original shared v1 compatibility and v2 byte/state authority fixture."
     },

@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null)
             {
                 if (_managerWasRunning)
-                    UnregisterAll();
+                    SuspendRegistrationsForRestart();
                 _managerWasRunning = false;
                 return;
             }
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_manager.IsRunning)
             {
                 if (_managerWasRunning)
-                    UnregisterAll();
+                    SuspendRegistrationsForRestart();
                 _managerWasRunning = false;
                 return;
             }
@@ -158,7 +158,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             SceneManager.sceneLoaded -= OnSceneChanged;
             SceneManager.sceneUnloaded -= OnSceneChanged;
-            UnregisterAll();
+            SuspendRegistrationsForRestart();
         }
 
         private void OnDestroy()

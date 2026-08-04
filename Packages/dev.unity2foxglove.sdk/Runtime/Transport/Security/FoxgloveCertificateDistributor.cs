@@ -6,6 +6,7 @@
 // bootstrap, with SHA-256 fingerprint display.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -32,17 +33,21 @@ namespace Unity.FoxgloveSDK.Transport
         private const int MaxRequestHeaders = 100;
         private const int MaxConcurrentClients = 10;
         private const int StopAcceptLoopWaitMs = 1000;
-        private const int StopClientHandlersWaitMs = 1000;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
         private readonly int _clientIoTimeoutMs;
+        private readonly object _lifecycleGate = new object();
+        private readonly object _clientGate = new object();
+        private readonly HashSet<TcpClient> _activeClients = new HashSet<TcpClient>();
         private readonly ManualResetEventSlim _clientHandlersIdle = new ManualResetEventSlim(true);
         private TcpListener _listener;
         private CancellationTokenSource _cts;
         private Task _acceptLoopTask;
         private string _rootCaSha256Fingerprint;
         private int _activeClientHandlers;
+        private int _running;
+        private bool _acceptingClients;
         private bool _disposed;
 
         public FoxgloveCertificateDistributor(
@@ -58,7 +63,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Whether the HTTP listener is currently active.</summary>
-        public bool IsRunning => _listener != null;
+        public bool IsRunning => Volatile.Read(ref _running) != 0;
 
         /// <summary>SHA-256 fingerprint of the configured root CA file.</summary>
         public string RootCaSha256Fingerprint
@@ -78,52 +83,86 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Start serving the configured root CA file.</summary>
         public void Start(string host, int port)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(FoxgloveCertificateDistributor));
-            if (_listener != null)
-                throw new InvalidOperationException("Certificate distributor already started.");
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    throw new ObjectDisposedException(nameof(FoxgloveCertificateDistributor));
+                if (_listener != null || Volatile.Read(ref _running) != 0)
+                    throw new InvalidOperationException("Certificate distributor already started.");
 
-            if (string.IsNullOrWhiteSpace(_rootCaPath) || !File.Exists(_rootCaPath))
-                throw new InvalidOperationException("Root CA file is required for certificate distribution.");
+                if (string.IsNullOrWhiteSpace(_rootCaPath) || !File.Exists(_rootCaPath))
+                    throw new InvalidOperationException("Root CA file is required for certificate distribution.");
 
-            _rootCaSha256Fingerprint = ComputeSha256Fingerprint(_rootCaPath);
-            var address = TransportHostResolver.ResolveBindAddress(host);
-            _listener = new TcpListener(address, port);
-            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _cts = new CancellationTokenSource();
-            _listener.Start();
-            _clientHandlersIdle.Set();
-            _acceptLoopTask = Task.Run(() => AcceptLoop(_cts.Token));
+                _rootCaSha256Fingerprint = ComputeSha256Fingerprint(_rootCaPath);
+                var address = TransportHostResolver.ResolveBindAddress(host);
+                TcpListener listener = null;
+                CancellationTokenSource cts = null;
+                try
+                {
+                    listener = new TcpListener(address, port);
+                    listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    cts = new CancellationTokenSource();
+                    listener.Start();
+
+                    lock (_clientGate)
+                    {
+                        if (_activeClientHandlers != 0 || _activeClients.Count != 0)
+                            throw new InvalidOperationException("Certificate distributor client shutdown is incomplete.");
+
+                        _acceptingClients = true;
+                        _clientHandlersIdle.Set();
+                    }
+
+                    _listener = listener;
+                    _cts = cts;
+                    _acceptLoopTask = Task.Run(() => AcceptLoop(listener, cts.Token));
+                    Volatile.Write(ref _running, 1);
+                }
+                catch
+                {
+                    Volatile.Write(ref _running, 0);
+                    _listener = null;
+                    _cts = null;
+                    _acceptLoopTask = null;
+                    lock (_clientGate)
+                    {
+                        _acceptingClients = false;
+                        if (_activeClientHandlers == 0)
+                            _clientHandlersIdle.Set();
+                    }
+
+                    try { cts?.Cancel(); } catch { }
+                    try { listener?.Stop(); } catch { }
+                    cts?.Dispose();
+                    throw;
+                }
+            }
         }
 
         /// <summary>Stop accepting requests and release the listener port.</summary>
         public void Stop()
         {
-            if (_disposed)
-                return;
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    return;
 
-            var cts = _cts;
-            _cts = null;
-            cts?.Cancel();
-            try { _listener?.Stop(); } catch { }
-            _listener = null;
-            WaitForShutdownTask(_acceptLoopTask, StopAcceptLoopWaitMs);
-            _acceptLoopTask = null;
-            // The listener is stopped before waiting for handler idle so no new
-            // accept path can Reset the event after the final handler Set.
-            _clientHandlersIdle.Wait(StopClientHandlersWaitMs);
-            cts?.Dispose();
+                StopNoLock();
+            }
         }
 
         /// <summary>Stop the listener and release resources.</summary>
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    return;
 
-            Stop();
-            _clientHandlersIdle.Dispose();
-            _disposed = true;
+                StopNoLock();
+                _clientHandlersIdle.Dispose();
+                _disposed = true;
+            }
         }
 
         /// <summary>Compute a colon-separated SHA-256 fingerprint for a file.</summary>
@@ -138,16 +177,47 @@ namespace Unity.FoxgloveSDK.Transport
             return BitConverter.ToString(hash).Replace("-", ":");
         }
 
-        private async Task AcceptLoop(CancellationToken ct)
+        private void StopNoLock()
+        {
+            Volatile.Write(ref _running, 0);
+            var cts = _cts;
+            _cts = null;
+            var listener = _listener;
+            _listener = null;
+
+            TcpClient[] activeClients;
+            lock (_clientGate)
+            {
+                // Close registration before taking the active-client snapshot. An
+                // accept that raced cancellation can no longer reset the idle event.
+                _acceptingClients = false;
+                activeClients = new TcpClient[_activeClients.Count];
+                _activeClients.CopyTo(activeClients);
+            }
+
+            try { cts?.Cancel(); } catch { }
+            try { listener?.Stop(); } catch { }
+            foreach (var client in activeClients)
+            {
+                try { client.Dispose(); } catch { }
+            }
+
+            WaitForShutdownTask(_acceptLoopTask, StopAcceptLoopWaitMs);
+            _acceptLoopTask = null;
+
+            // Accepted clients are actively closed above. Wait until every handler
+            // has executed its finally block before shared synchronization is reused
+            // by Start or disposed by Dispose.
+            _clientHandlersIdle.Wait();
+            cts?.Dispose();
+        }
+
+        private async Task AcceptLoop(TcpListener listener, CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var listener = _listener;
-                    if (listener == null)
-                        break;
-
                     var client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
                     if (ct.IsCancellationRequested)
                     {
@@ -155,27 +225,31 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    if (Interlocked.Increment(ref _activeClientHandlers) > MaxConcurrentClients)
+                    if (!TryRegisterClient(client, ct, out var clientLimitReached))
                     {
-                        Interlocked.Decrement(ref _activeClientHandlers);
-                        if (Volatile.Read(ref _activeClientHandlers) == 0)
-                            _clientHandlersIdle.Set();
-                        _logger.LogWarning(
-                            $"Rejected certificate distributor client because active client limit {MaxConcurrentClients} is reached.");
+                        if (clientLimitReached)
+                        {
+                            _logger.LogWarning(
+                                $"Rejected certificate distributor client because active client limit {MaxConcurrentClients} is reached.");
+                        }
                         try { client.Dispose(); } catch { }
                         continue;
                     }
 
-                    _clientHandlersIdle.Reset();
-                    _ = Task.Run(() =>
+                    try
                     {
-                        try { HandleClient(client, ct); }
-                        finally
+                        _ = Task.Run(() =>
                         {
-                            if (Interlocked.Decrement(ref _activeClientHandlers) == 0)
-                                _clientHandlersIdle.Set();
-                        }
-                    });
+                            try { HandleClient(client, ct); }
+                            finally { CompleteClientHandler(client); }
+                        });
+                    }
+                    catch
+                    {
+                        CompleteClientHandler(client);
+                        try { client.Dispose(); } catch { }
+                        throw;
+                    }
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
                 catch (NullReferenceException) when (ct.IsCancellationRequested) { break; }
@@ -184,6 +258,41 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     _logger.LogError($"Certificate distributor accept error: {ex.Message}");
                 }
+            }
+        }
+
+        private bool TryRegisterClient(
+            TcpClient client,
+            CancellationToken ct,
+            out bool clientLimitReached)
+        {
+            clientLimitReached = false;
+            lock (_clientGate)
+            {
+                if (!_acceptingClients || ct.IsCancellationRequested)
+                    return false;
+
+                if (Interlocked.Increment(ref _activeClientHandlers) > MaxConcurrentClients)
+                {
+                    clientLimitReached = true;
+                    if (Interlocked.Decrement(ref _activeClientHandlers) == 0)
+                        _clientHandlersIdle.Set();
+                    return false;
+                }
+
+                _activeClients.Add(client);
+                _clientHandlersIdle.Reset();
+                return true;
+            }
+        }
+
+        private void CompleteClientHandler(TcpClient client)
+        {
+            lock (_clientGate)
+            {
+                _activeClients.Remove(client);
+                if (Interlocked.Decrement(ref _activeClientHandlers) == 0)
+                    _clientHandlersIdle.Set();
             }
         }
 

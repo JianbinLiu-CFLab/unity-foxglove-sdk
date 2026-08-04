@@ -636,6 +636,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         bool TryApplyLatest(long activeSessionGeneration, double nowSeconds);
     }
 
+    internal static class FoxRunRos2SubscriptionAdmission
+    {
+        internal static int RetainDeterministicPrefix<T>(
+            List<T> candidates,
+            int maximum,
+            Comparison<T> comparison)
+        {
+            if (candidates == null)
+                throw new ArgumentNullException(nameof(candidates));
+            if (maximum < 0)
+                throw new ArgumentOutOfRangeException(nameof(maximum));
+            if (comparison == null)
+                throw new ArgumentNullException(nameof(comparison));
+
+            candidates.Sort(comparison);
+            var overflow = Math.Max(0, candidates.Count - maximum);
+            if (overflow > 0)
+                candidates.RemoveRange(maximum, overflow);
+            return overflow;
+        }
+    }
+
     [DefaultExecutionOrder(-435)]
     [AddComponentMenu("")]
     internal sealed class FoxRunRos2SubscriptionHub : MonoBehaviour
@@ -1045,7 +1067,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var behaviours = FindObjectsByType<MonoBehaviour>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
-            for (var i = 0; i < behaviours.Length && _sources.Count < MaximumContracts; i++)
+            for (var i = 0; i < behaviours.Length; i++)
             {
                 var behaviour = behaviours[i];
                 var hasNative = FoxRunRos2SourceDiscovery.TryGet(behaviour, out var nativeSource);
@@ -1055,7 +1077,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     _sources.Add(new SourceCandidate(behaviour, nativeSource, customSource));
                 }
             }
-            _sources.Sort((left, right) => left.Key.CompareTo(right.Key));
+            var overflow = FoxRunRos2SubscriptionAdmission.RetainDeterministicPrefix(
+                _sources,
+                MaximumContracts,
+                (left, right) => left.Key.CompareTo(right.Key));
+            if (overflow > 0)
+            {
+                WarnHostOnce(
+                    "source-capacity",
+                    "Native ROS2 subscription discovery exceeded the "
+                    + MaximumContracts
+                    + "-source limit; ignored "
+                    + overflow
+                    + " source(s) after deterministic ordering.");
+            }
 
             _seenSources.Clear();
             _seenEndpoints.Clear();

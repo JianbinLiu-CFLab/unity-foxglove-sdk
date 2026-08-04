@@ -258,6 +258,180 @@
   "v2": {
     "protocolVersion": 2,
     "envelopeVersion": 1,
+    "legacyV1NegativeExecution": {
+      "schemaVersion": 1,
+      "catalog": "negativeVectors",
+      "vectors": [
+        {
+          "id": "bad_magic",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 0,
+          "replacementHex": "58",
+          "expectedFailure": "magic"
+        },
+        {
+          "id": "bad_version",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 4,
+          "replacementHex": "0200",
+          "expectedFailure": "version"
+        },
+        {
+          "id": "bad_flags",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 6,
+          "replacementHex": "0100",
+          "expectedFailure": "flags"
+        },
+        {
+          "id": "oversized_header",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 8,
+          "replacementHex": "01000100",
+          "expectedFailure": "header_length"
+        },
+        {
+          "id": "oversized_payload",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 12,
+          "replacementHex": "01000004",
+          "expectedFailure": "payload_length"
+        },
+        {
+          "id": "truncated_fixed",
+          "consumers": ["csharp", "cpp"],
+          "action": "truncate_frame",
+          "baseFrame": "preparePublisher.request",
+          "length": 15,
+          "expectedFailure": "fixed_header"
+        },
+        {
+          "id": "truncated_header",
+          "consumers": ["csharp", "cpp"],
+          "action": "truncate_frame",
+          "baseFrame": "preparePublisher.request",
+          "trimBytes": 1,
+          "expectedFailure": "header_completion"
+        },
+        {
+          "id": "truncated_payload",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_frame",
+          "baseFrame": "preparePublisher.request",
+          "offset": 12,
+          "replacementHex": "01000000",
+          "expectedFailure": "payload_completion"
+        },
+        {
+          "id": "partial_payload_stall",
+          "consumers": ["cpp"],
+          "action": "stream_frame",
+          "baseFrame": "publish.frame",
+          "trimBytes": 9,
+          "termination": "timeout",
+          "timeoutMs": 25,
+          "expectedFailure": "partial_payload_timeout"
+        },
+        {
+          "id": "duplicate_operation",
+          "consumers": ["csharp", "cpp"],
+          "action": "duplicate_json_property",
+          "baseFrame": "preparePublisher.request",
+          "property": "op",
+          "value": "prepare_publisher",
+          "expectedFailure": "duplicate_property"
+        },
+        {
+          "id": "unknown_operation",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_json",
+          "baseFrame": "preparePublisher.request",
+          "path": "op",
+          "value": "phase186_unknown",
+          "expectedFailure": "operation"
+        },
+        {
+          "id": "illegal_sequence",
+          "consumers": ["csharp"],
+          "action": "publish_before_publisher_ready",
+          "baseFrame": "publish.frame",
+          "expectedFailure": "publisher_readiness"
+        },
+        {
+          "id": "invalid_utf8",
+          "consumers": ["csharp", "cpp"],
+          "action": "replace_header_utf8",
+          "baseFrame": "preparePublisher.request",
+          "needle": "phase186-v1-prepare-001",
+          "replacementHex": "ff",
+          "expectedFailure": "utf8"
+        },
+        {
+          "id": "trailing_json_root",
+          "consumers": ["csharp", "cpp"],
+          "action": "append_json_root",
+          "baseFrame": "preparePublisher.request",
+          "suffix": "{}",
+          "expectedFailure": "json_root"
+        },
+        {
+          "id": "invalid_topic",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_json",
+          "baseFrame": "preparePublisher.request",
+          "path": "topic",
+          "value": "phase186/v1/state",
+          "expectedFailure": "topic"
+        },
+        {
+          "id": "invalid_type",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_json",
+          "baseFrame": "preparePublisher.request",
+          "path": "schemaName",
+          "value": "phase186_msgs/State",
+          "expectedFailure": "schema_name"
+        },
+        {
+          "id": "invalid_delivery_policy",
+          "consumers": ["csharp", "cpp"],
+          "action": "patch_json",
+          "baseFrame": "preparePublisher.request",
+          "path": "qos.history",
+          "value": "keep_all",
+          "expectedFailure": "qos"
+        },
+        {
+          "id": "correlation_mismatch",
+          "consumers": ["csharp"],
+          "action": "patch_json",
+          "baseFrame": "preparePublisher.response",
+          "path": "requestId",
+          "value": "phase186-v1-prepare-other",
+          "expectedRequestId": "phase186-v1-prepare-001",
+          "expectedFailure": "request_id"
+        },
+        {
+          "id": "peer_close",
+          "consumers": ["csharp", "cpp"],
+          "action": "stream_frame",
+          "baseFrame": "preparePublisher.request",
+          "trimBytes": 1,
+          "termination": "eof",
+          "expectedFailure": "peer_close"
+        }
+      ]
+    },
     "requestId": "unsigned_64_nonzero",
     "messageId": "unsigned_64_nonzero",
     "jsonMaxDepth": 64,

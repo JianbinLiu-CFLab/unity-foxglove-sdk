@@ -344,6 +344,49 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void OrdinaryFanoutClassifiesInvalidProviderResultAsFailure()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var sessions = new IFoxRunTransportSession[]
+            {
+                new OrdinarySession(
+                    new FoxRunTransportId("unity2foxglove.invalid-result"),
+                    generation: 187,
+                    calls,
+                    default(FoxRunTransportPublishResult))
+            };
+            var request = new FoxRunOrdinaryPayloadRequest(
+                "ordinary-invalid-result-fixture",
+                "/phase187/invalid-result",
+                "Demo.Value",
+                value: 42,
+                logTimeNs: 187,
+                sequence: 1,
+                FoxRunDeliveryPolicy.ProviderDefault);
+
+            var result = FoxRunOrdinaryTransportFanout.Publish(
+                sessions,
+                in request);
+
+            Assert.Equal(
+                new[] { "unity2foxglove.invalid-result" },
+                calls);
+            Assert.Equal(1, result.Matched);
+            Assert.Equal(0, result.Accepted);
+            Assert.Equal(0, result.Rejected);
+            Assert.Equal(0, result.Unavailable);
+            Assert.Equal(1, result.Failed);
+            Assert.Equal(
+                result.Matched,
+                result.Accepted
+                + result.Rejected
+                + result.Unavailable
+                + result.Failed);
+            Assert.False(result.AnyAccepted);
+            Assert.False(result.AllAccepted);
+        }
+
+        [Fact]
         public void GeneratedFanoutUsesExplicitRoutesAndClassifiesEverySelectedProvider()
         {
             var calls = new System.Collections.Generic.List<string>();
@@ -1304,6 +1347,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             private readonly System.Collections.Generic.IList<string> _calls;
             private readonly bool _failPublish;
+            private readonly FoxRunTransportPublishResult? _publishResult;
 
             internal OrdinarySession(
                 FoxRunTransportId id,
@@ -1315,6 +1359,18 @@ namespace Unity.FoxgloveSDK.Tests
                 Generation = generation;
                 _calls = calls;
                 _failPublish = failPublish;
+            }
+
+            internal OrdinarySession(
+                FoxRunTransportId id,
+                ulong generation,
+                System.Collections.Generic.IList<string> calls,
+                FoxRunTransportPublishResult publishResult)
+            {
+                Id = id;
+                Generation = generation;
+                _calls = calls;
+                _publishResult = publishResult;
             }
 
             public FoxRunTransportId Id { get; }
@@ -1343,7 +1399,8 @@ namespace Unity.FoxgloveSDK.Tests
                 _calls.Add(Id.Value);
                 if (_failPublish)
                     throw new InvalidOperationException("fixture failure");
-                return FoxRunTransportPublishResult.Accepted();
+                return _publishResult
+                       ?? FoxRunTransportPublishResult.Accepted();
             }
 
             public FoxRunTransportSubscribeResult Subscribe(

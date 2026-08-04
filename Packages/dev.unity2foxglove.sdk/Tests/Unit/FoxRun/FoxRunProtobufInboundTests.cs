@@ -124,5 +124,119 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(0, rejected);
             Assert.Equal("Protobuf uint8 value is out of range.", rejectedError);
         }
+
+        [Fact]
+        public void StringReadersRejectInvalidUtf8WithoutReplacement()
+        {
+            var invalidSequences = new[]
+            {
+                new byte[] { 0xff },
+                new byte[] { 0x80 },
+                new byte[] { 0xe2, 0x82 },
+                new byte[] { 0xc0, 0xaf }
+            };
+
+            foreach (var invalidUtf8 in invalidSequences)
+            {
+                var field = new FoxRunProtobufField(1, 2, invalidUtf8);
+
+                Assert.False(FoxRunInboundProtobuf.TryDecodeString(field, out var decodedField, out var fieldError));
+                Assert.Empty(decodedField);
+                Assert.Contains("UTF-8", fieldError, StringComparison.OrdinalIgnoreCase);
+
+                var payload = new byte[invalidUtf8.Length + 2];
+                payload[0] = 0x0a;
+                payload[1] = (byte)invalidUtf8.Length;
+                Buffer.BlockCopy(invalidUtf8, 0, payload, 2, invalidUtf8.Length);
+
+                Assert.False(FoxRunInboundProtobuf.TryRead(payload, 1, out string decodedPayload, out var payloadError));
+                Assert.Empty(decodedPayload);
+                Assert.Contains("UTF-8", payloadError, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        [Fact]
+        public void StringReadersPreserveValidSupplementaryPlaneUtf8()
+        {
+            const string Expected = "robot \U0001f916";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(Expected);
+            var field = new FoxRunProtobufField(1, 2, bytes);
+            var payload = new System.Collections.Generic.List<byte>();
+            FoxRunProtobufWire.WriteString(payload, 1, Expected);
+
+            Assert.True(FoxRunInboundProtobuf.TryDecodeString(field, out var decodedField, out var fieldError));
+            Assert.Empty(fieldError);
+            Assert.Equal(Expected, decodedField);
+            Assert.True(FoxRunInboundProtobuf.TryRead(payload.ToArray(), 1, out string decodedPayload, out var payloadError));
+            Assert.Empty(payloadError);
+            Assert.Equal(Expected, decodedPayload);
+        }
+
+        [Fact]
+        public void VarintReaderRejectsPayloadBitsBeyondUInt64()
+        {
+            var payload = new byte[]
+            {
+                0x08,
+                0x80, 0x80, 0x80, 0x80, 0x80,
+                0x80, 0x80, 0x80, 0x80, 0x02
+            };
+
+            Assert.False(FoxRunInboundProtobuf.TryRead(payload, 1, out ulong value, out var error));
+            Assert.Equal(0UL, value);
+            Assert.NotEmpty(error);
+        }
+
+        [Fact]
+        public void VarintReaderAcceptsTheMaximumUInt64Value()
+        {
+            var payload = new byte[]
+            {
+                0x08,
+                0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0x01
+            };
+
+            Assert.True(FoxRunInboundProtobuf.TryRead(payload, 1, out ulong value, out var error));
+            Assert.Empty(error);
+            Assert.Equal(ulong.MaxValue, value);
+        }
+
+        [Fact]
+        public void FieldReaderEnforcesTheProtobufFieldNumberLimit()
+        {
+            var legalFields = new System.Collections.Generic.List<FoxRunProtobufField>();
+            var illegalFields = new System.Collections.Generic.List<FoxRunProtobufField>();
+
+            Assert.True(FoxRunInboundProtobuf.TryReadFields(
+                new byte[] { 0xf8, 0xff, 0xff, 0xff, 0x0f, 0x01 },
+                legalFields,
+                out var legalError));
+            Assert.Empty(legalError);
+            Assert.Single(legalFields);
+            Assert.Equal(536_870_911, legalFields[0].Number);
+
+            Assert.False(FoxRunInboundProtobuf.TryReadFields(
+                new byte[] { 0x80, 0x80, 0x80, 0x80, 0x10, 0x01 },
+                illegalFields,
+                out var illegalError));
+            Assert.Empty(illegalFields);
+            Assert.Contains("tag", illegalError, StringComparison.OrdinalIgnoreCase);
+
+            Assert.False(FoxRunInboundProtobuf.TryReadFields(
+                new byte[] { 0x88, 0x80, 0x80, 0x80, 0x80, 0x01, 0x01 },
+                illegalFields,
+                out var wrappingError));
+            Assert.Empty(illegalFields);
+            Assert.Contains("tag", wrappingError, StringComparison.OrdinalIgnoreCase);
+
+            Assert.False(FoxRunInboundProtobuf.TryRead(
+                new byte[] { 0x88, 0x80, 0x80, 0x80, 0x80, 0x01, 0x01 },
+                1,
+                out ulong wrappingValue,
+                out var generatedReaderError));
+            Assert.Equal(0UL, wrappingValue);
+            Assert.Contains("tag", generatedReaderError, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

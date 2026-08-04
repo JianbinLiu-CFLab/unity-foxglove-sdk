@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Core
         private RecordingConfiguration _recordingConfiguration;
         private readonly IFoxgloveLogger _logger;
         private readonly IFoxgloveClock _clock;
+        private readonly object _lifecycleGate = new object();
         private FoxgloveParameterStore _parameters;
         private FoxgloveSession _session;
 
@@ -104,13 +105,16 @@ namespace Unity.FoxgloveSDK.Core
             string inputCoordinateMode)
         {
             var normalized = McapWriterOptions.Normalize(options);
-            Volatile.Write(
-                ref _recordingConfiguration,
-                new RecordingConfiguration(
-                    filePath,
-                    normalized,
-                    outputCoordinateMode ?? "",
-                    inputCoordinateMode ?? ""));
+            lock (_lifecycleGate)
+            {
+                Volatile.Write(
+                    ref _recordingConfiguration,
+                    new RecordingConfiguration(
+                        filePath,
+                        normalized,
+                        outputCoordinateMode ?? "",
+                        inputCoordinateMode ?? ""));
+            }
         }
 
         /// <summary>Set the coordinate mode after recording was enabled.</summary>
@@ -120,24 +124,30 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Set the paired coordinate conventions after recording was enabled.</summary>
         public void SetCoordinateModes(string outputMode, string inputMode)
         {
-            var current = Volatile.Read(ref _recordingConfiguration);
-            if (current == null)
-                return;
+            lock (_lifecycleGate)
+            {
+                var current = Volatile.Read(ref _recordingConfiguration);
+                if (current == null)
+                    return;
 
-            Volatile.Write(
-                ref _recordingConfiguration,
-                new RecordingConfiguration(
-                    current.FilePath,
-                    current.WriterOptions,
-                    outputMode ?? "",
-                    inputMode ?? ""));
+                Volatile.Write(
+                    ref _recordingConfiguration,
+                    new RecordingConfiguration(
+                        current.FilePath,
+                        current.WriterOptions,
+                        outputMode ?? "",
+                        inputMode ?? ""));
+            }
         }
 
         /// <summary>Disable recording without destroying any in-flight state.</summary>
         public void Disable()
         {
-            Volatile.Write(ref _recordingConfiguration, null);
-            DetachFromSession();
+            lock (_lifecycleGate)
+            {
+                Volatile.Write(ref _recordingConfiguration, null);
+                DetachFromSessionLocked();
+            }
         }
 
         /// <summary>
@@ -160,8 +170,14 @@ namespace Unity.FoxgloveSDK.Core
 
         private void AttachToSessionCore(FoxgloveParameterStore parameters, FoxgloveSession session)
         {
+            lock (_lifecycleGate)
+                AttachToSessionLocked(parameters, session);
+        }
+
+        private void AttachToSessionLocked(FoxgloveParameterStore parameters, FoxgloveSession session)
+        {
             if (Volatile.Read(ref _recorder) != null)
-                DetachFromSession();
+                DetachFromSessionLocked();
 
             var configuration = Volatile.Read(ref _recordingConfiguration);
             if (configuration == null || configuration.FilePath == null) return;
@@ -231,6 +247,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <para>Unsubscribes parameter change events, closes and disposes the recorder.</para>
         /// </summary>
         public void DetachFromSession()
+        {
+            lock (_lifecycleGate)
+                DetachFromSessionLocked();
+        }
+
+        private void DetachFromSessionLocked()
         {
             var session = Interlocked.Exchange(ref _session, null);
             session?.SetRecorder(null);

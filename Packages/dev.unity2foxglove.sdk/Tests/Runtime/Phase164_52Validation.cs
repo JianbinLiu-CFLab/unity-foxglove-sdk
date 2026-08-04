@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManualSmokeCachesReflectionAndHandlesAllLocalDistroEntrypoints()
         {
             var source = Read("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");
-            var batchRunner = SourceMethod(source, "private sealed class BatchRunner");
+            var batchRunner = PhaseValidationSourceHelpers.SourceType(source, "private sealed class BatchRunner");
             var ensureExecutor = SourceMethod(batchRunner, "private void EnsureExecutorStarted()");
 
             Check(batchRunner.Contains("private readonly MethodInfo _startExecutor;", StringComparison.Ordinal)

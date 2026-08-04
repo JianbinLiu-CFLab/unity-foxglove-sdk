@@ -7,6 +7,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Xunit;
 
@@ -412,6 +414,72 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("DropRequest(replacedRequest)", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("DropResult(droppedResult)", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("result.Request.RecycleSourceSnapshot", pointCloudPipeline, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void VirtualLidarFreezesOutputRepresentationUntilScanBoundary()
+        {
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs");
+
+            Assert.Contains("private VirtualLidarScanRepresentation _activeScanRepresentation;", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeScanRepresentation = new VirtualLidarScanRepresentation(", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeScanRepresentation.UseNativeSnapshot", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeScanRepresentation.RequiresNativeAcquisitionFrame", lidar, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Time.fixedDeltaTime,\n                    UseNativePointCloudSnapshotPath(),",
+                lidar,
+                StringComparison.Ordinal);
+            Assert.Contains("AppendValidSnapshotPoints", publisher, StringComparison.Ordinal);
+            Assert.Contains("snapshot = null;", publisher, StringComparison.Ordinal);
+            Assert.Contains("snapshotCount = 0;", publisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativeSnapshotFallbackPreservesEveryValidPointExactlyOnce()
+        {
+            var representation = new VirtualLidarScanRepresentation(
+                useNativeSnapshot: true,
+                requiresNativeAcquisitionFrame: false);
+            var frame = new PointCloudFrame();
+            var snapshot = new[]
+            {
+                new VirtualLidarPointData
+                {
+                    X = 1f,
+                    Y = 2f,
+                    Z = 3f,
+                    Intensity = 4f,
+                    Reflectivity = 5f,
+                    TimeOffsetSeconds = 0.01f,
+                    Ring = 6,
+                    IsValid = 1
+                },
+                new VirtualLidarPointData { X = 99f, IsValid = 0 },
+                new VirtualLidarPointData
+                {
+                    X = 7f,
+                    Y = 8f,
+                    Z = 9f,
+                    Intensity = 10f,
+                    Reflectivity = 11f,
+                    TimeOffsetSeconds = 0.02f,
+                    Ring = 12,
+                    IsValid = 1
+                }
+            };
+
+            var appended = representation.AppendValidSnapshotPoints(frame, snapshot, snapshot.Length);
+
+            Assert.True(representation.UseNativeSnapshot);
+            Assert.False(representation.RequiresNativeAcquisitionFrame);
+            Assert.Equal(2, appended);
+            Assert.Equal(2, frame.Points.Count);
+            Assert.Equal(1f, frame.Points[0].X);
+            Assert.Equal(6, frame.Points[0].Ring);
+            Assert.Equal(7f, frame.Points[1].X);
+            Assert.Equal(12, frame.Points[1].Ring);
         }
 
         [Fact]

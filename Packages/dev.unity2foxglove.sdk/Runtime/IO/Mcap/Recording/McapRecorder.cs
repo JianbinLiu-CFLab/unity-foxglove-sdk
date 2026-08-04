@@ -367,16 +367,42 @@ namespace Unity.FoxgloveSDK.IO
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
             if (_recordingFailed || _closed) return;
-            var seq = map.Seq++;
-            map.MsgCount++;
+            var seq = map.Seq;
             var payloadLength = payload?.Length ?? 0;
             if (!_options.UseChunking)
             {
-                // MCAP publish_time intentionally mirrors log_time for Unity live recording.
-                _writer.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                var recordStartPosition = _writer.Position;
+                try
+                {
+                    // MCAP publish_time intentionally mirrors log_time for Unity live recording.
+                    _writer.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                }
+                catch (Exception writeError)
+                {
+                    try
+                    {
+                        _writer.TruncateToPosition(recordStartPosition);
+                    }
+                    catch (Exception rollbackError)
+                    {
+                        _closed = true;
+                        Fail("Direct message write and rollback failed: " + rollbackError.Message);
+                        throw new IOException(
+                            "MCAP recorder could not roll back an incomplete direct Message record.",
+                            new AggregateException(writeError, rollbackError));
+                    }
+
+                    throw;
+                }
+
+                map.Seq++;
+                map.MsgCount++;
                 TrackMessageTimes(logNs);
                 return;
             }
+
+            map.Seq++;
+            map.MsgCount++;
 
             const int messagePrefixLength = 2 + 4 + 8 + 8;
             if (payloadLength > int.MaxValue - messagePrefixLength - McapWriter.RecordHeaderLength)

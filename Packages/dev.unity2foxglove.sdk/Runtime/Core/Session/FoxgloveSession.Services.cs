@@ -74,35 +74,51 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 foreach (var call in _completedServiceCallsScratch)
-                {
-                    var recorder = Volatile.Read(ref _recorder);
-                    if (call.FailureMessage != null)
-                    {
-                        var fail = new ServiceCallFailure
-                        { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
-                        _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
-                        if (recorder != null)
-                            recorder.WriteMetadata("foxglove.services",
-                                JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                                    status = "failure", message = call.FailureMessage,
-                                    timestamp = _clock.NowNs }));
-                    }
-                    else
-                    {
-                        var frame = BinaryEncoding.EncodeServerServiceCallResponse(
-                            call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
-                        _transport.SendBinary(call.ClientId, frame);
-                        if (recorder != null)
-                            recorder.WriteMetadata("foxglove.services",
-                                JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                                    status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
-                                    timestamp = _clock.NowNs }));
-                    }
-                }
+                    DeliverCompletedServiceCall(call);
             }
             finally
             {
                 _completedServiceCallsScratch.Clear();
+            }
+        }
+
+        private void DeliverCompletedServiceCall(FoxgloveServiceCall call)
+        {
+            var responseSent = false;
+            try
+            {
+                var recorder = Volatile.Read(ref _recorder);
+                if (call.FailureMessage != null)
+                {
+                    var fail = new ServiceCallFailure
+                    { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
+                    _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
+                    responseSent = true;
+                    if (recorder != null)
+                        recorder.WriteMetadata("foxglove.services",
+                            JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                                status = "failure", message = call.FailureMessage,
+                                timestamp = _clock.NowNs }));
+                }
+                else
+                {
+                    var frame = BinaryEncoding.EncodeServerServiceCallResponse(
+                        call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
+                    _transport.SendBinary(call.ClientId, frame);
+                    responseSent = true;
+                    if (recorder != null)
+                        recorder.WriteMetadata("foxglove.services",
+                            JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                                status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
+                                timestamp = _clock.NowNs }));
+                }
+            }
+            catch (Exception ex)
+            {
+                var stage = responseSent ? "metadata recording" : "response delivery";
+                _logger.LogWarning(
+                    $"Service call {call.CallId} for client {call.ClientId} {stage} failed: " +
+                    $"{ex.GetType().Name}: {ex.Message}");
             }
         }
 

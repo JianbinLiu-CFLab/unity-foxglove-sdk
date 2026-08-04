@@ -5,6 +5,7 @@
 // Purpose: Phase 173-079 runtime review regression checks.
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
@@ -106,6 +107,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 beamsPerFrame: 0,
                 minRangeMeters: 0.5,
                 maxRangeMeters: 120.0));
+        }
+
+        [Fact]
+        public void LidarModelSpecClonesAndReadOnlyWrapsArrayInputs()
+        {
+            var altitudes = new[] { 10.0, -10.0 };
+            var modes = new[] { "1024x10", "2048x10" };
+            var spec = LidarModelSpec.Ouster(
+                "immutable", 2, 1024, modes, 10.0, -10.0, altitudes);
+
+            altitudes[0] = 99.0;
+            modes[0] = "corrupted";
+
+            Assert.Equal(10.0, spec.BeamAltitudeAnglesDeg[0]);
+            Assert.Equal("1024x10", spec.Modes[0]);
+            Assert.False(spec.BeamAltitudeAnglesDeg is double[]);
+            Assert.False(spec.Modes is string[]);
+
+            var exposedAltitudes = Assert.IsAssignableFrom<IList<double>>(spec.BeamAltitudeAnglesDeg);
+            var exposedModes = Assert.IsAssignableFrom<IList<string>>(spec.Modes);
+            Assert.True(exposedAltitudes.IsReadOnly);
+            Assert.True(exposedModes.IsReadOnly);
+            Assert.Throws<NotSupportedException>(() => exposedAltitudes[0] = 42.0);
+            Assert.Throws<NotSupportedException>(() => exposedModes[0] = "corrupted");
         }
     }
 }

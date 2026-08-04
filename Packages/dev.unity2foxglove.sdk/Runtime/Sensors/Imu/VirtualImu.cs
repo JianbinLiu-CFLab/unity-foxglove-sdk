@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
         private const int DefaultMaxWebSocketSamplesPerFrame = 32;
-        private const float DroppedSamplesLogIntervalSeconds = 5f;
+        private const double DroppedSamplesLogIntervalSeconds = 5d;
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("IMU angular velocity covariance (9 values, diagonal default).")] private double[] _imuAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         [SerializeField, Tooltip("IMU linear acceleration covariance (9 values, diagonal default).")] private double[] _imuLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
         [SerializeField, Tooltip("Include orientation in each IMU message.")] private bool _includeOrientation = true;
-        [SerializeField, Min(0), Tooltip(
+        [SerializeField, Range(0, ImuSubStep.MaxSupportedRateHz), Tooltip(
             "If greater than 0, set Time.fixedDeltaTime globally to 1 / value for higher IMU rate.\n"
             + "This affects all physics in the project.")]
         private int _globalPhysicsRateHzOverride = 0;
@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
             "IMU output rate via sub-step resampling between physics ticks.\n"
             + "0 = one sample per physics tick (138D behavior).\n"
             + "> 0 up-samples/down-samples with interpolation across tick interval.")]
-        [SerializeField, Min(0)] private int _targetRateHz = DefaultTargetRateHz;
+        [SerializeField, Range(0, ImuSubStep.MaxSupportedRateHz)] private int _targetRateHz = DefaultTargetRateHz;
         [SerializeField, Min(0), Tooltip(
             "Maximum IMU WebSocket visualization catch-up samples published per render frame.\n"
             + "Use at least sample rate / expected lowest FPS. 0 = legacy unlimited draining. Native IMU handoff is never capped.")]
@@ -77,13 +77,14 @@ namespace Unity.FoxgloveSDK.Components
         private Vector3 _lastBodyAcceleration;
         private Vector3 _lastBodyAngularVelocity;
         private Quaternion _lastBodyRotation;
+        private bool _initialized;
         private bool _didSetFixedDelta;
         private bool _hasEpoch;
         private ulong _epochUnixNs;
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
         private long _lastReportedDroppedSamples;
-        private float _nextDroppedSamplesLogTime;
+        private double _nextDroppedSamplesLogTime;
         private ISchemaRegistry _schemaRegisteredRegistry;
 
         private bool PublishEnabled => _publishing;
@@ -147,9 +148,6 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            if (_globalPhysicsRateHzOverride > 0)
-                ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
-
             _maxQueuedSamples = ComputeMaxQueuedSamples();
             _queue.Resize(_maxQueuedSamples, ImuSampleQueue.MinCapacity);
             _lastReportedDroppedSamples = 0;
@@ -163,6 +161,9 @@ namespace Unity.FoxgloveSDK.Components
             _nextSampleIndex = 0;
             _publishing = true;
             EnsureSchemaRegistered();
+            _initialized = true;
+            if (_globalPhysicsRateHzOverride > 0)
+                ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
         }
 
         private void OnEnable()
@@ -172,6 +173,8 @@ namespace Unity.FoxgloveSDK.Components
             _nextSampleIndex = 0;
             _nextDroppedSamplesLogTime = 0f;
             _schemaRegisteredRegistry = null;
+            if (_initialized && _globalPhysicsRateHzOverride > 0)
+                ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
         }
 
         private void OnDisable()
@@ -235,15 +238,18 @@ namespace Unity.FoxgloveSDK.Components
                 var tickStartRel = tickEndPhysical - Time.fixedDeltaTime - _epochPhysSeconds;
                 var tickEndRel = tickEndPhysical - _epochPhysSeconds;
 
-                _nextSampleIndex = ImuSubStep.AlignSampleIndexToTickStart(
+                var plan = ImuSubStep.PlanTickSamples(
                     tickStartRel,
+                    tickEndRel,
                     targetRateHz,
-                    _nextSampleIndex);
+                    _nextSampleIndex,
+                    _maxQueuedSamples);
+                _queue.RecordDropped(plan.SkippedSampleCount);
 
-                while (ImuSubStep.TryGetSampleTime(targetRateHz, _nextSampleIndex, out var sampleRel))
+                for (var sampleOffset = 0; sampleOffset < plan.SampleCount; sampleOffset++)
                 {
-                    if (sampleRel > tickEndRel + 1e-12)
-                        break;
+                    var sampleIndex = plan.FirstSampleIndex + sampleOffset;
+                    ImuSubStep.TryGetSampleTime(targetRateHz, sampleIndex, out var sampleRel);
 
                     var phase = (float)Math.Clamp((sampleRel - tickStartRel) / Time.fixedDeltaTime, 0.0, 1.0);
                     var startLinearBody = initializedEpochThisTick ? linearBody : _lastBodyAcceleration;
@@ -252,13 +258,13 @@ namespace Unity.FoxgloveSDK.Components
                     // CreateSample applies the Unity->Foxglove coordinate conversion, matching
                     // the targetHz<=0 path. Interpolate in Unity body frame, then convert.
                     _queue.Enqueue(CreateSample(
-                        ImuSubStep.SampleTimestampNs(_epochUnixNs, _nextSampleIndex, targetRateHz),
+                        ImuSubStep.SampleTimestampNs(_epochUnixNs, sampleIndex, targetRateHz),
                         Vector3.Lerp(startLinearBody, linearBody, phase),
                         Vector3.Lerp(startAngularBody, angularBody, phase),
                         Quaternion.Slerp(startBodyRotation, bodyRotation, phase)));
-
-                    _nextSampleIndex++;
                 }
+
+                _nextSampleIndex = plan.NextSampleIndex;
             }
 
             _lastWorldVelocity = worldVelocity;
@@ -323,10 +329,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private void NormalizeSerializedConfiguration()
         {
-            if (_globalPhysicsRateHzOverride < 0)
-                _globalPhysicsRateHzOverride = 0;
-            if (_targetRateHz < 0)
-                _targetRateHz = 0;
+            _globalPhysicsRateHzOverride = ImuSubStep.NormalizeRateHz(_globalPhysicsRateHzOverride);
+            _targetRateHz = ImuSubStep.NormalizeRateHz(_targetRateHz);
             if (_maxWebSocketSamplesPerFrame < 0)
                 _maxWebSocketSamplesPerFrame = 0;
             if (string.IsNullOrWhiteSpace(_topic))
@@ -373,16 +377,23 @@ namespace Unity.FoxgloveSDK.Components
         private int ResolveTargetRateHz()
         {
             if (_publishRateSource != PublisherRateSource.UseManagerDefault)
-                return _targetRateHz;
+                return ImuSubStep.NormalizeRateHz(_targetRateHz);
 
             if (_manager == null)
-                return _targetRateHz;
+                return ImuSubStep.NormalizeRateHz(_targetRateHz);
 
-            return Math.Max(0, (int)Math.Round(_manager.DefaultPublishRateHz));
+            return ImuSubStep.NormalizeRateHz(_manager.DefaultPublishRateHz);
         }
 
         private void ApplyGlobalPhysicsRateOverride(int targetHz)
         {
+            if (_didSetFixedDelta)
+                return;
+
+            targetHz = ImuSubStep.NormalizeRateHz(targetHz);
+            if (targetHz == 0)
+                return;
+
             var target = 1f / targetHz;
             if (target <= 0f)
                 return;
@@ -436,18 +447,18 @@ namespace Unity.FoxgloveSDK.Components
             var dropped = _queue.DroppedCount;
             if (dropped <= _lastReportedDroppedSamples)
                 return;
-            if (Time.unscaledTime < _nextDroppedSamplesLogTime)
+            if (Time.unscaledTimeAsDouble < _nextDroppedSamplesLogTime)
                 return;
 
             Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
                 this,
-                "[VirtualImu] IMU sample queue dropped {0} oldest sample(s) under back-pressure; total dropped={1}.",
+                "[VirtualImu] IMU sampling dropped {0} oldest sample(s) under back-pressure or bounded catch-up; total dropped={1}.",
                 dropped - _lastReportedDroppedSamples,
                 dropped);
             _lastReportedDroppedSamples = dropped;
-            _nextDroppedSamplesLogTime = Time.unscaledTime + DroppedSamplesLogIntervalSeconds;
+            _nextDroppedSamplesLogTime = Time.unscaledTimeAsDouble + DroppedSamplesLogIntervalSeconds;
         }
 
         private void EnsureSchemaRegistered()

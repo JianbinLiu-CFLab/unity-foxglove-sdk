@@ -221,4 +221,33 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             ConfigurationError = 18
         }
     }
+
+    internal interface IRemoteGatewayStartupNativeApi
+    {
+        IntPtr ContextNew();
+        void ContextFree(IntPtr context);
+        RemoteGatewayNativeMethods.FoxgloveError GatewayStart(
+            ref RemoteGatewayNativeMethods.FoxgloveGatewayOptions options,
+            out IntPtr gateway);
+    }
+
+    internal sealed class RemoteGatewayStartupNativeApi : IRemoteGatewayStartupNativeApi
+    {
+        internal static readonly RemoteGatewayStartupNativeApi Instance = new RemoteGatewayStartupNativeApi();
+
+        private RemoteGatewayStartupNativeApi()
+        {
+        }
+
+        public IntPtr ContextNew()
+            => RemoteGatewayNativeMethods.ContextNew();
+
+        public void ContextFree(IntPtr context)
+            => RemoteGatewayNativeMethods.ContextFree(context);
+
+        public RemoteGatewayNativeMethods.FoxgloveError GatewayStart(
+            ref RemoteGatewayNativeMethods.FoxgloveGatewayOptions options,
+            out IntPtr gateway)
+            => RemoteGatewayNativeMethods.GatewayStart(ref options, out gateway);
+    }
 }

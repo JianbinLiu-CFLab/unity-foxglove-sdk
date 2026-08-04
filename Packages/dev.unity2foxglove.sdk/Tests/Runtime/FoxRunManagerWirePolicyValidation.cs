@@ -154,17 +154,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             var startServer = Slice(server, "public void StartServer()", "private void CleanupStartupAfterFailure()");
             var stopServer = Slice(server, "private void StopServer(bool restoreLivePublishers)", "private void DetachRuntimeForwarders");
-            var startServerBeginIndex = startServer.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
+            var startServerPublishIndex = startServer.IndexOf("BeginFoxRunPublishSessionIfNeeded();", StringComparison.Ordinal);
+            var startServerSubscribeIndex = startServer.IndexOf("BeginFoxRunSubscriptionSessionIfNeeded();", StringComparison.Ordinal);
             var outputDisabledIndex = startServer.IndexOf("if (!_foxgloveOutputEnabled)", StringComparison.Ordinal);
             var schemaRegistrationIndex = startServer.IndexOf("FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas", StringComparison.Ordinal);
-            Check(startServerBeginIndex >= 0
+            Check(startServerPublishIndex >= 0
+                  && startServerSubscribeIndex >= 0
                   && outputDisabledIndex >= 0
-                  && startServerBeginIndex < outputDisabledIndex
+                  && startServerPublishIndex < startServerSubscribeIndex
+                  && startServerSubscribeIndex < outputDisabledIndex
                   && schemaRegistrationIndex >= 0
-                  && !startServer.Contains("BeginFoxRunPublishSessionIfNeeded", StringComparison.Ordinal)
                   && !stopServer.Contains("EndFoxRunPublishSession", StringComparison.Ordinal)
                   && !stopServer.Contains("EndFoxRunSubscriptionSession", StringComparison.Ordinal),
-                "175C-3C: individual server restarts preserve both Manager-lifetime directional session snapshots");
+                "175C-3C: server start ensures both Manager-lifetime directional session snapshots before the output gate and restart preserves them");
 
             var onValidate = Slice(manager, "private void OnValidate()", "private void OnEnable()");
             Check(inbound.Contains("_defaultFoxRunSubscriptionEncoding", StringComparison.Ordinal)
@@ -244,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown maps popup indices through serialized enum values without using enumValueIndex as the wire enum");
             Check(inspector.Contains("Subscription Control", StringComparison.Ordinal)
-                  && inspector.Contains("Subscribe Source", StringComparison.Ordinal)
+                  && inspector.Contains("DrawSubscribeTransportSelection(source, \"Source\")", StringComparison.Ordinal)
                   && inspector.Contains("WebSocket Encoding", StringComparison.Ordinal)
                   && inspector.Contains("Maximum Payload Bytes", StringComparison.Ordinal)
                   && inspector.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)

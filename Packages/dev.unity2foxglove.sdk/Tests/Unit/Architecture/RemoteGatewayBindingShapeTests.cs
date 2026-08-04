@@ -7,6 +7,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -53,18 +55,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         [Fact]
         public void RuntimeSourcesCompileWithMinimalUnitySurface()
         {
-            var runtimeSources = Directory.GetFiles(PathOf(RuntimeRoot), "*.cs", SearchOption.AllDirectories)
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(path => CSharpSyntaxTree.ParseText(
-                    File.ReadAllText(path),
-                    RemoteGatewayParseOptions,
-                    path: path));
-
-            var compilation = CSharpCompilation.Create(
-                "RemoteGatewayRuntimeProbe",
-                runtimeSources.Concat(new[] { CSharpSyntaxTree.ParseText(UnityCompileStub, RemoteGatewayParseOptions) }),
-                BasicReferences(),
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var compilation = CreateRuntimeCompilation("RemoteGatewayRuntimeProbe");
 
             var errors = compilation.GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
@@ -72,6 +63,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 .ToArray();
 
             Assert.True(errors.Length == 0, string.Join(Environment.NewLine, errors));
+        }
+
+        [Fact]
+        public void CallbackDisposeReleasesSelfHandleRoot()
+        {
+            var weakReference = (WeakReference)InvokeBehaviorProbe("DisposeCallbacks");
+
+            ForceCollection();
+
+            Assert.False(weakReference.IsAlive);
+        }
+
+        [Fact]
+        public void ContextNewExceptionCleansStagedOwnershipAndBlocksRetryStorm()
+        {
+            var result = InvokeBehaviorProbe("ContextNewThrows");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 0,
+                expectedContextFreeCalls: 0,
+                expectCallback: false);
+        }
+
+        [Fact]
+        public void GatewayStartExceptionCleansStagedOwnershipAndBlocksRetryStorm()
+        {
+            var result = InvokeBehaviorProbe("GatewayStartThrows");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 1,
+                expectedContextFreeCalls: 1,
+                expectCallback: true);
+        }
+
+        [Fact]
+        public void GatewayStartErrorResultCleansStagedOwnershipAndBlocksRetryStorm()
+        {
+            var result = InvokeBehaviorProbe("GatewayStartReturnsError");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 1,
+                expectedContextFreeCalls: 1,
+                expectCallback: true);
         }
 
         [Fact]
@@ -97,6 +137,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
             Assert.Contains("GCHandle.Alloc", source, StringComparison.Ordinal);
             Assert.Contains("GCHandle.FromIntPtr", source, StringComparison.Ordinal);
+            Assert.Contains("_selfHandle.Free()", source, StringComparison.Ordinal);
             Assert.Contains("MonoPInvokeCallback", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayEventQueue", source, StringComparison.Ordinal);
             Assert.Contains("TryEnqueue", source, StringComparison.Ordinal);
@@ -256,6 +297,101 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             return method;
         }
 
+        private static void AssertStartupFailure(
+            object result,
+            int expectedContextNewCalls,
+            int expectedGatewayStartCalls,
+            int expectedContextFreeCalls,
+            bool expectCallback)
+        {
+            Assert.Equal(expectedContextNewCalls, ReadProperty<int>(result, "ContextNewCalls"));
+            Assert.Equal(expectedGatewayStartCalls, ReadProperty<int>(result, "GatewayStartCalls"));
+            Assert.Equal(expectedContextFreeCalls, ReadProperty<int>(result, "ContextFreeCalls"));
+            Assert.Equal(1, ReadProperty<int>(result, "DiagnosticCount"));
+            Assert.True(ReadProperty<bool>(result, "StartupFaulted"));
+            Assert.False(ReadProperty<bool>(result, "HasOwnedResources"));
+            Assert.Equal("Faulted", ReadProperty<string>(result, "ConnectionStatus"));
+
+            var callback = ReadProperty<WeakReference>(result, "Callback");
+            if (!expectCallback)
+            {
+                Assert.Null(callback);
+                return;
+            }
+
+            Assert.NotNull(callback);
+            ForceCollection();
+            Assert.False(callback.IsAlive);
+        }
+
+        private static T ReadProperty<T>(object target, string propertyName)
+            => (T)target.GetType()
+                .GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)
+                .GetValue(target);
+
+        private static object InvokeBehaviorProbe(string methodName)
+        {
+            var probeType = BehaviorProbeAssembly.Value.GetType(
+                "Unity.FoxgloveSDK.RemoteGateway.RemoteGatewayBehaviorProbe",
+                throwOnError: true);
+            return probeType.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public)
+                .Invoke(null, null);
+        }
+
+        private static void ForceCollection()
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+        }
+
+        private static Assembly CompileBehaviorProbeAssembly()
+        {
+            var behaviorProbe = CSharpSyntaxTree.ParseText(
+                BehaviorProbeSource,
+                RemoteGatewayParseOptions,
+                path: "RemoteGatewayBehaviorProbe.cs");
+            var compilation = CreateRuntimeCompilation(
+                "RemoteGatewayBehaviorProbe_" + Guid.NewGuid().ToString("N"),
+                behaviorProbe);
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            if (!emit.Success)
+            {
+                var errors = emit.Diagnostics
+                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                    .Select(diagnostic => diagnostic.ToString());
+                throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
+            }
+
+            image.Position = 0;
+            return AssemblyLoadContext.Default.LoadFromStream(image);
+        }
+
+        private static CSharpCompilation CreateRuntimeCompilation(
+            string assemblyName,
+            params SyntaxTree[] additionalSources)
+        {
+            var runtimeSources = Directory.GetFiles(PathOf(RuntimeRoot), "*.cs", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => CSharpSyntaxTree.ParseText(
+                    File.ReadAllText(path),
+                    RemoteGatewayParseOptions,
+                    path: path));
+            var sources = runtimeSources
+                .Concat(new[] { CSharpSyntaxTree.ParseText(UnityCompileStub, RemoteGatewayParseOptions) })
+                .Concat(additionalSources);
+
+            return CSharpCompilation.Create(
+                assemblyName,
+                sources,
+                BasicReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        }
+
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot.Value, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
@@ -280,6 +416,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             CSharpParseOptions.Default
                 .WithLanguageVersion(LanguageVersion.CSharp9)
                 .WithPreprocessorSymbols("UNITY_EDITOR");
+
+        private static readonly Lazy<Assembly> BehaviorProbeAssembly =
+            new Lazy<Assembly>(CompileBehaviorProbeAssembly);
 
         private const string UnityCompileStub = @"
 using System;
@@ -314,10 +453,17 @@ namespace UnityEngine
 
     public static class Debug
     {
+        public static int WarningCount { get; private set; }
+        public static int ErrorCount { get; private set; }
         public static void Log(string message) {}
-        public static void LogError(string message) {}
-        public static void LogException(Exception exception) {}
-        public static void LogWarning(string message) {}
+        public static void LogError(string message) { ErrorCount++; }
+        public static void LogException(Exception exception) { ErrorCount++; }
+        public static void LogWarning(string message) { WarningCount++; }
+        public static void Reset()
+        {
+            WarningCount = 0;
+            ErrorCount = 0;
+        }
     }
 
     public static class Application
@@ -386,6 +532,140 @@ namespace Unity.FoxgloveSDK.Components
     {
         public bool IsRunning => true;
         public void SetMirrorSink(Unity.FoxgloveSDK.Core.IFoxgloveMirrorSink sink) {}
+    }
+}
+";
+
+        private const string BehaviorProbeSource = @"
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Unity.FoxgloveSDK.RemoteGateway.Native;
+
+namespace Unity.FoxgloveSDK.RemoteGateway
+{
+    public sealed class StartupProbeResult
+    {
+        public int ContextNewCalls { get; set; }
+        public int GatewayStartCalls { get; set; }
+        public int ContextFreeCalls { get; set; }
+        public int DiagnosticCount { get; set; }
+        public bool StartupFaulted { get; set; }
+        public bool HasOwnedResources { get; set; }
+        public string ConnectionStatus { get; set; }
+        public WeakReference Callback { get; set; }
+    }
+
+    public static class RemoteGatewayBehaviorProbe
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static WeakReference DisposeCallbacks()
+        {
+            var callbacks = new RemoteGatewayCallbacks(new RemoteGatewayEventQueue(1));
+            var weakReference = new WeakReference(callbacks);
+            callbacks.Dispose();
+            callbacks.Dispose();
+            callbacks = null;
+            return weakReference;
+        }
+
+        public static StartupProbeResult ContextNewThrows()
+            => Run(throwFromContextNew: true, returnGatewayError: false);
+
+        public static StartupProbeResult GatewayStartThrows()
+            => Run(throwFromContextNew: false, returnGatewayError: false);
+
+        public static StartupProbeResult GatewayStartReturnsError()
+            => Run(throwFromContextNew: false, returnGatewayError: true);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static StartupProbeResult Run(bool throwFromContextNew, bool returnGatewayError)
+        {
+            UnityEngine.Debug.Reset();
+            var nativeApi = new ThrowingStartupNativeApi(throwFromContextNew, returnGatewayError);
+            var controller = new FoxgloveRemoteGatewayController
+            {
+                StartupNativeApiForTests = nativeApi
+            };
+
+            Attempt(controller);
+            Attempt(controller);
+
+            return new StartupProbeResult
+            {
+                ContextNewCalls = nativeApi.ContextNewCalls,
+                GatewayStartCalls = nativeApi.GatewayStartCalls,
+                ContextFreeCalls = nativeApi.ContextFreeCalls,
+                DiagnosticCount = UnityEngine.Debug.WarningCount + UnityEngine.Debug.ErrorCount,
+                StartupFaulted = controller.StartupFaultedForTests,
+                HasOwnedResources = controller.HasOwnedResourcesForTests,
+                ConnectionStatus = controller.ConnectionStatus,
+                Callback = nativeApi.Callback
+            };
+        }
+
+        private static void Attempt(FoxgloveRemoteGatewayController controller)
+        {
+            try
+            {
+                controller.TryStartGatewayWithToken(""test-token"");
+            }
+            catch (DllNotFoundException)
+            {
+            }
+            catch (EntryPointNotFoundException)
+            {
+            }
+        }
+
+        private sealed class ThrowingStartupNativeApi : IRemoteGatewayStartupNativeApi
+        {
+            private readonly bool _throwFromContextNew;
+            private readonly bool _returnGatewayError;
+
+            internal ThrowingStartupNativeApi(bool throwFromContextNew, bool returnGatewayError)
+            {
+                _throwFromContextNew = throwFromContextNew;
+                _returnGatewayError = returnGatewayError;
+            }
+
+            internal int ContextNewCalls { get; private set; }
+            internal int GatewayStartCalls { get; private set; }
+            internal int ContextFreeCalls { get; private set; }
+            internal WeakReference Callback { get; private set; }
+
+            public IntPtr ContextNew()
+            {
+                ContextNewCalls++;
+                if (_throwFromContextNew)
+                    throw new DllNotFoundException(""injected context allocation failure"");
+
+                return new IntPtr(1234);
+            }
+
+            public void ContextFree(IntPtr context)
+            {
+                if (context == IntPtr.Zero)
+                    throw new InvalidOperationException(""zero context cannot be freed"");
+
+                ContextFreeCalls++;
+            }
+
+            public RemoteGatewayNativeMethods.FoxgloveError GatewayStart(
+                ref RemoteGatewayNativeMethods.FoxgloveGatewayOptions options,
+                out IntPtr gateway)
+            {
+                GatewayStartCalls++;
+                gateway = IntPtr.Zero;
+                var nativeCallbacks = Marshal.PtrToStructure<RemoteGatewayNativeMethods.FoxgloveGatewayCallbacks>(
+                    options.Callbacks);
+                Callback = new WeakReference(GCHandle.FromIntPtr(nativeCallbacks.Context).Target);
+                if (_returnGatewayError)
+                    return RemoteGatewayNativeMethods.FoxgloveError.ConfigurationError;
+
+                throw new EntryPointNotFoundException(""injected gateway start failure"");
+            }
+        }
     }
 }
 ";

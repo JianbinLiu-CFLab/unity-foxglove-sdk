@@ -76,6 +76,32 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void JsonDecoderRejectsInvalidUtf8WithoutReplacement()
+        {
+            var prefix = Encoding.UTF8.GetBytes("{\"value\":\"");
+            var suffix = Encoding.UTF8.GetBytes("\"}");
+            var payload = new byte[prefix.Length + 1 + suffix.Length];
+            Buffer.BlockCopy(prefix, 0, payload, 0, prefix.Length);
+            payload[prefix.Length] = 0xff;
+            Buffer.BlockCopy(
+                suffix,
+                0,
+                payload,
+                prefix.Length + 1,
+                suffix.Length);
+
+            var ok = FoxRunInboundJson.TryRead(
+                payload,
+                "value",
+                out string value,
+                out var error);
+
+            Assert.False(ok);
+            Assert.Null(value);
+            Assert.Contains("UTF-8", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         [Trait("Phase", "184-G")]
         public void JsonDecoderRoundTripsGeneratorValidatedDtoWithoutTypeMetadata()
         {

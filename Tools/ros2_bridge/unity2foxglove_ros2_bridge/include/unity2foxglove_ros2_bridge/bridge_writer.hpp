@@ -51,6 +51,7 @@ public:
     uint64_t observed_generation,
     std::chrono::milliseconds timeout);
   void notify();
+  void begin_drain();
   void close();
   bool is_closed() const;
 

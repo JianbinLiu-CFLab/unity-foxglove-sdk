@@ -1358,11 +1358,10 @@ AccountedWireFrame read_accounted_wire_frame(
             "no in-flight read capacity remains for the U2R2 frame",
             false);
   }
-  const auto transient_bytes = u2r2::checked_add(
-    frame_size.total_bytes(),
-    frame_size.total_bytes(),
-    protocol.limits().max_transient_bytes(),
-    "sidecar frame parsing");
+  // The raw wire vector is already charged to the in-flight reader budget.
+  // Charge one additional frame for decode/model materialization so the other
+  // default transient frame remains available to reverse-direction callbacks.
+  const auto transient_bytes = frame_size.total_bytes();
   auto transient_lease =
     protocol.try_reserve_transient(transient_bytes);
   if (!transient_lease) {
@@ -1677,6 +1676,187 @@ private:
 };
 #endif
 
+using BridgeAdmissionDiagnosticSink = std::function<void(
+    const std::string &,
+    bridge_runtime::BridgeSerializedAdmission,
+    uint64_t)>;
+
+const char * bridge_admission_name(
+  bridge_runtime::BridgeSerializedAdmission admission)
+{
+  using Admission = bridge_runtime::BridgeSerializedAdmission;
+  switch (admission) {
+    case Admission::accepted:
+      return "accepted";
+    case Admission::inactive:
+      return "inactive";
+    case Admission::unsupported_representation:
+      return "unsupported_representation";
+    case Admission::payload_too_large:
+      return "payload_too_large";
+    case Admission::capacity_rejected:
+      return "capacity_rejected";
+    case Admission::suppressed_local:
+      return "suppressed_local";
+    case Admission::invalid_origin:
+      return "invalid_origin";
+  }
+  return "unknown";
+}
+
+class BridgeAdmissionDiagnostics final
+{
+public:
+  BridgeAdmissionDiagnostics(
+    std::string topic,
+    BridgeAdmissionDiagnosticSink sink)
+  : topic_(std::move(topic)), sink_(std::move(sink))
+  {
+  }
+
+  void observe(bridge_runtime::BridgeSerializedAdmission admission) noexcept
+  {
+    const auto index = rejection_index(admission);
+    if (!index || !sink_) {
+      return;
+    }
+    const auto count = saturating_increment(counts_[*index]);
+    if ((count & (count - 1U)) != 0U) {
+      return;
+    }
+    try {
+      sink_(topic_, admission, count);
+    } catch (...) {
+      // Diagnostics must never turn a rejected sample into a callback failure.
+    }
+  }
+
+private:
+  static std::optional<size_t> rejection_index(
+    bridge_runtime::BridgeSerializedAdmission admission) noexcept
+  {
+    using Admission = bridge_runtime::BridgeSerializedAdmission;
+    switch (admission) {
+      case Admission::inactive:
+        return 0U;
+      case Admission::unsupported_representation:
+        return 1U;
+      case Admission::payload_too_large:
+        return 2U;
+      case Admission::capacity_rejected:
+        return 3U;
+      case Admission::suppressed_local:
+        return 4U;
+      case Admission::invalid_origin:
+        return 5U;
+      case Admission::accepted:
+        return std::nullopt;
+    }
+    return std::nullopt;
+  }
+
+  static uint64_t saturating_increment(
+    std::atomic<uint64_t> & counter) noexcept
+  {
+    auto current = counter.load(std::memory_order_relaxed);
+    while (current != std::numeric_limits<uint64_t>::max()) {
+      if (counter.compare_exchange_weak(
+          current,
+          current + 1U,
+          std::memory_order_relaxed,
+          std::memory_order_relaxed))
+      {
+        return current + 1U;
+      }
+    }
+    return current;
+  }
+
+  std::string topic_;
+  BridgeAdmissionDiagnosticSink sink_;
+  std::array<std::atomic<uint64_t>, 6U> counts_{};
+};
+
+enum class BridgePublisherLifecycleStage
+{
+  created,
+  retired,
+};
+
+using BridgePublisherLifecycleObserver = std::function<void(
+    BridgePublisherLifecycleStage,
+    const rmw_gid_t &,
+    std::weak_ptr<rclcpp::GenericPublisher>,
+    std::weak_ptr<bridge_runtime::BridgeOriginRegistry>)>;
+
+class BridgeLocalPublisher final
+{
+public:
+  BridgeLocalPublisher(
+    std::shared_ptr<rclcpp::GenericPublisher> publisher,
+    std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry,
+    BridgePublisherLifecycleObserver lifecycle_observer)
+  : publisher_(std::move(publisher)),
+    origin_registry_(std::move(origin_registry)),
+    lifecycle_observer_(std::move(lifecycle_observer))
+  {
+    if (!publisher_) {
+      throw std::invalid_argument("Bridge local publisher is required");
+    }
+    if (!origin_registry_) {
+      throw std::invalid_argument("Bridge origin registry is required");
+    }
+    gid_ = publisher_->get_gid();
+    notify(BridgePublisherLifecycleStage::created, publisher_, origin_registry_);
+  }
+
+  ~BridgeLocalPublisher()
+  {
+    const std::weak_ptr<rclcpp::GenericPublisher> publisher_lifetime =
+      publisher_;
+    const std::weak_ptr<bridge_runtime::BridgeOriginRegistry>
+      registry_lifetime = origin_registry_;
+    // Keep origin authority alive until the publisher can no longer emit.
+    publisher_.reset();
+    notify(
+      BridgePublisherLifecycleStage::retired,
+      publisher_lifetime,
+      registry_lifetime);
+  }
+
+  void publish(const rclcpp::SerializedMessage & message)
+  {
+    std::call_once(
+      origin_registered_,
+      [&]() {
+        origin_registry_->register_local(gid_);
+      });
+    publisher_->publish(message);
+  }
+
+private:
+  void notify(
+    BridgePublisherLifecycleStage stage,
+    std::weak_ptr<rclcpp::GenericPublisher> publisher,
+    std::weak_ptr<bridge_runtime::BridgeOriginRegistry> registry) noexcept
+  {
+    if (!lifecycle_observer_) {
+      return;
+    }
+    try {
+      lifecycle_observer_(stage, gid_, std::move(publisher), std::move(registry));
+    } catch (...) {
+      // Test/diagnostic observation cannot alter publisher ownership.
+    }
+  }
+
+  std::shared_ptr<rclcpp::GenericPublisher> publisher_;
+  std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry_;
+  BridgePublisherLifecycleObserver lifecycle_observer_;
+  std::once_flag origin_registered_;
+  rmw_gid_t gid_{};
+};
+
 class BridgeNode
 {
 public:
@@ -1684,12 +1864,15 @@ public:
     rclcpp::Node::SharedPtr node,
     PayloadFormat payload_format,
     uint64_t maximum_publishers =
-    u2r2::ProtocolLimits::defaults().max_contracts())
+    u2r2::ProtocolLimits::defaults().max_contracts(),
+    BridgeAdmissionDiagnosticSink admission_diagnostic_sink = {},
+    BridgePublisherLifecycleObserver publisher_lifecycle_observer = {})
   : node_(std::move(node)),
     payload_format_(payload_format),
     origin_registry_(
       std::make_shared<bridge_runtime::BridgeOriginRegistry>(
         maximum_publishers)),
+    admission_diagnostic_sink_(std::move(admission_diagnostic_sink)),
     maximum_publishers_(maximum_publishers)
   {
     if (!node_) {
@@ -1698,31 +1881,42 @@ public:
     if (maximum_publishers_ == 0) {
       throw std::invalid_argument("publisher capacity must be positive");
     }
+    if (!admission_diagnostic_sink_) {
+      const auto logger = node_->get_logger();
+      admission_diagnostic_sink_ =
+        [logger](
+        const std::string & topic,
+        bridge_runtime::BridgeSerializedAdmission admission,
+        uint64_t count) {
+          RCLCPP_WARN(
+            logger,
+            "[unity2foxglove_ros2_bridge] rejected ROS subscription "
+            "sample topic='%s' reason=%s count=%llu",
+            topic.c_str(),
+            bridge_admission_name(admission),
+            static_cast<unsigned long long>(count));
+        };
+    }
 
     const auto publisher_node = node_;
     const auto origin_registry = origin_registry_;
     publisher_factory_ =
-      [publisher_node, origin_registry](
+      [publisher_node,
+      origin_registry,
+      publisher_lifecycle_observer = std::move(publisher_lifecycle_observer)](
       const std::string & topic,
       const std::string & message_type,
       const rclcpp::QoS & qos)
       {
         // create_generic_publisher performs the rosidl_typesupport_cpp lookup
         // for the exact canonical message type before returning a publisher.
-        auto publisher =
-          publisher_node->create_generic_publisher(topic, message_type, qos);
-        auto origin_registered = std::make_shared<std::once_flag>();
-        return [
-          publisher = std::move(publisher),
+        auto publisher = std::make_shared<BridgeLocalPublisher>(
+          publisher_node->create_generic_publisher(topic, message_type, qos),
           origin_registry,
-          origin_registered](
+          publisher_lifecycle_observer);
+        return [publisher = std::move(publisher)](
           const rclcpp::SerializedMessage & message)
           {
-            std::call_once(
-              *origin_registered,
-              [&]() {
-                origin_registry->register_local(publisher->get_gid());
-              });
             publisher->publish(message);
           };
       };
@@ -1747,6 +1941,14 @@ public:
       throw std::invalid_argument("publisher capacity must be positive");
     }
   }
+
+#ifdef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
+  std::weak_ptr<bridge_runtime::BridgeOriginRegistry>
+  origin_registry_for_testing() const noexcept
+  {
+    return origin_registry_;
+  }
+#endif
 
   PublisherContractDisposition prepare(const BridgeFrame & frame)
   {
@@ -1861,8 +2063,15 @@ public:
     auto qos = make_qos(contract);
     const auto logger = node_->get_logger();
     const auto origin_registry = origin_registry_;
+    auto admission_diagnostics =
+      std::make_shared<BridgeAdmissionDiagnostics>(
+      identity.topic,
+      admission_diagnostic_sink_);
     auto receive =
-      [callback = std::move(callback), logger, origin_registry](
+      [callback = std::move(callback),
+      logger,
+      origin_registry,
+      admission_diagnostics = std::move(admission_diagnostics)](
         std::shared_ptr<rclcpp::SerializedMessage> message,
         const rclcpp::MessageInfo & info) {
         if (!message) {
@@ -1873,12 +2082,13 @@ public:
         const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count();
         try {
-          (void)callback(
+          const auto admission = callback(
             serialized.buffer,
             serialized.buffer_length,
             now < 0 ? 0U : static_cast<uint64_t>(now),
             origin_registry->classify(
               info.get_rmw_message_info().publisher_gid));
+          admission_diagnostics->observe(admission);
         } catch (const std::exception & error) {
           RCLCPP_ERROR(
             logger,
@@ -1936,6 +2146,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
   std::shared_ptr<bridge_runtime::BridgeOriginRegistry> origin_registry_;
+  BridgeAdmissionDiagnosticSink admission_diagnostic_sink_;
   GenericPublisherFactory publisher_factory_;
   uint64_t maximum_publishers_;
   PublisherContractRegistry publisher_contracts_;
@@ -2201,14 +2412,22 @@ public:
   {
     bool expected = false;
     if (stopped_.compare_exchange_strong(expected, true)) {
-      stop_requested_.store(true);
       try {
-        protocol_.close();
+        protocol_.begin_drain();
       } catch (...) {
+        try {
+          protocol_.close();
+        } catch (...) {
+        }
       }
+      stop_requested_.store(true);
     }
     if (thread_.joinable()) {
       thread_.join();
+    }
+    try {
+      protocol_.close();
+    } catch (...) {
     }
   }
 
@@ -2228,9 +2447,9 @@ private:
   void run() noexcept
   {
     try {
-      while (!stop_requested_.load()) {
+      while (true) {
         const auto observed = protocol_.wake_generation();
-        while (!stop_requested_.load()) {
+        while (true) {
           auto write = protocol_.try_begin_write();
           if (!write) {
             break;
@@ -2246,8 +2465,10 @@ private:
           }
           write->release();
         }
+        if (stop_requested_.load()) {
+          break;
+        }
         if (
-          stop_requested_.load() ||
           protocol_.wake_generation() != observed)
         {
           continue;
@@ -2319,6 +2540,110 @@ std::vector<uint8_t> encode_v2_error_response(
     },
     {},
     protocol.limits());
+}
+
+struct V2ErrorResponseRoute final
+{
+  u2r2::Operation operation;
+  const char * name;
+};
+
+std::optional<V2ErrorResponseRoute> v2_error_response_route(
+  u2r2::Operation request_operation,
+  const std::string & error_code)
+{
+  std::optional<V2ErrorResponseRoute> route;
+  switch (request_operation) {
+    case u2r2::Operation::PreparePublisher:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::PublisherReady,
+        "publisher_ready"};
+      break;
+    case u2r2::Operation::Publish:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::PublishResult,
+        "publish_result"};
+      break;
+    case u2r2::Operation::RegisterSubscription:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::SubscriptionReady,
+        "subscription_ready"};
+      break;
+    case u2r2::Operation::UnregisterSubscription:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::SubscriptionRemoved,
+        "subscription_removed"};
+      break;
+    default:
+      break;
+  }
+  if (
+    route &&
+    u2r2::is_stable_error_allowed_for_response(
+      error_code,
+      route->operation))
+  {
+    return route;
+  }
+  if (u2r2::is_stable_error_allowed_for_response(
+      error_code,
+      u2r2::Operation::Fault))
+  {
+    return V2ErrorResponseRoute{u2r2::Operation::Fault, "fault"};
+  }
+  return std::nullopt;
+}
+
+bool schedule_v2_protocol_error(
+  const std::vector<uint8_t> & request_wire,
+  const u2r2::ProtocolError & error,
+  bridge_runtime::BridgeSessionProtocol & protocol,
+  const RosContextOk & context_ok)
+{
+  u2r2::Message request;
+  try {
+    request = u2r2::parse_v2(
+      u2r2::decode_frame(request_wire, protocol.limits()));
+  } catch (...) {
+    return false;
+  }
+  if (!request.is_request) {
+    return false;
+  }
+  const auto route = v2_error_response_route(
+    request.operation,
+    error.code());
+  if (!route) {
+    return false;
+  }
+
+  const auto response = encode_v2_error_response(
+    protocol,
+    request,
+    route->name,
+    error.code().c_str(),
+    error.what());
+  const auto deadline =
+    std::chrono::steady_clock::now() +
+    std::chrono::milliseconds(protocol.limits().join_timeout_ms());
+  while (context_ok()) {
+    try {
+      protocol.enqueue_control(
+        "protocol-error:" + std::to_string(request.request_id),
+        response);
+      return true;
+    } catch (const u2r2::ProtocolError & enqueue_error) {
+      if (
+        enqueue_error.code() != "capacity_exceeded" ||
+        enqueue_error.terminal() ||
+        std::chrono::steady_clock::now() >= deadline)
+      {
+        return false;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return false;
 }
 
 BridgeFrame bridge_frame_from_v2_wire(
@@ -2548,48 +2873,59 @@ void run_owned_v2_data_session(
     while (context_ok()) {
       const auto wire =
         read_accounted_wire_frame(client_fd, protocol, context_ok);
-      const auto request = protocol.parse_v2_request(wire.bytes);
-      if (request.operation == u2r2::Operation::RegisterSubscription) {
-        (void)protocol.register_subscription(
+      try {
+        const auto request = protocol.parse_v2_request(wire.bytes);
+        if (request.operation == u2r2::Operation::RegisterSubscription) {
+          (void)protocol.register_subscription(
+            wire.bytes,
+            request,
+            kControlResponseReservationBytes,
+            [&](const u2r2::ContractIdentity & identity,
+              bridge_runtime::BridgeSerializedCallback callback) {
+              return require_bridge().subscribe(
+                identity,
+                std::move(callback));
+            });
+          continue;
+        }
+        if (request.operation == u2r2::Operation::UnregisterSubscription) {
+          (void)protocol.unregister_subscription(
+            wire.bytes,
+            request,
+            kControlResponseReservationBytes);
+          continue;
+        }
+        std::optional<BridgeFrame> bridge_frame;
+        if (
+          request.operation == u2r2::Operation::PreparePublisher ||
+          request.operation == u2r2::Operation::Publish)
+        {
+          bridge_frame.emplace(bridge_frame_from_v2_wire(
+              wire.bytes,
+              request.operation,
+              protocol.limits()));
+        }
+        (void)protocol.execute_replayable(
           wire.bytes,
           request,
           kControlResponseReservationBytes,
-          [&](const u2r2::ContractIdentity & identity,
-            bridge_runtime::BridgeSerializedCallback callback) {
-            return require_bridge().subscribe(
-              identity,
-              std::move(callback));
+          [&]() {
+            return dispatch_owned_v2_request(
+              request,
+              bridge_frame ? &*bridge_frame : nullptr,
+              protocol,
+              require_bridge);
           });
-        continue;
-      }
-      if (request.operation == u2r2::Operation::UnregisterSubscription) {
-        (void)protocol.unregister_subscription(
+      } catch (const u2r2::ProtocolError & error) {
+        const auto responded = schedule_v2_protocol_error(
           wire.bytes,
-          request,
-          kControlResponseReservationBytes);
-        continue;
+          error,
+          protocol,
+          context_ok);
+        if (!responded || error.terminal()) {
+          throw;
+        }
       }
-      std::optional<BridgeFrame> bridge_frame;
-      if (
-        request.operation == u2r2::Operation::PreparePublisher ||
-        request.operation == u2r2::Operation::Publish)
-      {
-        bridge_frame.emplace(bridge_frame_from_v2_wire(
-            wire.bytes,
-            request.operation,
-            protocol.limits()));
-      }
-      (void)protocol.execute_replayable(
-        wire.bytes,
-        request,
-        kControlResponseReservationBytes,
-        [&]() {
-          return dispatch_owned_v2_request(
-            request,
-            bridge_frame ? &*bridge_frame : nullptr,
-            protocol,
-            require_bridge);
-        });
     }
   } catch (const ClientClosedException &) {
   } catch (...) {

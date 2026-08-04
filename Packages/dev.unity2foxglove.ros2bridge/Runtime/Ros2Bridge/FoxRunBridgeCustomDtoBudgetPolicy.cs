@@ -10,5 +10,19 @@ namespace Unity2Foxglove.Ros2Bridge
     {
         public const long MaximumBytes = 4L * 1024L * 1024L;
         public const int MaximumSequenceItems = 16_384;
+
+        /// <summary>Reject a generated custom DTO sequence above the shared reader limit.</summary>
+        public static void EnsureSequenceItems(int count)
+        {
+            if (count < 0)
+                throw new System.ArgumentOutOfRangeException(nameof(count));
+            if (count > MaximumSequenceItems)
+            {
+                throw new Schemas.Ros2Msg.Ros2CdrWriterBudgetExceededException(
+                    "Bridge CDR sequence exceeds the custom DTO item budget of "
+                    + MaximumSequenceItems
+                    + ".");
+            }
+        }
     }
 }

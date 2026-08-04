@@ -161,6 +161,113 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void PublishUsesTheStartingSubscriberSnapshotDuringSelfUnsubscribe()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/snapshot/publish");
+            var deliveries = new List<string>();
+            Action<FoxTopicEnvelope<int>> first = null;
+            first = _ =>
+            {
+                deliveries.Add("first");
+                Assert.True(bus.Unsubscribe(contract.Topic, first));
+            };
+            Action<FoxTopicEnvelope<int>> second = _ => deliveries.Add("second");
+            bus.Subscribe(contract.Topic, first);
+            bus.Subscribe(contract.Topic, second);
+            var payload = 14;
+
+            bus.Publish(contract, 1UL, in payload, "source");
+            bus.Publish(contract, 2UL, in payload, "source");
+
+            Assert.Equal(
+                new[] { "first", "second", "second" },
+                deliveries);
+        }
+
+        [Fact]
+        public void ObserverPublishDefersReentrantAddAndRemoveUntilTheNextEnvelope()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/snapshot/observers");
+            var firstCalls = 0;
+            var secondCalls = 0;
+            var lateCalls = 0;
+            Action<FoxTopicEnvelope<int>> late = _ => lateCalls++;
+            Action<FoxTopicEnvelope<int>> first = null;
+            first = _ =>
+            {
+                firstCalls++;
+                Assert.True(bus.Unsubscribe(contract.Topic, first));
+                bus.Subscribe(contract.Topic, late);
+            };
+            bus.Subscribe(contract.Topic, first);
+            bus.Subscribe<int>(contract.Topic, _ => secondCalls++);
+            var payload = 14;
+
+            bus.PublishToObservers(contract, 1UL, in payload, "source");
+
+            Assert.Equal(1, firstCalls);
+            Assert.Equal(1, secondCalls);
+            Assert.Equal(0, lateCalls);
+
+            bus.PublishToObservers(contract, 2UL, in payload, "source");
+
+            Assert.Equal(1, firstCalls);
+            Assert.Equal(2, secondCalls);
+            Assert.Equal(1, lateCalls);
+        }
+
+        [Fact]
+        public void ResultPublishCountsTheStartingSnapshotDuringSelfUnsubscribe()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/snapshot/results");
+            var firstCalls = 0;
+            var secondCalls = 0;
+            Func<FoxTopicEnvelope<int>, bool> first = null;
+            first = _ =>
+            {
+                firstCalls++;
+                Assert.True(bus.UnsubscribeResult(
+                    contract.Topic,
+                    "source",
+                    first));
+                return true;
+            };
+            bus.SubscribeResult(contract.Topic, "source", first);
+            bus.SubscribeResult<int>(
+                contract.Topic,
+                "source",
+                _ =>
+                {
+                    secondCalls++;
+                    return true;
+                });
+            var payload = 14;
+
+            var firstResult = bus.PublishToResultSubscribers(
+                contract,
+                1UL,
+                in payload,
+                "source");
+            var secondResult = bus.PublishToResultSubscribers(
+                contract,
+                2UL,
+                in payload,
+                "source");
+
+            Assert.Equal(2, firstResult.Matched);
+            Assert.Equal(2, firstResult.Succeeded);
+            Assert.Equal(0, firstResult.Failed);
+            Assert.Equal(1, secondResult.Matched);
+            Assert.Equal(1, secondResult.Succeeded);
+            Assert.Equal(0, secondResult.Failed);
+            Assert.Equal(1, firstCalls);
+            Assert.Equal(2, secondCalls);
+        }
+
+        [Fact]
         public void TypeMismatchedSubscriberIsReportedInsteadOfSilentlySkipped()
         {
             var bus = new FoxTopicBus();

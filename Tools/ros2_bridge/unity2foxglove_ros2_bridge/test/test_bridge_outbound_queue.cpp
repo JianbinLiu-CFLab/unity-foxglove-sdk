@@ -241,6 +241,101 @@ TEST(BridgeOutboundQueue, CapacityRejectionDoesNotConsumeContractSequence)
   write->release();
 }
 
+TEST(BridgeOutboundQueue, EveryRejectedAdmissionPreservesAcceptedSequence)
+{
+  OutboundQueueHarness harness;
+  const u2r2::ContractIdentity inactive_identity(
+    u2r2::ContractKey(47U, 7U),
+    u2r2::ContractDirection::subscribe,
+    "/phase187/v2/inactive",
+    "std_msgs/msg/String",
+    DefaultQos());
+  auto inactive = harness.queue.create_gate(inactive_identity);
+  auto active = harness.Register(48U, "/phase187/v2/sequence");
+  const std::vector<uint8_t> unsupported{
+    0x00U, 0x00U, 0x00U, 0x00U, 0x01U};
+
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::inactive,
+    harness.queue.enqueue(
+      inactive,
+      kPayload.data(),
+      kPayload.size(),
+      1U));
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::unsupported_representation,
+    harness.queue.enqueue(
+      active,
+      unsupported.data(),
+      unsupported.size(),
+      2U));
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::payload_too_large,
+    harness.queue.enqueue(
+      active,
+      nullptr,
+      harness.limits.max_payload_bytes() + 1U,
+      3U));
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::suppressed_local,
+    harness.queue.enqueue(
+      active,
+      kPayload.data(),
+      kPayload.size(),
+      4U,
+      runtime::BridgeSampleOrigin::local));
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::invalid_origin,
+    harness.queue.enqueue(
+      active,
+      kPayload.data(),
+      kPayload.size(),
+      5U,
+      runtime::BridgeSampleOrigin::missing));
+
+  const auto depth = harness.limits.max_per_contract_queue_depth();
+  for (uint64_t index = 0U; index < depth; ++index) {
+    ASSERT_EQ(
+      runtime::BridgeSerializedAdmission::accepted,
+      harness.queue.enqueue(
+        active,
+        kPayload.data(),
+        kPayload.size(),
+        index + 6U));
+  }
+  EXPECT_EQ(
+    runtime::BridgeSerializedAdmission::capacity_rejected,
+    harness.queue.enqueue(
+      active,
+      kPayload.data(),
+      kPayload.size(),
+      depth + 6U));
+
+  for (uint64_t sequence = 1U; sequence <= depth; ++sequence) {
+    auto write = harness.TryWrite();
+    ASSERT_TRUE(write.has_value());
+    EXPECT_EQ(
+      sequence,
+      u2r2::parse_v2(
+        u2r2::decode_frame(write->frame().bytes())).sequence);
+    write->release();
+  }
+  ASSERT_EQ(
+    runtime::BridgeSerializedAdmission::accepted,
+    harness.queue.enqueue(
+      active,
+      kPayload.data(),
+      kPayload.size(),
+      depth + 7U));
+  auto write = harness.TryWrite();
+  ASSERT_TRUE(write.has_value());
+  EXPECT_EQ(
+    depth + 1U,
+    u2r2::parse_v2(
+      u2r2::decode_frame(write->frame().bytes())).sequence);
+  write->release();
+}
+
 TEST(BridgeOutboundQueue, PreservesPerContractFifoAndRoundRobinFairness)
 {
   OutboundQueueHarness harness;

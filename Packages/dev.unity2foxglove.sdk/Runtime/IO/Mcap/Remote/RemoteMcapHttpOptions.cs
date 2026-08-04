@@ -5,6 +5,7 @@
 // Purpose: Configuration for the embedded Remote Data Loader HTTP backend.
 
 using System;
+using System.Net;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -34,23 +35,55 @@ namespace Unity.FoxgloveSDK.IO
         public string ManifestName = "Unity2Foxglove MCAP";
 
         /// <summary>
-        /// Optional bearer token required for manifest and data requests. Leave empty
-        /// only for trusted local workflows because wildcard CORS lets browser origins
-        /// read the served loopback MCAP while the endpoint is enabled.
+        /// Bearer token required for every non-loopback bind and optional for trusted
+        /// local workflows. When it is empty on loopback, wildcard CORS lets browser
+        /// origins read the served loopback MCAP while the endpoint is enabled.
         /// </summary>
         public string RequiredBearerToken = string.Empty;
 
         /// <summary>Maximum MCAP response size buffered in memory before the request is rejected.</summary>
         public long MaxInMemoryDataBytes = RemoteMcapDataSourcePrototype.DefaultMaxInMemoryDataBytes;
 
-        /// <summary>Returns the normalized loopback base URL used by <see cref="RemoteMcapHttpServer"/>.</summary>
+        /// <summary>Returns the normalized listener base URL used by <see cref="RemoteMcapHttpServer"/>.</summary>
         public string BaseUrl
         {
             get
             {
-                var host = string.IsNullOrEmpty(Host) ? "127.0.0.1" : Host.Trim();
+                var host = NormalizeHost(Host);
+                if (IPAddress.TryParse(host, out var address)
+                    && address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+                {
+                    host = "[" + host + "]";
+                }
+
                 return "http://" + host + ":" + Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
+        }
+
+        /// <summary>Returns whether a configured listener host is strictly loopback.</summary>
+        internal static bool IsLoopbackHost(string host)
+        {
+            var normalized = NormalizeHost(host);
+            if (!IPAddress.TryParse(normalized, out var address))
+                return false;
+            if (address.IsIPv4MappedToIPv6)
+                address = address.MapToIPv4();
+            return IPAddress.IsLoopback(address);
+        }
+
+        private static string NormalizeHost(string host)
+        {
+            var normalized = string.IsNullOrWhiteSpace(host)
+                ? "127.0.0.1"
+                : host.Trim();
+            if (normalized.Length > 2
+                && normalized[0] == '['
+                && normalized[normalized.Length - 1] == ']')
+            {
+                normalized = normalized.Substring(1, normalized.Length - 2);
+            }
+
+            return normalized;
         }
 
         /// <summary>Relative data route advertised by the manifest for this source.</summary>

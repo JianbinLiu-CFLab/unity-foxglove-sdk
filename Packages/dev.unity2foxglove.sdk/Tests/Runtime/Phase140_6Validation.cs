@@ -132,13 +132,15 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(CertificateDistributorPath);
             var start = ExtractMethodBody(source, "public void Start");
             var stop = ExtractMethodBody(source, "public void Stop");
+            var stopNoLock = ExtractMethodBody(source, "private void StopNoLock");
             var readLine = ExtractMethodBody(source, "private static string ReadLine");
 
             Check(source.Contains("private Task _acceptLoopTask;", StringComparison.Ordinal)
                   && start.Contains("_acceptLoopTask = Task.Run", StringComparison.Ordinal)
-                  && stop.Contains("WaitForShutdownTask(_acceptLoopTask", StringComparison.Ordinal)
-                  && stop.Contains("_clientHandlersIdle.Wait", StringComparison.Ordinal),
-                "173-065A: certificate distributor Stop drains accept loop and active handlers with bounded waits");
+                  && stop.Contains("StopNoLock();", StringComparison.Ordinal)
+                  && stopNoLock.Contains("WaitForShutdownTask(_acceptLoopTask", StringComparison.Ordinal)
+                  && stopNoLock.Contains("_clientHandlersIdle.Wait", StringComparison.Ordinal),
+                "173-065A: certificate distributor Stop drains the accept loop and active handlers");
             Check(readLine.Contains("var next = stream.ReadByte();", StringComparison.Ordinal)
                   && readLine.Contains("bytesRead++;", StringComparison.Ordinal)
                   && readLine.Contains("if (bytesRead > maxBytes)", StringComparison.Ordinal),
