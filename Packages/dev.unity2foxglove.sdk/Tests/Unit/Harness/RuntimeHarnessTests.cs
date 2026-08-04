@@ -191,8 +191,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void RuntimeSourceMethodScannerUsesUnambiguousDeclarations()
         {
             var text = LoadRuntimeSource("PhaseValidationSourceHelpers.cs");
+            var method = LoadRuntimeSyntax("PhaseValidationSourceHelpers.cs")
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "SourceMethod");
+            var invocation = Assert.IsType<InvocationExpressionSyntax>(method.ExpressionBody?.Expression);
+            Assert.Equal("SourceDeclaration", invocation.Expression.ToString());
+            Assert.Collection(
+                invocation.ArgumentList.Arguments,
+                argument => Assert.Equal("source", argument.Expression.ToString()),
+                argument => Assert.Equal("methodName", argument.Expression.ToString()),
+                argument => Assert.Equal("IsSourceMethodDeclaration", argument.Expression.ToString()),
+                argument => Assert.Equal("CSharpParseOptions.Default", argument.Expression.ToString()));
 
-            Assert.Contains("SourceDeclaration(source, methodName, IsSourceMethodDeclaration)", text, StringComparison.Ordinal);
             Assert.Contains("declaration.ContainsDiagnostics", text, StringComparison.Ordinal);
             Assert.Contains("matches.Length != 1", text, StringComparison.Ordinal);
             Assert.DoesNotContain("source.IndexOf(methodName", text, StringComparison.Ordinal);
