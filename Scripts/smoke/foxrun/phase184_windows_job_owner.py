@@ -1242,6 +1242,7 @@ class _Win32Api:
     WAIT_TIMEOUT = 258
     WAIT_FAILED = 0xFFFFFFFF
     STILL_ACTIVE = 259
+    ERROR_INVALID_PARAMETER = 87
     ERROR_NO_MORE_FILES = 18
 
     def __init__(self) -> None:
@@ -2130,13 +2131,17 @@ class _Win32Api:
     ) -> bool:
         """Handle the wait identity step."""
 
+        self.ctypes.set_last_error(0)
         handle = self.kernel32.OpenProcess(
             self.SYNCHRONIZE | self.PROCESS_QUERY_LIMITED_INFORMATION,
             False,
             identity.pid,
         )
         if not self._is_valid_handle(handle):
-            return True
+            error = int(self.ctypes.get_last_error())
+            if error == self.ERROR_INVALID_PARAMETER:
+                return True
+            raise ProcessOpenFailure(error)
         try:
             current = self.capture_process_identity(int(handle), identity.pid)
             if current != identity:

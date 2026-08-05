@@ -464,6 +464,47 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187")]
+        public void SchemaInfoWriterRejectsCorruptedSubscriptionBindingCount()
+        {
+            var manifest = FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    new FoxRunManifestMember(
+                        "Demo",
+                        "InputPort",
+                        "_value",
+                        "field",
+                        "System.Int32",
+                        true,
+                        false,
+                        string.Empty,
+                        "/phase187/input",
+                        10f,
+                        string.Empty,
+                        (int)FoxRunPolicy.FixedRate,
+                        0f,
+                        flow: (int)FoxRunFlow.Subscribe,
+                        generatesWebSocketCodec: false,
+                        subscribeTransportId: "unity2foxglove.r2fu")
+                },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+            var generated = FoxRunSchemaInfoWriter.GenerateSource(manifest);
+            var corrupted = generated.Replace(
+                "public const int SubscriptionBindingCount = 1;",
+                "public const int SubscriptionBindingCount = 0;",
+                StringComparison.Ordinal);
+            Assert.NotEqual(generated, corrupted);
+
+            var verification = FoxRunSchemaInfoWriter.VerifyGeneratedInfo(
+                manifest,
+                corrupted);
+
+            Assert.False(verification.IsValid);
+            Assert.Contains("SubscriptionBindingCount mismatch.", verification.Errors);
+        }
+
+        [Fact]
         public void NestedDtoShapeContributesToProtobufContractHash()
         {
             var stringShape = FoxRunTypeShape.Object(

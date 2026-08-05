@@ -145,6 +145,37 @@ class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
         with self.assertRaises(probe.ProbeFailure):
             probe.validate_matrix(matrix)
 
+    def test_owned_process_cleanup_failure_is_recorded_in_the_row_result(self) -> None:
+        """Never silently discard failure to terminate or reap an owned child."""
+
+        class UnreapableProcess:
+            """Emulate one owned child that cannot be terminated."""
+
+            pid = 4242
+
+            @staticmethod
+            def poll():
+                """Report that the injected child is still running."""
+
+                return None
+
+            @staticmethod
+            def kill() -> None:
+                """Fail without exposing the injected operating-system detail."""
+
+                raise OSError(5, "sensitive injected detail")
+
+        diagnostic = probe._terminate_owned(UnreapableProcess())
+        self.assertIsNotNone(diagnostic)
+        self.assertNotIn("sensitive", diagnostic)
+
+        result = passing_row("jazzy-fastrtps")
+        probe._record_cleanup_failures(result, (diagnostic,))
+
+        self.assertEqual("FAIL", result["verdict"])
+        self.assertFalse(result["ownedProcesses"]["cleanupComplete"])
+        self.assertIn("owned process 4242", result["failure"])
+
 
 if __name__ == "__main__":
     unittest.main()

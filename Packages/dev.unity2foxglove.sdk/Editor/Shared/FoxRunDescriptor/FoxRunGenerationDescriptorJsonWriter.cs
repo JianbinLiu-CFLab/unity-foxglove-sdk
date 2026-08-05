@@ -213,7 +213,12 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunNormalizedScheduleTuple schedule)
         {
             if (schedule == null)
-                throw new InvalidOperationException("FoxRun descriptor v5 requires a normalized schedule.");
+            {
+                throw new InvalidOperationException(
+                    "FoxRun descriptor v"
+                    + FoxRunGenerationDescriptorConstants.DescriptorVersion
+                    + " requires a normalized schedule.");
+            }
             sb.Append('{');
             WriteIntField(sb, "policy", schedule.Policy);
             sb.Append(',');

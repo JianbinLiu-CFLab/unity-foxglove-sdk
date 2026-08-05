@@ -372,6 +372,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void PublishOnlyR2fuContractRequiresTheNativeAssemblyReference()
+        {
+            var missing = CompilePublishOnlyCustomFixtureWithoutNativeReference();
+
+            Assert.Contains(
+                missing.GeneratorDiagnostics,
+                diagnostic => diagnostic.Id == "FOXR2F007");
+            Assert.DoesNotContain(
+                "IFoxRunRos2CustomPublisherSource",
+                missing.GeneratedSource,
+                StringComparison.Ordinal);
+        }
+
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         [Fact]
         public void NativeFoxRunShutdownHooksAreReflectionDiscoverable()
@@ -572,6 +586,68 @@ namespace Demo
             return new CompilationFixtureResult(
                 runResult.Diagnostics.Concat(generatorDiagnostics)
                     .GroupBy(diagnostic => diagnostic.Id + diagnostic.Location + diagnostic.GetMessage(), StringComparer.Ordinal)
+                    .Select(group => group.First())
+                    .ToArray(),
+                compilerErrors,
+                generatedSource);
+        }
+
+        private static CompilationFixtureResult CompilePublishOnlyCustomFixtureWithoutNativeReference()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols: new[]
+                {
+                    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                    "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES"
+                });
+            var source = @"
+namespace Demo
+{
+    public sealed class State
+    {
+        public int Value { get; set; }
+    }
+
+    public partial class Publisher
+    {
+        [Unity.FoxgloveSDK.Components.FoxRun(""/phase187/r2fu/publish-only"",
+            Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Publish,
+            PublishTransportIds = new[] { ""unity2foxglove.r2fu"" })]
+        public State Outgoing { get; set; }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Demo.Custom.MissingNativePublish",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                PlatformReferences().Concat(new[]
+                {
+                    BuildCoreAttributeAssemblyReference()
+                }),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness.FoxRunAnalyzerTestComposition
+                    .LegacyCombined(),
+                parseOptions: parseOptions);
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var outputCompilation,
+                out var generatorDiagnostics);
+            var runResult = driver.GetRunResult();
+            var generatedSource = string.Join(
+                Environment.NewLine,
+                runResult.Results.SelectMany(result => result.GeneratedSources)
+                    .Select(result => result.SourceText.ToString()));
+            var compilerErrors = outputCompilation.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
+                                     && !diagnostic.Id.StartsWith("FOXRUN", StringComparison.Ordinal)
+                                     && !diagnostic.Id.StartsWith("FOXR2F", StringComparison.Ordinal))
+                .ToArray();
+            return new CompilationFixtureResult(
+                runResult.Diagnostics.Concat(generatorDiagnostics)
+                    .GroupBy(
+                        diagnostic => diagnostic.Id + diagnostic.Location + diagnostic.GetMessage(),
+                        StringComparer.Ordinal)
                     .Select(group => group.First())
                     .ToArray(),
                 compilerErrors,

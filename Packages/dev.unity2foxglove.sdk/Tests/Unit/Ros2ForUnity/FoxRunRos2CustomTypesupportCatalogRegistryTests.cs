@@ -138,6 +138,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(Runtime, Digest, "rmw_fastrtps_cpp").Code);
         }
 
+        [Fact]
+        public void SubsystemRegistrationClearsCatalogAndStoppedSessionState()
+        {
+            Reset();
+            FoxRunRos2CustomTypesupportCatalogRegistry.Register(ValidCatalog());
+            FoxRunRos2CustomTypesupportCatalogRegistry.MarkNativeSessionStopped();
+
+            FoxRunRos2CustomTypesupportCatalogRegistry.ResetForSubsystemRegistration();
+
+            Assert.Equal(
+                FoxRunRos2CustomTypesupportReadinessCode.MissingCatalog,
+                FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(Runtime, Digest, "rmw_fastrtps_cpp").Code);
+            FoxRunRos2CustomTypesupportCatalogRegistry.Register(ValidCatalog());
+            Assert.Equal(
+                FoxRunRos2CustomTypesupportReadinessCode.Ready,
+                FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(Runtime, Digest, "rmw_fastrtps_cpp").Code);
+        }
+
         private static void Reset()
         {
             FoxRunRos2CustomTypesupportCatalogRegistry.ResetForTests();

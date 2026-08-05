@@ -100,6 +100,14 @@ namespace Unity.FoxgloveSDK.Components
                 return new FoxTopicRegistrationResult(true, string.Empty);
             }
 
+            if (existing.Contract.WriterPolicy == FoxTopicWriterPolicy.MultiWriter)
+            {
+                return new FoxTopicRegistrationResult(
+                    false,
+                    "Topic '" + contract.Topic
+                    + "' writer policy conflicts with the existing multi-writer registration.");
+            }
+
             return new FoxTopicRegistrationResult(
                 false,
                 "Topic '" + contract.Topic + "' already has a single writer.");

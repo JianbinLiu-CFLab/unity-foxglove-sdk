@@ -157,6 +157,15 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (property.SetMethod == null)
                     {
+                        if (string.Equals(
+                                side,
+                                FoxServiceDtoRules.ResponseSide,
+                                StringComparison.Ordinal))
+                        {
+                            ValidateType(property.PropertyType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+
                         if (TryGetListElementType(property.PropertyType, side, out var getOnlyElementType)
                             && IsMutableCollectionContract(property.PropertyType))
                         {

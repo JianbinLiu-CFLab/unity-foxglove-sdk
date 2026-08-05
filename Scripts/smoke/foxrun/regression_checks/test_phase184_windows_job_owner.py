@@ -1141,6 +1141,38 @@ class WindowsJobOwnerPureTests(unittest.TestCase):
                     caught.exception.win32_error,
                 )
 
+    def test_wait_identity_only_treats_a_missing_pid_as_already_exited(self):
+        """Distinguish a vanished PID from an unqueryable live process."""
+
+        identity = job_owner.ProcessIdentity(9014, 969_696_969, DESKTOP_PATH)
+        for error_code, expected_missing in ((87, True), (5, False)):
+            with self.subTest(error_code=error_code):
+                ctypes_api = _LastErrorCtypes()
+
+                def fail_open(
+                    _access: int,
+                    _inherit: bool,
+                    _pid: int,
+                    *,
+                    selected_error: int = error_code,
+                ) -> int:
+                    """Return an invalid handle with one selected Win32 error."""
+
+                    ctypes_api.set_last_error(selected_error)
+                    return 0
+
+                api = object.__new__(job_owner._Win32Api)
+                api.ctypes = ctypes_api
+                api.kernel32 = SimpleNamespace(OpenProcess=fail_open)
+                api._invalid_handle = -1
+
+                if expected_missing:
+                    self.assertTrue(api.wait_identity(identity, 0.01))
+                else:
+                    with self.assertRaises(job_owner.ProcessOpenFailure) as caught:
+                        api.wait_identity(identity, 0.01)
+                    self.assertEqual(error_code, caught.exception.win32_error)
+
     def test_open_failure_is_ignored_only_after_separate_pid_absence_proof(self):
         """Verify open failure is ignored only after separate PID absence proof."""
 
@@ -1549,11 +1581,13 @@ class WindowsJobOwnerIntegrationTests(unittest.TestCase):
                     ")",
                     "if identity not in job.members():",
                     "    raise RuntimeError('Disposable child is not an exact Job member.')",
-                    "identity_path.write_text(json.dumps({",
+                    "identity_temporary = identity_path.with_suffix('.tmp')",
+                    "identity_temporary.write_text(json.dumps({",
                     "    'pid': identity.pid,",
                     "    'creation': identity.creation_time_100ns,",
                     "    'path': identity.executable,",
                     "}), encoding='utf-8')",
+                    "os.replace(identity_temporary, identity_path)",
                     "time.sleep(120)",
                 )
             )

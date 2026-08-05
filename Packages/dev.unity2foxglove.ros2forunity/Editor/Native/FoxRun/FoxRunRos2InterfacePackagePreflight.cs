@@ -260,12 +260,26 @@ namespace Unity.FoxgloveSDK.Editor
                 if (!File.Exists(payloadPath) || !File.Exists(envelopePath))
                     return FoxRunRos2InterfaceSourcePreflightDiagnosticCode.SourceFileMissing;
 
+                byte[] payloadBytes;
+                byte[] envelopeBytes;
+                try
+                {
+                    payloadBytes = File.ReadAllBytes(payloadPath);
+                    envelopeBytes = File.ReadAllBytes(envelopePath);
+                }
+                catch (Exception exception) when (
+                    exception is IOException
+                    || exception is UnauthorizedAccessException)
+                {
+                    return FoxRunRos2InterfaceSourcePreflightDiagnosticCode.SourceLockInvalid;
+                }
+
                 var payloadDigest = FoxRunRos2InterfaceDigest.Compute(
                     FoxRunRos2InterfaceIdentity.InterfaceSchemaVersion,
-                    new[] { new FoxRunRos2InterfaceDigestInput("Ros2Package~/msg/" + contract.PayloadMessageName + ".msg", File.ReadAllBytes(payloadPath)) });
+                    new[] { new FoxRunRos2InterfaceDigestInput("Ros2Package~/msg/" + contract.PayloadMessageName + ".msg", payloadBytes) });
                 var envelopeDigest = FoxRunRos2InterfaceDigest.Compute(
                     FoxRunRos2InterfaceIdentity.InterfaceSchemaVersion,
-                    new[] { new FoxRunRos2InterfaceDigestInput("Ros2Package~/msg/" + contract.EnvelopeMessageName + ".msg", File.ReadAllBytes(envelopePath)) });
+                    new[] { new FoxRunRos2InterfaceDigestInput("Ros2Package~/msg/" + contract.EnvelopeMessageName + ".msg", envelopeBytes) });
                 if (!string.Equals(payloadDigest, contract.MessageDigest, StringComparison.Ordinal)
                     || !string.Equals(envelopeDigest, contract.EnvelopeDigest, StringComparison.Ordinal))
                 {

@@ -172,6 +172,11 @@ namespace Unity.FoxgloveSDK.Editor
                 result.AddError("ContractCount mismatch.");
             if (result.ExpectedFieldCount != result.ActualFieldCount)
                 result.AddError("FieldCount mismatch.");
+            if (manifest.Sections.Subscriptions.Bindings.Count
+                != ExtractIntConstant(generatedSource, "SubscriptionBindingCount"))
+            {
+                result.AddError("SubscriptionBindingCount mismatch.");
+            }
             return result;
         }
 

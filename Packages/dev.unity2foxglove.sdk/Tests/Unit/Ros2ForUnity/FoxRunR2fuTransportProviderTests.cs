@@ -437,6 +437,65 @@ namespace Demo
                     StringComparison.Ordinal));
         }
 
+        [Fact]
+        public void RejectedDtoMemberDoesNotReserveItsRosFieldName()
+        {
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols:
+                    new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY" });
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+namespace Demo
+{
+    public sealed class State
+    {
+        public int Foo { get; }
+        public int foo;
+    }
+
+    public partial class Receiver
+    {
+        [FoxRun(""/phase187/r2fu/diagnostics"",
+            Mode = FoxRunFlow.Subscribe,
+            SubscribeTransportId = ""unity2foxglove.r2fu"")]
+        private State _incoming;
+    }
+}";
+            var references = ((string)AppContext.GetData(
+                    "TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Concat(new[]
+                {
+                    typeof(FoxRunAttribute).Assembly.Location,
+                    typeof(FoxRunRos2TransportProvider).Assembly.Location
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToArray();
+            var compilation = CSharpCompilation.Create(
+                "phase187_r2fu_diagnostic_reservation",
+                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                references,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                Unity.FoxgloveSDK.UnitTests.Harness
+                    .FoxRunAnalyzerTestComposition.R2fuOnly(),
+                parseOptions: parseOptions);
+            var run = driver.RunGenerators(compilation).GetRunResult();
+            var diagnostics = run.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.Single(diagnostics);
+            Assert.Equal("FOXR2F011", diagnostics[0].Id);
+            Assert.DoesNotContain(
+                "collides",
+                diagnostics[0].GetMessage(),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string FindRepositoryRoot()
         {
             var current = new DirectoryInfo(AppContext.BaseDirectory);
