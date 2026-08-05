@@ -593,12 +593,13 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         durability=DurabilityPolicy.VOLATILE,
     )
     rclpy.init(args=None)
-    node = rclpy.create_node("phase186_peer_" + str(config["tokenHash"])[:12])
+    node = None
     publishers: dict[str, Any] = {}
     subscriptions: dict[str, Any] = {}
     received: dict[str, list[object]] = {}
     kinds: dict[str, str] = {}
     try:
+        node = rclpy.create_node("phase186_peer_" + str(config["tokenHash"])[:12])
         for topic, kind in _layout(config):
             kinds[topic] = kind
             message_type = _message_type(kind, standard, envelope)
@@ -765,7 +766,8 @@ def run_ros_peer(config: Mapping[str, Any]) -> Mapping[str, Any]:
             "interfaceDigest": protocol.INTERFACE_DIGEST,
         }
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 
@@ -850,8 +852,9 @@ def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
     except ImportError as exc:
         raise LiveActorFailure("FAIL_RUNTIME_SELECTION", "rclpy is unavailable") from exc
     rclpy.init(args=None)
-    node = rclpy.create_node("phase186_graph_" + str(config["tokenHash"])[:12])
+    node = None
     try:
+        node = rclpy.create_node("phase186_graph_" + str(config["tokenHash"])[:12])
         _write_actor_document(
             config,
             "graph-observer",
@@ -861,7 +864,8 @@ def run_graph_observer(config: Mapping[str, Any]) -> Mapping[str, Any]:
         _wait_for_unity_ready(config)
         return _observe_graph(rclpy, node, config)
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 

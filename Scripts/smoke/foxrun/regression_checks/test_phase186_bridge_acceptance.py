@@ -565,6 +565,27 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
         with self.assertRaises(protocol.ProtocolFailure):
             acceptance.validate_arguments(args)
 
+    def test_cli_domain_id_uses_the_windows_safe_authority_limit(self) -> None:
+        """Verify that CLI validation rejects IDs the run-config authority rejects."""
+        args = acceptance.parse_args(
+            [
+                "--case",
+                "full-duplex",
+                "--expected-head",
+                HEAD,
+                "--output-root",
+                r"D:\evidence",
+                "--domain-id",
+                str(protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX + 1),
+            ]
+        )
+
+        with self.assertRaisesRegex(
+            protocol.ProtocolFailure,
+            rf"0\.\.{protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX}",
+        ):
+            acceptance.validate_arguments(args)
+
     def test_resolve_unity_editor_locks_project_version(self) -> None:
         """Verify that resolve unity editor locks project version."""
         with tempfile.TemporaryDirectory() as temp:
@@ -742,6 +763,82 @@ importlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")
                         repository,
                         "phase186h-test-0123456789ab",
                     )
+
+    def test_bridge_only_manifest_wraps_missing_product_package(self) -> None:
+        """Verify that missing package roots surface a stable staging failure."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            packages = repository / "Unity2Foxglove" / "Packages"
+            packages.mkdir(parents=True)
+            (packages / "manifest.json").write_text(
+                json.dumps({"dependencies": {"com.unity.modules.jsonserialize": "1.0.0"}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                bridge_project.BridgeOnlyProjectFailure,
+                "product package is unavailable",
+            ):
+                bridge_project._bridge_only_manifest(repository)
+
+    def test_bridge_only_project_wraps_asset_copy_failure_and_rolls_back(self) -> None:
+        """Verify that required-asset copy failures are stable and leave no project."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            project = repository / "Unity2Foxglove"
+            (project / "ProjectSettings").mkdir(parents=True)
+            (project / "Packages").mkdir()
+            (project / "Packages" / "manifest.json").write_text(
+                json.dumps({"dependencies": {}}),
+                encoding="utf-8",
+            )
+            for package in (
+                "dev.unity2foxglove.sdk",
+                "dev.unity2foxglove.ros2bridge",
+            ):
+                (repository / "Packages" / package).mkdir(parents=True)
+            asset = project / "Assets" / "required.cs"
+            asset.parent.mkdir(parents=True)
+            asset.write_text("required", encoding="utf-8")
+            token = "phase186h-test-0123456789ab"
+            target = bridge_project._owned_project_path(repository, token)
+
+            with mock.patch.object(
+                bridge_project,
+                "_ASSET_PATHS",
+                ("Unity2Foxglove/Assets/required.cs",),
+            ), mock.patch.object(
+                bridge_project.shutil,
+                "copy2",
+                side_effect=OSError("copy failed"),
+            ), self.assertRaisesRegex(
+                bridge_project.BridgeOnlyProjectFailure,
+                "acceptance asset is unavailable",
+            ):
+                bridge_project.create_bridge_only_project(repository, token)
+
+            self.assertFalse(target.exists())
+
+    def test_bridge_only_project_reports_rollback_failure(self) -> None:
+        """Verify that a failed staging rollback cannot be silently ignored."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = pathlib.Path(temp).resolve()
+            (repository / "Unity2Foxglove" / "ProjectSettings").mkdir(parents=True)
+            token = "phase186h-test-0123456789ab"
+
+            with mock.patch.object(
+                bridge_project.shutil,
+                "copytree",
+                side_effect=RuntimeError("staging failed"),
+            ), mock.patch.object(
+                bridge_project.shutil,
+                "rmtree",
+                side_effect=OSError("rollback failed"),
+            ), self.assertRaisesRegex(
+                bridge_project.BridgeOnlyProjectFailure,
+                "rollback failed",
+            ):
+                bridge_project.create_bridge_only_project(repository, token)
 
     def test_find_current_run_marker_rejects_stale_and_accepts_exact(self) -> None:
         """Verify that find current run marker rejects stale and accepts exact."""

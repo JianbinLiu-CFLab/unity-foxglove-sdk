@@ -194,8 +194,15 @@ def validate_arguments(
         raise protocol.ProtocolFailure(
             "FAIL_RUNTIME_SELECTION", "manual case runtime row differs from authority"
         )
-    if args.domain_id is not None and not 0 <= args.domain_id <= 232:
-        raise protocol.ProtocolFailure("FAIL_PREFLIGHT", "domain ID is outside 0..232")
+    if (
+        args.domain_id is not None
+        and not 0 <= args.domain_id <= protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX
+    ):
+        raise protocol.ProtocolFailure(
+            "FAIL_PREFLIGHT",
+            "domain ID is outside 0.."
+            + str(protocol.WINDOWS_SAFE_ROS_DOMAIN_ID_MAX),
+        )
     if not isinstance(args.manual_timeout_seconds, (int, float)) or not 1 <= float(
         args.manual_timeout_seconds
     ) <= 7200:

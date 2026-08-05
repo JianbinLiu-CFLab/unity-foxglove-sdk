@@ -163,7 +163,18 @@ def _bridge_only_manifest(repository: pathlib.Path) -> bytes:
             "Packages/dev.unity2foxglove.ros2bridge",
         ),
     ):
-        package = (root / relative).resolve(strict=True)
+        try:
+            package = (root / relative).resolve(strict=True)
+        except OSError as exc:
+            raise BridgeOnlyProjectFailure(
+                "required Bridge-only product package is unavailable: "
+                + package_id
+            ) from exc
+        if not package.is_dir():
+            raise BridgeOnlyProjectFailure(
+                "required Bridge-only product package is unavailable: "
+                + package_id
+            )
         filtered[package_id] = "file:" + package.as_posix()
     value["dependencies"] = dict(sorted(filtered.items()))
     return (
@@ -237,9 +248,17 @@ def create_bridge_only_project(
             source = root / relative_text
             relative = source.relative_to(root / "Unity2Foxglove")
             destination = target / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            staged[relative.as_posix()] = _sha256_bytes(destination.read_bytes())
+            try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                staged[relative.as_posix()] = _sha256_bytes(
+                    destination.read_bytes()
+                )
+            except OSError as exc:
+                raise BridgeOnlyProjectFailure(
+                    "required Bridge-only acceptance asset is unavailable: "
+                    + relative_text
+                ) from exc
         dto = target / "Assets" / "Scripts" / "ManualAcceptance" / "Phase181AcceptanceDto.cs"
         dto_bytes = _PHASE181_DTO_SOURCE.encode("utf-8")
         _write_atomic(dto, dto_bytes)
@@ -277,7 +296,12 @@ def create_bridge_only_project(
         )
     except BaseException:
         if target.exists():
-            shutil.rmtree(target, ignore_errors=True)
+            try:
+                shutil.rmtree(target)
+            except OSError as exc:
+                raise BridgeOnlyProjectFailure(
+                    "owned Unity project rollback failed after staging error"
+                ) from exc
         raise
 
 
