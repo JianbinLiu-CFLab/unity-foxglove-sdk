@@ -75,6 +75,27 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
+        {
+            var environment = new Dictionary<string, string>
+            {
+                ["CI"] = "false",
+                ["GITHUB_ACTIONS"] = "false",
+                ["TF_BUILD"] = "false",
+                ["BUILD_BUILDID"] = ""
+            };
+
+            var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+                RunHarnessAsync(
+                    new[] { "--serve", "--port", "0" },
+                    timeoutMilliseconds: 1_000,
+                    environment: environment));
+
+            Assert.Contains("Standard output:", error.Message, StringComparison.Ordinal);
+            Assert.Contains("Standard error:", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task Phase91GenerationFailuresWriteFailLineToStderr()
         {
             var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "phase140_35_" + Guid.NewGuid().ToString("N")));
@@ -446,10 +467,42 @@ namespace Unity.FoxgloveSDK.UnitTests
             if (!process.WaitForExit(timeoutMilliseconds))
             {
                 try { process.Kill(entireProcessTree: true); } catch { }
-                throw new TimeoutException("Runtime harness process did not exit before timeout.");
+                try { process.WaitForExit(5_000); } catch { }
+
+                var drain = Task.WhenAll(stdoutTask, stderrTask);
+                var drained = await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5)));
+                if (!ReferenceEquals(drained, drain))
+                {
+                    ObserveFault(stdoutTask);
+                    ObserveFault(stderrTask);
+                }
+                else
+                {
+                    try { await drain; } catch { }
+                }
+
+                var standardOutput = stdoutTask.Status == TaskStatus.RanToCompletion
+                    ? stdoutTask.Result
+                    : string.Empty;
+                var standardError = stderrTask.Status == TaskStatus.RanToCompletion
+                    ? stderrTask.Result
+                    : string.Empty;
+                throw new TimeoutException(
+                    "Runtime harness process did not exit before timeout." + Environment.NewLine +
+                    "Standard output:" + Environment.NewLine + standardOutput + Environment.NewLine +
+                    "Standard error:" + Environment.NewLine + standardError);
             }
 
             return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+        }
+
+        private static void ObserveFault(Task task)
+        {
+            _ = task.ContinueWith(
+                completed => _ = completed.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private static SyntaxTree LoadProgramTree()

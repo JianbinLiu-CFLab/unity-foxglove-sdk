@@ -65,6 +65,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void PerformanceCommitLookupUsesRepositoryIdentityAndDrainsPipes()
+        {
+            var method = Method(
+                "Packages/dev.unity2foxglove.sdk/Tests/Performance/Program.cs",
+                "ResolveGitCommit").ToFullString();
+
+            Assert.Contains("WorkingDirectory = RepoRoot", method, StringComparison.Ordinal);
+            Assert.Contains("ReadToEndAsync()", method, StringComparison.Ordinal);
+            Assert.Contains("Performance commit lookup timed out", method, StringComparison.Ordinal);
+            Assert.Contains("WaitForExit(GitCommitTimeoutMs)", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14096MigratedConsolePhaseIsRemoved()
         {
             var registry = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");

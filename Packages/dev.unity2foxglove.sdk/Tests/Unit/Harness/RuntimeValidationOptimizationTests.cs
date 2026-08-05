@@ -290,6 +290,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14094MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_94Validation.cs", "--phase140-94", "Phase140_94Validation.Validate");
+
+        [Fact]
+        public void SharedMethodExtractorIgnoresBracesInsideLiteralsAndComments()
+        {
+            const string source = @"
+private static void Probe()
+{
+    var json = ""}"";
+    var character = '}';
+    // }
+    /* } */
+    KeepThisStatement();
+}
+
+private static void Next() { }
+";
+
+            var method = TestSources.ExtractMethod(source, "private static void Probe()");
+
+            Assert.Contains("KeepThisStatement();", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static void Next()", method, StringComparison.Ordinal);
+        }
     }
 
     internal static class TestSources
@@ -385,10 +407,119 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(brace >= 0, "Could not locate method body: " + signature);
 
             var depth = 0;
+            var inString = false;
+            var inVerbatimString = false;
+            var inCharacter = false;
+            var inLineComment = false;
+            var inBlockComment = false;
+            var inBacktickString = false;
+            var rawStringDelimiterLength = 0;
             for (var i = brace; i < source.Length; i++)
             {
-                if (source[i] == '{') depth++;
-                else if (source[i] == '}')
+                var current = source[i];
+                var next = i + 1 < source.Length ? source[i + 1] : '\0';
+
+                if (inLineComment)
+                {
+                    if (current == '\n')
+                        inLineComment = false;
+                    continue;
+                }
+
+                if (inBlockComment)
+                {
+                    if (current == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        i++;
+                    }
+                    continue;
+                }
+
+                if (rawStringDelimiterLength > 0)
+                {
+                    if (current == '"' && CountRun(source, i, '"') >= rawStringDelimiterLength)
+                    {
+                        i += rawStringDelimiterLength - 1;
+                        rawStringDelimiterLength = 0;
+                    }
+                    continue;
+                }
+
+                if (inString)
+                {
+                    if (inVerbatimString && current == '"' && next == '"')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == '"' && (inVerbatimString || !IsEscaped(source, i)))
+                    {
+                        inString = false;
+                        inVerbatimString = false;
+                    }
+                    continue;
+                }
+
+                if (inCharacter)
+                {
+                    if (current == '\'' && !IsEscaped(source, i))
+                        inCharacter = false;
+                    continue;
+                }
+
+                if (inBacktickString)
+                {
+                    if (current == '`' && !IsEscaped(source, i))
+                        inBacktickString = false;
+                    continue;
+                }
+
+                if (current == '/' && next == '/')
+                {
+                    inLineComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (current == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (current == '"')
+                {
+                    var quoteRun = CountRun(source, i, '"');
+                    if (quoteRun >= 3)
+                    {
+                        rawStringDelimiterLength = quoteRun;
+                        i += quoteRun - 1;
+                    }
+                    else
+                    {
+                        inString = true;
+                        inVerbatimString = i > 0 && source[i - 1] == '@';
+                    }
+                    continue;
+                }
+
+                if (current == '\'')
+                {
+                    inCharacter = true;
+                    continue;
+                }
+
+                if (current == '`')
+                {
+                    inBacktickString = true;
+                    continue;
+                }
+
+                if (current == '{') depth++;
+                else if (current == '}')
                 {
                     depth--;
                     if (depth == 0)
@@ -397,6 +528,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             return source.Substring(index);
+        }
+
+        private static int CountRun(string source, int index, char value)
+        {
+            var count = 0;
+            while (index + count < source.Length && source[index + count] == value)
+                count++;
+            return count;
+        }
+
+        private static bool IsEscaped(string source, int index)
+        {
+            var slashCount = 0;
+            for (var i = index - 1; i >= 0 && source[i] == '\\'; i--)
+                slashCount++;
+            return slashCount % 2 == 1;
         }
 
         public static int Count(string source, string value)

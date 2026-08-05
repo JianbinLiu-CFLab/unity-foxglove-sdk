@@ -176,13 +176,35 @@ namespace Unity.FoxgloveSDK.UnitTests
             using var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
             runtime.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, new PredicateFilter(_ => false));
             runtime.Start("sink-filter-restart");
+            runtime.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 1,
+                Topic = "/filter/restart-denied",
+                Encoding = "json",
+                SchemaName = "Filter.Runtime",
+                SchemaEncoding = "jsonschema",
+                Schema = "{}"
+            });
+            transport.SimulateConnected(7);
+            Assert.DoesNotContain(transport.AllText, text => text.Contains("/filter/restart-denied"));
             runtime.Stop();
 
             // Filter survives Stop and can be reconfigured while stopped.
             runtime.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, new PredicateFilter(_ => true));
             runtime.Start("sink-filter-restart");
+            runtime.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 2,
+                Topic = "/filter/restart-allowed",
+                Encoding = "json",
+                SchemaName = "Filter.Runtime",
+                SchemaEncoding = "jsonschema",
+                Schema = "{}"
+            });
+            transport.SimulateConnected(8);
 
             Assert.NotNull(runtime.GetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket));
+            Assert.Contains(transport.AllText, text => text.Contains("/filter/restart-allowed"));
         }
 
         private static FoxgloveSession NewSession(FilterTransport transport)

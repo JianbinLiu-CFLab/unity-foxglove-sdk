@@ -93,25 +93,7 @@ namespace Unity.FoxgloveSDK.Performance
 
             Directory.CreateDirectory(outputDir);
 
-            string commit = "";
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo("git", "rev-parse --short HEAD")
-                {
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var proc = System.Diagnostics.Process.Start(psi);
-                if (proc != null && proc.WaitForExit(GitCommitTimeoutMs))
-                    commit = proc.StandardOutput.ReadToEnd()?.Trim() ?? "";
-                else if (proc != null)
-                    proc.Kill();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine("Performance commit lookup failed: " + ex.GetType().Name + ": " + ex.Message);
-            }
+            var commit = ResolveGitCommit();
 
             var runId = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             string resolvedThresholdPath;
@@ -201,6 +183,89 @@ namespace Unity.FoxgloveSDK.Performance
             Console.Error.WriteLine(
                 "Usage: [--quick|--full] [--output <directory>] [--thresholds <json>] [--result-prefix <prefix>] [--no-thresholds] [--threshold-self-test]");
             return 2;
+        }
+
+        private static string ResolveGitCommit()
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("git", "rev-parse --short HEAD")
+                {
+                    WorkingDirectory = RepoRoot,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var process = System.Diagnostics.Process.Start(psi);
+                if (process == null)
+                {
+                    Console.Error.WriteLine("Performance commit lookup failed: git did not start.");
+                    return "";
+                }
+
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(GitCommitTimeoutMs))
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine(
+                            "Performance commit lookup kill failed: " + ex.GetType().Name + ": " + ex.Message);
+                    }
+
+                    if (process.WaitForExit(GitCommitTimeoutMs))
+                    {
+                        try
+                        {
+                            System.Threading.Tasks.Task.WhenAll(stdoutTask, stderrTask).GetAwaiter().GetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine(
+                                "Performance commit lookup output drain failed: " + ex.GetType().Name + ": " + ex.Message);
+                        }
+                    }
+                    else
+                    {
+                        ObserveProcessOutputFault(stdoutTask);
+                        ObserveProcessOutputFault(stderrTask);
+                    }
+
+                    Console.Error.WriteLine("Performance commit lookup timed out after " + GitCommitTimeoutMs + " ms.");
+                    return "";
+                }
+
+                var stdout = stdoutTask.GetAwaiter().GetResult();
+                var stderr = stderrTask.GetAwaiter().GetResult();
+                if (process.ExitCode != 0)
+                {
+                    Console.Error.WriteLine(
+                        "Performance commit lookup failed with exit code " + process.ExitCode + ": " + stderr.Trim());
+                    return "";
+                }
+
+                return stdout.Trim();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("Performance commit lookup failed: " + ex.GetType().Name + ": " + ex.Message);
+                return "";
+            }
+        }
+
+        private static void ObserveProcessOutputFault(System.Threading.Tasks.Task task)
+        {
+            _ = task.ContinueWith(
+                completed => _ = completed.Exception,
+                System.Threading.CancellationToken.None,
+                System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously
+                    | System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted,
+                System.Threading.Tasks.TaskScheduler.Default);
         }
 
         private static PerformanceThresholdConfig LoadThresholds(
