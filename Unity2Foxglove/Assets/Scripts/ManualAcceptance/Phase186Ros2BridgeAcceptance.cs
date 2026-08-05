@@ -368,10 +368,12 @@ namespace Unity2Foxglove.ManualAcceptance
         }
 
         private bool HasObservedExternalInput()
-            => (_generatedEvidence.LastStandardMessage ?? string.Empty)
-                   .IndexOf(":external-a", StringComparison.Ordinal) >= 0
-               || (_generatedEvidence.LastCustomMessage ?? string.Empty)
-                   .IndexOf(":external-a", StringComparison.Ordinal) >= 0;
+            => Phase186ManualInteractionState.IsExpectedExternalInput(
+                   _generatedEvidence.LastStandardMessage,
+                   _tokenHash)
+               || Phase186ManualInteractionState.IsExpectedExternalInput(
+                   _generatedEvidence.LastCustomMessage,
+                   _tokenHash);
 
         private void EmitProgressIfChanged()
         {

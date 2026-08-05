@@ -110,6 +110,9 @@ PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
 )
 RELEASE_TOOLING_REGRESSION = "Scripts.release.regression_checks.test_release_tooling"
+SAMPLE_SYNC_TOOLING_REGRESSION = (
+    "Scripts.samples.regression_checks.test_sample_sync_tooling"
+)
 PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
@@ -1071,9 +1074,26 @@ def main() -> int:
                 "test_release_tooling.py",
                 [sys.executable, "-m", "unittest", RELEASE_TOOLING_REGRESSION],
             ),
+            (
+                "test_sample_sync_tooling.py",
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    SAMPLE_SYNC_TOOLING_REGRESSION,
+                ],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
+            (
+                "sync_ros2_bridge_sample.py",
+                [
+                    sys.executable,
+                    "Scripts/samples/sync_ros2_bridge_sample.py",
+                    "--dry-run",
+                ],
+            ),
             ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
             (
                 "validate_r2fu_runtime_package.py",
@@ -1085,9 +1105,15 @@ def main() -> int:
             ),
         ])
         results["release-tooling-regression"] = package_results["test_release_tooling.py"]
+        results["sample-sync-tooling-regression"] = package_results[
+            "test_sample_sync_tooling.py"
+        ]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]
         results["validate-full-demo-sync"] = package_results["sync_full_demo.py"]
+        results["validate-ros2-bridge-sample-sync"] = package_results[
+            "sync_ros2_bridge_sample.py"
+        ]
         results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
         results["validate-r2fu"] = package_results["validate_r2fu_runtime_package.py"]
         results["validate-adapter"] = package_results["validate_ros2forunity_package.py"]

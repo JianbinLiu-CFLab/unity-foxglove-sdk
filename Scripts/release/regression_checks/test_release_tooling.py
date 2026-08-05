@@ -549,6 +549,45 @@ class RunCiTests(unittest.TestCase):
         self.assertTrue(python_calls)
         self.assertTrue(all(cmd[0] == sys.executable for cmd in python_calls))
 
+    def test_packages_lane_executes_ros2_bridge_sample_regressions_and_drift_gate(self) -> None:
+        """The package lane must execute both the sync helper tests and byte drift check."""
+        calls: list[list[str]] = []
+
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+            """Capture package subprocess commands without executing them."""
+            calls.extend(command for _label, command in commands)
+            return {label: True for label, _command in commands}
+
+        with mock.patch.object(
+            self.run_ci,
+            "run_parallel",
+            side_effect=fake_run_parallel,
+        ):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "packages"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertIn(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "Scripts.samples.regression_checks.test_sample_sync_tooling",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                sys.executable,
+                "Scripts/samples/sync_ros2_bridge_sample.py",
+                "--dry-run",
+            ],
+            calls,
+        )
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
         failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")

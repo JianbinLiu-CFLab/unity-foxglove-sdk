@@ -251,6 +251,25 @@ namespace Unity2Foxglove.Ros2Bridge
             bool hasInboundPipeline,
             Ros2BridgePublisherObservationSnapshot publisher,
             Ros2BridgeSubscriptionObservationSnapshot subscription)
+            => Create(
+                generation,
+                selectedDirections,
+                lifecycle,
+                stats,
+                hasInboundPipeline,
+                publisher,
+                subscription,
+                inbound: null);
+
+        internal static FoxRunTransportStatusSnapshot Create(
+            ulong generation,
+            FoxRunTransportCapabilities selectedDirections,
+            Ros2BridgeRuntimeLifecycleState lifecycle,
+            Ros2BridgeStatsSnapshot stats,
+            bool hasInboundPipeline,
+            Ros2BridgePublisherObservationSnapshot publisher,
+            Ros2BridgeSubscriptionObservationSnapshot subscription,
+            Ros2BridgeInboundStatsSnapshot inbound)
         {
             var known = FoxRunTransportCapabilities.Publish
                         | FoxRunTransportCapabilities.Subscribe;
@@ -273,7 +292,8 @@ namespace Unity2Foxglove.Ros2Bridge
                     lifecycle,
                     stats,
                     hasInboundPipeline,
-                    subscription)
+                    subscription,
+                    inbound)
                 : FoxRunTransportDirectionStatus.Unselected(
                     FoxRunTransportDirection.Subscribe);
             return new FoxRunTransportStatusSnapshot(
@@ -357,7 +377,8 @@ namespace Unity2Foxglove.Ros2Bridge
             Ros2BridgeRuntimeLifecycleState lifecycle,
             Ros2BridgeStatsSnapshot stats,
             bool hasInboundPipeline,
-            Ros2BridgeSubscriptionObservationSnapshot observation)
+            Ros2BridgeSubscriptionObservationSnapshot observation,
+            Ros2BridgeInboundStatsSnapshot inbound)
         {
             var failed = checked(
                 observation.UnavailableContracts
@@ -399,6 +420,20 @@ namespace Unity2Foxglove.Ros2Bridge
                         observation.LastReason,
                         "One or more Bridge subscription contracts failed."));
             }
+            if (observation.ActiveContracts != 0
+                && HasInboundDeliveryFailure(inbound))
+            {
+                return Direction(
+                    FoxRunTransportDirection.Subscribe,
+                    FoxRunTransportObservedState.Degraded,
+                    observation.ObservedContracts,
+                    observation.ActiveContracts,
+                    failed,
+                    "ROS2BRIDGE008",
+                    Reason(
+                        inbound.LastDiagnostic,
+                        "One or more inbound Bridge frames were rejected or failed decoding."));
+            }
             if (observation.ObservedContracts == 0
                 || observation.PendingContracts != 0)
             {
@@ -422,6 +457,17 @@ namespace Unity2Foxglove.Ros2Bridge
                 observation.ActiveContracts,
                 0);
         }
+
+        private static bool HasInboundDeliveryFailure(
+            Ros2BridgeInboundStatsSnapshot inbound)
+            => inbound != null
+               && (inbound.Dropped != 0
+                   || inbound.RejectedAfterStop != 0
+                   || inbound.SequenceGaps != 0
+                   || inbound.StaleSequences != 0
+                   || inbound.Oversize != 0
+                   || inbound.DecodeFailures != 0
+                   || inbound.DisposalFailures != 0);
 
         private static FoxRunTransportDirectionStatus Disconnected(
             FoxRunTransportDirection direction,

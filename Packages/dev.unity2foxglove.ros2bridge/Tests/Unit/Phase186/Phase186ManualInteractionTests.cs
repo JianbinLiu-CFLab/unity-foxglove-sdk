@@ -170,6 +170,23 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.False(state.CompleteRequested);
         }
 
+        [Theory]
+        [InlineData("phase186:0123456789ab:7:external-a", true)]
+        [InlineData("prefix:external-a:suffix", false)]
+        [InlineData("phase186:0123456789ab:7:not-external-a", false)]
+        [InlineData("phase186:ffffffffffff:7:external-a", false)]
+        [InlineData("phase186:0123456789ab:not-a-sequence:external-a", false)]
+        public void ExternalInputRequiresExactTokenScopedWireValue(
+            string message,
+            bool expected)
+        {
+            Assert.Equal(
+                expected,
+                Phase186ManualInteractionState.IsExpectedExternalInput(
+                    message,
+                    "0123456789abcdef0123456789abcdef"));
+        }
+
         private static Phase186ManualInteraction Evaluate(
             Phase186ManualInteractionState state,
             bool canComplete = false)

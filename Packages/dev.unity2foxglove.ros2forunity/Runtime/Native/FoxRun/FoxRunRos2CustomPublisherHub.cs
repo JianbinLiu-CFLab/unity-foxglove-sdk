@@ -259,7 +259,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
             Array.Sort(behaviours, CompareBehaviours);
-            for (var index = 0; index < behaviours.Length && _bindings.Count < MaximumBindings; index++)
+            for (var index = 0; index < behaviours.Length; index++)
             {
                 var behaviour = behaviours[index];
                 if (behaviour is not IFoxRunRos2CustomPublisherSource source
@@ -328,8 +328,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _nativeDemand.Add(identity);
                 return;
             }
-            if (_bindings.Count >= MaximumBindings)
-                return;
             if (!contract.SupportsNativeOutput)
             {
                 WarnOnce(identity + "|contract", "Custom native ROS2 publisher contract is invalid.");
@@ -360,7 +358,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 return;
             }
-            _nativeDemand.Add(identity);
+            if (!ObserveBindingDemand(
+                    identity,
+                    _bindings.Count,
+                    MaximumBindings,
+                    _nativeDemand))
+            {
+                WarnOnce(
+                    identity + "|capacity",
+                    "Custom native ROS2 publisher capacity is exhausted.");
+                return;
+            }
 
             if (!TryGetAcceptedSourceOrigin(
                     source as IFoxgloveLogSource,
@@ -439,6 +447,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         : null);
                 throw;
             }
+        }
+
+        internal static bool ObserveBindingDemand(
+            string identity,
+            int bindingCount,
+            int maximumBindings,
+            ISet<string> nativeDemand)
+        {
+            if (string.IsNullOrEmpty(identity))
+                throw new ArgumentException(
+                    "A native publisher identity is required.",
+                    nameof(identity));
+            if (bindingCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(bindingCount));
+            if (maximumBindings <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maximumBindings));
+            }
+            if (nativeDemand == null)
+                throw new ArgumentNullException(nameof(nativeDemand));
+
+            nativeDemand.Add(identity);
+            return bindingCount < maximumBindings;
         }
 
         private static FoxRunRos2CustomTypesupportReadiness EvaluateReadiness(

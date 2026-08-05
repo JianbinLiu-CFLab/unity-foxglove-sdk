@@ -61,6 +61,95 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void InboundDeliveryFailuresDegradeAnOtherwiseReadySubscription()
+        {
+            var stats = new Ros2BridgeStatsSnapshot(
+                enabled: true,
+                connected: true,
+                connecting: false,
+                queuedFrames: 0,
+                sentFrames: 0,
+                droppedFrames: 0,
+                failedFrames: 0,
+                lastError: string.Empty,
+                lastConnectedUnixMs: 186,
+                lastDisconnectedUnixMs: 0);
+            var inbound = new Ros2BridgeInboundStatsSnapshot(
+                received: 3,
+                accepted: 3,
+                replaced: 0,
+                dropped: 0,
+                applied: 0,
+                rejectedAfterStop: 0,
+                sequenceGaps: 0,
+                staleSequences: 0,
+                oversize: 0,
+                decodeFailures: 3,
+                disposalFailures: 0,
+                queuedFrames: 0,
+                queuedBytes: 0,
+                transientBytes: 0,
+                inFlightBytes: 0,
+                lastDiagnostic: "CDR shape mismatch");
+            var subscription = new Ros2BridgeSubscriptionObservationSnapshot(
+                observedContracts: 1,
+                activeContracts: 1,
+                pendingContracts: 0,
+                unavailableContracts: 0,
+                rejectedContracts: 0,
+                faultedContracts: 0,
+                lastReason: string.Empty);
+            var status = Ros2BridgeTransportStatusMapper.Create(
+                186UL,
+                FoxRunTransportCapabilities.Subscribe,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                true,
+                Ros2BridgePublisherObservationSnapshot.Empty,
+                subscription,
+                inbound);
+
+            Assert.Equal(
+                FoxRunTransportObservedState.Degraded,
+                status.Subscribe.State);
+            var diagnostic = Assert.Single(status.Diagnostics);
+            Assert.Equal("ROS2BRIDGE008", diagnostic.Code);
+            Assert.Contains("CDR shape mismatch", diagnostic.Message);
+
+            var replacementOnly = new Ros2BridgeInboundStatsSnapshot(
+                received: 3,
+                accepted: 3,
+                replaced: 2,
+                dropped: 0,
+                applied: 1,
+                rejectedAfterStop: 0,
+                sequenceGaps: 0,
+                staleSequences: 0,
+                oversize: 0,
+                decodeFailures: 0,
+                disposalFailures: 0,
+                queuedFrames: 0,
+                queuedBytes: 0,
+                transientBytes: 0,
+                inFlightBytes: 0,
+                lastDiagnostic: "latest-only coalescing");
+            var replacementStatus = Ros2BridgeTransportStatusMapper.Create(
+                186UL,
+                FoxRunTransportCapabilities.Subscribe,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                true,
+                Ros2BridgePublisherObservationSnapshot.Empty,
+                subscription,
+                replacementOnly);
+
+            Assert.Equal(
+                FoxRunTransportObservedState.Ready,
+                replacementStatus.Subscribe.State);
+            Assert.Empty(replacementStatus.Diagnostics);
+        }
+
+        [Fact]
         public void ObservedDisconnectMapsToBoundedStableReconnectingStatus()
         {
             var stats = new Ros2BridgeStatsSnapshot(
@@ -299,6 +388,108 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 connection.LifecycleState);
             releasePeer.Set();
             peer.AssertCompleted();
+        }
+
+        [Fact]
+        public void RequestConstructionCannotBeOvertakenByIdleHeartbeat()
+        {
+            using var factoryEntered = new ManualResetEventSlim(false);
+            using var releaseFactory = new ManualResetEventSlim(false);
+            using var releasePeer = new ManualResetEventSlim(false);
+            U2R2Operation? firstOperation = null;
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+
+                for (var index = 0; index < 2; index++)
+                {
+                    var request = Parse(ReadWireFrame(stream));
+                    firstOperation ??= request.Operation;
+                    if (request.Operation == U2R2Operation.HealthPing)
+                    {
+                        WriteFrame(
+                            stream,
+                            Response(
+                                "health_pong",
+                                request.RequestId,
+                                request.SessionId,
+                                request.ConnectionGeneration));
+                        continue;
+                    }
+
+                    Assert.Equal(
+                        U2R2Operation.PreparePublisher,
+                        request.Operation);
+                    WriteFrame(
+                        stream,
+                        Response(
+                            "publisher_ready",
+                            request.RequestId,
+                            request.SessionId,
+                            request.ConnectionGeneration));
+                    break;
+                }
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+
+            var limits = U2R2ProtocolLimits.Default.With(
+                ("readTimeoutMs", 1000UL));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                limits,
+                requiresSubscription: true,
+                writerCapacity: 4,
+                pendingCapacity: 4,
+                timeoutMs: 2000);
+            connection.Start();
+
+            U2R2Message response = null;
+            Exception failure = null;
+            var exchange = new Thread(() =>
+            {
+                try
+                {
+                    response = connection.Exchange(
+                        (requestId, active) =>
+                        {
+                            factoryEntered.Set();
+                            Assert.True(
+                                releaseFactory.Wait(
+                                    TimeSpan.FromSeconds(3)));
+                            return Ros2BridgeV2SessionCodec
+                                .CreatePublisherPreparation(
+                                    active,
+                                    requestId,
+                                    "/phase187/ordered_request",
+                                    "phase187_msgs/msg/OrderedRequest",
+                                    FoxRunResolvedQos.Default);
+                        },
+                        timeoutMs: 2000);
+                }
+                catch (Exception exception)
+                {
+                    failure = exception;
+                }
+            });
+            exchange.Start();
+            Assert.True(factoryEntered.Wait(TimeSpan.FromSeconds(2)));
+            Thread.Sleep(650);
+            releaseFactory.Set();
+            Assert.True(exchange.Join(TimeSpan.FromSeconds(3)));
+            releasePeer.Set();
+            peer.AssertCompleted();
+
+            Assert.Null(failure);
+            Assert.Equal(U2R2Operation.PublisherReady, response?.Operation);
+            Assert.Equal(U2R2Operation.PreparePublisher, firstOperation);
         }
 
         [Fact]

@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 
+using System;
+using System.Globalization;
+
 namespace Unity2Foxglove.ManualAcceptance
 {
     internal enum Phase186ManualStep
@@ -34,6 +37,35 @@ namespace Unity2Foxglove.ManualAcceptance
         internal bool ExternalAObserved { get; private set; }
         internal bool LocalBRequested { get; private set; }
         internal bool CompleteRequested { get; private set; }
+
+        internal static bool IsExpectedExternalInput(
+            string message,
+            string tokenHash)
+        {
+            if (string.IsNullOrEmpty(message)
+                || string.IsNullOrEmpty(tokenHash)
+                || tokenHash.Length < 12)
+            {
+                return false;
+            }
+
+            var prefix = "phase186:" + tokenHash.Substring(0, 12) + ":";
+            const string suffix = ":external-a";
+            if (!message.StartsWith(prefix, StringComparison.Ordinal)
+                || !message.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var sequenceLength =
+                message.Length - prefix.Length - suffix.Length;
+            return sequenceLength > 0
+                   && long.TryParse(
+                       message.Substring(prefix.Length, sequenceLength),
+                       NumberStyles.None,
+                       CultureInfo.InvariantCulture,
+                       out _);
+        }
 
         internal void ResetForRun()
         {

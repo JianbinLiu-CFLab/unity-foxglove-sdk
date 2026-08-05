@@ -129,6 +129,25 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void CapacityRejectedBindingDemandRemainsObservable()
+        {
+            var demand = new HashSet<string>(StringComparer.Ordinal);
+            Assert.True(FoxRunRos2CustomPublisherHub.ObserveBindingDemand(
+                "admitted",
+                4095,
+                4096,
+                demand));
+            Assert.False(FoxRunRos2CustomPublisherHub.ObserveBindingDemand(
+                "capacity-rejected",
+                4096,
+                4096,
+                demand));
+            Assert.Equal(
+                new[] { "admitted", "capacity-rejected" },
+                demand.OrderBy(value => value, StringComparer.Ordinal));
+        }
+
+        [Fact]
         public void StopAllBindingsContinuesAfterOneBindingThrows()
         {
             var stopOrder = new List<string>();
