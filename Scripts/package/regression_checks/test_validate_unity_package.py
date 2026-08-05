@@ -462,6 +462,71 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         """Freshness must include dependencies, ledgers, IDs, hint parity, and analyzer sets."""
         self.assertTrue(self.validator.validate_analyzer_contracts(("core", "r2fu", "ros2bridge")))
 
+    def test_shared_analyzer_source_parity_rejects_one_copy_drift(self) -> None:
+        """The independently packaged analyzers must fail on shared semantic drift."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            builder_paths = tuple(
+                root / f"builder-{index}.cs"
+                for index in range(3)
+            )
+            provider_paths = tuple(
+                root / f"shape-{index}.cs"
+                for index in range(2)
+            )
+            core_path = root / "shape-core.cs"
+            for path in builder_paths:
+                path.write_text(
+                    "internal sealed class Builder {}\n",
+                    encoding="utf-8",
+                )
+            provider_text = (
+                "namespace Shared\n"
+                "{\n"
+                "    internal sealed class Shape {}\n"
+                "}\n"
+            )
+            for path in provider_paths:
+                path.write_text(provider_text, encoding="utf-8")
+            core_path.write_text(
+                "namespace Shared\n"
+                "{\n"
+                "    internal sealed class Shape {}\n\n"
+                "    internal static class FoxRunLogicalSchemaNameResolver\n"
+                "    {\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                self.validator,
+                "EXACT_SHARED_SOURCE_GROUPS",
+                (
+                    ("builder", builder_paths),
+                    ("provider shape", provider_paths),
+                ),
+            ), mock.patch.object(
+                self.validator,
+                "CORE_TYPE_SHAPE",
+                core_path,
+            ), mock.patch.object(
+                self.validator,
+                "PROVIDER_TYPE_SHAPE",
+                provider_paths[0],
+            ):
+                self.assertTrue(
+                    self.validator.validate_shared_source_parity()
+                )
+                provider_paths[1].write_text(
+                    provider_text.replace("Shape", "DriftedShape"),
+                    encoding="utf-8",
+                )
+                with mock.patch("sys.stderr"):
+                    self.assertFalse(
+                        self.validator.validate_shared_source_parity()
+                    )
+
     def test_missing_analyzer_dependency_is_reported_before_hash_comparison(self) -> None:
         """A source generator dependency must ship beside the analyzer DLL for Unity to load it."""
         with tempfile.TemporaryDirectory() as temp:

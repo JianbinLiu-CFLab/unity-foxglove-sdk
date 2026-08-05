@@ -121,6 +121,39 @@ COMPOSITION_TEST = (
     / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Ros2ForUnity/"
       "FoxRunAnalyzerCompositionContractTests.cs"
 )
+EXACT_SHARED_SOURCE_GROUPS = (
+    (
+        "Roslyn type-shape builder",
+        (
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunRoslynTypeShapeBuilder.cs",
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/FoxRunRoslynTypeShapeBuilder.cs",
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunRoslynTypeShapeBuilder.cs",
+        ),
+    ),
+    (
+        "Provider type shape",
+        (
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/FoxRunTypeShape.cs",
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunTypeShape.cs",
+        ),
+    ),
+)
+PROVIDER_TYPE_SHAPE = (
+    REPO_ROOT
+    / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunTypeShape.cs"
+)
+CORE_TYPE_SHAPE = (
+    REPO_ROOT
+    / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunTypeShape.cs"
+)
+_CORE_TYPE_SHAPE_EXTENSION = (
+    "\n    internal static class FoxRunLogicalSchemaNameResolver\n"
+)
 
 
 def sha256(path: Path) -> str:
@@ -130,6 +163,62 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _shared_core_type_shape(text: str) -> str | None:
+    """Remove the one intentional core-only schema-name helper."""
+    if text.count(_CORE_TYPE_SHAPE_EXTENSION) != 1:
+        return None
+    shared, _extension = text.split(
+        _CORE_TYPE_SHAPE_EXTENSION,
+        1,
+    )
+    return shared.rstrip() + "\n}\n"
+
+
+def validate_shared_source_parity() -> bool:
+    """Fail when independently packaged shared analyzer semantics drift."""
+    failures: list[str] = []
+    for label, paths in EXACT_SHARED_SOURCE_GROUPS:
+        contents: list[str] = []
+        for path in paths:
+            try:
+                contents.append(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError) as exc:
+                failures.append(f"{label}: cannot read {path}: {exc}")
+        if len(contents) == len(paths) and any(
+            content != contents[0]
+            for content in contents[1:]
+        ):
+            failures.append(f"{label}: packaged copies differ")
+
+    try:
+        provider = PROVIDER_TYPE_SHAPE.read_text(encoding="utf-8")
+        core = CORE_TYPE_SHAPE.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        failures.append(f"type shape: cannot read shared sources: {exc}")
+    else:
+        normalized_core = _shared_core_type_shape(core)
+        if normalized_core is None:
+            failures.append(
+                "type shape: core-only extension boundary differs"
+            )
+        elif normalized_core != provider:
+            failures.append(
+                "type shape: core and Provider shared semantics differ"
+            )
+
+    if failures:
+        for failure in failures:
+            print(
+                f"[FAIL] Analyzer shared source parity: {failure}",
+                file=sys.stderr,
+            )
+        return False
+    print(
+        "[PASS] Analyzer shared type-shape and Roslyn builder sources are in parity."
+    )
+    return True
 
 
 def run_build(
@@ -240,6 +329,8 @@ def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
 
 def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
     """Validate independent packaging, ledgers, IDs, hint parity, and set coverage."""
+    if not validate_shared_source_parity():
+        return False
     failures: list[str] = []
     assembly_names: dict[str, str] = {}
     ledger_owners: dict[str, str] = {}
