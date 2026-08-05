@@ -55,8 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var pollutionRoots = new[]
             {
-                "Packages/dev.unity2foxglove.sdk",
-                "Packages/dev.unity2foxglove.ros2forunity",
+                "Packages",
                 "Scripts",
                 "Unity2Foxglove/Assets/Samples"
             };
@@ -305,11 +304,12 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var limits = McapSequentialReadLimits.UnlimitedForTests;
                 SetField(limits, "MaxAttachmentBytes", 4L);
-                Check(Throws<InvalidOperationException>(() =>
+                Check(ThrowsWithMessage<InvalidDataException>(() =>
                 {
                     using var reader = new McapStreamingReader(stream, leaveOpen: true, limits);
                     reader.Read();
-                }), "138P-12F: streaming reader enforces chunk attachment byte cap");
+                }, "must not appear inside a Chunk"),
+                    "138P-12F: streaming reader rejects forbidden Attachment records inside chunks");
             }
 
             using (var stream = CreateStreamingMcap(attachmentCount: 0, attachmentBytes: 0, metadataCount: 1, metadataValueBytes: 16, insideChunk: true))

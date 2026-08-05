@@ -554,6 +554,13 @@ namespace Unity.FoxgloveSDK.Tests
                 node => node is TypeDeclarationSyntax,
                 CSharpParseOptions.Default);
 
+        public static string SourceProperty(string source, string propertyName)
+            => SourceDeclaration(
+                source,
+                propertyName,
+                node => node is PropertyDeclarationSyntax,
+                CSharpParseOptions.Default);
+
         private static string SourceDeclaration(
             string source,
             string requestedDeclaration,
@@ -593,6 +600,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ConstructorDeclarationSyntax constructor => constructor.Identifier.ValueText,
                 LocalFunctionStatementSyntax localFunction => localFunction.Identifier.ValueText,
                 TypeDeclarationSyntax type => type.Identifier.ValueText,
+                PropertyDeclarationSyntax property => property.Identifier.ValueText,
                 _ => string.Empty
             };
 
@@ -616,6 +624,10 @@ namespace Unity.FoxgloveSDK.Tests
                     localFunction.ExpressionBody?.ArrowToken.SpanStart,
                     localFunction.SemicolonToken.SpanStart),
                 TypeDeclarationSyntax type => type.OpenBraceToken.SpanStart,
+                PropertyDeclarationSyntax property => SourceMethodHeaderEnd(
+                    property.AccessorList?.OpenBraceToken.SpanStart,
+                    property.ExpressionBody?.ArrowToken.SpanStart,
+                    property.SemicolonToken.SpanStart),
                 _ => -1
             };
             if (headerEnd < declaration.SpanStart)

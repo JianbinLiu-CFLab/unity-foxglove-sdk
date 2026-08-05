@@ -304,7 +304,9 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing repository file: " + relativePath, path);
+            return File.ReadAllText(path);
         }
 
         private sealed class Phase134_2FakeTransport : IFoxgloveTransport

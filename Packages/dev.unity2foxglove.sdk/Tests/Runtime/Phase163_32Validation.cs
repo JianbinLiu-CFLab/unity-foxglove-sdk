@@ -76,9 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var capabilities = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs");
             var descriptorCtor = ExtractCSharpMethod(selector, "Ros2ForUnityRuntimeDescriptor");
-            var descriptorFactory = PhaseValidationSourceHelpers.SourceMethod(
-                selector,
-                "private static Ros2ForUnityRuntimeDescriptor TryCreateDescriptor");
+            var descriptorFactory = ExtractCSharpMethod(selector, "TryCreateDescriptor");
             var diagnostic = ExtractCSharpMethod(selector, "ComputeZenohPayloadDiagnostic");
 
             Check(selector.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
@@ -104,7 +102,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
-            var checkIntegrity = ExtractCSharpMethod(runtime, "CheckIntegrity");
+            var checkIntegrity = PhaseValidationSourceHelpers.SourceMethod(
+                runtime,
+                "public void CheckIntegrity()");
 
             Check(runtime.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && checkIntegrity.Contains("CheckIntegrity(GetROSVersionSourced());", StringComparison.Ordinal)
@@ -291,50 +291,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ExtractCSharpMethod(string source, string methodName)
-        {
-            var signature = -1;
-            foreach (var prefix in new[]
-                     {
-                         "public void ",
-                         "private void ",
-                         "internal void ",
-                         "internal ",
-                         "private static bool ",
-                         "private static string ",
-                         "private static void ",
-                         "public static string ",
-                         "public static void ",
-                         "public ",
-                         "private ",
-                     })
-            {
-                signature = source.IndexOf(prefix + methodName + "(", StringComparison.Ordinal);
-                if (signature >= 0)
-                    break;
-            }
-
-            if (signature < 0)
-                return string.Empty;
-
-            var bodyStart = source.IndexOf('{', signature);
-            if (bodyStart < 0)
-                return string.Empty;
-
-            var depth = 0;
-            for (var i = bodyStart; i < source.Length; i++)
-            {
-                if (source[i] == '{')
-                    depth++;
-                else if (source[i] == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(bodyStart, i - bodyStart + 1);
-                }
-            }
-
-            return source.Substring(bodyStart);
-        }
+            => PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(
+                source,
+                methodName,
+                "UNITY_EDITOR");
 
         private static string ReadRepoText(string relativePath)
         {

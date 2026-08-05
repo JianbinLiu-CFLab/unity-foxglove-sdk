@@ -162,7 +162,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!readerSource.Contains("_stream.CanSeek && _stream.Length < minFileBytes", StringComparison.Ordinal),
                 "163-10G-1: ReadSummary removes the dead seekability clause after the explicit seekable-stream guard");
-            Check(!indexedReaderSource.Contains("private void ReadLatestBeforeSequential(\r\n            McapReadOptions options,\r\n            HashSet<ushort> selectedChannelIds,\r\n            int expectedCount,\r\n            Dictionary<ushort, McapMessage> latestByChannel)\r\n        {\r\n            _stream.Seek(0, SeekOrigin.Begin);", StringComparison.Ordinal),
+            var readLatestBeforeSequential = PhaseValidationSourceHelpers.SourceMethod(
+                indexedReaderSource,
+                "ReadLatestBeforeSequential");
+            Check(!string.IsNullOrEmpty(readLatestBeforeSequential)
+                  && !readLatestBeforeSequential.Contains("_stream.Seek(0, SeekOrigin.Begin);", StringComparison.Ordinal),
                 "163-10G-2: ReadLatestBeforeSequential avoids the redundant seek before VisitSequentialMessages");
             Check(decoderSource.Contains("RequireExactSegmentEnd(off, mapEnd, fieldName + \" map\");", StringComparison.Ordinal),
                 "163-10G-3: McapRecordDecoder.ReadMap keeps exact map segment accounting");

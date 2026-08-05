@@ -611,8 +611,25 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerSource.Contains("FoxgloveAppUrl.BuildWebSocketEndpoint(")
                   && !managerSource.Contains("url += $\"?token={_sharedToken}\""),
                 "52C-1g2: manager connection URL redaction uses encoded endpoint builder");
-            Check(!managerSource.Contains("if (!IsRunning)\r\n            {\r\n                StopCertificateDistributor();\r\n                return;\r\n            }") &&
-                  !managerSource.Contains("if (!IsRunning)\n            {\n                StopCertificateDistributor();\n                return;\n            }"),
+            var stopServerSource = PhaseValidationSourceHelpers.SourceMethod(
+                managerSource,
+                "private void StopServer(bool restoreLivePublishers)");
+            var notRunningIndex = stopServerSource.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
+            var nullSessionIndex = stopServerSource.IndexOf(
+                "if (_runtime?.Session == null)",
+                StringComparison.Ordinal);
+            var earlyReturnIndex = nullSessionIndex >= 0
+                ? stopServerSource.IndexOf("return;", nullSessionIndex, StringComparison.Ordinal)
+                : -1;
+            var runtimeStopIndex = stopServerSource.IndexOf("_runtime.Stop();", StringComparison.Ordinal);
+            var earlyReturnCount = stopServerSource.Split(
+                new[] { "return;" },
+                StringSplitOptions.None).Length - 1;
+            Check(notRunningIndex >= 0
+                  && nullSessionIndex > notRunningIndex
+                  && earlyReturnIndex > nullSessionIndex
+                  && runtimeStopIndex > earlyReturnIndex
+                  && earlyReturnCount == 1,
                 "52C-1g3: StopServer still stops runtime so active recordings are finalized even if transport is already stopped");
             var stopIndex = runtimeSource.IndexOf("public void Stop()", StringComparison.Ordinal);
             var nextMethodIndex = runtimeSource.IndexOf("public void RegisterChannel", stopIndex, StringComparison.Ordinal);
