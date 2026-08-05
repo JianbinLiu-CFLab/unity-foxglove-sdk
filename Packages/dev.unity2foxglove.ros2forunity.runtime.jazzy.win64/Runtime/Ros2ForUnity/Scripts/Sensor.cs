@@ -14,7 +14,6 @@
 // limitations under the License.
 
 using UnityEngine;
-using UnityEngine.Profiling;
 using System;
 
 namespace ROS2
@@ -81,18 +80,18 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     protected abstract bool HasNewData();
 
     protected double desiredFrameTime = 0.0;
-    private const double minimumFrequency = 0.001;
+    private const double MinimumFrequencyHz = 0.001;
+    private double cachedDesiredUpdateFreq = Double.NaN;
     private Publisher<T> publisher;
     private ROS2UnityComponent ros2UnityComponent;
     private ROS2Node ros2Node;
     private string ownerAgentName;
     private string cachedFrameName;
     private bool rosParticipantsDisposed = true;
-    private double lastTimestamp;
-    private double timeSinceLastFixedUpdate;
 
     private T readings;
     private bool newReadings;
+    private readonly object readingsMutex = new object();
 
     public override string frameName()
     {
@@ -147,7 +146,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         ros2UnityComponent = ros2Unity;
         ros2Node = node;
         rosParticipantsDisposed = false;
-        string nsName = agentName.Replace(" ", "_");
+        string nsName = (agentName ?? String.Empty).Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
         ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
     }
@@ -159,19 +158,16 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     internal void ExecutorThreadSensorPublishAction()
     {
-        if (!HasNewData())
-            return;
-
-        if (publisher != null && publishing && ros2Node != null)
+        lock (readingsMutex)
         {
-            readings = AcquireValue();
-            if (readings != null)
+            if (!(publisher != null && publishing) || !newReadings || ros2Node == null || ros2Node.IsDisposed)
             {
-                readings.SetHeaderFrame(frameName());
-                MessageWithHeader readingsHeader = readings as MessageWithHeader;
-                ros2Node.clock.UpdateROSTimestamp(ref readingsHeader);
-                publisher.Publish(readings);
+                return;
             }
+
+            T readingToPublish = readings;
+            newReadings = false;
+            publisher.Publish(readingToPublish);
         }
     }
 
@@ -184,6 +180,57 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     {
         VisualiseEffects();
         OnUpdate();
+        UpdateReadingOnMainThread();
+    }
+
+    private void UpdateReadingOnMainThread()
+    {
+        RefreshDesiredFrameTimeIfNeeded();
+
+        Publisher<T> publisherToUse;
+        ROS2UnityComponent componentToUse;
+        ROS2Node nodeToUse;
+        lock (readingsMutex)
+        {
+            if (rosParticipantsDisposed || !publishing || publisher == null || ros2Node == null || ros2Node.IsDisposed)
+            {
+                return;
+            }
+
+            publisherToUse = publisher;
+            componentToUse = ros2UnityComponent;
+            nodeToUse = ros2Node;
+        }
+
+        if (componentToUse == null || !componentToUse.Ok() || !HasNewData())
+        {
+            return;
+        }
+
+        T acquiredReading = AcquireValue();
+        if (acquiredReading == null)
+        {
+            return;
+        }
+
+        acquiredReading.SetHeaderFrame(frameName());
+        MessageWithHeader acquiredHeader = acquiredReading;
+        if (!nodeToUse.TryUpdateROSTimestamp(ref acquiredHeader))
+        {
+            DisposeRosParticipants();
+            return;
+        }
+
+        lock (readingsMutex)
+        {
+            if (rosParticipantsDisposed || !ReferenceEquals(publisher, publisherToUse) || !ReferenceEquals(ros2Node, nodeToUse))
+            {
+                return;
+            }
+
+            readings = acquiredReading;
+            newReadings = true;
+        }
     }
 
     /// <summary>
@@ -192,7 +239,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     void Awake()
     {
         CalculateFrameTime();
-        lastTimestamp = DateTime.UtcNow.Ticks / 1E7;
     }
 
     void OnDisable()
@@ -207,19 +253,43 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
 
     private void DisposeRosParticipants()
     {
-        // U2F-LOCAL-PATCH: unregister executor actions and release native endpoints deterministically.
-        if (rosParticipantsDisposed)
-            return;
+        // U2F-LOCAL-PATCH: unregister the executor action before serialized publisher teardown.
+        ROS2UnityComponent componentToUnregister;
+        lock (readingsMutex)
+        {
+            if (rosParticipantsDisposed)
+            {
+                return;
+            }
 
-        rosParticipantsDisposed = true;
-        if (ros2UnityComponent != null)
-            ros2UnityComponent.UnregisterExecutable(ExecutorThreadSensorPublishAction);
+            rosParticipantsDisposed = true;
+            componentToUnregister = ros2UnityComponent;
+        }
 
-        if (ros2Node != null && publisher != null)
+        if (componentToUnregister != null)
+        {
+            componentToUnregister.UnregisterExecutable(ExecutorThreadSensorPublishAction);
+        }
+
+        ROS2Node nodeToUse;
+        Publisher<T> publisherToRemove;
+        lock (readingsMutex)
+        {
+            nodeToUse = ros2Node;
+            publisherToRemove = publisher;
+            publisher = null;
+            ros2UnityComponent = null;
+            ros2Node = null;
+            readings = null;
+            newReadings = false;
+            cachedFrameName = null;
+        }
+
+        if (nodeToUse != null && publisherToRemove != null && !nodeToUse.IsDisposed)
         {
             try
             {
-                ros2Node.RemovePublisher<T>(publisher);
+                nodeToUse.RemovePublisher<T>(publisherToRemove);
             }
             catch (Exception ex)
             {
@@ -227,10 +297,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
             }
         }
 
-        publisher = null;
-        ros2UnityComponent = null;
-        ros2Node = null;
-        cachedFrameName = null;
     }
 
     /// <summary>
@@ -246,13 +312,22 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
                             + "physics frequency is " + maxFrameFreq);
             clampedUpdateFreq = maxFrameFreq;  //Can't go faster than physics
         }
-        if (clampedUpdateFreq < minimumFrequency)
+        if (clampedUpdateFreq < MinimumFrequencyHz)
         {
-            Debug.LogWarning("Minimum frequency of " + minimumFrequency
+            Debug.LogWarning("Minimum frequency of " + MinimumFrequencyHz
                              + " applied instead of " + clampedUpdateFreq);
-            clampedUpdateFreq = minimumFrequency;
+            clampedUpdateFreq = MinimumFrequencyHz;
         }
         desiredFrameTime = 1.0 / clampedUpdateFreq;
+        cachedDesiredUpdateFreq = desiredUpdateFreq;
+    }
+
+    private void RefreshDesiredFrameTimeIfNeeded()
+    {
+        if (!desiredUpdateFreq.Equals(cachedDesiredUpdateFreq))
+        {
+            CalculateFrameTime();
+        }
     }
 }
 

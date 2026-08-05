@@ -40,6 +40,7 @@ namespace ROS2
         private int collectionVersion = 0;
         private int snapshotVersion = -1;
         private volatile bool quitting = false;
+        private volatile bool disposeRequested = false;
         private bool cachedOk = false;
         private bool disposed = false;
         private Thread executorThread;
@@ -51,7 +52,7 @@ namespace ROS2
         {
             lock (mutex)
             {
-                if (disposed || nodes == null || ros2forUnity == null)
+                if (disposeRequested || disposed || nodes == null || ros2forUnity == null)
                 {
                     cachedOk = false;
                     return false;
@@ -97,7 +98,7 @@ namespace ROS2
                 }
                 ROS2Node node = new ROS2Node(name);
                 nodes.Add(node);
-                ros2csNodes.Add(node.node);
+                ros2csNodes.Add(node.NativeNode);
                 collectionVersion++;
                 return node;
             }
@@ -126,7 +127,7 @@ namespace ROS2
                 if (nodes != null)
                 {
                     removed = nodes.Remove(node);
-                    bool removedRos2csNode = ros2csNodes.Remove(node.node);
+                    bool removedRos2csNode = ros2csNodes.Remove(node.NativeNode);
                     if (removed || removedRos2csNode)
                     {
                         collectionVersion++;
@@ -184,6 +185,7 @@ namespace ROS2
 
                 lock (mutex)
                 {
+                    PruneDisposedNodesLocked();
                     if (!quitting && !disposed && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
                     {
                         cachedOk = true;
@@ -246,18 +248,18 @@ namespace ROS2
 
         public void Dispose()
         {
+            disposeRequested = true;
             bool executorStopped = StopExecutor();
-            if (executorStopped)
-            {
-                DisposeNodes();
-            }
-            else
+            if (!executorStopped)
             {
                 Debug.LogError(
                     "ROS2UnityCore executor thread timed out during dispose; " +
-                    "continuing best-effort lifecycle cleanup with nodes quarantined.");
+                    "native ownership remains active until the executor stops.");
                 QuarantineNodesAfterExecutorTimeout();
+                return;
             }
+
+            DisposeNodes();
 
             ROS2ForUnity instance = null;
             if (!TryDetachRuntimeState(executorStopped, out instance))
@@ -387,9 +389,7 @@ namespace ROS2
             {
                 if (nodes != null)
                 {
-                    nodes.Clear();
-                    ros2csNodes.Clear();
-                    collectionVersion++;
+                    cachedOk = false;
                 }
             }
             finally
@@ -400,9 +400,37 @@ namespace ROS2
 
         private void ThrowIfDisposed()
         {
-            if (disposed)
+            if (disposeRequested || disposed)
             {
                 throw new ObjectDisposedException(nameof(ROS2UnityCore));
+            }
+        }
+
+        private void PruneDisposedNodesLocked()
+        {
+            if (nodes == null || ros2csNodes == null)
+            {
+                return;
+            }
+
+            for (int index = nodes.Count - 1; index >= 0; index--)
+            {
+                ROS2Node candidate = nodes[index];
+                if (!candidate.IsDisposed)
+                {
+                    continue;
+                }
+
+                nodes.RemoveAt(index);
+                if (index < ros2csNodes.Count && ReferenceEquals(ros2csNodes[index], candidate.NativeNode))
+                {
+                    ros2csNodes.RemoveAt(index);
+                }
+                else
+                {
+                    ros2csNodes.Remove(candidate.NativeNode);
+                }
+                collectionVersion++;
             }
         }
     }

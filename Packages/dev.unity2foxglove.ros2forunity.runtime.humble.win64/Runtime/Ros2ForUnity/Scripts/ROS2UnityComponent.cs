@@ -47,6 +47,7 @@ public class ROS2UnityComponent : MonoBehaviour
     private volatile bool quitting = false;
     private volatile bool cachedOk = false;
     private bool runtimeShutdownRequested = false;
+    private bool shutdownRequested = false;
     private bool disposed = false;
     private Thread executorThread;
     private int interval = 2;  // Spinning / executor interval in ms
@@ -57,7 +58,7 @@ public class ROS2UnityComponent : MonoBehaviour
     {
         lock (mutex)
         {
-            if (disposed)
+            if (shutdownRequested || disposed)
                 return false;
 
             if (initialized && cachedOk && nodes != null && ros2forUnity != null)
@@ -114,7 +115,14 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             if (component != null)
             {
-                component.StopExecutor();
+                if (!component.StopExecutor())
+                {
+                    Debug.LogError(
+                        "ROS2UnityComponent executor is still active during ROS shutdown; " +
+                        "native ownership remains active.");
+                    continue;
+                }
+
                 component.MarkRuntimeShutdown();
             }
         }
@@ -141,7 +149,7 @@ public class ROS2UnityComponent : MonoBehaviour
             }
             ROS2Node node = new ROS2Node(name);
             nodes.Add(node);
-            ros2csNodes.Add(node.node);
+            ros2csNodes.Add(node.NativeNode);
             collectionVersion++;
             return node;
         }
@@ -171,7 +179,7 @@ public class ROS2UnityComponent : MonoBehaviour
             if (nodes != null)
             {
                 removed = nodes.Remove(node);
-                removedRos2csNode = ros2csNodes.Remove(node.node);
+                removedRos2csNode = ros2csNodes.Remove(node.NativeNode);
                 if (removed || removedRos2csNode)
                 {
                     collectionVersion++;
@@ -231,6 +239,7 @@ public class ROS2UnityComponent : MonoBehaviour
 
             lock (mutex)
             {
+                PruneDisposedNodesLocked();
                 if (!quitting && !disposed && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
                 {
                     cachedOk = true;
@@ -331,7 +340,7 @@ public class ROS2UnityComponent : MonoBehaviour
         }
     }
 
-    private void StopExecutor()
+    private bool StopExecutor()
     {
         Thread threadToJoin = null;
         lock (mutex)
@@ -345,6 +354,7 @@ public class ROS2UnityComponent : MonoBehaviour
             if (!threadToJoin.Join(TimeSpan.FromSeconds(2)))
             {
                 Debug.LogWarning("ROS2UnityComponent executor thread did not stop within 2 seconds");
+                return false;
             }
         }
 
@@ -355,6 +365,8 @@ public class ROS2UnityComponent : MonoBehaviour
             executorStarted = false;
             cachedOk = false;
         }
+
+        return true;
     }
 
     private void DisposeNodes()
@@ -393,32 +405,32 @@ public class ROS2UnityComponent : MonoBehaviour
     {
         lock (mutex)
         {
-            if (disposed)
+            if (disposed || shutdownRequested)
             {
                 return;
             }
 
-            // Mark shutdown as started before joining/disposing so OnDestroy and OnApplicationQuit cannot race.
-            disposed = true;
+            shutdownRequested = true;
             executorStarted = false;
             cachedOk = false;
         }
 
-        StopExecutor();
+        bool executorStopped = StopExecutor();
+        if (!executorStopped)
+        {
+            Debug.LogError(
+                "ROS2UnityComponent executor thread timed out during shutdown; " +
+                "native ownership remains active until the executor stops.");
+            QuarantineNodesAfterExecutorTimeout();
+            return;
+        }
+
         DisposeNodes();
 
         ROS2ForUnity instance = null;
-        lock (mutex)
+        if (!TryDetachRuntimeState(executorStopped, out instance))
         {
-            instance = ros2forUnity;
-            ros2forUnity = null;
-            cachedOk = false;
-            executableActions = null;
-            executableActionSet = null;
-            nodes = null;
-            ros2csNodes = null;
-            actionsSnapshot.Clear();
-            nodesSnapshot.Clear();
+            return;
         }
 
         if (instance != null)
@@ -426,17 +438,100 @@ public class ROS2UnityComponent : MonoBehaviour
             instance.DestroyROS2ForUnity();
         }
 
+    }
+
+    private bool TryDetachRuntimeState(bool executorStopped, out ROS2ForUnity instance)
+    {
+        instance = null;
+        if (!executorStopped)
+        {
+            Debug.LogError("ROS2UnityComponent executor is still active; native ownership remains active.");
+            return false;
+        }
+
+        lock (mutex)
+        {
+            if (disposed)
+            {
+                return false;
+            }
+
+            disposed = true;
+            shutdownRequested = true;
+            initialized = false;
+            executorStarted = false;
+            cachedOk = false;
+            instance = ros2forUnity;
+            ros2forUnity = null;
+            executableActions = null;
+            executableActionSet = null;
+            nodes = null;
+            ros2csNodes = null;
+            actionsSnapshot.Clear();
+            nodesSnapshot.Clear();
+            collectionVersion++;
+            snapshotVersion = -1;
+        }
+
         lock (instancesMutex)
         {
             instances.Remove(this);
+        }
+
+        return true;
+    }
+
+    private void QuarantineNodesAfterExecutorTimeout()
+    {
+        if (!Monitor.TryEnter(mutex, TimeSpan.FromMilliseconds(250)))
+        {
+            Debug.LogError("ROS2UnityComponent could not acquire state lock after executor timeout; native ownership remains active.");
+            return;
+        }
+
+        try
+        {
+            cachedOk = false;
+        }
+        finally
+        {
+            Monitor.Exit(mutex);
         }
     }
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
+        if (shutdownRequested || disposed)
         {
             throw new ObjectDisposedException(nameof(ROS2UnityComponent));
+        }
+    }
+
+    private void PruneDisposedNodesLocked()
+    {
+        if (nodes == null || ros2csNodes == null)
+        {
+            return;
+        }
+
+        for (int index = nodes.Count - 1; index >= 0; index--)
+        {
+            ROS2Node candidate = nodes[index];
+            if (!candidate.IsDisposed)
+            {
+                continue;
+            }
+
+            nodes.RemoveAt(index);
+            if (index < ros2csNodes.Count && ReferenceEquals(ros2csNodes[index], candidate.NativeNode))
+            {
+                ros2csNodes.RemoveAt(index);
+            }
+            else
+            {
+                ros2csNodes.Remove(candidate.NativeNode);
+            }
+            collectionVersion++;
         }
     }
 
