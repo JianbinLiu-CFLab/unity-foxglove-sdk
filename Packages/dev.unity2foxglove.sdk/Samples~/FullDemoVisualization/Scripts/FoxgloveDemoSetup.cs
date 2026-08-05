@@ -352,6 +352,11 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private static string FormatPayloadPreview(byte[] payload)
     {
         var count = Mathf.Min(payload.Length, ClientPayloadPreviewBytes);
+        if (payload.Length > count)
+        {
+            while (count > 0 && (payload[count] & 0xC0) == 0x80)
+                count--;
+        }
         try
         {
             var text = StrictUtf8.GetString(payload, 0, count);

@@ -25,6 +25,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string WriteFoxRunSectionHashInput(Unity2FoxgloveFoxRunSummarySection section)
         {
+            if (section == null)
+                throw new ArgumentNullException(nameof(section));
+
             var sb = new StringBuilder();
             WriteFoxRunSection(sb, section);
             return sb.ToString();
@@ -32,6 +35,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string WriteProtobufRegistrySectionHashInput(Unity2FoxgloveProtobufRegistrySection section)
         {
+            if (section == null)
+                throw new ArgumentNullException(nameof(section));
+
             var sb = new StringBuilder();
             WriteProtobufRegistrySection(sb, section);
             return sb.ToString();
@@ -39,6 +45,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string WriteSdkTypedPublishersSectionHashInput(Unity2FoxgloveSdkTypedPublishersSection section)
         {
+            if (section == null)
+                throw new ArgumentNullException(nameof(section));
+
             var sb = new StringBuilder();
             WriteSdkTypedPublishersSection(sb, section);
             return sb.ToString();
