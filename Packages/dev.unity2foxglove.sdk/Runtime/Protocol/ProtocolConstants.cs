@@ -5,6 +5,7 @@
 // Purpose: Shared Foxglove WebSocket protocol constants — subprotocols,
 // capabilities, enum converter, and status level enum.
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -21,7 +22,8 @@ namespace Unity.FoxgloveSDK.Protocol
         public const string WebSocketV1 = "foxglove.websocket.v1";
 
         /// <summary>All accepted subprotocols for matching logic.</summary>
-        public static readonly string[] Accepted = { SdkV1, WebSocketV1 };
+        public static readonly IReadOnlyList<string> Accepted =
+            Array.AsReadOnly(new[] { SdkV1, WebSocketV1 });
     }
 
     /// <summary>Capabilities advertised in serverInfo. Only declare what is actually supported.</summary>

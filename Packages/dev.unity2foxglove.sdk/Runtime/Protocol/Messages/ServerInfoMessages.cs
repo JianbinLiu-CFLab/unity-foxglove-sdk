@@ -86,11 +86,14 @@ namespace Unity.FoxgloveSDK.Protocol
             get => _nsec;
             set
             {
-                _nsecCarry = value / 1_000_000_000U;
-                _nsec = value % 1_000_000_000U;
+                var carry = value / 1_000_000_000U;
+                var nanoseconds = value % 1_000_000_000U;
 
-                if (_rawSec > ulong.MaxValue - _nsecCarry)
+                if (_rawSec > ulong.MaxValue - carry)
                     throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
+
+                _nsecCarry = carry;
+                _nsec = nanoseconds;
             }
         }
     }

@@ -5,7 +5,6 @@
 // Purpose: Encodes/decodes binary WebSocket frames for the Foxglove protocol v1.
 
 using System;
-using System.Collections.Concurrent;
 using System.ComponentModel;
 
 namespace Unity.FoxgloveSDK.Protocol
@@ -22,8 +21,6 @@ namespace Unity.FoxgloveSDK.Protocol
         private static readonly byte[] Ros1EncodingBytes = System.Text.Encoding.UTF8.GetBytes("ros1");
         private static readonly System.Text.UTF8Encoding StrictUtf8 =
             new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-        private static readonly ConcurrentDictionary<string, byte[]> CustomServiceEncodingBytes =
-            new ConcurrentDictionary<string, byte[]>(StringComparer.Ordinal);
 
         /// <summary>
         /// Server→client MessageData frame.
@@ -171,9 +168,7 @@ namespace Unity.FoxgloveSDK.Protocol
                 return ProtobufEncodingBytes;
             if (string.Equals(encoding, "ros1", StringComparison.Ordinal))
                 return Ros1EncodingBytes;
-            return CustomServiceEncodingBytes.GetOrAdd(
-                encoding,
-                static value => System.Text.Encoding.UTF8.GetBytes(value));
+            return System.Text.Encoding.UTF8.GetBytes(encoding);
         }
 
         // ── Little-endian helpers ──
