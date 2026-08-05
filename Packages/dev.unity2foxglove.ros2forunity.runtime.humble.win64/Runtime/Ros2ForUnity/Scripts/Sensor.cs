@@ -159,6 +159,11 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
             throw new System.InvalidOperationException("Topic name not set for the sensor " + this);
         }
 
+        if (publisher != null)
+        {
+            throw new System.InvalidOperationException("ROS participants have already been created for sensor " + this);
+        }
+
         ownerAgentName = agentName;
         cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
         ros2UnityComponent = ros2Unity;

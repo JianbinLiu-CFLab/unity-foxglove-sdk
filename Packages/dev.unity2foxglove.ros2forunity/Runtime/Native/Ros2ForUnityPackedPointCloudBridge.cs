@@ -248,10 +248,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool TryGetExistingRos2Unity(out ROS2UnityComponent ros2Unity)
         {
             if (_ros2Unity == null)
-                _ros2Unity = GetComponent<ROS2UnityComponent>() ?? FindFirstObjectByType<ROS2UnityComponent>();
+            {
+                _ros2Unity = GetComponent<ROS2UnityComponent>();
+                if (_ros2Unity == null)
+                {
+                    BeginShutdown();
+                    ros2Unity = null;
+                    return false;
+                }
+            }
 
             ros2Unity = _ros2Unity;
-            return ros2Unity != null;
+            return true;
         }
 
         private void RecordRos2Failure(string message)
