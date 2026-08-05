@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Components
         private static bool _warnedFixedDeltaOverrideConflict;
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
+        private readonly ClientEventDispatchState _nativeFrameDispatch = new ClientEventDispatchState();
 
         [Header("IMU")]
         [SerializeField] private FoxgloveManager _manager;
@@ -317,9 +318,21 @@ namespace Unity.FoxgloveSDK.Components
                     }
 
                     if (nativeFrame != null)
-                        nativeFrameHandler.Invoke(nativeFrame);
+                    {
+                        _nativeFrameDispatch.Invoke(
+                            nativeFrameHandler,
+                            nativeFrame,
+                            ReportNativeFrameSubscriberFailure);
+                    }
                 }
             }
+        }
+
+        private static void ReportNativeFrameSubscriberFailure(Exception exception)
+        {
+            Debug.LogWarning(
+                "[VirtualImu] Native frame subscriber failed; continuing delivery to remaining subscribers. "
+                + exception);
         }
 
         private void OnValidate()

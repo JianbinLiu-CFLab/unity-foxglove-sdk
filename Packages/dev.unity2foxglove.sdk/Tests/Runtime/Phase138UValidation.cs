@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             OptionsAndPublisherSurface();
             PoseHistoryInterpolation();
             MotionCompensatorMath();
+            NegativeFinitePointTimeOffsetsFailClosed();
             DeskewFlattensMovingWallUnderMotion();
             NativeFrameAndBridgeTopicRouting();
             CoreContainsNoRos2References();
@@ -59,7 +60,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("_deskewedPackedPointCloudTopic", StringComparison.Ordinal),
                 "138U-1G: point cloud publisher stores deskewed topic");
             Check(publisher.Contains("_deskewedPackedPointCloudMaxPublishRateHz = 2f", StringComparison.Ordinal)
-                  && publisher.Contains("ShouldQueueDeskewedPointCloud2Frame", StringComparison.Ordinal),
+                  && publisher.Contains("ShouldQueueDeskewedPackedPointCloudFrame", StringComparison.Ordinal),
                 "138U-1Ga: point cloud publisher rate-gates deskewed visualization before worker request construction");
             Check(publisher.Contains("PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame", StringComparison.Ordinal),
                 "138U-1H: publisher routes VirtualLidar deskew through scan-reference coordinates");
@@ -285,6 +286,36 @@ namespace Unity.FoxgloveSDK.Tests
             }
             Check(SpreadX(points, useAcquisition: true) < 0.001f,
                 "138U-7E: stationary capture makes acquisition-frame == F0 (raw==deskewed is expected when not moving)");
+        }
+
+        private static void NegativeFinitePointTimeOffsetsFailClosed()
+        {
+            var points = new[]
+            {
+                new VirtualLidarPointData
+                {
+                    X = 1f,
+                    TimeOffsetSeconds = -0.01f,
+                    IsValid = 1
+                }
+            };
+            var request = new PointCloudMotionCompensationRequest(
+                "/deskewed",
+                PointCloudMotionCompensationReferenceTime.ScanStart,
+                PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame,
+                Array.Empty<SensorMotionPoseSample>());
+
+            Check(!PointCloudMotionCompensator.TryCompensateVirtualLidar(
+                      points,
+                      points.Length,
+                      1_000_000_000UL,
+                      request,
+                      out var result,
+                      out var error)
+                  && result == null
+                  && error != null
+                  && error.Contains("non-negative", StringComparison.Ordinal),
+                "138U-3J: negative finite point time offsets fail closed before deskew");
         }
 
         private static float SpreadX(VirtualLidarPointData[] points, bool useAcquisition)

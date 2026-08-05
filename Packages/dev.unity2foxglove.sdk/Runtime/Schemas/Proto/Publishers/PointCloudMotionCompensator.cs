@@ -83,8 +83,6 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal static class PointCloudMotionCompensator
     {
-        private const double NanosecondsPerSecond = 1_000_000_000d;
-
         /// <summary>
         /// Builds a deskewed VirtualLidar snapshot in one reference sensor frame.
         /// </summary>
@@ -230,7 +228,13 @@ namespace Unity.FoxgloveSDK.Components
                     continue;
                 }
 
-                var offsetNs = TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
+                if (!TryTimeOffsetSecondsToNanoseconds(
+                        point.TimeOffsetSeconds,
+                        out var offsetNs,
+                        out error))
+                {
+                    return false;
+                }
                 Matrix4x4 sensorToReference;
                 if (hasLastTransform && offsetNs == lastOffsetNs)
                 {
@@ -323,7 +327,17 @@ namespace Unity.FoxgloveSDK.Components
                 error = "point count is outside the source buffer";
                 return false;
             }
-            hasValidPoints = TryGetTimeRange(source, pointCount, scanStartUnixNs, out firstUnixNs, out lastUnixNs);
+            if (!TryGetTimeRange(
+                    source,
+                    pointCount,
+                    scanStartUnixNs,
+                    out firstUnixNs,
+                    out lastUnixNs,
+                    out hasValidPoints,
+                    out error))
+            {
+                return false;
+            }
             if (!hasValidPoints)
                 return true;
 
@@ -361,18 +375,29 @@ namespace Unity.FoxgloveSDK.Components
             int pointCount,
             ulong scanStartUnixNs,
             out ulong firstUnixNs,
-            out ulong lastUnixNs)
+            out ulong lastUnixNs,
+            out bool found,
+            out string error)
         {
             firstUnixNs = scanStartUnixNs;
             lastUnixNs = scanStartUnixNs;
-            var found = false;
+            found = false;
+            error = null;
             for (var i = 0; i < pointCount; i++)
             {
                 var point = source[i];
                 if (point.IsValid == 0)
                     continue;
 
-                var pointUnixNs = AddNanoseconds(scanStartUnixNs, TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
+                if (!TryTimeOffsetSecondsToNanoseconds(
+                        point.TimeOffsetSeconds,
+                        out var offsetNs,
+                        out error))
+                {
+                    return false;
+                }
+
+                var pointUnixNs = AddNanoseconds(scanStartUnixNs, offsetNs);
                 if (!found)
                 {
                     firstUnixNs = pointUnixNs;
@@ -387,7 +412,7 @@ namespace Unity.FoxgloveSDK.Components
                     lastUnixNs = pointUnixNs;
             }
 
-            return found;
+            return true;
         }
 
         private static ulong ResolveReferenceUnixNs(
@@ -411,18 +436,23 @@ namespace Unity.FoxgloveSDK.Components
             => Matrix4x4.CreateFromQuaternion(pose.Rotation)
                * Matrix4x4.CreateTranslation(pose.Translation);
 
-        private static uint TimeOffsetSecondsToNanoseconds(float seconds)
+        private static bool TryTimeOffsetSecondsToNanoseconds(
+            float seconds,
+            out uint nanoseconds,
+            out string error)
         {
-            // Stored per-point time offsets are encoded as unsigned nanoseconds, clamped to MCAP/PackedPointCloud field width.
-            if (float.IsNaN(seconds) || seconds <= 0f)
-                return 0U;
+            if (!float.IsNaN(seconds)
+                && !float.IsInfinity(seconds)
+                && seconds < 0f)
+            {
+                nanoseconds = 0U;
+                error = "point time offsets must be non-negative";
+                return false;
+            }
 
-            var ns = Math.Round(seconds * NanosecondsPerSecond, MidpointRounding.AwayFromZero);
-            if (ns <= 0d)
-                return 0U;
-            if (ns >= uint.MaxValue)
-                return uint.MaxValue;
-            return (uint)ns;
+            nanoseconds = PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(seconds);
+            error = null;
+            return true;
         }
 
         private static ulong AddNanoseconds(ulong unixNs, uint offsetNs)
