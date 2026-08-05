@@ -79,6 +79,9 @@ jobs:
       - name: Validate source generator DLL freshness script
         run: python3 Scripts/package/validate_source_generator_dll.py
 
+      - name: Validate generated ROS2 schema output freshness
+        run: python3 Scripts/schema/validate_schema_generated_outputs.py
+
       - name: Restore runtime test project
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 

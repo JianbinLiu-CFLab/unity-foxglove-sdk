@@ -120,18 +120,18 @@ namespace Unity2Foxglove.Ros2Bridge
 
         internal Ros2BridgeSessionSettings Settings => _settings;
 
-        internal bool TryActivateLocal(
-            Ros2BridgeSessionContract contract,
-            out string reason)
+        internal Ros2BridgeSessionResult TryActivateLocal(
+            Ros2BridgeSessionContract contract)
         {
+            string reason;
             if (!ValidateContract(contract, out reason))
-                return false;
+                return Ros2BridgeSessionResult.Reject(reason);
             lock (_gate)
             {
                 if (_stopped)
                 {
                     reason = "The Bridge session is stopped.";
-                    return false;
+                    return Ros2BridgeSessionResult.Unavailable(reason);
                 }
                 if (_local.TryGetValue(
                         contract.ContractId,
@@ -139,12 +139,11 @@ namespace Unity2Foxglove.Ros2Bridge
                 {
                     if (existing.Equals(contract))
                     {
-                        reason = string.Empty;
-                        return true;
+                        return Ros2BridgeSessionResult.Accepted();
                     }
                     reason =
                         "The Bridge contract ID conflicts with an active identity.";
-                    return false;
+                    return Ros2BridgeSessionResult.Reject(reason);
                 }
                 if (_bindingIds.TryGetValue(
                         contract.BindingId,
@@ -152,7 +151,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 {
                     reason =
                         "The Bridge binding identity conflicts with an active contract.";
-                    return false;
+                    return Ros2BridgeSessionResult.Reject(reason);
                 }
 
                 _local.Add(contract.ContractId, contract);
@@ -165,9 +164,17 @@ namespace Unity2Foxglove.Ros2Bridge
                     _attemptContracts[contract.ContractId] =
                         contract;
                 }
-                reason = string.Empty;
-                return true;
+                return Ros2BridgeSessionResult.Accepted();
             }
+        }
+
+        internal bool TryActivateLocal(
+            Ros2BridgeSessionContract contract,
+            out string reason)
+        {
+            var result = TryActivateLocal(contract);
+            reason = result.Reason;
+            return result.IsAccepted;
         }
 
         internal bool TryRevokeLocal(
@@ -386,6 +393,53 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             lock (_gate)
                 return _readySubscriptions.Contains(contractId);
+        }
+
+        public Ros2BridgeSessionResult TryAcceptSubscriptionReady(
+            U2R2Message message)
+        {
+            if (message == null)
+            {
+                return Ros2BridgeSessionResult.Fault(
+                    "The Bridge subscription_ready response is null.");
+            }
+            if (message.Operation
+                != U2R2Operation.SubscriptionReady)
+            {
+                return Ros2BridgeSessionResult.Fault(
+                    "The Bridge response is not subscription_ready.");
+            }
+            lock (_gate)
+            {
+                if (_stopped || _wireSession == null)
+                {
+                    return Ros2BridgeSessionResult.Unavailable(
+                        "The Bridge session is not ready.");
+                }
+                if (!string.Equals(
+                        message.SessionId,
+                        _wireSession.SessionId,
+                        StringComparison.Ordinal)
+                    || message.ConnectionGeneration
+                    != _wireSession.ConnectionGeneration)
+                {
+                    return Ros2BridgeSessionResult.Fault(
+                        "The Bridge subscription_ready response belongs to a stale session generation.");
+                }
+                if (!_local.TryGetValue(
+                        message.ContractId,
+                        out var local)
+                    || !_attemptContracts.TryGetValue(
+                        message.ContractId,
+                        out var replayed)
+                    || !replayed.Equals(local))
+                {
+                    return Ros2BridgeSessionResult.Fault(
+                        "The Bridge subscription_ready response references an unknown contract.");
+                }
+                _readySubscriptions.Add(message.ContractId);
+                return Ros2BridgeSessionResult.Accepted();
+            }
         }
 
         public Ros2BridgeSessionResult TryResolveInbound(

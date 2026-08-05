@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Xunit;
 
@@ -158,6 +159,44 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.Empty(registry.CaptureSnapshot().Contracts);
         }
 
+        [Fact]
+        public void ConcurrentAcquireReportsPendingRegistrationAsUnavailable()
+        {
+            var state = SessionState();
+            using var wire = new BlockingWireController();
+            using var registry = new Ros2BridgeContractLeaseRegistry(
+                generation: 7,
+                capacity: 2,
+                state,
+                wire);
+            var contract = Contract(11, "binding-a");
+            Ros2BridgeSessionResult firstResult = default;
+            IRos2BridgeContractLease firstLease = null;
+            var first = new Thread(() =>
+            {
+                firstResult = registry.TryAcquire(
+                    contract,
+                    out firstLease);
+            });
+            first.Start();
+            Assert.True(
+                wire.RegisterEntered.Wait(TimeSpan.FromSeconds(3)));
+
+            var pending = registry.TryAcquire(
+                contract,
+                out var pendingLease);
+
+            Assert.Equal(
+                Ros2BridgeSessionResultState.Unavailable,
+                pending.State);
+            Assert.Null(pendingLease);
+            wire.AllowRegister.Set();
+            Assert.True(first.Join(TimeSpan.FromSeconds(3)));
+            Assert.True(firstResult.IsAccepted, firstResult.Reason);
+            Assert.NotNull(firstLease);
+            firstLease.Dispose();
+        }
+
         private static Ros2BridgeSessionState SessionState()
             => new Ros2BridgeSessionState(
                 new Ros2BridgeSessionSettings(
@@ -209,6 +248,39 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             {
                 Unregistered.Add(contract);
                 return Ros2BridgeSessionResult.Accepted();
+            }
+        }
+
+        private sealed class BlockingWireController :
+            IRos2BridgeContractWireController,
+            IDisposable
+        {
+            internal ManualResetEventSlim RegisterEntered { get; }
+                = new ManualResetEventSlim(false);
+
+            internal ManualResetEventSlim AllowRegister { get; }
+                = new ManualResetEventSlim(false);
+
+            public Ros2BridgeSessionResult Register(
+                Ros2BridgeSessionContract contract)
+            {
+                RegisterEntered.Set();
+                if (!AllowRegister.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    return Ros2BridgeSessionResult.Fault(
+                        "registration release timed out");
+                }
+                return Ros2BridgeSessionResult.Accepted();
+            }
+
+            public Ros2BridgeSessionResult Unregister(
+                Ros2BridgeSessionContract contract)
+                => Ros2BridgeSessionResult.Accepted();
+
+            public void Dispose()
+            {
+                RegisterEntered.Dispose();
+                AllowRegister.Dispose();
             }
         }
     }

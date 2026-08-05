@@ -731,6 +731,95 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void SubscriptionReadyMakesBackToBackMessageVisibleBeforeRegisterReturns()
+        {
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+                var register = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    ContractResponse(
+                        "subscription_ready",
+                        register.RequestId,
+                        register.ContractId));
+                WriteFrame(
+                    stream,
+                    MessageHeader(),
+                    new byte[] { 0x00, 0x01, 0x00, 0x00, 0x2a });
+                Assert.True(
+                    releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+            var contract = new Ros2BridgeSessionContract(
+                new FoxRunTransportId(
+                    "unity2foxglove.ros2bridge"),
+                FoxRunTransportDirection.Subscribe,
+                "/phase186/inbound",
+                "phase186_msgs/msg/Inbound",
+                FoxRunResolvedQos.Default,
+                "binding-inbound",
+                contractId: 11,
+                generation: 7);
+            var contracts = new Ros2BridgeSessionContractSnapshot(
+                generation: 7,
+                new[] { contract });
+            var state = new Ros2BridgeSessionState(
+                new Ros2BridgeSessionSettings(
+                    "127.0.0.1",
+                    peer.Port,
+                    generation: 7,
+                    U2R2ProtocolLimits.Default));
+            Assert.True(state.TryActivateLocal(contract, out _));
+            var reconnect = state.BeginReconnect(contracts);
+            using var queue = new Ros2BridgeInboundQueue(
+                new Ros2BridgeInboundQueueLimits(
+                    maxPayloadBytes: 32,
+                    maxTotalBytes: 64,
+                    maxPerContractDepth: 2,
+                    maxPerContractBytes: 64));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 1000,
+                inboundResolver: state,
+                inboundReceiver: queue);
+            var wireSession = connection.Start();
+            Assert.True(state.TryCompleteHandshake(
+                reconnect.AttemptGeneration,
+                wireSession,
+                out _));
+            queue.BeginSession(
+                wireSession.SessionId,
+                wireSession.ConnectionGeneration,
+                contracts);
+
+            var registration =
+                ((IRos2BridgeContractWireController)connection)
+                .Register(contract);
+
+            Assert.True(registration.IsAccepted, registration.Reason);
+            Assert.True(state.IsSubscriptionReady(contract.ContractId));
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => queue.GetStatsSnapshot().QueuedFrames == 1,
+                    TimeSpan.FromSeconds(2)),
+                "the first message after subscription_ready was dropped");
+            releasePeer.Set();
+            peer.AssertCompleted();
+        }
+
+        [Fact]
         public void SubscriptionControlResponseUsesProtocolDeadlineNotSocketSendTimeout()
         {
             using var releasePeer = new ManualResetEventSlim(false);

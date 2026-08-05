@@ -516,6 +516,14 @@ class RunCiTests(unittest.TestCase):
             self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR,
         )
 
+    def test_dotnet_workflow_runs_schema_generated_output_freshness(self) -> None:
+        """Remote CI must compare outputs against its pinned Foxglove checkout."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 Scripts/schema/validate_schema_generated_outputs.py",
+            workflow,
+        )
+
     def test_validator_msbuild_args_keep_dash_prefixed_property_attached(self) -> None:
         """Argparse must receive dash-prefixed MSBuild properties as option values."""
         self.assertEqual(

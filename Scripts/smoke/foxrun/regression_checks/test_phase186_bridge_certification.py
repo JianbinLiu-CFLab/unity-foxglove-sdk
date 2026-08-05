@@ -21,11 +21,11 @@ HEAD = "a" * 40
 
 class Phase186BridgeCertificationTests(unittest.TestCase):
     """Group checks for phase186 bridge certification tests."""
-    def test_serial_matrix_runs_nine_cases_and_all_four_full_duplex_rows(self) -> None:
-        """Verify that serial matrix runs nine cases and all four full duplex rows."""
+    def test_serial_matrix_runs_nine_cases_and_all_four_duplex_and_reconnect_rows(self) -> None:
+        """Verify every exact runtime row covers duplex and reconnect behavior."""
         with tempfile.TemporaryDirectory() as temp:
             invocations = certification.live_invocations(pathlib.Path(temp), HEAD)
-        self.assertEqual(12, len(invocations))
+        self.assertEqual(15, len(invocations))
         self.assertEqual(
             protocol.AUTOMATIC_CASE_IDS,
             tuple(item.case_id for item in invocations[:9]),
@@ -36,6 +36,14 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
                 item.row_id
                 for item in invocations
                 if item.case_id == "full-duplex"
+            },
+        )
+        self.assertEqual(
+            set(protocol.ROWS),
+            {
+                item.row_id
+                for item in invocations
+                if item.case_id == "reconnect-degraded-recovery"
             },
         )
         self.assertEqual(len(invocations), len({item.run_id for item in invocations}))

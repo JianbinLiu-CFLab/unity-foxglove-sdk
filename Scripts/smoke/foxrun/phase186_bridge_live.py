@@ -991,11 +991,18 @@ def _write_exercise_gate(config: Mapping[str, Any]) -> pathlib.Path:
     return _write_identity_gate(config, "exerciseGate")
 
 
-def _parse_unity_evidence(config: Mapping[str, Any]) -> Mapping[str, Any]:
+def _parse_unity_evidence(
+    config: Mapping[str, Any],
+    *,
+    require_pass_marker: bool = True,
+) -> Mapping[str, Any]:
     """Parse unity evidence."""
     log = pathlib.Path(str(config["unityLog"]))
     text = live_peer._read_log(log)
-    if not _marker_in_log(config, "PHASE186_ACCEPTANCE_PASS"):
+    if (
+        require_pass_marker
+        and not _marker_in_log(config, "PHASE186_ACCEPTANCE_PASS")
+    ):
         raise LiveFailure("FAIL_TERMINAL", "exact Unity PASS marker is absent")
     evidence_line = next(
         (
@@ -1025,6 +1032,17 @@ def _parse_unity_evidence(config: Mapping[str, Any]) -> Mapping[str, Any]:
         for kind in protocol.CASE_CONTRACT_KINDS[str(config["caseId"])]
     ):
         raise LiveFailure("FAIL_EVIDENCE", "Unity reported no sent Bridge frames")
+    if any(
+        live_peer._is_subscribe(kind)
+        for kind in protocol.CASE_CONTRACT_KINDS[str(config["caseId"])]
+    ) and (
+        numeric.get("received", 0) <= 0
+        or numeric.get("applied", 0) <= 0
+    ):
+        raise LiveFailure(
+            "FAIL_EVIDENCE",
+            "Unity reported no applied Bridge subscription frames",
+        )
     if config["caseId"] == "slow-main-thread-640hz" and numeric.get("replaced", 0) <= 0:
         raise LiveFailure("FAIL_EVIDENCE", "slow-main-thread case reported no replacement")
     if config["caseId"] in {"reconnect-degraded-recovery", "lifecycle"}:
@@ -1388,11 +1406,10 @@ def run_live(
                 raise LiveFailure("FAIL_TERMINAL", "manual completion marker expired")
             if len(worker_results) != len(_worker_roles(config)):
                 raise LiveFailure("FAIL_EVIDENCE", "manual live actor evidence is incomplete")
-            document = {
-                "marker": "PHASE186_MANUAL_COMPLETE",
-                "unityVersion": "user-owned-editor",
-            }
-            live_peer._write_json_atomic(output / "unity-evidence.json", document)
+            _parse_unity_evidence(
+                config,
+                require_pass_marker=False,
+            )
         else:
             owner.launch(
                 "unity",
@@ -1510,19 +1527,40 @@ def run_live(
             )
         else:
             actors[role] = owner.actor_evidence(role)
-    observations = {
-        name: {
-            "observed": True,
-            "source": _observation_source(name),
-            "path": str(_observation_path(config, worker_results, name).resolve()),
-        }
-        for name in sorted(protocol.CASES[str(config["caseId"])].required_observations)
-    }
+    observations = _build_observations(config, worker_results)
     return actors, observations, cleanup
 
 
-def _observation_source(name: str) -> str:
+def _build_observations(
+    config: Mapping[str, Any],
+    worker_results: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build observations only from evidence files that still exist."""
+    result: dict[str, dict[str, Any]] = {}
+    case_id = str(config["caseId"])
+    for name in sorted(protocol.CASES[case_id].required_observations):
+        path = _observation_path(config, worker_results, name).resolve()
+        try:
+            present = path.is_file() and path.stat().st_size > 0
+        except OSError:
+            present = False
+        if not present:
+            raise LiveFailure(
+                "FAIL_EVIDENCE",
+                f"live evidence file is absent for {name}",
+            )
+        result[name] = {
+            "observed": True,
+            "source": _observation_source(case_id, name),
+            "path": str(path),
+        }
+    return result
+
+
+def _observation_source(case_id: str, name: str) -> str:
     """Handle observation source for Phase186 acceptance."""
+    if case_id == "bounds-hostile-peer" and name == "data":
+        return "live-hostile-frame-rejection"
     return {
         "unity": "live-unity-editor",
         "bridge": "live-sidecar-health",

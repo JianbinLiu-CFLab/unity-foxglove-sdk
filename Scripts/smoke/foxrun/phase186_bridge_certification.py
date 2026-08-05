@@ -97,6 +97,11 @@ def live_invocations(
         for row_id in protocol.ROWS
         if row_id != PRIMARY_ROW
     )
+    rows.extend(
+        ("reconnect-degraded-recovery", row_id)
+        for row_id in protocol.ROWS
+        if row_id != PRIMARY_ROW
+    )
     result: list[LiveInvocation] = []
     for ordinal, (case_id, row_id) in enumerate(rows, start=1):
         run_id = f"phase186h-c{ordinal:02d}-{head[:8]}"
@@ -384,10 +389,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise CertificationFailure(
                     f"case {invocation.case_id}/{invocation.row_id} did not pass"
                 )
-        if {entry["caseId"] for entry in cases[:9]} != set(
-            protocol.AUTOMATIC_CASE_IDS
-        ) or {entry["rowId"] for entry in cases if entry["caseId"] == "full-duplex"} != set(
-            protocol.ROWS
+        if (
+            {entry["caseId"] for entry in cases[:9]}
+            != set(protocol.AUTOMATIC_CASE_IDS)
+            or {
+                entry["rowId"]
+                for entry in cases
+                if entry["caseId"] == "full-duplex"
+            }
+            != set(protocol.ROWS)
+            or {
+                entry["rowId"]
+                for entry in cases
+                if entry["caseId"]
+                == "reconnect-degraded-recovery"
+            }
+            != set(protocol.ROWS)
         ):
             raise CertificationFailure("serial case or exact-row coverage differs")
         aggregate = _aggregate(

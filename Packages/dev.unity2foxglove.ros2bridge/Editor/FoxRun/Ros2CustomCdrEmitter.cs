@@ -657,8 +657,14 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             }
             else
             {
+                var absent = member.NestedShape != null
+                             && member.NestedShape.IsValueType
+                    ? "default("
+                      + GlobalTypeName(member.FullyQualifiedTypeName)
+                      + ")"
+                    : "null";
                 sb.AppendLine(
-                    $"{pad}{access} = {hasValue} ? {value} : null;");
+                    $"{pad}{access} = {hasValue} ? {value} : {absent};");
             }
         }
 
@@ -920,7 +926,11 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             {
                 case BridgeDtoMemberKind.NestedDto:
                     var nested = registry.Get(member.NestedShape);
-                    sb.AppendLine($"{pad}{nested.Method}(writer, __hasSource ? {access} : null);");
+                    var nestedSource = member.NestedShape.IsValueType
+                        ? access
+                        : "__hasSource ? " + access + " : null";
+                    sb.AppendLine(
+                        $"{pad}{nested.Method}(writer, {nestedSource});");
                     break;
                 case BridgeDtoMemberKind.Sequence:
                     EmitSequence(sb, pad, member, access, registry, ordinal);
@@ -1239,7 +1249,8 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 BuildPayloadIdentity(
                     shape.TypeName,
                     canonicalIdentity),
-                members);
+                members,
+                shape.IsValueType);
         }
 
         private static BridgeDtoMemberShape ProjectMember(
@@ -1909,7 +1920,8 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 string fullyQualifiedTypeName,
                 string canonicalIdentity,
                 string payloadIdentity,
-                IReadOnlyList<BridgeDtoMemberShape> members)
+                IReadOnlyList<BridgeDtoMemberShape> members,
+                bool isValueType)
             {
                 FullyQualifiedTypeName =
                     fullyQualifiedTypeName ?? string.Empty;
@@ -1917,12 +1929,14 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 PayloadIdentity = payloadIdentity ?? string.Empty;
                 Members = members
                           ?? Array.Empty<BridgeDtoMemberShape>();
+                IsValueType = isValueType;
             }
 
             internal string FullyQualifiedTypeName { get; }
             internal string CanonicalIdentity { get; }
             internal string PayloadIdentity { get; }
             internal IReadOnlyList<BridgeDtoMemberShape> Members { get; }
+            internal bool IsValueType { get; }
         }
 
         private sealed class SubscribeBindingShape
