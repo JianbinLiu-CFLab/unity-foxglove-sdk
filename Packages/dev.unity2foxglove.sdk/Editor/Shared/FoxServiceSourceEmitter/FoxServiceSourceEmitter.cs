@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             sb.AppendLine(pad + "partial class " + className + " : global::Unity.FoxgloveSDK.Components.IFoxgloveServiceSource");
             sb.AppendLine(pad + "{");
-            sb.AppendLine(pad + "    private global::System.Collections.Generic.IReadOnlyList<global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor> __foxgloveServices;");
+            sb.AppendLine(pad + "    private volatile global::System.Collections.Generic.IReadOnlyList<global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor> __foxgloveServices;");
             sb.AppendLine(pad + "    private readonly object __foxgloveServicesLock = new object();");
             sb.AppendLine();
             sb.AppendLine(pad + "    global::System.Collections.Generic.IReadOnlyList<global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor> global::Unity.FoxgloveSDK.Components.IFoxgloveServiceSource.FoxgloveServices");

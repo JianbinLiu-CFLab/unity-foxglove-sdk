@@ -55,14 +55,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (named.TypeKind == TypeKind.Enum)
                 return FoxServiceSchemaModel.Scalar("integer");
 
-            if (IsUnsupportedSchemaPreviewType(named))
-                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
-
             if (TryGetDictionaryValueType(named, out _, out var valueType))
                 return FoxServiceSchemaModel.Dictionary(Build(valueType, side, depth + 1, memo, stack));
 
             if (TryGetListElementType(named, side, out var elementType))
                 return FoxServiceSchemaModel.ArrayOf(Build(elementType, side, depth + 1, memo, stack));
+
+            if (IsUnsupportedSchemaPreviewType(named))
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
 
             var typeKey = FullTypeName(named);
             if (memo.TryGetValue(typeKey, out var cached))

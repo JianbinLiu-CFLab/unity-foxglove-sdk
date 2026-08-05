@@ -523,10 +523,26 @@ namespace Unity.FoxgloveSDK.Tests
 
                 using (var engine = new McapReplayEngine())
                 {
+                    var streamField = typeof(McapReplayEngine).GetField(
+                        "_stream",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    Check(streamField != null, "replay load: stream field remains observable by the disposal regression");
+
                     engine.Load(first);
+                    var previousStream = streamField.GetValue(engine) as Stream;
+                    Check(previousStream != null, "replay load: first file stream captured before replacement");
+
                     engine.Load(second);
-                    File.Delete(first);
-                    Check(!File.Exists(first), "replay load: previous file stream disposed");
+                    var previousStreamDisposed = false;
+                    try
+                    {
+                        _ = previousStream.Position;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        previousStreamDisposed = true;
+                    }
+                    Check(previousStreamDisposed, "replay load: previous file stream disposed");
                 }
             }
             finally

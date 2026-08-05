@@ -46,6 +46,31 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void SynchronousTransportPublishReentryKeepsSubscriberSnapshotsIndependent()
+        {
+            var transport = new FilterTransport();
+            using var session = NewSession(transport);
+            RegisterJsonChannel(session, 1, "/filter/reentrant");
+            transport.SimulateConnected(7);
+            transport.SimulateText(7, SubscribeJson(100, 1));
+            var reentered = false;
+            transport.BeforeSendBinary = () =>
+            {
+                if (reentered)
+                    return;
+
+                reentered = true;
+                session.PublishJson(1, new { value = "inner" }, 14801);
+            };
+
+            session.PublishJson(1, new { value = "outer" }, 14800);
+
+            Assert.True(reentered);
+            Assert.True(transport.BinaryByClient.TryGetValue(7, out var frames));
+            Assert.Equal(2, frames.Count);
+        }
+
+        [Fact]
         public void LiveFilterHidesChannelFromAdvertiseSubscribePublishAndUnadvertise()
         {
             var transport = new FilterTransport();
@@ -176,13 +201,35 @@ namespace Unity.FoxgloveSDK.UnitTests
             using var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
             runtime.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, new PredicateFilter(_ => false));
             runtime.Start("sink-filter-restart");
+            runtime.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 1,
+                Topic = "/filter/restart-denied",
+                Encoding = "json",
+                SchemaName = "Filter.Runtime",
+                SchemaEncoding = "jsonschema",
+                Schema = "{}"
+            });
+            transport.SimulateConnected(7);
+            Assert.DoesNotContain(transport.AllText, text => text.Contains("/filter/restart-denied"));
             runtime.Stop();
 
             // Filter survives Stop and can be reconfigured while stopped.
             runtime.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, new PredicateFilter(_ => true));
             runtime.Start("sink-filter-restart");
+            runtime.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 2,
+                Topic = "/filter/restart-allowed",
+                Encoding = "json",
+                SchemaName = "Filter.Runtime",
+                SchemaEncoding = "jsonschema",
+                Schema = "{}"
+            });
+            transport.SimulateConnected(8);
 
             Assert.NotNull(runtime.GetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket));
+            Assert.Contains(transport.AllText, text => text.Contains("/filter/restart-allowed"));
         }
 
         private static FoxgloveSession NewSession(FilterTransport transport)
@@ -233,6 +280,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             public readonly Dictionary<uint, List<string>> TextByClient = new Dictionary<uint, List<string>>();
             public readonly Dictionary<uint, List<byte[]>> BinaryByClient = new Dictionary<uint, List<byte[]>>();
 
+            public Action BeforeSendBinary { get; set; }
+
             public IEnumerable<string> AllText => BroadcastTexts.Concat(TextByClient.Values.SelectMany(item => item));
             public bool IsRunning { get; private set; }
 
@@ -247,7 +296,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             public void BroadcastText(string json) => BroadcastTexts.Add(json);
             public void BroadcastBinary(byte[] data) { }
             public void SendText(uint clientId, string json) => Add(TextByClient, clientId, json);
-            public void SendBinary(uint clientId, byte[] data) => Add(BinaryByClient, clientId, data);
+            public void SendBinary(uint clientId, byte[] data)
+            {
+                BeforeSendBinary?.Invoke();
+                Add(BinaryByClient, clientId, data);
+            }
             public void SimulateConnected(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateDisconnected(uint clientId) => OnClientDisconnected?.Invoke(clientId);
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);

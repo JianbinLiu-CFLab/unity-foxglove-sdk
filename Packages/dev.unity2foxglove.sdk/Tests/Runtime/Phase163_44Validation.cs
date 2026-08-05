@@ -123,6 +123,25 @@ namespace Unity.FoxgloveSDK.Tests
             Check(PhaseValidationSourceHelpers.SourceMethod(runner, "private void Work()")
                     .Contains("NestedBody();", StringComparison.Ordinal),
                 "163-44B-8: SourceType supports declaration-scoped method checks");
+
+            const string properties =
+@"class Sample
+{
+    int Target
+    {
+        get => _target;
+        set { _target = value; InsideTarget(); }
+    }
+
+    int Other
+    {
+        set { Dangerous(); }
+    }
+}";
+            var property = PhaseValidationSourceHelpers.SourceProperty(properties, "Target");
+            Check(property.Contains("InsideTarget();", StringComparison.Ordinal)
+                  && !property.Contains("Dangerous();", StringComparison.Ordinal),
+                "163-44B-9: SourceProperty stops at the requested property boundary");
         }
 
         private static void VerifyProgramLifecycle(string repoRoot)

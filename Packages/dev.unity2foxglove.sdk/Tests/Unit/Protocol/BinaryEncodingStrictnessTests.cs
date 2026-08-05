@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Protocol;
 using Xunit;
@@ -41,6 +44,53 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(BinaryEncoding.MaxPlaybackRequestIdBytes, boundary.Length);
             Assert.True(TryDecodePlayback(BuildPlaybackRequest(boundary), out var requestId));
             Assert.Equal(new string('é', 128), requestId);
+        }
+
+        [Fact]
+        public void AcceptedSubprotocolsCannotBeMutatedThroughThePublicSurface()
+        {
+            var accepted = Assert.IsAssignableFrom<IList<string>>(Subprotocol.Accepted);
+            var original = accepted[0];
+            try
+            {
+                Assert.Throws<NotSupportedException>(() => accepted[0] = "phase187-mutated");
+            }
+            finally
+            {
+                if (!string.Equals(accepted[0], original, StringComparison.Ordinal))
+                    accepted[0] = original;
+            }
+
+            Assert.Equal(Subprotocol.SdkV1, accepted[0]);
+            Assert.Equal(Subprotocol.WebSocketV1, accepted[1]);
+        }
+
+        [Fact]
+        public void CustomServiceEncodingsDoNotCreateAnUnboundedStaticCache()
+        {
+            Assert.DoesNotContain(
+                typeof(BinaryEncoding).GetFields(BindingFlags.Static | BindingFlags.NonPublic),
+                field => field.FieldType.IsGenericType
+                         && field.FieldType.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>));
+
+            for (var i = 0; i < 32; i++)
+            {
+                var encoding = "phase187-custom-" + i;
+                var frame = BinaryEncoding.EncodeServerServiceCallResponse(1, 2, encoding, Array.Empty<byte>());
+                var length = checked((int)BinaryEncoding.ReadU32LE(frame, 9));
+                Assert.Equal(encoding, Encoding.UTF8.GetString(frame, 13, length));
+            }
+        }
+
+        [Fact]
+        public void DataTimestampNanosecondOverflowLeavesThePreviousStateIntact()
+        {
+            var timestamp = new DataTimestamp { Sec = ulong.MaxValue, Nsec = 0 };
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => timestamp.Nsec = 1_000_000_000U);
+
+            Assert.Equal(ulong.MaxValue, timestamp.Sec);
+            Assert.Equal(0U, timestamp.Nsec);
         }
 
         private static void AssertServiceEncodingRejected(byte[] encoding)

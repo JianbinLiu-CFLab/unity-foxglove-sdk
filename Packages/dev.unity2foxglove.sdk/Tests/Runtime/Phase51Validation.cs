@@ -423,12 +423,21 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionGraphHandler.cs");
-            Check(source.Contains("FlushMetadataSnapshotIfDirty"),
+            var broadcast = PhaseValidationSourceHelpers.SourceMethod(source, "BroadcastUpdate");
+            var flush = PhaseValidationSourceHelpers.SourceMethod(source, "FlushClaimedMetadataSnapshot");
+            Check(broadcast.Contains("FlushClaimedMetadataSnapshot(recorder, json)", StringComparison.Ordinal)
+                  && flush.Contains("WriteMetadata", StringComparison.Ordinal)
+                  && !flush.Contains("_transport.SendText", StringComparison.Ordinal),
                 "51B-29: SessionGraphHandler separates websocket broadcast from MCAP metadata flush");
-            var flush = ExtractMethodBody(source, "FlushMetadataSnapshotIfDirty");
-            Check(flush.Contains("Interlocked.CompareExchange(ref _dirty, 0, 1)")
-                  && flush.Contains("WriteMetadata")
-                  && flush.Contains("Volatile.Write(ref _dirty, 1)"),
+            var claimIndex = broadcast.IndexOf(
+                "Interlocked.CompareExchange(ref _dirty, 0, 1)",
+                StringComparison.Ordinal);
+            var snapshotIndex = broadcast.IndexOf(
+                "JsonConvert.SerializeObject(_graph.GetSnapshot())",
+                StringComparison.Ordinal);
+            Check(claimIndex >= 0
+                  && snapshotIndex > claimIndex
+                  && flush.Contains("Volatile.Write(ref _dirty, 1)", StringComparison.Ordinal),
                 "51B-30: graph metadata writes remain dirty-gated");
         }
 

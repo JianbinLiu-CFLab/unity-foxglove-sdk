@@ -44,14 +44,14 @@ namespace Unity.FoxgloveSDK.Editor
             if (type.IsEnum)
                 return FoxServiceSchemaModel.Scalar("integer");
 
-            if (IsUnsupportedSchemaPreviewType(type))
-                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
-
             if (TryGetDictionaryValueType(type, out _, out var valueType))
                 return FoxServiceSchemaModel.Dictionary(Build(valueType, side, depth + 1, memo, stack));
 
             if (TryGetListElementType(type, side, out var elementType))
                 return FoxServiceSchemaModel.ArrayOf(Build(elementType, side, depth + 1, memo, stack));
+
+            if (IsUnsupportedSchemaPreviewType(type))
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
 
             var typeKey = FullTypeName(type);
             if (memo.TryGetValue(typeKey, out var cached))

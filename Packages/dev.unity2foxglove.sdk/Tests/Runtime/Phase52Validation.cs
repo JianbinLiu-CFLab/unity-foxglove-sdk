@@ -611,18 +611,38 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerSource.Contains("FoxgloveAppUrl.BuildWebSocketEndpoint(")
                   && !managerSource.Contains("url += $\"?token={_sharedToken}\""),
                 "52C-1g2: manager connection URL redaction uses encoded endpoint builder");
-            Check(!managerSource.Contains("if (!IsRunning)\r\n            {\r\n                StopCertificateDistributor();\r\n                return;\r\n            }") &&
-                  !managerSource.Contains("if (!IsRunning)\n            {\n                StopCertificateDistributor();\n                return;\n            }"),
+            var stopServerSource = PhaseValidationSourceHelpers.SourceMethod(
+                managerSource,
+                "private void StopServer(bool restoreLivePublishers)");
+            var notRunningIndex = stopServerSource.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
+            var nullSessionIndex = stopServerSource.IndexOf(
+                "if (_runtime?.Session == null)",
+                StringComparison.Ordinal);
+            var earlyReturnIndex = nullSessionIndex >= 0
+                ? stopServerSource.IndexOf("return;", nullSessionIndex, StringComparison.Ordinal)
+                : -1;
+            var runtimeStopIndex = stopServerSource.IndexOf("_runtime.Stop();", StringComparison.Ordinal);
+            var earlyReturnCount = stopServerSource.Split(
+                new[] { "return;" },
+                StringSplitOptions.None).Length - 1;
+            Check(notRunningIndex >= 0
+                  && nullSessionIndex > notRunningIndex
+                  && earlyReturnIndex > nullSessionIndex
+                  && runtimeStopIndex > earlyReturnIndex
+                  && earlyReturnCount == 1,
                 "52C-1g3: StopServer still stops runtime so active recordings are finalized even if transport is already stopped");
             var stopIndex = runtimeSource.IndexOf("public void Stop()", StringComparison.Ordinal);
-            var firstDetachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", stopIndex, StringComparison.Ordinal);
-            var disposeSessionIndex = runtimeSource.IndexOf("session?.Dispose();", stopIndex, StringComparison.Ordinal);
-            var finalDetachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", disposeSessionIndex, StringComparison.Ordinal);
-            Check(stopIndex >= 0 &&
-                  firstDetachRecordingIndex > stopIndex &&
+            var nextMethodIndex = runtimeSource.IndexOf("public void RegisterChannel", stopIndex, StringComparison.Ordinal);
+            var stopSource = stopIndex >= 0 && nextMethodIndex > stopIndex
+                ? runtimeSource.Substring(stopIndex, nextMethodIndex - stopIndex)
+                : string.Empty;
+            var firstDetachRecordingIndex = stopSource.IndexOf("_recording.DetachFromSession();", StringComparison.Ordinal);
+            var disposeSessionIndex = stopSource.IndexOf("session?.Dispose();", StringComparison.Ordinal);
+            Check(firstDetachRecordingIndex >= 0 &&
                   disposeSessionIndex > firstDetachRecordingIndex &&
-                  finalDetachRecordingIndex > disposeSessionIndex,
-                "52C-1g4: runtime detaches recorder from session and stops transport before finalizing recording");
+                  stopSource.IndexOf("_recording.DetachFromSession();", firstDetachRecordingIndex + 1, StringComparison.Ordinal)
+                  < 0,
+                "52C-1g4: runtime detaches recorder exactly once before disposing the session");
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);
             var sessionGuardIndex = demoSource.IndexOf("_manager?.Runtime?.Session == null", startIndex, StringComparison.Ordinal);

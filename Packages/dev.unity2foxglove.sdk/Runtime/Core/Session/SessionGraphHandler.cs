@@ -135,38 +135,49 @@ namespace Unity.FoxgloveSDK.Core
 
         public void BroadcastUpdate()
         {
-            string json;
-            lock (_subscriberScratchLock)
+            McapRecorder recorder = null;
+            var metadataClaimed = false;
+            try
             {
-                _graph.CopySubscribersTo(_subscriberScratch);
-                var hasDirtyRecorder = Volatile.Read(ref _dirty) == 1 && _recorderProvider() != null;
-                if (_subscriberScratch.Count == 0 && !hasDirtyRecorder)
-                    return;
+                if (Volatile.Read(ref _dirty) == 1)
+                {
+                    recorder = _recorderProvider();
+                    metadataClaimed = recorder != null
+                                      && Interlocked.CompareExchange(ref _dirty, 0, 1) == 1;
+                }
 
-                json = JsonConvert.SerializeObject(_graph.GetSnapshot());
-                try
+                string json;
+                lock (_subscriberScratchLock)
                 {
-                    foreach (var subId in _subscriberScratch)
-                        _transport.SendText(subId, json);
+                    _graph.CopySubscribersTo(_subscriberScratch);
+                    if (_subscriberScratch.Count == 0 && !metadataClaimed)
+                        return;
+
+                    json = JsonConvert.SerializeObject(_graph.GetSnapshot());
+                    try
+                    {
+                        foreach (var subId in _subscriberScratch)
+                            _transport.SendText(subId, json);
+                    }
+                    finally
+                    {
+                        _subscriberScratch.Clear();
+                    }
                 }
-                finally
-                {
-                    _subscriberScratch.Clear();
-                }
+
+                if (metadataClaimed)
+                    FlushClaimedMetadataSnapshot(recorder, json);
             }
-
-            FlushMetadataSnapshotIfDirty(json);
+            catch
+            {
+                if (metadataClaimed)
+                    MarkDirty();
+                throw;
+            }
         }
 
-        private void FlushMetadataSnapshotIfDirty(string json)
+        private void FlushClaimedMetadataSnapshot(McapRecorder recorder, string json)
         {
-            var recorder = _recorderProvider();
-            if (recorder == null)
-                return;
-
-            if (Interlocked.CompareExchange(ref _dirty, 0, 1) != 1)
-                return;
-
             try
             {
                 recorder.WriteMetadata(GraphMetadataName, json);

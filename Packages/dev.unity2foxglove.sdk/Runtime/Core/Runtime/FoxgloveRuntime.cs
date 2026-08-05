@@ -354,14 +354,7 @@ namespace Unity.FoxgloveSDK.Core
             var session = _session;
             _session = null;
             _recording.DetachFromSession();
-            try
-            {
-                session?.Dispose();
-            }
-            finally
-            {
-                _recording.DetachFromSession();
-            }
+            session?.Dispose();
         }
 
         // ── Channel API ──

@@ -181,7 +181,14 @@ namespace Unity.FoxgloveSDK.Tests
             var (st, et, size, crc, comp, _, recs) = McapRecordReader.DecodeChunk(records[0].Content);
             Assert(st == 100, "chunk start");
             Assert(et == 200, "chunk end");
-            Assert(recs.Length > 0, "chunk has inner records");
+            var (_, innerRecords, _) = McapRecordReader.Parse(recs);
+            var message = innerRecords.Single(record => record.Opcode == 0x05);
+            var (channelId, sequence, logTime, publishTime, payload) =
+                McapRecordReader.DecodeMessage(message.Content);
+            Assert(channelId == 1, "chunk message channel id");
+            Assert(sequence == 1, "chunk message sequence");
+            Assert(logTime == 100 && publishTime == 100, "chunk message timestamps");
+            Assert(payload.SequenceEqual(new byte[] { 1 }), "chunk message payload");
         }
 
         /// <summary>
@@ -243,7 +250,7 @@ namespace Unity.FoxgloveSDK.Tests
             var r = new McapRecorder(ms, chunkSizeBytes: 256);
             r.AddChannel(1, "/t", "json", "", "", "");
             for (var i = 0; i < 5; i++)
-                r.WriteMessage(1, (ulong)(i * 1_000_000), new byte[] { (byte)i });
+                r.WriteMessage(1, (ulong)(i * 1_000_000), new byte[] { i == 0 ? (byte)0x05 : (byte)i });
             r.Close();
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
@@ -253,11 +260,10 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var cr in chunkRecs)
             {
                 var (st, et, size, crc, comp, _, recs) = McapRecordReader.DecodeChunk(cr.Content);
-                // recs is raw bytes of inner records, no u32 prefix anymore
-                for (var i = 0; i < recs.Length - 1; i++)
-                    if (recs[i] == 0x05) totalMsgs++;
+                var (_, innerRecords, _) = McapRecordReader.Parse(recs);
+                totalMsgs += innerRecords.Count(record => record.Opcode == 0x05);
             }
-            Assert(totalMsgs >= 5, $"Chunk records contain all 5 messages (got {totalMsgs})");
+            Assert(totalMsgs == 5, $"Chunk records contain exactly 5 messages (got {totalMsgs})");
         }
 
         /// <summary>

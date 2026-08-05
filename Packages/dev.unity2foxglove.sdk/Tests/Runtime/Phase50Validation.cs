@@ -257,7 +257,9 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             Check(source.Contains("RuntimeInitializeLoadType.SubsystemRegistration"),
                 "50H-1: FoxgloveLogHub has a subsystem registration reset hook");
-            Check(Regex.IsMatch(source, @"static\s+void\s+Reset[^(\r\n]*\([^)]*\)[\s\S]*?_instance\s*=\s*null"),
+            var reset = PhaseValidationSourceHelpers.SourceMethod(source, "ResetStaticState");
+            Check(!string.IsNullOrEmpty(reset)
+                  && Regex.IsMatch(reset, @"_instance\s*=\s*null"),
                 "50H-2: FoxgloveLogHub reset clears the static singleton instance");
         }
 
@@ -302,9 +304,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySceneCubeColorSetterSource()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
-            Check(Regex.IsMatch(source, @"if\s*\(_color\s*==\s*value\)\s*\{\s*return;\s*\}"),
+            var property = PhaseValidationSourceHelpers.SourceProperty(source, "SceneCubeColor");
+            Check(!string.IsNullOrEmpty(property)
+                  && Regex.IsMatch(property, @"if\s*\(_color\s*==\s*value\)\s*\{\s*return;\s*\}"),
                 "50K-1: SceneCubeColor returns immediately when color is unchanged");
-            Check(Regex.IsMatch(source, @"_color\s*=\s*value;[\s\S]*?ApplyColorToRenderer\(value\);[\s\S]*?OnSceneCubeColorChanged\?\.Invoke\(value\);"),
+            Check(Regex.IsMatch(property, @"_color\s*=\s*value;[\s\S]*?ApplyColorToRenderer\(value\);[\s\S]*?OnSceneCubeColorChanged\?\.Invoke\(value\);"),
                 "50K-2: SceneCubeColor updates color, renderer, and event when changed");
         }
 

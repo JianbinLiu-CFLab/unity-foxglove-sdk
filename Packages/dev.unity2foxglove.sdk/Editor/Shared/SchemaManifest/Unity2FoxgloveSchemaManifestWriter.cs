@@ -125,17 +125,17 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void ReplaceFile(string tempPath, string path)
         {
-            if (!File.Exists(path))
-            {
-                File.Move(tempPath, path);
-                return;
-            }
-
             Exception replaceException = null;
             for (var attempt = 0; attempt < ReplaceAttempts; attempt++)
             {
                 try
                 {
+                    if (!File.Exists(path))
+                    {
+                        File.Move(tempPath, path);
+                        return;
+                    }
+
                     ClearReadOnly(path);
                     File.Replace(tempPath, path, null);
                     return;

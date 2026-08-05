@@ -36,6 +36,35 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxService
             Assert.Equal(1, result[2]);
         }
 
+        [Fact]
+        public void UnregisterReleasesTheRegisteredDescriptorSnapshot()
+        {
+            var probeType = ProbeAssembly.Value.GetType(
+                "Unity.FoxgloveSDK.Components.FoxgloveServiceHubRestartProbe",
+                throwOnError: true);
+            var result = (int[])probeType
+                .GetMethod("RunMutableDescriptorUnregister", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, null);
+
+            Assert.Equal(2, result[0]);
+            Assert.Equal(1, result[1]);
+        }
+
+        [Fact]
+        public void ReenabledSourceRetriesAfterTransientRegistrationFailure()
+        {
+            var probeType = ProbeAssembly.Value.GetType(
+                "Unity.FoxgloveSDK.Components.FoxgloveServiceHubRestartProbe",
+                throwOnError: true);
+            var result = (int[])probeType
+                .GetMethod("RunReenabledRetry", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, null);
+
+            Assert.Equal(3, result[0]);
+            Assert.Equal(1, result[1]);
+            Assert.Equal(1, result[2]);
+        }
+
         private static Assembly CompileProbeAssembly()
         {
             var productionSources = new[]
@@ -196,12 +225,18 @@ namespace Unity.FoxgloveSDK.Components
         public int RegisterCalls { get; private set; }
         public int UnregisterCalls { get; private set; }
         public int ActiveCount => _activeIds.Count;
+        public int FailRegistrationCount { get; set; }
 
         public uint RegisterService(
             Protocol.ServiceDescriptor descriptor,
             Func<JToken, JToken> handler)
         {
             RegisterCalls++;
+            if (FailRegistrationCount > 0)
+            {
+                FailRegistrationCount--;
+                return 0;
+            }
             var id = _nextId++;
             _activeIds.Add(id);
             return id;
@@ -256,19 +291,74 @@ namespace Unity.FoxgloveSDK.Components
             return result;
         }
 
+        public static int[] RunMutableDescriptorUnregister()
+        {
+            FoxgloveServiceHub.ResetForProbe();
+            var manager = new FoxgloveManager();
+            var hub = new FoxgloveServiceHub();
+            var source = new ProbeSource(""/phase187/original"");
+            hub.ConfigureForProbe(manager);
+
+            FoxgloveServiceHub.RegisterSource(source);
+            hub.TickForProbe();
+            source.SetServiceName(""/phase187/mutated"");
+            FoxgloveServiceHub.UnregisterSource(source);
+
+            var replacement = new ProbeSource(""/phase187/original"");
+            FoxgloveServiceHub.RegisterSource(replacement);
+            hub.TickForProbe();
+
+            var result = new[] { manager.RegisterCalls, manager.ActiveCount };
+            FoxgloveServiceHub.UnregisterSource(replacement);
+            hub.DestroyForProbe();
+            return result;
+        }
+
+        public static int[] RunReenabledRetry()
+        {
+            FoxgloveServiceHub.ResetForProbe();
+            var manager = new FoxgloveManager();
+            var hub = new FoxgloveServiceHub();
+            var source = new ProbeSource(""/phase187/retry"");
+            hub.ConfigureForProbe(manager);
+
+            FoxgloveServiceHub.RegisterSource(source);
+            hub.TickForProbe();
+            source.isActiveAndEnabled = false;
+            hub.TickForProbe();
+            source.isActiveAndEnabled = true;
+            manager.FailRegistrationCount = 1;
+            hub.TickForProbe();
+            hub.TickForProbe();
+
+            var result = new[] { manager.RegisterCalls, manager.UnregisterCalls, manager.ActiveCount };
+            FoxgloveServiceHub.UnregisterSource(source);
+            hub.DestroyForProbe();
+            return result;
+        }
+
         private sealed class ProbeSource : UnityEngine.MonoBehaviour, IFoxgloveServiceSource
         {
-            private readonly IReadOnlyList<FoxgloveGeneratedServiceDescriptor> _services =
-                new[]
+            private IReadOnlyList<FoxgloveGeneratedServiceDescriptor> _services;
+
+            public ProbeSource(string serviceName = ""/phase187/restart"")
+            {
+                SetServiceName(serviceName);
+            }
+
+            public void SetServiceName(string serviceName)
+            {
+                _services = new[]
                 {
                     new FoxgloveGeneratedServiceDescriptor(
-                        ""/phase187/restart"",
+                        serviceName,
                         ""Phase187.Restart"",
                         ""restart probe"",
                         ""Phase187.Restart.Request"",
                         ""Phase187.Restart.Response"",
                         request => JValue.CreateNull())
                 };
+            }
 
             public IReadOnlyList<FoxgloveGeneratedServiceDescriptor> FoxgloveServices => _services;
         }

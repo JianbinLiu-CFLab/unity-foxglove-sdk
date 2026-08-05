@@ -48,12 +48,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 
             // Clear previously generated demo roots, including any live
             // Phase138MazeDemoBootstrap so the baked scene is not rebuilt at Play.
+            var sceneRoots = SceneManager.GetActiveScene().GetRootGameObjects();
             foreach (var rootName in new[]
                 { "FoxgloveManager", "Maze", "Vehicle", "DemoCamera", "MazeBuilder", "DemoBootstrap" })
             {
-                var existing = GameObject.Find(rootName);
-                if (existing != null)
-                    Object.DestroyImmediate(existing);
+                foreach (var existing in sceneRoots)
+                {
+                    if (existing != null && existing.name == rootName)
+                        Object.DestroyImmediate(existing);
+                }
             }
             foreach (var stale in Object.FindObjectsByType<Phase138MazeDemoBootstrap>(
                          FindObjectsSortMode.None))

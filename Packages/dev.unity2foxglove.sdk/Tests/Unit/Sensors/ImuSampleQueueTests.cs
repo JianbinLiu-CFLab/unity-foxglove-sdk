@@ -200,6 +200,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("Time.unscaledTimeAsDouble", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void VirtualImuUsesFailureIsolatedNativeFrameDispatch()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var update = TestSources.Slice(source, "private void Update()", "private void OnValidate()");
+
+            Assert.Contains("_nativeFrameDispatch.Invoke(", update, StringComparison.Ordinal);
+            Assert.DoesNotContain("nativeFrameHandler.Invoke(nativeFrame)", update, StringComparison.Ordinal);
+        }
+
         private static ImuSample Sample(ulong timestampNs)
             => new ImuSample(
                 timestampNs,

@@ -75,8 +75,8 @@ namespace Unity.FoxgloveSDK.Editor
             var candidate = path.Trim().Replace('\\', '/');
             var isRooted = Path.IsPathRooted(candidate);
             if (!isRooted
-                && !candidate.Equals("Assets", StringComparison.OrdinalIgnoreCase)
-                && !candidate.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                && !candidate.Equals("Assets", PathComparison)
+                && !candidate.StartsWith("Assets/", PathComparison))
             {
                 error = "Schema evidence root must be an Assets-relative path, for example Assets/Generated.";
                 return false;
@@ -113,16 +113,21 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var normalizedCandidate = NormalizeFullPath(candidate);
             var normalizedParent = NormalizeFullPath(parent);
-            return normalizedCandidate.Equals(normalizedParent, StringComparison.OrdinalIgnoreCase)
+            return normalizedCandidate.Equals(normalizedParent, PathComparison)
                    || normalizedCandidate.StartsWith(
                        normalizedParent + Path.DirectorySeparatorChar,
-                       StringComparison.OrdinalIgnoreCase);
+                       PathComparison);
         }
 
         private static bool PathsEqual(string left, string right)
         {
-            return NormalizeFullPath(left).Equals(NormalizeFullPath(right), StringComparison.OrdinalIgnoreCase);
+            return NormalizeFullPath(left).Equals(NormalizeFullPath(right), PathComparison);
         }
+
+        private static StringComparison PathComparison =>
+            Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
 
         private static string NormalizeFullPath(string path)
         {

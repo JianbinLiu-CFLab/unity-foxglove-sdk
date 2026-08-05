@@ -211,8 +211,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
             var runner = ReadRepoText("Scripts/mcap/conformance/csharp-runners/CsharpWriterTestRunner.ts");
-            // Normalize to LF for cross-platform negative pattern matching.
             var runnerLf = runner.Replace("\r\n", "\n");
+            var supportsStart = runnerLf.IndexOf("supportsVariant(", StringComparison.Ordinal);
+            var runWriteStart = supportsStart >= 0
+                ? runnerLf.IndexOf("async runWriteTest(", supportsStart, StringComparison.Ordinal)
+                : -1;
+            var supportsVariant = supportsStart >= 0 && runWriteStart > supportsStart
+                ? runnerLf.Substring(supportsStart, runWriteStart - supportsStart)
+                : string.Empty;
+            var paddingFeatureIndex = supportsVariant.IndexOf(
+                "TestFeatures.AddExtraDataToRecords",
+                StringComparison.Ordinal);
+            var skipIndex = supportsVariant.IndexOf("return false;", StringComparison.Ordinal);
+            var acceptIndex = supportsVariant.IndexOf("return true;", StringComparison.Ordinal);
             Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
                   && writer.Contains("UseChunking = features.Contains(\"ch\")", StringComparison.Ordinal)
                   && writer.Contains("IndexTypes", StringComparison.Ordinal)
@@ -220,10 +231,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && writer.Contains("WriteMessageIndex(", StringComparison.Ordinal)
                   && writer.Contains("WriteChunkIndex(", StringComparison.Ordinal),
                 "122-F1: C# conformance writer maps official feature flags to writer options");
-            Check(runnerLf.Contains("TestFeatures.AddExtraDataToRecords", StringComparison.Ordinal)
-                  && !runnerLf.Contains("TestFeatures.UseChunks", StringComparison.Ordinal)
-                  && runnerLf.Contains("return true;", StringComparison.Ordinal)
-                  && !runnerLf.Contains("return false;\n  }\n\n  async runWriteTest", StringComparison.Ordinal),
+            Check(paddingFeatureIndex >= 0
+                  && skipIndex > paddingFeatureIndex
+                  && acceptIndex > skipIndex
+                  && CountOccurrences(supportsVariant, "return false;") == 1
+                  && !supportsVariant.Contains("TestFeatures.UseChunks", StringComparison.Ordinal),
                 "122-F2: writer runner includes chunked variants and only skips official padding cases");
             Check(File.Exists(RepoPath("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/Unity2Foxglove.McapConformance.csproj")),
                 "122-F3: C# conformance console project remains present for writer byte checks");
@@ -269,6 +281,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var counts = OpcodeCounts(records);
             return counts.TryGetValue(opcode, out var count) ? count : 0;
+        }
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+            return count;
         }
 
         private static uint ReadDataEndCrc(McapRecordReader.McapRecord[] records)

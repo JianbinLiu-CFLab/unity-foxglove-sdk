@@ -362,6 +362,38 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(texts.Any(t => t.Contains("serviceCallFailure")), "Timeout produces serviceCallFailure");
         }
 
+        [Fact]
+        public void ServiceHandlerExceptionIsDetailedLocallyAndRedactedRemotely()
+        {
+            var fake = new Phase6FakeTransport();
+            var logger = new CaptureLogger();
+            var services = new FoxgloveServiceRegistry();
+            var serviceId = services.Register(
+                new ServiceDescriptor
+                {
+                    Name = "/phase187/failure", Type = "/phase187/failure",
+                    Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                    Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+                },
+                _ => throw new InvalidOperationException("phase187-sensitive-detail"));
+            using var session = new FoxgloveSession(
+                "phase187-service",
+                fake,
+                logger: logger,
+                serviceRegistry: services);
+            fake.SimulateConnect(187);
+
+            fake.SimulateBinary(
+                187,
+                EncodeClientServiceCallRequest(serviceId, 1, "json", Encoding.UTF8.GetBytes("{}")));
+            session.DrainServiceCalls();
+
+            var failure = fake.SentTexts(187).Last(text => text.Contains("serviceCallFailure"));
+            Assert.Contains("Service handler failed", failure, StringComparison.Ordinal);
+            Assert.DoesNotContain("phase187-sensitive-detail", failure, StringComparison.Ordinal);
+            Assert.Contains(logger.Errors, entry => entry.Contains("phase187-sensitive-detail", StringComparison.Ordinal));
+        }
+
         private static byte[] EncodeClientServiceCallRequest(
             uint serviceId,
             uint callId,
@@ -407,6 +439,14 @@ namespace Unity.FoxgloveSDK.UnitTests
                     return 1;
                 }
             }
+        }
+
+        /// <summary>Captures detailed local service diagnostics for assertions.</summary>
+        private sealed class CaptureLogger : IFoxgloveLogger
+        {
+            internal readonly List<string> Errors = new List<string>();
+            public void LogWarning(string message) { }
+            public void LogError(string message) => Errors.Add(message);
         }
 
         private sealed class Phase6FakeTransport : IFoxgloveTransport

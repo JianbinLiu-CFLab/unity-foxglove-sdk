@@ -187,7 +187,10 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var behaviour in behaviours)
             {
                 if (behaviour is IFoxgloveServiceSource source)
-                    RegisterSourceNow(source);
+                {
+                    if (!RegisterSourceNow(source))
+                        TrackTemporarilyUnavailableSource(source);
+                }
             }
         }
 
