@@ -85,6 +85,40 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void UnauthorizedMultiSourceRequestsDoNotExposeCapabilityChecks()
+        {
+            var source = new RemoteMcapDataSourcePrototype(
+                "missing.mcap",
+                "protected",
+                "Protected",
+                "secret");
+            var request = new RemoteMcapRequest
+            {
+                BearerToken = "wrong",
+                RequestMultipleSources = true
+            };
+
+            var manifest = source.GetManifest(request);
+            source.GetManifestBytes(request, out var manifestBytesError);
+            var data = source.GetData(request);
+            using var dataStream = source.GetDataStream(request);
+            using var directStream = source.GetDirectFileStream(request);
+
+            Assert.Equal(RemoteMcapResponseStatus.Unauthorized, manifest.Status);
+            Assert.Equal(
+                RemoteMcapResponseStatus.Unauthorized,
+                manifestBytesError.Status);
+            Assert.Equal(RemoteMcapResponseStatus.Unauthorized, data.Status);
+            Assert.Equal(RemoteMcapResponseStatus.Unauthorized, dataStream.Status);
+            Assert.Equal(RemoteMcapResponseStatus.Unauthorized, directStream.Status);
+            Assert.False(manifest.Authorization.Allowed);
+            Assert.False(manifestBytesError.Authorization.Allowed);
+            Assert.False(data.Authorization.Allowed);
+            Assert.False(dataStream.Authorization.Allowed);
+            Assert.False(directStream.Authorization.Allowed);
+        }
+
+        [Fact]
         public async Task SlowFileResponseDoesNotBlockNextAcceptedRequest()
         {
             var path = Path.GetTempFileName();

@@ -6,6 +6,7 @@
 //          durable chunk recovery, record extensions, and reader structure.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -260,6 +261,34 @@ namespace Unity.FoxgloveSDK.UnitTests
             var messages = indexed.ReadMessages();
             Assert.Single(messages);
             Assert.Equal(10UL, messages[0].LogTime);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void ChunkPreflushFailureDoesNotAdvanceRejectedMessageCounters()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(
+                stream,
+                null,
+                new McapWriterOptions { ChunkSizeBytes = 256 },
+                leaveOpen: true);
+            recorder.AddChannel(
+                1,
+                "/mcap/preflush-fault",
+                "json",
+                "mcap.PreflushFault",
+                "jsonschema",
+                "{}");
+            recorder.WriteMessage(1, 10, new byte[64]);
+            stream.ThrowOnceAfterWrittenBytes(3);
+
+            Assert.Throws<IOException>(() =>
+                recorder.WriteMessage(1, 20, new byte[160]));
+
+            var counters = ReadOnlyServerChannelCounters(recorder);
+            Assert.Equal(1U, counters.Sequence);
+            Assert.Equal(1UL, counters.MessageCount);
         }
 
         [Fact]
@@ -801,6 +830,22 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 return ex;
             }
+        }
+
+        private static (uint Sequence, ulong MessageCount)
+            ReadOnlyServerChannelCounters(McapRecorder recorder)
+        {
+            var field = typeof(McapRecorder).GetField(
+                "_serverChannelWriteStates",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic);
+            var states = Assert.IsAssignableFrom<IDictionary>(field?.GetValue(recorder));
+            var state = Assert.Single(states.Values.Cast<object>());
+            var type = state.GetType();
+            var sequence = Assert.IsType<uint>(type.GetField("Seq")?.GetValue(state));
+            var messageCount = Assert.IsType<ulong>(
+                type.GetField("MsgCount")?.GetValue(state));
+            return (sequence, messageCount);
         }
 
         private sealed class AbsoluteFaultStream : Stream

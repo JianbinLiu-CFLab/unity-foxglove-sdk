@@ -71,10 +71,6 @@ namespace Unity.FoxgloveSDK.IO
         public RemoteMcapManifestResponse GetManifest(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
-            if (IsUnsupportedMultiSource(request))
-                return ManifestProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
-                    "Phase 119 prototype supports one local MCAP source only.");
-
             var authorization = Authorize(request);
             if (!authorization.Allowed)
             {
@@ -83,6 +79,10 @@ namespace Unity.FoxgloveSDK.IO
                 denied.Authorization = authorization;
                 return denied;
             }
+
+            if (IsUnsupportedMultiSource(request))
+                return ManifestProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
 
             return new RemoteMcapManifestResponse
             {
@@ -95,19 +95,19 @@ namespace Unity.FoxgloveSDK.IO
         internal byte[] GetManifestBytes(RemoteMcapRequest request, out RemoteMcapManifestResponse error)
         {
             request = request ?? new RemoteMcapRequest();
-            if (IsUnsupportedMultiSource(request))
-            {
-                error = ManifestProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
-                    "Phase 119 prototype supports one local MCAP source only.");
-                return Array.Empty<byte>();
-            }
-
             var authorization = Authorize(request);
             if (!authorization.Allowed)
             {
                 error = ManifestProblem(RemoteMcapResponseStatus.Unauthorized, "Unauthorized",
                     "Manifest request is not authorized for this MCAP source.");
                 error.Authorization = authorization;
+                return Array.Empty<byte>();
+            }
+
+            if (IsUnsupportedMultiSource(request))
+            {
+                error = ManifestProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
                 return Array.Empty<byte>();
             }
 
@@ -119,10 +119,6 @@ namespace Unity.FoxgloveSDK.IO
         public RemoteMcapDataResponse GetData(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
-            if (IsUnsupportedMultiSource(request))
-                return DataProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
-                    "Phase 119 prototype supports one local MCAP source only.");
-
             var authorization = Authorize(request);
             if (!authorization.Allowed)
             {
@@ -131,6 +127,10 @@ namespace Unity.FoxgloveSDK.IO
                 denied.Authorization = authorization;
                 return denied;
             }
+
+            if (IsUnsupportedMultiSource(request))
+                return DataProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
 
             if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
                 return DataProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
@@ -169,10 +169,6 @@ namespace Unity.FoxgloveSDK.IO
         public RemoteMcapDataStreamResponse GetDataStream(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
-            if (IsUnsupportedMultiSource(request))
-                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
-                    "Phase 119 prototype supports one local MCAP source only.");
-
             var authorization = Authorize(request);
             if (!authorization.Allowed)
             {
@@ -181,6 +177,10 @@ namespace Unity.FoxgloveSDK.IO
                 denied.Authorization = authorization;
                 return denied;
             }
+
+            if (IsUnsupportedMultiSource(request))
+                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
 
             if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
@@ -228,10 +228,6 @@ namespace Unity.FoxgloveSDK.IO
         public RemoteMcapDataStreamResponse GetDirectFileStream(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
-            if (IsUnsupportedMultiSource(request))
-                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
-                    "Phase 119 prototype supports one local MCAP source only.");
-
             var authorization = Authorize(request);
             if (!authorization.Allowed)
             {
@@ -240,6 +236,10 @@ namespace Unity.FoxgloveSDK.IO
                 denied.Authorization = authorization;
                 return denied;
             }
+
+            if (IsUnsupportedMultiSource(request))
+                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
 
             if (!string.IsNullOrEmpty(request.SourceId)
                 && !string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
