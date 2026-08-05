@@ -26,8 +26,9 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            var rgbBytes = width * height * 3;
-            var i420Bytes = width * height * 3 / 2;
+            var pixelCount = checked(width * height);
+            var rgbBytes = checked(pixelCount * 3);
+            var i420Bytes = checked(pixelCount * 3 / 2);
             if (rgb24 == null || rgb24.Length != rgbBytes)
             {
                 error = "RGB24 input buffer length does not match width * height * 3.";
@@ -41,8 +42,8 @@ namespace Foxglove.Schemas.Video
             }
 
             var yOffset = 0;
-            var uOffset = width * height;
-            var vOffset = uOffset + (width * height / 4);
+            var uOffset = pixelCount;
+            var vOffset = checked(uOffset + (pixelCount / 4));
 
             // I420 stores one U and V sample for each 2x2 RGB block.
             for (var y = 0; y < height; y += 2)

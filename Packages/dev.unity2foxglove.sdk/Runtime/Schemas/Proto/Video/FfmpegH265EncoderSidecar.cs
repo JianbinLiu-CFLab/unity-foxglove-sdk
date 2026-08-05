@@ -199,6 +199,7 @@ namespace Foxglove.Schemas.Video
             var copy = ArrayPool<byte>.Shared.Rent(rgb24Frame.Length);
             Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
 
+            var signalInput = false;
             lock (_inputLock)
             {
                 while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
@@ -207,11 +208,13 @@ namespace Foxglove.Schemas.Video
                     ReturnInputFrameBuffer(dropped);
                 }
 
+                signalInput = _inputCount == 0;
                 _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
                 _inputCount++;
             }
 
-            _inputSignal.Release();
+            if (signalInput)
+                _inputSignal.Release();
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
@@ -259,6 +262,7 @@ namespace Foxglove.Schemas.Video
             var stderrTask = Interlocked.Exchange(ref _stderrTask, null);
             if (process != null)
             {
+                var deadlineUtc = DateTime.UtcNow.AddMilliseconds(ShutdownTimeoutMs);
                 try
                 {
                     if (!process.HasExited)
@@ -281,16 +285,16 @@ namespace Foxglove.Schemas.Video
 
                 try
                 {
-                    process.WaitForExit(ShutdownTimeoutMs);
+                    process.WaitForExit(RemainingMilliseconds(deadlineUtc));
                 }
                 catch
                 {
                     // Ignore wait failures during best-effort shutdown.
                 }
 
-                WaitForTask(stdinTask, "stdin");
-                WaitForTask(stdoutTask, "stdout");
-                WaitForTask(stderrTask, "stderr");
+                WaitForTask(stdinTask, "stdin", deadlineUtc);
+                WaitForTask(stdoutTask, "stdout", deadlineUtc);
+                WaitForTask(stderrTask, "stderr", deadlineUtc);
                 process.Dispose();
             }
 
@@ -563,14 +567,14 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void WaitForTask(Task task, string taskName)
+        private void WaitForTask(Task task, string taskName, DateTime deadlineUtc)
         {
             if (task == null || task.IsCompleted)
                 return;
 
             try
             {
-                task.Wait(ShutdownTimeoutMs);
+                task.Wait(RemainingMilliseconds(deadlineUtc));
             }
             catch
             {
@@ -580,5 +584,8 @@ namespace Foxglove.Schemas.Video
             if (!task.IsCompleted)
                 LastError = "FFmpeg H.265 shutdown timed out waiting for the " + taskName + " task.";
         }
+
+        private static int RemainingMilliseconds(DateTime deadlineUtc)
+            => Math.Max(0, (int)(deadlineUtc - DateTime.UtcNow).TotalMilliseconds);
     }
 }

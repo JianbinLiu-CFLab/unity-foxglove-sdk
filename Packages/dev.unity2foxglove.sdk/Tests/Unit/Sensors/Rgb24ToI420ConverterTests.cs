@@ -65,6 +65,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal("I420 output buffer length does not match width * height * 3 / 2.", error);
         }
 
+        [Fact]
+        public void OverflowingDimensionsAreRejectedBeforeBufferAccess()
+        {
+            Assert.Throws<OverflowException>(() =>
+                Rgb24ToI420Converter.TryConvertRgb24ToI420(
+                    Array.Empty<byte>(),
+                    65536,
+                    65536,
+                    Array.Empty<byte>(),
+                    false,
+                    out _));
+        }
+
         private static void AssertMatchesLegacy(int width, int height, int seed, bool flipVertical)
         {
             var rgb24 = MakeFrame(width, height, seed);

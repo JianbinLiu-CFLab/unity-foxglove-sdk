@@ -222,15 +222,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "Volatile.Write(ref _lastError");
             ContainsAll(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs",
-                "134-13F-7: FFmpeg H.264 shutdown waits each background task with diagnostics",
+                "134-13F-7: FFmpeg H.264 shutdown shares one deadline across process and task waits",
                 "ShutdownTimeoutMs",
-                "task.Wait(ShutdownTimeoutMs)",
+                "deadlineUtc",
+                "RemainingMilliseconds(deadlineUtc)",
                 "shutdown timed out waiting for the");
             ContainsAll(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs",
-                "134-13F-8: FFmpeg H.265 shutdown waits each background task with diagnostics",
+                "134-13F-8: FFmpeg H.265 shutdown shares one deadline across process and task waits",
                 "ShutdownTimeoutMs",
-                "task.Wait(ShutdownTimeoutMs)",
+                "deadlineUtc",
+                "RemainingMilliseconds(deadlineUtc)",
                 "shutdown timed out waiting for the");
         }
 

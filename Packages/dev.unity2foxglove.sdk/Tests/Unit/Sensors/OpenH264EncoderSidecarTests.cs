@@ -4,7 +4,10 @@
 // Module: Tests/Unit
 // Purpose: Video encoder sidecar timestamp behavior.
 
+using System;
 using System.Reflection;
+using System.Diagnostics;
+using System.Threading;
 using Foxglove.Schemas.Video;
 using Xunit;
 
@@ -214,6 +217,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(1, sidecar.PendingTimestampCountForTests);
         }
 
+        [Fact]
+        public void FfmpegInputBatchUsesOneOutstandingWakeupPerCodec()
+        {
+            AssertSingleOutstandingWakeup(
+                new FfmpegH264EncoderSidecar(),
+                new FfmpegH264EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+            AssertSingleOutstandingWakeup(
+                new FfmpegH265EncoderSidecar(),
+                new FfmpegH265EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+        }
+
+        [Fact]
+        public void MediaFoundationSubmissionFailureStopsTheEncoder()
+        {
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            SetProperty(sidecar, "IsRunning", true);
+            SetField(
+                sidecar,
+                "_options",
+                new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+
+            Assert.False(sidecar.TrySubmitFrame(new byte[12], 123UL));
+            Assert.False(sidecar.IsRunning);
+            Assert.False(string.IsNullOrWhiteSpace(sidecar.LastError));
+        }
+
         private static string QuoteArgument(string value)
         {
             var method = typeof(OpenH264EncoderOptions).GetMethod(
@@ -249,6 +278,53 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public);
             Assert.NotNull(field);
             return (int)field.GetValue(target);
+        }
+
+        private static void AssertSingleOutstandingWakeup(object sidecar, object options)
+        {
+            SetField(sidecar, "_options", options);
+            SetField(sidecar, "_maxInputQueue", 2);
+            using var currentProcess = Process.GetCurrentProcess();
+            SetField(sidecar, "_process", currentProcess);
+            var submit = sidecar.GetType().GetMethod(
+                "TrySubmitFrame",
+                new[] { typeof(byte[]), typeof(ulong) });
+            Assert.NotNull(submit);
+
+            try
+            {
+                Assert.True((bool)submit.Invoke(sidecar, new object[] { new byte[12], 1UL }));
+                Assert.True((bool)submit.Invoke(sidecar, new object[] { new byte[12], 2UL }));
+
+                var signal = (SemaphoreSlim)GetField(sidecar, "_inputSignal");
+                Assert.Equal(1, signal.CurrentCount);
+            }
+            finally
+            {
+                SetField(sidecar, "_process", null);
+                sidecar.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(sidecar, null);
+            }
+        }
+
+        private static object GetField(object target, string name)
+        {
+            var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            return field.GetValue(target);
+        }
+
+        private static void SetField(object target, string name, object value)
+        {
+            var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            field.SetValue(target, value);
+        }
+
+        private static void SetProperty(object target, string name, object value)
+        {
+            var property = target.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(property);
+            property.SetValue(target, value);
         }
     }
 }

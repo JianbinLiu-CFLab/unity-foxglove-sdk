@@ -61,7 +61,11 @@ namespace Unity.FoxgloveSDK.Components
         public bool Start()
         {
             ThrowIfDisposed();
-            TryJoinOrphanedWorker();
+            if (!TryJoinOrphanedWorker())
+            {
+                LastStartError = "The previous JPEG worker is still stopping; restart was rejected.";
+                return false;
+            }
             EnsureQueues();
             if (_worker != null && _worker.IsAlive && !_workerStopping)
                 return true;
@@ -222,14 +226,19 @@ namespace Unity.FoxgloveSDK.Components
                 Volatile.Write(ref _completedQueue, new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity));
         }
 
-        private void TryJoinOrphanedWorker()
+        private bool TryJoinOrphanedWorker()
         {
             var orphaned = _orphanedWorker;
             if (orphaned == null)
-                return;
+                return true;
 
             if (!orphaned.IsAlive || orphaned.Join(_workerStopWaitMs))
+            {
                 _orphanedWorker = null;
+                return true;
+            }
+
+            return false;
         }
 
         private void EncodeJpegWorkerLoop(int workerGeneration, AutoResetEvent workerSignal)
