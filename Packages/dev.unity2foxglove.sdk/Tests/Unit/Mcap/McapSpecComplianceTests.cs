@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -121,6 +122,61 @@ namespace Unity.FoxgloveSDK.UnitTests
             var summary = new McapReader(stream).ReadSummary();
 
             Assert.Single(summary.Channels);
+        }
+
+        [Fact]
+        public void ReplayWithoutChunkIndexesRemainsPausedAndWarns()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-mcap-unindexed-replay-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(
+                           path,
+                           FileMode.CreateNew,
+                           FileAccess.ReadWrite,
+                           FileShare.Read))
+                using (var writer = new McapWriter(stream, leaveOpen: true))
+                {
+                    writer.WriteMagic();
+                    writer.WriteHeader("", "unindexed-replay");
+                    writer.WriteSchema(
+                        1,
+                        "mcap.Unindexed",
+                        "jsonschema",
+                        Encoding.UTF8.GetBytes("{}"));
+                    writer.WriteChannel(
+                        1,
+                        1,
+                        "/mcap/unindexed",
+                        "json",
+                        new Dictionary<string, string>());
+                    writer.WriteMessage(1, 0, 10, 10, Encoding.UTF8.GetBytes("{}"));
+                    writer.WriteDataEnd();
+                    writer.WriteFooter(0, 0, 0);
+                    writer.WriteMagic();
+                }
+
+                var logger = new RecordingLogger();
+                using var engine = new McapReplayEngine(logger);
+                engine.Load(path);
+                Assert.False(engine.CanSeek);
+
+                engine.Play();
+
+                Assert.Equal(McapReplayEngine.Status.Paused, engine.CurrentStatus);
+                Assert.Contains(
+                    logger.Warnings,
+                    warning => warning.Contains(
+                        "Statistics and ChunkIndex",
+                        StringComparison.Ordinal));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
         }
 
         [Fact]
@@ -799,6 +855,17 @@ namespace Unity.FoxgloveSDK.UnitTests
                     throw new IOException("Injected MCAP write failure.");
                 }
                 _inner.WriteByte(value);
+            }
+        }
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            internal readonly List<string> Warnings = new List<string>();
+
+            public void LogWarning(string message) => Warnings.Add(message);
+
+            public void LogError(string message)
+            {
             }
         }
 
