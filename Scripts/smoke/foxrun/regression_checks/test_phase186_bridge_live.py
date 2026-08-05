@@ -49,6 +49,46 @@ class _ChunkSocket:
 
 class Phase186BridgeLiveTests(unittest.TestCase):
     """Group checks for phase186 bridge live tests."""
+
+    def test_ros_peer_shutdown_runs_when_node_creation_fails(self) -> None:
+        """Verify that initialized rclpy is shut down after node creation fails."""
+        rclpy = types.ModuleType("rclpy")
+        rclpy.init = mock.Mock()
+        rclpy.shutdown = mock.Mock()
+        rclpy.create_node = mock.Mock(side_effect=RuntimeError("create failed"))
+        qos = types.ModuleType("rclpy.qos")
+        qos.DurabilityPolicy = types.SimpleNamespace(VOLATILE=object())
+        qos.HistoryPolicy = types.SimpleNamespace(KEEP_LAST=object())
+        qos.ReliabilityPolicy = types.SimpleNamespace(RELIABLE=object())
+        qos.QoSProfile = lambda **_kwargs: object()
+
+        with mock.patch.dict(
+            "sys.modules",
+            {"rclpy": rclpy, "rclpy.qos": qos},
+        ), mock.patch.object(
+            live_peer,
+            "_load_ros_types",
+            return_value=(object(), object(), object(), object()),
+        ), self.assertRaisesRegex(RuntimeError, "create failed"):
+            live_peer.run_ros_peer({"tokenHash": "a" * 64})
+
+        rclpy.init.assert_called_once_with(args=None)
+        rclpy.shutdown.assert_called_once_with()
+
+    def test_graph_observer_shutdown_runs_when_node_creation_fails(self) -> None:
+        """Verify that initialized rclpy is shut down after observer creation fails."""
+        rclpy = types.ModuleType("rclpy")
+        rclpy.init = mock.Mock()
+        rclpy.shutdown = mock.Mock()
+        rclpy.create_node = mock.Mock(side_effect=RuntimeError("create failed"))
+
+        with mock.patch.dict("sys.modules", {"rclpy": rclpy}), \
+                self.assertRaisesRegex(RuntimeError, "create failed"):
+            live_peer.run_graph_observer({"tokenHash": "b" * 64})
+
+        rclpy.init.assert_called_once_with(args=None)
+        rclpy.shutdown.assert_called_once_with()
+
     def test_current_manual_progress_requires_exact_identity_and_emits_once(self) -> None:
         """Verify that current manual progress requires exact identity and emits once."""
         reporter = mock.Mock()

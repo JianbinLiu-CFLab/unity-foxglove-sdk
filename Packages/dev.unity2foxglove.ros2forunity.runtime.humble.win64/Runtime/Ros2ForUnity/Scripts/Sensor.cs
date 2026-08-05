@@ -163,7 +163,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
         ros2UnityComponent = ros2Unity;
         ros2Node = node;
-        string nsName = agentName.Replace(" ", "_");
+        string nsName = (agentName ?? String.Empty).Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
         ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
         publishing = true;

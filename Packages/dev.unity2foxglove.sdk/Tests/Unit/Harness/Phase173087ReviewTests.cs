@@ -90,6 +90,95 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("SHA256.HashData", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void HumbleStandaloneDistroComesFromPackagedMetadata()
+        {
+            var source = RuntimeSource("humble", "ROS2ForUnity.cs");
+            var constructor = TestSources.ExtractMethod(source, "internal ROS2ForUnity()");
+
+            Assert.Contains("bool standaloneBuild = IsStandalone();", constructor, StringComparison.Ordinal);
+            Assert.Contains(
+                "standaloneBuild\n                ? GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")\n                : GetROSVersion();",
+                constructor.Replace("\r\n", "\n", StringComparison.Ordinal),
+                StringComparison.Ordinal);
+            Assert.True(
+                constructor.IndexOf("GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
+                < constructor.IndexOf("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void RuntimeOwnersPruneDirectlyDisposedNodeFacadesByStableIdentity()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var node = RuntimeSource(distro, "ROS2Node.cs");
+                Assert.Contains("internal INode NativeNode { get; }", node, StringComparison.Ordinal);
+                Assert.Contains("NativeNode = node;", node, StringComparison.Ordinal);
+
+                foreach (var ownerFile in new[] { "ROS2UnityCore.cs", "ROS2UnityComponent.cs" })
+                {
+                    var owner = RuntimeSource(distro, ownerFile);
+                    var prune = TestSources.ExtractMethod(owner, "private void PruneDisposedNodesLocked()");
+
+                    Assert.Contains("ros2csNodes.Add(node.NativeNode);", owner, StringComparison.Ordinal);
+                    Assert.Contains("ros2csNodes.Remove(node.NativeNode)", owner, StringComparison.Ordinal);
+                    Assert.Contains("PruneDisposedNodesLocked();", owner, StringComparison.Ordinal);
+                    Assert.Contains("ROS2Node candidate = nodes[index];", prune, StringComparison.Ordinal);
+                    Assert.Contains("candidate.IsDisposed", prune, StringComparison.Ordinal);
+                    Assert.Contains("ros2csNodes.RemoveAt(index);", prune, StringComparison.Ordinal);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeSensorsAcquireOnMainThreadAndSerializePublisherTeardown()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var sensor = RuntimeSource(distro, "Sensor.cs");
+                var executor = TestSources.ExtractMethod(sensor, "internal void ExecutorThreadSensorPublishAction()");
+
+                Assert.Contains("(agentName ?? String.Empty).Replace(\" \", \"_\")", sensor, StringComparison.Ordinal);
+                Assert.Contains("private readonly object readingsMutex = new object();", sensor, StringComparison.Ordinal);
+                Assert.Contains("UpdateReadingOnMainThread();", sensor, StringComparison.Ordinal);
+                Assert.DoesNotContain("HasNewData()", executor, StringComparison.Ordinal);
+                Assert.DoesNotContain("AcquireValue()", executor, StringComparison.Ordinal);
+            }
+
+            var jazzy = RuntimeSource("jazzy", "Sensor.cs");
+            var dispose = TestSources.ExtractMethod(jazzy, "private void DisposeRosParticipants()");
+            Assert.True(
+                dispose.IndexOf("UnregisterExecutable(ExecutorThreadSensorPublishAction)", StringComparison.Ordinal)
+                < dispose.IndexOf("nodeToUse = ros2Node;", StringComparison.Ordinal));
+            Assert.True(
+                dispose.IndexOf("nodeToUse = ros2Node;", StringComparison.Ordinal)
+                < dispose.IndexOf("RemovePublisher", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void RuntimeTimeoutsRetainNativeOwnersUntilExecutorStops()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var core = RuntimeSource(distro, "ROS2UnityCore.cs");
+                AssertTimeoutRetainsOwner(core, "public void Dispose()");
+
+                var component = RuntimeSource(distro, "ROS2UnityComponent.cs");
+                Assert.Contains("private bool StopExecutor()", component, StringComparison.Ordinal);
+                AssertTimeoutRetainsOwner(component, "private void Shutdown()");
+
+                var stopAll = TestSources.ExtractMethod(
+                    component,
+                    "public static void StopAllExecutorsForRosShutdown()");
+                var stop = stopAll.IndexOf("StopExecutor()", StringComparison.Ordinal);
+                var skip = stopAll.IndexOf("continue;", stop, StringComparison.Ordinal);
+                var mark = stopAll.IndexOf("MarkRuntimeShutdown()", StringComparison.Ordinal);
+                Assert.True(stop >= 0);
+                Assert.True(skip > stop);
+                Assert.True(mark > skip);
+            }
+        }
+
         private static void AssertRos2WarningThrottle(string path)
         {
             var source = TestSources.Text(path);
@@ -98,6 +187,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("Interlocked.Exchange(ref rosUnavailableWarningLogged, 1)", source, StringComparison.Ordinal);
             Assert.Contains("Volatile.Read(ref rosUnavailableWarningLogged)", source, StringComparison.Ordinal);
             Assert.Contains("Interlocked.Exchange(ref rosUnavailableWarningLogged, 0)", source, StringComparison.Ordinal);
+        }
+
+        private static readonly string[] RuntimeDistros = { "humble", "jazzy", "lyrical" };
+
+        private static string RuntimeSource(string distro, string file)
+            => TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2forunity.runtime." + distro +
+                ".win64/Runtime/Ros2ForUnity/Scripts/" + file);
+
+        private static void AssertTimeoutRetainsOwner(string source, string shutdownSignature)
+        {
+            var shutdown = TestSources.ExtractMethod(source, shutdownSignature);
+            var failure = shutdown.IndexOf("if (!executorStopped)", StringComparison.Ordinal);
+            Assert.True(failure >= 0);
+
+            var retained = shutdown.IndexOf("native ownership remains active", StringComparison.Ordinal);
+            var earlyReturn = shutdown.IndexOf("return;", failure, StringComparison.Ordinal);
+            var detach = shutdown.IndexOf("TryDetachRuntimeState", StringComparison.Ordinal);
+            var quarantine = TestSources.ExtractMethod(source, "private void QuarantineNodesAfterExecutorTimeout()");
+
+            Assert.True(retained > failure);
+            Assert.True(earlyReturn > retained);
+            Assert.True(detach < 0 || earlyReturn < detach);
+            Assert.DoesNotContain("nodes.Clear();", quarantine, StringComparison.Ordinal);
+            Assert.DoesNotContain("ros2csNodes.Clear();", quarantine, StringComparison.Ordinal);
         }
     }
 }

@@ -619,8 +619,10 @@ internal class ROS2ForUnity : IDisposable
             // Load metadata
             LoadMetadata();
             string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
-            string currentRos2Version = GetROSVersion();
             bool standaloneBuild = IsStandalone();
+            string currentRos2Version = standaloneBuild
+                ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
+                : GetROSVersion();
             string standalone = standaloneBuild ? "standalone" : "non-standalone";
 
             // Self checks

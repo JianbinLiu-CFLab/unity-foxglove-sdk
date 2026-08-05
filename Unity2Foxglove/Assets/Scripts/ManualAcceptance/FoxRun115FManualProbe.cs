@@ -105,6 +105,7 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
         if (!_mutateValues)
             return;
 
+        EnsureCollections();
         _frameCount++;
         var t = Time.time;
         scalarValue = Mathf.Sin(t);

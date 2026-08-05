@@ -454,6 +454,13 @@ namespace Unity.FoxgloveSDK.IO
         {
             ThrowIfDisposed();
             if (!IsLoaded) return;
+            if (!CanSeek)
+            {
+                _logger.LogWarning(
+                    "MCAP replay requires Statistics and ChunkIndex records; playback remains paused.");
+                CurrentStatus = Status.Paused;
+                return;
+            }
             if (CurrentStatus == Status.Ended)
             {
                 Seek(StartTimeNs);

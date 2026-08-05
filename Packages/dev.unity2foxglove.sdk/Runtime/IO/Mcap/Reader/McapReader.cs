@@ -431,11 +431,12 @@ namespace Unity.FoxgloveSDK.IO
             ulong chunkStartOffset,
             ulong chunkLength,
             out bool crcValid,
-            ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
+            ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit,
+            ulong recordSizeLimit = DefaultRecordSizeLimit)
         {
             _stream.Seek(ToSeekOffset(chunkStartOffset, "chunk"), SeekOrigin.Begin);
             var recordStart = _stream.Position;
-            var (opcode, content, contentLength) = ReadOneRecordSegment();
+            var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
             var recordEnd = _stream.Position;
             return McapChunkReader.ReadChunkRecords(
                 opcode,

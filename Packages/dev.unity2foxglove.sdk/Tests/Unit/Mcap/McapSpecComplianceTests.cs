@@ -6,10 +6,12 @@
 //          durable chunk recovery, record extensions, and reader structure.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -124,6 +126,61 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ReplayWithoutChunkIndexesRemainsPausedAndWarns()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-mcap-unindexed-replay-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(
+                           path,
+                           FileMode.CreateNew,
+                           FileAccess.ReadWrite,
+                           FileShare.Read))
+                using (var writer = new McapWriter(stream, leaveOpen: true))
+                {
+                    writer.WriteMagic();
+                    writer.WriteHeader("", "unindexed-replay");
+                    writer.WriteSchema(
+                        1,
+                        "mcap.Unindexed",
+                        "jsonschema",
+                        Encoding.UTF8.GetBytes("{}"));
+                    writer.WriteChannel(
+                        1,
+                        1,
+                        "/mcap/unindexed",
+                        "json",
+                        new Dictionary<string, string>());
+                    writer.WriteMessage(1, 0, 10, 10, Encoding.UTF8.GetBytes("{}"));
+                    writer.WriteDataEnd();
+                    writer.WriteFooter(0, 0, 0);
+                    writer.WriteMagic();
+                }
+
+                var logger = new RecordingLogger();
+                using var engine = new McapReplayEngine(logger);
+                engine.Load(path);
+                Assert.False(engine.CanSeek);
+
+                engine.Play();
+
+                Assert.Equal(McapReplayEngine.Status.Paused, engine.CurrentStatus);
+                Assert.Contains(
+                    logger.Warnings,
+                    warning => warning.Contains(
+                        "Statistics and ChunkIndex",
+                        StringComparison.Ordinal));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void StrictValidatorRejectsCurrentVersionTrailingFieldsThatTolerantReaderAccepts()
         {
             var schemaContent = RecordContent(writer =>
@@ -204,6 +261,34 @@ namespace Unity.FoxgloveSDK.UnitTests
             var messages = indexed.ReadMessages();
             Assert.Single(messages);
             Assert.Equal(10UL, messages[0].LogTime);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void ChunkPreflushFailureDoesNotAdvanceRejectedMessageCounters()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(
+                stream,
+                null,
+                new McapWriterOptions { ChunkSizeBytes = 256 },
+                leaveOpen: true);
+            recorder.AddChannel(
+                1,
+                "/mcap/preflush-fault",
+                "json",
+                "mcap.PreflushFault",
+                "jsonschema",
+                "{}");
+            recorder.WriteMessage(1, 10, new byte[64]);
+            stream.ThrowOnceAfterWrittenBytes(3);
+
+            Assert.Throws<IOException>(() =>
+                recorder.WriteMessage(1, 20, new byte[160]));
+
+            var counters = ReadOnlyServerChannelCounters(recorder);
+            Assert.Equal(1U, counters.Sequence);
+            Assert.Equal(1UL, counters.MessageCount);
         }
 
         [Fact]
@@ -747,6 +832,22 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        private static (uint Sequence, ulong MessageCount)
+            ReadOnlyServerChannelCounters(McapRecorder recorder)
+        {
+            var field = typeof(McapRecorder).GetField(
+                "_serverChannelWriteStates",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic);
+            var states = Assert.IsAssignableFrom<IDictionary>(field?.GetValue(recorder));
+            var state = Assert.Single(states.Values.Cast<object>());
+            var type = state.GetType();
+            var sequence = Assert.IsType<uint>(type.GetField("Seq")?.GetValue(state));
+            var messageCount = Assert.IsType<ulong>(
+                type.GetField("MsgCount")?.GetValue(state));
+            return (sequence, messageCount);
+        }
+
         private sealed class AbsoluteFaultStream : Stream
         {
             private readonly MemoryStream _inner = new MemoryStream();
@@ -799,6 +900,17 @@ namespace Unity.FoxgloveSDK.UnitTests
                     throw new IOException("Injected MCAP write failure.");
                 }
                 _inner.WriteByte(value);
+            }
+        }
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            internal readonly List<string> Warnings = new List<string>();
+
+            public void LogWarning(string message) => Warnings.Add(message);
+
+            public void LogError(string message)
+            {
             }
         }
 

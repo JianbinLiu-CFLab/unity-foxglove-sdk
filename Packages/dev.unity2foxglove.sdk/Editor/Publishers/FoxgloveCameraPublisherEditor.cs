@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var newMode = GetMode(_outputMode);
                 ApplyTopicForModeChange(_topic, oldMode, newMode);
                 ResetFfmpegCheck();
-                _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
+                ResetOpenH264Check();
             }
 
             EditorGUILayout.PropertyField(_manager);

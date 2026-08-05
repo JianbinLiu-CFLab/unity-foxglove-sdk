@@ -460,18 +460,19 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
         if (_playerStringMatched
             && _playerTwistMatched
             && _playerJoyMatched
+            && _playerImuMatched
             && (_playerBurstFinalSequence < 0 || _playerBurstMatched))
         {
             _status = _playerBurstFinalSequence < 0
-                ? "Required String, Twist, and Joy values matched the Player token."
-                : "Required values and the final latest-wins String burst matched the Player token.";
+                ? "Required String, Twist, Joy, and Imu values matched the Player token."
+                : "Required values, including Imu and the final latest-wins String burst, matched the Player token.";
             CompletePlayer(0, "success");
             return;
         }
 
         if (Time.realtimeSinceStartup >= _autoQuitDeadline)
         {
-            _status = "Timed out waiting for String, Twist, and Joy values that match the Player token.";
+            _status = "Timed out waiting for String, Twist, Joy, and Imu values that match the Player token.";
             CompletePlayer(2, "timeout");
         }
     }

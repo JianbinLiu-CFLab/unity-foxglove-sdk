@@ -389,6 +389,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("method?.Invoke(_ros2Unity, null);", phase127, StringComparison.Ordinal);
             Assert.Contains("private long _frameCount;", probe, StringComparison.Ordinal);
             Assert.Contains("sampleList[2] = (float)(_frameCount % 16777216L);", probe, StringComparison.Ordinal);
+            var updateStart = probe.IndexOf("private void Update()", StringComparison.Ordinal);
+            var updateEnd = probe.IndexOf("[ContextMenu", updateStart, StringComparison.Ordinal);
+            Assert.True(updateStart >= 0 && updateEnd > updateStart);
+            var update = probe.Substring(updateStart, updateEnd - updateStart);
+            Assert.True(
+                update.IndexOf("EnsureCollections();", StringComparison.Ordinal) >= 0
+                && update.IndexOf("EnsureCollections();", StringComparison.Ordinal)
+                < update.IndexOf("sampleArray[0]", StringComparison.Ordinal),
+                "The live manual probe must normalize mutable public containers before indexing them.");
             Assert.Contains("public long fixedCounter;", trigger, StringComparison.Ordinal);
             Assert.DoesNotContain("public int fixedCounter;", trigger, StringComparison.Ordinal);
             Assert.Contains("private static void LogTriggerResult", trigger, StringComparison.Ordinal);

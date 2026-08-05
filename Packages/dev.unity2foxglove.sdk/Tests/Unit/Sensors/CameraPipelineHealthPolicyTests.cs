@@ -197,6 +197,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
         }
 
+        [Fact]
+        public void CameraModeChangeResetsBothExecutableChecks()
+        {
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains(
+                "ApplyTopicForModeChange(_topic, oldMode, newMode);\n                ResetFfmpegCheck();\n                ResetOpenH264Check();",
+                editor,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FfmpegShutdownUsesOneSharedDeadlinePerCodec()
+        {
+            foreach (var relativePath in new[]
+                     {
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs",
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs"
+                     })
+            {
+                var sidecar = Text(relativePath);
+                Assert.Contains("DateTime.UtcNow.AddMilliseconds(ShutdownTimeoutMs)", sidecar, StringComparison.Ordinal);
+                Assert.Contains("process.WaitForExit(RemainingMilliseconds(deadlineUtc))", sidecar, StringComparison.Ordinal);
+                Assert.Contains("task.Wait(RemainingMilliseconds(deadlineUtc))", sidecar, StringComparison.Ordinal);
+                Assert.DoesNotContain("task.Wait(ShutdownTimeoutMs)", sidecar, StringComparison.Ordinal);
+            }
+        }
+
         private static string Text(string relativePath)
         {
             var path = PathOf(relativePath);

@@ -193,6 +193,22 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ReadChunkRecordsHonorsCallerRecordSizeLimit()
+        {
+            using var stream = CreateChunkMcap(out var chunkStart, out var chunkLength);
+            var reader = new McapReader(stream);
+
+            var error = Assert.Throws<InvalidDataException>(() =>
+                reader.ReadChunkRecords(
+                    chunkStart,
+                    chunkLength,
+                    out _,
+                    recordSizeLimit: 1));
+
+            Assert.Contains("exceeds limit 1", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void SummarylessChunkCrcCanBeDisabled()
         {
             using (var rejecting = CreateSummarylessBadChunkCrcMcap())

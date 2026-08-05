@@ -254,6 +254,14 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         if (!foxglove && !native && !bridge)
             throw new ArgumentException("Unknown Phase184 acceptance case.", nameof(caseId));
 
+#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (native)
+        {
+            throw new InvalidOperationException(
+                "Phase184 native cases require an active ROS2 For Unity runtime package.");
+        }
+#endif
+
         var serialized = new SerializedObject(manager);
         SetBoolean(serialized, "_startOnEnable", true);
         SetBoolean(serialized, "_foxgloveOutputEnabled", foxglove);
@@ -287,12 +295,6 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
                 manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
             publishTransportIds.Add(
                 FoxRunRos2TransportProvider.IdValue);
-        }
-#else
-        if (native)
-        {
-            throw new InvalidOperationException(
-                "Phase184 native cases require an active ROS2 For Unity runtime package.");
         }
 #endif
         if (bridge)

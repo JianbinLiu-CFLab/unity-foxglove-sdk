@@ -34,6 +34,7 @@ public class ROS2Node : IDisposable
     private const string DefaultNodeName = "unity_ros2_node"; // Fallback only; callers creating multiple nodes should pass unique names.
 
     internal INode node;
+    internal INode NativeNode { get; }
     /// <summary>
     /// ROS clock owned by this node and disposed together with it.
     /// </summary>
@@ -65,6 +66,7 @@ public class ROS2Node : IDisposable
     {
         name = unityROS2NodeName;
         node = Ros2cs.CreateNode(name);
+        NativeNode = node;
         clock = new ROS2Clock();
     }
 

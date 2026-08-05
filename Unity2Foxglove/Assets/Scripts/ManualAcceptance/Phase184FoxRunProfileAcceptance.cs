@@ -127,6 +127,9 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
 
             CaptureRuntimeProfileEvidence();
+            if (!_contextValidated)
+                return;
+
             CaptureTransportClientEvidence();
             _effectivePublishProfile =
                 Phase184AcceptanceText.FormatTransportIds(

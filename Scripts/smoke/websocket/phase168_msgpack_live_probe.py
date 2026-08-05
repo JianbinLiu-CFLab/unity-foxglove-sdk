@@ -35,6 +35,8 @@ FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 
 EXPECTED_ENCODING = "msgpack"
 EXPECTED_PHASE = 168
+MAX_MSGPACK_DEPTH = 34
+MAX_MSGPACK_CONTAINER_ITEMS = 16_384
 
 MESSAGE_DATA_OPCODE = 1
 TIME_OPCODE = 2
@@ -237,15 +239,35 @@ async def wait_for_msgpack_sample(
     )
 
 
+@dataclass
+class _MsgPackDecodeBudget:
+    """Track the shared aggregate container-item budget for one payload."""
+
+    container_items: int = 0
+
+    def enter_container(self, count: int, depth: int) -> None:
+        """Reserve one bounded container before decoding any of its children."""
+        if depth > MAX_MSGPACK_DEPTH:
+            raise MsgPackDecodeError("MessagePack container depth was exceeded.")
+        if count < 0 or count > MAX_MSGPACK_CONTAINER_ITEMS - self.container_items:
+            raise MsgPackDecodeError("MessagePack aggregate container budget was exceeded.")
+        self.container_items += count
+
+
 def decode_complete_msgpack(data: bytes) -> object:
     """Decode one complete MessagePack value from a payload."""
-    index, value = decode_msgpack_value(data, 0)
+    index, value = decode_msgpack_value(data, 0, 0, _MsgPackDecodeBudget())
     if index != len(data):
         raise MsgPackDecodeError(f"Trailing bytes after MsgPack payload: {len(data) - index}.")
     return value
 
 
-def decode_msgpack_value(data: bytes, index: int) -> tuple[int, object]:
+def decode_msgpack_value(
+    data: bytes,
+    index: int,
+    depth: int,
+    budget: _MsgPackDecodeBudget,
+) -> tuple[int, object]:
     """Decode the subset of MessagePack emitted by Phase168MsgPackSmoke."""
     index = require_available(data, index, 1)
     marker = data[index]
@@ -254,9 +276,9 @@ def decode_msgpack_value(data: bytes, index: int) -> tuple[int, object]:
     if marker <= 0x7F:
         return index, marker
     if 0x80 <= marker <= 0x8F:
-        return decode_msgpack_map(data, index, marker & 0x0F)
+        return decode_msgpack_map(data, index, marker & 0x0F, depth + 1, budget)
     if 0x90 <= marker <= 0x9F:
-        return decode_msgpack_array(data, index, marker & 0x0F)
+        return decode_msgpack_array(data, index, marker & 0x0F, depth + 1, budget)
     if 0xA0 <= marker <= 0xBF:
         return decode_msgpack_string(data, index, marker & 0x1F)
     if marker >= 0xE0:
@@ -298,35 +320,49 @@ def decode_msgpack_value(data: bytes, index: int) -> tuple[int, object]:
         return decode_msgpack_string(data, index, int(length))
     if marker == 0xDC:
         index, count = read_struct(data, index, ">H")
-        return decode_msgpack_array(data, index, int(count))
+        return decode_msgpack_array(data, index, int(count), depth + 1, budget)
     if marker == 0xDD:
         index, count = read_struct(data, index, ">I")
-        return decode_msgpack_array(data, index, int(count))
+        return decode_msgpack_array(data, index, int(count), depth + 1, budget)
     if marker == 0xDE:
         index, count = read_struct(data, index, ">H")
-        return decode_msgpack_map(data, index, int(count))
+        return decode_msgpack_map(data, index, int(count), depth + 1, budget)
     if marker == 0xDF:
         index, count = read_struct(data, index, ">I")
-        return decode_msgpack_map(data, index, int(count))
+        return decode_msgpack_map(data, index, int(count), depth + 1, budget)
 
     raise MsgPackDecodeError(f"Unsupported MessagePack marker 0x{marker:02x}.")
 
 
-def decode_msgpack_map(data: bytes, index: int, count: int) -> tuple[int, dict[object, object]]:
+def decode_msgpack_map(
+    data: bytes,
+    index: int,
+    count: int,
+    depth: int,
+    budget: _MsgPackDecodeBudget,
+) -> tuple[int, dict[object, object]]:
     """Decode a MessagePack map."""
+    budget.enter_container(count, depth)
     result: dict[object, object] = {}
     for _ in range(count):
-        index, key = decode_msgpack_value(data, index)
-        index, value = decode_msgpack_value(data, index)
+        index, key = decode_msgpack_value(data, index, depth, budget)
+        index, value = decode_msgpack_value(data, index, depth, budget)
         result[key] = value
     return index, result
 
 
-def decode_msgpack_array(data: bytes, index: int, count: int) -> tuple[int, list[object]]:
+def decode_msgpack_array(
+    data: bytes,
+    index: int,
+    count: int,
+    depth: int,
+    budget: _MsgPackDecodeBudget,
+) -> tuple[int, list[object]]:
     """Decode a MessagePack array."""
+    budget.enter_container(count, depth)
     result: list[object] = []
     for _ in range(count):
-        index, value = decode_msgpack_value(data, index)
+        index, value = decode_msgpack_value(data, index, depth, budget)
         result.append(value)
     return index, result
 

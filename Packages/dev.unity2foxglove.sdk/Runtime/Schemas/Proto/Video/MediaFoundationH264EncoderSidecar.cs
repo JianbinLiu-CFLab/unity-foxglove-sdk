@@ -172,6 +172,7 @@ namespace Foxglove.Schemas.Video
             {
                 LastError = DescribeException(ex);
                 LastDiagnosticLine = LastError;
+                Stop(clearOutputQueue: false);
                 return false;
             }
         }

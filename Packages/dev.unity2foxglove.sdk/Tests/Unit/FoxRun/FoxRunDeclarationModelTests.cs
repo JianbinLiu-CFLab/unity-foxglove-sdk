@@ -2459,6 +2459,95 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "187")]
+        public void Phase184NativePreflightPrecedesManagerMutation()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptanceBuilder.cs");
+            var root = CSharpSyntaxTree.ParseText(
+                    source,
+                    new CSharpParseOptions(preprocessorSymbols: new[] { "UNITY_EDITOR" }))
+                .GetRoot();
+            var configure = root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "ConfigureManager");
+            var nativeGuard = configure.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .Single(statement =>
+                    statement.Condition.ToString() == "native"
+                    && statement.Statement.ToFullString().Contains(
+                        "require an active ROS2 For Unity runtime package",
+                        StringComparison.Ordinal));
+            var firstManagerMutation = configure.DescendantNodes()
+                .OfType<ObjectCreationExpressionSyntax>()
+                .First(expression => expression.Type.ToString() == "SerializedObject");
+
+            Assert.True(
+                nativeGuard.SpanStart < firstManagerMutation.SpanStart,
+                "Unavailable native cases must fail before serialized Manager state is changed.");
+        }
+
+        [Fact]
+        [Trait("Phase", "187")]
+        public void Phase184ContextFailureStopsRemainingUpdateWork()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase184FoxRunProfileAcceptance.cs");
+            var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var acceptance = root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Single(type =>
+                    type.Identifier.ValueText == "Phase184FoxRunProfileAcceptance");
+            var update = acceptance.Members
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "Update");
+            var statements = update.Body!.Statements;
+            var profileIndex = statements.IndexOf(
+                statements.Single(statement => statement.ToString().Contains(
+                    "CaptureRuntimeProfileEvidence()",
+                    StringComparison.Ordinal)));
+            var transportIndex = statements.IndexOf(
+                statements.Single(statement => statement.ToString().Contains(
+                    "CaptureTransportClientEvidence()",
+                    StringComparison.Ordinal)));
+
+            Assert.Contains(
+                statements.Skip(profileIndex + 1).Take(transportIndex - profileIndex - 1),
+                statement => statement is IfStatementSyntax guard
+                    && guard.Condition.ToString().Contains(
+                        "!_contextValidated",
+                        StringComparison.Ordinal)
+                    && guard.Statement.DescendantNodesAndSelf()
+                        .OfType<ReturnStatementSyntax>()
+                        .Any());
+        }
+
+        [Fact]
+        [Trait("Phase", "187")]
+        public void Phase179PlayerCompletionRequiresImuEvidence()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase179FoxRunRos2NativeSubscribeAcceptance.cs");
+            var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var evaluate = root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.ValueText == "EvaluatePlayerAutoQuit");
+            var success = evaluate.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .Single(statement => statement.Statement.ToFullString().Contains(
+                    "CompletePlayer(0, \"success\")",
+                    StringComparison.Ordinal));
+
+            Assert.Contains(
+                "_playerImuMatched",
+                success.Condition.ToString(),
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         [Trait("Phase", "184-G")]
         public void Phase184RuntimeAcceptanceRoutesUseBoundedNonRacingEvidenceWindows()
         {

@@ -44,6 +44,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void EmptyDependenciesObjectAcceptsTheFirstRuntimeDependency()
+        {
+            using var fixture = new SelectionFixture();
+            fixture.WriteEmptyManifest();
+            var resolveCalls = 0;
+
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                fixture.ProjectDirectory,
+                fixture.HumbleRuntimePackage,
+                requestedAddOnPackage: null,
+                resolve: () => resolveCalls++);
+
+            Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly, result.Code);
+            Assert.Equal(1, resolveCalls);
+            Assert.Equal(new[] { fixture.HumbleRuntimePackage }, fixture.ManifestDependencyNames());
+        }
+
+        [Fact]
         public void FixtureScratchStaysInsideTheRepositoryBuildRoot()
         {
             using var fixture = new SelectionFixture();
@@ -412,6 +430,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 foreach (var packageName in packageNames)
                     dependencies[packageName] = "file:../../Packages/" + packageName;
                 File.WriteAllText(ManifestPath, new JObject { ["dependencies"] = dependencies }.ToString(Formatting.Indented) + "\n");
+            }
+
+            public void WriteEmptyManifest()
+            {
+                File.WriteAllText(
+                    ManifestPath,
+                    new JObject { ["dependencies"] = new JObject() }.ToString(Formatting.Indented) + "\n");
             }
 
             public void WritePackagesLock(string text)

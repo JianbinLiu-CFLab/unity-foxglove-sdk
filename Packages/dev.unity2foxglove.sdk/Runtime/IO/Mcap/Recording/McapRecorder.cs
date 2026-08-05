@@ -401,9 +401,6 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            map.Seq++;
-            map.MsgCount++;
-
             const int messagePrefixLength = 2 + 4 + 8 + 8;
             if (payloadLength > int.MaxValue - messagePrefixLength - McapWriter.RecordHeaderLength)
             {
@@ -425,6 +422,8 @@ namespace Unity.FoxgloveSDK.IO
             _chunkBuf.Write(header, 0, header.Length);
             if (payloadLength > 0)
                 _chunkBuf.Write(payload, 0, payloadLength);
+            map.Seq++;
+            map.MsgCount++;
             map.Pending.Add((logNs, off));
             if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
             if (logNs > _msgEt) _msgEt = logNs;

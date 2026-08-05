@@ -21,12 +21,44 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
         }
 
         internal RemoteGatewayNativeMethods.FoxgloveConnectionStatus ConnectionStatus
-            => IsInvalid
-                ? RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Shutdown
-                : RemoteGatewayNativeMethods.GatewayConnectionStatus(handle);
+        {
+            get
+            {
+                if (IsClosed || IsInvalid)
+                {
+                    return RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Shutdown;
+                }
+
+                try
+                {
+                    return RemoteGatewayNativeMethods.GatewayConnectionStatus(this);
+                }
+                catch (ObjectDisposedException)
+                {
+                    return RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Shutdown;
+                }
+            }
+        }
 
         internal ulong SinkId
-            => IsInvalid ? 0UL : RemoteGatewayNativeMethods.GatewaySinkId(handle);
+        {
+            get
+            {
+                if (IsClosed || IsInvalid)
+                {
+                    return 0UL;
+                }
+
+                try
+                {
+                    return RemoteGatewayNativeMethods.GatewaySinkId(this);
+                }
+                catch (ObjectDisposedException)
+                {
+                    return 0UL;
+                }
+            }
+        }
 
         protected override bool ReleaseHandle()
         {

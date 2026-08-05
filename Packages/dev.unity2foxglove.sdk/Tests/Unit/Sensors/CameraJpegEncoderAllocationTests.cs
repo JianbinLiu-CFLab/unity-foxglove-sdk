@@ -6,6 +6,9 @@
 
 using System;
 using System.IO;
+using System.Reflection;
+using System.Threading;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Util;
 using Xunit;
 
@@ -41,6 +44,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var encodedFromPreflippedInput = ManagedJpegEncoder.EncodeRgb24(preflipped, width, height, 90, flipVertical: false);
 
             Assert.Equal(encodedFromPreflippedInput, encodedFromInternalFlip);
+        }
+
+        [Fact]
+        public void LiveOrphanedWorkerBlocksPipelineRestart()
+        {
+            using var releaseOrphan = new ManualResetEventSlim(false);
+            var orphan = new Thread(() => releaseOrphan.Wait()) { IsBackground = true };
+            orphan.Start();
+
+            var pipeline = new CameraJpegPipeline(() => 1, workerStopWaitMs: 1);
+            var orphanField = typeof(CameraJpegPipeline).GetField(
+                "_orphanedWorker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(orphanField);
+            orphanField.SetValue(pipeline, orphan);
+
+            try
+            {
+                Assert.False(pipeline.Start());
+                Assert.Contains("previous JPEG worker", pipeline.LastStartError, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                releaseOrphan.Set();
+                Assert.True(orphan.Join(TimeSpan.FromSeconds(2)));
+                pipeline.Dispose();
+            }
         }
 
         private static byte[] FlipRows(byte[] source, int width, int height)

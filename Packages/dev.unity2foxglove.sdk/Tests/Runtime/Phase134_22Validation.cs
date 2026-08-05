@@ -153,17 +153,32 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyExecutorTimeoutCleanup(string fileName, string typeName)
         {
             var source = ReadRuntimeSource(fileName);
-            Check(!source.Contains("if (!StopExecutor())", StringComparison.Ordinal),
-                $"134-22-A1: {typeName} no longer returns immediately on executor stop timeout");
+            var shutdownSignature = typeName == "ROS2UnityCore"
+                ? "public void Dispose()"
+                : "private void Shutdown()";
+            var shutdown = PhaseValidationSourceHelpers.SourceMethod(source, shutdownSignature);
+            var failure = shutdown.IndexOf("if (!executorStopped)", StringComparison.Ordinal);
+            var retained = shutdown.IndexOf("native ownership remains active", StringComparison.Ordinal);
+            var earlyReturn = shutdown.IndexOf("return;", failure, StringComparison.Ordinal);
+            var detach = shutdown.IndexOf("TryDetachRuntimeState", StringComparison.Ordinal);
+            var destroy = shutdown.IndexOf("instance.DestroyROS2ForUnity();", StringComparison.Ordinal);
+            var quarantine = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "private void QuarantineNodesAfterExecutorTimeout()");
+
             Check(source.Contains("bool executorStopped = StopExecutor();", StringComparison.Ordinal)
-                  && source.Contains("QuarantineNodesAfterExecutorTimeout", StringComparison.Ordinal),
-                $"134-22-A2: {typeName} routes executor timeout through node quarantine cleanup");
-            Check(source.Contains("TryDetachRuntimeState(executorStopped, out instance)", StringComparison.Ordinal)
-                  && source.Contains("instance.DestroyROS2ForUnity();", StringComparison.Ordinal),
-                $"134-22-A3: {typeName} keeps lifecycle owner release on the cleanup path");
-            Check(source.Contains("could not acquire state lock after executor timeout", StringComparison.Ordinal)
-                  && source.Contains("ROS2 lifecycle owner remains active", StringComparison.Ordinal),
-                $"134-22-A4: {typeName} reports controlled lifecycle failure when cleanup cannot be made safe");
+                  && failure >= 0,
+                $"134-22-A1: {typeName} branches on the bounded executor stop result");
+            Check(retained > failure && earlyReturn > retained && detach > earlyReturn,
+                $"134-22-A2: {typeName} retains native ownership when the executor is still active");
+            Check(destroy > detach,
+                $"134-22-A3: {typeName} releases the lifecycle owner only after the executor stops");
+            Check(quarantine.Contains("could not acquire", StringComparison.Ordinal)
+                  && quarantine.Contains("after executor timeout", StringComparison.Ordinal)
+                  && quarantine.Contains("cachedOk = false;", StringComparison.Ordinal)
+                  && !quarantine.Contains("nodes.Clear();", StringComparison.Ordinal)
+                  && !quarantine.Contains("ros2csNodes.Clear();", StringComparison.Ordinal),
+                $"134-22-A4: {typeName} quarantines status without dropping native owners");
         }
 
         private static void VerifyPathDeduplication()
