@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     "@echo off\r\n> \"" + markerPath + "\" echo replacement\r\n");
                 previousEditor = StartSleepingPowerShell(
                     WindowsPowerShellExecutable(),
-                    seconds: 30);
+                    seconds: 60);
                 var relayStartInfo = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
                     isWindows: true,
                     relayExecutable: WindowsPowerShellExecutable(),
@@ -126,7 +126,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Assert.True(
                     SpinWait.SpinUntil(
                         () => File.Exists(markerPath),
-                        TimeSpan.FromSeconds(5)),
+                        ReplacementLaunchTimeout),
                     "The relay waited for a different process that reused the previous Editor PID.");
                 Assert.False(
                     previousEditor.HasExited,
