@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
-        private const string ExpectedCheckedInGeneratorSha256 = "01FFD0075B3B50D4390ECE242E1AFF095C557CE2F0003A16A9317E4E90700A37";
+        private const string ExpectedCheckedInGeneratorSha256 = "DA0CCEDAAE9E48743BC172D110B94332F0A441B7DD82CD0CBB92479B1A4B3AF0";
         private static int _passCount;
 
         public static void Validate()
@@ -57,15 +57,29 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             var conditionPath = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs");
+            var tryPublish = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private bool TryPublish(");
+            var conditionIndex = tryPublish.IndexOf(
+                "is IFoxgloveLogConditionSource condition",
+                StringComparison.Ordinal);
+            var originIndex = tryPublish.IndexOf(
+                "is IFoxglovePublishOriginSource origin",
+                StringComparison.Ordinal);
+            var transportIndex = tryPublish.IndexOf(
+                "var publishWebSocket",
+                StringComparison.Ordinal);
 
             Check(File.Exists(conditionPath), "141A-5: IFoxgloveLogConditionSource file exists");
             Check(hub.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal),
                 "141A-6: FoxgloveLogHub references condition source interface");
-            Check(hub.Contains("CanPublishSourceTopic", StringComparison.Ordinal),
-                "141A-7: FoxgloveLogHub centralizes condition gate checks");
-            Check(hub.IndexOf("CanPublishSourceTopic(source, topicIndex", StringComparison.Ordinal)
-                  < hub.IndexOf("FoxgloveLog_ShouldPublish(topicIndex, nowSec)", StringComparison.Ordinal),
-                "141A-8: scheduled condition gate runs before policy gate");
+            Check(conditionIndex >= 0,
+                "141A-7: common TryPublish path owns the condition gate");
+            Check(originIndex >= 0
+                  && transportIndex >= 0
+                  && conditionIndex < originIndex
+                  && conditionIndex < transportIndex,
+                "141A-8: condition gate runs before origin and transport routing");
         }
 
         private static void VerifyEmitterConditionOutput()

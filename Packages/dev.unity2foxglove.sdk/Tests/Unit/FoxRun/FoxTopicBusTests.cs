@@ -119,6 +119,36 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187")]
+        public void MultiWriterRejectsSingleWriterCandidateWithAccurateDiagnostic()
+        {
+            var bus = new FoxTopicBus();
+            var existing = new FoxTopicContract(
+                "/multi",
+                "foxrun.A",
+                "json",
+                "foxrun.A",
+                "a",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.MultiWriter);
+            var candidate = new FoxTopicContract(
+                "/multi",
+                "foxrun.A",
+                "json",
+                "foxrun.A",
+                "a",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+
+            Assert.True(bus.Register(existing, "source-a").Accepted);
+            var result = bus.Register(candidate, "source-b");
+
+            Assert.False(result.Accepted);
+            Assert.Contains("writer policy", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("already has a single writer", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void SubscriberExceptionIsBoundedAndDoesNotStopRemainingSubscribers()
         {
             var bus = new FoxTopicBus();

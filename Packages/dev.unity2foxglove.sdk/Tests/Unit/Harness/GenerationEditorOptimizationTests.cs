@@ -119,6 +119,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        [Trait("Phase", "187")]
+        public void DescriptorWriterReportsTheCurrentVersionForMissingSchedules()
+        {
+            var model = CreateDescriptorModel("value");
+            var member = model.Types[0].Members[0];
+            var schedule = typeof(FoxRunGenerationMember).GetField(
+                nameof(FoxRunGenerationMember.NormalizedSchedule));
+            Assert.NotNull(schedule);
+            schedule.SetValue(member, null);
+
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => FoxRunGenerationDescriptorJsonWriter.Write(model));
+
+            Assert.Contains(
+                "descriptor v" + FoxRunGenerationDescriptorConstants.DescriptorVersion,
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedSourceOwnershipStillUsesHeaderSentinels()
         {
             var temp = Path.Combine(Path.GetTempPath(), "u2f_phase140_68_" + Guid.NewGuid().ToString("N") + ".g.cs");

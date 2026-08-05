@@ -173,6 +173,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     }
                     if (property.SetMethod == null)
                     {
+                        if (string.Equals(
+                                side,
+                                FoxServiceDtoRules.ResponseSide,
+                                StringComparison.Ordinal))
+                        {
+                            ValidateServiceDtoType(property.Type, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+
                         if (TryGetListElementType(property.Type, side, out var getOnlyElementType)
                             && IsMutableCollectionContract(property.Type))
                         {

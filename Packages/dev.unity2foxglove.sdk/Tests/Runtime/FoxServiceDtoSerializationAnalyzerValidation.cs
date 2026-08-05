@@ -116,6 +116,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "141D-2: Roslyn accepts ICollection<T> request DTO members");
             run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE004", "readOnlyNumbers", "IReadOnlyCollection"),
                 "141D-3: Roslyn accepts IReadOnlyCollection<T> response DTO members");
+            run.Check(!diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+                                                  && diagnostic.GetMessage().Contains("Response.readOnlyScalar", StringComparison.Ordinal)),
+                "187-032A: Roslyn accepts serializable get-only response properties without request-only warnings");
             run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "queue", "Queue"),
                 "141D-3a: Roslyn accepts Queue<T> request DTO members");
             run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "stack", "Stack"),
@@ -172,6 +175,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "/phase141d/reflection-warning-memo");
             run.Check(reflectionWarningMemo.Count(diagnostic => diagnostic.Id == "FOXSERVICE007") == 1,
                 "141D-11d: reflection validator memoizes warning-only shared DTO types");
+
+            var reflectionResponse = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
+                typeof(Phase187ReflectionResponse),
+                Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Response,
+                "/phase187/reflection-response");
+            run.Check(!reflectionResponse.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+                                                         && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
+                "187-032B: reflection accepts serializable get-only response properties without request-only warnings");
         }
 
         private static void VerifyValidationWiringAndReleaseMetadata(ValidationRun run)
@@ -379,6 +390,7 @@ namespace Phase141D
     {
         public IReadOnlyCollection<double> readOnlyNumbers { get; set; }
         public SortedDictionary<string, int> sorted { get; set; }
+        public string readOnlyScalar { get { return ""value""; } }
     }
 
     public sealed class Deep00 { public Deep01 next { get; set; } }
@@ -613,6 +625,11 @@ namespace Phase141C
         private sealed class Phase141DSharedWarningType
         {
             public string value { get { return "value"; } }
+        }
+
+        private sealed class Phase187ReflectionResponse
+        {
+            public string readOnlyScalar { get { return "value"; } }
         }
 
         private static string ReadRepoText(string relativePath)

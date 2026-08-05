@@ -90,12 +90,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 {
                     producerFailure = exception;
                 }
-            });
+            })
+            {
+                IsBackground = true,
+            };
             producer.Start();
 
             var appliedValues = new List<int>();
+            var deadlineUtc = DateTime.UtcNow.AddSeconds(10);
             while (producer.IsAlive || slot.PendingCount != 0)
             {
+                Assert.True(
+                    DateTime.UtcNow < deadlineUtc,
+                    "Producer/consumer burst did not drain within ten seconds.");
                 slot.TryApplyLatest(
                     probe => appliedValues.Add(probe.Value),
                     _ => false);
