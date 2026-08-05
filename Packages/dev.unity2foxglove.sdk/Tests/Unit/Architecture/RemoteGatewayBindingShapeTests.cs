@@ -131,6 +131,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void GatewayStatusQueriesKeepSafeHandleAliveAcrossNativeCall()
+        {
+            var nativeMethods = Text(RuntimeRoot + "/Native/RemoteGatewayNativeMethods.cs");
+            var handle = Text(RuntimeRoot + "/Native/RemoteGatewayHandle.cs");
+
+            Assert.Contains("GatewayConnectionStatus(RemoteGatewayHandle gateway)", nativeMethods, StringComparison.Ordinal);
+            Assert.Contains("GatewaySinkId(RemoteGatewayHandle gateway)", nativeMethods, StringComparison.Ordinal);
+            Assert.DoesNotContain("GatewayConnectionStatus(IntPtr gateway)", nativeMethods, StringComparison.Ordinal);
+            Assert.DoesNotContain("GatewaySinkId(IntPtr gateway)", nativeMethods, StringComparison.Ordinal);
+            Assert.Contains("GatewayConnectionStatus(this)", handle, StringComparison.Ordinal);
+            Assert.Contains("GatewaySinkId(this)", handle, StringComparison.Ordinal);
+            Assert.DoesNotContain("GatewayConnectionStatus(handle)", handle, StringComparison.Ordinal);
+            Assert.DoesNotContain("GatewaySinkId(handle)", handle, StringComparison.Ordinal);
+            Assert.Contains("IsClosed || IsInvalid", handle, StringComparison.Ordinal);
+            Assert.Contains("catch (ObjectDisposedException)", handle, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CallbacksAreRootedAndMarshaledThroughBoundedQueue()
         {
             var source = Text(RuntimeRoot + "/Native/RemoteGatewayCallbacks.cs");

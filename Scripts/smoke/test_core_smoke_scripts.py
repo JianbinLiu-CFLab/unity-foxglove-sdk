@@ -193,6 +193,23 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertEqual(bytes([1]) + struct.pack("<I", 175_001) + payload, frame)
         self.assertEqual(5.0, module.decode_float_field(payload))
 
+    def test_phase168_msgpack_probe_enforces_shared_decode_limits(self) -> None:
+        """The live probe should match runtime depth and aggregate-container bounds."""
+        module = load_smoke_module("phase168_msgpack_limits_under_test", "websocket/phase168_msgpack_live_probe.py")
+
+        depth_34 = (b"\x91" * 34) + b"\xc0"
+        depth_35 = (b"\x91" * 35) + b"\xc0"
+        self.assertIsInstance(module.decode_complete_msgpack(depth_34), list)
+        with self.assertRaisesRegex(module.MsgPackDecodeError, "depth"):
+            module.decode_complete_msgpack(depth_35)
+
+        oversized_array = b"\xdd" + struct.pack(">I", 16_385)
+        oversized_map = b"\xdf" + struct.pack(">I", 16_385)
+        with self.assertRaisesRegex(module.MsgPackDecodeError, "container budget"):
+            module.decode_complete_msgpack(oversized_array)
+        with self.assertRaisesRegex(module.MsgPackDecodeError, "container budget"):
+            module.decode_complete_msgpack(oversized_map)
+
     def test_phase139b_launch_backend_enforces_startup_timeout_without_stdout(self) -> None:
         """A silent child process should not block past startup_timeout."""
         module = load_smoke_module("phase139b_under_test", "replay/phase139b_remote_data_loader_acceptance.py")

@@ -17,10 +17,10 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
         internal static extern FoxgloveError GatewayStop(IntPtr gateway);
 
         [DllImport(LibraryName, EntryPoint = "foxglove_gateway_connection_status", CallingConvention = CallingConvention.Cdecl)]
-        internal static extern FoxgloveConnectionStatus GatewayConnectionStatus(IntPtr gateway);
+        internal static extern FoxgloveConnectionStatus GatewayConnectionStatus(RemoteGatewayHandle gateway);
 
         [DllImport(LibraryName, EntryPoint = "foxglove_gateway_sink_id", CallingConvention = CallingConvention.Cdecl)]
-        internal static extern ulong GatewaySinkId(IntPtr gateway);
+        internal static extern ulong GatewaySinkId(RemoteGatewayHandle gateway);
 
         [DllImport(LibraryName, EntryPoint = "foxglove_context_new", CallingConvention = CallingConvention.Cdecl)]
         internal static extern IntPtr ContextNew();
