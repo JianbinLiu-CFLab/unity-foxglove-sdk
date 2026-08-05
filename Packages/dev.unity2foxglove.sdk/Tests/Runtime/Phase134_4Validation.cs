@@ -69,6 +69,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublisherBaseRejectsInvalidTopics()
         {
             var source = ReadRepoText(PublisherBasePath);
+            var validateTopic = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "ValidateConfiguredTopic");
+            var providerPublish = PhaseValidationSourceHelpers.SourceMethod(
+                source,
+                "PublishOrdinaryTransport");
             Check(source.Contains("public string Topic => _topic", StringComparison.Ordinal)
                   && source.Contains("public bool HasValidTopic => HasValidPublisherTopic(_topic)", StringComparison.Ordinal),
                 "134-4B-1: publisher base exposes topic validity for Inspector and tests");
@@ -79,10 +85,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("|| !ValidateConfiguredTopic(\"Provider publish\")", StringComparison.Ordinal)
                   && source.Contains("return default;", StringComparison.Ordinal),
                 "134-4B-3: publisher base validates topic before WebSocket and Provider publish helpers");
-            Check(source.Contains("Configure a non-empty topic before publishing", StringComparison.Ordinal)
-                  && source.Contains("_lastPublishTopicWarningKey", StringComparison.Ordinal)
-                  && source.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
-                  && source.Contains("GetTopicWarningKey(operation)", StringComparison.Ordinal),
+            Check(validateTopic.Contains("Configure a non-empty topic before publishing", StringComparison.Ordinal)
+                  && validateTopic.Contains("var key = \"invalid-topic\";", StringComparison.Ordinal)
+                  && validateTopic.Contains("_lastPublishTopicWarningKey", StringComparison.Ordinal)
+                  && !validateTopic.Contains("+ operation", StringComparison.Ordinal)
+                  && providerPublish.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
+                  && providerPublish.Contains("Provider fanout rejected", StringComparison.Ordinal),
                 "134-4B-4: invalid topic and Provider failures are actionable and de-duplicated per publisher");
         }
 
