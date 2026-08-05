@@ -37,7 +37,10 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 foreach (var source in _pendingDrainBuffer)
-                    RegisterSourceNow(source);
+                {
+                    if (!RegisterSourceNow(source))
+                        TrackTemporarilyUnavailableSource(source);
+                }
             }
             finally
             {
@@ -45,19 +48,21 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void RegisterSourceNow(IFoxgloveServiceSource source)
+        private bool RegisterSourceNow(IFoxgloveServiceSource source)
         {
-            if (SourceUnavailable(source) || _serviceIdsBySource.ContainsKey(source))
-                return;
+            if (_serviceIdsBySource.ContainsKey(source))
+                return true;
+            if (SourceUnavailable(source))
+                return false;
             if (_manager == null || !_manager.IsRunning)
-                return;
+                return false;
 
             var descriptors = source.FoxgloveServices;
             if (descriptors == null || descriptors.Count == 0)
-                return;
+                return false;
 
             if (!TryReserveServiceNames(source, descriptors))
-                return;
+                return false;
 
             var ids = new List<uint>(descriptors.Count);
             foreach (var descriptor in descriptors)
@@ -69,7 +74,7 @@ namespace Unity.FoxgloveSDK.Components
                     ReleaseServiceNames(source, descriptors);
                     foreach (var registered in ids)
                         _manager.UnregisterService(registered);
-                    return;
+                    return false;
                 }
 
                 ids.Add(id);
@@ -77,6 +82,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _serviceIdsBySource[source] = ids;
             _descriptorsBySource[source] = new List<FoxgloveGeneratedServiceDescriptor>(descriptors);
+            return true;
         }
 
         private bool TryReserveServiceNames(
@@ -190,7 +196,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 _temporarilyUnavailableSources.RemoveAt(i);
-                RegisterSourceNow(source);
+                if (!RegisterSourceNow(source))
+                    TrackTemporarilyUnavailableSource(source);
             }
         }
 
@@ -210,17 +217,15 @@ namespace Unity.FoxgloveSDK.Components
                     _manager?.UnregisterService(id);
                 _serviceIdsBySource.Remove(source);
             }
-            _descriptorsBySource.Remove(source);
-
-            if (SourceUnavailable(source))
+            if (_descriptorsBySource.TryGetValue(source, out var descriptors))
+            {
+                _descriptorsBySource.Remove(source);
+                ReleaseServiceNames(source, descriptors);
+            }
+            else
             {
                 ReleaseServiceNamesByOwner(source);
-                return;
             }
-
-            var descriptors = source.FoxgloveServices;
-            if (descriptors != null)
-                ReleaseServiceNames(source, descriptors);
         }
 
         private static bool SourceUnavailable(IFoxgloveServiceSource source)

@@ -655,11 +655,10 @@ namespace Unity.FoxgloveSDK.Components
             if (HasValidPublisherTopic(_topic))
                 return true;
 
-            ref var lastTopicWarningKey = ref GetTopicWarningKey(operation);
-            var key = "invalid-topic:" + operation;
-            if (lastTopicWarningKey != key)
+            var key = "invalid-topic";
+            if (_lastPublishTopicWarningKey != key)
             {
-                lastTopicWarningKey = key;
+                _lastPublishTopicWarningKey = key;
                 Debug.LogWarning(
                     $"[Foxglove] {GetType().Name} cannot {operation}: Topic is empty. Configure a non-empty topic before publishing.");
             }
@@ -675,11 +674,6 @@ namespace Unity.FoxgloveSDK.Components
 
             Debug.LogWarning(
                 $"[Foxglove] {GetType().Name} resolved to {resolution.EffectiveLabel} but attempted to publish {attemptedEncoding}; dropping message.");
-        }
-
-        private ref string GetTopicWarningKey(string operation)
-        {
-            return ref _lastPublishTopicWarningKey;
         }
 
         private static int EncodingWarningKey(PublisherEffectiveEncoding requested, PublisherEffectiveEncoding effective)

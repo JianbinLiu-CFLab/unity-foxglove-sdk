@@ -60,7 +60,9 @@ namespace Unity.FoxgloveSDK.Core
                     }
                     catch (Exception ex)
                     {
-                        _services.Fail(call.ClientId, call.CallId, $"Handler exception: {ex.Message}");
+                        _logger.LogError(
+                            $"Service handler {call.ServiceId} failed for client {call.ClientId}, call {call.CallId}: {ex}");
+                        _services.Fail(call.ClientId, call.CallId, "Service handler failed");
                     }
                 }
             }

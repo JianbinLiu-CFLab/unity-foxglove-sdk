@@ -163,6 +163,7 @@ namespace Unity.FoxgloveSDK.Core
 
                 if (hasSeek)
                 {
+                    ClearExternalCursorState();
                     replay.Seek(seekNs);
                     QueueReplaySceneSnapshot(seekNs);
                 }

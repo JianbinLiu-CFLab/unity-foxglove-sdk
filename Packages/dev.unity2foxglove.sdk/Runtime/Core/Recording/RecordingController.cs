@@ -130,13 +130,23 @@ namespace Unity.FoxgloveSDK.Core
                 if (current == null)
                     return;
 
+                var normalizedOutputMode = outputMode ?? "";
+                var normalizedInputMode = inputMode ?? "";
+
                 Volatile.Write(
                     ref _recordingConfiguration,
                     new RecordingConfiguration(
                         current.FilePath,
                         current.WriterOptions,
-                        outputMode ?? "",
-                        inputMode ?? ""));
+                        normalizedOutputMode,
+                        normalizedInputMode));
+
+                var recorder = Volatile.Read(ref _recorder);
+                if (recorder != null)
+                {
+                    recorder.OutputCoordinateMode = normalizedOutputMode;
+                    recorder.InputCoordinateMode = normalizedInputMode;
+                }
             }
         }
 
