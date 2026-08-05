@@ -49,10 +49,15 @@ namespace Unity.FoxgloveSDK.Editor
             var compressedDownloadPath = compressedPath + ".download";
             var finalDllPath = OpenH264InstallLocation.GetFinalDllPath(installRoot);
             var finalHelperPath = OpenH264InstallLocation.GetFinalHelperPath(installRoot);
+            var tempDll = finalDllPath + ".tmp";
+            var tempHelper = finalHelperPath + ".tmp";
+            var publishingFinalPair = false;
             try
             {
                 Directory.CreateDirectory(versionDir);
                 TryDelete(compressedDownloadPath);
+                TryDelete(tempDll);
+                TryDelete(tempHelper);
                 DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);
                 if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
                         compressedDownloadPath,
@@ -75,10 +80,6 @@ namespace Unity.FoxgloveSDK.Editor
                     File.Delete(compressedPath);
 
                 File.Move(compressedDownloadPath, compressedPath);
-
-                var tempDll = finalDllPath + ".tmp";
-                if (File.Exists(tempDll))
-                    File.Delete(tempDll);
 
                 if (!TryDecompressBZip2(compressedPath, tempDll, out var decompressError))
                 {
@@ -104,13 +105,18 @@ namespace Unity.FoxgloveSDK.Editor
                         + ", download and decompress the pinned asset, and compare SHA256 before installing.");
                 }
 
-                if (File.Exists(finalDllPath))
-                    File.Delete(finalDllPath);
-
-                File.Move(tempDll, finalDllPath);
-
-                if (!BuildHelperExecutable(versionDir, finalHelperPath, packageRoot, out var buildError))
+                if (!BuildHelperExecutable(versionDir, tempHelper, packageRoot, out var buildError))
+                {
+                    TryDelete(tempDll);
+                    TryDelete(tempHelper);
                     return Fail(buildError);
+                }
+
+                publishingFinalPair = true;
+                TryDelete(finalDllPath);
+                TryDelete(finalHelperPath);
+                File.Move(tempDll, finalDllPath);
+                File.Move(tempHelper, finalHelperPath);
 
                 TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
@@ -118,6 +124,13 @@ namespace Unity.FoxgloveSDK.Editor
             catch (Exception ex)
             {
                 TryDelete(compressedDownloadPath);
+                TryDelete(tempDll);
+                TryDelete(tempHelper);
+                if (publishingFinalPair)
+                {
+                    TryDelete(finalDllPath, warnOnFailure: true);
+                    TryDelete(finalHelperPath, warnOnFailure: true);
+                }
                 return Fail(
                     ex.Message
                     + "\nManual fallback: open "
@@ -531,7 +544,7 @@ namespace Unity.FoxgloveSDK.Editor
             => "\"" + (value ?? "").Replace("\"", "\\\"") + "\"";
 
         private static string QuoteBatchPath(string value)
-            => "\"" + (value ?? "").Replace("\"", "\"\"") + "\"";
+            => "\"" + (value ?? "").Replace("%", "%%").Replace("\"", "\"\"") + "\"";
 
         private static string BuildProcessDetails(string stdout, string stderr)
         {

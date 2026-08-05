@@ -104,6 +104,7 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!process.WaitForExit(Math.Max(500, timeoutMs)))
                     {
                         TryKill(process);
+                        process.WaitForExit(500);
                         var drainError = WaitForStreamDrain(stdoutTask, stderrTask, 500);
                         if (!string.IsNullOrEmpty(drainError))
                             return Invalid(normalizedHelper, normalizedDll, "", drainError);
