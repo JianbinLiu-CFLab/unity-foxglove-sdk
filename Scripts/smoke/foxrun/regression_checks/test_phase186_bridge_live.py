@@ -497,14 +497,19 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                     ), \
                     mock.patch.object(
                         live,
+                        "_parse_unity_evidence",
+                        side_effect=lambda *_args, **_kwargs: events.append("unity-evidence") or {},
+                    ), \
+                    mock.patch.object(
+                        live,
                         "_remove_manual_pointer",
                         side_effect=lambda *_args, **_kwargs: events.append("pointer-cleanup"),
                     ), \
                     mock.patch.object(live, "_cleanup_document", return_value=cleanup), \
                     mock.patch.object(
                         live,
-                        "_observation_path",
-                        return_value=output / "observation.json",
+                        "_build_observations",
+                        return_value={},
                     ):
                 live.run_live(
                     pathlib.Path("D:/repo"),
@@ -514,7 +519,35 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                     reporter=mock.Mock(),
                 )
 
-        self.assertEqual(["editor-release", "pointer-cleanup"], events)
+        self.assertEqual(
+            ["editor-release", "unity-evidence", "pointer-cleanup"],
+            events,
+        )
+
+    def test_observations_require_existing_evidence_files(self) -> None:
+        """Do not promote resolved path strings into observed live evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            output = pathlib.Path(temp)
+            config = {
+                "outputRoot": str(output),
+                "caseId": "product-inspector",
+            }
+            (output / "preflight.json").write_text("{}", encoding="utf-8")
+            (output / "cleanup.json").write_text("{}", encoding="utf-8")
+
+            with self.assertRaises(live.LiveFailure):
+                live._build_observations(config, {})
+
+            (output / "unity-evidence.json").write_text("{}", encoding="utf-8")
+            observations = live._build_observations(config, {})
+            self.assertTrue(all(item["observed"] for item in observations.values()))
+
+    def test_hostile_peer_data_uses_rejection_evidence_label(self) -> None:
+        """Do not label a hostile-frame rejection document as delivered payload."""
+        self.assertEqual(
+            "live-hostile-frame-rejection",
+            live._observation_source("bounds-hostile-peer", "data"),
+        )
 
     def test_manual_editor_release_marker_requires_exact_run_identity(self) -> None:
         """Verify that manual editor release marker requires exact run identity."""
@@ -550,6 +583,54 @@ class Phase186BridgeLiveTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertTrue(live._manual_editor_released_in_log(config))
+
+    def test_manual_unity_evidence_requires_real_publish_and_apply_counts(self) -> None:
+        """Manual completion must parse generated runtime counters."""
+        with tempfile.TemporaryDirectory() as temp:
+            output = pathlib.Path(temp)
+            log = output / "unity.log"
+            config = {
+                "outputRoot": str(output),
+                "unityLog": str(log),
+                "runId": "phase186h-current-0123456789ab",
+                "caseId": "manual-jazzy-fastrtps-duplex",
+                "tokenHash": "a" * 64,
+            }
+            prefix = (
+                "PHASE186_ACCEPTANCE_EVIDENCE "
+                f"run={config['runId']} "
+                f"case={config['caseId']} "
+                f"tokenHash={config['tokenHash']} "
+            )
+            log.write_text(
+                prefix
+                + "generation=1 received=2 applied=2 replaced=0 "
+                + "localMutations=1 accepted=1 sent=1 failed=0 "
+                + "connectTransitions=1 disconnectTransitions=0 "
+                + "generationChanges=0 dropped=0 providerReplaced=0\n",
+                encoding="utf-8",
+            )
+
+            evidence = live._parse_unity_evidence(
+                config,
+                require_pass_marker=False,
+            )
+            self.assertEqual(1, evidence["fields"]["sent"])
+            self.assertEqual(2, evidence["fields"]["applied"])
+
+            log.write_text(
+                prefix
+                + "generation=1 received=0 applied=0 replaced=0 "
+                + "localMutations=0 accepted=0 sent=0 failed=0 "
+                + "connectTransitions=1 disconnectTransitions=0 "
+                + "generationChanges=0 dropped=0 providerReplaced=0\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(live.LiveFailure):
+                live._parse_unity_evidence(
+                    config,
+                    require_pass_marker=False,
+                )
 
     def test_manual_wait_accepts_actor_exit_after_all_owned_results_exist(self) -> None:
         """Verify that manual wait accepts actor exit after all owned results exist."""

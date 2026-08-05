@@ -348,7 +348,10 @@ importlib.import_module("phase186_bridge_build")
                 "ctest": {"exitCode": 0, "log": "ctest.log"},
             },
             "ctest": {"tests": 1, "passed": 1},
-            "compiler": {"identity": "MSVC"},
+            "compiler": {
+                "identity": "MSVC 17.0",
+                "path": r"C:\BuildTools\cl.exe",
+            },
             "probeExecutable": {"sha256": "a" * 64},
             "generatedDuplexProbe": {"sha256": "b" * 64},
         }
@@ -357,6 +360,23 @@ importlib.import_module("phase186_bridge_build")
         invalid["commands"]["ctest"]["exitCode"] = 1
         with self.assertRaises(build.BridgeBuildFailure):
             build.validate_build_summary(invalid, row)
+
+        missing_compiler = json.loads(json.dumps(valid))
+        missing_compiler["compiler"] = {
+            "identity": "MSVC ",
+            "path": "",
+        }
+        with self.assertRaises(build.BridgeBuildFailure):
+            build.validate_build_summary(missing_compiler, row)
+
+    def test_compiler_identity_is_empty_without_cache_or_environment_evidence(self) -> None:
+        """A constant MSVC prefix must not count as compiler evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            identity = build._compiler_identity(
+                pathlib.Path(temp) / "missing-cache.txt",
+                {},
+            )
+        self.assertEqual({"identity": "", "path": ""}, identity)
 
 
 if __name__ == "__main__":

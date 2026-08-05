@@ -554,7 +554,13 @@ def validate_build_summary(value: Mapping[str, object], row: BridgeRow) -> None:
     ):
         raise BridgeBuildFailure("ctest evidence is missing or incomplete")
     compiler = value.get("compiler")
-    if not isinstance(compiler, Mapping) or not compiler.get("identity"):
+    if (
+        not isinstance(compiler, Mapping)
+        or not isinstance(compiler.get("identity"), str)
+        or not str(compiler.get("identity", "")).strip()
+        or not isinstance(compiler.get("path"), str)
+        or not str(compiler.get("path", "")).strip()
+    ):
         raise BridgeBuildFailure("compiler identity is missing")
     for name in ("probeExecutable", "generatedDuplexProbe"):
         executable = value.get(name)
@@ -729,10 +735,15 @@ def _compiler_identity(cache_path: pathlib.Path, environment: Mapping[str, str])
             if line.startswith("CMAKE_CXX_COMPILER:FILEPATH="):
                 compiler = line.split("=", 1)[1]
                 break
-    return {
-        "identity": "MSVC " + str(environment.get("VisualStudioVersion", "")).strip(),
-        "path": compiler,
-    }
+    version = str(environment.get("VisualStudioVersion", "")).strip()
+    identity = (
+        "MSVC " + version
+        if version and compiler
+        else pathlib.PureWindowsPath(compiler).name
+        if compiler
+        else ""
+    )
+    return {"identity": identity, "path": compiler}
 
 
 def _build_cpp_environment(
