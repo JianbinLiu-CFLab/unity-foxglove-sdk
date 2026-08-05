@@ -126,24 +126,9 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
             }
 
-            if (_leases.TryAcquire(
-                    contract,
-                    out lease,
-                    out var reason))
-            {
-                return Ros2BridgeSessionResult.Accepted();
-            }
-            return reason.IndexOf(
-                       "not ready",
-                       StringComparison.OrdinalIgnoreCase) >= 0
-                   || reason.IndexOf(
-                       "unavailable",
-                       StringComparison.OrdinalIgnoreCase) >= 0
-                   || reason.IndexOf(
-                       "stopped",
-                       StringComparison.OrdinalIgnoreCase) >= 0
-                ? Ros2BridgeSessionResult.Unavailable(reason)
-                : Ros2BridgeSessionResult.Reject(reason);
+            return _leases.TryAcquire(
+                contract,
+                out lease);
         }
 
         internal bool TryBeginApply(

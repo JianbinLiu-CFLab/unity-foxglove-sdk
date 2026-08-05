@@ -132,14 +132,14 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        internal bool TryAcquire(
+        internal Ros2BridgeSessionResult TryAcquire(
             Ros2BridgeSessionContract contract,
-            out IRos2BridgeContractLease lease,
-            out string reason)
+            out IRos2BridgeContractLease lease)
         {
             lease = null;
+            string reason;
             if (!ValidateContract(contract, out reason))
-                return false;
+                return Ros2BridgeSessionResult.Reject(reason);
 
             Entry entry;
             Lease created;
@@ -149,7 +149,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 if (_disposed)
                 {
                     reason = "The Bridge lease registry is disposed.";
-                    return false;
+                    return Ros2BridgeSessionResult.Unavailable(reason);
                 }
                 if (_byBinding.TryGetValue(
                         contract.BindingId,
@@ -159,13 +159,13 @@ namespace Unity2Foxglove.Ros2Bridge
                     {
                         reason =
                             "The Bridge binding identity conflicts with an active contract.";
-                        return false;
+                        return Ros2BridgeSessionResult.Reject(reason);
                     }
                     if (entry.State != EntryState.Ready)
                     {
                         reason =
                             "The Bridge contract registration is still pending.";
-                        return false;
+                        return Ros2BridgeSessionResult.Unavailable(reason);
                     }
                 }
                 else
@@ -174,14 +174,14 @@ namespace Unity2Foxglove.Ros2Bridge
                     {
                         reason =
                             "The Bridge contract lease capacity is exhausted.";
-                        return false;
+                        return Ros2BridgeSessionResult.Unavailable(reason);
                     }
                     if (_byContractId.ContainsKey(
                             contract.ContractId))
                     {
                         reason =
                             "The Bridge contract ID conflicts with an active binding.";
-                        return false;
+                        return Ros2BridgeSessionResult.Reject(reason);
                     }
                     entry = new Entry
                     {
@@ -199,7 +199,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         RemoveEntryLocked(entry);
                     reason =
                         "The Bridge lease identity counter is exhausted.";
-                    return false;
+                    return Ros2BridgeSessionResult.Fault(reason);
                 }
                 var identity = ++_nextLeaseIdentity;
                 created = new Lease(this, entry.Contract, identity);
@@ -209,12 +209,12 @@ namespace Unity2Foxglove.Ros2Bridge
 
             if (first)
             {
-                if (!_sessionState.TryActivateLocal(
-                        contract,
-                        out reason))
+                var activation =
+                    _sessionState.TryActivateLocal(contract);
+                if (!activation.IsAccepted)
                 {
                     RollBackFirst(entry, created);
-                    return false;
+                    return activation;
                 }
 
                 Ros2BridgeSessionResult registration;
@@ -237,7 +237,9 @@ namespace Unity2Foxglove.Ros2Bridge
                         registration.Reason)
                         ? "The Bridge wire registration was rejected."
                         : registration.Reason;
-                    return false;
+                    return new Ros2BridgeSessionResult(
+                        registration.State,
+                        reason);
                 }
 
                 var stoppedDuringRegistration = false;
@@ -290,13 +292,22 @@ namespace Unity2Foxglove.Ros2Bridge
                             ? string.Empty
                             : " Cleanup failed: "
                               + cleanupFailure);
-                    return false;
+                    return Ros2BridgeSessionResult.Unavailable(reason);
                 }
             }
 
             lease = created;
-            reason = string.Empty;
-            return true;
+            return Ros2BridgeSessionResult.Accepted();
+        }
+
+        internal bool TryAcquire(
+            Ros2BridgeSessionContract contract,
+            out IRos2BridgeContractLease lease,
+            out string reason)
+        {
+            var result = TryAcquire(contract, out lease);
+            reason = result.Reason;
+            return result.IsAccepted;
         }
 
         internal bool TryRelease(

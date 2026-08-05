@@ -49,6 +49,9 @@ namespace Unity2Foxglove.Ros2Bridge
 
     internal interface IRos2BridgeInboundContractResolver
     {
+        Ros2BridgeSessionResult TryAcceptSubscriptionReady(
+            U2R2Message message);
+
         Ros2BridgeSessionResult TryResolveInbound(
             U2R2Message message,
             out Ros2BridgeSessionContract contract);

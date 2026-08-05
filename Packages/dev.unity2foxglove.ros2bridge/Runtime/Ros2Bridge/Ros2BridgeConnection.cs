@@ -778,6 +778,24 @@ namespace Unity2Foxglove.Ros2Bridge
                     U2R2ProtocolCodec.ValidateResponseCorrelation(
                         pending.Request.Expectation,
                         message);
+                    if (message.Operation
+                            == U2R2Operation.SubscriptionReady
+                        && _inboundResolver != null)
+                    {
+                        var readiness =
+                            _inboundResolver
+                            .TryAcceptSubscriptionReady(message);
+                        if (!readiness.IsAccepted)
+                        {
+                            throw new U2R2ProtocolException(
+                                "response_mismatch",
+                                string.IsNullOrWhiteSpace(
+                                    readiness.Reason)
+                                    ? "The Bridge subscription_ready response could not activate its contract."
+                                    : readiness.Reason,
+                                terminal: true);
+                        }
+                    }
                     lock (_gate)
                     {
                         if (!_pending.TryGetValue(
