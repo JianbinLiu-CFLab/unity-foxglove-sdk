@@ -20,6 +20,7 @@ namespace Unity2Foxglove.Ros2Bridge
         IRos2BridgeContractWireController
     {
         private readonly object _gate = new object();
+        private readonly object _requestAdmissionGate = new object();
         private readonly IRos2BridgeSessionTransport _transport;
         private readonly bool _disposeTransport;
         private readonly U2R2ProtocolLimits _limits;
@@ -380,40 +381,46 @@ namespace Unity2Foxglove.Ros2Bridge
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
-            Ros2BridgeV2SessionSnapshot snapshot;
-            lock (_gate)
+            PendingRequest pending;
+            lock (_requestAdmissionGate)
             {
-                ThrowIfDisposedLocked();
-                if (_lifecycleState
-                    != Ros2BridgeSessionLifecycleState.Ready
-                    || _snapshot == null)
+                Ros2BridgeV2SessionSnapshot snapshot;
+                lock (_gate)
                 {
-                    throw new InvalidOperationException(
-                        "Normal Bridge work requires a correlated hello_ack.");
+                    ThrowIfDisposedLocked();
+                    if (_lifecycleState
+                        != Ros2BridgeSessionLifecycleState.Ready
+                        || _snapshot == null)
+                    {
+                        throw new InvalidOperationException(
+                            "Normal Bridge work requires a correlated hello_ack.");
+                    }
+                    snapshot = _snapshot;
                 }
-                snapshot = _snapshot;
+
+                var requestId = _requestIds.Next();
+                var request = requestFactory(requestId, snapshot)
+                    ?? throw new InvalidOperationException(
+                        "The Bridge request factory returned null.");
+                if (request.Expectation.RequestId != requestId
+                    || request.Expectation.AssignsSessionIdentity
+                    || !string.Equals(
+                        request.Expectation.SessionId,
+                        snapshot.SessionId,
+                        StringComparison.Ordinal)
+                    || request.Expectation.ConnectionGeneration
+                    != snapshot.ConnectionGeneration)
+                {
+                    throw new U2R2ProtocolException(
+                        "invalid_configuration",
+                        "The Bridge request does not target the active session.",
+                        terminal: true);
+                }
+
+                pending = Enqueue(request);
             }
 
-            var requestId = _requestIds.Next();
-            var request = requestFactory(requestId, snapshot)
-                ?? throw new InvalidOperationException(
-                    "The Bridge request factory returned null.");
-            if (request.Expectation.RequestId != requestId
-                || request.Expectation.AssignsSessionIdentity
-                || !string.Equals(
-                    request.Expectation.SessionId,
-                    snapshot.SessionId,
-                    StringComparison.Ordinal)
-                || request.Expectation.ConnectionGeneration
-                != snapshot.ConnectionGeneration)
-            {
-                throw new U2R2ProtocolException(
-                    "invalid_configuration",
-                    "The Bridge request does not target the active session.",
-                    terminal: true);
-            }
-
-            var response = EnqueueAndWait(request, timeoutMs);
+            var response = WaitForResponse(pending, timeoutMs);
             return U2R2ProtocolCodec.ParseV2(
                 U2R2ProtocolCodec.DecodeFrame(
                     response,
@@ -500,61 +507,85 @@ namespace Unity2Foxglove.Ros2Bridge
             Ros2BridgeV2Request request,
             int timeoutMs)
         {
-            using var pending = new PendingRequest(request);
-            lock (_gate)
-            {
-                ThrowIfDisposedLocked();
-                if (_stopRequested
-                    || _lifecycleState
-                    == Ros2BridgeSessionLifecycleState.Faulted
-                    || _lifecycleState
-                    == Ros2BridgeSessionLifecycleState.Stopping
-                    || _lifecycleState
-                    == Ros2BridgeSessionLifecycleState.Stopped)
-                {
-                    throw new InvalidOperationException(
-                        "The Bridge connection is not admitting work.");
-                }
-                if (_pending.Count >= _pendingCapacity)
-                {
-                    throw new U2R2ProtocolException(
-                        "capacity_exceeded",
-                        "The Bridge outstanding-request table is full.",
-                        terminal: false);
-                }
-                if (_writerQueue.Count >= _writerCapacity)
-                {
-                    throw new U2R2ProtocolException(
-                        "capacity_exceeded",
-                        "The Bridge writer queue is full.",
-                        terminal: false);
-                }
-                if (_pending.ContainsKey(
-                        request.Expectation.RequestId))
-                {
-                    throw new U2R2ProtocolException(
-                        "request_id_conflict",
-                        "The Bridge request ID is already in flight.",
-                        terminal: true);
-                }
+            var pending = Enqueue(request);
+            return WaitForResponse(pending, timeoutMs);
+        }
 
-                _pending.Add(
-                    request.Expectation.RequestId,
-                    pending);
-                _writerQueue.Enqueue(pending);
+        private PendingRequest Enqueue(
+            Ros2BridgeV2Request request)
+        {
+            var pending = new PendingRequest(request);
+            try
+            {
+                lock (_gate)
+                {
+                    ThrowIfDisposedLocked();
+                    if (_stopRequested
+                        || _lifecycleState
+                        == Ros2BridgeSessionLifecycleState.Faulted
+                        || _lifecycleState
+                        == Ros2BridgeSessionLifecycleState.Stopping
+                        || _lifecycleState
+                        == Ros2BridgeSessionLifecycleState.Stopped)
+                    {
+                        throw new InvalidOperationException(
+                            "The Bridge connection is not admitting work.");
+                    }
+                    if (_pending.Count >= _pendingCapacity)
+                    {
+                        throw new U2R2ProtocolException(
+                            "capacity_exceeded",
+                            "The Bridge outstanding-request table is full.",
+                            terminal: false);
+                    }
+                    if (_writerQueue.Count >= _writerCapacity)
+                    {
+                        throw new U2R2ProtocolException(
+                            "capacity_exceeded",
+                            "The Bridge writer queue is full.",
+                            terminal: false);
+                    }
+                    if (_pending.ContainsKey(
+                            request.Expectation.RequestId))
+                    {
+                        throw new U2R2ProtocolException(
+                            "request_id_conflict",
+                            "The Bridge request ID is already in flight.",
+                            terminal: true);
+                    }
+
+                    _pending.Add(
+                        request.Expectation.RequestId,
+                        pending);
+                    _writerQueue.Enqueue(pending);
+                }
+            }
+            catch
+            {
+                pending.Dispose();
+                throw;
             }
             _writerSignal.Set();
+            return pending;
+        }
 
-            if (!pending.Wait(timeoutMs))
+        private byte[] WaitForResponse(
+            PendingRequest pending,
+            int timeoutMs)
+        {
+            using (pending)
             {
-                var timeout = new U2R2ProtocolException(
-                    "timeout",
-                    "The Bridge request exceeded its absolute deadline.",
-                    terminal: true);
-                Fault(timeout);
-                throw timeout;
+                if (!pending.Wait(timeoutMs))
+                {
+                    var timeout = new U2R2ProtocolException(
+                        "timeout",
+                        "The Bridge request exceeded its absolute deadline.",
+                        terminal: true);
+                    Fault(timeout);
+                    throw timeout;
+                }
+                return pending.GetResponse();
             }
-            return pending.GetResponse();
         }
 
         private void WriterEntry()
@@ -583,6 +614,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 PendingRequest heartbeat = null;
                 Ros2BridgeV2SessionSnapshot heartbeatSnapshot = null;
                 var waitMilliseconds = 50;
+                var heartbeatDue = false;
                 try
                 {
                     lock (_gate)
@@ -601,26 +633,52 @@ namespace Unity2Foxglove.Ros2Bridge
                                 HeartbeatWaitMilliseconds(
                                     lastWriteTimestamp,
                                     heartbeatIntervalTicks);
-                            if (waitMilliseconds == 0
-                                && _pending.Count < _pendingCapacity)
+                            heartbeatDue = waitMilliseconds == 0;
+                        }
+                    }
+
+                    if (request == null && heartbeatDue)
+                    {
+                        lock (_requestAdmissionGate)
+                        {
+                            lock (_gate)
                             {
-                                heartbeatSnapshot = _snapshot;
-                                var heartbeatRequest =
-                                    Ros2BridgeV2SessionCodec
-                                        .CreateHealthPing(
-                                            heartbeatSnapshot,
-                                            _requestIds.Next());
-                                heartbeat = new PendingRequest(
-                                    heartbeatRequest);
-                                _pending.Add(
-                                    heartbeatRequest.Expectation.RequestId,
-                                    heartbeat);
-                            }
-                            else if (waitMilliseconds == 0)
-                            {
-                                // Existing correlated work owns the bounded
-                                // request table and takes precedence.
-                                waitMilliseconds = 50;
+                                if (_stopRequested)
+                                    return;
+                                if (_writerQueue.Count != 0)
+                                {
+                                    request = _writerQueue.Dequeue();
+                                }
+                                else if (_lifecycleState
+                                         == Ros2BridgeSessionLifecycleState.Ready
+                                         && _snapshot != null)
+                                {
+                                    waitMilliseconds =
+                                        HeartbeatWaitMilliseconds(
+                                            lastWriteTimestamp,
+                                            heartbeatIntervalTicks);
+                                    if (waitMilliseconds == 0
+                                        && _pending.Count < _pendingCapacity)
+                                    {
+                                        heartbeatSnapshot = _snapshot;
+                                        var heartbeatRequest =
+                                            Ros2BridgeV2SessionCodec
+                                                .CreateHealthPing(
+                                                    heartbeatSnapshot,
+                                                    _requestIds.Next());
+                                        heartbeat = new PendingRequest(
+                                            heartbeatRequest);
+                                        _pending.Add(
+                                            heartbeatRequest.Expectation.RequestId,
+                                            heartbeat);
+                                    }
+                                    else if (waitMilliseconds == 0)
+                                    {
+                                        // Existing correlated work owns the bounded
+                                        // request table and takes precedence.
+                                        waitMilliseconds = 50;
+                                    }
+                                }
                             }
                         }
                     }

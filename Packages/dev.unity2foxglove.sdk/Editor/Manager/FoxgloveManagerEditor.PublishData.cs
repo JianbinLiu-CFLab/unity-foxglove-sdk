@@ -86,14 +86,16 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            DrawFoxRunTransportObservedStatus(manager);
-
             var publishTransportIds =
                 FindCachedProperty(
                     "_foxRunPublishTransportIds");
             var subscribeTransportId =
                 FindCachedProperty(
                     "_foxRunSubscribeTransportId");
+            DrawFoxRunTransportObservedStatus(
+                manager,
+                publishTransportIds,
+                subscribeTransportId);
             foreach (var drawer in
                      FoxRunTransportProviderDrawerRegistry.Capture())
             {
@@ -110,7 +112,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static void DrawFoxRunTransportObservedStatus(
-            FoxgloveManager manager)
+            FoxgloveManager manager,
+            SerializedProperty publishTransportIds,
+            SerializedProperty subscribeTransportId)
         {
             var statuses =
                 manager.CaptureFoxRunTransportStatuses();
@@ -120,14 +124,15 @@ namespace Unity.FoxgloveSDK.Editor
                 statuses.Select(status => status.ProviderId.Value),
                 StringComparer.Ordinal);
             foreach (var transportId in
-                     manager.ConfiguredFoxRunPublishTransportIds)
+                     ReadSerializedStringSet(publishTransportIds))
             {
-                visibleProviderIds.Add(transportId.Value);
+                if (!string.IsNullOrWhiteSpace(transportId))
+                    visibleProviderIds.Add(transportId);
             }
-            var subscribeTransportId =
-                manager.ConfiguredFoxRunSubscribeTransportId;
-            if (!string.IsNullOrEmpty(subscribeTransportId.Value))
-                visibleProviderIds.Add(subscribeTransportId.Value);
+            var configuredSubscribeTransportId =
+                subscribeTransportId?.stringValue;
+            if (!string.IsNullOrWhiteSpace(configuredSubscribeTransportId))
+                visibleProviderIds.Add(configuredSubscribeTransportId);
             var retired = manager
                 .CaptureRetiredFoxRunTransportWorkers()
                 .Where(worker => visibleProviderIds.Contains(
@@ -436,7 +441,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty property)
         {
             var values = new HashSet<string>(StringComparer.Ordinal);
-            if (!property.isArray)
+            if (property == null || !property.isArray)
                 return values;
             for (var index = 0; index < property.arraySize; index++)
             {

@@ -694,7 +694,8 @@ namespace Unity2Foxglove.Ros2Bridge
                     runtime?.GetPublisherObservationSnapshot()
                     ?? Ros2BridgePublisherObservationSnapshot.Empty,
                     subscriptions?.GetObservationSnapshot()
-                    ?? Ros2BridgeSubscriptionObservationSnapshot.Empty);
+                    ?? Ros2BridgeSubscriptionObservationSnapshot.Empty,
+                    runtime?.GetInboundStatsSnapshot());
             }
 
             public FoxRunTransportPublishResult PublishGenerated(

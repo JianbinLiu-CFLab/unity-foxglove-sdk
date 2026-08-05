@@ -50,6 +50,12 @@ namespace Unity2Foxglove
             }
             if (!Application.isBatchMode || !HasArgument(RunConfigArgument))
                 return;
+            if (SessionState.GetBool(Key("requested"), false)
+                && _configuration == null
+                && !TryRestoreBatchConfiguration())
+            {
+                return;
+            }
             AttachHandlers();
             if (!SessionState.GetBool(Key("requested"), false))
             {
@@ -464,7 +470,11 @@ namespace Unity2Foxglove
             {
                 return;
             }
-            _configuration ??= LoadFromCommandLine();
+            if (_configuration == null)
+            {
+                RequestExit(5, "configuration-unavailable");
+                return;
+            }
             var line = (condition ?? string.Empty).Trim();
             var expected = _configuration.Manual
                 ? _configuration.ManualTerminalMarker("PASS")
@@ -504,6 +514,22 @@ namespace Unity2Foxglove
                 EditorApplication.ExitPlaymode();
             else
                 EditorApplication.delayCall += CompleteRequestedExit;
+        }
+
+        private static bool TryRestoreBatchConfiguration()
+        {
+            try
+            {
+                _configuration = LoadFromCommandLine();
+                return true;
+            }
+            catch (Exception exception)
+            {
+                AttachHandlers();
+                RequestExit(5, "configuration-unavailable");
+                Debug.LogException(exception);
+                return false;
+            }
         }
 
         private static void CompleteRequestedExit()
@@ -925,22 +951,23 @@ namespace Unity2Foxglove
 
         private static string ReadGitHead(string repository)
         {
-            using var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
+            var result = FoxgloveEditorProcessRunner.Run(
+                new ProcessStartInfo
                 {
                     FileName = "git",
                     Arguments = "rev-parse HEAD",
                     WorkingDirectory = repository,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
                 },
-            };
-            if (!process.Start() || !process.WaitForExit(30000) || process.ExitCode != 0)
-                throw new InvalidDataException("Current Git HEAD could not be read.");
-            return process.StandardOutput.ReadToEnd().Trim();
+                timeoutMs: 30000);
+            if (result.TimedOut || result.ExitCode != 0)
+            {
+                throw new InvalidDataException(
+                    "Current Git HEAD could not be read: "
+                    + (result.TimedOut
+                        ? "git timed out."
+                        : result.Stderr.Trim()));
+            }
+            return result.Stdout.Trim();
         }
 
         private static string Normalize(string path)

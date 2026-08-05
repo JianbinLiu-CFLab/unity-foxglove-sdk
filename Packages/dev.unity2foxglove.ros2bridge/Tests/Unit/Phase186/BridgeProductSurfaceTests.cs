@@ -154,6 +154,50 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             {
                 Assert.Contains(removed, upgrade, StringComparison.Ordinal);
             }
+            foreach (var requiredMigration in new[]
+                     {
+                         "IFoxRunTransportProviderDrawer.Order",
+                         "IFoxRunManagerSetupDrawer.Order",
+                         "`foxglove.websocket` is reserved",
+                         "duplicate drawer IDs remain conflicted",
+                         "does not fall back to foxglove.websocket",
+                         "installed Provider choices"
+                     })
+            {
+                Assert.Contains(
+                    requiredMigration,
+                    upgrade,
+                    StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void ManagerStatusRenderingReadsRepairableSerializedProviderIds()
+        {
+            var editor = File.ReadAllText(PathOf(
+                "Packages/dev.unity2foxglove.sdk/Editor/Manager/"
+                + "FoxgloveManagerEditor.PublishData.cs"));
+            var status = Slice(
+                editor,
+                "private static void DrawFoxRunTransportObservedStatus(",
+                "private static string DirectionLabel(");
+
+            Assert.Contains(
+                "SerializedProperty publishTransportIds",
+                status,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadSerializedStringSet(publishTransportIds)",
+                status,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ConfiguredFoxRunPublishTransportIds",
+                status,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ConfiguredFoxRunSubscribeTransportId",
+                status,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -402,6 +446,30 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 probe,
                 StringComparison.Ordinal);
             Assert.Contains("EditorApplication.EnterPlaymode", probe, StringComparison.Ordinal);
+            var logCallback = Slice(
+                probe,
+                "private static void OnLogMessage(",
+                "private static void RequestExit(");
+            Assert.DoesNotContain(
+                "LoadFromCommandLine",
+                logCallback,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "configuration-unavailable",
+                logCallback,
+                StringComparison.Ordinal);
+            var gitHead = Slice(
+                probe,
+                "private static string ReadGitHead(",
+                "private static string Normalize(");
+            Assert.Contains(
+                "FoxgloveEditorProcessRunner.Run",
+                gitHead,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "WaitForExit",
+                gitHead,
+                StringComparison.Ordinal);
             var manualPrepare = Slice(
                 probe,
                 "public static void PrepareCurrentManualRun()",
@@ -562,6 +630,35 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.DoesNotContain(
                 "topic.IndexOf(\"phase184\"",
                 runtime,
+                StringComparison.Ordinal);
+            var externalInput = Slice(
+                runtime,
+                "private bool HasObservedExternalInput()",
+                "private void EmitProgressIfChanged()");
+            Assert.Contains(
+                "IsExpectedExternalInput",
+                externalInput,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "IndexOf",
+                externalInput,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativePublisherCapacityDoesNotTerminateSourceDiscovery()
+        {
+            var source = File.ReadAllText(PathOf(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/"
+                + "FoxRun/FoxRunRos2CustomPublisherHub.cs"));
+
+            Assert.DoesNotContain(
+                "index < behaviours.Length && _bindings.Count < MaximumBindings",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ObserveBindingDemand(",
+                source,
                 StringComparison.Ordinal);
         }
 

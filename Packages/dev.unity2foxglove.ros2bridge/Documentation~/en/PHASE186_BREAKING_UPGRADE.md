@@ -61,6 +61,25 @@ An omitted publish list inherits the Manager's frozen zero-or-more Publish
 destinations. An omitted subscribe ID inherits its one enabled Subscribe
 source. Explicit IDs are never replaced by a fallback.
 
+## Provider extension and Inspector changes
+
+- Third-party Editor integrations must now implement both
+  `IFoxRunTransportProviderDrawer.Order` and
+  `IFoxRunManagerSetupDrawer.Order`. These required interface members are a
+  source-breaking change; use them to give drawers a deterministic order.
+- The drawer ID `foxglove.websocket` is reserved for the built-in transport.
+  A third-party drawer must not register that ID.
+- Registrations with duplicate drawer IDs remain conflicted until only one
+  owner remains. The later registration no longer replaces the earlier one,
+  and a conflicted Provider has no Inspector subsection.
+- An empty Manager Subscribe Transport ID disables selection of a Subscribe
+  source and does not fall back to foxglove.websocket. The corresponding
+  `ConfiguredFoxRunSubscribeTransportId.Value` is `null` until a source is
+  selected.
+- Publish and Subscribe fields are closed selectors over installed Provider
+  choices. Select from the installed Provider choices; the Inspector no
+  longer accepts an arbitrary not-yet-installed Provider ID as free text.
+
 ## Exact old core public type inventory
 
 The following top-level public type names no longer resolve from the core SDK
@@ -280,7 +299,7 @@ _foxRunRos2NativeCopyBudgetBytes
 Replacement:
 
 1. In `FoxgloveManager > Data Transport`, select zero or more Publish
-   destinations.
+   destinations from the installed Provider choices.
 2. Enable subscriptions only when needed and select exactly one Source.
 3. Selecting Bridge or R2FU creates its hidden, normally serialized companion.
 4. Configure host/port/reconnect or native runtime/QoS only in that Provider's
