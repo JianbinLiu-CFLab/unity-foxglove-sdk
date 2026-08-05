@@ -1274,6 +1274,19 @@ def validate_desktop_live_summary(
     return summary
 
 
+def _reconcile_final_summary_validation(
+    summary: dict[str, Any],
+) -> protocol.AcceptanceFailure | None:
+    """Record the strongest final validation failure in the terminal verdict."""
+
+    try:
+        validate_desktop_live_summary(summary)
+    except protocol.AcceptanceFailure as validation_failure:
+        summary["verdict"] = validation_failure.code
+        return validation_failure
+    return None
+
+
 @dataclasses.dataclass(frozen=True)
 class IdentityExitVerification:
     """Independent post-Job proof for every captured PID-safe identity."""
@@ -3652,16 +3665,9 @@ def run_acceptance(
             )
         summary["verdict"] = "PASS" if failure is None else failure.code
 
-        try:
-            validate_desktop_live_summary(summary)
-        except protocol.AcceptanceFailure as validation_failure:
-            if summary["verdict"] == "PASS":
-                failure = validation_failure
-                summary["verdict"] = validation_failure.code
-                validate_desktop_live_summary(summary)
-            elif validation_failure.code == protocol.FAIL_CLEANUP:
-                summary["verdict"] = protocol.FAIL_CLEANUP
-                validate_desktop_live_summary(summary)
+        validation_failure = _reconcile_final_summary_validation(summary)
+        if validation_failure is not None:
+            failure = validation_failure
 
         if output_created:
             try:

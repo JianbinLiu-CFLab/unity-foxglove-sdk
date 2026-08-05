@@ -216,16 +216,45 @@ def _wait_for_marker(
     raise ProbeFailure("subscriber did not reach its ready marker")
 
 
-def _terminate_owned(process: subprocess.Popen[str] | None) -> None:
-    """Best-effort terminate and reap one process owned by this probe."""
+def _terminate_owned(process: subprocess.Popen[str] | None) -> str | None:
+    """Terminate and reap one process, returning a bounded cleanup diagnostic."""
 
-    if process is None or process.poll() is not None:
-        return
+    if process is None:
+        return None
+    pid = int(getattr(process, "pid", 0) or 0)
     try:
+        if process.poll() is not None:
+            return None
         process.kill()
         process.wait(timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return (
+            f"owned process {pid} could not be terminated or reaped "
+            f"({type(exc).__name__})"
+        )
+    return None
+
+
+def _record_cleanup_failures(
+    result: dict[str, object],
+    diagnostics: Sequence[str],
+) -> None:
+    """Make owned-process cleanup failures part of the durable row result."""
+
+    failures = tuple(value for value in diagnostics if value)
+    if not failures:
+        return
+    cleanup_message = "owned-process cleanup failed: " + "; ".join(failures)
+    existing = result.get("failure")
+    result["failure"] = (
+        str(existing) + "; " + cleanup_message
+        if isinstance(existing, str) and existing
+        else cleanup_message
+    )
+    result["verdict"] = "FAIL"
+    owned = result.get("ownedProcesses")
+    if isinstance(owned, dict):
+        owned["cleanupComplete"] = False
 
 
 def _process_options() -> dict[str, object]:
@@ -344,6 +373,7 @@ def run_row(
     zenoh_evidence: dict[str, object] | None = None
     subscriber_pid = 0
     publisher_pid = 0
+    result: dict[str, object] | None = None
     try:
         if os.name != "nt" or platform.system() != "Windows":
             raise build.LivePrerequisiteMissing("Windows-native execution")
@@ -498,7 +528,7 @@ def run_row(
             or observed_rmw != row.rmw
         ):
             raise ProbeFailure("requested RMW differs from process observations")
-        result: dict[str, object] = {
+        result = {
             "schemaVersion": SUMMARY_SCHEMA_VERSION,
             "rowId": row.row_id,
             "distro": row.distro,
@@ -577,8 +607,18 @@ def run_row(
         _write_json_atomic(result_path, result)
         return result
     finally:
-        _terminate_owned(publisher)
-        _terminate_owned(subscriber)
+        cleanup_failures = tuple(
+            diagnostic
+            for diagnostic in (
+                _terminate_owned(publisher),
+                _terminate_owned(subscriber),
+            )
+            if diagnostic is not None
+        )
+        if result is not None and cleanup_failures:
+            _record_cleanup_failures(result, cleanup_failures)
+            result["finishedAt"] = build.timestamp()
+            _write_json_atomic(result_path, result)
         if publisher_log_stream is not None:
             publisher_log_stream.close()
         if subscriber_log_stream is not None:

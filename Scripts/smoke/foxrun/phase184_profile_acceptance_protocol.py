@@ -16,7 +16,7 @@ import subprocess
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 
 RUN_CONFIG_SCHEMA_VERSION = 1

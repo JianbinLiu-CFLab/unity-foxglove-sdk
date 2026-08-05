@@ -12,6 +12,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import typing
 import unittest
 
 
@@ -449,6 +450,18 @@ def valid_summary(protocol, config: dict[str, object]) -> dict[str, object]:
 
 class Phase184ProfileAcceptanceProtocolTests(unittest.TestCase):
     """Reject incomplete, contradictory, stale, or unsafe Phase184-G evidence."""
+
+    def test_runtime_type_hints_resolve_for_all_protocol_functions(self):
+        """Keep postponed annotations resolvable by runtime tooling."""
+
+        protocol = load_protocol_module()
+
+        for value in vars(protocol).values():
+            if (
+                callable(value)
+                and getattr(value, "__module__", None) == protocol.__name__
+            ):
+                typing.get_type_hints(value)
 
     def test_case_profile_table_is_exact_and_directionally_allocated(self):
         """Five cases remain bound to the approved representative profiles."""
