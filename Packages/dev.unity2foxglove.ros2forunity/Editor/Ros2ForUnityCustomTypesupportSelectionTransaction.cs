@@ -801,8 +801,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                          ?? dependencies.Property("dev.unity2foxglove.sdk")
                          ?? dependencies.Properties().FirstOrDefault();
             if (anchor == null)
-                throw new InvalidOperationException("manifest has no dependency anchor");
-            anchor.AddAfterSelf(new JProperty(packageId, reference));
+            {
+                dependencies.Add(new JProperty(packageId, reference));
+            }
+            else
+            {
+                anchor.AddAfterSelf(new JProperty(packageId, reference));
+            }
         }
 
         private static string RepositoryPackagesDirectory(string projectDirectory)
