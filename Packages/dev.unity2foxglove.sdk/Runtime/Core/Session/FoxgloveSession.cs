@@ -726,8 +726,19 @@ namespace Unity.FoxgloveSDK.Core
 
         private List<(uint clientId, uint subscriptionId)> CopySubscribersForPublish(uint channelId)
         {
-            // Reuses per-thread scratch; transports must not synchronously reenter Publish on the same thread.
-            var subscribers = s_publishSubscriberScratch ??= new List<(uint clientId, uint subscriptionId)>();
+            // Keep the allocation-free normal path, but do not share an active
+            // snapshot with a transport that synchronously reenters Publish.
+            var subscribers = s_publishSubscriberScratch;
+            if (subscribers == null)
+            {
+                subscribers = new List<(uint clientId, uint subscriptionId)>();
+                s_publishSubscriberScratch = subscribers;
+            }
+            else if (subscribers.Count != 0)
+            {
+                subscribers = new List<(uint clientId, uint subscriptionId)>();
+            }
+
             lock (_subscriberScratchLock)
             {
                 _subscriptions.CopySubscribersForChannel(channelId, _subscriberScratch);
