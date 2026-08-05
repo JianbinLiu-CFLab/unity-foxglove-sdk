@@ -121,6 +121,102 @@ namespace Phase186
         }
 
         [Fact]
+        public void NestedValueTypeMemberCompilesForPublishAndSubscribe()
+        {
+            var vector = FoxRunTypeShape.Object(
+                "UnityEngine.Vector3",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "x",
+                        "x",
+                        FoxRunTypeShape.Canonical("float32")),
+                    new FoxRunTypeField(
+                        "y",
+                        "y",
+                        FoxRunTypeShape.Canonical("float32")),
+                    new FoxRunTypeField(
+                        "z",
+                        "z",
+                        FoxRunTypeShape.Canonical("float32")),
+                },
+                canConstruct: true,
+                isValueType: true);
+            var state = FoxRunTypeShape.Object(
+                "Phase181.State",
+                new[]
+                {
+                    new FoxRunTypeField(
+                        "position",
+                        "Position",
+                        vector),
+                },
+                canConstruct: true);
+            var emitted = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
+                new FoxRunGenerationType(
+                    "Phase181",
+                    "GeneratedCdrProbe",
+                    new[]
+                    {
+                        CreateCustomMember(
+                            FoxRunFlow.PublishAndSubscribe,
+                            state),
+                    }));
+            var host = @"
+namespace Phase181
+{
+    public sealed class State
+    {
+        public global::UnityEngine.Vector3 Position;
+    }
+
+    public sealed partial class GeneratedCdrProbe :
+        global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource
+    {
+        private readonly string __foxRunOrigin;
+        private readonly State __foxRunCapture_0_0;
+        private readonly ulong __foxRunCaptureSequence_0;
+        public State State;
+
+        void global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_MarkRemoteApplied(
+            int topicIndex, string transportId, ulong generation) { }
+        void global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_ClearRemoteApplied(
+            int topicIndex, string transportId, ulong generation) { }
+        bool global::Unity.FoxgloveSDK.Components.IFoxRunRemoteOwnershipSource.FoxRunOrigin_TryGetRemoteApplied(
+            int topicIndex, out string transportId, out ulong generation)
+        {
+            transportId = string.Empty;
+            generation = 0;
+            return false;
+        }
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase187ValueTypeNestedCdr_"
+                + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(host),
+                    CSharpSyntaxTree.ParseText(emitted),
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary));
+
+            using var stream = new MemoryStream();
+            var result = compilation.Emit(stream);
+
+            Assert.True(
+                result.Success,
+                string.Join(
+                    Environment.NewLine,
+                    result.Diagnostics.Where(
+                        diagnostic =>
+                            diagnostic.Severity
+                            == DiagnosticSeverity.Error)));
+        }
+
+        [Fact]
         public void BridgeContributionExposesDeterministicTypedSubscribeBindingWithoutReflection()
         {
             var source = FoxRunBridgeSourceEmitter.EmitBridgeContribution(
