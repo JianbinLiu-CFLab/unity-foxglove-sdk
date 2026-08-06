@@ -87,7 +87,8 @@ namespace Foxglove.Schemas
             if (frameId == null)
                 frameId = string.Empty;
 
-            ValidateCovariance(orientationCovariance, nameof(orientationCovariance));
+            if (includeOrientation)
+                ValidateCovariance(orientationCovariance, nameof(orientationCovariance));
             ValidateCovariance(angularVelocityCovariance, nameof(angularVelocityCovariance));
             ValidateCovariance(linearAccelerationCovariance, nameof(linearAccelerationCovariance));
 

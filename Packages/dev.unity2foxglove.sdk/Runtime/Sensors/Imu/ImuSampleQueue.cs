@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Number of samples currently queued.</summary>
         public int Count => _count;
 
-        /// <summary>Total number of oldest samples dropped since the last resize.</summary>
+        /// <summary>Total number of oldest samples dropped by or since the last resize.</summary>
         public long DroppedCount => _droppedCount;
 
         /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
@@ -62,6 +62,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var next = new ImuSample[capacity];
             var copyCount = Math.Min(_count, capacity);
+            var droppedByResize = _count - copyCount;
             for (var i = 0; i < copyCount; i++)
             {
                 TryDequeue(out next[i]);
@@ -71,6 +72,7 @@ namespace Unity.FoxgloveSDK.Components
             _count = copyCount;
             _head = 0;
             _droppedCount = 0;
+            RecordDropped(droppedByResize);
         }
 
         /// <summary>Add a sample, dropping the oldest sample when the queue is full.</summary>
