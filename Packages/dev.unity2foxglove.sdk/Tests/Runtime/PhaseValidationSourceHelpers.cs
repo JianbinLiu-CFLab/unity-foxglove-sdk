@@ -525,16 +525,16 @@ namespace Unity.FoxgloveSDK.Tests
                 });
         }
 
-        public static string SourceMethod(string source, string methodName)
+        public static string TrySourceMethod(string source, string methodName)
             => SourceDeclaration(
                 source,
                 methodName,
                 IsSourceMethodDeclaration,
                 CSharpParseOptions.Default);
 
-        public static string RequiredSourceMethod(string source, string methodName)
+        public static string SourceMethod(string source, string methodName)
         {
-            var method = SourceMethod(source, methodName);
+            var method = TrySourceMethod(source, methodName);
             if (string.IsNullOrEmpty(method))
             {
                 throw new InvalidOperationException(
@@ -543,6 +543,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             return method;
         }
+
+        public static string RequiredSourceMethod(string source, string methodName)
+            => SourceMethod(source, methodName);
 
         public static string SourceMethodWithPreprocessorSymbols(
             string source,

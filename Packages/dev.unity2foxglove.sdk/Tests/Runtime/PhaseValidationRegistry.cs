@@ -446,7 +446,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase140h", "Phase 140H: publish cadence diagnostics and fixed-time scheduler boundary validation", Phase140HValidation.Validate, includeInDefault: false),
             Ci("--phase140h2", "Phase 140H2: IMU WebSocket visualization burst boundary validation", Phase140H2Validation.Validate, includeInDefault: false),
             Ci("--phase140j", "Phase 140J: replay enable-failure diagnostics and cursor gate validation", Phase140JValidation.Validate, includeInDefault: false),
-            Ci("--phase141a", "FoxRun conditional publish gates", FoxRunConditionalPublishGateValidation.Validate, includeInDefault: false),
+            Ci("--phase141a", "FoxRun conditional publish gates", FoxRunConditionalPublishGateValidation.Validate),
             Ci("--phase141b", "FoxService declarative RPC", FoxServiceDeclarativeRpcValidation.Validate, includeInDefault: false),
             Ci("--phase141c", "FoxService DTO serialization analyzer", FoxServiceDtoSerializationAnalyzerValidation.Validate, includeInDefault: false),
             Ci("--phase141e", "FoxService editor schema polish", FoxServiceEditorSchemaPolishValidation.Validate, includeInDefault: false),

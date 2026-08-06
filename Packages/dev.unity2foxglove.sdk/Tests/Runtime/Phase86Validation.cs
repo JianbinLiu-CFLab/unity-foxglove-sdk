@@ -79,11 +79,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySidecarLifecycleFile(string relativePath, string checkName)
         {
             var source = ReadRepoText(relativePath);
-            var stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void StopNoLock(");
+            var stopMethod = PhaseValidationSourceHelpers.TrySourceMethod(source, "private void StopNoLock(");
             if (string.IsNullOrEmpty(stopMethod))
                 stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
-            if (string.IsNullOrEmpty(stopMethod))
-                throw new InvalidOperationException("[FAIL] missing source method: private void Stop(");
             var capturesProcess = source.Contains("var process = _process;") ||
                                   source.Contains("var process = Interlocked.Exchange(ref _process, null);");
             var waitsTasks = (stopMethod.Contains("WaitForTask(_stdinTask") &&
