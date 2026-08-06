@@ -106,17 +106,11 @@ namespace Unity.FoxgloveSDK.IO
             if (string.IsNullOrEmpty(header))
                 return true;
             if (!header.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
-            {
-                problem = "Only bytes ranges are supported.";
-                return false;
-            }
+                return true;
 
             var spec = header.Substring("bytes=".Length).Trim();
             if (spec.IndexOf(',') >= 0)
-            {
-                problem = "Only single byte ranges are supported.";
-                return false;
-            }
+                return true;
 
             var dash = spec.IndexOf('-');
             if (dash < 0)
