@@ -630,6 +630,67 @@ class CoreSmokeScriptTests(unittest.TestCase):
                 self.assertNotIn("while time.time() < deadline", source)
                 self.assertIn("deadline = time.monotonic() + spin_seconds", source)
 
+    def test_phase138u_rejects_raw_and_deskewed_samples_from_different_scans(self) -> None:
+        """Motion evidence must compare PointCloud2 samples with the same stamp."""
+        module = load_smoke_module(
+            "phase138u_correlation_under_test",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        )
+        raw = {"topic": "/raw", "stamp": {"sec": 10, "nanosec": 20}}
+        deskewed = {"topic": "/deskewed", "stamp": {"sec": 10, "nanosec": 21}}
+
+        with self.assertRaisesRegex(RuntimeError, "stamp mismatch"):
+            module.validate_correlated_pair(raw, deskewed)
+
+        deskewed["stamp"]["nanosec"] = 20
+        module.validate_correlated_pair(raw, deskewed)
+
+    def test_phase138u_inline_subscriber_remains_syntactically_valid(self) -> None:
+        """The generated rclpy program must compile before a live ROS2 run."""
+        module = load_smoke_module(
+            "phase138u_subscriber_program_under_test",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        )
+        payload = {
+            "raw": {"stamp": {"sec": 1, "nanosec": 2}},
+            "deskewed": {"stamp": {"sec": 1, "nanosec": 2}},
+        }
+
+        def compile_subscriber(command, **_kwargs):
+            """Compile the generated program and return its bounded protocol output."""
+            compile(command[2], "<phase138u-subscriber>", "exec")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="PHASE138U_POINTCLOUD2_JSON=" + json.dumps(payload),
+            )
+
+        with mock.patch.object(module.subprocess, "run", side_effect=compile_subscriber):
+            result = module.subscribe_once_pointcloud2_pair(
+                Path(sys.executable),
+                {},
+                "/raw",
+                "/deskewed",
+                0.1,
+                10,
+                0.05,
+                2,
+            )
+
+        self.assertEqual(payload, result)
+
+    def test_phase146b_rejects_conflicting_motion_flags(self) -> None:
+        """The strict wrapper must not silently downgrade an explicit motion gate."""
+        module = load_smoke_module(
+            "phase146b_flags_under_test",
+            "ros2/phase146b_lyrical_lidar_deskew_acceptance.py",
+        )
+
+        with mock.patch.object(module.phase138u, "main", return_value=0) as delegated:
+            with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+                module.main(["--require-motion", "--allow-static"])
+
+        delegated.assert_not_called()
+
     def test_bridge_shell_preflight_reports_missing_foxglove_msgs(self) -> None:
         """The shell bridge sample should explain missing foxglove_msgs."""
         source = read_repo_source("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.sh")

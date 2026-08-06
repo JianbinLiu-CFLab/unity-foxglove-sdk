@@ -353,7 +353,6 @@ def subscribe_once_pointcloud2_pair(
 
     subscriber_code = POINTCLOUD2_METRIC_HELPERS + r'''
 import json
-import os
 import sys
 import time
 
@@ -368,12 +367,26 @@ max_metric_points = int(sys.argv[4])
 plane_threshold_m = float(sys.argv[5])
 min_ring_points = int(sys.argv[6])
 samples = {}
+pending = {raw_topic: {}, deskewed_topic: {}}
+last_seen = {}
+max_pending_per_topic = 64
 
 def capture(topic, msg):
-    """Capture one PointCloud2 message with minimal work inside rclpy."""
-    if topic in samples:
+    """Capture only a raw/deskewed pair with the same source stamp."""
+    if len(samples) == 2:
+        return
+    stamp = (int(msg.header.stamp.sec), int(msg.header.stamp.nanosec))
+    last_seen[topic] = msg
+    topic_pending = pending[topic]
+    topic_pending[stamp] = msg
+    while len(topic_pending) > max_pending_per_topic:
+        del topic_pending[next(iter(topic_pending))]
+    other_topic = deskewed_topic if topic == raw_topic else raw_topic
+    other = pending[other_topic].get(stamp)
+    if other is None:
         return
     samples[topic] = msg
+    samples[other_topic] = other
 
 def summarize(topic, msg):
     """Summarize one captured PointCloud2 sample after subscriptions finish."""
@@ -416,33 +429,38 @@ print("PHASE138U_SUBSCRIBER_STAGE=after_create_subscriptions", flush=True)
 
 deadline = time.monotonic() + spin_seconds
 print("PHASE138U_SUBSCRIBER_STAGE=before_spin", flush=True)
-while rclpy.ok() and len(samples) < 2 and time.monotonic() < deadline:
-    rclpy.spin_once(node, timeout_sec=0.2)
-print("PHASE138U_SUBSCRIBER_STAGE=after_spin samples=" + str(len(samples)), flush=True)
+exit_code = 0
+try:
+    while rclpy.ok() and len(samples) < 2 and time.monotonic() < deadline:
+        rclpy.spin_once(node, timeout_sec=0.2)
+    print("PHASE138U_SUBSCRIBER_STAGE=after_spin samples=" + str(len(samples)), flush=True)
 
-missing = [topic for topic in (raw_topic, deskewed_topic) if topic not in samples]
-if missing:
-    print("Missing sensor_msgs/msg/PointCloud2 sample(s): " + ", ".join(missing), flush=True)
-    partial = {}
-    for topic, msg in samples.items():
-        partial[topic] = {
-            "topic": topic,
-            "msg_type": "sensor_msgs/msg/PointCloud2",
-            "frame_id": msg.header.frame_id,
-            "width": int(msg.width),
-            "data_length": len(msg.data),
-            "fields": [field.name for field in msg.fields],
+    if len(samples) < 2:
+        print("No stamp-correlated raw/deskewed PointCloud2 pair was received.", flush=True)
+        partial = {}
+        for topic, msg in last_seen.items():
+            partial[topic] = {
+                "topic": topic,
+                "msg_type": "sensor_msgs/msg/PointCloud2",
+                "frame_id": msg.header.frame_id,
+                "stamp": {"sec": int(msg.header.stamp.sec), "nanosec": int(msg.header.stamp.nanosec)},
+                "width": int(msg.width),
+                "data_length": len(msg.data),
+                "fields": [field.name for field in msg.fields],
+            }
+        print("PHASE138U_PARTIAL_JSON=" + json.dumps(partial, sort_keys=True), flush=True)
+        exit_code = 2
+    else:
+        results = {
+            raw_topic: summarize(raw_topic, samples[raw_topic]),
+            deskewed_topic: summarize(deskewed_topic, samples[deskewed_topic]),
         }
-    print("PHASE138U_PARTIAL_JSON=" + json.dumps(partial, sort_keys=True), flush=True)
-    sys.stdout.flush()
-    os._exit(2)
-results = {
-    raw_topic: summarize(raw_topic, samples[raw_topic]),
-    deskewed_topic: summarize(deskewed_topic, samples[deskewed_topic]),
-}
-print("PHASE138U_POINTCLOUD2_JSON=" + json.dumps({"raw": results[raw_topic], "deskewed": results[deskewed_topic]}, sort_keys=True), flush=True)
-sys.stdout.flush()
-os._exit(0)
+        print("PHASE138U_POINTCLOUD2_JSON=" + json.dumps({"raw": results[raw_topic], "deskewed": results[deskewed_topic]}, sort_keys=True), flush=True)
+finally:
+    node.destroy_node()
+    if rclpy.ok():
+        rclpy.shutdown()
+sys.exit(exit_code)
 '''
     command = [
         str(pixi_python),
@@ -495,6 +513,35 @@ def validate_sample(sample: dict[str, object], expected_frame_id: str | None) ->
         raise RuntimeError(f"PointCloud2 width is zero for {sample.get('topic')}")
     if int(sample.get("data_length", 0)) <= 0:
         raise RuntimeError(f"PointCloud2 data is empty for {sample.get('topic')}")
+
+
+def pointcloud_stamp(sample: dict[str, object]) -> tuple[int, int]:
+    """Return one validated ROS2 header stamp."""
+
+    stamp = sample.get("stamp")
+    if not isinstance(stamp, dict):
+        raise RuntimeError(f"PointCloud2 stamp is missing for {sample.get('topic')}")
+    try:
+        sec = int(stamp["sec"])
+        nanosec = int(stamp["nanosec"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"PointCloud2 stamp is invalid for {sample.get('topic')}: {stamp}") from exc
+    if nanosec < 0 or nanosec >= 1_000_000_000:
+        raise RuntimeError(f"PointCloud2 stamp nanosec is out of range for {sample.get('topic')}: {nanosec}")
+    return sec, nanosec
+
+
+def validate_correlated_pair(raw: dict[str, object], deskewed: dict[str, object]) -> None:
+    """Require raw and deskewed evidence to describe the same LiDAR scan."""
+
+    raw_stamp = pointcloud_stamp(raw)
+    deskewed_stamp = pointcloud_stamp(deskewed)
+    if raw_stamp != deskewed_stamp:
+        raise RuntimeError(
+            "raw/deskewed PointCloud2 stamp mismatch: "
+            f"raw={raw_stamp[0]}.{raw_stamp[1]:09d} "
+            f"deskewed={deskewed_stamp[0]}.{deskewed_stamp[1]:09d}"
+        )
 
 
 def coordinate_values(sample: dict[str, object]) -> list[float]:
@@ -732,6 +779,7 @@ def main(argv: list[str]) -> int:
 
     validate_sample(evidence["raw"], args.expected_frame_id)
     validate_sample(evidence["deskewed"], args.expected_frame_id)
+    validate_correlated_pair(evidence["raw"], evidence["deskewed"])
 
     if evidence["raw"]["width"] != evidence["deskewed"]["width"]:
         raise RuntimeError(
