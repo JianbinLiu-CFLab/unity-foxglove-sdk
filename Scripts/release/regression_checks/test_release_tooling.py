@@ -2053,6 +2053,67 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
 
+    def test_negative_build_timeout_is_rejected(self) -> None:
+        """Only zero, not an arbitrary negative value, may disable the build timeout."""
+        with mock.patch.object(sys, "argv", ["unity_il2cpp.py", "--timeout-minutes", "-1"]):
+            with self.assertRaises(SystemExit) as raised:
+                self.unity_il2cpp.parse_args()
+
+        self.assertEqual(self.unity_il2cpp.EXIT_USAGE_ERROR, raised.exception.code)
+
+    def test_posix_process_group_enumeration_fails_closed_without_ps(self) -> None:
+        """A missing ps binary must not disguise an extant owned process group as empty."""
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", side_effect=FileNotFoundError("ps")):
+            with mock.patch.object(self.unity_il2cpp.os, "killpg", return_value=None, create=True):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([4321], pids)
+
+    def test_posix_termination_poll_avoids_repeated_ps_processes(self) -> None:
+        """Quiescence polling should use the process-group primitive, not shell out on every pass."""
+        process = mock.Mock()
+        process.wait.return_value = 0
+
+        kill_signal = 9
+
+        def inspect_or_kill_group(_process_group_id, signal_value):
+            if signal_value == kill_signal:
+                return None
+            raise ProcessLookupError
+
+        tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
+        with mock.patch.object(self.unity_il2cpp.signal, "SIGKILL", kill_signal, create=True):
+            with mock.patch.object(
+                self.unity_il2cpp.os,
+                "killpg",
+                side_effect=inspect_or_kill_group,
+                create=True,
+            ):
+                with mock.patch.object(self.unity_il2cpp, "_posix_process_group_pids", return_value=[]) as enumerate_pids:
+                    residual = tree.terminate()
+
+        self.assertEqual([], residual)
+        enumerate_pids.assert_not_called()
+
+    def test_windows_job_uses_a_dedicated_child_termination_code(self) -> None:
+        """A killed child must not inherit the build CLI's own timeout exit code."""
+        kernel32 = mock.Mock()
+        kernel32.TerminateJobObject.return_value = True
+        job = object.__new__(self.unity_il2cpp._WindowsKillOnCloseJob)
+        job._handle = 123
+        job._kernel32 = kernel32
+
+        job.terminate()
+
+        self.assertNotEqual(
+            self.unity_il2cpp.EXIT_TIMEOUT,
+            self.unity_il2cpp.WINDOWS_JOB_TERMINATE_EXIT_CODE,
+        )
+        kernel32.TerminateJobObject.assert_called_once_with(
+            123,
+            self.unity_il2cpp.WINDOWS_JOB_TERMINATE_EXIT_CODE,
+        )
+
     def test_timeout_terminates_owned_descendant_tree(self) -> None:
         """A timed-out Unity stand-in must not leave its compiler child alive."""
         parent_pid = None

@@ -365,6 +365,26 @@ class CoreSmokeScriptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.build_ssl_context("wss://example.com:8765", True)
 
+    def test_all_local_wss_smoke_probes_restrict_insecure_tls_to_loopback(self) -> None:
+        """Every smoke probe must reject disabled TLS validation for remote endpoints."""
+        probes = (
+            ("pointcloud_qos_tls_boundary", "websocket/pointcloud_qos_probe.py"),
+            ("phase168_tls_boundary", "websocket/phase168_msgpack_live_probe.py"),
+            ("phase175_tls_boundary", "websocket/phase175_protobuf_inbound_publish.py"),
+            ("compressed_pointcloud_tls_boundary", "websocket/compressed_pointcloud_draco_probe.py"),
+            ("phase139_e2e_tls_boundary", "replay/phase139_e2e_integration_smoke.py"),
+        )
+        for name, relative in probes:
+            with self.subTest(relative=relative):
+                module = load_smoke_module(name, relative)
+                with self.assertRaisesRegex(ValueError, "loopback"):
+                    module.build_ssl_context("wss://example.com:8765", True)
+
+                context = module.build_ssl_context("wss://127.0.0.1:8765", True)
+                self.assertIsNotNone(context)
+                self.assertFalse(context.check_hostname)
+                self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+
     def test_pointcloud_probe_rejects_non_strict_json_base64(self) -> None:
         """Whitespace-tolerant base64 decoding should not hide malformed payloads."""
         module = load_smoke_module("pointcloud_qos_base64_under_test", "websocket/pointcloud_qos_probe.py")

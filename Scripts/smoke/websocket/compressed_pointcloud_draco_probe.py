@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import json
 import ssl
 import struct
@@ -142,10 +143,27 @@ def build_ssl_context(url: str, insecure: bool) -> ssl.SSLContext | None:
     if not insecure:
         return ssl.create_default_context()
 
+    if not is_loopback_url(url):
+        raise ValueError("--insecure is only allowed for loopback WSS endpoints")
+
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     return context
+
+
+def is_loopback_url(url: str) -> bool:
+    """Return whether a URL targets localhost or a loopback IP literal."""
+
+    host = urlsplit(url).hostname
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 async def wait_for_channel(ws: websockets.WebSocketClientProtocol, topic: str, timeout_seconds: float) -> ChannelInfo:
