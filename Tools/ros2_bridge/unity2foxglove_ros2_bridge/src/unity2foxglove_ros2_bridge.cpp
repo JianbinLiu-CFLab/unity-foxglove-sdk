@@ -1707,6 +1707,23 @@ const char * bridge_admission_name(
   return "unknown";
 }
 
+enum class BridgeAdmissionLogLevel
+{
+  debug,
+  warning,
+};
+
+constexpr BridgeAdmissionLogLevel bridge_admission_log_level(
+  bridge_runtime::BridgeSerializedAdmission admission) noexcept
+{
+  if (admission ==
+    bridge_runtime::BridgeSerializedAdmission::suppressed_local)
+  {
+    return BridgeAdmissionLogLevel::debug;
+  }
+  return BridgeAdmissionLogLevel::warning;
+}
+
 class BridgeAdmissionDiagnostics final
 {
 public:
@@ -1891,13 +1908,25 @@ public:
         const std::string & topic,
         bridge_runtime::BridgeSerializedAdmission admission,
         uint64_t count) {
-          RCLCPP_WARN(
-            logger,
-            "[unity2foxglove_ros2_bridge] rejected ROS subscription "
-            "sample topic='%s' reason=%s count=%llu",
-            topic.c_str(),
-            bridge_admission_name(admission),
-            static_cast<unsigned long long>(count));
+          if (bridge_admission_log_level(admission) ==
+            BridgeAdmissionLogLevel::debug)
+          {
+            RCLCPP_DEBUG(
+              logger,
+              "[unity2foxglove_ros2_bridge] suppressed local ROS subscription "
+              "sample topic='%s' reason=%s count=%llu",
+              topic.c_str(),
+              bridge_admission_name(admission),
+              static_cast<unsigned long long>(count));
+          } else {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] rejected ROS subscription "
+              "sample topic='%s' reason=%s count=%llu",
+              topic.c_str(),
+              bridge_admission_name(admission),
+              static_cast<unsigned long long>(count));
+          }
         };
     }
 
