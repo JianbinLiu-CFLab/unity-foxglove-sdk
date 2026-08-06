@@ -69,6 +69,22 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual(set(), files)
         self.assertIn("warning", stderr.getvalue().lower())
 
+    def test_asmdef_collection_reports_non_object_json_without_crashing(self) -> None:
+        """Syntactically valid non-object JSON is still an invalid asmdef input."""
+        module = load_module("analyze_coupling_asmdef_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            asmdef = root / "Packages" / "Broken.asmdef"
+            asmdef.parent.mkdir(parents=True)
+            asmdef.write_text("[]\n", encoding="utf-8")
+
+            metrics = module.collect_asmdef_metrics(root, ["Packages/Broken.asmdef"])
+
+        self.assertEqual(1, len(metrics))
+        self.assertEqual("<invalid-json-object>", metrics[0].name)
+        self.assertEqual([], metrics[0].references)
+
 
 if __name__ == "__main__":
     unittest.main()
