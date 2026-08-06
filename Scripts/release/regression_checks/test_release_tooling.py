@@ -604,6 +604,15 @@ class RunCiTests(unittest.TestCase):
         self.assertIn(
             [
                 sys.executable,
+                "-m",
+                "unittest",
+                "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                sys.executable,
                 "Scripts/samples/sync_ros2_bridge_sample.py",
                 "--dry-run",
             ],

@@ -1100,6 +1100,15 @@ def main() -> int:
                     SAMPLE_SYNC_TOOLING_REGRESSION,
                 ],
             ),
+            (
+                "test_remote_gateway_tooling.py",
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
+                ],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
@@ -1124,6 +1133,9 @@ def main() -> int:
         results["release-tooling-regression"] = package_results["test_release_tooling.py"]
         results["sample-sync-tooling-regression"] = package_results[
             "test_sample_sync_tooling.py"
+        ]
+        results["remote-gateway-tooling-regression"] = package_results[
+            "test_remote_gateway_tooling.py"
         ]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]

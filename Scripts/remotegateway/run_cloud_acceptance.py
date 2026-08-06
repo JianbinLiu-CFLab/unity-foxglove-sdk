@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -107,6 +108,7 @@ def ensure_token_env() -> None:
             f'  $env:{TOKEN_ENV}="YOUR_TOKEN"\n'
             "Then run this helper from that PowerShell window."
         )
+    os.environ[TOKEN_ENV] = token
     print(f"{TOKEN_ENV} is set in the inherited environment. The value will not be printed.")
 
 
@@ -155,9 +157,9 @@ def unity_version_sort_key(version: str) -> tuple[int, int, int, int, int, str]:
 def create_run_dir() -> Path:
     """Create a timestamped local evidence directory for this acceptance run."""
     timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = ROOT / "build" / "remotegateway" / "cloud-acceptance" / timestamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-    return run_dir
+    root = ROOT / "build" / "remotegateway" / "cloud-acceptance"
+    root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f"{timestamp}-", dir=root))
 
 
 def build_and_copy_native() -> None:
