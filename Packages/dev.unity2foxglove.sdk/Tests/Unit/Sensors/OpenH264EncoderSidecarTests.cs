@@ -8,6 +8,7 @@ using System;
 using System.Reflection;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 using Xunit;
 
@@ -229,6 +230,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void FfmpegDrainDoesNotConsumeWakeupPublishedAfterQueueReset()
+        {
+            AssertDrainDoesNotConsumeConcurrentWakeup(
+                new FfmpegH264EncoderSidecar(),
+                new FfmpegH264EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+            AssertDrainDoesNotConsumeConcurrentWakeup(
+                new FfmpegH265EncoderSidecar(),
+                new FfmpegH265EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+        }
+
+        [Fact]
         public void MediaFoundationSubmissionFailureStopsTheEncoder()
         {
             using var sidecar = new MediaFoundationH264EncoderSidecar();
@@ -297,6 +309,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 Assert.True((bool)submit.Invoke(sidecar, new object[] { new byte[12], 2UL }));
 
                 var signal = (SemaphoreSlim)GetField(sidecar, "_inputSignal");
+                Assert.Equal(1, signal.CurrentCount);
+            }
+            finally
+            {
+                SetField(sidecar, "_process", null);
+                sidecar.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(sidecar, null);
+            }
+        }
+
+        private static void AssertDrainDoesNotConsumeConcurrentWakeup(object sidecar, object options)
+        {
+            SetField(sidecar, "_options", options);
+            SetField(sidecar, "_maxInputQueue", 2);
+            using var currentProcess = Process.GetCurrentProcess();
+            SetField(sidecar, "_process", currentProcess);
+            var submit = sidecar.GetType().GetMethod(
+                "TrySubmitFrame",
+                new[] { typeof(byte[]), typeof(ulong) });
+            var drain = sidecar.GetType().GetMethod(
+                "DrainInputQueue",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(submit);
+            Assert.NotNull(drain);
+
+            try
+            {
+                Assert.True((bool)submit.Invoke(sidecar, new object[] { new byte[12], 1UL }));
+                var signal = (SemaphoreSlim)GetField(sidecar, "_inputSignal");
+                const int extraWakeups = 5_000_000;
+                signal.Release(extraWakeups);
+                var initialWakeups = signal.CurrentCount;
+
+                var drainTask = Task.Run(() => drain.Invoke(sidecar, null));
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => signal.CurrentCount < initialWakeups,
+                        TimeSpan.FromSeconds(5)),
+                    "Input drain did not begin consuming wakeups.");
+                Assert.False(drainTask.IsCompleted, "Input drain completed before the stop-boundary interleaving was established.");
+
+                Assert.True((bool)submit.Invoke(sidecar, new object[] { new byte[12], 2UL }));
+                drainTask.GetAwaiter().GetResult();
+
+                Assert.Equal(1, (int)GetField(sidecar, "_inputCount"));
                 Assert.Equal(1, signal.CurrentCount);
             }
             finally

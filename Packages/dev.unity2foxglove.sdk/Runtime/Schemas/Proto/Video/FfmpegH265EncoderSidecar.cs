@@ -199,7 +199,6 @@ namespace Foxglove.Schemas.Video
             var copy = ArrayPool<byte>.Shared.Rent(rgb24Frame.Length);
             Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
 
-            var signalInput = false;
             lock (_inputLock)
             {
                 while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
@@ -208,13 +207,13 @@ namespace Foxglove.Schemas.Video
                     ReturnInputFrameBuffer(dropped);
                 }
 
-                signalInput = _inputCount == 0;
+                var signalInput = _inputCount == 0;
                 _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
                 _inputCount++;
+                if (signalInput)
+                    _inputSignal.Release();
             }
 
-            if (signalInput)
-                _inputSignal.Release();
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
@@ -510,10 +509,9 @@ namespace Foxglove.Schemas.Video
                 }
 
                 _inputCount = 0;
-            }
-
-            while (_inputSignal.Wait(0))
-            {
+                while (_inputSignal.Wait(0))
+                {
+                }
             }
 
             while (_encodedFrameTimestamps.TryDequeue(out _))
