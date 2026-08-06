@@ -64,7 +64,7 @@ public abstract class ISensor : MonoBehaviour
 /// <summary>
 /// A base template class for the sensor. The type is the message type of sensor data.
 /// </summary>
-public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
+public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, new()
 {
     /// <summary>
     /// Acquires the value by performing sensor type characteristic computations (e.g. raycasts).
