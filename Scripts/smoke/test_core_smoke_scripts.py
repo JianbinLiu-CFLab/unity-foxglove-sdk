@@ -428,6 +428,23 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertTrue(hasattr(module, "main"))
 
+    def test_phase110_string_payload_preserves_apostrophes(self) -> None:
+        """The ROS2 YAML argument must preserve the exact requested String data."""
+        module = load_smoke_module("phase110_payload_under_test", "ros2/phase110_string_smoke_acceptance.py")
+
+        encoded = module.build_string_message_argument("it's a test")
+
+        self.assertEqual({"data": "it's a test"}, json.loads(encoded))
+
+    def test_phase110_subscription_poll_sleep_respects_deadline(self) -> None:
+        """The final subscription poll must not overshoot its remaining budget."""
+        module = load_smoke_module("phase110_sleep_under_test", "ros2/phase110_string_smoke_acceptance.py")
+        with mock.patch.object(module.time, "monotonic", return_value=9.75):
+            with mock.patch.object(module.time, "sleep") as sleep:
+                module.sleep_before_subscription_retry(10.0)
+
+        sleep.assert_called_once_with(0.25)
+
     def test_phase139d_loopback_reports_url_errors_without_traceback(self) -> None:
         """Unity cursor endpoint connection failures should return structured errors."""
         module = load_smoke_module("phase139d_url_error_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")

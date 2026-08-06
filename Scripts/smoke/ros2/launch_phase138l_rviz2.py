@@ -322,17 +322,21 @@ def main(argv: list[str]) -> int:
             args.strict_topic_probe,
         )
 
-    if launch_tf_fallback:
-        launch_static_tf(pixi_python, ros2_script, env, tf_parent_frame, tf_child_frame)
+    started_helpers: list[subprocess.Popen] = []
+    with ros2env.cleanup_owned_processes_on_error(started_helpers):
+        if launch_tf_fallback:
+            static_tf = launch_static_tf(pixi_python, ros2_script, env, tf_parent_frame, tf_child_frame)
+            if static_tf is not None:
+                started_helpers.append(static_tf)
 
-    ros2env.launch_rviz(
-        ros2_root,
-        runtime_config,
-        env,
-        "phase138l-rviz",
-        startup_check_seconds=args.rviz_startup_check_seconds,
-        window_wait_seconds=args.rviz_window_wait_seconds,
-    )
+        ros2env.launch_rviz(
+            ros2_root,
+            runtime_config,
+            env,
+            "phase138l-rviz",
+            startup_check_seconds=args.rviz_startup_check_seconds,
+            window_wait_seconds=args.rviz_window_wait_seconds,
+        )
     print("[phase138l-rviz] RViz2 launched. Use MoveCamera/Interact to inspect the live PointCloud2 stream.")
     return 0
 

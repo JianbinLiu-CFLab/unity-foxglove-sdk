@@ -130,6 +130,77 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
         self.assertEqual("PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE", payload["verdict"])
         self.assertIn("static capture", payload["error"])
 
+    def test_router_hold_stops_when_owned_player_exits(self) -> None:
+        """A dead Unity player must break the RViz-only router hold promptly."""
+
+        class Process:
+            """Minimal scripted process state."""
+
+            def __init__(self, pid: int, polls: list[int | None]):
+                self.pid = pid
+                self._polls = iter(polls)
+                self.returncode = None
+
+            def poll(self):
+                try:
+                    self.returncode = next(self._polls)
+                except StopIteration:
+                    pass
+                return self.returncode
+
+        router = Process(10, [None])
+        rviz = Process(11, [None, None])
+        player = Process(12, [7])
+        args = SimpleNamespace(
+            echo_only=False,
+            launch_rviz=True,
+            release_router_on_exit=False,
+            rviz_hold_timeout_seconds=30.0,
+        )
+        summary = {}
+
+        outcome = self.smoke.wait_for_rviz_shutdown_before_router_cleanup(
+            args,
+            router,
+            player,
+            [rviz],
+            summary,
+        )
+
+        self.assertEqual("player-exited", outcome)
+        self.assertEqual(7, summary["zenohRouterRvizWaitPlayerExitCode"])
+
+    def test_router_hold_uses_bounded_timeout(self) -> None:
+        """An open RViz window must not hold the router forever."""
+
+        class RunningProcess:
+            """Process double that remains alive."""
+
+            pid = 21
+            returncode = None
+
+            def poll(self):
+                return None
+
+        args = SimpleNamespace(
+            echo_only=False,
+            launch_rviz=True,
+            release_router_on_exit=False,
+            rviz_hold_timeout_seconds=0.1,
+        )
+        summary = {}
+        with mock.patch.object(self.smoke.time, "monotonic", side_effect=[0.0, 0.2]):
+            outcome = self.smoke.wait_for_rviz_shutdown_before_router_cleanup(
+                args,
+                RunningProcess(),
+                None,
+                [RunningProcess()],
+                summary,
+            )
+
+        self.assertEqual("timed-out", outcome)
+        self.assertTrue(summary["zenohRouterRvizWaitTimedOut"])
+
 
 if __name__ == "__main__":
     unittest.main()

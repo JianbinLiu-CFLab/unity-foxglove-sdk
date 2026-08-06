@@ -9,11 +9,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import os
 import pathlib
 import re
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
 _ROS2_OPT_BIN_PATHS_CACHE: dict[pathlib.Path, tuple[pathlib.Path, ...]] = {}
@@ -71,6 +73,58 @@ def log_event(log_prefix: str, message: str) -> None:
     """Print a timestamped acceptance diagnostic line."""
 
     print(f"[{timestamp()}] [{log_prefix}] {message}", flush=True)
+
+
+def terminate_owned_process(process: subprocess.Popen, timeout_seconds: float = 5.0) -> None:
+    """Stop one explicitly owned helper process with a bounded fallback."""
+
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout_seconds,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        else:
+            try:
+                process.wait(timeout=timeout_seconds)
+                return
+            except subprocess.TimeoutExpired:
+                pass
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except OSError:
+            return
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=timeout_seconds)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
+@contextmanager
+def cleanup_owned_processes_on_error(processes: list[subprocess.Popen]) -> Iterator[None]:
+    """Terminate already-started helpers if a later launch step fails."""
+
+    try:
+        yield
+    except BaseException:
+        for process in reversed(processes):
+            try:
+                terminate_owned_process(process)
+            except Exception as exc:
+                log_event("ros2-process-cleanup", f"Failed to stop owned pid={process.pid}: {exc}")
+        raise
 
 
 def resolve_existing_path(path_text: str, description: str, workspace_root: pathlib.Path) -> pathlib.Path:
@@ -480,14 +534,9 @@ def launch_rviz(
             stdout=stdout_target,
             stderr=subprocess.STDOUT if log_file is not None else subprocess.DEVNULL,
         )
-    except Exception:
+    finally:
         if log_file is not None:
             log_file.close()
-        raise
-    if log_file is not None:
-        # Keep the redirected stream alive with the returned process object.
-        # Some callers hold RViz for manual inspection and only keep Popen.
-        process._unity2foxglove_stdout_log = log_file
     popen_elapsed = time.perf_counter() - popen_started
     total_elapsed = time.perf_counter() - launch_started
     log_event(

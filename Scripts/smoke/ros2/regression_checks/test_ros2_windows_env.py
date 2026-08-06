@@ -126,8 +126,8 @@ class Ros2WindowsEnvTests(unittest.TestCase):
 
         self.assertIn(str(vendor_bin), captured_env["PATH"].split(os.pathsep))
 
-    def test_launch_rviz_keeps_stdout_log_handle_with_process(self) -> None:
-        """Manual RViz processes own their redirected log stream for their lifetime."""
+    def test_launch_rviz_closes_parent_stdout_log_after_spawn(self) -> None:
+        """The child owns redirection without leaking the parent's Python handle."""
         with tempfile.TemporaryDirectory() as temp:
             ros2_root = Path(temp) / "ros2_lyrical"
             rviz_exe = ros2_root / "bin" / "rviz2.exe"
@@ -147,7 +147,14 @@ class Ros2WindowsEnvTests(unittest.TestCase):
                     return None
 
             fake_process = FakeProcess()
-            with mock.patch.object(ros2env.subprocess, "Popen", return_value=fake_process):
+            captured_stdout = None
+
+            def capture_popen(_command, **kwargs):
+                nonlocal captured_stdout
+                captured_stdout = kwargs["stdout"]
+                return fake_process
+
+            with mock.patch.object(ros2env.subprocess, "Popen", side_effect=capture_popen):
                 process = ros2env.launch_rviz(
                     ros2_root,
                     config,
@@ -159,8 +166,74 @@ class Ros2WindowsEnvTests(unittest.TestCase):
                 )
 
             self.assertIs(process, fake_process)
-            self.assertTrue(hasattr(process, "_unity2foxglove_stdout_log"))
-            process._unity2foxglove_stdout_log.close()
+            self.assertIsNotNone(captured_stdout)
+            self.assertTrue(captured_stdout.closed)
+            self.assertFalse(hasattr(process, "_unity2foxglove_stdout_log"))
+
+    def test_launch_rviz_closes_stdout_log_when_spawn_fails(self) -> None:
+        """A failed Popen must not retain the pre-opened RViz diagnostic file."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            rviz_exe = ros2_root / "bin" / "rviz2.exe"
+            rviz_exe.parent.mkdir(parents=True)
+            rviz_exe.write_bytes(b"")
+            config = Path(temp) / "view.rviz"
+            config.write_text("Visualization Manager: {}\n", encoding="utf-8")
+            stdout_log = Path(temp) / "logs" / "rviz.log"
+            captured_stdout = None
+
+            def fail_popen(_command, **kwargs):
+                nonlocal captured_stdout
+                captured_stdout = kwargs["stdout"]
+                raise OSError("spawn failed")
+
+            with mock.patch.object(ros2env.subprocess, "Popen", side_effect=fail_popen):
+                with self.assertRaises(OSError):
+                    ros2env.launch_rviz(
+                        ros2_root,
+                        config,
+                        {},
+                        "test",
+                        startup_check_seconds=0.0,
+                        window_wait_seconds=0.0,
+                        stdout_log_path=stdout_log,
+                    )
+
+            self.assertIsNotNone(captured_stdout)
+            self.assertTrue(captured_stdout.closed)
+
+    def test_cleanup_owned_processes_on_error_terminates_started_helpers(self) -> None:
+        """Late launcher failures must not orphan helpers started earlier."""
+
+        class FakeProcess:
+            """Track bounded termination of one owned child."""
+
+            pid = 4321
+
+            def __init__(self):
+                self.running = True
+                self.terminated = False
+
+            def poll(self):
+                return None if self.running else 0
+
+            def terminate(self):
+                self.terminated = True
+                self.running = False
+
+            def wait(self, timeout):
+                return 0
+
+            def kill(self):
+                self.running = False
+
+        process = FakeProcess()
+        with mock.patch.object(ros2env.os, "name", "posix"):
+            with self.assertRaisesRegex(RuntimeError, "late launch failure"):
+                with ros2env.cleanup_owned_processes_on_error([process]):
+                    raise RuntimeError("late launch failure")
+
+        self.assertTrue(process.terminated)
 
 
 if __name__ == "__main__":

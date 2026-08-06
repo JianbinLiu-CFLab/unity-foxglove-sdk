@@ -22,6 +22,7 @@ project path. It defaults to ros2-windows\\ros2_jazzy.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import subprocess
@@ -113,6 +114,20 @@ def has_positive_subscription_count(output: str) -> bool:
     return bool(match) and f"Node name: {NODE_NAME}" in output
 
 
+def build_string_message_argument(payload: str) -> str:
+    """Encode the exact String payload as JSON, which is also valid YAML."""
+
+    return json.dumps({"data": payload}, ensure_ascii=False, separators=(",", ":"))
+
+
+def sleep_before_subscription_retry(deadline: float) -> None:
+    """Sleep for at most the time remaining in the subscription wait budget."""
+
+    remaining = deadline - time.monotonic()
+    if remaining > 0.0:
+        time.sleep(min(2.0, remaining))
+
+
 def wait_for_subscription(
     pixi_python: pathlib.Path,
     ros2_script: pathlib.Path,
@@ -138,7 +153,7 @@ def wait_for_subscription(
             last_output = f"<topic info timed out after {exc.timeout:.1f}s>"
         if has_positive_subscription_count(last_output):
             return last_output
-        time.sleep(2)
+        sleep_before_subscription_retry(deadline)
 
     topic_list = ros2env.run_ros2(
         pixi_python,
@@ -221,7 +236,7 @@ def main(argv: list[str]) -> int:
             "pub",
             IN_TOPIC,
             MSG_TYPE,
-            "{data: '" + payload.replace("'", " ") + "'}",
+            build_string_message_argument(payload),
             "--times",
             str(args.publish_count),
             "--rate",
