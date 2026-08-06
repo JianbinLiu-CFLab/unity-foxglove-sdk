@@ -395,11 +395,12 @@ namespace Unity.FoxgloveSDK.Tests
                       && lifecycleSource.Contains("CompilationPipeline.compilationStarted", StringComparison.Ordinal)
                       && lifecycleSource.Contains("EditorApplication.update", StringComparison.Ordinal),
                     labelPrefix + "-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
-                var sharedBootstrapGate = source.Contains("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
-                    && source.IndexOf("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
-                       < source.IndexOf("FindFirstObjectByType", StringComparison.Ordinal);
+                var bootstrapBody = MethodBody(source, "private static void Bootstrap()");
+                var sharedBootstrapGate = bootstrapBody.Contains("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
+                    && bootstrapBody.IndexOf("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
+                       < bootstrapBody.IndexOf("FindFirstObjectByType", StringComparison.Ordinal);
                 CheckLifecycle(sharedBootstrapGate
-                      && source.Contains("return;", StringComparison.Ordinal),
+                      && bootstrapBody.Contains("return;", StringComparison.Ordinal),
                     labelPrefix + "-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
                 CheckLifecycle(BridgeUpdatePrewarmsRos2FromGuardedPlayMode(source),
                     labelPrefix + "-update-prewarm: " + bridge + " first-initializes ROS2 only from guarded bridge Update");

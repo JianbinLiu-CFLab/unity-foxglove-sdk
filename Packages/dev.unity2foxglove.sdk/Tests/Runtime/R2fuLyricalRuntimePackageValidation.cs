@@ -435,9 +435,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtimeSource.Contains("TryBeginShutdownLocked()", StringComparison.Ordinal)
                   && runtimeSource.Contains("CompleteShutdownShared()", StringComparison.Ordinal),
                 "162-E5: Lyrical ROS2 context shutdown is serialized across editor reload/play-mode exits");
-            Check(runtimeSource.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
-                  && runtimeSource.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
-                     < runtimeSource.IndexOf("Ros2cs.Shutdown()", StringComparison.Ordinal),
+            var completeShutdown = ExtractMethod(runtimeSource, "private static void CompleteShutdownShared()");
+            Check(completeShutdown.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
+                  && completeShutdown.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
+                     < completeShutdown.IndexOf("Ros2cs.Shutdown()", StringComparison.Ordinal),
                 "162-E6: Lyrical runtime stops ROS2 executor threads before unloading Zenoh/RMW through Ros2cs.Shutdown");
             var constructor = ExtractMethod(runtimeSource, "internal ROS2ForUnity()");
             var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
