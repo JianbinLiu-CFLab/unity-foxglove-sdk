@@ -61,19 +61,28 @@ namespace Unity.FoxgloveSDK.Components
                 _lastFoxRunTransportSessionCaptureError;
 
         /// <summary>Canonical configured publish IDs for the next Manager session.</summary>
-        public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds =>
-            new FoxRunTransportSelection(
-                    _foxRunPublishTransportIds
-                    ?? Array.Empty<string>(),
+        public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds
+        {
+            get
+            {
+                return FoxRunTransportSelection.TryCreate(
+                    _foxRunPublishTransportIds ?? Array.Empty<string>(),
                     subscriptionsEnabled: false,
-                    subscribeTransportId: null)
-                .PublishTransportIds;
+                    subscribeTransportId: null,
+                    out var selection,
+                    out _)
+                        ? selection.PublishTransportIds
+                        : Array.Empty<FoxRunTransportId>();
+            }
+        }
 
         /// <summary>Configured subscribe ID for the next Manager session.</summary>
         public FoxRunTransportId ConfiguredFoxRunSubscribeTransportId =>
-            string.IsNullOrWhiteSpace(_foxRunSubscribeTransportId)
-                ? default
-                : new FoxRunTransportId(_foxRunSubscribeTransportId);
+            FoxRunTransportId.TryCreate(
+                _foxRunSubscribeTransportId,
+                out var configured)
+                    ? configured
+                    : default;
 
         /// <summary>
         /// Register one same-GameObject Provider. Duplicate instances claiming

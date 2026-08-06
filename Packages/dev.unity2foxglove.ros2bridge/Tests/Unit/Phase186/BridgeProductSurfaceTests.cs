@@ -204,6 +204,43 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
         }
 
         [Fact]
+        public void ManagerConfiguredProviderAccessorsFailClosedOnSerializedDamage()
+        {
+            var manager = File.ReadAllText(PathOf(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/"
+                + "FoxgloveManager.FoxRunTransportProviders.cs"));
+            var publish = Slice(
+                manager,
+                "public IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds",
+                "/// <summary>Configured subscribe ID for the next Manager session.</summary>");
+            Assert.Contains(
+                "FoxRunTransportSelection.TryCreate(",
+                publish,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Array.Empty<FoxRunTransportId>()",
+                publish,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "new FoxRunTransportSelection(",
+                publish,
+                StringComparison.Ordinal);
+
+            var subscribe = Slice(
+                manager,
+                "public FoxRunTransportId ConfiguredFoxRunSubscribeTransportId",
+                "public FoxRunTransportRegistrationResult RegisterFoxRunTransportProvider(");
+            Assert.Contains(
+                "FoxRunTransportId.TryCreate(",
+                subscribe,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "new FoxRunTransportId(",
+                subscribe,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RepositoryReadmeUsesProviderPackageAndDirectionalVocabulary()
         {
             var readme = File.ReadAllText(PathOf("README.md"));
