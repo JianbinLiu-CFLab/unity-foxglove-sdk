@@ -333,6 +333,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void Phase14067MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_67Validation.cs", "--phase140-67", "Phase140_67Validation.Validate");
 
+        [Fact]
+        public void RequestDeadlineAtomicallySettlesAgainstAConcurrentResponse()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeConnection.cs");
+            var wait = TestSources.Slice(
+                source,
+                "private byte[] WaitForResponse(",
+                "private void WriterEntry()");
+
+            Assert.Contains("if (pending.TryFail(timeout))", wait, StringComparison.Ordinal);
+            Assert.Contains("Fault(timeout);", wait, StringComparison.Ordinal);
+            Assert.Contains("return pending.GetResponse();", wait, StringComparison.Ordinal);
+            Assert.True(
+                wait.IndexOf("if (pending.TryFail(timeout))", StringComparison.Ordinal)
+                < wait.IndexOf("Fault(timeout);", StringComparison.Ordinal));
+        }
+
         private static bool SourceMethodContains(string source, string signature, string text)
         {
             var start = source.IndexOf(signature, StringComparison.Ordinal);

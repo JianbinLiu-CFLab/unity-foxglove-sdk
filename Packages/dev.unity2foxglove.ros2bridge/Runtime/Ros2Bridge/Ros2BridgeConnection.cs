@@ -581,8 +581,11 @@ namespace Unity2Foxglove.Ros2Bridge
                         "timeout",
                         "The Bridge request exceeded its absolute deadline.",
                         terminal: true);
-                    Fault(timeout);
-                    throw timeout;
+                    if (pending.TryFail(timeout))
+                    {
+                        Fault(timeout);
+                        throw timeout;
+                    }
                 }
                 return pending.GetResponse();
             }
