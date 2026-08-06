@@ -48,10 +48,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
             Assert.DoesNotContain("lock (_lifecycleLock)", stop);
             Assert.Contains("lock (_lifecycleLock)", capture);
+            Assert.Contains("while (_stopping)", capture);
+            Assert.Contains("Monitor.Wait(_lifecycleLock);", capture);
             Assert.Contains("_stopping = true;", capture);
             Assert.Contains("_process = null;", capture);
             Assert.Contains("lock (_lifecycleLock)", clear);
             Assert.Contains("_stopping = false;", clear);
+            Assert.Contains("Monitor.PulseAll(_lifecycleLock);", clear);
         }
 
         [Fact]
