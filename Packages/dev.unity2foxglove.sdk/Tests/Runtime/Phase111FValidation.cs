@@ -107,14 +107,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(context.Contains("_ownsRos2UnityComponent", StringComparison.Ordinal)
                   && context.Contains("UnityEngine.Object.Destroy(_ros2Unity)", StringComparison.Ordinal),
                 "111F-C3: Phase110 adapter destroys only auto-created ROS2UnityComponent");
+            Check(context.Contains("var removeImmediately = false;", StringComparison.Ordinal)
+                  && context.Contains("RemoveSubscriptionSafely(subscription);", StringComparison.Ordinal)
+                  && context.Contains("subscription = _subscription;", StringComparison.Ordinal)
+                  && context.Contains("_subscription = null;", StringComparison.Ordinal),
+                "111F-C4: Phase110 subscription attach and dispose serialize ownership transfer under the callback gate");
             Check(smoke.Contains("QueueDirectStringReceived", StringComparison.Ordinal)
                   && smoke.Contains("DrainDirectReceived", StringComparison.Ordinal)
                   && smoke.Contains("RecordReceived", StringComparison.Ordinal)
                   && smoke.IndexOf("DrainDirectReceived", StringComparison.Ordinal)
                      < smoke.IndexOf("PublishIfDue", StringComparison.Ordinal),
-                "111F-C4: Phase110 direct callbacks are drained on the Unity update thread");
+                "111F-C5: Phase110 direct callbacks are drained on the Unity update thread");
             Check(smoke.Contains("InspectorName(\"Use Direct Runtime\")", StringComparison.Ordinal),
-                "111F-C5: Phase110 inspector label is product-facing");
+                "111F-C6: Phase110 inspector label is product-facing");
         }
 
         private static void VerifyManualAcceptanceLifecycle()
