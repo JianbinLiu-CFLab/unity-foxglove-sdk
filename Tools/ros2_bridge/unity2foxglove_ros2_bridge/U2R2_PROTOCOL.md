@@ -65,7 +65,10 @@ The sidecar classifies a connection from its first operation:
 - v1 `health_ping` is a one-shot probe and does not take the data lease;
 - v1 `prepare_publisher` or `publish` takes the sole data lease;
 - v2 begins with `hello` and takes the sole data lease after successful
-  capability negotiation.
+  capability negotiation. The request carries a nonempty set of offered
+  capabilities; successful `hello_ack` carries a mandatory nonempty
+  `capabilities` array containing the negotiated grant. The grant cannot add
+  an unoffered capability or omit an offered capability.
 
 One socket carries exactly one dialect. A v2 client cannot downgrade in
 place; a legacy retry opens a new socket. Frozen v1 control requests retain
