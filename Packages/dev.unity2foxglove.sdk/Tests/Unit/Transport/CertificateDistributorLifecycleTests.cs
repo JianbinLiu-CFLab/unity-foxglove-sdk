@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -87,6 +88,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             }
         }
 
+        [Fact]
+        public async Task DisposeReturnsBoundedlyWithoutDisposingActiveHandlerSignal()
+        {
+            var certificatePath = CreateCertificateFixture();
+            var distributor = new FoxgloveCertificateDistributor(certificatePath);
+            var handlersIdle = Assert.IsType<ManualResetEventSlim>(
+                RequiredField("_clientHandlersIdle").GetValue(distributor));
+            var simulatedClient = new TcpClient();
+            Task disposeTask = null;
+            try
+            {
+                RequiredField("_activeClientHandlers").SetValue(distributor, 1);
+                handlersIdle.Reset();
+
+                disposeTask = Task.Run(distributor.Dispose);
+                var completed = await Task.WhenAny(
+                    disposeTask,
+                    Task.Delay(TimeSpan.FromSeconds(2)));
+                Assert.True(
+                    ReferenceEquals(completed, disposeTask),
+                    "Dispose waited without a bound for an active client handler.");
+                await disposeTask;
+
+                var complete = typeof(FoxgloveCertificateDistributor).GetMethod(
+                    "CompleteClientHandler",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException(
+                        "The certificate distributor handler completion boundary is missing.");
+                complete.Invoke(distributor, new object[] { simulatedClient });
+                Assert.Equal(0, GetActiveClientHandlerCount(distributor));
+            }
+            finally
+            {
+                if (disposeTask != null && !disposeTask.IsCompleted)
+                {
+                    RequiredField("_activeClientHandlers").SetValue(distributor, 0);
+                    handlersIdle.Set();
+                    var completed = await Task.WhenAny(
+                        disposeTask,
+                        Task.Delay(TimeSpan.FromSeconds(2)));
+                    Assert.True(ReferenceEquals(completed, disposeTask));
+                    await disposeTask;
+                }
+                simulatedClient.Dispose();
+                distributor.Dispose();
+                File.Delete(certificatePath);
+            }
+        }
+
         private static string CreateCertificateFixture()
         {
             var path = Path.GetTempFileName();
@@ -105,10 +155,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
 
         private static int GetActiveClientHandlerCount(FoxgloveCertificateDistributor distributor)
         {
-            var field = typeof(FoxgloveCertificateDistributor).GetField(
-                "_activeClientHandlers",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            return Assert.IsType<int>(field?.GetValue(distributor));
+            return Assert.IsType<int>(
+                RequiredField("_activeClientHandlers").GetValue(distributor));
         }
+
+        private static FieldInfo RequiredField(string name)
+            => typeof(FoxgloveCertificateDistributor).GetField(
+                   name,
+                   BindingFlags.Instance | BindingFlags.NonPublic)
+               ?? throw new InvalidOperationException(
+                   "Required certificate distributor field is missing: " + name);
     }
 }
