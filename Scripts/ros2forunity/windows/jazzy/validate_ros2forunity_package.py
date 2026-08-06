@@ -45,9 +45,21 @@ STANDARD_MESSAGES_SAMPLE = PACKAGE / "Samples~" / "ROS2 Standard Message Expansi
 JSON_CACHE: dict[Path, dict] = {}
 
 RUNTIME_BINARY_SUFFIXES = {
+    ".a",
+    ".bin",
     ".dll",
     ".so",
     ".dylib",
+    ".exe",
+    ".exp",
+    ".ilk",
+    ".lib",
+    ".node",
+    ".obj",
+    ".o",
+    ".pdb",
+    ".pyd",
+    ".wasm",
     ".zip",
     ".unitypackage",
 }

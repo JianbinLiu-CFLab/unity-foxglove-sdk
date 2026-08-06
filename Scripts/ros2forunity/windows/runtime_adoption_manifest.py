@@ -10,7 +10,8 @@
 from __future__ import annotations
 
 import json
-import shutil
+import os
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -31,8 +32,33 @@ def read_json(path: Path) -> dict[str, object]:
 
 
 def write_json(path: Path, data: dict[str, object]) -> None:
-    """Write a stable UTF-8 JSON object."""
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    """Atomically replace one stable UTF-8 JSON object."""
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    _atomic_write_bytes(path, content.encode("utf-8"))
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    """Replace one file from a fully flushed sibling temporary file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_copy(source: Path, destination: Path) -> None:
+    """Atomically replace a compliance copy from its complete source bytes."""
+    _atomic_write_bytes(destination, source.read_bytes())
 
 
 def _copy_manifest_fields(
@@ -100,12 +126,22 @@ def sync_runtime_adoption_manifest(
             )
         _copy_manifest_fields(current, runtime_manifest, CORE_ARTIFACT_KEYS)
 
-    write_json(adoption_path, adoption)
-
     notices_path = None
+    previous_notices: bytes | None = None
     if notices_relative_path is not None:
         notices_path = compliance_dir / notices_relative_path
-        shutil.copyfile(package_path / "THIRD_PARTY_NOTICES.md", notices_path)
+        previous_notices = notices_path.read_bytes() if notices_path.exists() else None
+        _atomic_copy(package_path / "THIRD_PARTY_NOTICES.md", notices_path)
+
+    try:
+        write_json(adoption_path, adoption)
+    except BaseException:
+        if notices_path is not None:
+            if previous_notices is None:
+                notices_path.unlink(missing_ok=True)
+            else:
+                _atomic_write_bytes(notices_path, previous_notices)
+        raise
 
     return {
         "adoptionManifestPath": str(adoption_path),

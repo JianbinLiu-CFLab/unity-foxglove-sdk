@@ -1934,6 +1934,29 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
                 json.loads(adoption_path.read_text(encoding="utf-8")),
             )
 
+    def test_runtime_adoption_json_replace_failure_preserves_previous_file(self) -> None:
+        """A failed final replace must not truncate verified adoption evidence."""
+        from Scripts.ros2forunity.windows import runtime_adoption_manifest
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "adoption.json"
+            path.write_text('{"verified":true}\n', encoding="utf-8")
+            with mock.patch.object(
+                runtime_adoption_manifest.os,
+                "replace",
+                side_effect=OSError("replace failed"),
+            ):
+                with self.assertRaisesRegex(OSError, "replace failed"):
+                    runtime_adoption_manifest.write_json(
+                        path,
+                        {"verified": False},
+                    )
+
+            self.assertEqual(
+                '{"verified":true}\n',
+                path.read_text(encoding="utf-8"),
+            )
+
     def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
         """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""
         scripts = {

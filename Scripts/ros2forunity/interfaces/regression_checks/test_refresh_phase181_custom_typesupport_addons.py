@@ -72,6 +72,29 @@ class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
             self.assertIn("validate_foxrun_custom_typesupport_addon.py", commands[2][1])
             self.assertIn(str(fixture.root / "build"), commands[0])
 
+    def test_apply_validates_the_external_toolchain_once_per_build(self) -> None:
+        """One candidate build should perform one expensive idle/install preflight."""
+        with self._fixture() as fixture:
+            fixture.write_addon(runtime_manifest_sha="stale")
+            request = AddonRefreshRequest(
+                root=fixture.root,
+                distros=("humble",),
+                apply=True,
+                ros2cs_source=fixture.ros2cs_source,
+                r2fu_source=fixture.r2fu_source,
+                unity=fixture.unity,
+            )
+            commands: list[tuple[str, ...]] = []
+            original = refresh._require_apply_toolchain
+            with patch.object(
+                refresh,
+                "_require_apply_toolchain",
+                wraps=original,
+            ) as require:
+                run_refresh(request, runner=self._recording_runner(commands))
+
+        self.assertEqual(1, require.call_count)
+
     def test_apply_forwards_the_explicit_distro_ros2_root_to_the_builder(self) -> None:
         """An isolated worktree must not depend on ignored repo-local ROS junctions."""
         with self._fixture() as fixture:
