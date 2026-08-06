@@ -131,8 +131,9 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py");
             Check(source.Contains("import re", StringComparison.Ordinal)
                   && source.Contains("reject_cmd_shell_unsafe_path(\"VsDevCmd.bat\", vs_dev_cmd)", StringComparison.Ordinal)
-                  && source.Contains("if '\"' in str(path):", StringComparison.Ordinal),
-                "134-30L: Phase138B rejects quoted VsDevCmd paths before cmd.exe interpolation");
+                  && source.Contains("'\"%&|^<>\\r\\n'", StringComparison.Ordinal)
+                  && source.Contains("if unsafe is not None:", StringComparison.Ordinal),
+                "134-30L: Phase138B rejects cmd.exe metacharacters in VsDevCmd paths before interpolation");
             Check(source.Contains("re.search(r\"python3[0-9]{2,}\", lower)", StringComparison.Ordinal)
                   && !source.Contains("cleaned[\"Path\"] = merged_path", StringComparison.Ordinal),
                 "134-30M: Phase138B future-proofs Python contamination filtering and keeps one canonical PATH key");

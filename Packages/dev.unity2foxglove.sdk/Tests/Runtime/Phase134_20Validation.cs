@@ -102,9 +102,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && drawer.Contains("AssemblyReloadEvents.beforeAssemblyReload -=", StringComparison.Ordinal)
                   && drawer.Contains("CancelHealthCheck", StringComparison.Ordinal),
                 "134-20-E3: ROS2 health drawer exposes cancel flow and cancels on assembly reload");
-            Check(drawer.Contains("finally { cancellation.Dispose(); }", StringComparison.Ordinal)
-                  && drawer.Contains("_cancellation = null;", StringComparison.Ordinal),
-                "134-20-E4: ROS2 health drawer disposes cancelled health-check tokens");
+            Check(drawer.Contains("RelinquishHealthCheck();", StringComparison.Ordinal)
+                  && drawer.Contains("var cancellation = _cancellation;", StringComparison.Ordinal)
+                  && drawer.Contains("_cancellation = null;", StringComparison.Ordinal)
+                  && drawer.Contains("task.ContinueWith(", StringComparison.Ordinal)
+                  && drawer.Contains("cancellation.Dispose();", StringComparison.Ordinal)
+                  && drawer.Contains("TaskContinuationOptions.ExecuteSynchronously", StringComparison.Ordinal),
+                "134-20-E4: ROS2 health drawer relinquishes and disposes cancelled tokens after worker completion");
         }
 
         private static void VerifyOpenH264HelperBoundary()
