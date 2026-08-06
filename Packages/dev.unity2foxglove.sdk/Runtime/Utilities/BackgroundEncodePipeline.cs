@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Util
         private TRequest _pending;
         private int _droppedCompletedCount;
         private int _encodeErrorCount;
+        private bool _hasTimedOutWorker;
         private bool _disposed;
 
         public BackgroundEncodePipeline(
@@ -196,7 +197,10 @@ namespace Unity.FoxgloveSDK.Util
                 return true;
 
             lock (_worker.Gate)
+            {
                 _worker.InvalidateTimedOutWorkerLocked();
+                _hasTimedOutWorker = true;
+            }
 
             return false;
         }
@@ -206,10 +210,18 @@ namespace Unity.FoxgloveSDK.Util
             if (_disposed)
                 return;
 
-            Stop(clearCompleted: true, out _);
+            var stopped = Stop(clearCompleted: true, out _);
+            _disposed = true;
+
+            // A generation invalidated after a bounded stop timeout may still be
+            // inside user encode code or a wait call. Keep the two small handles
+            // alive for process lifetime instead of racing that abandoned worker
+            // with ObjectDisposedException.
+            if (!stopped || _hasTimedOutWorker)
+                return;
+
             _workerSignal.Dispose();
             _worker.Dispose();
-            _disposed = true;
         }
 
         private void StartWorker(int workerGeneration)

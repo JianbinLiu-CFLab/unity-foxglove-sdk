@@ -76,6 +76,43 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void DisposeAfterStopTimeoutRetainsSynchronizationHandlesForAbandonedWorker()
+        {
+            using var encodeEntered = new ManualResetEventSlim(false);
+            using var releaseEncode = new ManualResetEventSlim(false);
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "phase187-background-dispose-timeout",
+                completedCapacity: 1,
+                stopWaitMs: 0,
+                encode: request =>
+                {
+                    encodeEntered.Set();
+                    releaseEncode.Wait();
+                    return request.Id;
+                });
+
+            try
+            {
+                Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+
+                pipeline.Dispose();
+
+                var workerSignal = GetWorkerSignal(pipeline);
+                var worker = GetWorker(pipeline);
+                var signalException = Record.Exception(() => workerSignal.Set());
+                var idleException = Record.Exception(() => worker.Idle.Set());
+                Assert.Null(signalException);
+                Assert.Null(idleException);
+            }
+            finally
+            {
+                releaseEncode.Set();
+                pipeline.Dispose();
+            }
+        }
+
+        [Fact]
         public void SchedulerRejectsNonFiniteRateAndTimeWithoutPersistingPoisonedState()
         {
             foreach (var rateHz in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
@@ -108,6 +145,15 @@ namespace Unity.FoxgloveSDK.UnitTests
                 "_worker",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             return Assert.IsType<BackgroundWorkerLifecycle>(field?.GetValue(pipeline));
+        }
+
+        private static AutoResetEvent GetWorkerSignal(
+            BackgroundEncodePipeline<TestRequest, int> pipeline)
+        {
+            var field = typeof(BackgroundEncodePipeline<TestRequest, int>).GetField(
+                "_workerSignal",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return Assert.IsType<AutoResetEvent>(field?.GetValue(pipeline));
         }
 
         private static FixedRatePublishState PoisonedSchedule()
