@@ -17,6 +17,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -213,6 +214,7 @@ class CoreSmokeScriptTests(unittest.TestCase):
     def test_phase139b_launch_backend_enforces_startup_timeout_without_stdout(self) -> None:
         """A silent child process should not block past startup_timeout."""
         module = load_smoke_module("phase139b_under_test", "replay/phase139b_remote_data_loader_acceptance.py")
+        stdout_finished = threading.Event()
 
         class BlockingStdout:
             """Stdout stub whose readline blocks like a quiet child process."""
@@ -220,12 +222,20 @@ class CoreSmokeScriptTests(unittest.TestCase):
             def readline(self):
                 """Block briefly before returning no line."""
                 time.sleep(0.25)
+                stdout_finished.set()
                 return ""
 
         class SilentProcess:
             """Process stub that stays alive and never emits startup output."""
 
+            pid = 12345
             stdout = BlockingStdout()
+
+            def __init__(self):
+                """Initialize cleanup tracking."""
+                self.killed = False
+                self.terminated = False
+                self.waits = 0
 
             def poll(self):
                 """Report that the process is still running."""
@@ -234,6 +244,17 @@ class CoreSmokeScriptTests(unittest.TestCase):
             def terminate(self):
                 """Record termination requested by cleanup."""
                 self.terminated = True
+
+            def wait(self, timeout=None):
+                """Require one force-kill before reporting process exit."""
+                self.waits += 1
+                if not self.killed:
+                    raise subprocess.TimeoutExpired(["fake"], timeout)
+                return 0
+
+            def kill(self):
+                """Record force-kill fallback."""
+                self.killed = True
 
         args = SimpleNamespace(
             mcap="input.mcap",
@@ -248,10 +269,14 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         process = SilentProcess()
         with mock.patch.object(module.subprocess, "Popen", return_value=process):
-            with self.assertRaises(RuntimeError):
-                module.launch_backend(args, ROOT)
+            with mock.patch.object(module.os, "name", "posix"):
+                with self.assertRaises(RuntimeError):
+                    module.launch_backend(args, ROOT)
 
         self.assertTrue(getattr(process, "terminated", False))
+        self.assertTrue(process.killed)
+        self.assertEqual(2, process.waits)
+        self.assertTrue(stdout_finished.is_set())
 
     def test_phase139b_windows_stop_backend_does_not_raise_on_wait_timeout(self) -> None:
         """Windows cleanup should not mask the original smoke result."""
