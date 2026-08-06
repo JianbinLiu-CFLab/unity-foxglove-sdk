@@ -50,6 +50,7 @@ class Phase181CustomRos2LinuxPeerTests(unittest.TestCase):
         self.assertEqual("19", environment["ROS_DOMAIN_ID"])
         self.assertEqual("SUBNET", environment["ROS_AUTOMATIC_DISCOVERY_RANGE"])
         self.assertEqual("lyrical", environment["ROS_DISTRO"])
+        self.assertNotIn("TOKEN", environment)
         with self.assertRaisesRegex(linux.LinuxPeerFailure, "FAIL_ENVIRONMENT"):
             linux.build_linux_environment(
                 args,

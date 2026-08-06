@@ -916,6 +916,14 @@ def apply_explicit_zenoh_session_config(
     env["ZENOH_SESSION_CONFIG_URI"] = str(resolved)
 
 
+def _require_valid_domain_id(domain_id: int, owner: str) -> int:
+    """Return one exact ROS domain id or fail before constructing an environment."""
+
+    if isinstance(domain_id, bool) or not isinstance(domain_id, int) or not 0 <= domain_id <= 232:
+        raise PeerFailure("FAIL_ARGUMENTS", f"The {owner} ROS domain id is outside the supported range.")
+    return domain_id
+
+
 def build_peer_environment(
     source: Mapping[str, str],
     ros2_root: pathlib.Path,
@@ -931,6 +939,7 @@ def build_peer_environment(
 
     root = pathlib.Path(ros2_root)
     install = pathlib.Path(workspace_install)
+    domain_id = _require_valid_domain_id(domain_id, "peer")
     env = ros2env.sanitized_subprocess_env(dict(source))
     existing_path = env.get("PATH", "")
     existing_pythonpath = env.get("PYTHONPATH", "")
@@ -981,8 +990,7 @@ def build_player_environment(
 
     if distro not in {"humble", "jazzy", "lyrical"} or not rmw.startswith("rmw_"):
         raise PeerFailure("FAIL_ARGUMENTS", "The Player profile does not identify one supported ROS2 runtime and RMW.")
-    if not isinstance(domain_id, int) or domain_id < 0 or domain_id > 232:
-        raise PeerFailure("FAIL_ARGUMENTS", "The Player ROS domain id is outside the supported range.")
+    domain_id = _require_valid_domain_id(domain_id, "Player")
     if not isinstance(interface_revision, int) or interface_revision <= 0:
         raise PeerFailure("FAIL_INTERFACE_DIGEST", "The Player interface revision is invalid.")
     protocol.require_interface_digest(interface_digest, interface_digest)

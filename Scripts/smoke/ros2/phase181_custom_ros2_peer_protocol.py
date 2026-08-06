@@ -78,6 +78,7 @@ class ProtocolState(str, Enum):
     ORIGIN_CHECKED = "ORIGIN_CHECKED"
     CLEAN_STOP = "CLEAN_STOP"
     PASS = "PASS"
+    FAILED = "FAILED"
 
 
 _NEXT_STATE: dict[ProtocolState, ProtocolState] = {
@@ -123,11 +124,12 @@ class EvidenceStateMachine:
         self.transitions.append(StateTransition(target, self._now()))
 
     def fail(self, code: str) -> None:
-        """Record a bounded terminal failure code without changing positive ordering."""
+        """Record a bounded terminal failure without fabricating positive progress."""
 
         if not code.startswith("FAIL_"):
             raise ValueError("Phase181 failure codes must begin with FAIL_.")
-        self.transitions.append(StateTransition(ProtocolState.PRECHECK, self._now()))
+        self.state = ProtocolState.FAILED
+        self.transitions.append(StateTransition(self.state, self._now()))
 
 
 @dataclass(frozen=True)

@@ -156,7 +156,7 @@ class Phase181CustomRos2MatrixProfileTests(unittest.TestCase):
             profiles.zenoh_topology,
             "start_topology",
             return_value=handle,
-        ), mock.patch.object(
+        ) as start_topology, mock.patch.object(
             profiles.zenoh_topology,
             "close_topology",
         ), mock.patch.object(
@@ -168,6 +168,7 @@ class Phase181CustomRos2MatrixProfileTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertEqual(session_config, run_peer.call_args.kwargs["zenoh_session_config"])
+        self.assertEqual(300.0, start_topology.call_args.kwargs["ready_timeout_seconds"])
 
     def test_zenoh_profile_uses_the_project_router_setting_for_its_owned_router(self):
         """Verify Phase181 behavior: manual Unity and the peer use the same explicit Router Address and Port."""

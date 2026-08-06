@@ -127,6 +127,19 @@ class Phase181CustomRos2PeerProtocolTests(unittest.TestCase):
         self.assertEqual(protocol.ProtocolState.PASS, run.state)
         self.assertEqual(10, len(run.transitions))
 
+    def test_state_machine_records_failure_without_fake_precheck_rewind(self):
+        """Failure evidence must show a terminal FAILED state after progress."""
+        protocol = load_protocol_module()
+        run = protocol.EvidenceStateMachine(now=lambda: 42.0)
+        run.transition(protocol.ProtocolState.PEER_SOURCE_READY)
+
+        run.fail("FAIL_TEST")
+
+        self.assertEqual(protocol.ProtocolState.FAILED, run.state)
+        self.assertEqual(protocol.ProtocolState.FAILED, run.transitions[-1].state)
+        with self.assertRaisesRegex(protocol.ProtocolFailure, "FAIL_STATE_TRANSITION"):
+            run.transition(protocol.ProtocolState.STRING_SUBSCRIBER_WAITING)
+
     def test_marker_offset_scanning_is_append_only_and_deduplicates_repeated_lines(self):
         """Verify Phase181 behavior: marker offset scanning is append only and deduplicates repeated lines."""
         protocol = load_protocol_module()
@@ -158,12 +171,14 @@ class Phase181CustomRos2PeerProtocolTests(unittest.TestCase):
             )
 
             markers, end_offset = protocol.read_new_markers(log, offset)
+            final_size = log.stat().st_size
 
         self.assertEqual(
             ["PHASE181_CUSTOM_ROS2_READY", "PHASE181_CUSTOM_INTERFACE_READY"],
             [item.name for item in markers],
         )
         self.assertLess(end_offset, offset)
+        self.assertEqual(final_size, end_offset)
 
     def test_interface_ready_marker_is_recognized_for_custom_correlation(self):
         """Verify Phase181 behavior: custom-interface readiness is a protocol marker."""
