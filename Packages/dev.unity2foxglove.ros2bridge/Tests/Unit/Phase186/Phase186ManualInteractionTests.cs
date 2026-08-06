@@ -187,6 +187,46 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                     "0123456789abcdef0123456789abcdef"));
         }
 
+        [Fact]
+        public void FanoutFailureEvidenceRejectsProviderThatWasNeverReady()
+        {
+            var observation = new Phase186FanoutFailureObservation();
+
+            observation.Observe(
+                failureInjected: false,
+                providerReady: false);
+            observation.Observe(
+                failureInjected: true,
+                providerReady: false);
+
+            Assert.False(observation.ReadyBeforeInjection);
+            Assert.False(observation.FailureObservedAfterInjection);
+        }
+
+        [Fact]
+        public void FanoutFailureEvidenceRequiresReadyThenPostInjectionFailure()
+        {
+            var observation = new Phase186FanoutFailureObservation();
+
+            observation.Observe(
+                failureInjected: false,
+                providerReady: true);
+            observation.Observe(
+                failureInjected: true,
+                providerReady: true);
+            Assert.True(observation.ReadyBeforeInjection);
+            Assert.False(observation.FailureObservedAfterInjection);
+
+            observation.Observe(
+                failureInjected: true,
+                providerReady: false);
+            Assert.True(observation.FailureObservedAfterInjection);
+
+            observation.ResetForRun();
+            Assert.False(observation.ReadyBeforeInjection);
+            Assert.False(observation.FailureObservedAfterInjection);
+        }
+
         private static Phase186ManualInteraction Evaluate(
             Phase186ManualInteractionState state,
             bool canComplete = false)

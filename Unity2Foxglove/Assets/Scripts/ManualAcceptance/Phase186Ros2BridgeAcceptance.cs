@@ -123,11 +123,13 @@ namespace Unity2Foxglove.ManualAcceptance
         private bool _exerciseGateReady;
         private bool _exerciseGateFailureLogged;
         private bool _fanoutFailureInjected;
-        private bool _fanoutFailedProviderObserved;
         private long _fanoutSentFramesBeforeFailure;
         private string _progressFingerprint = string.Empty;
         private readonly Phase186ManualInteractionState _manualInteraction =
             new Phase186ManualInteractionState();
+        private readonly Phase186FanoutFailureObservation
+            _fanoutFailureObservation =
+                new Phase186FanoutFailureObservation();
 
         public string RunId => _runId;
         public string CaseId => _caseId;
@@ -186,6 +188,7 @@ namespace Unity2Foxglove.ManualAcceptance
             string exerciseGate)
         {
             _manualInteraction.ResetForRun();
+            _fanoutFailureObservation.ResetForRun();
             if (!IsRunId(runId))
                 throw new ArgumentException("Run ID is malformed.", nameof(runId));
             if (string.IsNullOrWhiteSpace(caseId) || caseId.Length > 80)
@@ -248,7 +251,7 @@ namespace Unity2Foxglove.ManualAcceptance
             _exerciseGateReady = false;
             _exerciseGateFailureLogged = false;
             _fanoutFailureInjected = false;
-            _fanoutFailedProviderObserved = false;
+            _fanoutFailureObservation.ResetForRun();
             _fanoutSentFramesBeforeFailure = 0;
             _progressFingerprint = string.Empty;
             _nextExternalGateCheckAt = 0f;
@@ -558,7 +561,8 @@ namespace Unity2Foxglove.ManualAcceptance
                     "fanout-fairness-health",
                     StringComparison.Ordinal)
                 && (!_fanoutFailureInjected
-                    || !_fanoutFailedProviderObserved
+                    || !_fanoutFailureObservation
+                        .FailureObservedAfterInjection
                     || _sentFrames <= _fanoutSentFramesBeforeFailure))
             {
                 return false;
@@ -588,6 +592,12 @@ namespace Unity2Foxglove.ManualAcceptance
             if (component == null || !component.enabled)
             {
                 _status = "Fail closed: fanout R2FU Provider is absent before injection.";
+                return;
+            }
+            if (!_fanoutFailureObservation.ReadyBeforeInjection)
+            {
+                _status =
+                    "Waiting for fanout R2FU Provider readiness before injection.";
                 return;
             }
             _fanoutSentFramesBeforeFailure = _sentFrames;
@@ -795,14 +805,9 @@ namespace Unity2Foxglove.ManualAcceptance
                         "unity2foxglove.r2fu",
                         StringComparison.Ordinal))
                 {
-                    if (_fanoutFailureInjected
-                        && !string.Equals(
-                            status.Publish.State.ToString(),
-                            "Ready",
-                            StringComparison.Ordinal))
-                    {
-                        _fanoutFailedProviderObserved = true;
-                    }
+                    _fanoutFailureObservation.Observe(
+                        _fanoutFailureInjected,
+                        status.Publish.State == FoxRunTransportObservedState.Ready);
                     continue;
                 }
                 if (!string.Equals(

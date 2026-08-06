@@ -265,6 +265,26 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("ResetForRun", interaction, StringComparison.Ordinal);
             Assert.Contains("TryRequestLocalB", interaction, StringComparison.Ordinal);
             Assert.Contains("TryRequestComplete", interaction, StringComparison.Ordinal);
+            Assert.Contains(
+                "Phase186FanoutFailureObservation",
+                interaction,
+                StringComparison.Ordinal);
+            var fanoutInjection = Slice(
+                runtime,
+                "private void InjectFanoutFailureIfRequested()",
+                "private void RefreshExerciseGate()");
+            Assert.Contains(
+                "_fanoutFailureObservation.ReadyBeforeInjection",
+                fanoutInjection,
+                StringComparison.Ordinal);
+            var providerEvidence = Slice(
+                runtime,
+                "private void CaptureProviderEvidence()",
+                "private bool TryValidateContext(out string reason)");
+            Assert.Contains(
+                "_fanoutFailureObservation.Observe(",
+                providerEvidence,
+                StringComparison.Ordinal);
             Assert.Contains("partial void Phase186Generated_Describe", runtime, StringComparison.Ordinal);
             Assert.Contains("partial void Phase186Generated_Tick", runtime, StringComparison.Ordinal);
             Assert.Contains("PHASE186_MANUAL_COMPLETE", runtime, StringComparison.Ordinal);

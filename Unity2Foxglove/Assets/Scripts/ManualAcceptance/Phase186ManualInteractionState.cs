@@ -32,6 +32,33 @@ namespace Unity2Foxglove.ManualAcceptance
         internal bool CanRequestComplete { get; }
     }
 
+    internal sealed class Phase186FanoutFailureObservation
+    {
+        internal bool ReadyBeforeInjection { get; private set; }
+        internal bool FailureObservedAfterInjection { get; private set; }
+
+        internal void ResetForRun()
+        {
+            ReadyBeforeInjection = false;
+            FailureObservedAfterInjection = false;
+        }
+
+        internal void Observe(
+            bool failureInjected,
+            bool providerReady)
+        {
+            if (!failureInjected)
+            {
+                if (providerReady)
+                    ReadyBeforeInjection = true;
+                return;
+            }
+
+            if (ReadyBeforeInjection && !providerReady)
+                FailureObservedAfterInjection = true;
+        }
+    }
+
     internal sealed class Phase186ManualInteractionState
     {
         internal bool ExternalAObserved { get; private set; }
