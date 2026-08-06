@@ -133,6 +133,8 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     if not artifact.exists():
         raise FileNotFoundError(f"Missing artifact zip: {artifact}")
     digest = sha256_file(artifact)
+    if digest != EXPECTED_ARTIFACT_SHA256:
+        raise ValueError(f"Artifact sha256 does not match pinned Humble handoff: {digest} != {EXPECTED_ARTIFACT_SHA256}")
     if manifest is None:
         manifest = manifest_for_artifact(artifact)
     if not manifest.exists():
@@ -142,8 +144,6 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     expected = data.get("sha256")
     if expected and expected != digest:
         raise ValueError(f"Artifact sha256 does not match manifest: {digest} != {expected}")
-    if digest != EXPECTED_ARTIFACT_SHA256:
-        raise ValueError(f"Artifact sha256 does not match pinned Humble handoff: {digest} != {EXPECTED_ARTIFACT_SHA256}")
     return {"path": str(artifact), "sha256": digest, "manifest": str(manifest), "manifestData": data}
 
 
@@ -159,7 +159,7 @@ def ensure_project_uses_runtime_package(
     direct_asset = project_root / "Unity2Foxglove" / "Assets" / "Ros2ForUnity"
     manifest = read_json(manifest_path)
     dependencies = manifest.setdefault("dependencies", {})
-    runtime_ref = "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64"
+    runtime_ref = f"file:../../Packages/{PACKAGE_NAME}"
 
     changed = False
     active_runtime_packages = sorted(

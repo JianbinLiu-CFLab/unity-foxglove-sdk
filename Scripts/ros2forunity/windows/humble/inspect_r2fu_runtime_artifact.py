@@ -164,11 +164,16 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         raise FileNotFoundError(f"Missing artifact: {paths.artifact}")
 
     artifact_hash = sha256_file(paths.artifact)
+    inspector_hash = sha256_file(Path(__file__).resolve())
     sidecar_hash = read_sidecar_sha256(paths.sha256_file)
     if sidecar_hash and sidecar_hash != artifact_hash:
         raise ValueError(f"sha256 sidecar mismatch: {sidecar_hash} != {artifact_hash}")
 
-    cached_inventory = read_cached_inventory(paths.output, artifact_hash) if not paths.force else None
+    cached_inventory = (
+        read_cached_inventory(paths.output, artifact_hash, inspector_hash)
+        if not paths.force
+        else None
+    )
     if cached_inventory is not None:
         return cached_inventory
 
@@ -203,6 +208,7 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         "artifactName": paths.artifact.name,
         "artifactSize": paths.artifact.stat().st_size,
         "sha256": artifact_hash,
+        "inspectorSha256": inspector_hash,
         "sha256Sidecar": paths.sha256_file.name if paths.sha256_file.exists() else "",
         "source": {
             "upstream": "RobotecAI/ros2-for-unity",
@@ -228,15 +234,25 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
     }
 
 
-def read_cached_inventory(path: Path, artifact_hash: str) -> dict[str, object] | None:
-    """Return an existing inventory when it already describes this artifact."""
+def read_cached_inventory(
+    path: Path,
+    artifact_hash: str,
+    inspector_hash: str,
+) -> dict[str, object] | None:
+    """Return an inventory only when artifact and inspector identities match."""
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, ValueError, KeyError):
         return None
-    return data if isinstance(data, dict) and data.get("sha256") == artifact_hash else None
+    return (
+        data
+        if isinstance(data, dict)
+        and data.get("sha256") == artifact_hash
+        and data.get("inspectorSha256") == inspector_hash
+        else None
+    )
 
 
 def write_inventory(paths: ArtifactPaths, inventory: dict[str, object]) -> None:

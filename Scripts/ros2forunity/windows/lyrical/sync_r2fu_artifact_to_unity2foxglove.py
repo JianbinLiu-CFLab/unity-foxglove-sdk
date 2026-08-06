@@ -165,7 +165,7 @@ def ensure_project_uses_runtime_package(
     direct_asset = project_root / "Unity2Foxglove" / "Assets" / "Ros2ForUnity"
     manifest = read_json(manifest_path)
     dependencies = manifest.setdefault("dependencies", {})
-    runtime_ref = "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+    runtime_ref = f"file:../../Packages/{PACKAGE_NAME}"
 
     changed = False
     active_runtime_packages = sorted(
