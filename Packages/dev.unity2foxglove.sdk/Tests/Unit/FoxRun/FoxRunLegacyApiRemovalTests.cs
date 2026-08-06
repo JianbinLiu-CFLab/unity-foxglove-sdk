@@ -63,6 +63,98 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
         }
 
+        [Fact]
+        public void LegacyPolicyMigrationCompilesWithoutObsoleteSelfUseWarning()
+        {
+            var inboundRoot = CSharpSyntaxTree.ParseText(TestSources.Text(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs"))
+                .GetRoot();
+            var legacyField = ExtractField(inboundRoot, "_defaultFoxRunEncoding")
+                .NormalizeWhitespace()
+                .ToFullString();
+            var migrationTree = CSharpSyntaxTree.ParseText(TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs"));
+            var supportTree = CSharpSyntaxTree.ParseText(@"
+using System;
+using UnityEngine;
+using UnityEngine.Serialization;
+
+namespace UnityEngine
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeField : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class HideInInspector : Attribute { }
+
+    public interface ISerializationCallbackReceiver
+    {
+        void OnBeforeSerialize();
+        void OnAfterDeserialize();
+    }
+}
+
+namespace UnityEngine.Serialization
+{
+    [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
+    public sealed class FormerlySerializedAsAttribute : Attribute
+    {
+        public FormerlySerializedAsAttribute(string oldName) { }
+    }
+}
+
+namespace Unity.FoxgloveSDK.Components
+{
+    public enum FoxRunEncoding
+    {
+        Protobuf = 1,
+    }
+
+    internal static class FoxRunEncodingPolicyMigration
+    {
+        internal const int CurrentSerializationVersion = 1;
+
+        internal static void Migrate(
+            ref int version,
+            FoxRunEncoding legacy,
+            ref FoxRunEncoding publish,
+            ref FoxRunEncoding subscribe) { }
+    }
+
+    internal static class CoordinateTransportPolicy
+    {
+        internal const int CurrentSerializationVersion = 1;
+
+        internal static void Migrate(
+            ref int version,
+            int legacy,
+            ref int output,
+            ref int input) { }
+    }
+
+    public partial class FoxgloveManager
+    {
+" + legacyField + @"
+        private FoxRunEncoding _defaultFoxRunPublishEncoding;
+        private FoxRunEncoding _defaultFoxRunSubscriptionEncoding;
+        private int _coordinateMode;
+        private int _outputCoordinateMode;
+        private int _inputCoordinateMode;
+    }
+}");
+            var compilation = CSharpCompilation.Create(
+                "FoxRunPolicyMigrationWarningContract",
+                new[] { migrationTree, supportTree },
+                CompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var diagnostics = compilation.GetDiagnostics();
+
+            Assert.DoesNotContain(
+                diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "CS0618");
+        }
+
 
 
         public static IEnumerable<object[]> RemovedSpellings()

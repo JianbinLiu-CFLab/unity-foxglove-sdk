@@ -29,9 +29,14 @@ namespace Unity.FoxgloveSDK.Components
                 ref _outputCoordinateMode,
                 ref _inputCoordinateMode);
 
+            // This hidden field is obsolete for normal callers but remains the
+            // serialized source of truth for upgrading pre-directional assets.
+#pragma warning disable CS0618
+            var legacyFoxRunEncoding = _defaultFoxRunEncoding;
+#pragma warning restore CS0618
             FoxRunEncodingPolicyMigration.Migrate(
                 ref _foxRunPolicySerializationVersion,
-                _defaultFoxRunEncoding,
+                legacyFoxRunEncoding,
                 ref _defaultFoxRunPublishEncoding,
                 ref _defaultFoxRunSubscriptionEncoding);
         }
