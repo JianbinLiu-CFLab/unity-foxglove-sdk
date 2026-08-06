@@ -897,6 +897,14 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(results, "Sensor checks readings before dereference", sensor_null_guard, "Sensor.cs")
     add(results, "Sensor unregisters executable action", "UnregisterExecutable" in sensor, "Sensor.cs")
+    add(
+        results,
+        "Sensor publishes outside its readings lock with deferred retirement",
+        "publisherToUse.Publish(readingToPublish);" in sensor
+        and "publisherRetirementPending" in sensor
+        and "CompletePublisherCall();" in sensor,
+        "Sensor.cs",
+    )
 
 
 def check_generator_alignment(results: list[CheckResult]) -> None:
