@@ -641,7 +641,7 @@ namespace Unity.FoxgloveSDK.Transport
                             fragmentedFrames = 1;
                             if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
                             {
-                                CloseProtocolError(clientId, conn);
+                                CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
                                 return;
                             }
                             break;
@@ -656,13 +656,13 @@ namespace Unity.FoxgloveSDK.Transport
                             fragmentedFrames++;
                             if (fragmentedFrames > MaxFragmentedMessageFrames)
                             {
-                                CloseProtocolError(clientId, conn);
+                                CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
                                 return;
                             }
 
                             if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
                             {
-                                CloseProtocolError(clientId, conn);
+                                CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
                                 return;
                             }
 
