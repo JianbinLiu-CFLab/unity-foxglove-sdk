@@ -82,6 +82,109 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PackedPointCloudEventDispatchContinuesAfterASubscriberThrows()
+        {
+            var frame = new PackedPointCloudFrame(
+                unixNs: 1UL,
+                frameId: "lidar",
+                height: 1U,
+                width: 1U,
+                fields: Array.Empty<PointCloudPackedField>(),
+                pointStep: 1U,
+                data: new byte[1],
+                isDense: true);
+            var laterSubscriberCalls = 0;
+            Exception observedFailure = null;
+            Action<PackedPointCloudFrame> subscribers = _ =>
+                throw new InvalidOperationException("first subscriber failed");
+            subscribers += observedFrame =>
+            {
+                Assert.Same(frame, observedFrame);
+                laterSubscriberCalls++;
+            };
+
+            PointCloudFrameEventDispatcher.Invoke(
+                subscribers,
+                frame,
+                failure => observedFailure = failure);
+
+            Assert.Equal(1, laterSubscriberCalls);
+            Assert.IsType<InvalidOperationException>(observedFailure);
+        }
+
+        [Fact]
+        public void PointCloudEncodePipelineRejectsNonPositiveFailureWarningIntervals()
+        {
+            PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult> pipeline = null;
+            try
+            {
+                var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                    pipeline = new PointCloudEncodePipeline<PackedPointCloudRequest, PackedPointCloudResult>(
+                        threadName: "point-cloud-interval-test",
+                        completedCapacity: 1,
+                        workerStopWaitMs: 0,
+                        encode: _ => null,
+                        isSuccess: result => result.Success,
+                        failureMessage: result => result.Error,
+                        formatFailureWarning: message => message,
+                        publishCompleted: _ => { },
+                        logWarning: _ => { },
+                        logDropDiagnostic: _ => { },
+                        replacedPendingWarning: "replaced",
+                        queueFailureMessagePrefix: "queue: ",
+                        droppedCompletedWarning: count => count.ToString(),
+                        workerShutdownWarning: "shutdown",
+                        failureWarningIntervalFrames: 0));
+
+                Assert.Equal("failureWarningIntervalFrames", error.ParamName);
+            }
+            finally
+            {
+                pipeline?.Dispose();
+            }
+        }
+
+        [Fact]
+        public void PackedPointCloudWorkerRecordsRawPayloadBuildTimingWhenEnabled()
+        {
+            var points = VirtualLidarPointSnapshotPool.Rent(1);
+            points[0] = new VirtualLidarPointData
+            {
+                X = 1f,
+                Y = 2f,
+                Z = 3f,
+                IsValid = 1
+            };
+            var request = new PackedPointCloudRequest(
+                points,
+                lidarPointCount: 1,
+                unixNs: 1UL,
+                frameId: "lidar",
+                emitAbsoluteTimeNs: false,
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: true,
+                webSocketEncoding: PublisherEffectiveEncoding.Protobuf,
+                logPerformanceDiagnostics: true);
+            PackedPointCloudResult result = null;
+
+            try
+            {
+                result = PointCloudWorkerEncoders.EncodePackedPointCloudRequest(request);
+
+                Assert.True(result.Success, result.Error);
+                Assert.True(
+                    result.RawPayloadBuildMs > 0d,
+                    "Enabled raw payload diagnostics must report a measured duration.");
+            }
+            finally
+            {
+                result?.RecycleResultPayloads();
+                request.RecycleSourceSnapshot();
+            }
+        }
+
+        [Fact]
         public void PackedPointCloudDeskewRateGateRunsBeforeMotionRequestCreation()
         {
             var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");

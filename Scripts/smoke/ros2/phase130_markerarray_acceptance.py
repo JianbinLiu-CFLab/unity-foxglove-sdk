@@ -158,7 +158,7 @@ def launch_rviz_before_echo(
     startup_check_seconds: float,
     window_wait_seconds: float,
 ) -> None:
-    """Launch RViz2 as soon as publisher endpoints are visible."""
+    """Launch RViz2 eagerly before the bounded graph and echo probes."""
 
     if should_launch:
         ros2env.launch_rviz(

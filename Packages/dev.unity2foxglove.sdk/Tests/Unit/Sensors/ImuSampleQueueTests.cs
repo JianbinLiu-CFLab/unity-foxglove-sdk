@@ -74,6 +74,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(queue.TryDequeue(out var second));
             Assert.Equal(10UL, first.TimestampNs);
             Assert.Equal(20UL, second.TimestampNs);
+            Assert.Equal(1, queue.DroppedCount);
         }
 
         [Fact]

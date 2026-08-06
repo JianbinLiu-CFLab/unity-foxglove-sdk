@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             WebSocketSerializerRoundTripsConfiguredCovariance();
             OrientationDisabledKeepsUnknownCovarianceMarker();
+            OrientationDisabledIgnoresDiscardedCovariance();
             LegacySerializeOverloadPreservesDefaultCovarianceBehavior();
             InvalidCovarianceLengthsThrowClearErrors();
             SerializerUsesExactByteBuffer();
@@ -83,6 +84,24 @@ namespace Unity.FoxgloveSDK.Tests
                 "140G-2B: orientation-disabled WebSocket IMU still writes angular-velocity covariance");
             CheckSequence(covariance[8], LinearAccelerationCovariance,
                 "140G-2C: orientation-disabled WebSocket IMU still writes linear-acceleration covariance");
+        }
+
+        private static void OrientationDisabledIgnoresDiscardedCovariance()
+        {
+            var bytes = ImuMessageBuilder.Serialize(
+                1_234_567_890UL,
+                "imu",
+                new Vector3 { x = 1f, y = 2f, z = 3f },
+                new Vector3 { x = 4f, y = 5f, z = 6f },
+                new Quaternion { x = 0f, y = 0f, z = 0f, w = 1f },
+                includeOrientation: false,
+                orientationCovariance: null,
+                AngularVelocityCovariance,
+                LinearAccelerationCovariance);
+            var covariance = ReadCovariances(bytes);
+
+            Check(covariance[6][0] == -1d && covariance[6].Skip(1).All(value => value == 0d),
+                "140G-2D: orientation-disabled WebSocket IMU ignores discarded orientation covariance");
         }
 
         private static void LegacySerializeOverloadPreservesDefaultCovarianceBehavior()

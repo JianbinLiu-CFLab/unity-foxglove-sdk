@@ -56,7 +56,7 @@
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
-      "sha256": "507727473a36519cb30cf4e04e55b7b5e958010e1f7d454d2320a0badd866359",
+      "sha256": "f95131a33cea5c41002c2825e8f67af2a3ee7087ffab8c765affecc8efea0d93",
       "classification": "original",
       "influence": "Original package-facing protocol, limits, compatibility, and clean-room documentation."
     },
@@ -69,7 +69,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2OutboundAuthority.cs",
-      "sha256": "cfba16e2149532d37cb0af3e43f07f0dc636deb222f0848f06324f7687c0cfc5",
+      "sha256": "905c1135d7e0272ea9edd3dcf5903ad88512f4dd14f268537ccd3205c8799b96",
       "classification": "original",
       "influence": "Original C# bounded outbound scheduling authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -104,7 +104,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "46ecbd1b0906bb89f9dffced4abf6c423e35a683a1ed628b03564498474f5183",
+      "sha256": "43f7cdb300c12dc090bd50cda424b89d49145247a87879ad5c7a9c15d418b4f1",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -136,7 +136,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",
-      "sha256": "25b578ca848e88ba2cf1aa2d46ae02f6fca437af265760f1f4d92ae6e6b33bc7",
+      "sha256": "e0f450a208da679d980ad6363bfa87ed2ebcee72de8b6fc121abb54ef649a560",
       "classification": "original",
       "influence": "Original sidecar protocol, limits, compatibility, and clean-room documentation."
     },

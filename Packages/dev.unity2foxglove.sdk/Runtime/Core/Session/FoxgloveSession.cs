@@ -1269,7 +1269,17 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientBinary(uint clientId, byte[] data)
         {
-            if (HandlePlaybackControlRequest(clientId, data)) return;
+            if (data != null
+                && data.Length != 0
+                && data[0] == ClientOpcode.PlaybackControlRequest)
+            {
+                if (!HandlePlaybackControlRequest(clientId, data))
+                {
+                    _logger.LogWarning(
+                        $"PlaybackControl request from client {clientId} was malformed or unavailable.");
+                }
+                return;
+            }
             if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
             {
                 HandleClientBinaryPublish(clientId, chId, payload);

@@ -156,6 +156,38 @@ def json_bytes(payload: dict) -> str:
 class CoreSmokeScriptTests(unittest.TestCase):
     """Regression coverage for local smoke helper edge cases."""
 
+    def test_slow_camera_client_rejects_oversized_frames_before_payload_read(self) -> None:
+        """The manual client must reject unrealistic frames before buffering payload bytes."""
+        module = load_smoke_module(
+            "phase40_slow_camera_client_under_test",
+            "websocket/phase40_slow_camera_client.py",
+        )
+        maximum_payload_bytes = 16 * 1024 * 1024
+        declared_payload_bytes = maximum_payload_bytes + 1
+
+        class HeaderOnlySocket:
+            """Socket stub that fails if the decoder attempts to read frame payload bytes."""
+
+            def __init__(self) -> None:
+                """Seed only the two bounded frame-header chunks."""
+                self._chunks = [
+                    bytes([0x82, module.WEBSOCKET_64BIT_LENGTH_MARKER]),
+                    struct.pack("!Q", declared_payload_bytes),
+                ]
+
+            def recv(self, count: int) -> bytes:
+                """Return header chunks and reject any subsequent payload read."""
+                if not self._chunks:
+                    raise AssertionError("oversized frame payload was read")
+                chunk = self._chunks.pop(0)
+                if len(chunk) != count:
+                    raise AssertionError(f"expected a {count}-byte header read, got {len(chunk)}")
+                return chunk
+
+        self.assertEqual(maximum_payload_bytes, module.MAX_SMOKE_FRAME_PAYLOAD_BYTES)
+        with self.assertRaisesRegex(ValueError, "Frame too large"):
+            module.read_server_frame(HeaderOnlySocket())
+
     def test_topic_waiters_raise_topic_not_found_on_advertise_timeout(self) -> None:
         """Topic probes should return their structured timeout verdict path."""
         cases = [
@@ -365,6 +397,26 @@ class CoreSmokeScriptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.build_ssl_context("wss://example.com:8765", True)
 
+    def test_all_local_wss_smoke_probes_restrict_insecure_tls_to_loopback(self) -> None:
+        """Every smoke probe must reject disabled TLS validation for remote endpoints."""
+        probes = (
+            ("pointcloud_qos_tls_boundary", "websocket/pointcloud_qos_probe.py"),
+            ("phase168_tls_boundary", "websocket/phase168_msgpack_live_probe.py"),
+            ("phase175_tls_boundary", "websocket/phase175_protobuf_inbound_publish.py"),
+            ("compressed_pointcloud_tls_boundary", "websocket/compressed_pointcloud_draco_probe.py"),
+            ("phase139_e2e_tls_boundary", "replay/phase139_e2e_integration_smoke.py"),
+        )
+        for name, relative in probes:
+            with self.subTest(relative=relative):
+                module = load_smoke_module(name, relative)
+                with self.assertRaisesRegex(ValueError, "loopback"):
+                    module.build_ssl_context("wss://example.com:8765", True)
+
+                context = module.build_ssl_context("wss://127.0.0.1:8765", True)
+                self.assertIsNotNone(context)
+                self.assertFalse(context.check_hostname)
+                self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+
     def test_pointcloud_probe_rejects_non_strict_json_base64(self) -> None:
         """Whitespace-tolerant base64 decoding should not hide malformed payloads."""
         module = load_smoke_module("pointcloud_qos_base64_under_test", "websocket/pointcloud_qos_probe.py")
@@ -428,6 +480,23 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertTrue(hasattr(module, "main"))
 
+    def test_phase110_string_payload_preserves_apostrophes(self) -> None:
+        """The ROS2 YAML argument must preserve the exact requested String data."""
+        module = load_smoke_module("phase110_payload_under_test", "ros2/phase110_string_smoke_acceptance.py")
+
+        encoded = module.build_string_message_argument("it's a test")
+
+        self.assertEqual({"data": "it's a test"}, json.loads(encoded))
+
+    def test_phase110_subscription_poll_sleep_respects_deadline(self) -> None:
+        """The final subscription poll must not overshoot its remaining budget."""
+        module = load_smoke_module("phase110_sleep_under_test", "ros2/phase110_string_smoke_acceptance.py")
+        with mock.patch.object(module.time, "monotonic", return_value=9.75):
+            with mock.patch.object(module.time, "sleep") as sleep:
+                module.sleep_before_subscription_retry(10.0)
+
+        sleep.assert_called_once_with(0.25)
+
     def test_phase139d_loopback_reports_url_errors_without_traceback(self) -> None:
         """Unity cursor endpoint connection failures should return structured errors."""
         module = load_smoke_module("phase139d_url_error_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")
@@ -463,6 +532,66 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             module.parse_fetch_asset_response(frame)
+
+    def test_fetch_asset_skips_unrelated_binary_frames_until_matching_response(self) -> None:
+        """Concurrent server traffic must not preempt the requested asset response."""
+        module = load_smoke_module("fetch_asset_routing_under_test", "assets/fetch_asset_smoke.py")
+
+        def frame(opcode: int, request_id: int, payload: bytes = b"") -> bytes:
+            """Build one minimally valid binary frame for the scripted socket."""
+            return bytes([opcode]) + request_id.to_bytes(4, "little") + bytes([0]) + (0).to_bytes(4, "little") + payload
+
+        class FakeSocket:
+            """Yield unrelated traffic before the matching fetchAsset response."""
+
+            def __init__(self):
+                """Seed unrelated and matching binary response frames."""
+                self.frames = iter(
+                    (
+                        frame(1, 0, b"topic-data"),
+                        frame(module.FETCH_ASSET_RESPONSE_OPCODE, 99, b"stale"),
+                        frame(module.FETCH_ASSET_RESPONSE_OPCODE, 42, b"FoxgloveDemoSetup"),
+                    )
+                )
+
+            async def send(self, _message):
+                """Accept the request."""
+
+            async def recv(self):
+                """Return the next scripted frame."""
+                return next(self.frames)
+
+        class FakeConnection:
+            """Provide the async context manager returned by websockets.connect."""
+
+            def __init__(self):
+                """Own the scripted socket returned to the smoke helper."""
+                self.socket = FakeSocket()
+
+            async def __aenter__(self):
+                """Return the scripted socket when the connection opens."""
+                return self.socket
+
+            async def __aexit__(self, _exc_type, _exc, _traceback):
+                """Leave the scripted connection without suppressing failures."""
+                return False
+
+        args = SimpleNamespace(
+            host="127.0.0.1",
+            port=8765,
+            request_id=42,
+            uri="asset://demo/test",
+            output="",
+            drain_attempts=0,
+            drain_timeout_seconds=0.01,
+            response_attempts=3,
+            response_timeout_seconds=0.01,
+            preview_chars=40,
+        )
+        with mock.patch.object(module.websockets, "connect", return_value=FakeConnection()):
+            result = asyncio.run(module.run(args))
+
+        self.assertEqual(module.EXIT_SUCCESS, result)
 
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""
@@ -556,6 +685,67 @@ class CoreSmokeScriptTests(unittest.TestCase):
                 self.assertNotIn("deadline = time.time() + spin_seconds", source)
                 self.assertNotIn("while time.time() < deadline", source)
                 self.assertIn("deadline = time.monotonic() + spin_seconds", source)
+
+    def test_phase138u_rejects_raw_and_deskewed_samples_from_different_scans(self) -> None:
+        """Motion evidence must compare PointCloud2 samples with the same stamp."""
+        module = load_smoke_module(
+            "phase138u_correlation_under_test",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        )
+        raw = {"topic": "/raw", "stamp": {"sec": 10, "nanosec": 20}}
+        deskewed = {"topic": "/deskewed", "stamp": {"sec": 10, "nanosec": 21}}
+
+        with self.assertRaisesRegex(RuntimeError, "stamp mismatch"):
+            module.validate_correlated_pair(raw, deskewed)
+
+        deskewed["stamp"]["nanosec"] = 20
+        module.validate_correlated_pair(raw, deskewed)
+
+    def test_phase138u_inline_subscriber_remains_syntactically_valid(self) -> None:
+        """The generated rclpy program must compile before a live ROS2 run."""
+        module = load_smoke_module(
+            "phase138u_subscriber_program_under_test",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        )
+        payload = {
+            "raw": {"stamp": {"sec": 1, "nanosec": 2}},
+            "deskewed": {"stamp": {"sec": 1, "nanosec": 2}},
+        }
+
+        def compile_subscriber(command, **_kwargs):
+            """Compile the generated program and return its bounded protocol output."""
+            compile(command[2], "<phase138u-subscriber>", "exec")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="PHASE138U_POINTCLOUD2_JSON=" + json.dumps(payload),
+            )
+
+        with mock.patch.object(module.subprocess, "run", side_effect=compile_subscriber):
+            result = module.subscribe_once_pointcloud2_pair(
+                Path(sys.executable),
+                {},
+                "/raw",
+                "/deskewed",
+                0.1,
+                10,
+                0.05,
+                2,
+            )
+
+        self.assertEqual(payload, result)
+
+    def test_phase146b_rejects_conflicting_motion_flags(self) -> None:
+        """The strict wrapper must not silently downgrade an explicit motion gate."""
+        module = load_smoke_module(
+            "phase146b_flags_under_test",
+            "ros2/phase146b_lyrical_lidar_deskew_acceptance.py",
+        )
+
+        with mock.patch.object(module.phase138u, "main", return_value=0) as delegated:
+            with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+                module.main(["--require-motion", "--allow-static"])
+
+        delegated.assert_not_called()
 
     def test_bridge_shell_preflight_reports_missing_foxglove_msgs(self) -> None:
         """The shell bridge sample should explain missing foxglove_msgs."""

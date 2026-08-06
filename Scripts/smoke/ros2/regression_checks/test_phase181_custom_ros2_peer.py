@@ -69,6 +69,24 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual("Phase181State48D288ED82F1Envelope", lock.envelope_message_name)
         self.assertEqual(lock.interface_digest, peer.compute_static_source_digest(static_package))
 
+    def test_static_interface_digest_rejects_unstaged_artifact_drift(self):
+        """Extra files must invalidate the complete generated-package lock."""
+        peer = load_peer_module()
+        with temporary_directory("peer-digest-") as temporary:
+            package = pathlib.Path(temporary) / "static"
+            source = package / "Ros2Package~"
+            source.mkdir(parents=True)
+            (package / "package.json").write_text("{}\n", encoding="utf-8")
+            (source / "package.xml").write_text("<package/>\n", encoding="utf-8")
+            clean_digest = peer.compute_static_source_digest(package)
+            artifact = source / "build" / "generated.txt"
+            artifact.parent.mkdir()
+            artifact.write_text("non-source artifact\n", encoding="utf-8")
+
+            dirty_digest = peer.compute_static_source_digest(package)
+
+        self.assertNotEqual(clean_digest, dirty_digest)
+
     def test_stage_source_copies_only_the_locked_ros_package_into_owned_workspace(self):
         """Verify Phase181 behavior: stage source copies only the locked ros package into owned workspace."""
         peer = load_peer_module()
@@ -126,6 +144,30 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual("17", environment["ROS_DOMAIN_ID"])
         self.assertEqual("phase181-test-router", environment["UNITY2FOXGLOVE_ZENOH_TOPOLOGY_ID"])
         self.assertIn(str(pathlib.Path("C:/owned/install")), environment["AMENT_PREFIX_PATH"])
+
+    def test_peer_and_player_environments_reject_invalid_domain_ids(self):
+        """Both halves of the interop pair share one exact ROS domain boundary."""
+        peer = load_peer_module()
+        for invalid in (-1, 233, True, "17"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_ARGUMENTS"):
+                    peer.build_peer_environment(
+                        {"PATH": "base"},
+                        pathlib.Path("C:/ros2"),
+                        pathlib.Path("C:/owned/install"),
+                        distro="lyrical",
+                        rmw="rmw_zenoh_cpp",
+                        domain_id=invalid,
+                    )
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_ARGUMENTS"):
+                    peer.build_player_environment(
+                        {"PATH": "base"},
+                        distro="lyrical",
+                        rmw="rmw_zenoh_cpp",
+                        domain_id=invalid,
+                        interface_revision=1,
+                        interface_digest="a" * 64,
+                    )
 
     def test_player_environment_contains_only_explicit_safe_profile_identity(self):
         """Verify Phase181 behavior: player environment contains only explicit safe profile identity."""
@@ -1356,6 +1398,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         )
 
         self.assertEqual(observed, after_unity_exit)
+
     def test_peer_never_mistakes_its_remote_final_origin_for_a_unity_echo(self):
         """Verify Phase181 behavior: peer never mistakes its remote final origin for a unity echo."""
         peer = load_peer_module()

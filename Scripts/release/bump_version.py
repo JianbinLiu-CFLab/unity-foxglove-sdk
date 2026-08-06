@@ -26,6 +26,11 @@ from pathlib import Path
 
 # Semantic version grammar accepted by the release helper.
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+SDK_DEPENDENT_PACKAGE_MANIFESTS = (
+    "Packages/dev.unity2foxglove.ros2forunity/package.json",
+    "Packages/dev.unity2foxglove.ros2bridge/package.json",
+    "Packages/dev.unity2foxglove.remotegateway.win64/package.json",
+)
 
 # Process exit code for a successful synchronization or dry run.
 EXIT_SUCCESS = 0
@@ -39,6 +44,21 @@ SINGLE_REPLACEMENT = 1
 # Regex capture groups for the package.json version replacement pattern.
 VERSION_PROPERTY_PREFIX_GROUP = 1
 VERSION_PROPERTY_SUFFIX_GROUP = 3
+
+
+def parse_release_date(value: str) -> str:
+    """Return one canonical ISO release date or raise an argparse error."""
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"'{value}' is not a valid YYYY-MM-DD release date"
+        ) from exc
+    if parsed.isoformat() != value:
+        raise argparse.ArgumentTypeError(
+            f"'{value}' is not a canonical YYYY-MM-DD release date"
+        )
+    return value
 
 
 def resolve_repo_root() -> Path:
@@ -125,17 +145,22 @@ class VersionBump:
         self.write_if_changed(path, updated, f"set package version {old_version} -> {self.version}")
 
     def update_adapter_dependency(self) -> None:
-        """Update the optional ROS2 adapter dependency on the core SDK package."""
-        path = self.root / "Packages/dev.unity2foxglove.ros2forunity/package.json"
-        text = self.read(path)
-        text = self.sub_exactly_once(
-            path,
-            text,
-            r'("dev\.unity2foxglove\.sdk"\s*:\s*")(\d+\.\d+\.\d+)(")',
-            rf"\g<1>{self.version}\g<3>",
-            "ROS2 adapter SDK dependency version",
-        )
-        self.write_if_changed(path, text, f"update ROS2 adapter SDK dependency to {self.version}")
+        """Update every optional package dependency on the core SDK package."""
+        for relative in SDK_DEPENDENT_PACKAGE_MANIFESTS:
+            path = self.root / relative
+            text = self.read(path)
+            text = self.sub_exactly_once(
+                path,
+                text,
+                r'("dev\.unity2foxglove\.sdk"\s*:\s*")(\d+\.\d+\.\d+)(")',
+                rf"\g<1>{self.version}\g<3>",
+                "optional package SDK dependency version",
+            )
+            self.write_if_changed(
+                path,
+                text,
+                f"update optional package SDK dependency to {self.version}",
+            )
 
     def update_phase16_assertions(self) -> None:
         """Update release metadata assertions used by the runtime package validator."""
@@ -409,7 +434,12 @@ def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the version-bump workflow."""
     parser = argparse.ArgumentParser(description="Synchronize Unity2Foxglove package version references.")
     parser.add_argument("version", help="Target semantic version, for example 1.2.0.")
-    parser.add_argument("--date", default=date.today().isoformat(), help="Release date for new changelog/release notes.")
+    parser.add_argument(
+        "--date",
+        type=parse_release_date,
+        default=date.today().isoformat(),
+        help="Release date for new changelog/release notes.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print planned changes without writing files.")
     return parser.parse_args()
 

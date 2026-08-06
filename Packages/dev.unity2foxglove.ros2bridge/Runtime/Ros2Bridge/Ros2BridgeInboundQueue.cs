@@ -325,7 +325,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 Increment(ref _received);
                 Increment(ref _resolutionRejections);
-                MarkSessionFailureLocked(
+                SetDiagnosticLocked(
                     string.IsNullOrWhiteSpace(reason)
                         ? "The inbound Bridge message was rejected before queue admission."
                         : reason);
@@ -755,10 +755,13 @@ namespace Unity2Foxglove.Ros2Bridge
                 else
                 {
                     Increment(ref _decodeFailures);
-                    MarkSessionFailureLocked(
-                        string.IsNullOrWhiteSpace(reason)
-                            ? "The inbound apply lease ended without a successful outcome."
-                            : reason);
+                    if (current)
+                    {
+                        MarkSessionFailureLocked(
+                            string.IsNullOrWhiteSpace(reason)
+                                ? "The inbound apply lease ended without a successful outcome."
+                                : reason);
+                    }
                 }
             }
             DisposeFrame(frame);

@@ -189,27 +189,49 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn('"version": "9.9.9"', text)
             self.assertNotIn('"version": "1.2.3"', text)
 
-    def test_update_adapter_dependency_syncs_core_sdk_version(self) -> None:
-        """The optional ROS2 adapter should depend on the released SDK version."""
+    def test_update_adapter_dependency_syncs_all_optional_packages(self) -> None:
+        """Every optional package should depend on the released SDK version."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            path = root / "Packages/dev.unity2foxglove.ros2forunity/package.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                '{\n'
-                '  "dependencies": {\n'
-                '    "dev.unity2foxglove.sdk": "1.2.3"\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
+            paths = [
+                root / relative
+                for relative in (
+                    "Packages/dev.unity2foxglove.ros2forunity/package.json",
+                    "Packages/dev.unity2foxglove.ros2bridge/package.json",
+                    "Packages/dev.unity2foxglove.remotegateway.win64/package.json",
+                )
+            ]
+            for path in paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    '{\n'
+                    '  "dependencies": {\n'
+                    '    "dev.unity2foxglove.sdk": "1.2.3"\n'
+                    '  }\n'
+                    '}\n',
+                    encoding="utf-8",
+                )
 
             bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
             bump.update_adapter_dependency()
 
-            text = path.read_text(encoding="utf-8")
-            self.assertIn('"dev.unity2foxglove.sdk": "9.9.9"', text)
-            self.assertNotIn('"dev.unity2foxglove.sdk": "1.2.3"', text)
+            for path in paths:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn('"dev.unity2foxglove.sdk": "9.9.9"', text)
+                self.assertNotIn('"dev.unity2foxglove.sdk": "1.2.3"', text)
+
+    def test_invalid_release_date_is_rejected_before_repository_writes(self) -> None:
+        """Release dates must be canonical, real ISO calendar dates."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["bump_version.py", "2.0.0", "--date", "2026-02-31"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.bump_module.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("valid YYYY-MM-DD", stderr.getvalue())
 
     def test_update_phase16_assertions_syncs_release_metadata(self) -> None:
         """Runtime release metadata assertions should move with each release."""
@@ -576,6 +598,15 @@ class RunCiTests(unittest.TestCase):
                 "-m",
                 "unittest",
                 "Scripts.samples.regression_checks.test_sample_sync_tooling",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
             ],
             calls,
         )
@@ -1126,6 +1157,19 @@ class RunCiTests(unittest.TestCase):
         for selector in ("dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"):
             help_pattern = re.escape(selector).replace(r"\-", r"-\s*")
             self.assertRegex(stdout.getvalue(), help_pattern)
+
+    def test_unknown_only_selector_is_a_usage_error(self) -> None:
+        """A misspelled lane must never become a zero-work success."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["run_ci.py", "--only", "pacakges"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.run_ci.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("invalid choice", stderr.getvalue())
 
     def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
         """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
@@ -1890,6 +1934,29 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
                 json.loads(adoption_path.read_text(encoding="utf-8")),
             )
 
+    def test_runtime_adoption_json_replace_failure_preserves_previous_file(self) -> None:
+        """A failed final replace must not truncate verified adoption evidence."""
+        from Scripts.ros2forunity.windows import runtime_adoption_manifest
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "adoption.json"
+            path.write_text('{"verified":true}\n', encoding="utf-8")
+            with mock.patch.object(
+                runtime_adoption_manifest.os,
+                "replace",
+                side_effect=OSError("replace failed"),
+            ):
+                with self.assertRaisesRegex(OSError, "replace failed"):
+                    runtime_adoption_manifest.write_json(
+                        path,
+                        {"verified": False},
+                    )
+
+            self.assertEqual(
+                '{"verified":true}\n',
+                path.read_text(encoding="utf-8"),
+            )
+
     def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
         """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""
         scripts = {
@@ -1985,6 +2052,68 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         build_dir = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
 
         self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
+
+    def test_negative_build_timeout_is_rejected(self) -> None:
+        """Only zero, not an arbitrary negative value, may disable the build timeout."""
+        with mock.patch.object(sys, "argv", ["unity_il2cpp.py", "--timeout-minutes", "-1"]):
+            with self.assertRaises(SystemExit) as raised:
+                self.unity_il2cpp.parse_args()
+
+        self.assertEqual(self.unity_il2cpp.EXIT_USAGE_ERROR, raised.exception.code)
+
+    def test_posix_process_group_enumeration_fails_closed_without_ps(self) -> None:
+        """A missing ps binary must not disguise an extant owned process group as empty."""
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", side_effect=FileNotFoundError("ps")):
+            with mock.patch.object(self.unity_il2cpp.os, "killpg", return_value=None, create=True):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([4321], pids)
+
+    def test_posix_termination_poll_avoids_repeated_ps_processes(self) -> None:
+        """Quiescence polling should use the process-group primitive, not shell out on every pass."""
+        process = mock.Mock()
+        process.wait.return_value = 0
+
+        kill_signal = 9
+
+        def inspect_or_kill_group(_process_group_id, signal_value):
+            """Model an extant group until the final kill signal is sent."""
+            if signal_value == kill_signal:
+                return None
+            raise ProcessLookupError
+
+        tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
+        with mock.patch.object(self.unity_il2cpp.signal, "SIGKILL", kill_signal, create=True):
+            with mock.patch.object(
+                self.unity_il2cpp.os,
+                "killpg",
+                side_effect=inspect_or_kill_group,
+                create=True,
+            ):
+                with mock.patch.object(self.unity_il2cpp, "_posix_process_group_pids", return_value=[]) as enumerate_pids:
+                    residual = tree.terminate()
+
+        self.assertEqual([], residual)
+        enumerate_pids.assert_not_called()
+
+    def test_windows_job_uses_a_dedicated_child_termination_code(self) -> None:
+        """A killed child must not inherit the build CLI's own timeout exit code."""
+        kernel32 = mock.Mock()
+        kernel32.TerminateJobObject.return_value = True
+        job = object.__new__(self.unity_il2cpp._WindowsKillOnCloseJob)
+        job._handle = 123
+        job._kernel32 = kernel32
+
+        job.terminate()
+
+        self.assertNotEqual(
+            self.unity_il2cpp.EXIT_TIMEOUT,
+            self.unity_il2cpp.WINDOWS_JOB_TERMINATE_EXIT_CODE,
+        )
+        kernel32.TerminateJobObject.assert_called_once_with(
+            123,
+            self.unity_il2cpp.WINDOWS_JOB_TERMINATE_EXIT_CODE,
+        )
 
     def test_timeout_terminates_owned_descendant_tree(self) -> None:
         """A timed-out Unity stand-in must not leave its compiler child alive."""

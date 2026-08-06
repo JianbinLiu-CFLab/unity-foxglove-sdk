@@ -50,6 +50,7 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.validator.RVIZ_POINTCLOUD2_SAMPLE = package / "Samples~" / "RViz2 PointCloud2 Acceptance"
         self.validator.RVIZ_MARKERARRAY_SAMPLE = package / "Samples~" / "RViz2 MarkerArray Acceptance"
         self.validator.RVIZ_V1_SAMPLE = package / "Samples~" / "RViz2 Standard Visualization v1"
+        self.validator.STANDARD_MESSAGES_SAMPLE = package / "Samples~" / "ROS2 Standard Message Expansion"
 
     def test_main_clears_file_caches_before_running_checks(self) -> None:
         """The validator entrypoint should reset cached file reads before checks."""
@@ -203,6 +204,27 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.assertFalse(no_binaries.ok)
         self.assertIn("CopiedGenerator.dll", no_binaries.detail)
 
+    def test_native_binary_suffixes_cannot_hide_outside_controlled_roots(self) -> None:
+        """Common native build outputs must be rejected anywhere in the adapter."""
+        suffixes = (".exe", ".pdb", ".lib", ".a", ".node", ".bin", ".exp", ".ilk")
+        for suffix in suffixes:
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self.configure_package_paths(root)
+                artifact = self.validator.PACKAGE / "stray" / f"payload{suffix}"
+                artifact.parent.mkdir(parents=True)
+                artifact.write_bytes(b"native")
+                results = []
+
+                self.validator.check_no_runtime_artifacts(results)
+
+                no_binaries = next(
+                    result for result in results
+                    if result.name == "optional package has no runtime binaries"
+                )
+                self.assertFalse(no_binaries.ok, suffix)
+                self.assertIn(artifact.name, no_binaries.detail)
+
     def test_public_phase_scan_covers_rviz_sample_readmes_and_deduplicates_hits(self) -> None:
         """Public docs scanning should include RViz samples and report unique phase tokens."""
         with tempfile.TemporaryDirectory() as temp:
@@ -228,6 +250,37 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         phase_result = next(result for result in results if result.name == "public R2FU docs avoid internal phase names")
         self.assertFalse(phase_result.ok)
         self.assertEqual("Phase110", phase_result.detail)
+
+    def test_public_phase_scan_covers_standard_message_sample_readme(self) -> None:
+        """The standard-message sample must share the public documentation gate."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.configure_package_paths(root)
+            for path in (
+                self.validator.PACKAGE / "README.md",
+                self.validator.PACKAGE / "THIRD_PARTY_NOTICES.md",
+                self.validator.ADAPTER_SAMPLE / "README.md",
+                self.validator.RVIZ_SAMPLE / "README.md",
+                self.validator.RVIZ_POINTCLOUD2_SAMPLE / "README.md",
+                self.validator.RVIZ_MARKERARRAY_SAMPLE / "README.md",
+                self.validator.RVIZ_V1_SAMPLE / "README.md",
+                self.validator.RUNTIME_NOTICES,
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
+            standard_readme = self.validator.STANDARD_MESSAGES_SAMPLE / "README.md"
+            standard_readme.parent.mkdir(parents=True, exist_ok=True)
+            standard_readme.write_text("Leaked Phase999 token", encoding="utf-8")
+            results = []
+
+            self.validator.check_text_boundaries(results)
+
+        phase_result = next(
+            result for result in results
+            if result.name == "public R2FU docs avoid internal phase names"
+        )
+        self.assertFalse(phase_result.ok)
+        self.assertIn("Phase999", phase_result.detail)
 
     def test_runtime_inventory_file_count_must_be_present(self) -> None:
         """Runtime inventory file entries should require a declared fileCount."""

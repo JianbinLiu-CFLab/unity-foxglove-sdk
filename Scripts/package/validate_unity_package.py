@@ -456,6 +456,13 @@ def check_required_files(results: list[CheckResult]) -> None:
     ]
     for path in required:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
+        meta = Path(str(path) + ".meta")
+        add(
+            results,
+            f"required meta: {meta.name}",
+            meta.exists(),
+            rel(meta),
+        )
 
 
 def check_sample_meta(results: list[CheckResult], samples_files: list[Path] | None = None) -> None:
@@ -685,7 +692,7 @@ def check_third_party_notices(results: list[CheckResult]) -> None:
     add(
         results,
         "third-party notice artifact scope visible",
-        True,
+        not absent_artifacts,
         "all listed artifacts are bundled" if not absent_artifacts else "not bundled: " + "; ".join(absent_artifacts),
     )
 

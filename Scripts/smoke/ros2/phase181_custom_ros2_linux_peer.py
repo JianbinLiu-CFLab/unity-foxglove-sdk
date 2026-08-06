@@ -139,7 +139,9 @@ def validate_selected_linux_environment(args: argparse.Namespace, environment: M
 def build_linux_environment(args: argparse.Namespace, source: Mapping[str, str] | None = None) -> dict[str, str]:
     """Copy a selected Linux ROS environment and apply only explicit peer knobs."""
 
-    environment = dict(os.environ if source is None else source)
+    environment = peer.ros2env.sanitized_subprocess_env(
+        dict(os.environ if source is None else source)
+    )
     validate_selected_linux_environment(args, environment)
     environment["ROS_DOMAIN_ID"] = str(args.domain_id)
     environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] = args.discovery_range

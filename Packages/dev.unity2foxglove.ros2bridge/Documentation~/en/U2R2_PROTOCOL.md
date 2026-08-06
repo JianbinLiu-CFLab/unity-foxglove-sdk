@@ -67,10 +67,12 @@ code point uses its lowercase UTF-16 surrogate pair (for example,
 ## v2 dialect
 
 The first v2 frame is `hello` with protocol version `2`, a nonzero unsigned
-64-bit request ID, and explicit capabilities. `hello_ack` returns the exact
-request ID plus a sidecar-assigned nonempty `sessionId` and process-local,
-nonzero `connectionGeneration`. The identity accompanies all later
-session-bound operations.
+64-bit request ID, and a nonempty set of offered capabilities. `hello_ack`
+returns the exact request ID, a mandatory nonempty `capabilities` array
+containing the negotiated grant, a sidecar-assigned nonempty `sessionId`, and
+a process-local, nonzero `connectionGeneration`. The grant cannot add an
+unoffered capability or omit an offered capability. The identity accompanies
+all later session-bound operations.
 
 Requests and correlated responses use nonzero unsigned 64-bit `requestId`.
 Data frames use a nonzero unsigned 64-bit `messageId`. Request-ID counters

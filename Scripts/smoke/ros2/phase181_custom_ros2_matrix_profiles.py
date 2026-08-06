@@ -296,7 +296,7 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
                 env=environment,
                 cwd=peer.workspace_root(),
                 log_path=peer.workspace_root() / "build" / "phase181" / profile.profile_id / "owned-zenoh-router.log",
-                ready_timeout_seconds=min(60.0, args.ready_timeout_seconds),
+                ready_timeout_seconds=args.ready_timeout_seconds,
                 owned_config=owned_config,
             )
         if topology_handle is None:

@@ -394,6 +394,28 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Contains(logger.Errors, entry => entry.Contains("phase187-sensitive-detail", StringComparison.Ordinal));
         }
 
+        [Fact]
+        public void MalformedPlaybackControlIsConsumedAndDiagnosed()
+        {
+            var fake = new Phase6FakeTransport();
+            var logger = new CaptureLogger();
+            using var session = new FoxgloveSession(
+                "phase187-playback",
+                fake,
+                logger: logger);
+            fake.SimulateConnect(187);
+
+            fake.SimulateBinary(
+                187,
+                new[] { ClientOpcode.PlaybackControlRequest });
+
+            Assert.Contains(
+                logger.Warnings,
+                entry => entry.Contains("PlaybackControl", StringComparison.Ordinal)
+                         && entry.Contains("187", StringComparison.Ordinal));
+            Assert.Empty(fake.SentBinaries(187));
+        }
+
         private static byte[] EncodeClientServiceCallRequest(
             uint serviceId,
             uint callId,
@@ -445,7 +467,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         private sealed class CaptureLogger : IFoxgloveLogger
         {
             internal readonly List<string> Errors = new List<string>();
-            public void LogWarning(string message) { }
+            internal readonly List<string> Warnings = new List<string>();
+            public void LogWarning(string message) => Warnings.Add(message);
             public void LogError(string message) => Errors.Add(message);
         }
 

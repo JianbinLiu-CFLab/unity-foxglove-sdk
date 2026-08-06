@@ -141,18 +141,20 @@ async def run(args: argparse.Namespace) -> int:
                 print(f"Text (draining): {msg[:args.preview_chars]}")
                 continue
 
+            if not msg or msg[OPCODE_OFFSET] != FETCH_ASSET_RESPONSE_OPCODE:
+                opcode = msg[OPCODE_OFFSET] if msg else "empty"
+                print(f"Binary (draining): opcode={opcode} payloadBytes={len(msg)}")
+                continue
+
             try:
                 opcode, request_id, status, payload = parse_fetch_asset_response(msg)
             except ValueError as exc:
                 print(f"[FAIL] Invalid fetchAsset response: {exc}")
                 return EXIT_FAILURE
             print(f"Binary: opcode={opcode} requestId={request_id} status={status} payloadBytes={len(payload)}")
-            if opcode != FETCH_ASSET_RESPONSE_OPCODE:
-                print(f"[FAIL] Unexpected binary opcode: {opcode}")
-                return EXIT_FAILURE
             if request_id != args.request_id:
-                print(f"[FAIL] Unexpected requestId: {request_id}")
-                return EXIT_FAILURE
+                print(f"Binary (draining): unexpected requestId={request_id}")
+                continue
             if status != STATUS_OK:
                 print(f"[FAIL] Server error: {payload.decode('utf-8', errors='replace')}")
                 return EXIT_FAILURE

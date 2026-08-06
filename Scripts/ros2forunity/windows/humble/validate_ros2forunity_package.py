@@ -46,9 +46,21 @@ JSON_CACHE: dict[Path, dict] = {}
 TEXT_CACHE: dict[Path, str] = {}
 
 RUNTIME_BINARY_SUFFIXES = {
+    ".a",
+    ".bin",
     ".dll",
     ".so",
     ".dylib",
+    ".exe",
+    ".exp",
+    ".ilk",
+    ".lib",
+    ".node",
+    ".obj",
+    ".o",
+    ".pdb",
+    ".pyd",
+    ".wasm",
     ".zip",
     ".unitypackage",
 }
@@ -533,6 +545,9 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
     pointcloud_sample_readme = read_text_cached(RVIZ_POINTCLOUD2_SAMPLE / "README.md")
     markerarray_sample_readme = read_text_cached(RVIZ_MARKERARRAY_SAMPLE / "README.md")
     v1_sample_readme = read_text_cached(RVIZ_V1_SAMPLE / "README.md")
+    standard_messages_sample_readme = read_text_cached(
+        STANDARD_MESSAGES_SAMPLE / "README.md"
+    )
     runtime_notices = read_text_cached(RUNTIME_NOTICES)
     boundary_texts = (
         readme,
@@ -542,6 +557,7 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         pointcloud_sample_readme,
         markerarray_sample_readme,
         v1_sample_readme,
+        standard_messages_sample_readme,
         runtime_notices,
     )
 

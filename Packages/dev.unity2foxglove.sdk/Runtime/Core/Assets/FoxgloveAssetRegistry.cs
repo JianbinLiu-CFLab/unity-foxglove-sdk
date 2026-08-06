@@ -9,6 +9,8 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -145,6 +147,8 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (!TryRequireSingleFileLink(stream, out error))
+                    return false;
                 if (stream.Length > maxBytes)
                 {
                     error = $"File exceeds size limit ({maxBytes} bytes): {stream.Length}";
@@ -196,9 +200,6 @@ namespace Unity.FoxgloveSDK.Core
         private static bool ContainsReparsePoint(string normalizedRoot, string resolved)
         {
             var current = normalizedRoot;
-            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                return true;
-
             var relative = resolved.Substring(normalizedRoot.Length)
                 .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             foreach (var component in relative.Split(
@@ -212,6 +213,138 @@ namespace Unity.FoxgloveSDK.Core
 
             return false;
         }
+
+        private static bool TryRequireSingleFileLink(
+            FileStream stream,
+            out string error)
+        {
+            error = null;
+            if (!TryGetFileLinkCount(stream.SafeFileHandle, out var linkCount, out var nativeError))
+            {
+                error = $"Could not verify the asset hard-link count: {nativeError}";
+                return false;
+            }
+
+            if (linkCount != 1)
+            {
+                error = $"Asset file has {linkCount} hard links; only single-link files may be served.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryGetFileLinkCount(
+            SafeFileHandle handle,
+            out uint linkCount,
+            out string error)
+        {
+            linkCount = 0;
+            error = null;
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    if (!GetFileInformationByHandle(handle, out var information))
+                    {
+                        error = $"GetFileInformationByHandle failed with native error {Marshal.GetLastWin32Error()}.";
+                        return false;
+                    }
+
+                    linkCount = information.NumberOfLinks;
+                    return true;
+                }
+
+                var descriptor = checked((int)handle.DangerousGetHandle().ToInt64());
+                var buffer = Marshal.AllocHGlobal(256);
+                try
+                {
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        if (Statx(descriptor, string.Empty, AtEmptyPath, StatxNlink, buffer) != 0)
+                        {
+                            error = $"statx failed with native error {Marshal.GetLastWin32Error()}.";
+                            return false;
+                        }
+
+                        linkCount = unchecked((uint)Marshal.ReadInt32(buffer, StatxNlinkOffset));
+                        return true;
+                    }
+
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        if (Fstat(descriptor, buffer) != 0)
+                        {
+                            error = $"fstat failed with native error {Marshal.GetLastWin32Error()}.";
+                            return false;
+                        }
+
+                        linkCount = unchecked((ushort)Marshal.ReadInt16(buffer, DarwinNlinkOffset));
+                        return true;
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+
+                error = "The current platform does not expose a supported file-link inspection API.";
+                return false;
+            }
+            catch (Exception ex) when (
+                ex is DllNotFoundException
+                || ex is EntryPointNotFoundException
+                || ex is BadImageFormatException
+                || ex is OverflowException)
+            {
+                error = $"Native file-link inspection is unavailable ({ex.GetType().Name}).";
+                return false;
+            }
+        }
+
+        private const int AtEmptyPath = 0x1000;
+        private const uint StatxNlink = 0x0004;
+        private const int StatxNlinkOffset = 16;
+        private const int DarwinNlinkOffset = 6;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeFileTime
+        {
+            internal uint Low;
+            internal uint High;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            internal uint FileAttributes;
+            internal NativeFileTime CreationTime;
+            internal NativeFileTime LastAccessTime;
+            internal NativeFileTime LastWriteTime;
+            internal uint VolumeSerialNumber;
+            internal uint FileSizeHigh;
+            internal uint FileSizeLow;
+            internal uint NumberOfLinks;
+            internal uint FileIndexHigh;
+            internal uint FileIndexLow;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandle(
+            SafeFileHandle file,
+            out ByHandleFileInformation information);
+
+        [DllImport("libc", EntryPoint = "statx", SetLastError = true)]
+        private static extern int Statx(
+            int directoryFileDescriptor,
+            string path,
+            int flags,
+            uint mask,
+            IntPtr buffer);
+
+        [DllImport("libc", EntryPoint = "fstat", SetLastError = true)]
+        private static extern int Fstat(int fileDescriptor, IntPtr buffer);
 
         private static string NormalizeUriPrefix(string uriPrefix)
         {

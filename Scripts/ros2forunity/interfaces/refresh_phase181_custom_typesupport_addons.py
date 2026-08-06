@@ -379,11 +379,20 @@ def _explicit_ros2_root(request: AddonRefreshRequest, distro: str) -> Path | Non
     return matches[0] if matches else None
 
 
-def build_command(request: AddonRefreshRequest, distro: str) -> list[str]:
+def build_command(
+    request: AddonRefreshRequest,
+    distro: str,
+    *,
+    toolchain: tuple[Path, Path, Path, Path] | None = None,
+) -> list[str]:
     """Build the exact argument vector for one candidate-only materialization."""
 
     root = Path(request.root).resolve()
-    ros2cs_source, ros2cs_install, r2fu_source, unity = _require_apply_toolchain(request, distro)
+    ros2cs_source, ros2cs_install, r2fu_source, unity = (
+        toolchain
+        if toolchain is not None
+        else _require_apply_toolchain(request, distro)
+    )
     command = [
         sys.executable,
         str(_script(root, "build_foxrun_custom_typesupport_addon.py")),
@@ -481,14 +490,19 @@ def run_refresh(
                 + "); checking that the matching ros2cs install is idle and complete.",
                 flush=True,
             )
-            _, ros2cs_install, _, _ = _require_apply_toolchain(request, distro)
+            toolchain = _require_apply_toolchain(request, distro)
+            _, ros2cs_install, _, _ = toolchain
             toolchain_snapshot = _ros2cs_install_snapshot(ros2cs_install)
             print(
                 "[phase181-addons] " + distro
                 + ": ros2cs install is complete; building isolated candidate. This can take several minutes.",
                 flush=True,
             )
-            _run_child(build_command(request, distro), root=root, runner=runner)
+            _run_child(
+                build_command(request, distro, toolchain=toolchain),
+                root=root,
+                runner=runner,
+            )
             if _ros2cs_install_snapshot(ros2cs_install) != toolchain_snapshot:
                 raise AddonRefreshError("wait-for-stable-ros2cs-install-and-rebuild-candidate")
             print("[phase181-addons] " + distro + ": candidate validated; synchronizing.", flush=True)

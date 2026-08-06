@@ -372,6 +372,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 reservation = null;
                 if (_closed
                     || _controlDepthUsed >= _limits.ReservedControlQueueDepth
+                    || _controlBytesUsed > _limits.ReservedControlQueueBytes
                     || bytes > _limits.ReservedControlQueueBytes - _controlBytesUsed)
                 {
                     return false;
@@ -457,6 +458,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             {
                 lease = null;
                 if (_closed
+                    || _transientBytes > _limits.MaxTransientBytes
                     || bytes > _limits.MaxTransientBytes - _transientBytes)
                     return false;
                 _transientBytes += bytes;
@@ -472,6 +474,7 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 lease = null;
                 if (_closed
                     || _readerActive
+                    || _inFlightBytes > _limits.MaxInFlightBytes
                     || bytes > _limits.MaxInFlightBytes - _inFlightBytes)
                 {
                     return false;
@@ -513,7 +516,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     return false;
                 }
 
-                if (frame.ByteCount > _limits.MaxInFlightBytes - _inFlightBytes)
+                if (_inFlightBytes > _limits.MaxInFlightBytes
+                    || frame.ByteCount > _limits.MaxInFlightBytes - _inFlightBytes)
                     return false;
 
                 if (chooseControl)

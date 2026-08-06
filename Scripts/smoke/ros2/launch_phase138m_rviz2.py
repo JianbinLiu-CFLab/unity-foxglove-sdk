@@ -591,22 +591,39 @@ def main(argv: list[str]) -> int:
         print("[phase138m-rviz] Dry run only; no processes launched.")
         return 0
 
-    if not args.no_image_republisher:
-        launch_image_republisher(pixi_python, env, args.image_topic, args.raw_image_topic, log_path)
-        wait_for_raw_image(pixi_python, env, args.raw_image_topic, args.raw_image_wait_seconds)
+    started_helpers: list[subprocess.Popen] = []
+    with ros2env.cleanup_owned_processes_on_error(started_helpers):
+        if not args.no_image_republisher:
+            republisher = launch_image_republisher(
+                pixi_python,
+                env,
+                args.image_topic,
+                args.raw_image_topic,
+                log_path,
+            )
+            started_helpers.append(republisher)
+            wait_for_raw_image(pixi_python, env, args.raw_image_topic, args.raw_image_wait_seconds)
 
-    if not args.no_camera_static_tf:
-        launch_static_camera_tf(pixi_python, ros2_script, env, args.fixed_frame, args.camera_parent_frame)
+        if not args.no_camera_static_tf:
+            static_tf = launch_static_camera_tf(
+                pixi_python,
+                ros2_script,
+                env,
+                args.fixed_frame,
+                args.camera_parent_frame,
+            )
+            if static_tf is not None:
+                started_helpers.append(static_tf)
 
-    ros2env.launch_rviz(
-        ros2_root,
-        rviz_config,
-        env,
-        "phase138m-rviz",
-        startup_check_seconds=1.5,
-        window_wait_seconds=45.0,
-        stdout_log_path=rviz_log_path,
-    )
+        ros2env.launch_rviz(
+            ros2_root,
+            rviz_config,
+            env,
+            "phase138m-rviz",
+            startup_check_seconds=1.5,
+            window_wait_seconds=45.0,
+            stdout_log_path=rviz_log_path,
+        )
     print(
         textwrap.dedent(
             f"""

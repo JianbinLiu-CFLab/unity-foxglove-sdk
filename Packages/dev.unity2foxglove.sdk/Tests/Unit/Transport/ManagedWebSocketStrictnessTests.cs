@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
@@ -19,6 +20,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
     [Trait("Domain", "Transport")]
     public sealed class ManagedWebSocketStrictnessTests
     {
+        [Fact]
+        public void NullTextIsSentAsAnEmptyTextFrame()
+        {
+            using var tcpClient = new TcpClient();
+            var stream = new DuplexBufferStream(Array.Empty<byte>());
+            using var connection = new WsConnection(tcpClient, stream, 8, 1024);
+            connection.StartSendLoop(null, CancellationToken.None);
+
+            var result = connection.SendText(null, FramePriority.Control);
+
+            Assert.True(result.Accepted);
+            Assert.True(
+                SpinWait.SpinUntil(() => stream.WrittenBytes.Length >= 2, TimeSpan.FromSeconds(1)),
+                "The empty text frame was not written before the test deadline.");
+            Assert.Equal(new byte[] { 0x81, 0x00 }, stream.WrittenBytes);
+        }
+
         [Fact]
         public void CodecClassifiesNonMinimalLengthsAndMalformedClosePayloads()
         {
@@ -88,6 +106,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             Assert.Equal((byte)(0x80 | WsOpcode.Close), written[0]);
             Assert.Equal(2, written[1] & 0x7F);
             Assert.Equal(1002, (written[2] << 8) | written[3]);
+            Assert.Empty(clients);
+        }
+
+        [Fact]
+        public void OversizedFragmentedMessageSendsMessageTooBigClose()
+        {
+            var frames = new List<byte[]>
+            {
+                BuildMaskedFrame(WsOpcode.Binary, new byte[ushort.MaxValue], fin: false)
+            };
+            for (var index = 0; index < 64; index++)
+            {
+                frames.Add(
+                    BuildMaskedFrame(
+                        WsOpcode.Continuation,
+                        new byte[ushort.MaxValue],
+                        fin: index == 63));
+            }
+
+            using var backend = new ManagedWsBackend();
+            using var tcpClient = new TcpClient();
+            var stream = new DuplexBufferStream(JoinFrames(frames));
+            var connection = new WsConnection(tcpClient, stream, 8, 1024);
+            var clients = Clients(backend);
+            clients[4] = connection;
+            connection.StartSendLoop(null, CancellationToken.None);
+
+            InvokeReceiveLoop(backend, 4, connection);
+
+            var written = stream.WrittenBytes;
+            Assert.True(written.Length >= 4);
+            Assert.Equal((byte)(0x80 | WsOpcode.Close), written[0]);
+            Assert.Equal(2, written[1] & 0x7F);
+            Assert.Equal(1009, (written[2] << 8) | written[3]);
             Assert.Empty(clients);
         }
 
@@ -201,14 +253,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         private static byte[] BuildMaskedFrame(byte opcode, byte[] payload, bool fin = true)
         {
             payload ??= Array.Empty<byte>();
-            if (payload.Length > 125)
+            if (payload.Length > ushort.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(payload));
 
-            var frame = new byte[2 + 4 + payload.Length];
+            var extendedLengthBytes = payload.Length <= 125 ? 0 : 2;
+            var frame = new byte[2 + extendedLengthBytes + 4 + payload.Length];
             frame[0] = (byte)((fin ? 0x80 : 0x00) | opcode);
-            frame[1] = (byte)(0x80 | payload.Length);
-            WriteMaskedPayload(frame, 2, payload);
+            if (extendedLengthBytes == 0)
+            {
+                frame[1] = (byte)(0x80 | payload.Length);
+            }
+            else
+            {
+                frame[1] = 0xFE;
+                frame[2] = (byte)(payload.Length >> 8);
+                frame[3] = (byte)payload.Length;
+            }
+            WriteMaskedPayload(frame, 2 + extendedLengthBytes, payload);
             return frame;
+        }
+
+        private static byte[] JoinFrames(IReadOnlyCollection<byte[]> frames)
+        {
+            var totalLength = 0;
+            foreach (var frame in frames)
+                totalLength = checked(totalLength + frame.Length);
+
+            var joined = new byte[totalLength];
+            var offset = 0;
+            foreach (var frame in frames)
+            {
+                Buffer.BlockCopy(frame, 0, joined, offset, frame.Length);
+                offset += frame.Length;
+            }
+            return joined;
         }
 
         private static byte[] BuildNonMinimalMaskedFrame(byte opcode, byte marker, ulong payloadLength)

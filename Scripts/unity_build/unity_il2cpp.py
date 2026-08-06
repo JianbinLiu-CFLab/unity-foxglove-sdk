@@ -69,6 +69,7 @@ WINDOWS_PROCESS_TERMINATE = 0x0001
 WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
 WINDOWS_TH32CS_SNAPTHREAD = 0x00000004
 WINDOWS_DWORD_FAILURE = 0xFFFFFFFF
+WINDOWS_JOB_TERMINATE_EXIT_CODE = 1
 
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
@@ -498,7 +499,10 @@ class _WindowsKillOnCloseJob:
 
     def terminate(self) -> None:
         """Terminate every process currently assigned to the job."""
-        if self._handle and not self._kernel32.TerminateJobObject(self._handle, EXIT_TIMEOUT):
+        if self._handle and not self._kernel32.TerminateJobObject(
+            self._handle,
+            WINDOWS_JOB_TERMINATE_EXIT_CODE,
+        ):
             raise ctypes.WinError(ctypes.get_last_error())
 
     def close(self) -> None:
@@ -568,6 +572,18 @@ def _resume_suspended_windows_process(process_id: int) -> None:
         kernel32.CloseHandle(thread_handle)
 
 
+def _posix_process_group_exists(process_group_id: int) -> bool:
+    """Probe one POSIX process group without spawning another process."""
+
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _posix_process_group_pids(process_group_id: int) -> List[int]:
     """Enumerate a POSIX process group for bounded residual diagnostics."""
     try:
@@ -578,7 +594,7 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
             text=True,
         )
     except OSError:
-        return []
+        return [process_group_id] if _posix_process_group_exists(process_group_id) else []
     pids = []
     for line in result.stdout.splitlines():
         fields = line.split()
@@ -590,13 +606,7 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
             continue
         if group == process_group_id:
             pids.append(pid)
-    if not pids:
-        try:
-            os.killpg(process_group_id, 0)
-        except ProcessLookupError:
-            return []
-        except PermissionError:
-            return [process_group_id]
+    if not pids and _posix_process_group_exists(process_group_id):
         return [process_group_id]
     return pids
 
@@ -640,6 +650,13 @@ class OwnedProcessTree:
 
         deadline = time.monotonic() + UNITY_TERMINATION_WAIT_SECONDS
         while True:
+            if self._posix_process_group_id is not None:
+                if not _posix_process_group_exists(self._posix_process_group_id):
+                    return []
+                if time.monotonic() >= deadline:
+                    return _posix_process_group_pids(self._posix_process_group_id)
+                time.sleep(PROCESS_TREE_POLL_SECONDS)
+                continue
             residual_pids = self.active_pids()
             if not residual_pids or time.monotonic() >= deadline:
                 return residual_pids
@@ -769,6 +786,15 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
     return returncode
 
 
+def non_negative_int(value: str) -> int:
+    """Parse an integer whose only timeout-disable sentinel is zero."""
+
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the build script."""
     parser = argparse.ArgumentParser(
@@ -819,7 +845,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--timeout-minutes",
-        type=int,
+        type=non_negative_int,
         default=DEFAULT_BUILD_TIMEOUT_MINUTES,
         help="Maximum Unity build runtime before terminating. Use 0 to disable the timeout.",
     )

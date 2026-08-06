@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Background point-cloud encode request and result payloads.
 
+using System;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
@@ -22,6 +23,31 @@ namespace Unity.FoxgloveSDK.Components
     {
         TRequest Request { get; }
         void RecycleResultPayloads();
+    }
+
+    /// <summary>Invokes every native point-cloud subscriber independently.</summary>
+    internal static class PointCloudFrameEventDispatcher
+    {
+        public static void Invoke(
+            Action<PackedPointCloudFrame> handlers,
+            PackedPointCloudFrame frame,
+            Action<Exception> onFailure)
+        {
+            if (handlers == null)
+                return;
+
+            foreach (var subscriber in handlers.GetInvocationList())
+            {
+                try
+                {
+                    ((Action<PackedPointCloudFrame>)subscriber)(frame);
+                }
+                catch (Exception ex)
+                {
+                    onFailure?.Invoke(ex);
+                }
+            }
+        }
     }
 
     /// <summary>

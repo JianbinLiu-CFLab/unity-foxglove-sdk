@@ -96,12 +96,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
+            var runtimeWasReadyAtStart = _ros2RuntimeWasReady;
+            if (!runtimeWasReadyAtStart && !EnsureRos2UnityReady())
                 return;
 
             if (!Ros2ForUnityNativeScanGate.TryAdvance(
                     Time.unscaledTimeAsDouble,
                     ref _nextScanAt))
+                return;
+
+            if (runtimeWasReadyAtStart && !EnsureRos2UnityReady())
                 return;
 
             RefreshBindings();
@@ -280,6 +284,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private bool _warnedPublishFailure;
             private bool _readyLogged;
             private int _publishFailureCount;
+            private double _nextPublisherAttemptAt;
 
             public ImuBinding(Ros2ForUnityImuNativeBridge owner, VirtualImu source, string topic)
             {
@@ -345,6 +350,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publisher != null)
                     return true;
 
+                var now = Time.unscaledTimeAsDouble;
+                if (!Ros2ForUnityNativePublisherRetryGate.CanAttempt(now, _nextPublisherAttemptAt))
+                    return false;
+
                 Exception lastException = null;
                 for (var attempt = 0; attempt < MaxNodeCreateAttempts; attempt++)
                 {
@@ -352,6 +361,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         _node = ros2Unity.CreateNode(BuildNodeName(_source, attempt));
                         _publisher = _node.CreatePublisher<sensor_msgs.msg.Imu>(Topic);
+                        Ros2ForUnityNativePublisherRetryGate.Reset(ref _nextPublisherAttemptAt);
                         _warnedPublishFailure = false;
                         LogReadyOnce();
                         return true;
@@ -366,6 +376,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     }
                 }
 
+                Ros2ForUnityNativePublisherRetryGate.RecordFailure(
+                    Time.unscaledTimeAsDouble,
+                    ref _nextPublisherAttemptAt);
                 RecordPublishFailure(
                     "Unable to create ROS2 IMU publisher for " + Topic + ": "
                     + (lastException == null ? "unknown failure" : lastException.Message));

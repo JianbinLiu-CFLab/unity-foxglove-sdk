@@ -15,20 +15,23 @@ import phase138u_lidar_deskew_rviz2_acceptance as phase138u
 
 DEFAULT_LYRICAL_ROOT = str(ros2env.default_ros2_root("lyrical"))
 REQUIRE_MOTION_FLAG = "--require-motion"
+ALLOW_STATIC_FLAG = "--allow-static"
 
 
 def main(argv: list[str]) -> int:
     """Run the Phase138U LiDAR deskew acceptance against Lyrical by default."""
 
     args = list(argv)
+    if REQUIRE_MOTION_FLAG in args and ALLOW_STATIC_FLAG in args:
+        raise ValueError("--require-motion and --allow-static are mutually exclusive")
     if "--ros2-root" not in args:
         args = ["--ros2-root", DEFAULT_LYRICAL_ROOT, *args]
     if REQUIRE_MOTION_FLAG in args:
         args.remove(REQUIRE_MOTION_FLAG)
         if "--rviz-display-mode" not in args:
             args.extend(["--rviz-display-mode", "both"])
-    elif "--allow-static" not in args:
-        args.append("--allow-static")
+    elif ALLOW_STATIC_FLAG not in args:
+        args.append(ALLOW_STATIC_FLAG)
         if "--rviz-display-mode" not in args:
             args.extend(["--rviz-display-mode", "both"])
 

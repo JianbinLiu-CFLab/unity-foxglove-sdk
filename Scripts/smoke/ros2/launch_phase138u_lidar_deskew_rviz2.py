@@ -257,7 +257,9 @@ def main(argv: list[str]) -> int:
         deskewed_topic,
         fixed_frame,
         args.rviz_display_mode)
+    rviz_log_path = workspace_root / "build" / "rviz2" / "phase138u_rviz2.log"
     print(f"[phase138u-rviz2] config: {config_path}")
+    print(f"[phase138u-rviz2] log: {rviz_log_path}")
     print(f"[phase138u-rviz2] raw={raw_topic} deskewed={deskewed_topic} fixed={fixed_frame}")
     print(
         "[phase138u-rviz2] "
@@ -278,7 +280,8 @@ def main(argv: list[str]) -> int:
         env=env,
         log_prefix="phase138u-rviz2",
         startup_check_seconds=1.5,
-        window_wait_seconds=0.0,
+        window_wait_seconds=45.0,
+        stdout_log_path=rviz_log_path,
     )
     print(f"[phase138u-rviz2] launched rviz2 pid={process.pid}")
     return 0

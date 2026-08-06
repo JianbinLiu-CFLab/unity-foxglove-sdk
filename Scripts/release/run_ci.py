@@ -23,6 +23,23 @@ import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+CI_ONLY_CHOICES = (
+    "dotnet",
+    "dotnet-runtime",
+    "xunit",
+    "xunit-adapter",
+    "xunit-native",
+    "analyzer",
+    "foxrun-publish-panel",
+    "phase179-ros2-regression",
+    "phase181-ros2-regression",
+    "phase184-acceptance-tooling",
+    "phase186-bridge-tooling",
+    "phase186-bridge-windows-live",
+    "mcap-conformance",
+    "packages",
+    "boundary",
+)
 RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
@@ -694,7 +711,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--only",
-        type=str,
+        choices=CI_ONLY_CHOICES,
         help=(
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
@@ -1083,6 +1100,15 @@ def main() -> int:
                     SAMPLE_SYNC_TOOLING_REGRESSION,
                 ],
             ),
+            (
+                "test_remote_gateway_tooling.py",
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
+                ],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
@@ -1107,6 +1133,9 @@ def main() -> int:
         results["release-tooling-regression"] = package_results["test_release_tooling.py"]
         results["sample-sync-tooling-regression"] = package_results[
             "test_sample_sync_tooling.py"
+        ]
+        results["remote-gateway-tooling-regression"] = package_results[
+            "test_remote_gateway_tooling.py"
         ]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]

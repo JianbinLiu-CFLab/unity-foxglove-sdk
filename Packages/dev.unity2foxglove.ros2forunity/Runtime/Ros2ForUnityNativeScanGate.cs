@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime
-// Purpose: Pure double-precision cadence gate shared by native discovery bridges.
+// Purpose: Pure double-precision cadence gates shared by native bridges.
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -18,5 +18,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             nextScanAtSeconds = nowSeconds + IntervalSeconds;
             return true;
         }
+    }
+
+    internal static class Ros2ForUnityNativePublisherRetryGate
+    {
+        internal const double CooldownSeconds = 1D;
+
+        internal static bool CanAttempt(double nowSeconds, double nextAttemptAtSeconds)
+            => nowSeconds >= nextAttemptAtSeconds;
+
+        internal static void RecordFailure(double nowSeconds, ref double nextAttemptAtSeconds)
+            => nextAttemptAtSeconds = nowSeconds + CooldownSeconds;
+
+        internal static void Reset(ref double nextAttemptAtSeconds)
+            => nextAttemptAtSeconds = 0D;
     }
 }

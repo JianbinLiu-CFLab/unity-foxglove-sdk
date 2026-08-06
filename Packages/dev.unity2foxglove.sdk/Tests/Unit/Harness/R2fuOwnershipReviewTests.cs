@@ -5,7 +5,9 @@
 // Purpose: Keep native R2FU bridge and sensor ownership fail-closed.
 
 using System;
+using System.IO;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
@@ -81,6 +83,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 .Single(invocation => invocation.Expression.ToString()
                     .Contains("RemovePublisherSafely", StringComparison.Ordinal));
             Assert.Empty(remove.Ancestors().OfType<LockStatementSyntax>());
+        }
+
+        [Theory]
+        [InlineData("humble")]
+        [InlineData("jazzy")]
+        [InlineData("lyrical")]
+        public void SensorBufferedReadingCanBeClearedDuringTeardown(string distro)
+        {
+            var root = CSharpSyntaxTree.ParseText(TestSources.Text(
+                    $"Packages/dev.unity2foxglove.ros2forunity.runtime.{distro}.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs"))
+                .GetCompilationUnitRoot();
+            var sensor = root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Single(declaration => declaration.Identifier.ValueText == "Sensor");
+            var constraints = sensor.ConstraintClauses.Single().ToFullString();
+            var probe = $@"
+namespace ROS2
+{{
+    public interface MessageWithHeader {{ }}
+
+    public sealed class SensorProbe<T> {constraints}
+    {{
+        private T readings;
+
+        public void Clear()
+        {{
+            readings = null;
+        }}
+    }}
+}}";
+            var trusted = (string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES");
+            Assert.False(string.IsNullOrEmpty(trusted));
+            var compilation = CSharpCompilation.Create(
+                $"{distro}-sensor-teardown-probe",
+                new[] { CSharpSyntaxTree.ParseText(probe) },
+                trusted.Split(Path.PathSeparator)
+                    .Select(path => MetadataReference.CreateFromFile(path)),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var errors = compilation.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.True(
+                errors.Length == 0,
+                string.Join(Environment.NewLine, errors.Select(error => error.ToString())));
         }
 
         [Theory]

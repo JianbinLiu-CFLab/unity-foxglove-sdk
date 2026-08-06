@@ -13,7 +13,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -29,6 +28,7 @@ PACKAGE_PLUGIN_DIR = (
 )
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
+ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
 
 
 def parse_args() -> argparse.Namespace:
@@ -125,6 +125,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "features": "remote-access",
         "rustflags": env["RUSTFLAGS"],
         "cflags": env["CFLAGS_x86_64_pc_windows_msvc"],
+        "cxxflags": env["CXXFLAGS_x86_64_pc_windows_msvc"],
         "environment": {
             "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
             "CARGO_TARGET_DIR": env["CARGO_TARGET_DIR"],
@@ -142,7 +143,16 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
 
 def copy_approved_artifacts(target_dir: Path, manifest_path: Path, artifact_names: tuple[str, ...]) -> None:
     """Copy only the approved DLL-side artifacts into the optional package."""
+    unapproved = sorted(set(artifact_names) - ALLOWED_ARTIFACTS)
+    if unapproved:
+        raise ValueError(f"unapproved artifact name(s): {', '.join(unapproved)}")
+    if len(set(artifact_names)) != len(artifact_names):
+        raise ValueError("artifact selection contains duplicate names")
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    for stale_name in sorted(ALLOWED_ARTIFACTS - set(artifact_names)):
+        stale = PACKAGE_PLUGIN_DIR / stale_name
+        if stale.is_file():
+            stale.unlink()
     for name in artifact_names:
         source = target_dir / "release" / name
         if source.exists():
