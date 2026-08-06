@@ -538,6 +538,8 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertIn("if ! ros2 pkg prefix foxglove_msgs", source)
         self.assertIn("foxglove_msgs is not installed", source)
+        self.assertIn("cdr-with-encapsulation|cdr-body-only", source)
+        self.assertNotIn("cdr-with-encapsulation|raw-cdr", source)
 
     def test_bridge_powershell_preserves_ros2_error_output(self) -> None:
         """The PowerShell bridge sample should not discard ros2 diagnostics."""
@@ -545,6 +547,8 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertNotIn("| Out-Null", source)
         self.assertIn("$output", source)
+        self.assertIn('[ValidateRange(1, 65535)]', source)
+        self.assertIn('[ValidateSet("cdr-with-encapsulation", "cdr-body-only")]', source)
 
     def test_phase138t_cleanup_uses_configured_camera_frame(self) -> None:
         """Camera raw RViz cleanup should not hardcode os_sensor."""

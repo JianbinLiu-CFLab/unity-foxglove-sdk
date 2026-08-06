@@ -47,10 +47,10 @@ if (( port_number < 1 || port_number > 65535 )); then
 fi
 
 case "$PAYLOAD_FORMAT" in
-  cdr-with-encapsulation|raw-cdr)
+  cdr-with-encapsulation|cdr-body-only)
     ;;
   *)
-    echo "PAYLOAD_FORMAT must be one of: cdr-with-encapsulation, raw-cdr." >&2
+    echo "PAYLOAD_FORMAT must be one of: cdr-with-encapsulation, cdr-body-only." >&2
     exit 2
     ;;
 esac

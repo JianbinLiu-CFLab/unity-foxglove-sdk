@@ -5,6 +5,8 @@
 // Purpose: Visible publish, subscribe, and full-duplex Bridge contracts.
 
 using System;
+using System.IO;
+using System.Runtime.CompilerServices;
 using Google.Protobuf.WellKnownTypes;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
@@ -138,15 +140,19 @@ namespace Unity2Foxglove.Ros2Bridge.Sample
             display = message;
         }
 
-        private static Foxglove.Log CreateLog(string message, string name)
+        private static Foxglove.Log CreateLog(
+            string message,
+            string name,
+            [CallerFilePath] string callerFile = "",
+            [CallerLineNumber] int callerLine = 0)
             => new Foxglove.Log
             {
                 Timestamp = Timestamp.FromDateTime(DateTime.UtcNow),
                 Level = Foxglove.Log.Types.Level.Info,
                 Message = message,
                 Name = "Ros2BridgeSample/" + name,
-                File = nameof(Ros2BridgeSampleDuplex),
-                Line = 186
+                File = Path.GetFileName(callerFile),
+                Line = checked((uint)callerLine)
             };
 
         private static string Bound(string value)
