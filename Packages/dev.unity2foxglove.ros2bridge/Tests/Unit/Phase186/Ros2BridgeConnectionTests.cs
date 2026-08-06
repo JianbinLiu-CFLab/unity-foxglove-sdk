@@ -1049,7 +1049,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
-        public void MessageBeforeSubscriptionReadyIsDroppedAndObservable()
+        public void MessageBeforeSubscriptionReadyIsDroppedWithoutDegradingSession()
         {
             using var sendMessage = new ManualResetEventSlim(false);
             using var releasePeer = new ManualResetEventSlim(false);
@@ -1124,7 +1124,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 "the pre-ready message rejection was not counted");
             var inbound = queue.GetStatsSnapshot();
             Assert.Equal(1, inbound.Received);
-            Assert.True(inbound.HasSessionDeliveryFailure);
+            Assert.False(inbound.HasSessionDeliveryFailure);
             Assert.Contains("subscription_ready", inbound.LastDiagnostic);
             Assert.Equal(
                 Ros2BridgeSessionLifecycleState.Ready,

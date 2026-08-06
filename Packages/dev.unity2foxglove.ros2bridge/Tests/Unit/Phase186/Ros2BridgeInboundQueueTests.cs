@@ -230,6 +230,27 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void ResolutionRejectionIsObservableWithoutDegradingSession()
+        {
+            var contract = Contract(11, "binding-a");
+            using var queue = Queue(
+                new[] { contract },
+                maxPayloadBytes: 8,
+                maxTotalBytes: 16,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: 16);
+
+            queue.RecordResolutionRejection(
+                "The inbound Bridge message belongs to a released contract.");
+
+            var stats = queue.GetStatsSnapshot();
+            Assert.Equal(1, stats.Received);
+            Assert.Equal(1, stats.ResolutionRejections);
+            Assert.False(stats.HasSessionDeliveryFailure);
+            Assert.Contains("released contract", stats.LastDiagnostic);
+        }
+
+        [Fact]
         public void ReconnectRevokesInFlightApplyAndDecodeFailureStillReleases()
         {
             var contract = Contract(11, "binding-a");
@@ -259,6 +280,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             var stats = queue.GetStatsSnapshot();
             Assert.Equal(1, stats.DecodeFailures);
             Assert.Equal(0, stats.InFlightBytes);
+            Assert.False(stats.HasSessionDeliveryFailure);
+            Assert.Empty(stats.LastDiagnostic);
         }
 
         [Fact]
