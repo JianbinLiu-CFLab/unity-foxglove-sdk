@@ -169,6 +169,7 @@ class CoreSmokeScriptTests(unittest.TestCase):
             """Socket stub that fails if the decoder attempts to read frame payload bytes."""
 
             def __init__(self) -> None:
+                """Seed only the two bounded frame-header chunks."""
                 self._chunks = [
                     bytes([0x82, module.WEBSOCKET_64BIT_LENGTH_MARKER]),
                     struct.pack("!Q", declared_payload_bytes),
@@ -544,6 +545,7 @@ class CoreSmokeScriptTests(unittest.TestCase):
             """Yield unrelated traffic before the matching fetchAsset response."""
 
             def __init__(self):
+                """Seed unrelated and matching binary response frames."""
                 self.frames = iter(
                     (
                         frame(1, 0, b"topic-data"),
@@ -563,12 +565,15 @@ class CoreSmokeScriptTests(unittest.TestCase):
             """Provide the async context manager returned by websockets.connect."""
 
             def __init__(self):
+                """Own the scripted socket returned to the smoke helper."""
                 self.socket = FakeSocket()
 
             async def __aenter__(self):
+                """Return the scripted socket when the connection opens."""
                 return self.socket
 
             async def __aexit__(self, _exc_type, _exc, _traceback):
+                """Leave the scripted connection without suppressing failures."""
                 return False
 
         args = SimpleNamespace(

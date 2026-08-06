@@ -137,11 +137,13 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
             """Minimal scripted process state."""
 
             def __init__(self, pid: int, polls: list[int | None]):
+                """Initialize the process identity and scripted poll results."""
                 self.pid = pid
                 self._polls = iter(polls)
                 self.returncode = None
 
             def poll(self):
+                """Return the next scripted process state."""
                 try:
                     self.returncode = next(self._polls)
                 except StopIteration:
@@ -180,6 +182,7 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
             returncode = None
 
             def poll(self):
+                """Report that the process remains alive."""
                 return None
 
         args = SimpleNamespace(

@@ -150,6 +150,7 @@ class Ros2WindowsEnvTests(unittest.TestCase):
             captured_stdout = None
 
             def capture_popen(_command, **kwargs):
+                """Capture the owned stdout handle and return the process double."""
                 nonlocal captured_stdout
                 captured_stdout = kwargs["stdout"]
                 return fake_process
@@ -183,6 +184,7 @@ class Ros2WindowsEnvTests(unittest.TestCase):
             captured_stdout = None
 
             def fail_popen(_command, **kwargs):
+                """Capture the stdout handle before simulating spawn failure."""
                 nonlocal captured_stdout
                 captured_stdout = kwargs["stdout"]
                 raise OSError("spawn failed")
@@ -211,20 +213,25 @@ class Ros2WindowsEnvTests(unittest.TestCase):
             pid = 4321
 
             def __init__(self):
+                """Initialize owned-process lifecycle tracking."""
                 self.running = True
                 self.terminated = False
 
             def poll(self):
+                """Report whether the owned process is still running."""
                 return None if self.running else 0
 
             def terminate(self):
+                """Record graceful termination of the owned process."""
                 self.terminated = True
                 self.running = False
 
             def wait(self, timeout):
+                """Return the successful bounded wait result."""
                 return 0
 
             def kill(self):
+                """Mark the owned process stopped after forced termination."""
                 self.running = False
 
         process = FakeProcess()

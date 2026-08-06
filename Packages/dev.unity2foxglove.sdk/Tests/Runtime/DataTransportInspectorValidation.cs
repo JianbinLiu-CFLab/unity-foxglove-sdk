@@ -578,16 +578,41 @@ namespace Unity.FoxgloveSDK.Tests
             var source =
                 PhaseValidationSourceHelpers.ReadRequiredRepoText(
                     ManagerProvidersPath);
+            var root = Parse(source);
+            var publishProperty = root.DescendantNodes()
+                .OfType<PropertyDeclarationSyntax>()
+                .Single(property =>
+                    property.Identifier.ValueText
+                    == "ConfiguredFoxRunPublishTransportIds")
+                .ToFullString();
+            var subscribeProperty = root.DescendantNodes()
+                .OfType<PropertyDeclarationSyntax>()
+                .Single(property =>
+                    property.Identifier.ValueText
+                    == "ConfiguredFoxRunSubscribeTransportId")
+                .ToFullString();
             Check(source.Contains(
                       "private string[] _foxRunPublishTransportIds",
                       StringComparison.Ordinal)
                   && source.Contains(
                       "private string _foxRunSubscribeTransportId",
                       StringComparison.Ordinal)
-                  && source.Contains(
-                      "? default",
+                  && publishProperty.Contains(
+                      "FoxRunTransportSelection.TryCreate(",
                       StringComparison.Ordinal)
-                  && !source.Contains(
+                  && publishProperty.Contains(
+                      "Array.Empty<FoxRunTransportId>()",
+                      StringComparison.Ordinal)
+                  && subscribeProperty.Contains(
+                      "FoxRunTransportId.TryCreate(",
+                      StringComparison.Ordinal)
+                  && subscribeProperty.Contains(
+                      ": default;",
+                      StringComparison.Ordinal)
+                  && !publishProperty.Contains(
+                      "FoxgloveWebSocketTransport.Id",
+                      StringComparison.Ordinal)
+                  && !subscribeProperty.Contains(
                       "? FoxgloveWebSocketTransport.Id",
                       StringComparison.Ordinal)
                   && source.Contains(

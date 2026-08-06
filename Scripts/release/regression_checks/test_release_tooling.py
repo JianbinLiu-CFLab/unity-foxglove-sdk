@@ -2077,6 +2077,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         kill_signal = 9
 
         def inspect_or_kill_group(_process_group_id, signal_value):
+            """Model an extant group until the final kill signal is sent."""
             if signal_value == kill_signal:
                 return None
             raise ProcessLookupError
