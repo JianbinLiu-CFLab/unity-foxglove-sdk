@@ -321,11 +321,12 @@ namespace Unity.FoxgloveSDK.Components
         public static bool TryDecodeVector3(FoxRunProtobufField field, out Vector3 value, out string error)
         {
             value = default;
-            if (!TryDecodeMessage(field, out var payload, out error))
+            if (!TryDecodeMessage(field, out var payload, out error)
+                || !TryReadCompositeFields(payload, out var fields, out error))
                 return false;
-            if (!TryReadOptionalFloat(payload, 1, out var x, out error)
-                || !TryReadOptionalFloat(payload, 2, out var y, out error)
-                || !TryReadOptionalFloat(payload, 3, out var z, out error))
+            if (!TryReadOptionalFloat(fields, 1, out var x, out error)
+                || !TryReadOptionalFloat(fields, 2, out var y, out error)
+                || !TryReadOptionalFloat(fields, 3, out var z, out error))
                 return false;
             value = new Vector3 { x = x, y = y, z = z };
             return true;
@@ -335,8 +336,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             if (!TryDecodeMessage(field, out var payload, out error)
-                || !TryReadOptionalFloat(payload, 1, out var x, out error)
-                || !TryReadOptionalFloat(payload, 2, out var y, out error))
+                || !TryReadCompositeFields(payload, out var fields, out error)
+                || !TryReadOptionalFloat(fields, 1, out var x, out error)
+                || !TryReadOptionalFloat(fields, 2, out var y, out error))
                 return false;
             value = new Vector2 { x = x, y = y };
             return true;
@@ -346,10 +348,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             if (!TryDecodeMessage(field, out var payload, out error)
-                || !TryReadOptionalFloat(payload, 1, out var x, out error)
-                || !TryReadOptionalFloat(payload, 2, out var y, out error)
-                || !TryReadOptionalFloat(payload, 3, out var z, out error)
-                || !TryReadOptionalFloat(payload, 4, out var w, out error))
+                || !TryReadCompositeFields(payload, out var fields, out error)
+                || !TryReadOptionalFloat(fields, 1, out var x, out error)
+                || !TryReadOptionalFloat(fields, 2, out var y, out error)
+                || !TryReadOptionalFloat(fields, 3, out var z, out error)
+                || !TryReadOptionalFloat(fields, 4, out var w, out error))
                 return false;
             value = new Quaternion { x = x, y = y, z = z, w = w };
             return true;
@@ -359,10 +362,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             if (!TryDecodeMessage(field, out var payload, out error)
-                || !TryReadOptionalFloat(payload, 1, out var r, out error)
-                || !TryReadOptionalFloat(payload, 2, out var g, out error)
-                || !TryReadOptionalFloat(payload, 3, out var b, out error)
-                || !TryReadOptionalFloat(payload, 4, out var a, out error))
+                || !TryReadCompositeFields(payload, out var fields, out error)
+                || !TryReadOptionalFloat(fields, 1, out var r, out error)
+                || !TryReadOptionalFloat(fields, 2, out var g, out error)
+                || !TryReadOptionalFloat(fields, 3, out var b, out error)
+                || !TryReadOptionalFloat(fields, 4, out var a, out error))
                 return false;
             value = new Color { r = r, g = g, b = b, a = a };
             return true;
@@ -675,11 +679,22 @@ namespace Unity.FoxgloveSDK.Components
         private static bool TryReadBytes(byte[] payload, int fieldNumber, out byte[] value, out string error)
             => TryFindField(payload, fieldNumber, 2, out value, out error);
 
-        private static bool TryReadOptionalFloat(byte[] payload, int fieldNumber, out float value, out string error)
+        private static bool TryReadCompositeFields(
+            byte[] payload,
+            out List<FoxRunProtobufField> fields,
+            out string error)
+        {
+            fields = new List<FoxRunProtobufField>();
+            return TryReadFields(payload, fields, out error);
+        }
+
+        private static bool TryReadOptionalFloat(
+            IList<FoxRunProtobufField> fields,
+            int fieldNumber,
+            out float value,
+            out string error)
         {
             value = default;
-            var fields = new List<FoxRunProtobufField>();
-            if (!TryReadFields(payload, fields, out error)) return false;
             for (var index = fields.Count - 1; index >= 0; index--)
             {
                 if (fields[index].Number != fieldNumber) continue;

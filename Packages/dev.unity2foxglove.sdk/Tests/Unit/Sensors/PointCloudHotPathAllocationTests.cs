@@ -29,6 +29,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void ProtobufCompositeDecodersParseNestedPayloadOnlyOnce()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunProtobufWire.cs");
+
+            Assert.DoesNotContain("TryReadOptionalFloat(payload", source, StringComparison.Ordinal);
+            Assert.Equal(4, CountOccurrences(source, "TryReadCompositeFields(payload"));
+        }
+
+        [Fact]
         public void PointCloud2BuilderWritesPackedBytesWithoutStreamWriters()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudDataBuilder.cs");
@@ -675,6 +684,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
         private static string Text(string relativePath)
             => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+            return count;
+        }
 
         private static readonly string RepoRoot = FindRepoRoot();
 
