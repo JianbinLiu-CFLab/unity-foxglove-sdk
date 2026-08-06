@@ -18,11 +18,13 @@ import argparse
 import datetime as _dt
 import os
 import pathlib
+import queue
 import re
 import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Iterable
@@ -36,6 +38,7 @@ DEFAULT_BUILD_ROOT = pathlib.Path(__file__).resolve().parents[4] / "build" / "r2
 DEFAULT_WORK_ROOT = DEFAULT_BUILD_ROOT / "work"
 DEFAULT_TEMP_ROOT = DEFAULT_BUILD_ROOT / "tmp"
 DEFAULT_EVIDENCE_PATH = pathlib.Path("build") / "phase160" / "r2fu_humble_windows_build_evidence.md"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 2 * 60 * 60
 CHECKOUT_DIR_NAME = "r2u"
 HUMBLE_PIXI_RUNTIME_DLLS = ("yaml.dll", "spdlog.dll", "fmt.dll")
 
@@ -171,7 +174,7 @@ def run_command(
     env: dict[str, str],
     log_file: pathlib.Path,
     check: bool = False,
-    timeout: int | None = None,
+    timeout: float | None = DEFAULT_COMMAND_TIMEOUT_SECONDS,
 ) -> CommandResult:
     """Run a command and append captured output to the log file."""
 
@@ -192,23 +195,28 @@ def run_command(
             errors="replace",
         )
         output_parts: list[str] = []
-        deadline = time.monotonic() + timeout if timeout else None
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        output_queue: queue.Queue[str] = queue.Queue()
+        reader_done = threading.Event()
+
+        def read_output() -> None:
+            """Move child output off the blocking pipe without owning its deadline."""
+            try:
+                assert process.stdout is not None
+                while True:
+                    line = process.stdout.readline()
+                    if not line:
+                        break
+                    output_queue.put(line)
+            finally:
+                reader_done.set()
+
+        reader = threading.Thread(target=read_output, name="phase160-command-output", daemon=True)
+        reader.start()
         with log_file.open("a", encoding="utf-8", errors="replace") as log:
-            assert process.stdout is not None
             while True:
-                line = process.stdout.readline()
-                if line:
-                    output_parts.append(line)
-                    log.write(line)
-                    log.flush()
-                if process.poll() is not None:
-                    remainder = process.stdout.read()
-                    if remainder:
-                        output_parts.append(remainder)
-                        log.write(remainder)
-                        log.flush()
-                    break
-                if deadline is not None and time.monotonic() > deadline:
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0 and process.poll() is None:
                     timed_out = True
                     kill_process_tree_windows(process.pid)
                     try:
@@ -219,10 +227,23 @@ def run_command(
                             process.wait(timeout=5)
                         except subprocess.TimeoutExpired:
                             pass
-                    output_parts.append("\nCOMMAND_TIMEOUT\n")
-                    log.write("\nCOMMAND_TIMEOUT\n")
+                wait_seconds = 0.1 if remaining is None else max(0.0, min(0.1, remaining))
+                try:
+                    line = output_queue.get(timeout=wait_seconds)
+                    output_parts.append(line)
+                    log.write(line)
                     log.flush()
+                except queue.Empty:
+                    pass
+                if process.poll() is not None and reader_done.is_set() and output_queue.empty():
                     break
+            if timed_out:
+                output_parts.append("\nCOMMAND_TIMEOUT\n")
+                log.write("\nCOMMAND_TIMEOUT\n")
+                log.flush()
+        reader.join(timeout=1)
+        if process.stdout is not None:
+            process.stdout.close()
         exit_code = 124 if timed_out else (process.returncode if process.returncode is not None else 124)
         output = "".join(output_parts)
     except FileNotFoundError as exc:
@@ -354,21 +375,30 @@ def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_f
     command = f'call "{vs_dev_cmd}" -arch=x64 -host_arch=x64 >nul && set'
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         log.write(f"\n\n$ {command}\n# cwd={vs_dev_cmd.parent}\n")
-    completed = subprocess.run(
-        command,
-        cwd=str(vs_dev_cmd.parent),
-        env=env,
-        shell=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        errors="replace",
-    )
-    output = completed.stdout or ""
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(vs_dev_cmd.parent),
+            env=env,
+            shell=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors="replace",
+            timeout=DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        )
+        output = completed.stdout or ""
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        output += "\nCOMMAND_TIMEOUT\n"
+        exit_code = 124
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         log.write(output)
-        log.write(f"\n# exit={completed.returncode}\n")
-    if completed.returncode != 0:
+        log.write(f"\n# exit={exit_code}\n")
+    if exit_code != 0:
         raise Phase160Error(classify_output(output), f"Command failed: {command}")
     merged = dict(env)
     for line in output.splitlines():
@@ -382,10 +412,12 @@ def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_f
 def reject_cmd_shell_unsafe_path(label: str, path: pathlib.Path) -> None:
     """Reject a path that cannot be safely embedded in a cmd.exe quoted string."""
 
-    if '"' in str(path):
-        raise Phase160Error("BLOCKED_VSDEV_ENV", f"{label} contains an unsupported quote: {path}")
-    if "%" in str(path):
-        raise Phase160Error("BLOCKED_VSDEV_ENV", f"{label} contains unsupported percent expansion: {path}")
+    unsafe = next((character for character in '"%&|^<>\r\n' if character in str(path)), None)
+    if unsafe is not None:
+        raise Phase160Error(
+            "BLOCKED_VSDEV_ENV",
+            f"{label} contains unsupported cmd.exe metacharacter {unsafe!r}: {path}",
+        )
 
 
 def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: pathlib.Path) -> dict[str, str]:
