@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Xunit;
 
@@ -278,6 +279,131 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void ExhaustedSessionEpochDoesNotDisplaceCurrentOwnedFrames()
+        {
+            var contract = Contract(11, "binding-a");
+            var released = new List<ulong>();
+            using var queue = Queue(
+                new[] { contract },
+                maxPayloadBytes: 8,
+                maxTotalBytes: 16,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: 16);
+            Assert.True(queue.TryAccept(
+                Frame(contract, sequence: 1, released)).IsAccepted);
+            var epoch = RequiredField("_epoch");
+            epoch.SetValue(queue, long.MaxValue);
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(
+                    () => queue.BeginSession(
+                        "phase186-next",
+                        connectionGeneration: 20,
+                        new Ros2BridgeSessionContractSnapshot(
+                            generation: 7,
+                            new[] { contract })));
+            }
+            finally
+            {
+                epoch.SetValue(queue, 1L);
+            }
+
+            Assert.Empty(released);
+            Assert.True(queue.TryBeginApply(out var apply));
+            using (apply)
+            {
+                Assert.Equal("phase186-session", apply.Frame.SessionId);
+                apply.MarkApplied();
+            }
+            Assert.Single(released);
+        }
+
+        [Fact]
+        public void OverflowingAdmissionAccountingRejectsAndReleasesIncomingFrame()
+        {
+            var contract = Contract(11, "binding-a");
+            var released = new List<ulong>();
+            using var queue = Queue(
+                new[] { contract },
+                maxPayloadBytes: 8,
+                maxTotalBytes: long.MaxValue,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: long.MaxValue);
+            Assert.True(queue.TryAccept(
+                Frame(contract, sequence: 1, released)).IsAccepted);
+
+            var usageMap = RequiredField("_usage").GetValue(queue);
+            Assert.NotNull(usageMap);
+            var indexer = usageMap.GetType().GetProperty("Item");
+            Assert.NotNull(indexer);
+            var usage = indexer.GetValue(usageMap, new object[] { 11UL });
+            Assert.NotNull(usage);
+            var bytes = usage.GetType().GetField(
+                "Bytes",
+                BindingFlags.Instance | BindingFlags.NonPublic
+                | BindingFlags.Public);
+            Assert.NotNull(bytes);
+            bytes.SetValue(usage, long.MaxValue);
+            var incoming = Frame(contract, sequence: 2, released);
+
+            try
+            {
+                var result = queue.TryAccept(incoming);
+                Assert.Equal(
+                    Ros2BridgeSessionResultState.Rejected,
+                    result.State);
+                Assert.Contains("capacity", result.Reason);
+                Assert.Equal(new[] { 2UL }, released);
+            }
+            finally
+            {
+                bytes.SetValue(usage, 4L);
+                incoming.Dispose();
+            }
+
+            Assert.True(queue.TryBeginApply(out var apply));
+            using (apply)
+            {
+                Assert.Equal(1UL, apply.Frame.Sequence);
+                apply.MarkApplied();
+            }
+        }
+
+        [Fact]
+        public void ReconnectClearsSessionFailureWithoutResettingLifetimeCounters()
+        {
+            var contract = Contract(11, "binding-a");
+            var released = new List<ulong>();
+            using var queue = Queue(
+                new[] { contract },
+                maxPayloadBytes: 8,
+                maxTotalBytes: 16,
+                maxPerContractDepth: 2,
+                maxPerContractBytes: 16);
+            Assert.True(queue.TryAccept(
+                Frame(contract, sequence: 1, released)).IsAccepted);
+            Assert.Equal(
+                Ros2BridgeSessionResultState.Rejected,
+                queue.TryAccept(
+                    Frame(contract, sequence: 3, released)).State);
+            Assert.True(
+                queue.GetStatsSnapshot().HasSessionDeliveryFailure);
+
+            queue.BeginSession(
+                "phase186-next",
+                connectionGeneration: 20,
+                new Ros2BridgeSessionContractSnapshot(
+                    generation: 7,
+                    new[] { contract }));
+
+            var recovered = queue.GetStatsSnapshot();
+            Assert.Equal(1, recovered.SequenceGaps);
+            Assert.False(recovered.HasSessionDeliveryFailure);
+            Assert.Empty(recovered.LastDiagnostic);
+        }
+
+        [Fact]
         public void RevokingOneContractDropsOnlyItsQueuedAndInFlightOwnership()
         {
             var first = Contract(11, "binding-a", "/phase186/a");
@@ -385,6 +511,13 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 bindingId,
                 contractId,
                 generation: 7);
+
+        private static FieldInfo RequiredField(string name)
+            => typeof(Ros2BridgeInboundQueue).GetField(
+                   name,
+                   BindingFlags.Instance | BindingFlags.NonPublic)
+               ?? throw new InvalidOperationException(
+                   "Required inbound queue field is missing: " + name);
 
         private sealed class TrackingPool : IRos2BridgeBytePool
         {

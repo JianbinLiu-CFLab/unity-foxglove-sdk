@@ -74,7 +74,9 @@ namespace Unity2Foxglove.Ros2Bridge
             long queuedBytes,
             long transientBytes,
             long inFlightBytes,
-            string lastDiagnostic)
+            string lastDiagnostic,
+            long resolutionRejections,
+            bool hasSessionDeliveryFailure)
         {
             Received = received;
             Accepted = accepted;
@@ -92,6 +94,8 @@ namespace Unity2Foxglove.Ros2Bridge
             TransientBytes = transientBytes;
             InFlightBytes = inFlightBytes;
             LastDiagnostic = lastDiagnostic ?? string.Empty;
+            ResolutionRejections = resolutionRejections;
+            HasSessionDeliveryFailure = hasSessionDeliveryFailure;
         }
 
         internal long Received { get; }
@@ -125,6 +129,10 @@ namespace Unity2Foxglove.Ros2Bridge
         internal long InFlightBytes { get; }
 
         internal string LastDiagnostic { get; }
+
+        internal long ResolutionRejections { get; }
+
+        internal bool HasSessionDeliveryFailure { get; }
     }
 
     internal sealed class Ros2BridgeInboundApplyLease :
@@ -246,6 +254,8 @@ namespace Unity2Foxglove.Ros2Bridge
         private long _oversize;
         private long _decodeFailures;
         private long _disposalFailures;
+        private long _resolutionRejections;
+        private bool _sessionDeliveryFailure;
         private string _lastDiagnostic = string.Empty;
 
         internal Ros2BridgeInboundQueue(
@@ -287,6 +297,7 @@ namespace Unity2Foxglove.Ros2Bridge
             lock (_gate)
             {
                 ThrowIfDisposedLocked();
+                EnsureEpochAvailableLocked();
                 displaced = DrainQueuedLocked();
                 _active.Clear();
                 _sequences.Clear();
@@ -302,8 +313,23 @@ namespace Unity2Foxglove.Ros2Bridge
                 _connectionGeneration = connectionGeneration;
                 _running = true;
                 IncrementEpochLocked();
+                _sessionDeliveryFailure = false;
+                _lastDiagnostic = string.Empty;
             }
             DisposeFrames(displaced);
+        }
+
+        public void RecordResolutionRejection(string reason)
+        {
+            lock (_gate)
+            {
+                Increment(ref _received);
+                Increment(ref _resolutionRejections);
+                MarkSessionFailureLocked(
+                    string.IsNullOrWhiteSpace(reason)
+                        ? "The inbound Bridge message was rejected before queue admission."
+                        : reason);
+            }
         }
 
         internal bool TryActivateContract(
@@ -443,7 +469,7 @@ namespace Unity2Foxglove.Ros2Bridge
                     if (!_running || _disposed)
                     {
                         Increment(ref _rejectedAfterStop);
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound queue is stopped.");
                         result = Ros2BridgeSessionResult.Reject(
                             _lastDiagnostic);
@@ -454,7 +480,7 @@ namespace Unity2Foxglove.Ros2Bridge
                              > _limits.MaxPerContractBytes)
                     {
                         Increment(ref _oversize);
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound payload exceeds its configured bound.");
                         result = Ros2BridgeSessionResult.Reject(
                             _lastDiagnostic);
@@ -466,7 +492,7 @@ namespace Unity2Foxglove.Ros2Bridge
                              || frame.ConnectionGeneration
                              != _connectionGeneration)
                     {
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound frame belongs to a stale session generation.");
                         result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
@@ -475,14 +501,14 @@ namespace Unity2Foxglove.Ros2Bridge
                                  frame.Contract.ContractId,
                                  out var expected))
                     {
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound frame references an unknown contract.");
                         result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
                     }
                     else if (!expected.Equals(frame.Contract))
                     {
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound frame conflicts with its frozen contract.");
                         result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
@@ -491,7 +517,7 @@ namespace Unity2Foxglove.Ros2Bridge
                                  expected.ContractId,
                                  out var sequence))
                     {
-                        SetDiagnosticLocked(
+                        MarkSessionFailureLocked(
                             "The inbound contract sequence authority is missing.");
                         result = Ros2BridgeSessionResult.Fault(
                             _lastDiagnostic);
@@ -520,7 +546,7 @@ namespace Unity2Foxglove.Ros2Bridge
                             {
                                 Increment(ref _staleSequences);
                             }
-                            SetDiagnosticLocked(
+                            MarkSessionFailureLocked(
                                 exception.ErrorCode + ": " + exception.Message);
                             result = Ros2BridgeSessionResult.Reject(
                                 _lastDiagnostic);
@@ -550,9 +576,18 @@ namespace Unity2Foxglove.Ros2Bridge
                 contract.ContractId,
                 out var usage);
             usage ??= new ContractUsage();
-            var projectedDepth = usage.Depth + 1;
-            var projectedBytes =
-                checked(usage.Bytes + frame.PayloadLength);
+            int projectedDepth;
+            long projectedBytes;
+            try
+            {
+                projectedDepth = checked(usage.Depth + 1);
+                projectedBytes = checked(
+                    usage.Bytes + frame.PayloadLength);
+            }
+            catch (OverflowException)
+            {
+                return RejectForCapacityLocked(out displaced);
+            }
             var removedBytes = 0L;
             var removedDepth = 0;
             var node = _queued.First;
@@ -568,30 +603,44 @@ namespace Unity2Foxglove.Ros2Bridge
                     displaced ??= new List<Ros2BridgeInboundFrame>();
                     displaced.Add(node.Value);
                     removedDepth++;
-                    removedBytes = checked(
-                        removedBytes
-                        + node.Value.PayloadLength);
+                    try
+                    {
+                        removedBytes = checked(
+                            removedBytes
+                            + node.Value.PayloadLength);
+                    }
+                    catch (OverflowException)
+                    {
+                        return RejectForCapacityLocked(out displaced);
+                    }
                 }
                 node = node.Next;
             }
 
-            if (projectedDepth - removedDepth
-                    > _limits.MaxPerContractDepth
-                || projectedBytes - removedBytes
-                    > _limits.MaxPerContractBytes
-                || checked(
+            int finalDepth;
+            long finalUsageBytes;
+            long finalQueuedBytes;
+            try
+            {
+                finalDepth = checked(projectedDepth - removedDepth);
+                finalUsageBytes = checked(
+                    projectedBytes - removedBytes);
+                finalQueuedBytes = checked(
                     _queuedBytes
                     + _inFlightBytes
                     - removedBytes
-                    + frame.PayloadLength)
-                    > _limits.MaxTotalBytes)
+                    + frame.PayloadLength);
+            }
+            catch (OverflowException)
             {
-                displaced = null;
-                Increment(ref _dropped);
-                SetDiagnosticLocked(
-                    "The inbound queue has no capacity for this contract.");
-                return Ros2BridgeSessionResult.Reject(
-                    _lastDiagnostic);
+                return RejectForCapacityLocked(out displaced);
+            }
+
+            if (finalDepth > _limits.MaxPerContractDepth
+                || finalUsageBytes > _limits.MaxPerContractBytes
+                || finalQueuedBytes > _limits.MaxTotalBytes)
+            {
+                return RejectForCapacityLocked(out displaced);
             }
 
             if (displaced != null)
@@ -601,14 +650,23 @@ namespace Unity2Foxglove.Ros2Bridge
                 Add(ref _replaced, displaced.Count);
             }
             _queued.AddLast(frame);
-            usage.Depth++;
-            usage.Bytes = checked(
-                usage.Bytes + frame.PayloadLength);
+            usage.Depth = finalDepth;
+            usage.Bytes = finalUsageBytes;
             _usage[contract.ContractId] = usage;
-            _queuedBytes = checked(
-                _queuedBytes + frame.PayloadLength);
+            _queuedBytes = finalQueuedBytes;
             Increment(ref _accepted);
             return Ros2BridgeSessionResult.Accepted();
+        }
+
+        private Ros2BridgeSessionResult RejectForCapacityLocked(
+            out List<Ros2BridgeInboundFrame> displaced)
+        {
+            displaced = null;
+            Increment(ref _dropped);
+            MarkSessionFailureLocked(
+                "The inbound queue has no capacity for this contract.");
+            return Ros2BridgeSessionResult.Reject(
+                _lastDiagnostic);
         }
 
         internal bool TryBeginApply(
@@ -697,7 +755,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 else
                 {
                     Increment(ref _decodeFailures);
-                    SetDiagnosticLocked(
+                    MarkSessionFailureLocked(
                         string.IsNullOrWhiteSpace(reason)
                             ? "The inbound apply lease ended without a successful outcome."
                             : reason);
@@ -727,7 +785,9 @@ namespace Unity2Foxglove.Ros2Bridge
                     _queuedBytes,
                     _transientBytes,
                     _inFlightBytes,
-                    _lastDiagnostic);
+                    _lastDiagnostic,
+                    _resolutionRejections,
+                    _sessionDeliveryFailure);
             }
         }
 
@@ -853,18 +913,23 @@ namespace Unity2Foxglove.Ros2Bridge
                 lock (_gate)
                 {
                     Increment(ref _disposalFailures);
-                    SetDiagnosticLocked(exception.Message);
+                    MarkSessionFailureLocked(exception.Message);
                 }
             }
         }
 
-        private void IncrementEpochLocked()
+        private void EnsureEpochAvailableLocked()
         {
             if (_epoch == long.MaxValue)
             {
                 throw new InvalidOperationException(
                     "The inbound queue generation is exhausted.");
             }
+        }
+
+        private void IncrementEpochLocked()
+        {
+            EnsureEpochAvailableLocked();
             _epoch++;
         }
 
@@ -891,6 +956,12 @@ namespace Unity2Foxglove.Ros2Bridge
                     : normalized.Substring(
                         0,
                         MaxDiagnosticChars);
+        }
+
+        private void MarkSessionFailureLocked(string value)
+        {
+            _sessionDeliveryFailure = true;
+            SetDiagnosticLocked(value);
         }
 
         private static void Increment(ref long value)

@@ -915,6 +915,8 @@ namespace Unity2Foxglove.Ros2Bridge
             if (resolution.State
                 == Ros2BridgeSessionResultState.Rejected)
             {
+                _inboundReceiver.RecordResolutionRejection(
+                    resolution.Reason);
                 return;
             }
             if (!resolution.IsAccepted || contract == null)
