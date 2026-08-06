@@ -224,23 +224,100 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(link_result.ok)
 
     def test_third_party_notice_requirements_cover_runtime_plugin_dlls(self) -> None:
-        """Runtime plugin DLLs should be gated by explicit third-party notice tokens."""
-        requirement_paths = {
-            requirement[0].as_posix()
+        """Every bundled DLL should retain its exact notice-token contract."""
+        requirements = {
+            requirement[0].relative_to(self.validator.PACKAGE).as_posix():
+                requirement[1]
             for requirement in self.validator.THIRD_PARTY_NOTICE_REQUIREMENTS
         }
 
-        expected = [
-            "Runtime/Plugins/compression/K4os.Compression.LZ4.dll",
-            "Runtime/Plugins/compression/K4os.Compression.LZ4.Streams.dll",
-            "Runtime/Plugins/compression/K4os.Hash.xxHash.dll",
-            "Runtime/Plugins/compression/System.IO.Pipelines.dll",
-            "Runtime/Plugins/compression/ZstdSharp.dll",
-            "Runtime/Plugins/StbImageWriteSharp.dll",
-            "Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll",
-        ]
-        for suffix in expected:
-            self.assertTrue(any(path.endswith(suffix) for path in requirement_paths), suffix)
+        expected = {
+            "Plugins/Google.Protobuf/Google.Protobuf.dll": (
+                "Google.Protobuf",
+                "BSD-3-Clause",
+                "Plugins/Google.Protobuf/Google.Protobuf.dll",
+            ),
+            "Runtime/Plugins/compression/K4os.Compression.LZ4.dll": (
+                "K4os.Compression.LZ4",
+                "MIT",
+                "Runtime/Plugins/compression/K4os.Compression.LZ4.dll",
+            ),
+            "Runtime/Plugins/compression/K4os.Compression.LZ4.Streams.dll": (
+                "K4os.Compression.LZ4.Streams",
+                "MIT",
+                "Runtime/Plugins/compression/K4os.Compression.LZ4.Streams.dll",
+            ),
+            "Runtime/Plugins/compression/K4os.Hash.xxHash.dll": (
+                "K4os.Hash.xxHash",
+                "MIT",
+                "Runtime/Plugins/compression/K4os.Hash.xxHash.dll",
+            ),
+            "Runtime/Plugins/compression/System.IO.Pipelines.dll": (
+                "System.IO.Pipelines",
+                "MIT",
+                "Runtime/Plugins/compression/System.IO.Pipelines.dll",
+            ),
+            "Runtime/Plugins/compression/ZstdSharp.dll": (
+                "ZstdSharp.Port",
+                "MIT",
+                "Runtime/Plugins/compression/ZstdSharp.dll",
+            ),
+            "Runtime/Plugins/StbImageWriteSharp.dll": (
+                "StbImageWriteSharp",
+                "Public Domain",
+                "Runtime/Plugins/StbImageWriteSharp.dll",
+            ),
+            "Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll": (
+                "Google Draco",
+                "Apache-2.0",
+                "Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll",
+            ),
+        }
+        self.assertEqual(expected, requirements)
+
+    def test_required_package_files_require_meta_sidecars(self) -> None:
+        """Release-critical Unity assets must retain their tracked identities."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            required = (
+                package / "README.md",
+                package / "LICENSE",
+                package / "Runtime/Unity.FoxgloveSDK.asmdef",
+                package / "Editor/Unity.FoxgloveSDK.Editor.asmdef",
+                package / "Editor/SourceGenerators/src/Unity.FoxgloveSDK.SourceGenerators.asmdef",
+                package / "Runtime/Schemas/Proto/Unity.FoxgloveSDK.Proto.asmdef",
+                package / "Runtime/link.xml",
+                package / "Plugins/Google.Protobuf/Google.Protobuf.dll",
+            )
+            for path in required:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"content")
+            self.validator.PACKAGE = package
+            results = []
+            self.validator.check_required_files(results)
+
+        meta_results = [item for item in results if item.name.startswith("required meta:")]
+        self.assertEqual(len(required), len(meta_results))
+        self.assertTrue(all(not item.ok for item in meta_results))
+
+    def test_third_party_notice_scope_rejects_absent_listed_artifact(self) -> None:
+        """A missing configured artifact must not receive a scope PASS."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            notices = root / "THIRD_PARTY_NOTICES.md"
+            notices.write_text("Example MIT missing.dll\n", encoding="utf-8")
+            self.validator.THIRD_PARTY_NOTICES = notices
+            self.validator.THIRD_PARTY_NOTICE_REQUIREMENTS = (
+                (root / "missing.dll", ("Example", "MIT", "missing.dll")),
+            )
+            results = []
+            self.validator.check_third_party_notices(results)
+
+        scope = next(
+            item for item in results
+            if item.name == "third-party notice artifact scope visible"
+        )
+        self.assertFalse(scope.ok)
 
     def test_forbidden_sample_artifacts_reports_root_directory_once(self) -> None:
         """A forbidden directory should not flood diagnostics with descendants."""
@@ -382,6 +459,49 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
 
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
+
+    def test_missing_dotnet_returns_structured_build_failure(self) -> None:
+        """A missing dotnet executable should not surface as a traceback."""
+        with mock.patch.object(
+            self.validator.subprocess,
+            "run",
+            side_effect=FileNotFoundError("dotnet"),
+        ):
+            with mock.patch("sys.stderr") as stderr:
+                self.assertFalse(self.validator.run_build())
+
+        written = "".join(
+            call.args[0] for call in stderr.write.call_args_list if call.args
+        )
+        self.assertIn("dotnet executable is unavailable", written)
+
+    def test_unmatched_compile_glob_fails_closed(self) -> None:
+        """A typo in a controlled Compile glob must not erase its source set."""
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "Generator.csproj"
+            project.write_text(
+                '<Project><ItemGroup><Compile Include="src/**/*.missing.cs" />'
+                "</ItemGroup></Project>",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "matched no files"):
+                self.validator._project_sources(project)
+
+    def test_composition_contract_rejects_commented_and_skipped_tests(self) -> None:
+        """Comments and skipped facts cannot satisfy analyzer composition coverage."""
+        source = """
+// CoreOnly() R2fuOnly() BridgeOnly() AllProviders()
+public static IEnumerable<object[]> AnalyzerSets() { yield break; }
+[Theory(Skip = "disabled")]
+[MemberData(nameof(AnalyzerSets))]
+public void IndependentAnalyzerSetsEmitOnlyOwnedUniqueHints() { }
+[Fact(Skip = "disabled")]
+public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
+"""
+        failures = self.validator._composition_contract_failures(source)
+        self.assertIn("active analyzer-set calls", failures)
+        self.assertIn("active analyzer-set theory", failures)
+        self.assertIn("active physical/Roslyn parity fact", failures)
 
     def test_composition_tests_receive_cli_msbuild_properties(self) -> None:
         """The nested composition lane must keep the caller's isolated output roots."""

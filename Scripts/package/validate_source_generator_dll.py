@@ -254,6 +254,13 @@ def run_build(
         print(f"[FAIL] Source generator Release build failed with exit code {exc.returncode}.", file=sys.stderr)
         print(f"       command: {' '.join(command)}", file=sys.stderr)
         return False
+    except FileNotFoundError:
+        print(
+            "[FAIL] Source generator Release build failed: "
+            "dotnet executable is unavailable.",
+            file=sys.stderr,
+        )
+        return False
     return True
 
 
@@ -298,18 +305,163 @@ def _project_sources(project: Path) -> list[Path]:
             if include:
                 normalized = _normalize_compile_include(include)
                 if "*" in normalized or "?" in normalized:
-                    sources.extend(
+                    matches = [
                         path.resolve()
                         for path in project.parent.glob(
                             normalized
                         )
                         if path.is_file()
-                    )
+                    ]
+                    if not matches:
+                        raise ValueError(
+                            f"{project}: Compile glob matched no files: "
+                            f"{include}"
+                        )
+                    sources.extend(matches)
                 else:
                     sources.append(
                         (project.parent / normalized).resolve()
                     )
     return sources
+
+
+def _strip_csharp_comments_and_literals(source: str) -> str:
+    """Replace comments and literals while preserving executable structure."""
+    output: list[str] = []
+    index = 0
+    state = "code"
+    while index < len(source):
+        current = source[index]
+        following = source[index + 1] if index + 1 < len(source) else ""
+        if state == "code":
+            if current == "/" and following == "/":
+                output.extend((" ", " "))
+                index += 2
+                state = "line-comment"
+                continue
+            if current == "/" and following == "*":
+                output.extend((" ", " "))
+                index += 2
+                state = "block-comment"
+                continue
+            if current == '"':
+                output.append(" ")
+                index += 1
+                state = "verbatim-string" if index >= 2 and source[index - 2] == "@" else "string"
+                continue
+            if current == "'":
+                output.append(" ")
+                index += 1
+                state = "character"
+                continue
+            output.append(current)
+            index += 1
+            continue
+        if current == "\n":
+            output.append("\n")
+            index += 1
+            if state == "line-comment":
+                state = "code"
+            continue
+        if state == "block-comment" and current == "*" and following == "/":
+            output.extend((" ", " "))
+            index += 2
+            state = "code"
+            continue
+        if state == "verbatim-string" and current == '"':
+            if following == '"':
+                output.extend((" ", " "))
+                index += 2
+                continue
+            output.append(" ")
+            index += 1
+            state = "code"
+            continue
+        if state in {"string", "character"} and current == "\\":
+            output.append(" ")
+            if following:
+                output.append("\n" if following == "\n" else " ")
+                index += 2
+            else:
+                index += 1
+            continue
+        if state == "string" and current == '"':
+            output.append(" ")
+            index += 1
+            state = "code"
+            continue
+        if state == "character" and current == "'":
+            output.append(" ")
+            index += 1
+            state = "code"
+            continue
+        output.append(" ")
+        index += 1
+    return "".join(output)
+
+
+def _method_body(source: str, method_name: str) -> str | None:
+    """Return one balanced C# method body from sanitized source."""
+    match = re.search(
+        rf"\b{re.escape(method_name)}\s*\([^)]*\)\s*\{{",
+        source,
+    )
+    if match is None:
+        return None
+    opening = source.find("{", match.start())
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1:index]
+    return None
+
+
+def _active_test_attributes(source: str, method_name: str) -> str | None:
+    """Return attributes immediately attached to one public test method."""
+    match = re.search(
+        rf"(?P<attributes>(?:\s*\[[^\]]+\])+\s*)"
+        rf"public\s+void\s+{re.escape(method_name)}\s*\(",
+        source,
+    )
+    return match.group("attributes") if match is not None else None
+
+
+def _composition_contract_failures(source: str) -> list[str]:
+    """Return missing active composition-test contracts."""
+    code = _strip_csharp_comments_and_literals(source)
+    failures: list[str] = []
+    body = _method_body(code, "AnalyzerSets") or ""
+    required_calls = (
+        "CoreOnly()",
+        "R2fuOnly()",
+        "BridgeOnly()",
+        "AllProviders()",
+    )
+    if any(call not in body for call in required_calls):
+        failures.append("active analyzer-set calls")
+
+    theory = _active_test_attributes(
+        code,
+        "IndependentAnalyzerSetsEmitOnlyOwnedUniqueHints",
+    ) or ""
+    if (
+        "[Theory]" not in theory
+        or "[MemberData(nameof(AnalyzerSets))]" not in theory
+        or "Skip" in theory
+    ):
+        failures.append("active analyzer-set theory")
+
+    parity = _active_test_attributes(
+        code,
+        "PhysicalAndRoslynProviderEmittersStayEquivalent",
+    ) or ""
+    if "[Fact]" not in parity or "Skip" in parity:
+        failures.append("active physical/Roslyn parity fact")
+    return failures
 
 
 def _ledger_ids(project: Path) -> set[str]:
@@ -378,7 +530,11 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                     f"{meta.relative_to(REPO_ROOT)}"
                 )
 
-        sources = _project_sources(target.project)
+        try:
+            sources = _project_sources(target.project)
+        except (OSError, ET.ParseError, ValueError) as exc:
+            failures.append(f"{name}: cannot resolve compiled sources: {exc}")
+            sources = []
         missing_sources = [
             source for source in sources if not source.exists()
         ]
@@ -516,18 +672,11 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
             if COMPOSITION_TEST.exists()
             else ""
         )
-        for token in (
-            "CoreOnly()",
-            "R2fuOnly()",
-            "BridgeOnly()",
-            "AllProviders()",
-            "PhysicalAndRoslynProviderEmittersStayEquivalent",
-        ):
-            if token not in composition_text:
-                failures.append(
-                    "all: analyzer composition/parity test "
-                    f"does not expose {token}"
-                )
+        for missing in _composition_contract_failures(composition_text):
+            failures.append(
+                "all: analyzer composition/parity test lacks "
+                f"{missing}"
+            )
 
     if failures:
         for failure in failures:
@@ -573,6 +722,13 @@ def run_analyzer_composition_tests(msbuild_props: list[str]) -> bool:
         print(
             "[FAIL] Analyzer composition/parity tests failed "
             f"with exit code {exc.returncode}.",
+            file=sys.stderr,
+        )
+        return False
+    except FileNotFoundError:
+        print(
+            "[FAIL] Analyzer composition/parity tests failed: "
+            "dotnet executable is unavailable.",
             file=sys.stderr,
         )
         return False

@@ -29,8 +29,17 @@ class NativeSourceTests(unittest.TestCase):
         provenance = ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Native/OpenH264/v2.6.0/HEADER_PROVENANCE.md"
         text = provenance.read_text(encoding="utf-8")
         entries = re.findall(r"\| `(include/wels/[^`]+)` \| `([0-9a-f]{64})` \|", text)
+        declared_rows = [
+            line for line in text.splitlines()
+            if line.lstrip().startswith("| `include/wels/")
+        ]
 
         self.assertGreater(len(entries), 0, "HEADER_PROVENANCE.md should list header hashes")
+        self.assertEqual(
+            len(declared_rows),
+            len(entries),
+            "every OpenH264 provenance row must parse as path plus SHA-256",
+        )
         for relative, expected in entries:
             header = provenance.parent / relative
             actual = hashlib.sha256(header.read_bytes()).hexdigest()

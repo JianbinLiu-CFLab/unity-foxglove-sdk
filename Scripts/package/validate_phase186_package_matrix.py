@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,7 @@ PROJECTS = (
     ("all-providers", "Unity2Foxglove.AllProviders.Compile.csproj"),
 )
 REPORT = ROOT / "build/phase186/package-matrix/report.json"
+GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 
 
 def fail(message: str) -> int:
@@ -65,12 +67,57 @@ def compile_matrix() -> list[dict]:
                 "output": completed.stdout,
             }
         )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"{name} compile failed\n{completed.stdout}"
-            )
-        print(f"[PASS] {name} compile gate")
+        if completed.returncode == 0:
+            print(f"[PASS] {name} compile gate")
+        else:
+            print(f"[FAIL] {name} compile gate", file=sys.stderr)
     return results
+
+
+def _assembly_guids(package_root: Path, assembly_name: str) -> set[str]:
+    """Return GUIDs owned by one named assembly definition."""
+    result: set[str] = set()
+    for asmdef in package_root.rglob("*.asmdef"):
+        descriptor = load_json(asmdef)
+        if descriptor.get("name") != assembly_name:
+            continue
+        meta = Path(str(asmdef) + ".meta")
+        if not meta.is_file():
+            raise RuntimeError(f"assembly definition meta is missing: {meta}")
+        match = GUID_PATTERN.search(meta.read_text(encoding="utf-8"))
+        if match is None:
+            raise RuntimeError(f"assembly definition GUID is missing: {meta}")
+        result.add(match.group(1).lower())
+    if not result:
+        raise RuntimeError(
+            f"forbidden assembly definition is missing: {assembly_name}"
+        )
+    return result
+
+
+def _references_forbidden_assembly(
+    descriptor_path: Path,
+    assembly_name: str,
+    forbidden_root: Path,
+) -> bool:
+    """Detect name- and GUID-form references to one forbidden assembly."""
+    descriptor = load_json(descriptor_path)
+    values = descriptor.get("references", [])
+    if descriptor_path.suffix == ".asmref":
+        values = [descriptor.get("reference")]
+    if not isinstance(values, list):
+        raise RuntimeError(f"invalid references collection: {descriptor_path}")
+    references = [value for value in values if isinstance(value, str)]
+    if any(value.casefold() == assembly_name.casefold() for value in references):
+        return True
+    guid_references = {
+        value[5:].lower()
+        for value in references
+        if value.lower().startswith("guid:")
+    }
+    if not guid_references:
+        return False
+    return bool(guid_references & _assembly_guids(forbidden_root, assembly_name))
 
 
 def validate_boundaries() -> list[str]:
@@ -102,19 +149,25 @@ def validate_boundaries() -> list[str]:
         raise RuntimeError("R2FU package depends on Bridge")
 
     forbidden_by_root = (
-        (sdk, "Unity2Foxglove.Ros2Bridge"),
-        (r2fu, "Unity2Foxglove.Ros2Bridge"),
-        (bridge, "Unity2Foxglove.Ros2ForUnity"),
+        (sdk, bridge, "Unity2Foxglove.Ros2Bridge"),
+        (r2fu, bridge, "Unity2Foxglove.Ros2Bridge"),
+        (bridge, r2fu, "Unity2Foxglove.Ros2ForUnity"),
     )
     checked: list[str] = []
-    for package_root, forbidden in forbidden_by_root:
-        for asmdef in package_root.rglob("*.asmdef"):
-            text = asmdef.read_text(encoding="utf-8")
-            if forbidden.lower() in text.lower():
+    for package_root, forbidden_root, forbidden in forbidden_by_root:
+        descriptors = tuple(package_root.rglob("*.asmdef")) + tuple(
+            package_root.rglob("*.asmref")
+        )
+        for descriptor in descriptors:
+            if _references_forbidden_assembly(
+                descriptor,
+                forbidden,
+                forbidden_root,
+            ):
                 raise RuntimeError(
-                    f"{asmdef.relative_to(ROOT)} references {forbidden}"
+                    f"{descriptor.relative_to(ROOT)} references {forbidden}"
                 )
-            checked.append(asmdef.relative_to(ROOT).as_posix())
+            checked.append(descriptor.relative_to(ROOT).as_posix())
 
     analyzer_specs = (
         (
@@ -152,20 +205,35 @@ def validate_boundaries() -> list[str]:
 
 def main() -> int:
     """Run the package matrix and write its deterministic report."""
+    compile_results: list[dict] = []
+    boundary_paths: list[str] = []
+    failures: list[str] = []
     try:
         compile_results = compile_matrix()
+        failed_gates = [
+            result for result in compile_results
+            if result["exitCode"] != 0
+        ]
+        failures.extend(
+            f"{result['name']} compile failed\n{result['output']}"
+            for result in failed_gates
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        failures.append(str(exc))
+    try:
         boundary_paths = validate_boundaries()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-        return fail(str(exc))
+        failures.append(str(exc))
 
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
         json.dumps(
             {
                 "phase": "186A",
-                "verdict": "PASS",
+                "verdict": "FAIL" if failures else "PASS",
                 "compileGates": compile_results,
                 "boundaryPaths": boundary_paths,
+                "failures": failures,
             },
             indent=2,
             sort_keys=True,
@@ -173,6 +241,8 @@ def main() -> int:
         + "\n",
         encoding="utf-8",
     )
+    if failures:
+        return fail("\n".join(failures))
     print(
         "[PASS] Phase186 package matrix and optional-package boundaries "
         f"({REPORT.relative_to(ROOT).as_posix()})"

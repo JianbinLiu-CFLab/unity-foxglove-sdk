@@ -30,24 +30,29 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 def git_grep_failures(label: str, pattern: re.Pattern[str]) -> list[str]:
     """Return git-grep matches for one forbidden tracked-script pattern."""
-    result = subprocess.run(
-        [
-            "git",
-            "grep",
-            "-n",
-            "-I",
-            "-E",
-            pattern.pattern,
-            "--",
-            ":(glob)Scripts/**/*.py",
-            ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
-            f":!{THIS_SCRIPT_RELATIVE_PATH}",
-        ],
-        cwd=REPO_ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "grep",
+                "-n",
+                "-I",
+                "-E",
+                pattern.pattern,
+                "--",
+                ":(glob)Scripts/**/*.py",
+                ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
+                f":!{THIS_SCRIPT_RELATIVE_PATH}",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "git executable is unavailable; install git or add it to PATH"
+        ) from exc
     if result.returncode == 1:
         return []
     if result.returncode != 0:
