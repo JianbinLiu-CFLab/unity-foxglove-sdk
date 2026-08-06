@@ -541,10 +541,17 @@ class RunCiTests(unittest.TestCase):
     def test_dotnet_workflow_runs_schema_generated_output_freshness(self) -> None:
         """Remote CI must compare outputs against its pinned Foxglove checkout."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn(
+        checkout = workflow.index("repository: foxglove/foxglove-sdk")
+        pinned_ref = workflow.index("ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba", checkout)
+        checkout_path = workflow.index("path: third-party/foxglove-sdk", pinned_ref)
+        validation = workflow.index(
             "python3 Scripts/schema/validate_schema_generated_outputs.py",
-            workflow,
+            checkout_path,
         )
+
+        self.assertLess(checkout, pinned_ref)
+        self.assertLess(pinned_ref, checkout_path)
+        self.assertLess(checkout_path, validation)
 
     def test_validator_msbuild_args_keep_dash_prefixed_property_attached(self) -> None:
         """Argparse must receive dash-prefixed MSBuild properties as option values."""

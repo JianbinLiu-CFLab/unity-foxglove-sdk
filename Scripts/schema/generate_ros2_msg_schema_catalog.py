@@ -236,7 +236,7 @@ def try_source_commit(input_dir: Path) -> str:
     """Return the upstream checkout commit when the snapshot is inside a git repo."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(input_dir.parents[1]), "rev-parse", "HEAD"],
+            ["git", "-C", str(input_dir), "rev-parse", "HEAD"],
             capture_output=True,
             check=True,
             text=True,
