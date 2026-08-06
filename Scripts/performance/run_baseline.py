@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -67,6 +68,74 @@ RESULT_FILE_PREFIX = "phase35_performance"
 
 # Estimated data bounds for full-mode disk-space budget checks.
 FULL_MODE_ESTIMATED_BYTES = 2_000_000_000  # ~2 GB approximate upper bound for 50 topics x 50K msg
+
+
+def _result_snapshot(output_dir: str) -> dict[str, tuple[int, int]]:
+    """Capture identities of existing performance summaries."""
+    result: dict[str, tuple[int, int]] = {}
+    for name in os.listdir(output_dir):
+        if not name.startswith(RESULT_FILE_PREFIX) or not name.endswith(".json"):
+            continue
+        stat = os.stat(os.path.join(output_dir, name))
+        result[name] = (stat.st_mtime_ns, stat.st_size)
+    return result
+
+
+def _terminate_owned_process(process: subprocess.Popen) -> None:
+    """Terminate the complete process tree owned by one benchmark run."""
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            process.kill()
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            process.kill()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _run_owned(
+    cmd: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    timeout: int | None,
+) -> subprocess.CompletedProcess:
+    """Run dotnet in an owned process tree and preserve timeout semantics."""
+    popen_kwargs: dict[str, object] = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(
+            subprocess,
+            "CREATE_NEW_PROCESS_GROUP",
+            0x00000200,
+        )
+    else:
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        **popen_kwargs,
+    )
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_owned_process(process)
+        raise
+    return subprocess.CompletedProcess(cmd, returncode)
 
 
 def _resolve_output(args_output: str | None) -> str:
@@ -138,9 +207,15 @@ def main() -> int:
         "--", f"--{mode}", "--output", output_dir, "--result-prefix", RESULT_FILE_PREFIX
     ]
     print(f"[perf-baseline] Running: {' '.join(cmd)}")
+    before_results = _result_snapshot(output_dir)
 
     try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, env=env, timeout=timeout_seconds)
+        result = _run_owned(
+            cmd,
+            cwd=REPO_ROOT,
+            env=env,
+            timeout=timeout_seconds,
+        )
     except subprocess.TimeoutExpired:
         print(f"[perf-baseline] dotnet process timed out after {timeout_minutes} minute(s)")
         return EXIT_TIMEOUT
@@ -149,14 +224,19 @@ def main() -> int:
         return result.returncode
 
     # Find and print summary from the latest JSON
-    jsons = sorted(
-        [f for f in os.listdir(output_dir) if f.startswith(RESULT_FILE_PREFIX) and f.endswith(".json")],
-        reverse=True
-    )
+    after_results = _result_snapshot(output_dir)
+    jsons = [
+        name for name, identity in after_results.items()
+        if before_results.get(name) != identity
+    ]
     if not jsons:
-        print("[perf-baseline] No result JSON found.")
+        print("[perf-baseline] No result JSON produced by this run.")
         return EXIT_FAILURE
 
+    jsons.sort(
+        key=lambda name: (after_results[name][0], name),
+        reverse=True,
+    )
     result_path = os.path.join(output_dir, jsons[LATEST_RESULT_INDEX])
     try:
         with open(result_path, "r", encoding="utf-8") as f:
