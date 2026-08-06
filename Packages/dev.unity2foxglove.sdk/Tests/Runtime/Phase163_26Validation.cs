@@ -174,6 +174,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Phase162ZenohSetupRestoresSessionState()
         {
             var setup = ReadRepoText("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs");
+            var configureAndPlay = PhaseValidationSourceHelpers.RequiredSourceMethod(
+                setup,
+                "private static void TryConfigureAndPlay()");
 
             Check(setup.Contains("CaptureEnvironmentBeforeOverride", StringComparison.Ordinal)
                   && setup.Contains("RestoreEnvironmentAfterOverride", StringComparison.Ordinal)
@@ -186,6 +189,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && setup.Contains("configure PointCloud2 Native output", StringComparison.Ordinal)
                   && setup.Contains("configure FoxgloveManager output mode", StringComparison.Ordinal),
                 "163-26I-2: Phase162 reflection setup failures include acceptance-step context");
+            Check(configureAndPlay.Contains("catch", StringComparison.Ordinal)
+                  && configureAndPlay.Contains("RestoreEnvironmentAfterOverride();", StringComparison.Ordinal)
+                  && configureAndPlay.Contains("throw;", StringComparison.Ordinal),
+                "163-26I-3: Phase162 setup rolls back its process-wide environment if configuration fails before Play Mode");
         }
 
         private static void ManagerInspectorLabelsTokenAndSecretSerialization()

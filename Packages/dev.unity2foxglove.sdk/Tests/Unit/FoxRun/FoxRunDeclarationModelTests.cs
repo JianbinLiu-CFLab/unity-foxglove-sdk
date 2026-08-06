@@ -3149,6 +3149,28 @@ namespace Demo
 
         [Fact]
         [Trait("Phase", "184-G")]
+        public void Phase184BatchProbeRequiresTokenBoundariesOnBothSides()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase184BatchModeProfileProbe.cs");
+            var matcher =
+                Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
+                    source,
+                    "private static bool HasExactRunToken(string condition)");
+
+            Assert.Contains(
+                "index > 0 && !char.IsWhiteSpace(condition[index - 1])",
+                matcher,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "end == condition.Length || char.IsWhiteSpace(condition[end])",
+                matcher,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "184-G")]
         public void BatchNativeAcceptanceRetriesPlayCanceledBeforeEditModeTransition()
         {
             foreach (var path in new[]

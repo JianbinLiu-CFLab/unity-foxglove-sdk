@@ -310,6 +310,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
         }
 
         [Fact]
+        public void Phase162SetupRestoresProcessEnvironmentWhenConfigurationFails()
+        {
+            var source = File.ReadAllText(
+                PathOf("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs"));
+            var configure = Harness.TestSources.ExtractMethod(
+                source,
+                "private static void TryConfigureAndPlay()");
+
+            Assert.Contains("catch", configure, StringComparison.Ordinal);
+            Assert.Contains(
+                "RestoreEnvironmentAfterOverride();",
+                configure,
+                StringComparison.Ordinal);
+            Assert.Contains("throw;", configure, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void BridgeSampleUsesProviderSerialization()
         {
             var scene = File.ReadAllText(
