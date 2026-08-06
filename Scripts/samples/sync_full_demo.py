@@ -58,9 +58,13 @@ PORTABLE_FULL_DEMO_SCENE_OVERRIDES = (
     ("_rootCaFilePath", "_rootCaFilePath:"),
     ("_sharedToken", "_sharedToken:"),
 )
+FOXGLOVE_MANAGER_SCRIPT_GUID = "afc2d6291bf7eb743b8c49690ebc3c6f"
+FOXGLOVE_MANAGER_SCRIPT_MARKER = f"guid: {FOXGLOVE_MANAGER_SCRIPT_GUID},"
+UNITY_DOCUMENT_SPLIT_PATTERN = re.compile(r"(?=^--- !u!)", re.MULTILINE)
 PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN = re.compile(r"^(\s*)(_[A-Za-z0-9]+):")
-PORTABLE_FULL_DEMO_SCENE_FORBIDDEN_FIELDS = {
-    field for field, replacement in PORTABLE_FULL_DEMO_SCENE_OVERRIDES if replacement.endswith(":")
+PORTABLE_FULL_DEMO_SCENE_EXPECTED_VALUES = {
+    field: replacement.split(":", 1)[1].strip()
+    for field, replacement in PORTABLE_FULL_DEMO_SCENE_OVERRIDES
 }
 
 
@@ -134,10 +138,12 @@ def resolve_path(path: str | None, base: Path = ROOT) -> Path | None:
     return p.resolve()
 
 
-def imported_sample_root(target_project: Path, explicit_path: Path | None) -> Path:
+def imported_sample_root(target_project: Path | None, explicit_path: Path | None) -> Path:
     """Locate the imported Full Demo sample root in an external Unity project."""
     if explicit_path is not None:
         return explicit_path
+    if target_project is None:
+        raise ValueError("--target-project is required when --imported-sample-path is omitted")
 
     samples_root = target_project / "Assets" / "Samples"
     if not samples_root.exists():
@@ -193,33 +199,61 @@ def with_line_ending(line: str, content: str) -> str:
 
 def portable_full_demo_scene_payload(src: Path) -> bytes:
     """Read the demo scene and rewrite local-only defaults for sample users."""
-    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
-    rewritten = []
-    for line in lines:
-        body = line.rstrip("\r\n")
-        replacement = None
-        match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(body)
-        for field, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
-            if match and match.group(2) == field:
-                replacement = match.group(1) + value
-                break
-        rewritten.append(with_line_ending(line, replacement if replacement is not None else body))
-    text = "".join(rewritten)
+    documents = UNITY_DOCUMENT_SPLIT_PATTERN.split(src.read_text(encoding="utf-8"))
+    rewritten_documents = []
+    for document in documents:
+        if FOXGLOVE_MANAGER_SCRIPT_MARKER not in document:
+            rewritten_documents.append(document)
+            continue
+        rewritten_lines = []
+        for line in document.splitlines(keepends=True):
+            body = line.rstrip("\r\n")
+            replacement = None
+            match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(body)
+            for field, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
+                if match and match.group(2) == field:
+                    replacement = match.group(1) + value
+                    break
+            rewritten_lines.append(with_line_ending(line, replacement if replacement is not None else body))
+        rewritten_documents.append("".join(rewritten_lines))
+    text = "".join(rewritten_documents)
     validate_portable_full_demo_scene_payload(text)
     return text.encode("utf-8")
 
 
 def validate_portable_full_demo_scene_payload(text: str) -> None:
-    """Reject portable sample scenes that still contain local-only values."""
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    """Reject missing or unsafe portable defaults on the Foxglove Manager."""
+    manager_documents = [
+        document
+        for document in UNITY_DOCUMENT_SPLIT_PATTERN.split(text)
+        if FOXGLOVE_MANAGER_SCRIPT_MARKER in document
+    ]
+    if len(manager_documents) != 1:
+        raise ValueError(
+            "Portable Full Demo scene must contain exactly one Foxglove Manager "
+            f"component; found {len(manager_documents)}."
+        )
+
+    observed: dict[str, list[tuple[int, str]]] = {
+        field: [] for field in PORTABLE_FULL_DEMO_SCENE_EXPECTED_VALUES
+    }
+    for line_number, line in enumerate(manager_documents[0].splitlines(), start=1):
         match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(line)
-        if not match or match.group(2) not in PORTABLE_FULL_DEMO_SCENE_FORBIDDEN_FIELDS:
-            continue
-        value = line.split(":", 1)[1].strip()
-        if value:
+        if match and match.group(2) in observed:
+            observed[match.group(2)].append((line_number, line.split(":", 1)[1].strip()))
+
+    for field, expected in PORTABLE_FULL_DEMO_SCENE_EXPECTED_VALUES.items():
+        values = observed[field]
+        if len(values) != 1:
             raise ValueError(
-                "Portable Full Demo scene still contains local-only value "
-                f"for {match.group(2)} on line {line_number}."
+                f"Portable Full Demo Foxglove Manager must contain exactly one {field}; "
+                f"found {len(values)}."
+            )
+        line_number, actual = values[0]
+        if actual != expected:
+            raise ValueError(
+                f"Portable Full Demo scene has unsafe value for {field} on manager line "
+                f"{line_number}: expected {expected!r}, found {actual!r}."
             )
 
 
@@ -233,10 +267,8 @@ def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
     if mode == "package-to-demo":
         return [(m.sample, m.demo) for m in FILE_MAPS]
 
-    target_project = resolve_path(args.target_project)
-    if target_project is None:
-        raise ValueError(f"--target-project is required for mode {mode}")
     explicit = resolve_path(args.imported_sample_path)
+    target_project = resolve_path(args.target_project)
     imported_root = imported_sample_root(target_project, explicit)
 
     if mode == "package-to-imported":
@@ -306,7 +338,10 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         choices=("demo-to-package", "package-to-demo", "package-to-imported", "demo-to-imported", "validate"),
         default="demo-to-package",
-        help="Synchronization direction. Default: demo-to-package.",
+        help=(
+            "Synchronization direction. package-to-demo intentionally replaces "
+            "the live demo scene, including its local-only settings. Default: demo-to-package."
+        ),
     )
     parser.add_argument(
         "--target-project",
