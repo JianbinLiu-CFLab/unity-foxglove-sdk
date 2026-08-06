@@ -472,17 +472,6 @@ namespace Unity.FoxgloveSDK.Tests
             return frame;
         }
 
-        private static IEnumerable<string> ProductSchemaNames()
-        {
-            yield return Ros2PublisherSchemaNames.FrameTransform;
-            yield return Ros2PublisherSchemaNames.SceneUpdate;
-            yield return Ros2PublisherSchemaNames.CompressedImage;
-            yield return Ros2PublisherSchemaNames.CameraCalibration;
-            yield return Ros2PublisherSchemaNames.LaserScan;
-            yield return Ros2PublisherSchemaNames.PointCloud;
-            yield return Ros2PublisherSchemaNames.CompressedPointCloud;
-        }
-
         private static IEnumerable<(string schemaName, string sourceToken)> ProductSchemaMappings()
         {
             yield return (Ros2PublisherSchemaNames.FrameTransform,

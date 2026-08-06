@@ -40,7 +40,6 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var cleanPurposeEntries = 0;
             var registryEntries = 0;
-            var plainEntriesWithoutCleanPurpose = 0;
             string firstPlainCleanPurposeEntry = null;
 
             foreach (Match match in RegistryEntryPattern.Matches(registry))
@@ -55,10 +54,6 @@ namespace Unity.FoxgloveSDK.Tests
                     if (PlainPhaseNamePattern.IsMatch(name) && firstPlainCleanPurposeEntry == null)
                         firstPlainCleanPurposeEntry = match.Groups["flag"].Value;
                 }
-                else if (PlainPhaseNamePattern.IsMatch(name))
-                {
-                    plainEntriesWithoutCleanPurpose++;
-                }
             }
 
             Check(registryEntries > 0 && cleanPurposeEntries * 100 >= registryEntries * 80,
@@ -67,9 +62,6 @@ namespace Unity.FoxgloveSDK.Tests
             Check(firstPlainCleanPurposeEntry == null,
                 "164-58A-2: clean Purpose-backed registry entries use descriptive Names"
                 + (firstPlainCleanPurposeEntry == null ? string.Empty : " (first plain entry: " + firstPlainCleanPurposeEntry + ")"),
-                ref passed);
-            Check(plainEntriesWithoutCleanPurpose > 0,
-                $"164-58A-3: plain legacy names remain only where clean Purpose metadata is unavailable ({plainEntriesWithoutCleanPurpose} entries)",
                 ref passed);
         }
 

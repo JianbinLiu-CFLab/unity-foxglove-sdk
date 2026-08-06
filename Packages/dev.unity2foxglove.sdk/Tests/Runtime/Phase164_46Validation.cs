@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string SourceMethod(string source, string signature)
-            => PhaseValidationSourceHelpers.SourceMethod(source, signature);
+            => PhaseValidationSourceHelpers.RequiredSourceMethod(source, signature);
 
         private static string Read(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);

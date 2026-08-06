@@ -408,7 +408,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static bool SourceMethodContains(string source, string methodName, string needle)
-            => SourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
+            => RequiredSourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
 
         public static int InvocationCountInMethod(
             string source,
@@ -531,6 +531,18 @@ namespace Unity.FoxgloveSDK.Tests
                 methodName,
                 IsSourceMethodDeclaration,
                 CSharpParseOptions.Default);
+
+        public static string RequiredSourceMethod(string source, string methodName)
+        {
+            var method = SourceMethod(source, methodName);
+            if (string.IsNullOrEmpty(method))
+            {
+                throw new InvalidOperationException(
+                    "Could not resolve exactly one source method for: " + methodName);
+            }
+
+            return method;
+        }
 
         public static string SourceMethodWithPreprocessorSymbols(
             string source,
