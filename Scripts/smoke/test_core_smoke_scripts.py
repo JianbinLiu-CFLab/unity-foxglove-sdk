@@ -464,6 +464,62 @@ class CoreSmokeScriptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.parse_fetch_asset_response(frame)
 
+    def test_fetch_asset_skips_unrelated_binary_frames_until_matching_response(self) -> None:
+        """Concurrent server traffic must not preempt the requested asset response."""
+        module = load_smoke_module("fetch_asset_routing_under_test", "assets/fetch_asset_smoke.py")
+
+        def frame(opcode: int, request_id: int, payload: bytes = b"") -> bytes:
+            """Build one minimally valid binary frame for the scripted socket."""
+            return bytes([opcode]) + request_id.to_bytes(4, "little") + bytes([0]) + (0).to_bytes(4, "little") + payload
+
+        class FakeSocket:
+            """Yield unrelated traffic before the matching fetchAsset response."""
+
+            def __init__(self):
+                self.frames = iter(
+                    (
+                        frame(1, 0, b"topic-data"),
+                        frame(module.FETCH_ASSET_RESPONSE_OPCODE, 99, b"stale"),
+                        frame(module.FETCH_ASSET_RESPONSE_OPCODE, 42, b"FoxgloveDemoSetup"),
+                    )
+                )
+
+            async def send(self, _message):
+                """Accept the request."""
+
+            async def recv(self):
+                """Return the next scripted frame."""
+                return next(self.frames)
+
+        class FakeConnection:
+            """Provide the async context manager returned by websockets.connect."""
+
+            def __init__(self):
+                self.socket = FakeSocket()
+
+            async def __aenter__(self):
+                return self.socket
+
+            async def __aexit__(self, _exc_type, _exc, _traceback):
+                return False
+
+        args = SimpleNamespace(
+            host="127.0.0.1",
+            port=8765,
+            request_id=42,
+            uri="asset://demo/test",
+            output="",
+            drain_attempts=0,
+            drain_timeout_seconds=0.01,
+            response_attempts=3,
+            response_timeout_seconds=0.01,
+            preview_chars=40,
+        )
+        with mock.patch.object(module.websockets, "connect", return_value=FakeConnection()):
+            result = asyncio.run(module.run(args))
+
+        self.assertEqual(module.EXIT_SUCCESS, result)
+
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""
         module = load_smoke_module("phase138l_rviz_under_test", "ros2/launch_phase138l_rviz2.py")
