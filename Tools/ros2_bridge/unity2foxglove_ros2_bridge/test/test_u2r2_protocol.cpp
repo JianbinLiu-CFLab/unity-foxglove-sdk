@@ -1085,3 +1085,22 @@ TEST(U2R2ProtocolV2, SharedLedgersExecuteEveryErrorTransitionAndNegativeVector)
       [&]() {ExecuteNegative(negative, fixture, authority);});
   }
 }
+
+TEST(U2R2ProtocolV2, RecoverableReplayErrorsAllowHealthPongResponses)
+{
+  const std::array<const char *, 3U> recoverable_errors{
+    "request_in_flight",
+    "stale_request",
+    "capacity_exceeded"};
+  for (const auto * error_code : recoverable_errors) {
+    SCOPED_TRACE(error_code);
+    EXPECT_TRUE(
+      is_stable_error_allowed_for_response(
+        error_code,
+        Operation::HealthPong));
+    EXPECT_NO_THROW(
+      (void)parse_v2(decode_frame(encode_frame(
+          ErrorResponseHeader(Operation::HealthPong, error_code, false),
+          {}))));
+  }
+}

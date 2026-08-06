@@ -1076,6 +1076,7 @@
         "wire": true,
         "terminal": false,
         "responseOps": [
+          "health_pong",
           "publisher_ready",
           "publish_result",
           "subscription_ready",
@@ -1087,6 +1088,7 @@
         "wire": true,
         "terminal": false,
         "responseOps": [
+          "health_pong",
           "publisher_ready",
           "publish_result",
           "subscription_ready",
@@ -1098,6 +1100,7 @@
         "wire": true,
         "terminal": false,
         "responseOps": [
+          "health_pong",
           "publisher_ready",
           "publish_result",
           "subscription_ready",

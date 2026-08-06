@@ -2588,6 +2588,11 @@ std::optional<V2ErrorResponseRoute> v2_error_response_route(
 {
   std::optional<V2ErrorResponseRoute> route;
   switch (request_operation) {
+    case u2r2::Operation::HealthPing:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::HealthPong,
+        "health_pong"};
+      break;
     case u2r2::Operation::PreparePublisher:
       route = V2ErrorResponseRoute{
         u2r2::Operation::PublisherReady,

@@ -2195,6 +2195,15 @@ TEST(
   EXPECT_EQ("stale_request", stale_response.error_code);
   EXPECT_FALSE(stale_response.terminal);
 
+  write_all(client_socket.get(), health_request(8));
+  const auto stale_health_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, stale_health_response.operation);
+  EXPECT_EQ(8U, stale_health_response.request_id);
+  EXPECT_EQ("error", stale_health_response.status);
+  EXPECT_EQ("stale_request", stale_health_response.error_code);
+  EXPECT_FALSE(stale_health_response.terminal);
+
   const auto health = health_request(20);
   write_all(client_socket.get(), health);
   const auto health_response = u2r2::parse_v2(

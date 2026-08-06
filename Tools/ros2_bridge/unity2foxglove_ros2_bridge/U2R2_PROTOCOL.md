@@ -137,9 +137,9 @@ result and cannot be placed on the wire.
 | `counter_exhausted` | yes | local only |
 | `request_id_conflict` | yes | `fault` |
 | `response_mismatch` | yes | local only |
-| `request_in_flight` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
-| `stale_request` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
-| `capacity_exceeded` | no | `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `request_in_flight` | no | `health_pong`, `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `stale_request` | no | `health_pong`, `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
+| `capacity_exceeded` | no | `health_pong`, `publisher_ready`, `publish_result`, `subscription_ready`, `subscription_removed` |
 | `contract_not_ready` | yes | local only |
 | `unknown_contract` | yes | `subscription_removed`, `fault` |
 | `contract_sequence_fault` | no | local only |

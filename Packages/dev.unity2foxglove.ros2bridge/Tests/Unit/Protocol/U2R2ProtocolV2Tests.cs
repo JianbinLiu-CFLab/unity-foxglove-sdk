@@ -646,6 +646,35 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
         }
 
         [Fact]
+        public void RecoverableReplayErrorsAllowHealthPongResponses()
+        {
+            var recoverableErrors = new[]
+            {
+                "request_in_flight",
+                "stale_request",
+                "capacity_exceeded",
+            };
+            foreach (var errorCode in recoverableErrors)
+            {
+                Assert.True(
+                    U2R2ProtocolCodec.IsStableErrorAllowedForResponse(
+                        errorCode,
+                        U2R2Operation.HealthPong));
+                var encoded = U2R2ProtocolCodec.EncodeFrame(
+                    ErrorResponseHeader(
+                        U2R2Operation.HealthPong,
+                        errorCode,
+                        terminal: false),
+                    Array.Empty<byte>());
+                var parsed = U2R2ProtocolCodec.ParseV2(
+                    U2R2ProtocolCodec.DecodeFrame(encoded));
+                Assert.Equal(U2R2Operation.HealthPong, parsed.Operation);
+                Assert.Equal(errorCode, parsed.ErrorCode);
+                Assert.False(parsed.Terminal);
+            }
+        }
+
+        [Fact]
         public void PublicProtocolModelsDoNotExposeMutableHeaderOrCapabilities()
         {
             var encoded = HexToBytes(Vector("hello_request").Value<string>("frameHex"));

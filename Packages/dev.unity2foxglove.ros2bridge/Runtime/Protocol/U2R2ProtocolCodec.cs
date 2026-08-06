@@ -85,18 +85,21 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     terminal: true),
                 ["request_in_flight"] = new StableErrorRule(
                     terminal: false,
+                    U2R2Operation.HealthPong,
                     U2R2Operation.PublisherReady,
                     U2R2Operation.PublishResult,
                     U2R2Operation.SubscriptionReady,
                     U2R2Operation.SubscriptionRemoved),
                 ["stale_request"] = new StableErrorRule(
                     terminal: false,
+                    U2R2Operation.HealthPong,
                     U2R2Operation.PublisherReady,
                     U2R2Operation.PublishResult,
                     U2R2Operation.SubscriptionReady,
                     U2R2Operation.SubscriptionRemoved),
                 ["capacity_exceeded"] = new StableErrorRule(
                     terminal: false,
+                    U2R2Operation.HealthPong,
                     U2R2Operation.PublisherReady,
                     U2R2Operation.PublishResult,
                     U2R2Operation.SubscriptionReady,
