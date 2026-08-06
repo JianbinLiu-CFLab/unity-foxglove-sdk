@@ -400,9 +400,18 @@ namespace Unity2Foxglove.Ros2Bridge
         private static string BoundDiagnostic(string value, int maxChars)
         {
             value ??= string.Empty;
-            return value.Length <= maxChars
-                ? value
-                : value.Substring(0, maxChars);
+            if (value.Length <= maxChars)
+                return value;
+
+            var length = maxChars;
+            if (length > 0
+                && char.IsHighSurrogate(value[length - 1])
+                && length < value.Length
+                && char.IsLowSurrogate(value[length]))
+            {
+                length--;
+            }
+            return value.Substring(0, length);
         }
 
         private static byte[] ReadExact(

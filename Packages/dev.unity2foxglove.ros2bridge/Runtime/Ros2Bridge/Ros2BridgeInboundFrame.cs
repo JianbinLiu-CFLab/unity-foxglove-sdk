@@ -74,8 +74,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 throw new ArgumentNullException(nameof(storage));
             if (payloadOffset < 0
                 || payloadLength < 0
-                || checked(payloadOffset + payloadLength)
-                > storage.Length)
+                || payloadOffset > storage.Length - payloadLength)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(payloadLength),

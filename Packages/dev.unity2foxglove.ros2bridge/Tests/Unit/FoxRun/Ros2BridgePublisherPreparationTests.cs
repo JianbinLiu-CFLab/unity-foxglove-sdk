@@ -615,6 +615,19 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(
                 Ros2BridgePublisherPreparationCodec.MaxDiagnosticChars,
                 parsed.Message.Length);
+
+            var surrogateBoundary = Ros2BridgePublisherPreparationCodec.WriteResponseForTests(
+                "strict-types",
+                "error",
+                "publisher_unavailable",
+                new string('x', Ros2BridgePublisherPreparationCodec.MaxDiagnosticChars - 1)
+                + "\ud83d\ude00");
+            var boundedSurrogate = Ros2BridgePublisherPreparationCodec.ParseResponse(
+                surrogateBoundary,
+                "strict-types").Message;
+            Assert.True(boundedSurrogate.Length <= Ros2BridgePublisherPreparationCodec.MaxDiagnosticChars);
+            Assert.False(char.IsSurrogate(boundedSurrogate[boundedSurrogate.Length - 1]));
+
             Assert.Throws<FormatException>(() =>
                 Ros2BridgePublisherPreparationCodec.ParseResponse(
                     MutateHeader(response, header => header["status"] = true),

@@ -16,6 +16,25 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
     public sealed class Ros2BridgeInboundQueueTests
     {
         [Fact]
+        public void OwnedSliceOverflowUsesTheDocumentedRangeFailure()
+        {
+            var contract = Contract(11, "binding-a");
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                Ros2BridgeInboundFrame.CreateOwned(
+                    contract,
+                    "phase186-session",
+                    connectionGeneration: 19,
+                    messageId: 1,
+                    sequence: 1,
+                    receiveTimeNs: 2,
+                    new byte[1],
+                    payloadOffset: int.MaxValue,
+                    payloadLength: 1,
+                    release: _ => { }));
+        }
+
+        [Fact]
         public void LogicalSliceIsCopiedOnceAppliedAndReturnedExactlyOnce()
         {
             var pool = new TrackingPool(extraCapacity: 32);
