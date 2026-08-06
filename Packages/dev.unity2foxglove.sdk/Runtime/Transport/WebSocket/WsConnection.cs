@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Encode the string as UTF-8 and send it in a text frame.</summary>
         public EnqueueResult SendText(string json, FramePriority priority)
         {
-            var payload = Encoding.UTF8.GetBytes(json);
+            var payload = Encoding.UTF8.GetBytes(json ?? string.Empty);
             return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
         }
 

@@ -57,7 +57,7 @@ NO_REMAINING_BYTES = 0
 NO_FLAG_BITS_SET = 0
 
 # Maximum frame payload accepted by this manual smoke client.
-MAX_SMOKE_FRAME_PAYLOAD_BYTES = 2_147_483_647
+MAX_SMOKE_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024
 
 # TCP_NODELAY option value that disables Nagle for lower-latency smoke behavior.
 TCP_NODELAY_ENABLED = 1

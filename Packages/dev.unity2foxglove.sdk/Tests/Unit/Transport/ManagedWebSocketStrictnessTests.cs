@@ -20,6 +20,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
     public sealed class ManagedWebSocketStrictnessTests
     {
         [Fact]
+        public void NullTextIsSentAsAnEmptyTextFrame()
+        {
+            using var tcpClient = new TcpClient();
+            var stream = new DuplexBufferStream(Array.Empty<byte>());
+            using var connection = new WsConnection(tcpClient, stream, 8, 1024);
+            connection.StartSendLoop(null, CancellationToken.None);
+
+            var result = connection.SendText(null, FramePriority.Control);
+
+            Assert.True(result.Accepted);
+            Assert.True(
+                SpinWait.SpinUntil(() => stream.WrittenBytes.Length >= 2, TimeSpan.FromSeconds(1)),
+                "The empty text frame was not written before the test deadline.");
+            Assert.Equal(new byte[] { 0x81, 0x00 }, stream.WrittenBytes);
+        }
+
+        [Fact]
         public void CodecClassifiesNonMinimalLengthsAndMalformedClosePayloads()
         {
             Assert.Equal(

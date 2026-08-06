@@ -156,6 +156,37 @@ def json_bytes(payload: dict) -> str:
 class CoreSmokeScriptTests(unittest.TestCase):
     """Regression coverage for local smoke helper edge cases."""
 
+    def test_slow_camera_client_rejects_oversized_frames_before_payload_read(self) -> None:
+        """The manual client must reject unrealistic frames before buffering payload bytes."""
+        module = load_smoke_module(
+            "phase40_slow_camera_client_under_test",
+            "websocket/phase40_slow_camera_client.py",
+        )
+        maximum_payload_bytes = 16 * 1024 * 1024
+        declared_payload_bytes = maximum_payload_bytes + 1
+
+        class HeaderOnlySocket:
+            """Socket stub that fails if the decoder attempts to read frame payload bytes."""
+
+            def __init__(self) -> None:
+                self._chunks = [
+                    bytes([0x82, module.WEBSOCKET_64BIT_LENGTH_MARKER]),
+                    struct.pack("!Q", declared_payload_bytes),
+                ]
+
+            def recv(self, count: int) -> bytes:
+                """Return header chunks and reject any subsequent payload read."""
+                if not self._chunks:
+                    raise AssertionError("oversized frame payload was read")
+                chunk = self._chunks.pop(0)
+                if len(chunk) != count:
+                    raise AssertionError(f"expected a {count}-byte header read, got {len(chunk)}")
+                return chunk
+
+        self.assertEqual(maximum_payload_bytes, module.MAX_SMOKE_FRAME_PAYLOAD_BYTES)
+        with self.assertRaisesRegex(ValueError, "Frame too large"):
+            module.read_server_frame(HeaderOnlySocket())
+
     def test_topic_waiters_raise_topic_not_found_on_advertise_timeout(self) -> None:
         """Topic probes should return their structured timeout verdict path."""
         cases = [
