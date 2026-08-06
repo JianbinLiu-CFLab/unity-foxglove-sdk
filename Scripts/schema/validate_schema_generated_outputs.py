@@ -2,10 +2,10 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Purpose: Validate that committed ROS 2 schema generated outputs match fresh generation.
+# Purpose: Validate fresh ROS 2 schema generation when sources exist, or committed inventory otherwise.
 # Usage: python Scripts/schema/validate_schema_generated_outputs.py
 
-"""Validate committed ROS 2 schema generated outputs against fresh generator output."""
+"""Validate snapshot-backed schema freshness or the source-only committed inventory."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def validate_committed_output_inventory(failures: list[str]) -> None:
 
 
 def validate_generated_outputs() -> list[str]:
-    """Return generated-output freshness failures, or an empty list when current."""
+    """Return strict freshness failures, or source-only committed-inventory failures."""
     failures: list[str] = []
     if not schema_snapshot_available():
         validate_committed_output_inventory(failures)

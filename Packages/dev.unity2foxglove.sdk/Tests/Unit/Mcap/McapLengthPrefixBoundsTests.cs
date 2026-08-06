@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
@@ -105,6 +106,24 @@ namespace Unity.FoxgloveSDK.UnitTests
                 var offset = 0;
                 Assert.Throws<InvalidDataException>(() => McapBinaryReader.ReadMap(buffer, ref offset));
             }
+        }
+
+        [Fact]
+        public void TruncatedSeekableRecordIsRejectedBeforeAllocatingDeclaredContent()
+        {
+            using var stream = new MemoryStream();
+            stream.WriteByte(McapWriter.OpcodeMessage);
+            McapWriter.WriteU64(stream, 32UL * 1024UL * 1024UL);
+            stream.Position = 0;
+            using var reader = new McapReader(stream);
+
+            Assert.Throws<EndOfStreamException>(() => reader.ReadOneRecord());
+
+            var buffer = typeof(McapReader).GetField(
+                "_recordContentBuffer",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(buffer);
+            Assert.Null(buffer.GetValue(reader));
         }
 
         [Fact]

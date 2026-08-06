@@ -25,16 +25,27 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Theory]
-        [InlineData("items=0-1")]
-        [InlineData("bytes=0-1,4-5")]
         [InlineData("bytes=-0")]
         [InlineData("bytes=100-101")]
-        public void ByteRangeParserRejectsUnsupportedOrUnsatisfiableRange(string header)
+        public void ByteRangeParserRejectsUnsatisfiableRange(string header)
         {
             var valid = TryParseByteRange(header, 100L, out _, out _, out var problem);
 
             Assert.False(valid);
             Assert.NotEmpty(problem);
+        }
+
+        [Theory]
+        [InlineData("items=0-1")]
+        [InlineData("bytes=0-1,4-5")]
+        public void ByteRangeParserIgnoresUnsupportedOrMultipartRange(string header)
+        {
+            var valid = TryParseByteRange(header, 100L, out var start, out var end, out var problem);
+
+            Assert.True(valid, problem);
+            Assert.Equal(-1L, start);
+            Assert.Equal(-1L, end);
+            Assert.Empty(problem);
         }
 
         [Theory]

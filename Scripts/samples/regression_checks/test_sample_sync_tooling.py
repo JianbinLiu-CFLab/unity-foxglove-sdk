@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -387,6 +388,63 @@ class SampleSyncToolingTests(unittest.TestCase):
 
         self.assertEqual([module.Drift("changed", Path("package_owned.cs"))], module.blocking_drift_after_apply(drift))
 
+    def test_ros2_sample_apply_and_dry_run_accept_imported_owned_extras(self) -> None:
+        """Apply and validation modes should agree that imported-owned extras are non-blocking."""
+        module = load_module("sync_ros2_samples_extra_under_test", "Scripts/samples/sync_ros2_samples.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_root = root / "package"
+            imported_root = root / "imported"
+            package_root.mkdir()
+            imported_root.mkdir()
+            (imported_root / "local_only.cs").write_text("imported-owned\n", encoding="utf-8")
+
+            def run(apply: bool) -> int:
+                """Run the real command body with explicit temporary roots."""
+                args = type(
+                    "Args",
+                    (),
+                    {
+                        "apply": apply,
+                        "package_root": str(package_root),
+                        "imported_root": str(imported_root),
+                    },
+                )()
+                with mock.patch.object(module, "parse_args", return_value=args):
+                    with mock.patch("sys.stdout", StringIO()), mock.patch("sys.stderr", StringIO()):
+                        return module.main()
+
+            self.assertEqual(module.EXIT_SUCCESS, run(apply=True))
+            self.assertEqual(module.EXIT_SUCCESS, run(apply=False))
+
+    def test_ros2_sample_explicit_roots_do_not_resolve_manifest_default(self) -> None:
+        """Two explicit roots should not require the repository package manifest."""
+        module = load_module("sync_ros2_samples_explicit_under_test", "Scripts/samples/sync_ros2_samples.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_root = root / "package"
+            imported_root = root / "imported"
+            package_root.mkdir()
+            imported_root.mkdir()
+            args = type(
+                "Args",
+                (),
+                {
+                    "apply": False,
+                    "package_root": str(package_root),
+                    "imported_root": str(imported_root),
+                },
+            )()
+            with mock.patch.object(module, "parse_args", return_value=args):
+                with mock.patch.object(module, "default_imported_root", return_value=root / "unused") as default_root:
+                    with mock.patch("sys.stdout", StringIO()), mock.patch("sys.stderr", StringIO()):
+                        result = module.main()
+
+        self.assertEqual(module.EXIT_SUCCESS, result)
+        default_root.assert_not_called()
+
     def test_ros2_sample_apply_refreshes_imported_file_timestamp(self) -> None:
         """Applying drift must make Unity notice the newly copied sample content."""
         module = load_module("sync_ros2_samples_timestamp_under_test", "Scripts/samples/sync_ros2_samples.py")
@@ -413,6 +471,38 @@ class SampleSyncToolingTests(unittest.TestCase):
 
             self.assertEqual("current\n", imported_file.read_text(encoding="utf-8"))
             self.assertGreater(imported_file.stat().st_mtime, package_file.stat().st_mtime)
+
+    def test_ros2_sample_apply_preserves_existing_destination_mode(self) -> None:
+        """Atomic replacement should retain the existing imported file's access mode."""
+        module = load_module("sync_ros2_samples_mode_under_test", "Scripts/samples/sync_ros2_samples.py")
+        real_copyfile = module.shutil.copyfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_root = root / "package"
+            imported_root = root / "imported"
+            package_root.mkdir()
+            imported_root.mkdir()
+            package_file = package_root / "sample.cs"
+            imported_file = imported_root / "sample.cs"
+            package_file.write_text("current\n", encoding="utf-8")
+            imported_file.write_text("stale\n", encoding="utf-8")
+            original_mode = stat.S_IMODE(imported_file.stat().st_mode)
+
+            def copy_with_restrictive_temp_mode(source: Path, destination: Path) -> str:
+                """Model the owner-only mode used by NamedTemporaryFile on POSIX."""
+                copied = real_copyfile(source, destination)
+                os.chmod(destination, stat.S_IREAD)
+                return copied
+
+            with mock.patch.object(module.shutil, "copyfile", side_effect=copy_with_restrictive_temp_mode):
+                module.apply_sync(
+                    package_root,
+                    imported_root,
+                    [module.Drift("changed", Path("sample.cs"))],
+                )
+
+            self.assertEqual(original_mode, stat.S_IMODE(imported_file.stat().st_mode))
 
     def test_ros2_sample_compare_roots_limits_ignored_and_allowlisted_paths(self) -> None:
         """Only Unity metadata and the documented imported-owned probe are ignored."""

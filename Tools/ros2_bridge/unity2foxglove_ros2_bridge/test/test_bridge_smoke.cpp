@@ -126,7 +126,7 @@ struct WireQosContract
   std::string reliability = "reliable";
   std::string durability = "volatile";
   std::string history = "keep_last";
-  int depth = 10;
+  uint32_t depth = 10U;
 };
 
 RawFrame MakePublishRawFrame(
@@ -729,6 +729,69 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, SharedV1AuthorityFixtureMatchesCurrentCpp
   }
 }
 
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  V2PublisherQosDepthPreservesTheFullUnsigned32BitDomain)
+{
+  constexpr uint32_t expected_depth = 2147483648U;
+  const auto limits = u2r2::ProtocolLimits::defaults();
+  const auto wire = u2r2::encode_frame(
+    {
+      {"op", "prepare_publisher"},
+      {"protocolVersion", 2},
+      {"requestId", 1},
+      {"sessionId", "phase187-qos-domain"},
+      {"connectionGeneration", 1},
+      {"topic", "/phase187/qos_domain"},
+      {"schemaName", "std_msgs/msg/String"},
+      {"encoding", "cdr"},
+      {"qos", {
+          {"profile", "default"},
+          {"reliability", "reliable"},
+          {"durability", "volatile"},
+          {"history", "keep_last"},
+          {"depth", static_cast<uint64_t>(expected_depth)},
+        }},
+    },
+    {},
+    limits);
+
+  const auto frame = bridge_frame_from_v2_wire(
+    wire,
+    u2r2::Operation::PreparePublisher,
+    limits);
+  EXPECT_EQ(expected_depth, frame.depth);
+  EXPECT_EQ(
+    static_cast<size_t>(expected_depth),
+    make_qos(frame).get_rmw_qos_profile().depth);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  BoundedV2ErrorMessageNeverSplitsUtf8CodePoints)
+{
+  std::string message(kMaximumResponseErrorBytes - 1U, 'x');
+  message += "\xE2\x82\xAC";
+
+  const auto bounded = bounded_response_message(message);
+
+  EXPECT_EQ(kMaximumResponseErrorBytes - 1U, bounded.size());
+  EXPECT_NO_THROW(
+    (void)u2r2::encode_frame(
+      {
+        {"op", "publisher_ready"},
+        {"protocolVersion", 2},
+        {"requestId", 1},
+        {"status", "error"},
+        {"sessionId", "phase187-utf8-boundary"},
+        {"connectionGeneration", 1},
+        {"errorCode", "invalid_contract"},
+        {"message", bounded},
+        {"terminal", false},
+      },
+      {}));
+}
+
 TEST(Unity2FoxgloveRos2BridgeProtocol, ValidatesTopicNames)
 {
   EXPECT_TRUE(is_valid_ros2_topic_name("/unity/tf"));
@@ -902,15 +965,13 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsNonIntegerQosDepthTypes)
   }
 }
 
-TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsOutOfRangeQosDepth)
+TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsQosDepthOutsideUnsigned32BitDomain)
 {
-  const auto above_int_max =
-    static_cast<int64_t>(std::numeric_limits<int>::max()) + 1;
-  const auto below_int_min =
-    static_cast<int64_t>(std::numeric_limits<int>::min()) - 1;
+  const auto above_uint32 =
+    static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1U;
   const std::array<nlohmann::json, 2> invalid_depths = {
-    nlohmann::json(above_int_max),
-    nlohmann::json(below_int_min)
+    nlohmann::json(above_uint32),
+    nlohmann::json(-1)
   };
   for (const auto & invalid_depth : invalid_depths) {
     SCOPED_TRACE("depth=" + invalid_depth.dump());
@@ -2133,6 +2194,15 @@ TEST(
   EXPECT_EQ("error", stale_response.status);
   EXPECT_EQ("stale_request", stale_response.error_code);
   EXPECT_FALSE(stale_response.terminal);
+
+  write_all(client_socket.get(), health_request(8));
+  const auto stale_health_response = u2r2::parse_v2(
+    u2r2::decode_frame(ReadSocketWireFrame(client_socket.get())));
+  EXPECT_EQ(u2r2::Operation::HealthPong, stale_health_response.operation);
+  EXPECT_EQ(8U, stale_health_response.request_id);
+  EXPECT_EQ("error", stale_health_response.status);
+  EXPECT_EQ("stale_request", stale_health_response.error_code);
+  EXPECT_FALSE(stale_health_response.terminal);
 
   const auto health = health_request(20);
   write_all(client_socket.get(), health);

@@ -63,16 +63,19 @@ const std::unordered_map<std::string, StableErrorRule> kStableErrors{
   {"request_id_conflict", {true, {Operation::Fault}}},
   {"response_mismatch", {true, {}}},
   {"request_in_flight", {false, {
+      Operation::HealthPong,
       Operation::PublisherReady,
       Operation::PublishResult,
       Operation::SubscriptionReady,
       Operation::SubscriptionRemoved}}},
   {"stale_request", {false, {
+      Operation::HealthPong,
       Operation::PublisherReady,
       Operation::PublishResult,
       Operation::SubscriptionReady,
       Operation::SubscriptionRemoved}}},
   {"capacity_exceeded", {false, {
+      Operation::HealthPong,
       Operation::PublisherReady,
       Operation::PublishResult,
       Operation::SubscriptionReady,

@@ -163,13 +163,15 @@ def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> N
             temporary_path = Path(temporary.name)
         try:
             shutil.copyfile(package_file, temporary_path)
+            if imported_file.exists():
+                shutil.copymode(imported_file, temporary_path)
             os.replace(temporary_path, imported_file)
         finally:
             temporary_path.unlink(missing_ok=True)
 
 
 def blocking_drift_after_apply(drift: list[Drift]) -> list[Drift]:
-    """Return drift entries that should still fail apply mode."""
+    """Return package-owned drift entries that block validation or apply mode."""
 
     return [item for item in drift if item.kind != "extra imported"]
 
@@ -197,8 +199,10 @@ def main() -> int:
 
     args = parse_args()
     package_root = resolve_cli_path(args.package_root, DEFAULT_PACKAGE_ROOT)
-    default_imported = default_imported_root(ROOT)
-    imported_root = resolve_cli_path(args.imported_root, default_imported)
+    if args.imported_root is None:
+        imported_root = default_imported_root(ROOT).resolve()
+    else:
+        imported_root = resolve_cli_path(args.imported_root, ROOT)
     dry_run = not args.apply
 
     if not package_root.exists():
@@ -224,8 +228,17 @@ def main() -> int:
         print(f"[ros2-samples] {item.kind}: {item.path.as_posix()}")
 
     if dry_run:
-        print(f"[ros2-samples] FAIL: {len(drift)} drift item(s) found. Re-run with --apply to synchronize.")
-        return EXIT_FAILURE
+        blocking_drift = blocking_drift_after_apply(drift)
+        if blocking_drift:
+            print(
+                f"[ros2-samples] FAIL: {len(blocking_drift)} package-owned drift item(s) found. "
+                "Re-run with --apply to synchronize."
+            )
+            return EXIT_FAILURE
+        for item in drift:
+            print(f"[ros2-samples] warning: leaving extra imported file in place: {item.path.as_posix()}")
+        print("[ros2-samples] GREEN: package-owned sample files are synchronized.")
+        return EXIT_SUCCESS
 
     apply_sync(package_root, imported_root, drift)
     post_drift = compare_roots(package_root, imported_root)

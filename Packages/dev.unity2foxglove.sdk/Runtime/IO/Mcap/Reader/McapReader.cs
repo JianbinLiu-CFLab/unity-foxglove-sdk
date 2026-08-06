@@ -417,6 +417,15 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException($"Record content length {contentLength} exceeds limit {sizeLimit}");
             if (contentLength > int.MaxValue)
                 throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
+            if (_stream.CanSeek)
+            {
+                var remaining = _stream.Length - _stream.Position;
+                if (remaining < 0 || contentLength > (ulong)remaining)
+                {
+                    throw new EndOfStreamException(
+                        $"MCAP record declares {contentLength} content bytes but only {Math.Max(remaining, 0)} remain");
+                }
+            }
             var contentLengthInt = (int)contentLength;
             var content = EnsureRecordContentBuffer(contentLengthInt);
             ReadExact(content, 0, contentLengthInt);

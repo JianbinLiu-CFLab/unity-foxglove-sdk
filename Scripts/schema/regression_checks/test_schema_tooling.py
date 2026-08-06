@@ -294,6 +294,47 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
 
+    def test_schema_catalog_source_commit_follows_custom_input_repository(self) -> None:
+        """Custom schema input should report its own repository rather than a fixed ancestor."""
+        module = load_module("schema_catalog_custom_git", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+
+        def git(repo: Path, *arguments: str) -> str:
+            """Run a deterministic local Git command and return trimmed stdout."""
+            completed = subprocess.run(
+                ["git", "-C", str(repo), *arguments],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return completed.stdout.strip()
+
+        with tempfile.TemporaryDirectory() as temp:
+            outer = Path(temp) / "outer"
+            outer.mkdir()
+            git(outer, "init", "--quiet")
+            git(outer, "config", "user.name", "Schema Test")
+            git(outer, "config", "user.email", "schema-test@example.invalid")
+            (outer / "outer.txt").write_text("outer\n", encoding="utf-8")
+            git(outer, "add", "outer.txt")
+            git(outer, "commit", "--quiet", "-m", "outer")
+
+            schema_repo = outer / "vendor" / "schema-source"
+            schema_repo.mkdir(parents=True)
+            git(schema_repo, "init", "--quiet")
+            git(schema_repo, "config", "user.name", "Schema Test")
+            git(schema_repo, "config", "user.email", "schema-test@example.invalid")
+            input_dir = schema_repo / "ros2"
+            input_dir.mkdir()
+            (input_dir / "Example.msg").write_text("string data\n", encoding="utf-8")
+            git(schema_repo, "add", "ros2/Example.msg")
+            git(schema_repo, "commit", "--quiet", "-m", "schema")
+
+            outer_head = git(outer, "rev-parse", "HEAD")
+            schema_head = git(schema_repo, "rev-parse", "HEAD")
+
+            self.assertNotEqual(outer_head, schema_head)
+            self.assertEqual(schema_head, module.try_source_commit(input_dir))
+
     def test_schema_catalog_hashes_are_checkout_line_ending_independent(self) -> None:
         """The same Git schema content must hash identically on Windows and Linux."""
 
@@ -400,6 +441,21 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertEqual(2, len(calls))
         self.assertTrue(all(command[0] == sys.executable for command in calls))
         self.assertEqual(120, module.GENERATOR_TIMEOUT_SECONDS)
+
+    def test_generated_output_validator_run_generator_enforces_timeout(self) -> None:
+        """The subprocess boundary itself must receive the bounded generator timeout."""
+        module = load_module("schema_generated_validator_timeout", "Scripts/schema/validate_schema_generated_outputs.py")
+        command = [sys.executable, "generator.py"]
+
+        with mock.patch.object(module.subprocess, "run") as run:
+            module.run_generator(command)
+
+        run.assert_called_once_with(
+            command,
+            cwd=module.REPO_ROOT,
+            check=True,
+            timeout=module.GENERATOR_TIMEOUT_SECONDS,
+        )
 
     def test_generated_output_validator_accepts_a_source_only_checkout(self) -> None:
         """A clean worktree should validate committed generated inventory without an untracked SDK clone."""

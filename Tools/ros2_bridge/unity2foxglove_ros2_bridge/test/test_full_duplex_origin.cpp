@@ -340,6 +340,27 @@ TEST(BridgeOriginRegistry, InvalidOriginCountsAreSeparateFromQueuePressure)
 
 TEST(
   BridgeAdmissionDiagnostics,
+  ExpectedLocalSuppressionUsesDebugWhileRejectionsUseWarnings)
+{
+  using Admission = runtime::BridgeSerializedAdmission;
+  EXPECT_EQ(
+    BridgeAdmissionLogLevel::debug,
+    bridge_admission_log_level(Admission::suppressed_local));
+  for (const auto admission : {
+      Admission::inactive,
+      Admission::unsupported_representation,
+      Admission::payload_too_large,
+      Admission::capacity_rejected,
+      Admission::invalid_origin})
+  {
+    EXPECT_EQ(
+      BridgeAdmissionLogLevel::warning,
+      bridge_admission_log_level(admission));
+  }
+}
+
+TEST(
+  BridgeAdmissionDiagnostics,
   ProductionSubscriptionCallbackReportsEveryRejectionAtBoundedIntervals)
 {
   auto context = std::make_shared<rclcpp::Context>();
@@ -383,7 +404,11 @@ TEST(
     identity,
     [&](const uint8_t *, size_t, uint64_t, runtime::BridgeSampleOrigin) {
       const auto index = callback_count.fetch_add(1U);
-      return dispositions[index / kSamplesPerDisposition];
+      const auto disposition_index = index / kSamplesPerDisposition;
+      if (disposition_index >= dispositions.size()) {
+        return Admission::accepted;
+      }
+      return dispositions[disposition_index];
     });
   ASSERT_TRUE(subscription);
 
@@ -416,6 +441,10 @@ TEST(
         return callback_count.load() > index;
       }));
   }
+  publisher->publish(serialized);
+  ASSERT_TRUE(WaitUntil([&]() {
+      return callback_count.load() > sample_count;
+    }));
 
   std::vector<Diagnostic> observed;
   {

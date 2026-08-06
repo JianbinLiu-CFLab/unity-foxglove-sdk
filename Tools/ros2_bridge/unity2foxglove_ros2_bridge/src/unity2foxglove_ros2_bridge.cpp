@@ -283,7 +283,7 @@ struct BridgeFrame
   std::string reliability = "reliable";
   std::string durability = "volatile";
   std::string history = "keep_last";
-  int depth = 10;
+  uint32_t depth = 10U;
   uint64_t log_time_ns = 0;
   uint64_t sequence = 0;
   std::vector<uint8_t> payload;
@@ -629,25 +629,28 @@ private:
   std::unordered_map<std::string, std::string> topic_signatures_;
 };
 
-int parse_qos_depth(const nlohmann::json & value)
+uint32_t parse_qos_depth(const nlohmann::json & value)
 {
   if (value.is_number_unsigned()) {
     const auto depth = value.get<uint64_t>();
-    if (depth > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
-      throw std::runtime_error("qos.depth is outside the supported integer range");
+    if (depth > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+      throw std::runtime_error(
+              "qos.depth is outside the supported unsigned 32-bit range");
     }
-    return static_cast<int>(depth);
+    return static_cast<uint32_t>(depth);
   }
 
   if (value.is_number_integer()) {
     const auto depth = value.get<int64_t>();
     if (
-      depth < static_cast<int64_t>(std::numeric_limits<int>::min()) ||
-      depth > static_cast<int64_t>(std::numeric_limits<int>::max()))
+      depth < 0 ||
+      static_cast<uint64_t>(depth) >
+      static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))
     {
-      throw std::runtime_error("qos.depth is outside the supported integer range");
+      throw std::runtime_error(
+              "qos.depth is outside the supported unsigned 32-bit range");
     }
-    return static_cast<int>(depth);
+    return static_cast<uint32_t>(depth);
   }
 
   throw std::runtime_error("qos.depth must be an integer");
@@ -688,7 +691,7 @@ void validate_qos_contract(const BridgeFrame & frame)
             "reject frame: qos.history must be system_default, keep_last, or keep_all");
   }
   if (frame.history == "keep_last") {
-    if (frame.depth < 1) {
+    if (frame.depth < 1U) {
       throw std::runtime_error("reject frame: qos.depth must be >= 1 for keep_last");
     }
   } else if (frame.depth != 0) {
@@ -1704,6 +1707,23 @@ const char * bridge_admission_name(
   return "unknown";
 }
 
+enum class BridgeAdmissionLogLevel
+{
+  debug,
+  warning,
+};
+
+constexpr BridgeAdmissionLogLevel bridge_admission_log_level(
+  bridge_runtime::BridgeSerializedAdmission admission) noexcept
+{
+  if (admission ==
+    bridge_runtime::BridgeSerializedAdmission::suppressed_local)
+  {
+    return BridgeAdmissionLogLevel::debug;
+  }
+  return BridgeAdmissionLogLevel::warning;
+}
+
 class BridgeAdmissionDiagnostics final
 {
 public:
@@ -1888,13 +1908,25 @@ public:
         const std::string & topic,
         bridge_runtime::BridgeSerializedAdmission admission,
         uint64_t count) {
-          RCLCPP_WARN(
-            logger,
-            "[unity2foxglove_ros2_bridge] rejected ROS subscription "
-            "sample topic='%s' reason=%s count=%llu",
-            topic.c_str(),
-            bridge_admission_name(admission),
-            static_cast<unsigned long long>(count));
+          if (bridge_admission_log_level(admission) ==
+            BridgeAdmissionLogLevel::debug)
+          {
+            RCLCPP_DEBUG(
+              logger,
+              "[unity2foxglove_ros2_bridge] suppressed local ROS subscription "
+              "sample topic='%s' reason=%s count=%llu",
+              topic.c_str(),
+              bridge_admission_name(admission),
+              static_cast<unsigned long long>(count));
+          } else {
+            RCLCPP_WARN(
+              logger,
+              "[unity2foxglove_ros2_bridge] rejected ROS subscription "
+              "sample topic='%s' reason=%s count=%llu",
+              topic.c_str(),
+              bridge_admission_name(admission),
+              static_cast<unsigned long long>(count));
+          }
         };
     }
 
@@ -1982,7 +2014,7 @@ public:
         RCLCPP_INFO(
           node_->get_logger(),
           "[unity2foxglove_ros2_bridge] publisher %s %s "
-          "profile=%s reliability=%s durability=%s history=%s depth=%d",
+          "profile=%s reliability=%s durability=%s history=%s depth=%u",
           frame.topic.c_str(),
           frame.schema_name.c_str(),
           frame.profile.c_str(),
@@ -2045,12 +2077,6 @@ public:
       throw std::invalid_argument(
               "generic subscriptions require a serialized callback");
     }
-    if (identity.qos.depth >
-      static_cast<uint64_t>(std::numeric_limits<int>::max()))
-    {
-      throw std::runtime_error(
-              "subscription QoS depth exceeds the supported integer range");
-    }
     BridgeFrame contract;
     contract.topic = identity.topic;
     contract.schema_name = identity.schema_name;
@@ -2059,7 +2085,7 @@ public:
     contract.reliability = identity.qos.reliability;
     contract.durability = identity.qos.durability;
     contract.history = identity.qos.history;
-    contract.depth = static_cast<int>(identity.qos.depth);
+    contract.depth = identity.qos.depth;
     auto qos = make_qos(contract);
     const auto logger = node_->get_logger();
     const auto origin_registry = origin_registry_;
@@ -2364,10 +2390,47 @@ using BridgeGenerationFactory =
 
 std::string bounded_response_message(const std::string & message)
 {
-  if (message.size() <= kMaximumResponseErrorBytes) {
-    return message;
+  const auto maximum = std::min(message.size(), kMaximumResponseErrorBytes);
+  size_t cursor = 0U;
+  const auto is_continuation = [](unsigned char byte) noexcept {
+      return (byte & 0xc0U) == 0x80U;
+    };
+  while (cursor < maximum) {
+    const auto first = static_cast<unsigned char>(message[cursor]);
+    size_t width = 0U;
+    if (first <= 0x7fU) {
+      width = 1U;
+    } else if (first >= 0xc2U && first <= 0xdfU) {
+      width = 2U;
+    } else if (first >= 0xe0U && first <= 0xefU) {
+      width = 3U;
+    } else if (first >= 0xf0U && first <= 0xf4U) {
+      width = 4U;
+    } else {
+      break;
+    }
+    if (width > maximum - cursor || width > message.size() - cursor) {
+      break;
+    }
+    const auto second = width > 1U
+      ? static_cast<unsigned char>(message[cursor + 1U])
+      : 0U;
+    if (
+      (width > 1U && !is_continuation(second)) ||
+      (width > 2U &&
+      !is_continuation(static_cast<unsigned char>(message[cursor + 2U]))) ||
+      (width > 3U &&
+      !is_continuation(static_cast<unsigned char>(message[cursor + 3U]))) ||
+      (first == 0xe0U && second < 0xa0U) ||
+      (first == 0xedU && second > 0x9fU) ||
+      (first == 0xf0U && second < 0x90U) ||
+      (first == 0xf4U && second > 0x8fU))
+    {
+      break;
+    }
+    cursor += width;
   }
-  return message.substr(0, kMaximumResponseErrorBytes);
+  return message.substr(0, cursor);
 }
 
 void drain_session_writer(
@@ -2554,6 +2617,11 @@ std::optional<V2ErrorResponseRoute> v2_error_response_route(
 {
   std::optional<V2ErrorResponseRoute> route;
   switch (request_operation) {
+    case u2r2::Operation::HealthPing:
+      route = V2ErrorResponseRoute{
+        u2r2::Operation::HealthPong,
+        "health_pong"};
+      break;
     case u2r2::Operation::PreparePublisher:
       route = V2ErrorResponseRoute{
         u2r2::Operation::PublisherReady,
