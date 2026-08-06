@@ -12,6 +12,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
+using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -478,10 +479,13 @@ namespace Unity.FoxgloveSDK.Core
                 return true;
             }
 
-            return string.Equals(
-                request.Headers["Authorization"],
-                "Bearer " + options.BearerToken,
-                StringComparison.Ordinal);
+            const string prefix = "Bearer ";
+            var authorization = request.Headers["Authorization"];
+            return authorization != null
+                   && authorization.StartsWith(prefix, StringComparison.Ordinal)
+                   && ManagedWebSocketOptions.FixedTimeEqualsUtf8(
+                       options.BearerToken,
+                       authorization.Substring(prefix.Length));
         }
 
         private CorsDecision ResolveCors(
@@ -585,11 +589,28 @@ namespace Unity.FoxgloveSDK.Core
                     context.Response.OutputStream.Write(bytes, 0, bytes.Length);
                 }
             }
+            catch (Exception ex) when (IsExpectedResponseWriteException(ex))
+            {
+                _logger?.LogWarning("Replay cursor endpoint response was not delivered: " + ex.Message);
+            }
             finally
             {
-                context.Response.OutputStream.Close();
+                try
+                {
+                    context.Response.OutputStream.Close();
+                }
+                catch (Exception ex) when (IsExpectedResponseWriteException(ex))
+                {
+                    // A peer can reset the connection while its response is being closed.
+                }
             }
         }
+
+        private static bool IsExpectedResponseWriteException(Exception exception)
+            => exception is HttpListenerException
+               || exception is IOException
+               || exception is ObjectDisposedException
+               || exception is InvalidOperationException;
 
         private static string JsonEscape(string value)
             => JsonConvert.ToString(value ?? string.Empty);

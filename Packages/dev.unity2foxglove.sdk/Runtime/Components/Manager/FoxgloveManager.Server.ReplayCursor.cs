@@ -52,15 +52,15 @@ namespace Unity.FoxgloveSDK.Components
                           + ":"
                           + options.Port.ToString(CultureInfo.InvariantCulture)
                           + options.Path);
+                RememberReplayCursorEndpointConfig();
             }
             catch (System.Exception ex)
             {
                 _runtime.SetExternalReplayCursorEnabled(false);
                 _replayCursorEndpoint.Stop();
+                ClearReplayCursorEndpointConfig();
                 Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
             }
-
-            RememberReplayCursorEndpointConfig();
         }
 
         /// <summary>

@@ -165,6 +165,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.DoesNotContain("_options", handle, StringComparison.Ordinal);
             Assert.DoesNotContain("_queue", handle, StringComparison.Ordinal);
             Assert.Contains("generation.Worker.Join", stop, StringComparison.Ordinal);
+            Assert.Contains("ManagedWebSocketOptions.FixedTimeEqualsUtf8", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task AbortedResponseDoesNotRetireTheListenerWorker()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            using var queueEntered = new ManualResetEventSlim();
+            using var releaseQueue = new ManualResetEventSlim();
+            var port = ReserveFreeLoopbackPort();
+
+            endpoint.Start(
+                Options(port, "/abort", "abort-token"),
+                _ =>
+                {
+                    queueEntered.Set();
+                    releaseQueue.Wait(TimeSpan.FromSeconds(5));
+                    return new UnityReplayCursorEndpointQueueResult(
+                        true,
+                        new string('x', 2 * 1024 * 1024));
+                });
+
+            using (var client = new TcpClient())
+            {
+                await client.ConnectAsync(IPAddress.Loopback, port);
+                var request = Encoding.ASCII.GetBytes(
+                    "POST /abort HTTP/1.1\r\n"
+                    + "Host: 127.0.0.1\r\n"
+                    + "Authorization: Bearer abort-token\r\n"
+                    + "Content-Type: application/json\r\n"
+                    + "Content-Length: " + Encoding.UTF8.GetByteCount(CursorJson) + "\r\n"
+                    + "Connection: close\r\n\r\n"
+                    + CursorJson);
+                await client.GetStream().WriteAsync(request, 0, request.Length);
+                Assert.True(queueEntered.Wait(TimeSpan.FromSeconds(5)), "Worker never reached the queue callback.");
+
+                client.Client.LingerState = new LingerOption(true, 0);
+                client.Close();
+                releaseQueue.Set();
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            Assert.Equal(
+                HttpStatusCode.Accepted,
+                await PostCursorAsync(port, "/abort", "abort-token"));
         }
 
         private static UnityReplayCursorEndpointOptions Options(int port, string path, string bearerToken)
