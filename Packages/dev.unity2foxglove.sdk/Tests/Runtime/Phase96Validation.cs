@@ -239,7 +239,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sidecar.Contains("reused with different schemaName or QoS: was [")
                   && sidecar.Contains("] got ["),
                 "96E-6: sidecar rejects same-topic schema/QoS conflicts");
-            Check(sidecar.Contains("profile=%s reliability=%s durability=%s history=%s depth=%d"),
+            var publisherLogStart = sidecar.IndexOf(
+                "\"[unity2foxglove_ros2_bridge] publisher %s %s \"",
+                StringComparison.Ordinal);
+            var publisherLogEnd = publisherLogStart < 0
+                ? -1
+                : sidecar.IndexOf("frame.depth);", publisherLogStart, StringComparison.Ordinal);
+            Check(publisherLogStart >= 0
+                  && publisherLogEnd > publisherLogStart
+                  && sidecar.Substring(
+                          publisherLogStart,
+                          publisherLogEnd - publisherLogStart)
+                      .Contains(
+                          "profile=%s reliability=%s durability=%s history=%s depth=%u",
+                          StringComparison.Ordinal),
                 "96E-7: sidecar logs publisher QoS details");
         }
 
