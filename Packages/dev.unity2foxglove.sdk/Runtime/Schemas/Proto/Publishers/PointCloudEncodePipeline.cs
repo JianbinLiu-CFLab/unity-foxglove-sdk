@@ -53,6 +53,13 @@ namespace Unity.FoxgloveSDK.Components
             string workerShutdownWarning,
             int failureWarningIntervalFrames)
         {
+            if (failureWarningIntervalFrames <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(failureWarningIntervalFrames),
+                    "Failure warning interval must be positive.");
+            }
+
             _pipeline = new BackgroundEncodePipeline<TRequest, TResult>(
                 threadName,
                 completedCapacity,

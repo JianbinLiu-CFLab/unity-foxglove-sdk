@@ -228,11 +228,7 @@ namespace Unity.FoxgloveSDK.Components
             var timingStart = BeginPackedPointCloudTiming();
             try
             {
-                handler(frame);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
+                PointCloudFrameEventDispatcher.Invoke(handler, frame, Debug.LogException);
             }
             finally
             {

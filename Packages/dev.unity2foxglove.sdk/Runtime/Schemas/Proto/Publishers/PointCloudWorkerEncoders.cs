@@ -137,7 +137,9 @@ namespace Unity.FoxgloveSDK.Components
                     encodeDiagnostics.RawBufferLength = rawPackTimings.BufferLength;
                     encodeDiagnostics.RawBufferReused = rawPackTimings.BufferReused;
                     validCount = packed.ValidPointCount;
+                    var rawPayloadBuildStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                     nativeFrame = BuildPackedPointCloudFrame(request, packed);
+                    rawPayloadBuildMs = DiagnosticElapsedMs(rawPayloadBuildStart);
 
                     payloadBytes = nativeFrame.Data.Length;
 
