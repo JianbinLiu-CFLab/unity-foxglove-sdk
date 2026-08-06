@@ -684,6 +684,10 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "throw new ObjectDisposedException(nameof(ROS2UnityComponent))",
         "StopAllExecutorsForRosShutdown()",
         "MarkRuntimeShutdown()",
+        "private int shutdownInProgress = 0",
+        "Interlocked.CompareExchange(ref shutdownInProgress, 1, 0)",
+        "Volatile.Write(ref shutdownInProgress, 0)",
+        "MarkRuntimeShutdownPendingExecutor()",
     ):
         add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
     add(
