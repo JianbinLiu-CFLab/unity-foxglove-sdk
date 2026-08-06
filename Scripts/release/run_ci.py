@@ -23,6 +23,23 @@ import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+CI_ONLY_CHOICES = (
+    "dotnet",
+    "dotnet-runtime",
+    "xunit",
+    "xunit-adapter",
+    "xunit-native",
+    "analyzer",
+    "foxrun-publish-panel",
+    "phase179-ros2-regression",
+    "phase181-ros2-regression",
+    "phase184-acceptance-tooling",
+    "phase186-bridge-tooling",
+    "phase186-bridge-windows-live",
+    "mcap-conformance",
+    "packages",
+    "boundary",
+)
 RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
@@ -694,7 +711,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--only",
-        type=str,
+        choices=CI_ONLY_CHOICES,
         help=(
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "

@@ -189,27 +189,49 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn('"version": "9.9.9"', text)
             self.assertNotIn('"version": "1.2.3"', text)
 
-    def test_update_adapter_dependency_syncs_core_sdk_version(self) -> None:
-        """The optional ROS2 adapter should depend on the released SDK version."""
+    def test_update_adapter_dependency_syncs_all_optional_packages(self) -> None:
+        """Every optional package should depend on the released SDK version."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            path = root / "Packages/dev.unity2foxglove.ros2forunity/package.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                '{\n'
-                '  "dependencies": {\n'
-                '    "dev.unity2foxglove.sdk": "1.2.3"\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
+            paths = [
+                root / relative
+                for relative in (
+                    "Packages/dev.unity2foxglove.ros2forunity/package.json",
+                    "Packages/dev.unity2foxglove.ros2bridge/package.json",
+                    "Packages/dev.unity2foxglove.remotegateway.win64/package.json",
+                )
+            ]
+            for path in paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    '{\n'
+                    '  "dependencies": {\n'
+                    '    "dev.unity2foxglove.sdk": "1.2.3"\n'
+                    '  }\n'
+                    '}\n',
+                    encoding="utf-8",
+                )
 
             bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
             bump.update_adapter_dependency()
 
-            text = path.read_text(encoding="utf-8")
-            self.assertIn('"dev.unity2foxglove.sdk": "9.9.9"', text)
-            self.assertNotIn('"dev.unity2foxglove.sdk": "1.2.3"', text)
+            for path in paths:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn('"dev.unity2foxglove.sdk": "9.9.9"', text)
+                self.assertNotIn('"dev.unity2foxglove.sdk": "1.2.3"', text)
+
+    def test_invalid_release_date_is_rejected_before_repository_writes(self) -> None:
+        """Release dates must be canonical, real ISO calendar dates."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["bump_version.py", "2.0.0", "--date", "2026-02-31"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.bump_module.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("valid YYYY-MM-DD", stderr.getvalue())
 
     def test_update_phase16_assertions_syncs_release_metadata(self) -> None:
         """Runtime release metadata assertions should move with each release."""
@@ -1126,6 +1148,19 @@ class RunCiTests(unittest.TestCase):
         for selector in ("dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"):
             help_pattern = re.escape(selector).replace(r"\-", r"-\s*")
             self.assertRegex(stdout.getvalue(), help_pattern)
+
+    def test_unknown_only_selector_is_a_usage_error(self) -> None:
+        """A misspelled lane must never become a zero-work success."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["run_ci.py", "--only", "pacakges"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.run_ci.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("invalid choice", stderr.getvalue())
 
     def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
         """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
