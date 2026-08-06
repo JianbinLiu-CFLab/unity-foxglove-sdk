@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,68 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
     [Collection(U2R2ProtocolAuthoritySerialCollection.Name)]
     public sealed class U2R2ProtocolAuthorityTests
     {
+        [Fact]
+        public void ControlReservationsFailClosedWhenAccountingExceedsLimit()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            SetSchedulerCounter(
+                scheduler,
+                "_controlBytesUsed",
+                checked(limits.ReservedControlQueueBytes + 1UL));
+
+            Assert.False(scheduler.TryReserveControl(1UL, out var reservation));
+            Assert.Null(reservation);
+        }
+
+        [Fact]
+        public void TransientReservationsFailClosedWhenAccountingExceedsLimit()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            SetSchedulerCounter(
+                scheduler,
+                "_transientBytes",
+                checked(limits.MaxTransientBytes + 1UL));
+
+            Assert.False(scheduler.TryReserveTransient(1UL, out var lease));
+            Assert.Null(lease);
+        }
+
+        [Fact]
+        public void ReaderAdmissionsFailClosedWhenAccountingExceedsLimit()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            SetSchedulerCounter(
+                scheduler,
+                "_inFlightBytes",
+                checked(limits.MaxInFlightBytes + 1UL));
+
+            Assert.False(scheduler.TryBeginRead(1UL, out var lease));
+            Assert.Null(lease);
+        }
+
+        [Fact]
+        public void WriterAdmissionsFailClosedWhenAccountingExceedsLimit()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var key = new U2R2ContractKey(1UL, 1UL);
+            Assert.Equal(
+                U2R2EnqueueDisposition.Accepted,
+                scheduler.EnqueueData(
+                    U2R2OutboundFrame.Data("writer", key, 1UL, Bytes("01")),
+                    U2R2QueueOverflowPolicy.Reject));
+            SetSchedulerCounter(
+                scheduler,
+                "_inFlightBytes",
+                checked(limits.MaxInFlightBytes + 1UL));
+
+            Assert.False(scheduler.TryBeginWrite(out var lease));
+            Assert.Null(lease);
+        }
+
         [Fact]
         public void SharedCommit2LedgerDrivesEveryBoundedAuthorityScenario()
         {
@@ -3071,6 +3134,18 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     property => property.Name,
                     property => property.Value.Value<ulong>(),
                     StringComparer.Ordinal));
+
+        private static void SetSchedulerCounter(
+            U2R2BoundedOutboundScheduler scheduler,
+            string fieldName,
+            ulong value)
+        {
+            var field = typeof(U2R2BoundedOutboundScheduler).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            field.SetValue(scheduler, value);
+        }
 
         private static U2R2ReplayDecision ParseReplayDecision(string value)
             => value == "replay_cached"
