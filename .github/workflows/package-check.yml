@@ -30,11 +30,17 @@ jobs:
       - name: Validate local ROS2/R2FU entrypoints
         run: python3 Scripts/package/validate_local_entrypoints.py
 
-      - name: Validate ROS2 For Unity runtime package
-        run: python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py
+      - name: Validate ROS2 For Unity runtime package matrix
+        run: |
+          python3 Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package.py
+          python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py
+          python3 Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py
 
-      - name: Validate ROS2 For Unity adapter package
-        run: python3 Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py
+      - name: Validate ROS2 For Unity adapter package matrix
+        run: |
+          python3 Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py
+          python3 Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py
+          python3 Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py
 
       - name: Validate Phase181 custom ROS2 typesupport add-ons
         run: |

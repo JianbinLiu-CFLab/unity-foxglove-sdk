@@ -578,6 +578,49 @@ class RunCiTests(unittest.TestCase):
         self.assertTrue(python_calls)
         self.assertTrue(all(cmd[0] == sys.executable for cmd in python_calls))
 
+    def test_packages_lane_executes_every_r2fu_package_validator(self) -> None:
+        """Local package CI must cover runtime and adapter artifacts for every distro."""
+        calls: list[list[str]] = []
+
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+            """Capture package subprocess commands without executing them."""
+            calls.extend(command for _label, command in commands)
+            return {label: True for label, _command in commands}
+
+        with mock.patch.object(self.run_ci, "run_parallel", side_effect=fake_run_parallel):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "packages"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        expected = {
+            f"Scripts/ros2forunity/windows/{distro}/{validator}.py"
+            for distro in ("humble", "jazzy", "lyrical")
+            for validator in (
+                "validate_r2fu_runtime_package",
+                "validate_ros2forunity_package",
+            )
+        }
+        actual = {
+            command[1]
+            for command in calls
+            if len(command) == 2 and command[1] in expected
+        }
+        self.assertEqual(expected, actual)
+
+    def test_package_workflow_executes_every_r2fu_package_validator(self) -> None:
+        """Remote package CI must cover the same six distro and artifact validators."""
+        workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        for distro in ("humble", "jazzy", "lyrical"):
+            for validator in (
+                "validate_r2fu_runtime_package",
+                "validate_ros2forunity_package",
+            ):
+                command = (
+                    "python3 Scripts/ros2forunity/windows/"
+                    f"{distro}/{validator}.py"
+                )
+                self.assertEqual(1, workflow.count(command), command)
+
     def test_packages_lane_executes_ros2_bridge_sample_regressions_and_drift_gate(self) -> None:
         """The package lane must execute both the sync helper tests and byte drift check."""
         calls: list[list[str]] = []

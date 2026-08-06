@@ -61,6 +61,17 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+R2FU_PACKAGE_VALIDATORS = tuple(
+    (
+        f"validate-{artifact}-{distro}",
+        f"Scripts/ros2forunity/windows/{distro}/{script}.py",
+    )
+    for distro in ("humble", "jazzy", "lyrical")
+    for artifact, script in (
+        ("r2fu-runtime", "validate_r2fu_runtime_package"),
+        ("ros2forunity-adapter", "validate_ros2forunity_package"),
+    )
+)
 FOXRUN_PUBLISH_PANEL_DIR = "Tools/foxglove-extensions/foxrun-publish-panel"
 NPM_EXECUTABLE = "npm.cmd" if sys.platform == "win32" else "npm"
 PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION = (
@@ -1121,13 +1132,9 @@ def main() -> int:
                 ],
             ),
             ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
-            (
-                "validate_r2fu_runtime_package.py",
-                [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
-            ),
-            (
-                "validate_ros2forunity_package.py",
-                [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
+            *(
+                (label, [sys.executable, path])
+                for label, path in R2FU_PACKAGE_VALIDATORS
             ),
         ])
         results["release-tooling-regression"] = package_results["test_release_tooling.py"]
@@ -1144,8 +1151,8 @@ def main() -> int:
             "sync_ros2_bridge_sample.py"
         ]
         results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
-        results["validate-r2fu"] = package_results["validate_r2fu_runtime_package.py"]
-        results["validate-adapter"] = package_results["validate_ros2forunity_package.py"]
+        for label, _path in R2FU_PACKAGE_VALIDATORS:
+            results[label] = package_results[label]
 
     # --- boundary check ---
     if args.only in (None, "boundary"):
