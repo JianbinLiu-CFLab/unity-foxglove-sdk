@@ -233,15 +233,8 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     {
         lock (_lifecycleLock)
         {
-            if (_stopping)
-            {
-                stop = null;
-                process = null;
-                stdinTask = null;
-                stdoutTask = null;
-                stderrTask = null;
-                return false;
-            }
+            while (_stopping)
+                Monitor.Wait(_lifecycleLock);
 
             _stopping = true;
             stop = _stop;
@@ -264,6 +257,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         lock (_lifecycleLock)
         {
             _stopping = false;
+            Monitor.PulseAll(_lifecycleLock);
         }
     }
 

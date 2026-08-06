@@ -151,6 +151,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "91B-9: test CDR reader rejects negative fixed float64 lengths");
             Check(Throws<InvalidDataException>(() => new Ros2CdrTestReader(new Ros2CdrWriter().ToArray()).ReadFloat64Fixed(1)),
                 "91B-10: test CDR reader rejects fixed float64 arrays beyond payload bounds");
+            Check(Throws<InvalidDataException>(() =>
+                    new Ros2CdrTestReader(new byte[] { 0, 1, 0, 0, 255, 255, 255, 255 })
+                        .ReadByteArray()),
+                "91B-11: test CDR reader classifies oversized byte-sequence lengths as malformed data");
         }
 
         private static void VerifyPayloadValidation()
@@ -470,10 +474,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridgeCodecs.Contains("MessageEncoding")
                   && bridgeCodecs.Contains("SchemaEncoding"),
                 "91G-3: Bridge package owns explicit ros2msg CDR channel helpers");
-            var publishRos2CdrBody = SourceMethodBody(bridgeCodecs, "PublishRos2Cdr");
-            Check(publishRos2CdrBody.Contains("Validate(payload);", StringComparison.Ordinal)
-                  && !publishRos2CdrBody.Contains("payload ??=", StringComparison.Ordinal),
-                "91G-4: Bridge-owned PublishRos2Cdr validates payload without null-coalescing to empty");
+            var publishRos2CdrSignatures = new[]
+            {
+                "public static void PublishRos2Cdr( this FoxgloveRuntime runtime, uint channelId, byte[] payload)",
+                "public static void PublishRos2Cdr( this FoxgloveRuntime runtime, uint channelId, byte[] payload, ulong logTimeNs)",
+                "public static void PublishRos2Cdr( this FoxgloveSession session, uint channelId, byte[] payload)",
+                "public static void PublishRos2Cdr( this FoxgloveSession session, uint channelId, byte[] payload, ulong logTimeNs)",
+            };
+            var publishRos2CdrMethods = publishRos2CdrSignatures
+                .Select(signature => PhaseValidationSourceHelpers.RequiredSourceMethod(bridgeCodecs, signature))
+                .ToArray();
+            Check(publishRos2CdrMethods.Length == publishRos2CdrSignatures.Length
+                  && publishRos2CdrMethods.All(method =>
+                      method.Contains("Validate(payload);", StringComparison.Ordinal)
+                      && !method.Contains("payload ??=", StringComparison.Ordinal)),
+                "91G-4: every Bridge-owned PublishRos2Cdr overload validates payload without null-coalescing to empty");
         }
 
         private static List<Phase91Sample> BuildSamples()
@@ -623,31 +638,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool SourceTreeAvoids(string root, params string[] needles)
             => !SourceTreeContains(root, needles);
-
-        private static string SourceMethodBody(string source, string methodName)
-        {
-            var idx = source.IndexOf(methodName, StringComparison.Ordinal);
-            if (idx < 0)
-                return string.Empty;
-            var braceStart = source.IndexOf('{', idx);
-            if (braceStart < 0)
-                return string.Empty;
-
-            var depth = 0;
-            for (var i = braceStart; i < source.Length; i++)
-            {
-                if (source[i] == '{')
-                    depth++;
-                else if (source[i] == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(braceStart, i - braceStart + 1);
-                }
-            }
-
-            return source.Substring(braceStart);
-        }
 
         private sealed class Phase91Sample
         {

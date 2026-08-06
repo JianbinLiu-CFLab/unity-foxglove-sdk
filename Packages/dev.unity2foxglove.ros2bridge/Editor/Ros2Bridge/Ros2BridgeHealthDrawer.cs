@@ -25,13 +25,13 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         public Ros2BridgeHealthDrawer()
         {
-            AssemblyReloadEvents.beforeAssemblyReload += CancelHealthCheck;
+            AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload;
         }
 
         public void Dispose()
         {
-            AssemblyReloadEvents.beforeAssemblyReload -= CancelHealthCheck;
-            CancelHealthCheck();
+            AssemblyReloadEvents.beforeAssemblyReload -= BeforeAssemblyReload;
+            BeforeAssemblyReload();
         }
 
         internal void Draw(SerializedObject serializedObject)
@@ -43,6 +43,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
             DrawRos2PathControls();
 
+            CompleteTaskIfReady();
             var running = _task != null && !_task.IsCompleted;
             using (new EditorGUI.DisabledScope(running))
             {
@@ -56,7 +57,6 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                     CancelHealthCheck();
             }
 
-            CompleteTaskIfReady();
             DrawProgress(running);
             DrawReport();
         }
@@ -91,7 +91,10 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
 
         private void StartHealthCheck(SerializedObject serializedObject)
         {
-            CancelHealthCheck();
+            CompleteTaskIfReady();
+            if (_task != null)
+                return;
+
             var host = ReadString(serializedObject, "_host", "127.0.0.1");
             var port = ReadInt(serializedObject, "_port", 8767);
             var timeout = ReadInt(serializedObject, "_sendTimeoutMs", 1000);
@@ -133,10 +136,40 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             if (cancellation == null)
                 return;
 
-            _cancellation = null;
             try { cancellation.Cancel(); }
             catch { }
-            finally { cancellation.Dispose(); }
+        }
+
+        private void BeforeAssemblyReload()
+        {
+            CancelHealthCheck();
+            RelinquishHealthCheck();
+        }
+
+        private void RelinquishHealthCheck()
+        {
+            var task = _task;
+            _task = null;
+            var cancellation = _cancellation;
+            _cancellation = null;
+            if (cancellation == null)
+                return;
+
+            if (task == null || task.IsCompleted)
+            {
+                cancellation.Dispose();
+                return;
+            }
+
+            _ = task.ContinueWith(
+                completed =>
+                {
+                    _ = completed.Exception;
+                    cancellation.Dispose();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private void CompleteTaskIfReady()

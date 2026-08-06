@@ -3,6 +3,8 @@
 //
 // Module: Runtime/Sensors/Lidar
 
+using System;
+
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
     /// <summary>
@@ -56,6 +58,24 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
+            if (!IsFinite(ScanRateHz) || ScanRateHz <= 0)
+            {
+                error = "LiDAR profile ScanRateHz must be finite and positive.";
+                return false;
+            }
+
+            if (!IsFinite(MinRangeMeters) || MinRangeMeters < 0)
+            {
+                error = "LiDAR profile MinRangeMeters must be finite and non-negative.";
+                return false;
+            }
+
+            if (!IsFinite(LidarOriginToBeamOriginMeters))
+            {
+                error = "LiDAR profile LidarOriginToBeamOriginMeters must be finite.";
+                return false;
+            }
+
             if (BeamAltitudeAngles == null || BeamAltitudeAngles.Length != PixelsPerColumn)
             {
                 error = "LiDAR profile BeamAltitudeAngles length must match PixelsPerColumn.";
@@ -68,8 +88,26 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
+            for (var i = 0; i < PixelsPerColumn; i++)
+            {
+                if (!IsFinite(BeamAltitudeAngles[i]))
+                {
+                    error = $"LiDAR profile BeamAltitudeAngles[{i}] must be finite.";
+                    return false;
+                }
+
+                if (!IsFinite(BeamAzimuthAngles[i]))
+                {
+                    error = $"LiDAR profile BeamAzimuthAngles[{i}] must be finite.";
+                    return false;
+                }
+            }
+
             error = null;
             return true;
         }
+
+        private static bool IsFinite(double value)
+            => !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }

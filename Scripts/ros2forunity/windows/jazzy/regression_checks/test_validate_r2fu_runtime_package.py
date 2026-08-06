@@ -34,6 +34,26 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
+    def test_inventory_category_counts_must_match_file_entries(self) -> None:
+        """A declared native count cannot be satisfied by DLLs from other categories."""
+        files = [
+            {"path": "Ros2ForUnity/native.dll", "category": "native_libraries"},
+            {"path": "Ros2ForUnity/managed.dll", "category": "managed_assemblies"},
+        ]
+
+        self.assertFalse(
+            self.validator.inventory_category_counts_match(
+                {"native_libraries": 2},
+                files,
+            )
+        )
+        self.assertTrue(
+            self.validator.inventory_category_counts_match(
+                {"native_libraries": 1, "managed_assemblies": 1},
+                files,
+            )
+        )
+
     def test_ros2cs_plugin_metadata_requires_portable_roots(self) -> None:
         """Both packaged plugin inventories must use a package-relative root."""
         with tempfile.TemporaryDirectory() as temp:

@@ -107,7 +107,6 @@ bool ProcessOneFrame(std::vector<float>* xyz) {
   }
 
   if (point_count == 0) {
-    std::cerr << "warning: zero-point frame; writing empty payload" << std::endl;
     WriteUint32(0);
     std::cout.flush();
     return true;

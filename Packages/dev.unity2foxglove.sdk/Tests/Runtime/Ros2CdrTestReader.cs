@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         public byte[] ReadByteArray()
         {
-            var length = checked((int)ReadUInt32());
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR byte sequence length");
             Ensure(length);
             var bytes = new byte[length];
             Array.Copy(_data, _offset, bytes, 0, length);

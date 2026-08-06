@@ -167,15 +167,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Assert.Contains("private bool StopExecutor()", component, StringComparison.Ordinal);
                 AssertTimeoutRetainsOwner(component, "private void Shutdown()");
 
+                var shutdown = TestSources.ExtractMethod(
+                    component,
+                    "private void Shutdown()");
+                Assert.Contains(
+                    "Interlocked.CompareExchange(ref shutdownInProgress, 1, 0)",
+                    shutdown,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "Volatile.Write(ref shutdownInProgress, 0);",
+                    shutdown,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "disposed || shutdownRequested",
+                    shutdown,
+                    StringComparison.Ordinal);
+
                 var stopAll = TestSources.ExtractMethod(
                     component,
                     "public static void StopAllExecutorsForRosShutdown()");
                 var stop = stopAll.IndexOf("StopExecutor()", StringComparison.Ordinal);
-                var skip = stopAll.IndexOf("continue;", stop, StringComparison.Ordinal);
+                var pending = stopAll.IndexOf(
+                    "MarkRuntimeShutdownPendingExecutor()",
+                    stop,
+                    StringComparison.Ordinal);
+                var skip = stopAll.IndexOf("continue;", pending, StringComparison.Ordinal);
                 var mark = stopAll.IndexOf("MarkRuntimeShutdown()", StringComparison.Ordinal);
                 Assert.True(stop >= 0);
-                Assert.True(skip > stop);
+                Assert.True(pending > stop);
+                Assert.True(skip > pending);
                 Assert.True(mark > skip);
+
+                var pendingMethod = TestSources.ExtractMethod(
+                    component,
+                    "private void MarkRuntimeShutdownPendingExecutor()");
+                Assert.Contains(
+                    "shutdownRequested = true;",
+                    pendingMethod,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "runtimeShutdownRequested = true;",
+                    pendingMethod,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "ros2forUnity = null",
+                    pendingMethod,
+                    StringComparison.Ordinal);
             }
         }
 

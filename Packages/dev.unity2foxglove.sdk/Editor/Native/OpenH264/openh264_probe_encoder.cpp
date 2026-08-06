@@ -8,6 +8,9 @@
 #include "codec_ver.h"
 
 #include <cerrno>
+#ifndef _WIN32
+#include <csignal>
+#endif
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -31,6 +34,9 @@
 namespace
 {
     constexpr int MaxBitrateKbps = 1000000;
+    constexpr int MaxDimension = 8192;
+    constexpr int MaxFrameRate = 1000;
+    constexpr int MaxKeyframeInterval = 1000000;
 
     enum class FrameReadStatus
     {
@@ -123,11 +129,15 @@ namespace
         }
 
         return options.width > 0
+            && options.width <= MaxDimension
             && options.height > 0
+            && options.height <= MaxDimension
             && options.fps > 0
+            && options.fps <= MaxFrameRate
             && options.bitrateKbps > 0
             && options.bitrateKbps <= MaxBitrateKbps
             && options.keyint > 0
+            && options.keyint <= MaxKeyframeInterval
 #ifdef _WIN32
             && !options.openh264Dll.empty()
 #endif
@@ -226,7 +236,15 @@ namespace
         return false;
     }
 
-    void WriteLittleEndianLength(uint32_t length)
+    bool OutputIsHealthy()
+    {
+        if (std::cout.good())
+            return true;
+        std::cerr << "OpenH264 stdout write failed." << std::endl;
+        return false;
+    }
+
+    bool WriteLittleEndianLength(uint32_t length)
     {
         const uint8_t bytes[4] =
         {
@@ -236,12 +254,15 @@ namespace
             static_cast<uint8_t>((length >> 24) & 0xFF)
         };
         std::cout.write(reinterpret_cast<const char*>(bytes), 4);
+        return OutputIsHealthy();
     }
 
-    void WriteSkippedFrameSentinel()
+    bool WriteSkippedFrameSentinel()
     {
-        WriteLittleEndianLength(0);
+        if (!WriteLittleEndianLength(0))
+            return false;
         std::cout.flush();
+        return OutputIsHealthy();
     }
 
     FrameReadStatus ReadFrame(std::vector<uint8_t>& frame)
@@ -298,14 +319,13 @@ namespace
         if (info.eFrameType == videoFrameTypeSkip)
         {
             std::cerr << "OpenH264 skipped frame." << std::endl;
-            WriteSkippedFrameSentinel();
-            return true;
+            return WriteSkippedFrameSentinel();
         }
 
         if (info.eFrameType == videoFrameTypeInvalid)
         {
-            WriteSkippedFrameSentinel();
-            return true;
+            std::cerr << "OpenH264 returned an invalid frame." << std::endl;
+            return WriteSkippedFrameSentinel();
         }
 
         for (int layer = 0; layer < info.iLayerNum; ++layer)
@@ -316,8 +336,7 @@ namespace
 
         if (accessUnit.empty())
         {
-            WriteSkippedFrameSentinel();
-            return true;
+            return WriteSkippedFrameSentinel();
         }
 
         if (accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
@@ -326,15 +345,23 @@ namespace
             return false;
         }
 
-        WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size()));
+        if (!WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size())))
+            return false;
         std::cout.write(reinterpret_cast<const char*>(accessUnit.data()), static_cast<std::streamsize>(accessUnit.size()));
         std::cout.flush();
-        return true;
+        return OutputIsHealthy();
     }
 }
 
 int main(int argc, char** argv)
 {
+#ifndef _WIN32
+    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+    {
+        std::cerr << "OpenH264 could not ignore SIGPIPE." << std::endl;
+        return 7;
+    }
+#endif
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);

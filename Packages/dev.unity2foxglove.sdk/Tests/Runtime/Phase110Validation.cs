@@ -355,8 +355,8 @@ namespace Unity.FoxgloveSDK.Tests
             var batch = ReadRepoText(StringSmokeBatchPath);
 
             Check(batch.Contains("Phase110Ros2ForUnityStringSmoke", StringComparison.Ordinal)
-                  && batch.Contains("Assets/Scenes/Phase106Acceptance.unity", StringComparison.Ordinal),
-                "110-J1: batch acceptance drives the actual Phase106Acceptance String Smoke component");
+                  && batch.Contains("Assets/Scenes/Phase110Acceptance.unity", StringComparison.Ordinal),
+                "110-J1: batch acceptance drives the actual Phase110Acceptance String Smoke component");
             Check(batch.Contains("_directMode", StringComparison.Ordinal)
                   && batch.Contains("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_DIRECT", StringComparison.Ordinal)
                   && batch.Contains("DIRECT_MODE=True", StringComparison.Ordinal)

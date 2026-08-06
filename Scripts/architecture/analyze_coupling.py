@@ -203,6 +203,9 @@ def collect_asmdef_metrics(repo_root: Path, tracked_files: list[str]) -> list[As
         except json.JSONDecodeError:
             metrics.append(AsmdefMetric(path, "<invalid-json>", []))
             continue
+        if not isinstance(payload, dict):
+            metrics.append(AsmdefMetric(path, "<invalid-json-object>", []))
+            continue
         name = str(payload.get("name", ""))
         references = [normalize_asmdef_reference(str(item)) for item in payload.get("references", [])]
         metrics.append(AsmdefMetric(path, name, sorted(references)))

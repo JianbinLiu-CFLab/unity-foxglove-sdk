@@ -185,8 +185,15 @@ def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Pop
 
     logs: list[str] = []
     stdout_lines: queue.Queue[str] = queue.Queue()
+    stdout_thread: threading.Thread | None = None
     if process.stdout is not None:
-        threading.Thread(target=drain_stdout, args=(process.stdout, stdout_lines), daemon=True).start()
+        stdout_thread = threading.Thread(
+            target=drain_stdout,
+            args=(process.stdout, stdout_lines),
+            daemon=True,
+            name="phase139b-backend-stdout",
+        )
+        stdout_thread.start()
 
     deadline = time.monotonic() + args.startup_timeout
     while time.monotonic() < deadline:
@@ -204,8 +211,9 @@ def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Pop
         if process.poll() is not None:
             break
 
-    if process.poll() is None:
-        process.terminate()
+    stop_backend(process)
+    if stdout_thread is not None:
+        stdout_thread.join(timeout=1)
     raise RuntimeError("Phase139B backend did not become ready. Logs:\n" + "\n".join(logs[-40:]))
 
 

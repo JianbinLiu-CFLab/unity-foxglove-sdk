@@ -41,6 +41,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private bool ShouldRunReplayCursorEndpoint()", replayCursor, StringComparison.Ordinal);
             Assert.Contains("private UnityReplayCursorEndpointQueueResult QueueExternalReplayCursor", replayCursor, StringComparison.Ordinal);
             Assert.Contains("private void StopReplayCursorEndpoint()", replayCursor, StringComparison.Ordinal);
+            var replayCursorStart = TestSources.ExtractMethod(
+                replayCursor,
+                "private void StartReplayCursorEndpointIfNeeded()");
+            Assert.Contains("ClearReplayCursorEndpointConfig();", replayCursorStart, StringComparison.Ordinal);
             Assert.DoesNotContain("StartServer", replayCursor, StringComparison.Ordinal);
             Assert.DoesNotContain("StopServer", replayCursor, StringComparison.Ordinal);
 

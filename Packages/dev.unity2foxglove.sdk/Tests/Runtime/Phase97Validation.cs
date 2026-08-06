@@ -222,7 +222,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "97E-3: sidecar keeps zero-payload publish rejection");
             Check(sidecar.Contains("write_health_pong_ok") && sidecar.Contains("unsupported_protocol"),
                 "97E-4: sidecar returns ok and stable health error responses");
-            Check(sidecar.Contains("Do not create") || !SourceMethodContains(sidecar, "handle_health_ping", "create_generic_publisher"),
+            var healthStart = sidecar.IndexOf("void handle_health_ping(", StringComparison.Ordinal);
+            var healthEnd = healthStart < 0
+                ? -1
+                : sidecar.IndexOf("\nPayloadView payload_for_publish(", healthStart, StringComparison.Ordinal);
+            var healthMethod = healthStart >= 0 && healthEnd > healthStart
+                ? sidecar.Substring(healthStart, healthEnd - healthStart)
+                : string.Empty;
+            Check(!string.IsNullOrEmpty(healthMethod)
+                  && !healthMethod.Contains("create_generic_publisher", StringComparison.Ordinal),
                 "97E-5: health ping does not create ROS2 publishers");
         }
 

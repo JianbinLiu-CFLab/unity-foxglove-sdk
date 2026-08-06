@@ -462,6 +462,17 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         """Freshness must include dependencies, ledgers, IDs, hint parity, and analyzer sets."""
         self.assertTrue(self.validator.validate_analyzer_contracts(("core", "r2fu", "ros2bridge")))
 
+    def test_shared_identifier_utilities_are_parity_guarded(self) -> None:
+        """All three independently packaged identifier helpers must share one gate."""
+        groups = dict(self.validator.EXACT_SHARED_SOURCE_GROUPS)
+        expected = {
+            ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/IdentifierUtils.cs",
+            ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/IdentifierUtils.cs",
+            ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/IdentifierUtils.cs",
+        }
+
+        self.assertEqual(expected, set(groups["Identifier utility"]))
+
     def test_shared_analyzer_source_parity_rejects_one_copy_drift(self) -> None:
         """The independently packaged analyzers must fail on shared semantic drift."""
         with tempfile.TemporaryDirectory() as temp:

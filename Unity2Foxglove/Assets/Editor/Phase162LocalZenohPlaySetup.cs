@@ -71,55 +71,69 @@ public static class Phase162LocalZenohPlaySetup
             return;
         }
 
-        CaptureEnvironmentBeforeOverride();
-        ApplyZenohEnvironmentOverride();
-
-        EditorSceneManager.OpenScene(ScenePath);
-
-        var manager = UnityEngine.Object.FindFirstObjectByType<FoxgloveManager>();
-        if (manager == null)
-            throw new InvalidOperationException("Could not find FoxgloveManager in " + ScenePath);
-
-        SetField(manager, "_foxgloveOutputEnabled", false, "configure FoxgloveManager output mode");
-        SetField(manager, "_defaultPublisherEncoding", GlobalEncoding.Protobuf, "configure FoxgloveManager publisher encoding");
-        if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
-            manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
-        manager.ConfigureFoxRunTransports(
-            new[] { FoxRunRos2TransportProvider.IdValue },
-            subscriptionsEnabled: false,
-            subscribeTransportId: string.Empty);
-
-        var publisher = UnityEngine.Object.FindFirstObjectByType<FoxglovePointCloudPublisher>();
-        if (publisher == null)
-            throw new InvalidOperationException("Could not find FoxglovePointCloudPublisher in " + ScenePath);
-
-        SetField(publisher, "_outputMode", PointCloudOutputMode.PackedPointCloud, "configure PointCloud2 Native output");
-        SetField(publisher, "_topic", "/unity/point_cloud2", "configure raw PointCloud2 topic");
-        SetField(publisher, "_frameId", "os_lidar", "configure PointCloud2 frame id");
-        SetField(publisher, "_publishPackedPointCloudTfAnchor", true, "configure PointCloud2 TF anchor");
-        SetField(publisher, "_enableMotionCompensation", true, "configure point cloud deskew");
-        SetField(publisher, "_motionCompensationOutputPolicy", PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic, "configure point cloud deskew output policy");
-        SetField(publisher, "_deskewedPackedPointCloudTopic", "/unity/point_cloud2_deskewed", "configure deskewed PointCloud2 topic");
-        SetField(publisher, "_motionCompensationReferenceTime", PointCloudMotionCompensationReferenceTime.ScanStart, "configure deskew reference time");
-        SetField(publisher, "_motionCompensationSource", PointCloudMotionCompensationSource.SensorTransform, "configure deskew motion source");
-
-        var controller = UnityEngine.Object.FindFirstObjectByType<Phase138LidarVehicleController>();
-        if (controller != null)
+        try
         {
-            SetField(controller, "_useAutoWander", true, "enable Phase162 vehicle motion");
-            motionTarget = controller.gameObject;
-            motionOriginCaptured = false;
-            motionStartedAt = EditorApplication.timeSinceStartup;
-            nextMotionTargetSearchAt = 0.0;
-            EditorApplication.update -= DriveVehicleDuringPlay;
-            EditorApplication.update += DriveVehicleDuringPlay;
-        }
+            CaptureEnvironmentBeforeOverride();
+            ApplyZenohEnvironmentOverride();
 
-        SessionState.SetBool(PlayRequestedKey, true);
-        EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-        Debug.Log("[Phase162LocalZenohPlaySetup] Configured Lyrical Zenoh PointCloud2 Native RViz acceptance scene.");
-        EditorApplication.EnterPlaymode();
+            EditorSceneManager.OpenScene(ScenePath);
+
+            var manager = UnityEngine.Object.FindFirstObjectByType<FoxgloveManager>();
+            if (manager == null)
+                throw new InvalidOperationException("Could not find FoxgloveManager in " + ScenePath);
+
+            SetField(manager, "_foxgloveOutputEnabled", false, "configure FoxgloveManager output mode");
+            SetField(manager, "_defaultPublisherEncoding", GlobalEncoding.Protobuf, "configure FoxgloveManager publisher encoding");
+            if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
+                manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
+            manager.ConfigureFoxRunTransports(
+                new[] { FoxRunRos2TransportProvider.IdValue },
+                subscriptionsEnabled: false,
+                subscribeTransportId: string.Empty);
+
+            var publisher = UnityEngine.Object.FindFirstObjectByType<FoxglovePointCloudPublisher>();
+            if (publisher == null)
+                throw new InvalidOperationException("Could not find FoxglovePointCloudPublisher in " + ScenePath);
+
+            SetField(publisher, "_outputMode", PointCloudOutputMode.PackedPointCloud, "configure PointCloud2 Native output");
+            SetField(publisher, "_topic", "/unity/point_cloud2", "configure raw PointCloud2 topic");
+            SetField(publisher, "_frameId", "os_lidar", "configure PointCloud2 frame id");
+            SetField(publisher, "_publishPackedPointCloudTfAnchor", true, "configure PointCloud2 TF anchor");
+            SetField(publisher, "_enableMotionCompensation", true, "configure point cloud deskew");
+            SetField(publisher, "_motionCompensationOutputPolicy", PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic, "configure point cloud deskew output policy");
+            SetField(publisher, "_deskewedPackedPointCloudTopic", "/unity/point_cloud2_deskewed", "configure deskewed PointCloud2 topic");
+            SetField(publisher, "_motionCompensationReferenceTime", PointCloudMotionCompensationReferenceTime.ScanStart, "configure deskew reference time");
+            SetField(publisher, "_motionCompensationSource", PointCloudMotionCompensationSource.SensorTransform, "configure deskew motion source");
+
+            var controller = UnityEngine.Object.FindFirstObjectByType<Phase138LidarVehicleController>();
+            if (controller != null)
+            {
+                SetField(controller, "_useAutoWander", true, "enable Phase162 vehicle motion");
+                motionTarget = controller.gameObject;
+                motionOriginCaptured = false;
+                motionStartedAt = EditorApplication.timeSinceStartup;
+                nextMotionTargetSearchAt = 0.0;
+                EditorApplication.update -= DriveVehicleDuringPlay;
+                EditorApplication.update += DriveVehicleDuringPlay;
+            }
+
+            SessionState.SetBool(PlayRequestedKey, true);
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            Debug.Log("[Phase162LocalZenohPlaySetup] Configured Lyrical Zenoh PointCloud2 Native RViz acceptance scene.");
+            EditorApplication.EnterPlaymode();
+        }
+        catch
+        {
+            EditorApplication.update -= DriveVehicleDuringPlay;
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            motionTarget = null;
+            motionOriginCaptured = false;
+            nextMotionTargetSearchAt = 0.0;
+            SessionState.SetBool(PlayRequestedKey, false);
+            RestoreEnvironmentAfterOverride();
+            throw;
+        }
     }
 
     private static void OnPlayModeStateChanged(PlayModeStateChange state)

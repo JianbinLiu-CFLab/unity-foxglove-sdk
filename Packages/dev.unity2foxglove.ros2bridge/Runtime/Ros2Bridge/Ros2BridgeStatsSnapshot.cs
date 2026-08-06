@@ -460,14 +460,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
         private static bool HasInboundDeliveryFailure(
             Ros2BridgeInboundStatsSnapshot inbound)
-            => inbound != null
-               && (inbound.Dropped != 0
-                   || inbound.RejectedAfterStop != 0
-                   || inbound.SequenceGaps != 0
-                   || inbound.StaleSequences != 0
-                   || inbound.Oversize != 0
-                   || inbound.DecodeFailures != 0
-                   || inbound.DisposalFailures != 0);
+            => inbound?.HasSessionDeliveryFailure == true;
 
         private static FoxRunTransportDirectionStatus Disconnected(
             FoxRunTransportDirection direction,

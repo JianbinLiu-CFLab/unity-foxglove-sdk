@@ -59,6 +59,10 @@ namespace Unity2Foxglove.Ros2Bridge
 
     internal interface IRos2BridgeInboundFrameReceiver
     {
+        // Records a wire message rejected before frame ownership can be
+        // constructed, so resolver drops remain observable.
+        void RecordResolutionRejection(string reason);
+
         // Ownership is transferred for every non-null frame, including when
         // admission is rejected.
         Ros2BridgeSessionResult TryAccept(

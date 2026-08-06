@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("PORT must be a number between 1 and 65535.", source, StringComparison.Ordinal);
             Assert.Contains("10#$PORT", source, StringComparison.Ordinal);
             Assert.Contains("PAYLOAD_FORMAT must be one of", source, StringComparison.Ordinal);
-            Assert.Contains("cdr-with-encapsulation|raw-cdr", source, StringComparison.Ordinal);
+            Assert.Contains("cdr-with-encapsulation|cdr-body-only", source, StringComparison.Ordinal);
         }
 
         [Fact]

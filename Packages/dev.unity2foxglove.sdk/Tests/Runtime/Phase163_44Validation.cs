@@ -108,8 +108,12 @@ namespace Unity.FoxgloveSDK.Tests
     {
         Dangerous();
     }";
-            Check(!PhaseValidationSourceHelpers.SourceMethodContains(unbalanced, "Target", "Dangerous();"),
-                "163-44B-7: SourceMethodContains fails closed on unbalanced method braces");
+            Check(Throws<InvalidOperationException>(() =>
+                    PhaseValidationSourceHelpers.SourceMethodContains(
+                        unbalanced,
+                        "Target",
+                        "Dangerous();")),
+                "163-44B-7: SourceMethodContains rejects an unresolvable method instead of making a negative assertion pass");
 
             const string nestedType =
 @"class Outer
@@ -218,6 +222,20 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new Exception("[FAIL] " + description);
 
             Console.WriteLine("[PASS] " + description);
+        }
+
+        private static bool Throws<TException>(Action action)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (TException)
+            {
+                return true;
+            }
         }
     }
 }

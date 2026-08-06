@@ -90,7 +90,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 queuedBytes: 0,
                 transientBytes: 0,
                 inFlightBytes: 0,
-                lastDiagnostic: "CDR shape mismatch");
+                lastDiagnostic: "CDR shape mismatch",
+                resolutionRejections: 0,
+                hasSessionDeliveryFailure: true);
             var subscription = new Ros2BridgeSubscriptionObservationSnapshot(
                 observedContracts: 1,
                 activeContracts: 1,
@@ -132,7 +134,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 queuedBytes: 0,
                 transientBytes: 0,
                 inFlightBytes: 0,
-                lastDiagnostic: "latest-only coalescing");
+                lastDiagnostic: "latest-only coalescing",
+                resolutionRejections: 0,
+                hasSessionDeliveryFailure: false);
             var replacementStatus = Ros2BridgeTransportStatusMapper.Create(
                 186UL,
                 FoxRunTransportCapabilities.Subscribe,
@@ -147,6 +151,40 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 FoxRunTransportObservedState.Ready,
                 replacementStatus.Subscribe.State);
             Assert.Empty(replacementStatus.Diagnostics);
+
+            var recoveredSession = new Ros2BridgeInboundStatsSnapshot(
+                received: 8,
+                accepted: 5,
+                replaced: 0,
+                dropped: 1,
+                applied: 4,
+                rejectedAfterStop: 0,
+                sequenceGaps: 2,
+                staleSequences: 0,
+                oversize: 0,
+                decodeFailures: 1,
+                disposalFailures: 0,
+                queuedFrames: 0,
+                queuedBytes: 0,
+                transientBytes: 0,
+                inFlightBytes: 0,
+                lastDiagnostic: string.Empty,
+                resolutionRejections: 0,
+                hasSessionDeliveryFailure: false);
+            var recoveredStatus = Ros2BridgeTransportStatusMapper.Create(
+                186UL,
+                FoxRunTransportCapabilities.Subscribe,
+                Ros2BridgeRuntimeLifecycleState.Ready,
+                stats,
+                true,
+                Ros2BridgePublisherObservationSnapshot.Empty,
+                subscription,
+                recoveredSession);
+
+            Assert.Equal(
+                FoxRunTransportObservedState.Ready,
+                recoveredStatus.Subscribe.State);
+            Assert.Empty(recoveredStatus.Diagnostics);
         }
 
         [Fact]
@@ -1006,6 +1044,92 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     () => queue.GetStatsSnapshot().QueuedFrames == 1,
                     TimeSpan.FromSeconds(2)),
                 "the first message after subscription_ready was dropped");
+            releasePeer.Set();
+            peer.AssertCompleted();
+        }
+
+        [Fact]
+        public void MessageBeforeSubscriptionReadyIsDroppedAndObservable()
+        {
+            using var sendMessage = new ManualResetEventSlim(false);
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+                Assert.True(sendMessage.Wait(TimeSpan.FromSeconds(3)));
+                WriteFrame(
+                    stream,
+                    MessageHeader(),
+                    new byte[] { 0x00, 0x01, 0x00, 0x00, 0x2a });
+                Assert.True(releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+            var contract = new Ros2BridgeSessionContract(
+                new FoxRunTransportId(
+                    "unity2foxglove.ros2bridge"),
+                FoxRunTransportDirection.Subscribe,
+                "/phase186/inbound",
+                "phase186_msgs/msg/Inbound",
+                FoxRunResolvedQos.Default,
+                "binding-inbound",
+                contractId: 11,
+                generation: 7);
+            var contracts = new Ros2BridgeSessionContractSnapshot(
+                generation: 7,
+                new[] { contract });
+            var state = new Ros2BridgeSessionState(
+                new Ros2BridgeSessionSettings(
+                    "127.0.0.1",
+                    peer.Port,
+                    generation: 7,
+                    U2R2ProtocolLimits.Default));
+            Assert.True(state.TryActivateLocal(contract, out _));
+            var reconnect = state.BeginReconnect(contracts);
+            using var queue = new Ros2BridgeInboundQueue(
+                new Ros2BridgeInboundQueueLimits(
+                    maxPayloadBytes: 32,
+                    maxTotalBytes: 64,
+                    maxPerContractDepth: 2,
+                    maxPerContractBytes: 64));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                U2R2ProtocolLimits.Default,
+                requiresSubscription: true,
+                writerCapacity: 2,
+                pendingCapacity: 2,
+                timeoutMs: 1000,
+                inboundResolver: state,
+                inboundReceiver: queue);
+            var wireSession = connection.Start();
+            Assert.True(state.TryCompleteHandshake(
+                reconnect.AttemptGeneration,
+                wireSession,
+                out _));
+            queue.BeginSession(
+                wireSession.SessionId,
+                wireSession.ConnectionGeneration,
+                contracts);
+
+            sendMessage.Set();
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => queue.GetStatsSnapshot().ResolutionRejections == 1,
+                    TimeSpan.FromSeconds(2)),
+                "the pre-ready message rejection was not counted");
+            var inbound = queue.GetStatsSnapshot();
+            Assert.Equal(1, inbound.Received);
+            Assert.True(inbound.HasSessionDeliveryFailure);
+            Assert.Contains("subscription_ready", inbound.LastDiagnostic);
+            Assert.Equal(
+                Ros2BridgeSessionLifecycleState.Ready,
+                connection.LifecycleState);
+
             releasePeer.Set();
             peer.AssertCompleted();
         }

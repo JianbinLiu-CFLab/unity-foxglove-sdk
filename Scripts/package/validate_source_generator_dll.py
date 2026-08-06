@@ -123,6 +123,17 @@ COMPOSITION_TEST = (
 )
 EXACT_SHARED_SOURCE_GROUPS = (
     (
+        "Identifier utility",
+        (
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/IdentifierUtils.cs",
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/IdentifierUtils.cs",
+            REPO_ROOT
+            / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/IdentifierUtils.cs",
+        ),
+    ),
+    (
         "Roslyn type-shape builder",
         (
             REPO_ROOT
@@ -215,9 +226,7 @@ def validate_shared_source_parity() -> bool:
                 file=sys.stderr,
             )
         return False
-    print(
-        "[PASS] Analyzer shared type-shape and Roslyn builder sources are in parity."
-    )
+    print("[PASS] Analyzer shared semantic sources are in parity.")
     return True
 
 

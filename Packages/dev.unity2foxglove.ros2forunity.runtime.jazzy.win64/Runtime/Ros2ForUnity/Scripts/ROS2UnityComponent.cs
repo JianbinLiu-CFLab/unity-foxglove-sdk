@@ -51,8 +51,9 @@ public class ROS2UnityComponent : MonoBehaviour
     private volatile bool executorStarted = false;
     private volatile bool quitting = false;
     private volatile bool cachedOk = false;
-    private bool runtimeShutdownRequested = false;
-    private bool shutdownRequested = false;
+    private volatile bool runtimeShutdownRequested = false;
+    private volatile bool shutdownRequested = false;
+    private int shutdownInProgress = 0;
     private bool disposed = false;
     private Thread executorThread;
     private int interval = 2;  // Spinning / executor interval in ms
@@ -142,6 +143,7 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 if (!component.StopExecutor())
                 {
+                    component.MarkRuntimeShutdownPendingExecutor();
                     Debug.LogError(
                         "ROS2UnityComponent executor is still active during ROS shutdown; " +
                         "native ownership remains active.");
@@ -389,6 +391,13 @@ public class ROS2UnityComponent : MonoBehaviour
         }
     }
 
+    private void MarkRuntimeShutdownPendingExecutor()
+    {
+        shutdownRequested = true;
+        runtimeShutdownRequested = true;
+        cachedOk = false;
+    }
+
     private bool StopExecutor()
     {
         quitting = true;
@@ -451,39 +460,51 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void Shutdown()
     {
-        lock (mutex)
+        if (Interlocked.CompareExchange(ref shutdownInProgress, 1, 0) != 0)
         {
-            if (disposed || shutdownRequested)
+            return;
+        }
+
+        try
+        {
+            lock (mutex)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                shutdownRequested = true;
+                executorStarted = false;
+                cachedOk = false;
+            }
+
+            bool executorStopped = StopExecutor();
+            if (!executorStopped)
+            {
+                Debug.LogError(
+                    "ROS2UnityComponent executor thread timed out during shutdown; " +
+                    "native ownership remains active until the executor stops.");
+                QuarantineNodesAfterExecutorTimeout();
+                return;
+            }
+
+            DisposeNodes();
+
+            ROS2ForUnity instance = null;
+            if (!TryDetachRuntimeState(executorStopped, out instance))
             {
                 return;
             }
 
-            shutdownRequested = true;
-            executorStarted = false;
-            cachedOk = false;
+            if (instance != null)
+            {
+                instance.DestroyROS2ForUnity();
+            }
         }
-
-        bool executorStopped = StopExecutor();
-        if (!executorStopped)
+        finally
         {
-            Debug.LogError(
-                "ROS2UnityComponent executor thread timed out during shutdown; " +
-                "native ownership remains active until the executor stops.");
-            QuarantineNodesAfterExecutorTimeout();
-            return;
-        }
-
-        DisposeNodes();
-
-        ROS2ForUnity instance = null;
-        if (!TryDetachRuntimeState(executorStopped, out instance))
-        {
-            return;
-        }
-
-        if (instance != null)
-        {
-            instance.DestroyROS2ForUnity();
+            Volatile.Write(ref shutdownInProgress, 0);
         }
     }
 

@@ -958,21 +958,31 @@ def patch_ros2cs_logger_callback_api(text: str) -> str:
     return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
 
 
+def replace_required_once(text: str, old: str, new: str, label: str) -> str:
+    """Replace one required upstream anchor or fail before emitting a partial package."""
+    matches = text.count(old)
+    if matches != 1:
+        raise ValueError(f"Could not apply {label}: expected one upstream anchor, found {matches}.")
+    return text.replace(old, new, 1)
+
+
 def patch_runtime_lifecycle_safety(text: str) -> str:
     """Restore local lifecycle guards that a refreshed upstream runtime can omit."""
     register_marker = "        EditorApplication.quitting += ShutdownShared;"
     unregister_marker = "        EditorApplication.quitting -= ShutdownShared;"
-    if "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" not in text:
-        text = text.replace(
+    if "EditorApplication.quitting" in text and "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" not in text:
+        text = replace_required_once(
+            text,
             register_marker,
             register_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;",
-            1,
+            "AssemblyReloadEvents registration patch",
         )
-    if "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" not in text:
-        text = text.replace(
+    if "EditorApplication.quitting" in text and "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" not in text:
+        text = replace_required_once(
+            text,
             unregister_marker,
             unregister_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;",
-            1,
+            "AssemblyReloadEvents unregistration patch",
         )
 
     dead_guard = "    private static void ThrowIfUninitialized(string callContext)\n"
@@ -984,21 +994,23 @@ def patch_runtime_lifecycle_safety(text: str) -> str:
         text = text[:guard_start] + text[guard_end + len("\n    }\n\n"):]
 
     metadata_prerequisite = "LoadMetadata() must complete before metadata-backed properties are read."
-    if metadata_prerequisite not in text:
-        text = text.replace(
+    if "Metadata document is empty while reading" in text and metadata_prerequisite not in text:
+        text = replace_required_once(
+            text,
             '            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);\n',
             "            throw new InvalidOperationException(\n"
             '                "Metadata document is empty while reading " + valuePath +\n'
             '                ". LoadMetadata() must complete before metadata-backed properties are read.");\n',
-            1,
+            "metadata lifecycle prerequisite patch",
         )
     return text
 
 
 def patch_unity_time_source_main_thread_guard(text: str) -> str:
     """Restore a clear construction failure when Unity time is initialized off the main thread."""
-    if "must be constructed on the Unity main thread" not in text:
-        text = text.replace(
+    if "mainThreadId" in text and "must be constructed on the Unity main thread" not in text:
+        text = replace_required_once(
+            text,
             "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
             "    lastReadingSecs = Time.timeAsDouble;\n",
             "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
@@ -1011,7 +1023,7 @@ def patch_unity_time_source_main_thread_guard(text: str) -> str:
             "      throw new InvalidOperationException(\n"
             '        "UnityTimeSource must be constructed on the Unity main thread.", exception);\n'
             "    }\n",
-            1,
+            "UnityTimeSource main-thread guard patch",
         )
     return text
 
@@ -1098,7 +1110,9 @@ def patch_standalone_environment_isolation(text: str) -> str:
     new_prefix = '''        // U2F-LOCAL-PATCH: standalone runtime must not inherit a sourced ROS2 workspace.
         SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
 '''
-    text = text.replace(old_prefix, new_prefix)
+    prefix_patch_marker = "standalone runtime must not inherit a sourced ROS2 workspace"
+    if "private static void SetStandalonePrefixPath()" in text and prefix_patch_marker not in text:
+        text = replace_required_once(text, old_prefix, new_prefix, "AMENT_PREFIX_PATH isolation patch")
 
     old_rmw = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION")))
         {
@@ -1112,12 +1126,22 @@ def patch_standalone_environment_isolation(text: str) -> str:
             : defaultRmwImplementation;
         SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", selectedRmwImplementation);
 '''
-    text = text.replace(old_rmw, new_rmw)
-
     old_owned_rmw = '''        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
         SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
 '''
-    text = text.replace(old_owned_rmw, new_rmw)
+    rmw_patch_marker = "standalone runtime owns its RMW selection while allowing Lyrical Zenoh"
+    if "private static void SetStandaloneRmwImplementation()" in text and rmw_patch_marker not in text:
+        old_rmw_matches = text.count(old_rmw)
+        old_owned_rmw_matches = text.count(old_owned_rmw)
+        if old_rmw_matches + old_owned_rmw_matches != 1:
+            raise ValueError(
+                "Could not apply RMW_IMPLEMENTATION isolation patch: expected one supported upstream body."
+            )
+        text = (
+            replace_required_once(text, old_rmw, new_rmw, "RMW_IMPLEMENTATION isolation patch")
+            if old_rmw_matches == 1
+            else replace_required_once(text, old_owned_rmw, new_rmw, "RMW_IMPLEMENTATION isolation patch")
+        )
 
     text = text.replace(
         '''    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
@@ -1177,7 +1201,9 @@ def patch_standalone_environment_isolation(text: str) -> str:
     new_distro = '''        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.
         SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
 '''
-    text = text.replace(old_distro, new_distro)
+    distro_patch_marker = "standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell"
+    if "private static void SetStandaloneRosDistro(" in text and distro_patch_marker not in text:
+        text = replace_required_once(text, old_distro, new_distro, "ROS_DISTRO isolation patch")
     if "WarnIfStandaloneRosDistroOverride" not in text:
         text = text.replace(
             "\n    private static void SetStandaloneRcutilsConsoleMode()\n",
@@ -1264,6 +1290,14 @@ def patch_standalone_environment_isolation(text: str) -> str:
         1,
     )
 
+    required_method_markers = (
+        ("private static void SetStandalonePrefixPath()", "standalone runtime must not inherit a sourced ROS2 workspace", "AMENT_PREFIX_PATH"),
+        ("private static void SetStandaloneRmwImplementation()", "standalone runtime owns its RMW selection while allowing Lyrical Zenoh", "RMW_IMPLEMENTATION"),
+        ("private static void SetStandaloneRosDistro(", "standalone runtime owns ROS_DISTRO", "ROS_DISTRO"),
+    )
+    for method_marker, patch_marker, label in required_method_markers:
+        if method_marker in text and patch_marker not in text:
+            raise ValueError(f"Could not apply {label} isolation patch to the standalone method body.")
     return text
 
 

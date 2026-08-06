@@ -91,6 +91,8 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
 
     private T readings;
     private bool newReadings;
+    private int activePublisherCalls;
+    private bool publisherRetirementPending;
     private readonly object readingsMutex = new object();
 
     public override string frameName()
@@ -163,16 +165,29 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     internal void ExecutorThreadSensorPublishAction()
     {
+        T readingToPublish;
+        Publisher<T> publisherToUse;
         lock (readingsMutex)
         {
-            if (!(publisher != null && publishing) || !newReadings || ros2Node == null || ros2Node.IsDisposed)
+            if (rosParticipantsDisposed || !(publisher != null && publishing) ||
+                !newReadings || ros2Node == null || ros2Node.IsDisposed)
             {
                 return;
             }
 
-            T readingToPublish = readings;
+            readingToPublish = readings;
+            publisherToUse = publisher;
             newReadings = false;
-            publisher.Publish(readingToPublish);
+            activePublisherCalls++;
+        }
+
+        try
+        {
+            publisherToUse.Publish(readingToPublish);
+        }
+        finally
+        {
+            CompletePublisherCall();
         }
     }
 
@@ -276,32 +291,67 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
             componentToUnregister.UnregisterExecutable(ExecutorThreadSensorPublishAction);
         }
 
-        ROS2Node nodeToUse;
-        Publisher<T> publisherToRemove;
+        ROS2Node nodeToUse = null;
+        Publisher<T> publisherToRemove = null;
         lock (readingsMutex)
         {
-            nodeToUse = ros2Node;
-            publisherToRemove = publisher;
-            publisher = null;
             ros2UnityComponent = null;
-            ros2Node = null;
             readings = null;
             newReadings = false;
             cachedFrameName = null;
+            if (activePublisherCalls == 0)
+            {
+                nodeToUse = ros2Node;
+                publisherToRemove = publisher;
+                publisher = null;
+                ros2Node = null;
+            }
+            else
+            {
+                publisherRetirementPending = true;
+            }
         }
 
-        if (nodeToUse != null && publisherToRemove != null && !nodeToUse.IsDisposed)
+        RemovePublisherSafely(nodeToUse, publisherToRemove);
+    }
+
+    private void CompletePublisherCall()
+    {
+        ROS2Node nodeToUse = null;
+        Publisher<T> publisherToRemove = null;
+        lock (readingsMutex)
         {
-            try
+            activePublisherCalls--;
+            if (activePublisherCalls == 0 && publisherRetirementPending)
             {
-                nodeToUse.RemovePublisher<T>(publisherToRemove);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("Failed to remove ROS2 sensor publisher during cleanup: " + ex.Message);
+                publisherRetirementPending = false;
+                nodeToUse = ros2Node;
+                publisherToRemove = publisher;
+                publisher = null;
+                ros2Node = null;
             }
         }
 
+        RemovePublisherSafely(nodeToUse, publisherToRemove);
+    }
+
+    private static void RemovePublisherSafely(
+        ROS2Node nodeToUse,
+        Publisher<T> publisherToRemove)
+    {
+        if (nodeToUse == null || publisherToRemove == null || nodeToUse.IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            nodeToUse.RemovePublisher<T>(publisherToRemove);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("Failed to remove ROS2 sensor publisher during cleanup: " + ex.Message);
+        }
     }
 
     /// <summary>

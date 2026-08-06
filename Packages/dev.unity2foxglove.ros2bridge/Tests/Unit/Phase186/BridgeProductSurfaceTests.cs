@@ -42,6 +42,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 source,
                 StringComparison.Ordinal);
             Assert.Contains("Foxglove.Log", source, StringComparison.Ordinal);
+            Assert.Contains("[CallerFilePath]", source, StringComparison.Ordinal);
+            Assert.Contains("[CallerLineNumber]", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Line = 186", source, StringComparison.Ordinal);
         }
 
         [Fact]

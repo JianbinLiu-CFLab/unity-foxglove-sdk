@@ -22,7 +22,7 @@ using ROS2;
 public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 {
     private const string LogPrefix = "[Phase110StringSmokeBatchAcceptance]";
-    private const string ScenePath = "Assets/Scenes/Phase106Acceptance.unity";
+    private const string ScenePath = "Assets/Scenes/Phase110Acceptance.unity";
     private const string NodeName = "unity2foxglove_phase110";
     private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
     private const string InTopic = "/unity2foxglove/ros2forunity/string/in";

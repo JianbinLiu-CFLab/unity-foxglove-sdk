@@ -71,6 +71,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("Phase140_83Validation.cs", project, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void R2fuLifecycleOrderingChecksAreScopedToTheirOwningMethods()
+        {
+            var jazzy = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs");
+            Assert.Contains(
+                "var bootstrapBody = MethodBody(source, \"private static void Bootstrap()\")",
+                jazzy,
+                StringComparison.Ordinal);
+            Assert.Contains("bootstrapBody.IndexOf(\"FindFirstObjectByType\"", jazzy, StringComparison.Ordinal);
+            Assert.Contains("bootstrapBody.Contains(\"return;\"", jazzy, StringComparison.Ordinal);
+
+            var lyrical = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuLyricalRuntimePackageValidation.cs");
+            Assert.Contains(
+                "var completeShutdown = ExtractMethod(runtimeSource, \"private static void CompleteShutdownShared()\")",
+                lyrical,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "completeShutdown.IndexOf(\"Ros2cs.Shutdown()\"",
+                lyrical,
+                StringComparison.Ordinal);
+        }
+
         private static MethodDeclarationSyntax AllR2fuReferencesAreGuardedMethod()
         {
             return RuntimeSyntax("PhaseRos2ForUnityValidationHelpers.cs")

@@ -817,8 +817,34 @@ namespace Unity2Foxglove.Ros2Bridge
                                 var messageId = v2MessageIds.Next();
                                 if (duplexConnection != null)
                                 {
-                                    U2R2ByteLease transient = null;
-                                    try
+                                    var publishReserve = U2R2FrameSize.Create(
+                                        v2Session.Limits,
+                                        v2Session.Limits.MaxHeaderBytes,
+                                        checked((ulong)outboundLease
+                                            .SourceFrame.PayloadLength));
+                                    var responseReserve = U2R2FrameSize.Create(
+                                        v2Session.Limits,
+                                        v2Session.Limits.MaxHeaderBytes,
+                                        payloadBytes: 0);
+                                    var transientBytes = checked(
+                                        publishReserve.TotalBytes
+                                        + responseReserve.TotalBytes);
+                                    U2R2ByteLease transient;
+                                    while (!outboundLease.TryReserveTransient(
+                                               transientBytes,
+                                               out transient))
+                                    {
+                                        if (ShouldStop(generation))
+                                            return;
+                                        if (TryHandleOutboundTerminal(
+                                                generation))
+                                        {
+                                            return;
+                                        }
+                                        _signal.WaitOne(10);
+                                    }
+
+                                    using (transient)
                                     {
                                         var response =
                                             duplexConnection.Exchange(
@@ -832,39 +858,6 @@ namespace Unity2Foxglove.Ros2Bridge
                                                                 snapshot,
                                                                 requestId,
                                                                 messageId);
-                                                    var responseReserve =
-                                                        U2R2FrameSize.Create(
-                                                            snapshot.Limits,
-                                                            snapshot.Limits
-                                                                .MaxHeaderBytes,
-                                                            payloadBytes: 0);
-                                                    var transientBytes =
-                                                        checked(
-                                                            (ulong)measurement
-                                                                .TotalWireBytes
-                                                            + responseReserve
-                                                                .TotalBytes);
-                                                    while (!outboundLease
-                                                               .TryReserveTransient(
-                                                                   transientBytes,
-                                                                   out transient))
-                                                    {
-                                                        if (ShouldStop(
-                                                                generation))
-                                                        {
-                                                            throw new
-                                                                ObjectDisposedException(
-                                                                    nameof(
-                                                                        Ros2BridgeWorkerLease));
-                                                        }
-                                                        if (TryHandleOutboundTerminal(
-                                                                generation))
-                                                        {
-                                                            throw new
-                                                                OutboundTerminalException();
-                                                        }
-                                                        _signal.WaitOne(10);
-                                                    }
                                                     return
                                                         Ros2BridgeV2SessionCodec
                                                             .EncodePublish(
@@ -879,10 +872,6 @@ namespace Unity2Foxglove.Ros2Bridge
                                         Ros2BridgeV2SessionCodec
                                             .ValidateAcceptedResponse(
                                                 response);
-                                    }
-                                    finally
-                                    {
-                                        transient?.Dispose();
                                     }
                                 }
                                 else

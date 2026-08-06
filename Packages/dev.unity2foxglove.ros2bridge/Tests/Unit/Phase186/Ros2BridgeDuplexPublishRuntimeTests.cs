@@ -64,6 +64,53 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void TransientContentionDoesNotHoldRequestAdmissionGate()
+        {
+            var transport = new DuplexTransport(DuplexMode.Happy);
+            using var runtime = CreateRuntime(
+                transport,
+                FoxRunTransportRetirementOwner.CreateForTests(3),
+                FoxRunTransportDirection.Publish);
+
+            runtime.Start(enabled: true, autoConnect: true);
+            WaitForPublisherReady(runtime);
+
+            U2R2ByteLease blocker = null;
+            try
+            {
+                lock (OutboundSchedulerGate(runtime))
+                {
+                    Assert.True(
+                        runtime.TryEnqueuePrepared(
+                            Frame(sequence: 9),
+                            out var reason),
+                        reason);
+                    blocker = ReserveAllRuntimeTransient(runtime);
+                }
+                WaitUntil(
+                    () => runtime.GetStatsSnapshot().InFlightBytes > 0,
+                    "the publish worker did not acquire the accepted frame");
+                Thread.Sleep(100);
+
+                var admissionGate = RequestAdmissionGate(runtime);
+                var acquired = Monitor.TryEnter(admissionGate, 250);
+                if (acquired)
+                    Monitor.Exit(admissionGate);
+                Assert.True(
+                    acquired,
+                    "transient contention held the connection request-admission gate");
+            }
+            finally
+            {
+                blocker?.Dispose();
+            }
+
+            WaitUntil(
+                () => runtime.GetStatsSnapshot().SentFrames == 1,
+                "the bounded publish did not resume when transient capacity returned");
+        }
+
+        [Fact]
         public void ReadyDuplexStateOwnsLivenessWhenSocketProbeRacesReader()
         {
             var transport = new DuplexTransport(
@@ -415,6 +462,62 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     predicate,
                     TimeSpan.FromSeconds(5)),
                 failure);
+        }
+
+        private static U2R2ByteLease ReserveAllRuntimeTransient(
+            Ros2BridgeRuntime runtime)
+        {
+            var worker = RequiredPrivateField(
+                typeof(Ros2BridgeRuntime),
+                "_run").GetValue(runtime);
+            Assert.NotNull(worker);
+            var outbound = RequiredPrivateField(
+                worker.GetType(),
+                "_outbound").GetValue(worker);
+            Assert.NotNull(outbound);
+            var authority = RequiredPrivateField(
+                outbound.GetType(),
+                "_inner").GetValue(outbound)
+                as U2R2BoundedOutboundScheduler;
+            Assert.NotNull(authority);
+            Assert.True(
+                authority.TryReserveTransient(
+                    U2R2ProtocolLimits.Default.MaxTransientBytes,
+                    out var lease),
+                "the test could not occupy the runtime transient budget");
+            return lease;
+        }
+
+        private static object RequestAdmissionGate(
+            Ros2BridgeRuntime runtime)
+        {
+            var worker = RequiredPrivateField(
+                typeof(Ros2BridgeRuntime),
+                "_run").GetValue(runtime);
+            Assert.NotNull(worker);
+            var connection = RequiredPrivateField(
+                worker.GetType(),
+                "_duplexConnection").GetValue(worker);
+            Assert.NotNull(connection);
+            return RequiredPrivateField(
+                connection.GetType(),
+                "_requestAdmissionGate").GetValue(connection);
+        }
+
+        private static object OutboundSchedulerGate(
+            Ros2BridgeRuntime runtime)
+        {
+            var worker = RequiredPrivateField(
+                typeof(Ros2BridgeRuntime),
+                "_run").GetValue(runtime);
+            Assert.NotNull(worker);
+            var outbound = RequiredPrivateField(
+                worker.GetType(),
+                "_outbound").GetValue(worker);
+            Assert.NotNull(outbound);
+            return RequiredPrivateField(
+                outbound.GetType(),
+                "_gate").GetValue(outbound);
         }
 
         private static FieldInfo RequiredPrivateField(

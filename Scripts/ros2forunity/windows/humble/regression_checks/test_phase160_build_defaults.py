@@ -7,7 +7,11 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
+import os
 import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -49,6 +53,45 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
 
         with self.assertRaises(module.Phase160Error):
             module.reject_cmd_shell_unsafe_path("VsDevCmd.bat", Path(r"C:\Tools\%COMSPEC%\VsDevCmd.bat"))
+
+    def test_rejects_all_cmd_metacharacters_in_vsdev_path(self) -> None:
+        """Every cmd.exe metacharacter embedded by the script is rejected."""
+        module = load_build_module()
+
+        for character in ("&", "|", "^", "<", ">", "\r", "\n"):
+            with self.subTest(character=repr(character)):
+                with self.assertRaises(module.Phase160Error):
+                    module.reject_cmd_shell_unsafe_path(
+                        "VsDevCmd.bat",
+                        Path("C:/Tools/unsafe" + character + "path/VsDevCmd.bat"),
+                    )
+
+    def test_run_command_timeout_is_defaulted_and_independent_of_newlines(self) -> None:
+        """A child stalled after partial output cannot block the wall-clock deadline."""
+        module = load_build_module()
+        self.assertEqual(
+            module.DEFAULT_COMMAND_TIMEOUT_SECONDS,
+            inspect.signature(module.run_command).parameters["timeout"].default,
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            started = time.monotonic()
+            result = module.run_command(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys,time;sys.stdout.write('partial');sys.stdout.flush();time.sleep(5)",
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                log_file=root / "command.log",
+                timeout=0.2,
+            )
+
+        self.assertEqual(124, result.exit_code)
+        self.assertIn("partial", result.output)
+        self.assertIn("COMMAND_TIMEOUT", result.output)
+        self.assertLess(time.monotonic() - started, 3.0)
 
 
 if __name__ == "__main__":

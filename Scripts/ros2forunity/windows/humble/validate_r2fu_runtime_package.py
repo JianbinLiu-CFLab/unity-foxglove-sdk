@@ -372,6 +372,34 @@ def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
     )
 
 
+def inventory_category_counts_match(categories: object, files: object) -> bool:
+    """Return whether declared inventory categories exactly match file rows."""
+    if not isinstance(categories, dict) or not isinstance(files, list):
+        return False
+
+    declared: dict[str, int] = {}
+    for category, count in categories.items():
+        if (
+            not isinstance(category, str)
+            or not category
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+        ):
+            return False
+        declared[category] = count
+
+    actual: dict[str, int] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            return False
+        category = item.get("category")
+        if not isinstance(category, str) or not category:
+            return False
+        actual[category] = actual.get(category, 0) + 1
+    return actual == declared
+
+
 def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
@@ -453,6 +481,12 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
     )
 
     files = data.get("files", [])
+    add(
+        results,
+        "runtime inventory category counts match file entries",
+        inventory_category_counts_match(categories, files),
+        f"categoryCounts={categories!r}",
+    )
     malformed: list[str] = []
     missing: list[str] = []
     mismatched: list[str] = []
@@ -600,6 +634,10 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "node.Dispose()",
         "StopExecutor()",
         "StopAllExecutorsForRosShutdown()",
+        "private int shutdownInProgress = 0",
+        "Interlocked.CompareExchange(ref shutdownInProgress, 1, 0)",
+        "Volatile.Write(ref shutdownInProgress, 0)",
+        "MarkRuntimeShutdownPendingExecutor()",
     ):
         add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
     add(

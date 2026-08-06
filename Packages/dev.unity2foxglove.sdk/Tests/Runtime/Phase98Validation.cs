@@ -342,7 +342,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(bash.Contains("PORT must be a number between 1 and 65535.", StringComparison.Ordinal)
                   && bash.Contains("10#$PORT", StringComparison.Ordinal)
                   && bash.Contains("PAYLOAD_FORMAT must be one of", StringComparison.Ordinal)
-                  && bash.Contains("cdr-with-encapsulation|raw-cdr", StringComparison.Ordinal),
+                  && bash.Contains("cdr-with-encapsulation|cdr-body-only", StringComparison.Ordinal),
                 "98C-7b: bash launch helper validates port and payload format before ros2 launch");
 
             var readme = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");

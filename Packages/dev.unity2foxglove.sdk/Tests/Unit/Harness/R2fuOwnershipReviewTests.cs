@@ -39,6 +39,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Theory]
+        [InlineData("humble")]
+        [InlineData("jazzy")]
+        [InlineData("lyrical")]
+        public void SensorPublishNeverExecutesInsideReadingsLock(string distro)
+        {
+            var method = Method(
+                $"Packages/dev.unity2foxglove.ros2forunity.runtime.{distro}.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs",
+                "ExecutorThreadSensorPublishAction");
+            var publish = method.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Single(invocation =>
+                    invocation.Expression.ToString().EndsWith(
+                        ".Publish",
+                        StringComparison.Ordinal));
+
+            Assert.Empty(publish.Ancestors().OfType<LockStatementSyntax>());
+        }
+
+        [Fact]
+        public void JazzySensorDefersPublisherRemovalUntilPublishReturns()
+        {
+            const string path =
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs";
+            var executor = Method(path, "ExecutorThreadSensorPublishAction");
+            var dispose = Method(path, "DisposeRosParticipants");
+            var completion = Method(path, "CompletePublisherCall");
+
+            Assert.Contains(
+                "CompletePublisherCall();",
+                executor.ToFullString(),
+                StringComparison.Ordinal);
+            Assert.NotEmpty(
+                executor.DescendantNodes().OfType<FinallyClauseSyntax>());
+            Assert.Contains(
+                "publisherRetirementPending = true;",
+                dispose.ToFullString(),
+                StringComparison.Ordinal);
+            var remove = completion.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Single(invocation => invocation.Expression.ToString()
+                    .Contains("RemovePublisherSafely", StringComparison.Ordinal));
+            Assert.Empty(remove.Ancestors().OfType<LockStatementSyntax>());
+        }
+
+        [Theory]
         [InlineData("Ros2ForUnityCameraNativeBridge.cs")]
         [InlineData("Ros2ForUnityImuNativeBridge.cs")]
         [InlineData("Ros2ForUnityPackedPointCloudBridge.cs")]

@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -270,12 +271,26 @@ namespace Unity.FoxgloveSDK.Tests
         private static void AdapterAdoptionManifestRecordsRefreshedJazzyRuntime()
         {
             var manifest = ReadRepoText(AdapterPackage + "/Compliance/ros2-for-unity-adoption-manifest.json");
+            var adoption = JObject.Parse(manifest);
+            var runtimeManifest = JObject.Parse(ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json"));
+            var expectedArtifactSize = (long)runtimeManifest["artifactSize"];
+            var expectedInventoryFileCount = (int)runtimeManifest["inventoryFileCount"];
+            var currentRuntime = adoption["currentRecommendedRuntime"] as JObject;
+            var recordedRuntimes = adoption["supportedRuntimePackages"]
+                .OfType<JObject>()
+                .Where(runtime => string.Equals((string)runtime["packageName"],
+                    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal))
+                .ToArray();
 
             Check(manifest.Contains(ExpectedSha, StringComparison.Ordinal)
                   && !manifest.Contains("709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a", StringComparison.Ordinal),
                 "161-C-adoption-sha: adapter adoption manifest records the refreshed Jazzy artifact hash");
-            Check(manifest.Contains("\"artifactSize\": 17677300", StringComparison.Ordinal)
-                  && manifest.Contains("\"inventoryFileCount\": 1198", StringComparison.Ordinal),
+            Check(currentRuntime != null
+                  && (long)currentRuntime["artifactSize"] == expectedArtifactSize
+                  && (int)currentRuntime["inventoryFileCount"] == expectedInventoryFileCount
+                  && recordedRuntimes.Length == 1
+                  && (long)recordedRuntimes[0]["artifactSize"] == expectedArtifactSize
+                  && (int)recordedRuntimes[0]["inventoryFileCount"] == expectedInventoryFileCount,
                 "161-C-adoption-inventory: adapter adoption manifest records refreshed Jazzy size and file count");
             Check(Regex.Matches(
                     manifest,
@@ -380,11 +395,12 @@ namespace Unity.FoxgloveSDK.Tests
                       && lifecycleSource.Contains("CompilationPipeline.compilationStarted", StringComparison.Ordinal)
                       && lifecycleSource.Contains("EditorApplication.update", StringComparison.Ordinal),
                     labelPrefix + "-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
-                var sharedBootstrapGate = source.Contains("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
-                    && source.IndexOf("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
-                       < source.IndexOf("FindFirstObjectByType", StringComparison.Ordinal);
+                var bootstrapBody = MethodBody(source, "private static void Bootstrap()");
+                var sharedBootstrapGate = bootstrapBody.Contains("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
+                    && bootstrapBody.IndexOf("if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)", StringComparison.Ordinal)
+                       < bootstrapBody.IndexOf("FindFirstObjectByType", StringComparison.Ordinal);
                 CheckLifecycle(sharedBootstrapGate
-                      && source.Contains("return;", StringComparison.Ordinal),
+                      && bootstrapBody.Contains("return;", StringComparison.Ordinal),
                     labelPrefix + "-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
                 CheckLifecycle(BridgeUpdatePrewarmsRos2FromGuardedPlayMode(source),
                     labelPrefix + "-update-prewarm: " + bridge + " first-initializes ROS2 only from guarded bridge Update");

@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int MaxRequestHeaders = 100;
         private const int MaxConcurrentClients = 10;
         private const int StopAcceptLoopWaitMs = 1000;
+        private const int StopClientHandlersWaitMs = 1000;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
@@ -48,6 +49,7 @@ namespace Unity.FoxgloveSDK.Transport
         private int _activeClientHandlers;
         private int _running;
         private bool _acceptingClients;
+        private bool _disposeClientHandlersIdleWhenIdle;
         private bool _disposed;
 
         public FoxgloveCertificateDistributor(
@@ -154,15 +156,29 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Stop the listener and release resources.</summary>
         public void Dispose()
         {
+            var disposeClientHandlersIdle = false;
             lock (_lifecycleGate)
             {
                 if (_disposed)
                     return;
 
-                StopNoLock();
-                _clientHandlersIdle.Dispose();
+                _ = StopNoLock();
                 _disposed = true;
+                lock (_clientGate)
+                {
+                    if (_activeClientHandlers == 0)
+                    {
+                        disposeClientHandlersIdle = true;
+                    }
+                    else
+                    {
+                        _disposeClientHandlersIdleWhenIdle = true;
+                    }
+                }
             }
+
+            if (disposeClientHandlersIdle)
+                _clientHandlersIdle.Dispose();
         }
 
         /// <summary>Compute a colon-separated SHA-256 fingerprint for a file.</summary>
@@ -177,7 +193,7 @@ namespace Unity.FoxgloveSDK.Transport
             return BitConverter.ToString(hash).Replace("-", ":");
         }
 
-        private void StopNoLock()
+        private bool StopNoLock()
         {
             Volatile.Write(ref _running, 0);
             var cts = _cts;
@@ -208,8 +224,17 @@ namespace Unity.FoxgloveSDK.Transport
             // Accepted clients are actively closed above. Wait until every handler
             // has executed its finally block before shared synchronization is reused
             // by Start or disposed by Dispose.
-            _clientHandlersIdle.Wait();
+            var handlersIdle = _clientHandlersIdle.Wait(
+                StopClientHandlersWaitMs);
+            if (!handlersIdle)
+            {
+                _logger.LogWarning(
+                    "Certificate distributor client handlers did not stop within " +
+                    StopClientHandlersWaitMs +
+                    " ms; their synchronization remains owned until final exit.");
+            }
             cts?.Dispose();
+            return handlersIdle;
         }
 
         private async Task AcceptLoop(TcpListener listener, CancellationToken ct)
@@ -288,12 +313,23 @@ namespace Unity.FoxgloveSDK.Transport
 
         private void CompleteClientHandler(TcpClient client)
         {
+            var disposeClientHandlersIdle = false;
             lock (_clientGate)
             {
                 _activeClients.Remove(client);
                 if (Interlocked.Decrement(ref _activeClientHandlers) == 0)
+                {
                     _clientHandlersIdle.Set();
+                    if (_disposeClientHandlersIdleWhenIdle)
+                    {
+                        _disposeClientHandlersIdleWhenIdle = false;
+                        disposeClientHandlersIdle = true;
+                    }
+                }
             }
+
+            if (disposeClientHandlersIdle)
+                _clientHandlersIdle.Dispose();
         }
 
         private void HandleClient(TcpClient client, CancellationToken ct)

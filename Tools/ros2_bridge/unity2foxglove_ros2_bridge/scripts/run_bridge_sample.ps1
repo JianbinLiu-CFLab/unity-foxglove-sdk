@@ -6,7 +6,9 @@
 [CmdletBinding()]
 param(
     [string]$HostName = "127.0.0.1",
+    [ValidateRange(1, 65535)]
     [int]$Port = 8767,
+    [ValidateSet("cdr-with-encapsulation", "cdr-body-only")]
     [string]$PayloadFormat = "cdr-with-encapsulation",
     [switch]$Run
 )

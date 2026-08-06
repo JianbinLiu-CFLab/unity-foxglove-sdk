@@ -333,6 +333,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void Phase14067MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_67Validation.cs", "--phase140-67", "Phase140_67Validation.Validate");
 
+        [Fact]
+        public void RequestDeadlineAtomicallySettlesAgainstAConcurrentResponse()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeConnection.cs");
+            var wait = TestSources.Slice(
+                source,
+                "private byte[] WaitForResponse(",
+                "private void WriterEntry()");
+
+            Assert.Contains("if (pending.TryFail(timeout))", wait, StringComparison.Ordinal);
+            Assert.Contains("Fault(timeout);", wait, StringComparison.Ordinal);
+            Assert.Contains("return pending.GetResponse();", wait, StringComparison.Ordinal);
+            Assert.True(
+                wait.IndexOf("if (pending.TryFail(timeout))", StringComparison.Ordinal)
+                < wait.IndexOf("Fault(timeout);", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void HealthDrawerRetainsCancellationUntilTheWorkerCompletes()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
+            var draw = TestSources.Slice(source, "internal void Draw(", "private void DrawRos2PathControls()");
+            var cancel = TestSources.Slice(source, "private void CancelHealthCheck()", "private void BeforeAssemblyReload()");
+
+            Assert.True(
+                draw.IndexOf("CompleteTaskIfReady();", StringComparison.Ordinal)
+                < draw.IndexOf("var running =", StringComparison.Ordinal));
+            Assert.DoesNotContain(".Dispose()", cancel, StringComparison.Ordinal);
+            Assert.Contains("private void RelinquishHealthCheck()", source, StringComparison.Ordinal);
+            Assert.Contains("TaskContinuationOptions.ExecuteSynchronously", source, StringComparison.Ordinal);
+            Assert.Contains("TaskScheduler.Default", source, StringComparison.Ordinal);
+        }
+
         private static bool SourceMethodContains(string source, string signature, string text)
         {
             var start = source.IndexOf(signature, StringComparison.Ordinal);

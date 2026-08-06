@@ -36,6 +36,26 @@ class NativeSourceTests(unittest.TestCase):
             actual = hashlib.sha256(header.read_bytes()).hexdigest()
             self.assertEqual(expected, actual, relative)
 
+    def test_openh264_probe_bounds_frames_and_converts_broken_pipes_to_exit_codes(self) -> None:
+        """Malformed geometry and a closed stdout consumer must remain defined failures."""
+        script = ROOT / "Scripts/native/openh264_probe/openh264_probe_encoder.cpp"
+        package = ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Native/OpenH264/openh264_probe_encoder.cpp"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertEqual(script.read_bytes(), package.read_bytes())
+        self.assertIn("constexpr int MaxDimension = 8192;", source)
+        self.assertIn("options.width <= MaxDimension", source)
+        self.assertIn("options.height <= MaxDimension", source)
+        self.assertIn("OpenH264 returned an invalid frame.", source)
+        self.assertIn("std::signal(SIGPIPE, SIG_IGN)", source)
+        self.assertIn("OpenH264 stdout write failed.", source)
+
+    def test_draco_probe_zero_point_success_is_not_reported_as_a_warning(self) -> None:
+        """The documented empty response is successful and should leave stderr clean."""
+        source = (ROOT / "Scripts/native/draco_probe/draco_probe_encoder.cpp").read_text(encoding="utf-8")
+
+        self.assertNotIn("warning: zero-point frame", source)
+
 
 if __name__ == "__main__":
     unittest.main()

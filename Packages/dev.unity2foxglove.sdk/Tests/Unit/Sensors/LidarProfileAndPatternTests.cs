@@ -216,6 +216,74 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Contains("BeamAltitudeAngles", error);
         }
 
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        [InlineData(0.0)]
+        [InlineData(-1.0)]
+        public void CreateUniform_NormalizesInvalidScanRates(double scanRateHz)
+        {
+            var profile = LidarProfileLoader.CreateUniform(
+                "Custom", 1, 16, scanRateHz, 0.0, 0.0, 0.1);
+
+            Assert.Equal(10.0, profile.ScanRateHz);
+            Assert.Equal("16x10", profile.LidarMode);
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        [InlineData(-1.0)]
+        public void CreateUniform_NormalizesInvalidMinimumRanges(double minRangeMeters)
+        {
+            var profile = LidarProfileLoader.CreateUniform(
+                "Custom", 1, 16, 10.0, 0.0, 0.0, minRangeMeters);
+
+            Assert.Equal(0.0, profile.MinRangeMeters);
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        [InlineData(0.0)]
+        [InlineData(-1.0)]
+        public void LidarProfileValidateRejectsInvalidScanRates(double scanRateHz)
+        {
+            var profile = ValidProfile();
+            profile.ScanRateHz = scanRateHz;
+
+            Assert.False(profile.Validate(out var error));
+            Assert.Contains("ScanRateHz", error);
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        [InlineData(-1.0)]
+        public void LidarProfileValidateRejectsInvalidMinimumRanges(double invalidValue)
+        {
+            var rangeProfile = ValidProfile();
+            rangeProfile.MinRangeMeters = invalidValue;
+            Assert.False(rangeProfile.Validate(out var rangeError));
+            Assert.Contains("MinRangeMeters", rangeError);
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        public void LidarProfileValidateRejectsNonFiniteOrigins(double invalidValue)
+        {
+            var originProfile = ValidProfile();
+            originProfile.LidarOriginToBeamOriginMeters = invalidValue;
+            Assert.False(originProfile.Validate(out var originError));
+            Assert.Contains("LidarOriginToBeamOriginMeters", originError);
+        }
+
         [Fact]
         public void LidarScanPatternFactoryRejectsInvalidProfilesBeforeScanning()
         {
@@ -233,5 +301,20 @@ namespace Unity.FoxgloveSDK.UnitTests
             var ex = Assert.Throws<ArgumentException>(() => LidarScanPatternFactory.FromProfile(profile, 1));
             Assert.Contains("Invalid LiDAR profile", ex.Message);
         }
+
+        private static LidarProfile ValidProfile()
+            => new LidarProfile
+            {
+                ProductLine = "Custom",
+                LidarMode = "16x10",
+                PixelsPerColumn = 1,
+                ColumnsPerFrame = 16,
+                ColumnsPerPacket = 16,
+                ScanRateHz = 10.0,
+                MinRangeMeters = 0.1,
+                LidarOriginToBeamOriginMeters = 0.03618,
+                BeamAltitudeAngles = new[] { 0.0 },
+                BeamAzimuthAngles = new[] { 0.0 }
+            };
     }
 }

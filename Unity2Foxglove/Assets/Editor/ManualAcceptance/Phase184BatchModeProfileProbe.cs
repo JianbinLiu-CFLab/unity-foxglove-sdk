@@ -520,11 +520,25 @@ public static class Phase184BatchModeProfileProbe
     private static bool HasExactRunToken(string condition)
     {
         var marker = "token=" + _token;
-        var index = condition.IndexOf(marker, StringComparison.Ordinal);
-        if (index < 0)
-            return false;
-        var end = index + marker.Length;
-        return end == condition.Length || char.IsWhiteSpace(condition[end]);
+        var searchStart = 0;
+        while (searchStart < condition.Length)
+        {
+            var index = condition.IndexOf(marker, searchStart, StringComparison.Ordinal);
+            if (index < 0)
+                return false;
+            if (index > 0 && !char.IsWhiteSpace(condition[index - 1]))
+            {
+                searchStart = index + marker.Length;
+                continue;
+            }
+
+            var end = index + marker.Length;
+            if (end == condition.Length || char.IsWhiteSpace(condition[end]))
+                return true;
+            searchStart = end;
+        }
+
+        return false;
     }
 
     private static void RequestExit(int exitCode, string outcome)

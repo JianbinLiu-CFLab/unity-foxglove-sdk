@@ -60,9 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-30B-1: Humble meta generation reuses rglob results instead of statting each meta path");
             Check(inspect.Contains("force: bool = False", StringComparison.Ordinal)
                   && inspect.Contains("parser.add_argument(\"--force\"", StringComparison.Ordinal)
-                  && inspectZip.Contains("read_cached_inventory(paths.output, artifact_hash)", StringComparison.Ordinal)
-                  && cachedInventory.Contains("data.get(\"sha256\") == artifact_hash", StringComparison.Ordinal),
-                "164-30B-2: Humble artifact inspect reuses an existing inventory when the artifact hash is unchanged");
+                  && inspectZip.Contains("read_cached_inventory(paths.output, artifact_hash, inspector_hash)", StringComparison.Ordinal)
+                  && cachedInventory.Contains("data.get(\"sha256\") == artifact_hash", StringComparison.Ordinal)
+                  && cachedInventory.Contains("data.get(\"inspectorSha256\") == inspector_hash", StringComparison.Ordinal),
+                "164-30B-2: Humble artifact inspect reuses an inventory only when artifact and inspector hashes are unchanged");
             Check(inspect.Contains("Computed repository root is invalid", StringComparison.Ordinal)
                   && cachedInventory.Contains("except (json.JSONDecodeError, ValueError, KeyError):", StringComparison.Ordinal)
                   && !cachedInventory.Contains("except Exception:", StringComparison.Ordinal),

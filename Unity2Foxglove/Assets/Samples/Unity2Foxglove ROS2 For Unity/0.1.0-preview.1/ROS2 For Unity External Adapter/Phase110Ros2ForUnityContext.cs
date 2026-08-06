@@ -448,7 +448,17 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Attach(ISubscription<std_msgs.msg.String> subscription)
         {
-            _subscription = subscription;
+            var removeImmediately = false;
+            lock (_gate)
+            {
+                if (_disposed)
+                    removeImmediately = true;
+                else
+                    _subscription = subscription;
+            }
+
+            if (removeImmediately)
+                RemoveSubscriptionSafely(subscription);
         }
 
         public void Enqueue(std_msgs.msg.String message)
@@ -493,6 +503,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Dispose()
         {
+            ISubscription<std_msgs.msg.String> subscription;
             lock (_gate)
             {
                 if (_disposed)
@@ -500,10 +511,15 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
                 _disposed = true;
                 _pending.Clear();
+                subscription = _subscription;
+                _subscription = null;
             }
 
-            var subscription = _subscription;
-            _subscription = null;
+            RemoveSubscriptionSafely(subscription);
+        }
+
+        private void RemoveSubscriptionSafely(ISubscription<std_msgs.msg.String> subscription)
+        {
             if (subscription != null)
             {
                 try

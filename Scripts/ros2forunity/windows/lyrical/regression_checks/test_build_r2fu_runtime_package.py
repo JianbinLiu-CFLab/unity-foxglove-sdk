@@ -599,6 +599,44 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing required setup calls"):
             self.builder.patch_standalone_environment_isolation(source)
 
+    def test_lifecycle_patches_fail_closed_when_upstream_anchors_drift(self) -> None:
+        """Lifecycle safety markers cannot be silently skipped after upstream reformatting."""
+        runtime = "        EditorApplication.quitting /* drift */ += ShutdownShared;\n"
+        unity_time = (
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    // upstream inserted a statement\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n"
+        )
+
+        with self.assertRaisesRegex(ValueError, "AssemblyReloadEvents registration"):
+            self.builder.patch_runtime_lifecycle_safety(runtime)
+        with self.assertRaisesRegex(ValueError, "UnityTimeSource main-thread guard"):
+            self.builder.patch_unity_time_source_main_thread_guard(unity_time)
+
+    def test_standalone_isolation_fails_closed_when_method_bodies_drift(self) -> None:
+        """Already-patched method bodies cannot lose their safety marker silently."""
+        source_path = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+            / "Runtime"
+            / "Ros2ForUnity"
+            / "Scripts"
+            / "ROS2ForUnity.cs"
+        )
+        source = source_path.read_text(encoding="utf-8")
+        cases = (
+            ("standalone runtime must not inherit a sourced ROS2 workspace", "AMENT_PREFIX_PATH"),
+            ("standalone runtime owns its RMW selection while allowing Lyrical Zenoh", "RMW_IMPLEMENTATION"),
+            ("standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell", "ROS_DISTRO"),
+        )
+
+        for marker, label in cases:
+            with self.subTest(marker=marker):
+                drifted = source.replace(marker, "upstream body drift", 1)
+                with self.assertRaisesRegex(ValueError, label):
+                    self.builder.patch_standalone_environment_isolation(drifted)
+
     def test_patch_ros_time_source_contract_updates_dotnet_copyright(self) -> None:
         """Patch DotnetTimeSource copyright alongside bool-returning time contracts."""
         with tempfile.TemporaryDirectory() as temp:
