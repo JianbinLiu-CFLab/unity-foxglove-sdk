@@ -155,9 +155,15 @@ exec ""$editor_executable"" -projectPath ""$project_directory""
                 previousEditorStartIdentity ?? string.Empty;
             relayStartInfo.EnvironmentVariables[EditorExecutableEnvironmentVariable] = editorExecutable;
             relayStartInfo.EnvironmentVariables[ProjectDirectoryEnvironmentVariable] = projectDirectory;
-            relayStartInfo.Arguments = isWindows
-                ? BuildWindowsArguments()
-                : "-c " + QuotePosixArgument(PosixRelayScript);
+            if (isWindows)
+            {
+                relayStartInfo.Arguments = BuildWindowsArguments();
+            }
+            else
+            {
+                relayStartInfo.ArgumentList.Add("-c");
+                relayStartInfo.ArgumentList.Add(PosixRelayScript);
+            }
             return relayStartInfo;
         }
 
@@ -275,8 +281,5 @@ exec ""$editor_executable"" -projectPath ""$project_directory""
         private static string BuildWindowsArguments()
             => "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand "
                + Convert.ToBase64String(Encoding.Unicode.GetBytes(WindowsRelayScript));
-
-        private static string QuotePosixArgument(string value)
-            => "'" + (value ?? string.Empty).Replace("'", "'\"'\"'") + "'";
     }
 }

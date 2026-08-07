@@ -188,11 +188,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("/bin/sh", relay.FileName);
             Assert.False(relay.UseShellExecute);
             Assert.True(relay.CreateNoWindow);
-            Assert.Contains("kill -0 \"$previous_editor_process_id\"", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("previous_editor_start_identity", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("current_editor_start_identity", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("[ -e \"$lock_path\" ]", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("exec \"$editor_executable\" -projectPath \"$project_directory\"", relay.Arguments, StringComparison.Ordinal);
+            Assert.Equal(2, relay.ArgumentList.Count);
+            Assert.Equal("-c", relay.ArgumentList[0]);
+            var script = relay.ArgumentList[1];
+            Assert.Contains("kill -0 \"$previous_editor_process_id\"", script, StringComparison.Ordinal);
+            Assert.Contains("previous_editor_start_identity", script, StringComparison.Ordinal);
+            Assert.Contains("current_editor_start_identity", script, StringComparison.Ordinal);
+            Assert.Contains("[ -e \"$lock_path\" ]", script, StringComparison.Ordinal);
+            Assert.Contains("exec \"$editor_executable\" -projectPath \"$project_directory\"", script, StringComparison.Ordinal);
             Assert.Equal(
                 previousEditorProcessId.ToString(
                     System.Globalization.CultureInfo.InvariantCulture),

@@ -311,15 +311,38 @@ def read_pe_imports(path: Path) -> list[str]:
     return imports
 
 
+def build_package_dll_index(root: Path) -> dict[str, Path]:
+    """Index packaged DLLs using the case-insensitive names Windows resolves."""
+    index: dict[str, Path] = {}
+    ambiguous: set[str] = set()
+    if not root.exists():
+        return index
+
+    for path in root.iterdir():
+        if not path.is_file() or path.suffix.casefold() != ".dll":
+            continue
+        key = path.name.casefold()
+        previous = index.get(key)
+        if previous is not None and previous != path:
+            ambiguous.add(key)
+            continue
+        index[key] = path
+
+    for key in ambiguous:
+        index.pop(key, None)
+    return index
+
+
 def missing_package_dll_imports(seed: Path) -> dict[str, list[str]]:
     """Return non-system DLL imports missing from PLUGIN_ROOT, grouped by importer."""
     pending = [seed]
     visited: set[str] = set()
     missing: dict[str, list[str]] = {}
+    package_dlls = build_package_dll_index(PLUGIN_ROOT)
 
     while pending:
         current = pending.pop()
-        key = current.name.lower()
+        key = current.name.casefold()
         if key in visited:
             continue
         visited.add(key)
@@ -328,11 +351,11 @@ def missing_package_dll_imports(seed: Path) -> dict[str, list[str]]:
             continue
 
         for imported in read_pe_imports(current):
-            imported_key = imported.lower()
+            imported_key = imported.casefold()
             if is_windows_system_dll(imported_key):
                 continue
-            imported_path = PLUGIN_ROOT / imported
-            if imported_path.exists():
+            imported_path = package_dlls.get(imported_key)
+            if imported_path is not None:
                 if imported_key not in visited:
                     pending.append(imported_path)
             else:
