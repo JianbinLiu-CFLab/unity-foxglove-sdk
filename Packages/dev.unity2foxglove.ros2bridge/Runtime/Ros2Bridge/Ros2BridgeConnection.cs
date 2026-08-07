@@ -709,16 +709,9 @@ namespace Unity2Foxglove.Ros2Bridge
                     lastWriteTimestamp = Stopwatch.GetTimestamp();
                     if (heartbeat != null)
                     {
-                        if (!heartbeat.Wait(
-                                EffectiveTimeout(
-                                    _timeoutMs,
-                                    _limits.ReadTimeoutMs)))
-                        {
-                            throw new U2R2ProtocolException(
-                                "timeout",
-                                "The Bridge health response exceeded its absolute deadline.",
-                                terminal: true);
-                        }
+                        AwaitHeartbeatWhileDrainingWriterQueue(
+                            heartbeat,
+                            ref lastWriteTimestamp);
                         Ros2BridgeV2SessionCodec.AcceptHealthPong(
                             heartbeat.Request,
                             heartbeat.GetResponse(),
@@ -751,6 +744,67 @@ namespace Unity2Foxglove.Ros2Bridge
                         heartbeat.Dispose();
                     }
                 }
+            }
+        }
+
+        private void AwaitHeartbeatWhileDrainingWriterQueue(
+            PendingRequest heartbeat,
+            ref long lastWriteTimestamp)
+        {
+            var timeoutMs = EffectiveTimeout(
+                _timeoutMs,
+                _limits.ReadTimeoutMs);
+            var startedAt = Stopwatch.GetTimestamp();
+            var timeoutTicks = Math.Max(
+                1L,
+                checked((long)Math.Ceiling(
+                    timeoutMs
+                    * (double)Stopwatch.Frequency
+                    / 1000d)));
+
+            while (!heartbeat.Wait(timeoutMs: 0))
+            {
+                var elapsedTicks =
+                    Stopwatch.GetTimestamp() - startedAt;
+                if (elapsedTicks >= timeoutTicks)
+                {
+                    throw new U2R2ProtocolException(
+                        "timeout",
+                        "The Bridge health response exceeded its absolute deadline.",
+                        terminal: true);
+                }
+                var remainingMilliseconds = Math.Max(
+                    1,
+                    checked((int)Math.Ceiling(
+                        (timeoutTicks - elapsedTicks)
+                        * 1000d
+                        / Stopwatch.Frequency)));
+
+                PendingRequest queued = null;
+                lock (_gate)
+                {
+                    if (_stopRequested)
+                        break;
+                    if (_writerQueue.Count != 0)
+                        queued = _writerQueue.Dequeue();
+                }
+
+                if (queued != null)
+                {
+                    _transport.WriteV2(
+                        queued.Request.WireBytes,
+                        _limits,
+                        Math.Min(
+                            remainingMilliseconds,
+                            EffectiveTimeout(
+                                _timeoutMs,
+                                _limits.WriteTimeoutMs)));
+                    lastWriteTimestamp = Stopwatch.GetTimestamp();
+                    continue;
+                }
+
+                _writerSignal.WaitOne(
+                    Math.Min(50, remainingMilliseconds));
             }
         }
 
