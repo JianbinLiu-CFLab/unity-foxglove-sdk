@@ -326,7 +326,9 @@ def build_report(repo_root: Path, args: argparse.Namespace) -> dict[str, object]
     tracked_nested_developer_paths = sorted(
         path
         for path in tracked_files
-        if "/Developer/" in path or path.endswith("/Developer.meta")
+        if path == "Developer.meta"
+        or "/Developer/" in path
+        or path.endswith("/Developer.meta")
         if (repo_root / path).exists()
     )
     high_line_files = [

@@ -40,6 +40,14 @@ PACKAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "package-check.yml"
 REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
 )
+PHASE16_VALIDATION_PATH = (
+    ROOT
+    / "Packages"
+    / "dev.unity2foxglove.sdk"
+    / "Tests"
+    / "Runtime"
+    / "Phase16Validation.cs"
+)
 WORKFLOW_PATHS = (
     DOCS_WORKFLOW_PATH,
     DOTNET_WORKFLOW_PATH,
@@ -475,6 +483,20 @@ class RunCiTests(unittest.TestCase):
         self.assertIn(["git", "ls-files"], calls)
         self.assertFalse(any(":(glob)" in " ".join(call) for call in calls))
 
+    def test_boundary_check_rejects_root_developer_meta(self) -> None:
+        """A root Unity folder companion must not bypass the private boundary."""
+
+        def fake_run(cmd, **_kwargs):
+            """Expose one tracked root Developer.meta file."""
+            if cmd == ["git", "ls-files", "--", "Plan/**", "Developer/**"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd == ["git", "ls-files"]:
+                return subprocess.CompletedProcess(cmd, 0, "Developer.meta\n", "")
+            raise AssertionError(cmd)
+
+        with mock.patch.object(self.run_ci.subprocess, "run", side_effect=fake_run):
+            self.assertFalse(self.run_ci._check_boundary())
+
     def test_repository_boundary_workflow_triggers_for_deep_private_paths(self) -> None:
         """GitHub must schedule the boundary job for private paths at any depth."""
         workflow = REPOSITORY_BOUNDARY_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -488,6 +510,7 @@ class RunCiTests(unittest.TestCase):
             event_blocks[event] = match.group("body")
 
         required_patterns = {
+            "Developer.meta": '      - "Developer.meta"',
             "Unity2Foxglove/Assets/Developer/private.md": '      - "**/Developer/**"',
             "Packages/A/B/Developer.meta": '      - "**/Developer.meta"',
         }
@@ -498,6 +521,18 @@ class RunCiTests(unittest.TestCase):
                     block,
                     f"{event} does not schedule the boundary job for {private_path}",
                 )
+
+        self.assertRegex(
+            workflow,
+            r"git ls-files -- [^\n]*'Developer\.meta'",
+            "the remote boundary command does not inspect root Developer.meta",
+        )
+        phase16 = PHASE16_VALIDATION_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            '"Developer.meta"',
+            phase16,
+            "the default Phase16 boundary check does not inspect root Developer.meta",
+        )
 
     def test_workflow_checkouts_never_persist_repository_credentials(self) -> None:
         """Read-only CI jobs must remove checkout credentials from every workspace."""

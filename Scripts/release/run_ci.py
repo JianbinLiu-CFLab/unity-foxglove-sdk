@@ -684,10 +684,12 @@ def _check_boundary() -> bool:
         return False
     nested_dev = [
         path for path in all_tracked.stdout.splitlines()
-        if "/Developer/" in path or path.endswith("/Developer.meta")
+        if path == "Developer.meta"
+        or "/Developer/" in path
+        or path.endswith("/Developer.meta")
     ]
     if nested_dev:
-        print(f"\n{red('FAIL')} Nested Developer/ files are tracked:")
+        print(f"\n{red('FAIL')} Developer workspace files are tracked:")
         print("\n".join(nested_dev))
         return False
 

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,6 +85,42 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual(1, len(metrics))
         self.assertEqual("<invalid-json-object>", metrics[0].name)
         self.assertEqual([], metrics[0].references)
+
+    def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
+        """Architecture reporting must include a tracked root Developer.meta."""
+        module = load_module(
+            "analyze_coupling_root_meta_under_test",
+            "Scripts/architecture/analyze_coupling.py",
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "Developer.meta").write_text(
+                "fileFormatVersion: 2\n",
+                encoding="utf-8",
+            )
+
+            def fake_ls_files(_root, *pathspecs):
+                """Return the root companion only for the complete tracked universe."""
+                return [] if pathspecs else ["Developer.meta"]
+
+            with mock.patch.object(
+                module,
+                "run_git_ls_files",
+                side_effect=fake_ls_files,
+            ):
+                report = module.build_report(
+                    root,
+                    module.argparse.Namespace(
+                        include_generated=False,
+                        hotspot_limit=20,
+                    ),
+                )
+
+        self.assertEqual(
+            ["Developer.meta"],
+            report["tracked_nested_developer_paths"],
+        )
 
 
 if __name__ == "__main__":

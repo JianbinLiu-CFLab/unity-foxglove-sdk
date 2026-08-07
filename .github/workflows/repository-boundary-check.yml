@@ -6,6 +6,7 @@ on:
     paths:
       - "Plan/**"
       - "Developer/**"
+      - "Developer.meta"
       - "**/Developer/**"
       - "**/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "Plan/**"
       - "Developer/**"
+      - "Developer.meta"
       - "**/Developer/**"
       - "**/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
@@ -35,7 +37,7 @@ jobs:
             exit 1
           fi
 
-          nested_developer="$(git ls-files -- ':(glob)**/Developer/**' ':(glob)**/Developer.meta')"
+          nested_developer="$(git ls-files -- 'Developer.meta' ':(glob)**/Developer/**' ':(glob)**/Developer.meta')"
           if [ -n "$nested_developer" ]; then
             echo "::error::Tracked demo or experimental assets must use Experimental/, not Developer/."
             printf '%s\n' "$nested_developer"
