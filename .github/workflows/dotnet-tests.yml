@@ -214,6 +214,12 @@ jobs:
         with:
           dotnet-version: "10.0"
 
+      - name: Restore Windows Editor restart relay tests
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true
+
+      - name: Run Windows Editor restart relay process tests
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true --filter "FullyQualifiedName~Ros2ForUnityEditorRestartRelayTests"
+
       - name: Restore Roslyn analyzer project
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
 

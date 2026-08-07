@@ -553,6 +553,22 @@ class RunCiTests(unittest.TestCase):
         self.assertLess(pinned_ref, checkout_path)
         self.assertLess(checkout_path, validation)
 
+    def test_windows_workflow_executes_editor_restart_relay_process_tests(self) -> None:
+        """The Windows-only restart behavior must not silently pass in an Ubuntu lane."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        windows_job = workflow.index("runs-on: windows-latest")
+        adapter_property = workflow.index(
+            "-p:IncludeRos2ForUnityAdapter=true",
+            windows_job,
+        )
+        relay_filter = workflow.index(
+            "FullyQualifiedName~Ros2ForUnityEditorRestartRelayTests",
+            adapter_property,
+        )
+
+        self.assertLess(windows_job, adapter_property)
+        self.assertLess(adapter_property, relay_filter)
+
     def test_validator_msbuild_args_keep_dash_prefixed_property_attached(self) -> None:
         """Argparse must receive dash-prefixed MSBuild properties as option values."""
         self.assertEqual(
