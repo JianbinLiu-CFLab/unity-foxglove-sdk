@@ -720,6 +720,42 @@ class RunCiTests(unittest.TestCase):
             calls,
         )
 
+    def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
+        """Default package CI must execute maintained regression modules, not only validators."""
+        expected = (
+            "Scripts.native.regression_checks.test_native_sources",
+            "Scripts.package.regression_checks.test_validate_local_entrypoints",
+            "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
+            "Scripts.package.regression_checks.test_validate_unity_package",
+            "Scripts.schema.regression_checks.test_schema_tooling",
+            "Scripts.smoke.test_core_smoke_scripts",
+            "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
+            "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+        )
+        calls: list[list[str]] = []
+
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+            """Capture package subprocess commands without executing them."""
+            calls.extend(command for _label, command in commands)
+            return {label: True for label, _command in commands}
+
+        with mock.patch.object(
+            self.run_ci,
+            "run_parallel",
+            side_effect=fake_run_parallel,
+        ):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "packages"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertIn(
+            [sys.executable, "-m", "unittest", *expected],
+            calls,
+        )
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
         failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")
