@@ -141,6 +141,16 @@ RELEASE_TOOLING_REGRESSION = "Scripts.release.regression_checks.test_release_too
 SAMPLE_SYNC_TOOLING_REGRESSION = (
     "Scripts.samples.regression_checks.test_sample_sync_tooling"
 )
+PACKAGE_LANE_REGRESSION_MODULES = (
+    "Scripts.native.regression_checks.test_native_sources",
+    "Scripts.package.regression_checks.test_validate_local_entrypoints",
+    "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
+    "Scripts.package.regression_checks.test_validate_unity_package",
+    "Scripts.schema.regression_checks.test_schema_tooling",
+    "Scripts.smoke.test_core_smoke_scripts",
+    "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
+    "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+)
 PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
@@ -1122,6 +1132,15 @@ def main() -> int:
                     "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
                 ],
             ),
+            (
+                "maintained-python-regressions",
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    *PACKAGE_LANE_REGRESSION_MODULES,
+                ],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
@@ -1145,6 +1164,9 @@ def main() -> int:
         ]
         results["remote-gateway-tooling-regression"] = package_results[
             "test_remote_gateway_tooling.py"
+        ]
+        results["maintained-python-regressions"] = package_results[
+            "maintained-python-regressions"
         ]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]

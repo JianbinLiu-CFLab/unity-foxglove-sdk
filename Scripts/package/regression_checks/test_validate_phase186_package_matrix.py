@@ -96,6 +96,71 @@ class Phase186PackageMatrixTests(unittest.TestCase):
                 )
             )
 
+    def test_named_child_asmdef_reference_resolves_to_forbidden_package(self) -> None:
+        """Named references to a forbidden package's child assembly must be rejected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            forbidden_root = root / "bridge"
+            forbidden_root.mkdir()
+            child = forbidden_root / "Bridge.Editor.asmdef"
+            child.write_text(
+                '{"name":"Unity2Foxglove.Ros2Bridge.Editor"}',
+                encoding="utf-8",
+            )
+            consumer = root / "Consumer.asmdef"
+            consumer.write_text(
+                '{"name":"Consumer","references":'
+                '["Unity2Foxglove.Ros2Bridge.Editor"]}',
+                encoding="utf-8",
+            )
+
+            self.assertTrue(
+                self.validator._references_forbidden_assembly(
+                    consumer,
+                    "Unity2Foxglove.Ros2Bridge",
+                    forbidden_root,
+                )
+            )
+
+    def test_guid_child_asmdef_reference_resolves_to_forbidden_package(self) -> None:
+        """GUID references to a forbidden package's child assembly must be rejected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            forbidden_root = root / "bridge"
+            forbidden_root.mkdir()
+            for filename, name, guid in (
+                (
+                    "Bridge.asmdef",
+                    "Unity2Foxglove.Ros2Bridge",
+                    "0123456789abcdef0123456789abcdef",
+                ),
+                (
+                    "Bridge.Editor.asmdef",
+                    "Unity2Foxglove.Ros2Bridge.Editor",
+                    "fedcba9876543210fedcba9876543210",
+                ),
+            ):
+                asmdef = forbidden_root / filename
+                asmdef.write_text(json.dumps({"name": name}), encoding="utf-8")
+                Path(str(asmdef) + ".meta").write_text(
+                    f"fileFormatVersion: 2\nguid: {guid}\n",
+                    encoding="utf-8",
+                )
+            consumer = root / "Consumer.asmdef"
+            consumer.write_text(
+                '{"name":"Consumer","references":'
+                '["GUID:fedcba9876543210fedcba9876543210"]}',
+                encoding="utf-8",
+            )
+
+            self.assertTrue(
+                self.validator._references_forbidden_assembly(
+                    consumer,
+                    "Unity2Foxglove.Ros2Bridge",
+                    forbidden_root,
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

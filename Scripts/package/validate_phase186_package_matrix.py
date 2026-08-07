@@ -74,12 +74,21 @@ def compile_matrix() -> list[dict]:
     return results
 
 
+def _is_assembly_or_child(value: object, assembly_name: str) -> bool:
+    """Return whether a name is the forbidden assembly or one of its children."""
+    if not isinstance(value, str):
+        return False
+    normalized = value.casefold()
+    root = assembly_name.casefold()
+    return normalized == root or normalized.startswith(root + ".")
+
+
 def _assembly_guids(package_root: Path, assembly_name: str) -> set[str]:
-    """Return GUIDs owned by one named assembly definition."""
+    """Return GUIDs owned by a named assembly and its child assemblies."""
     result: set[str] = set()
     for asmdef in package_root.rglob("*.asmdef"):
         descriptor = load_json(asmdef)
-        if descriptor.get("name") != assembly_name:
+        if not _is_assembly_or_child(descriptor.get("name"), assembly_name):
             continue
         meta = Path(str(asmdef) + ".meta")
         if not meta.is_file():
@@ -108,7 +117,7 @@ def _references_forbidden_assembly(
     if not isinstance(values, list):
         raise RuntimeError(f"invalid references collection: {descriptor_path}")
     references = [value for value in values if isinstance(value, str)]
-    if any(value.casefold() == assembly_name.casefold() for value in references):
+    if any(_is_assembly_or_child(value, assembly_name) for value in references):
         return True
     guid_references = {
         value[5:].lower()

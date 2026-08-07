@@ -72,6 +72,22 @@ def load_module(name: str, path: Path):
     return module
 
 
+def active_workflow_line_index(
+    workflow: str,
+    exact_line: str,
+    start: int = 0,
+) -> int:
+    """Return the line index of one active exact YAML line."""
+    lines = workflow.splitlines()
+    for index in range(start, len(lines)):
+        line = lines[index]
+        if line.lstrip().startswith("#"):
+            continue
+        if line.strip() == exact_line:
+            return index
+    raise ValueError(f"active workflow line is missing: {exact_line}")
+
+
 class VersionBumpTests(unittest.TestCase):
     """Regression coverage for release version synchronization."""
 
@@ -576,17 +592,42 @@ class RunCiTests(unittest.TestCase):
     def test_dotnet_workflow_runs_schema_generated_output_freshness(self) -> None:
         """Remote CI must compare outputs against its pinned Foxglove checkout."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        checkout = workflow.index("repository: foxglove/foxglove-sdk")
-        pinned_ref = workflow.index("ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba", checkout)
-        checkout_path = workflow.index("path: third-party/foxglove-sdk", pinned_ref)
-        validation = workflow.index(
-            "python3 Scripts/schema/validate_schema_generated_outputs.py",
-            checkout_path,
+        checkout = active_workflow_line_index(
+            workflow,
+            "repository: foxglove/foxglove-sdk",
+        )
+        pinned_ref = active_workflow_line_index(
+            workflow,
+            "ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
+            checkout + 1,
+        )
+        checkout_path = active_workflow_line_index(
+            workflow,
+            "path: third-party/foxglove-sdk",
+            pinned_ref + 1,
+        )
+        validation = active_workflow_line_index(
+            workflow,
+            "run: python3 Scripts/schema/validate_schema_generated_outputs.py",
+            checkout_path + 1,
         )
 
         self.assertLess(checkout, pinned_ref)
         self.assertLess(pinned_ref, checkout_path)
         self.assertLess(checkout_path, validation)
+
+    def test_workflow_line_lookup_rejects_commented_steps(self) -> None:
+        """A commented workflow step must not satisfy an active CI contract."""
+        workflow = (
+            "# repository: foxglove/foxglove-sdk\n"
+            "  # ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba\n"
+        )
+
+        with self.assertRaisesRegex(ValueError, "active workflow line is missing"):
+            active_workflow_line_index(
+                workflow,
+                "repository: foxglove/foxglove-sdk",
+            )
 
     def test_windows_workflow_executes_editor_restart_relay_process_tests(self) -> None:
         """The Windows-only restart behavior must not silently pass in an Ubuntu lane."""
@@ -717,6 +758,42 @@ class RunCiTests(unittest.TestCase):
                 "Scripts/samples/sync_ros2_bridge_sample.py",
                 "--dry-run",
             ],
+            calls,
+        )
+
+    def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
+        """Default package CI must execute maintained regression modules, not only validators."""
+        expected = (
+            "Scripts.native.regression_checks.test_native_sources",
+            "Scripts.package.regression_checks.test_validate_local_entrypoints",
+            "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
+            "Scripts.package.regression_checks.test_validate_unity_package",
+            "Scripts.schema.regression_checks.test_schema_tooling",
+            "Scripts.smoke.test_core_smoke_scripts",
+            "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
+            "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+        )
+        calls: list[list[str]] = []
+
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+            """Capture package subprocess commands without executing them."""
+            calls.extend(command for _label, command in commands)
+            return {label: True for label, _command in commands}
+
+        with mock.patch.object(
+            self.run_ci,
+            "run_parallel",
+            side_effect=fake_run_parallel,
+        ):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--only", "packages"],
+            ):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertIn(
+            [sys.executable, "-m", "unittest", *expected],
             calls,
         )
 
