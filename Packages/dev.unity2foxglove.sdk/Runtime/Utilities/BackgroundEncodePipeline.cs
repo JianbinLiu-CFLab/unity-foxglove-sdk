@@ -37,7 +37,9 @@ namespace Unity.FoxgloveSDK.Util
         private TRequest _pending;
         private int _droppedCompletedCount;
         private int _encodeErrorCount;
-        private bool _hasTimedOutWorker;
+        private int _activeWorkerCount;
+        private bool _disposeHandlesWhenWorkersExit;
+        private bool _handleDisposalClaimed;
         private bool _disposed;
 
         public BackgroundEncodePipeline(
@@ -89,6 +91,8 @@ namespace Unity.FoxgloveSDK.Util
                     replacedRequest = _pending;
                     replacedPending = replacedRequest != null;
                     workerGeneration = _worker.StartOrReuseLocked(out startWorker);
+                    if (startWorker)
+                        _activeWorkerCount++;
                     request.Generation = workerGeneration;
                     _pending = request;
                     _workerSignal.Set();
@@ -114,6 +118,7 @@ namespace Unity.FoxgloveSDK.Util
             catch (Exception ex)
             {
                 TRequest droppedRequest = null;
+                var disposeHandles = false;
                 lock (_worker.Gate)
                 {
                     if (ReferenceEquals(_pending, request))
@@ -123,9 +128,13 @@ namespace Unity.FoxgloveSDK.Util
                     }
 
                     _worker.MarkStartFailedIfCurrentLocked(workerGeneration);
+                    _activeWorkerCount--;
+                    disposeHandles = TryClaimHandleDisposalLocked();
                 }
 
                 DropRequest(droppedRequest);
+                if (disposeHandles)
+                    DisposeWorkerHandles();
                 startError = ex.Message;
                 return false;
             }
@@ -197,10 +206,7 @@ namespace Unity.FoxgloveSDK.Util
                 return true;
 
             lock (_worker.Gate)
-            {
                 _worker.InvalidateTimedOutWorkerLocked();
-                _hasTimedOutWorker = true;
-            }
 
             return false;
         }
@@ -210,18 +216,18 @@ namespace Unity.FoxgloveSDK.Util
             if (_disposed)
                 return;
 
-            var stopped = Stop(clearCompleted: true, out _);
-            _disposed = true;
+            Stop(clearCompleted: true, out _);
 
-            // A generation invalidated after a bounded stop timeout may still be
-            // inside user encode code or a wait call. Keep the two small handles
-            // alive for process lifetime instead of racing that abandoned worker
-            // with ObjectDisposedException.
-            if (!stopped || _hasTimedOutWorker)
-                return;
+            var disposeHandles = false;
+            lock (_worker.Gate)
+            {
+                _disposed = true;
+                _disposeHandlesWhenWorkersExit = true;
+                disposeHandles = TryClaimHandleDisposalLocked();
+            }
 
-            _workerSignal.Dispose();
-            _worker.Dispose();
+            if (disposeHandles)
+                DisposeWorkerHandles();
         }
 
         private void StartWorker(int workerGeneration)
@@ -328,11 +334,41 @@ namespace Unity.FoxgloveSDK.Util
             finally
             {
                 var signalIdle = false;
+                var disposeHandles = false;
                 lock (_worker.Gate)
+                {
                     signalIdle = _worker.MarkStoppedIfCurrentLocked(workerGeneration);
+                    _activeWorkerCount--;
+                    disposeHandles = TryClaimHandleDisposalLocked();
+                }
 
                 if (signalIdle)
                     _worker.Idle.Set();
+                if (disposeHandles)
+                    DisposeWorkerHandles();
+            }
+        }
+
+        private bool TryClaimHandleDisposalLocked()
+        {
+            if (!_disposeHandlesWhenWorkersExit
+                || _activeWorkerCount != 0
+                || _handleDisposalClaimed)
+                return false;
+
+            _handleDisposalClaimed = true;
+            return true;
+        }
+
+        private void DisposeWorkerHandles()
+        {
+            try
+            {
+                _workerSignal.Dispose();
+            }
+            finally
+            {
+                _worker.Dispose();
             }
         }
 

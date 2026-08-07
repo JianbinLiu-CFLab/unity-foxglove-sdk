@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void DisposeAfterStopTimeoutRetainsSynchronizationHandlesForAbandonedWorker()
+        public void DisposeAfterStopTimeoutReleasesHandlesWhenAbandonedWorkerExits()
         {
             using var encodeEntered = new ManualResetEventSlim(false);
             using var releaseEncode = new ManualResetEventSlim(false);
@@ -104,6 +104,16 @@ namespace Unity.FoxgloveSDK.UnitTests
                 var idleException = Record.Exception(() => worker.Idle.Set());
                 Assert.Null(signalException);
                 Assert.Null(idleException);
+
+                releaseEncode.Set();
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => IsDisposed(workerSignal) && IsDisposed(worker.Idle),
+                        TimeSpan.FromSeconds(2)),
+                    "The final abandoned worker must deterministically release the retained handles.");
+                Assert.Throws<ObjectDisposedException>(() => workerSignal.Set());
+                Assert.Throws<ObjectDisposedException>(() => worker.Idle.Wait(0));
+                pipeline.Dispose();
             }
             finally
             {
@@ -155,6 +165,12 @@ namespace Unity.FoxgloveSDK.UnitTests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             return Assert.IsType<AutoResetEvent>(field?.GetValue(pipeline));
         }
+
+        private static bool IsDisposed(WaitHandle handle)
+            => Record.Exception(() => handle.WaitOne(0)) is ObjectDisposedException;
+
+        private static bool IsDisposed(ManualResetEventSlim handle)
+            => Record.Exception(() => handle.Wait(0)) is ObjectDisposedException;
 
         private static FixedRatePublishState PoisonedSchedule()
             => new FixedRatePublishState
