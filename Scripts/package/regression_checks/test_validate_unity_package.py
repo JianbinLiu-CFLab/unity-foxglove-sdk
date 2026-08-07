@@ -582,6 +582,20 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
         """Freshness must include dependencies, ledgers, IDs, hint parity, and analyzer sets."""
         self.assertTrue(self.validator.validate_analyzer_contracts(("core", "r2fu", "ros2bridge")))
 
+    def test_provider_descriptor_ids_scan_every_compiled_source(self) -> None:
+        """A Provider diagnostic ID cannot evade the ledger gate through its filename."""
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "FoxRunR2fuEmitter.cs"
+            source.write_text(
+                'internal const string DiagnosticId = "FOXR2F999";\n',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                {"FOXR2F999"},
+                self.validator._provider_descriptor_ids([source], "FOXR2F"),
+            )
+
     def test_shared_identifier_utilities_are_parity_guarded(self) -> None:
         """All three independently packaged identifier helpers must share one gate."""
         groups = dict(self.validator.EXACT_SHARED_SOURCE_GROUPS)

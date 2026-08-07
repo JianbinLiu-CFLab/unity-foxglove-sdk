@@ -40,6 +40,14 @@ PACKAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "package-check.yml"
 REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
 )
+PHASE16_VALIDATION_PATH = (
+    ROOT
+    / "Packages"
+    / "dev.unity2foxglove.sdk"
+    / "Tests"
+    / "Runtime"
+    / "Phase16Validation.cs"
+)
 WORKFLOW_PATHS = (
     DOCS_WORKFLOW_PATH,
     DOTNET_WORKFLOW_PATH,
@@ -475,6 +483,20 @@ class RunCiTests(unittest.TestCase):
         self.assertIn(["git", "ls-files"], calls)
         self.assertFalse(any(":(glob)" in " ".join(call) for call in calls))
 
+    def test_boundary_check_rejects_root_developer_meta(self) -> None:
+        """A root Unity folder companion must not bypass the private boundary."""
+
+        def fake_run(cmd, **_kwargs):
+            """Expose one tracked root Developer.meta file."""
+            if cmd == ["git", "ls-files", "--", "Plan/**", "Developer/**"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd == ["git", "ls-files"]:
+                return subprocess.CompletedProcess(cmd, 0, "Developer.meta\n", "")
+            raise AssertionError(cmd)
+
+        with mock.patch.object(self.run_ci.subprocess, "run", side_effect=fake_run):
+            self.assertFalse(self.run_ci._check_boundary())
+
     def test_repository_boundary_workflow_triggers_for_deep_private_paths(self) -> None:
         """GitHub must schedule the boundary job for private paths at any depth."""
         workflow = REPOSITORY_BOUNDARY_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -488,6 +510,7 @@ class RunCiTests(unittest.TestCase):
             event_blocks[event] = match.group("body")
 
         required_patterns = {
+            "Developer.meta": '      - "Developer.meta"',
             "Unity2Foxglove/Assets/Developer/private.md": '      - "**/Developer/**"',
             "Packages/A/B/Developer.meta": '      - "**/Developer.meta"',
         }
@@ -498,6 +521,18 @@ class RunCiTests(unittest.TestCase):
                     block,
                     f"{event} does not schedule the boundary job for {private_path}",
                 )
+
+        self.assertRegex(
+            workflow,
+            r"git ls-files -- [^\n]*'Developer\.meta'",
+            "the remote boundary command does not inspect root Developer.meta",
+        )
+        phase16 = PHASE16_VALIDATION_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            '"Developer.meta"',
+            phase16,
+            "the default Phase16 boundary check does not inspect root Developer.meta",
+        )
 
     def test_workflow_checkouts_never_persist_repository_credentials(self) -> None:
         """Read-only CI jobs must remove checkout credentials from every workspace."""
@@ -553,6 +588,22 @@ class RunCiTests(unittest.TestCase):
         self.assertLess(pinned_ref, checkout_path)
         self.assertLess(checkout_path, validation)
 
+    def test_windows_workflow_executes_editor_restart_relay_process_tests(self) -> None:
+        """The Windows-only restart behavior must not silently pass in an Ubuntu lane."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        windows_job = workflow.index("runs-on: windows-latest")
+        adapter_property = workflow.index(
+            "-p:IncludeRos2ForUnityAdapter=true",
+            windows_job,
+        )
+        relay_filter = workflow.index(
+            "FullyQualifiedName~Ros2ForUnityEditorRestartRelayTests",
+            adapter_property,
+        )
+
+        self.assertLess(windows_job, adapter_property)
+        self.assertLess(adapter_property, relay_filter)
+
     def test_validator_msbuild_args_keep_dash_prefixed_property_attached(self) -> None:
         """Argparse must receive dash-prefixed MSBuild properties as option values."""
         self.assertEqual(
@@ -577,6 +628,49 @@ class RunCiTests(unittest.TestCase):
         python_calls = [cmd for cmd in calls if cmd and cmd[1].endswith(".py")]
         self.assertTrue(python_calls)
         self.assertTrue(all(cmd[0] == sys.executable for cmd in python_calls))
+
+    def test_packages_lane_executes_every_r2fu_package_validator(self) -> None:
+        """Local package CI must cover runtime and adapter artifacts for every distro."""
+        calls: list[list[str]] = []
+
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+            """Capture package subprocess commands without executing them."""
+            calls.extend(command for _label, command in commands)
+            return {label: True for label, _command in commands}
+
+        with mock.patch.object(self.run_ci, "run_parallel", side_effect=fake_run_parallel):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "packages"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        expected = {
+            f"Scripts/ros2forunity/windows/{distro}/{validator}.py"
+            for distro in ("humble", "jazzy", "lyrical")
+            for validator in (
+                "validate_r2fu_runtime_package",
+                "validate_ros2forunity_package",
+            )
+        }
+        actual = {
+            command[1]
+            for command in calls
+            if len(command) == 2 and command[1] in expected
+        }
+        self.assertEqual(expected, actual)
+
+    def test_package_workflow_executes_every_r2fu_package_validator(self) -> None:
+        """Remote package CI must cover the same six distro and artifact validators."""
+        workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        for distro in ("humble", "jazzy", "lyrical"):
+            for validator in (
+                "validate_r2fu_runtime_package",
+                "validate_ros2forunity_package",
+            ):
+                command = (
+                    "python3 Scripts/ros2forunity/windows/"
+                    f"{distro}/{validator}.py"
+                )
+                self.assertEqual(1, workflow.count(command), command)
 
     def test_packages_lane_executes_ros2_bridge_sample_regressions_and_drift_gate(self) -> None:
         """The package lane must execute both the sync helper tests and byte drift check."""

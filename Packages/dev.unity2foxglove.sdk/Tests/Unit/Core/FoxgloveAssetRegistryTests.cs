@@ -115,6 +115,48 @@ namespace Unity.FoxgloveSDK.Tests.Core
             }
         }
 
+        [Fact]
+        public void OpenedFileOutsidePinnedRegisteredRootIsRejected()
+        {
+            var temporary = Path.Combine(
+                Path.GetTempPath(),
+                "foxglove-asset-opened-path-" + Guid.NewGuid().ToString("N"));
+            var allowed = Path.Combine(temporary, "allowed");
+            var outside = Path.Combine(temporary, "outside");
+            var source = Path.Combine(outside, "secret.bin");
+            Directory.CreateDirectory(allowed);
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(source, "outside");
+            try
+            {
+                Assert.True(
+                    FoxgloveAssetRegistry.TryOpenAssetRootHandle(
+                        allowed,
+                        out var rootHandle,
+                        out var rootError),
+                    rootError);
+                using (rootHandle)
+                using (var stream = new FileStream(
+                           source,
+                           FileMode.Open,
+                           FileAccess.Read,
+                           FileShare.ReadWrite | FileShare.Delete))
+                {
+                    Assert.False(
+                        FoxgloveAssetRegistry.TryRequireOpenedFileWithinRoot(
+                            rootHandle,
+                            stream.SafeFileHandle,
+                            out var error));
+                    Assert.Contains("registered root", error, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(temporary))
+                    Directory.Delete(temporary, recursive: true);
+            }
+        }
+
         private static bool TryCreateDirectoryLink(string link, string target)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

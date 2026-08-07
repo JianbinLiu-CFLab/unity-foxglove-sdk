@@ -478,11 +478,11 @@ def _ledger_ids(project: Path) -> set[str]:
 
 
 def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
-    """Return Provider-owned descriptor IDs created by compiled diagnostic sources."""
+    """Return Provider-owned diagnostic IDs referenced by compiled sources."""
     ids: set[str] = set()
     pattern = re.compile(rf'\b({re.escape(prefix)}\d{{3}})\b')
     for source in sources:
-        if "Diagnostic" not in source.name or not source.exists():
+        if not source.exists():
             continue
         ids.update(pattern.findall(source.read_text(encoding="utf-8")))
     return ids

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -303,6 +304,36 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertEqual(1, len(closure))
         self.assertFalse(closure[0].ok)
         self.assertIn("rosidl_dynamic_typesupport_fastrtps.dll", closure[0].detail)
+
+    def test_dependency_closure_uses_windows_case_insensitive_dll_names(self) -> None:
+        """Cross-platform validation must resolve packaged PE imports as Windows does."""
+        with tempfile.TemporaryDirectory() as temp:
+            plugin_root = Path(temp)
+            seed = plugin_root / "seed.dll"
+            dependency = plugin_root / "vcruntime140.dll"
+            seed.write_bytes(b"seed")
+            dependency.write_bytes(b"dependency")
+            actual_names = {path.name for path in plugin_root.iterdir()}
+            original_exists = Path.exists
+
+            def exact_case_exists(path: Path) -> bool:
+                """Emulate a case-sensitive host while keeping the test portable."""
+                if path.parent == plugin_root:
+                    return path.name in actual_names
+                return original_exists(path)
+
+            self.validator.PLUGIN_ROOT = plugin_root
+            with (
+                mock.patch.object(Path, "exists", autospec=True, side_effect=exact_case_exists),
+                mock.patch.object(
+                    self.validator,
+                    "read_pe_imports",
+                    side_effect=lambda path: ["VCRUNTIME140.dll"] if path == seed else [],
+                ),
+            ):
+                missing = self.validator.missing_package_dll_imports(seed)
+
+        self.assertEqual({}, missing)
 
     def test_runtime_files_reject_unsafe_zenoh_session_defaults(self) -> None:
         """Unity-facing Zenoh session configs must not enable hard exit, 1GiB buffers, or adminspace."""

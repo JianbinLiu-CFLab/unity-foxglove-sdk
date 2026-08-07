@@ -429,6 +429,82 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void HeartbeatWaitDoesNotBlockAQueuedCorrelatedRequest()
+        {
+            using var heartbeatSeen = new ManualResetEventSlim(false);
+            using var releasePeer = new ManualResetEventSlim(false);
+            using var peer = LoopbackPeer.Start(stream =>
+            {
+                var hello = Parse(ReadWireFrame(stream));
+                WriteFrame(
+                    stream,
+                    HelloAck(
+                        hello.RequestId,
+                        includeSubscribe: true));
+
+                var heartbeat = Parse(ReadWireFrame(stream));
+                Assert.Equal(U2R2Operation.HealthPing, heartbeat.Operation);
+                heartbeatSeen.Set();
+
+                var prepare = Parse(ReadWireFrame(stream));
+                Assert.Equal(U2R2Operation.PreparePublisher, prepare.Operation);
+                WriteFrame(
+                    stream,
+                    Response(
+                        "health_pong",
+                        heartbeat.RequestId,
+                        heartbeat.SessionId,
+                        heartbeat.ConnectionGeneration));
+                WriteFrame(
+                    stream,
+                    Response(
+                        "publisher_ready",
+                        prepare.RequestId,
+                        prepare.SessionId,
+                        prepare.ConnectionGeneration));
+                Assert.True(releasePeer.Wait(TimeSpan.FromSeconds(3)));
+            });
+
+            var limits = U2R2ProtocolLimits.Default.With(
+                ("readTimeoutMs", 1000UL));
+            using var transport = new Ros2BridgeTcpClient();
+            transport.Connect("127.0.0.1", peer.Port, 1000);
+            using var connection = new Ros2BridgeConnection(
+                (IRos2BridgeSessionTransport)transport,
+                limits,
+                requiresSubscription: true,
+                writerCapacity: 4,
+                pendingCapacity: 4,
+                timeoutMs: 2000);
+            connection.Start();
+            Assert.True(heartbeatSeen.Wait(TimeSpan.FromMilliseconds(750)));
+
+            try
+            {
+                var response = connection.Exchange(
+                    (requestId, active) =>
+                        Ros2BridgeV2SessionCodec.CreatePublisherPreparation(
+                            active,
+                            requestId,
+                            "/phase187/heartbeat_progress",
+                            "phase187_msgs/msg/HeartbeatProgress",
+                            FoxRunResolvedQos.Default),
+                    timeoutMs: 1500);
+                Assert.Equal(
+                    U2R2Operation.PublisherReady,
+                    response.Operation);
+                Assert.Equal(
+                    Ros2BridgeSessionLifecycleState.Ready,
+                    connection.LifecycleState);
+            }
+            finally
+            {
+                releasePeer.Set();
+            }
+            peer.AssertCompleted();
+        }
+
+        [Fact]
         public void RequestConstructionCannotBeOvertakenByIdleHeartbeat()
         {
             using var factoryEntered = new ManualResetEventSlim(false);

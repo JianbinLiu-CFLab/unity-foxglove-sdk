@@ -20,6 +20,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
     [Trait("Domain", "R2fuEditorRestart")]
     public sealed class Ros2ForUnityEditorRestartRelayTests
     {
+        private const string PreviousEditorStartIdentityEnvironmentVariable =
+            "UNITY2FOXGLOVE_RESTART_PREVIOUS_EDITOR_START_IDENTITY";
+
         private static readonly TimeSpan ReplacementLaunchTimeout =
             TimeSpan.FromSeconds(30);
 
@@ -185,14 +188,91 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("/bin/sh", relay.FileName);
             Assert.False(relay.UseShellExecute);
             Assert.True(relay.CreateNoWindow);
-            Assert.Contains("kill -0 \"$previous_editor_process_id\"", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("[ -e \"$lock_path\" ]", relay.Arguments, StringComparison.Ordinal);
-            Assert.Contains("exec \"$editor_executable\" -projectPath \"$project_directory\"", relay.Arguments, StringComparison.Ordinal);
+            Assert.Equal(2, relay.ArgumentList.Count);
+            Assert.Equal("-c", relay.ArgumentList[0]);
+            var script = relay.ArgumentList[1];
+            Assert.Contains("kill -0 \"$previous_editor_process_id\"", script, StringComparison.Ordinal);
+            Assert.Contains("previous_editor_start_identity", script, StringComparison.Ordinal);
+            Assert.Contains("current_editor_start_identity", script, StringComparison.Ordinal);
+            Assert.Contains("[ -e \"$lock_path\" ]", script, StringComparison.Ordinal);
+            Assert.Contains("exec \"$editor_executable\" -projectPath \"$project_directory\"", script, StringComparison.Ordinal);
             Assert.Equal(
                 previousEditorProcessId.ToString(
                     System.Globalization.CultureInfo.InvariantCulture),
                 relay.EnvironmentVariables[
                     Ros2ForUnityEditorRestartRelay.PreviousEditorProcessIdEnvironmentVariable]);
+        }
+
+        [Fact]
+        public void PosixRelayPinsThePreviousEditorProcessIdentity()
+        {
+            if (OperatingSystem.IsWindows())
+                return;
+
+            var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                isWindows: false,
+                relayExecutable: "/bin/sh",
+                previousEditorProcessId: CurrentProcessId(),
+                editorExecutable: PosixTrueExecutable(),
+                projectDirectory: Path.GetTempPath(),
+                replacementStartInfo: CreateReplacementStartInfo());
+
+            var identity = relay.EnvironmentVariables[
+                PreviousEditorStartIdentityEnvironmentVariable];
+            Assert.False(
+                string.IsNullOrWhiteSpace(identity),
+                "The POSIX relay must capture a process-start identity before detaching.");
+            Assert.True(
+                identity.StartsWith("proc:", StringComparison.Ordinal)
+                || identity.StartsWith("ps:", StringComparison.Ordinal),
+                "Unexpected POSIX process identity: " + identity);
+        }
+
+        [Fact]
+        public void PosixRelayDoesNotWaitForAReusedProcessId()
+        {
+            if (OperatingSystem.IsWindows())
+                return;
+
+            var root = Path.Combine(
+                RepositoryBuildTestRoot(),
+                "u2f-editor-restart-relay-posix-identity-" + Guid.NewGuid().ToString("N"));
+            Process relayProcess = null;
+            try
+            {
+                Directory.CreateDirectory(root);
+                var relay = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                    isWindows: false,
+                    relayExecutable: "/bin/sh",
+                    previousEditorProcessId: CurrentProcessId(),
+                    editorExecutable: PosixTrueExecutable(),
+                    projectDirectory: root,
+                    replacementStartInfo: CreateReplacementStartInfo());
+                Assert.False(
+                    string.IsNullOrWhiteSpace(
+                        relay.EnvironmentVariables[
+                            PreviousEditorStartIdentityEnvironmentVariable]),
+                    "The behavioral fixture requires a captured POSIX process identity.");
+                relay.EnvironmentVariables[PreviousEditorStartIdentityEnvironmentVariable] =
+                    "not-the-same-process";
+
+                relayProcess = Process.Start(relay)
+                    ?? throw new InvalidOperationException("Could not start the POSIX restart relay fixture.");
+                var exited = relayProcess.WaitForExit(5000);
+                if (!exited)
+                    relayProcess.Kill();
+
+                Assert.True(
+                    exited,
+                    "The relay waited for a live process that only reused the previous Editor PID.");
+                Assert.Equal(0, relayProcess.ExitCode);
+            }
+            finally
+            {
+                relayProcess?.Dispose();
+                if (Directory.Exists(root))
+                    DeleteDirectoryWhenReleased(root);
+            }
         }
 
         [Fact]
@@ -433,6 +513,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "powershell.exe");
             Assert.True(File.Exists(path), "Windows PowerShell executable was not found: " + path);
             return path;
+        }
+
+        private static string PosixTrueExecutable()
+        {
+            foreach (var path in new[] { "/usr/bin/true", "/bin/true" })
+            {
+                if (File.Exists(path))
+                    return path;
+            }
+
+            throw new FileNotFoundException("Could not locate the POSIX true executable.");
         }
 
         private static string RepositoryBuildTestRoot()

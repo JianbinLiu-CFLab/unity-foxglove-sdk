@@ -209,15 +209,17 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void RuntimeSourceMethodScannerUsesUnambiguousDeclarations()
+        public void RuntimeSourceMethodScannerFailsClosedOnAmbiguousDeclarations()
         {
             var text = LoadRuntimeSource("PhaseValidationSourceHelpers.cs");
-            var method = LoadRuntimeSyntax("PhaseValidationSourceHelpers.cs")
+            var methods = LoadRuntimeSyntax("PhaseValidationSourceHelpers.cs")
                 .GetRoot()
                 .DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .Single(node => node.Identifier.ValueText == "SourceMethod");
-            var invocation = Assert.IsType<InvocationExpressionSyntax>(method.ExpressionBody?.Expression);
+                .OfType<MethodDeclarationSyntax>();
+            var tryMethod = methods.Single(
+                node => node.Identifier.ValueText == "TrySourceMethod");
+            var invocation = Assert.IsType<InvocationExpressionSyntax>(
+                tryMethod.ExpressionBody?.Expression);
             Assert.Equal("SourceDeclaration", invocation.Expression.ToString());
             Assert.Collection(
                 invocation.ArgumentList.Arguments,
@@ -225,6 +227,17 @@ namespace Unity.FoxgloveSDK.UnitTests
                 argument => Assert.Equal("methodName", argument.Expression.ToString()),
                 argument => Assert.Equal("IsSourceMethodDeclaration", argument.Expression.ToString()),
                 argument => Assert.Equal("CSharpParseOptions.Default", argument.Expression.ToString()));
+
+            var requiredMethod = methods.Single(
+                node => node.Identifier.ValueText == "SourceMethod");
+            Assert.Contains(
+                requiredMethod.DescendantNodes().OfType<InvocationExpressionSyntax>(),
+                node => node.Expression.ToString() == "TrySourceMethod");
+            Assert.Contains(
+                requiredMethod.DescendantNodes().OfType<ThrowStatementSyntax>(),
+                node => node.Expression?.ToString().StartsWith(
+                    "new InvalidOperationException(",
+                    StringComparison.Ordinal) == true);
 
             Assert.Contains("declaration.ContainsDiagnostics", text, StringComparison.Ordinal);
             Assert.Contains("matches.Length != 1", text, StringComparison.Ordinal);

@@ -149,9 +149,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var dispose = TestSources.ExtractMethod(jazzy, "private void DisposeRosParticipants()");
             Assert.True(
                 dispose.IndexOf("UnregisterExecutable(ExecutorThreadSensorPublishAction)", StringComparison.Ordinal)
-                < dispose.IndexOf("nodeToUse = ros2Node;", StringComparison.Ordinal));
+                < dispose.IndexOf("ownershipToRetire = publisherOwnership;", StringComparison.Ordinal));
             Assert.True(
-                dispose.IndexOf("nodeToUse = ros2Node;", StringComparison.Ordinal)
+                dispose.IndexOf("ownershipToRetire = publisherOwnership;", StringComparison.Ordinal)
                 < dispose.IndexOf("RemovePublisher", StringComparison.Ordinal));
         }
 

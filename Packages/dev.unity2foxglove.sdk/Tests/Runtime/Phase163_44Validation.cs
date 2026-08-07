@@ -80,8 +80,14 @@ namespace Unity.FoxgloveSDK.Tests
     void Target(int value) { IntOnly(); }
     void Target(string value) { StringOnly(); }
 }";
-            Check(string.IsNullOrEmpty(PhaseValidationSourceHelpers.SourceMethod(overloaded, "Target")),
-                "163-44B-4: SourceMethod rejects an ambiguous bare method name");
+            Check(Throws<InvalidOperationException>(() =>
+                    PhaseValidationSourceHelpers.SourceMethod(overloaded, "Target")),
+                "163-44B-4: SourceMethod fails closed for an ambiguous bare method name");
+            Check(string.IsNullOrEmpty(PhaseValidationSourceHelpers.TrySourceMethod(overloaded, "Target")),
+                "163-44B-4a: TrySourceMethod preserves explicit optional lookup semantics");
+            Check(Throws<InvalidOperationException>(() =>
+                    PhaseValidationSourceHelpers.SourceMethod(overloaded, "Missing")),
+                "163-44B-4b: SourceMethod fails closed when the declaration is missing");
             Check(PhaseValidationSourceHelpers.SourceMethod(overloaded, "void Target(int value)")
                     .Contains("IntOnly();", StringComparison.Ordinal),
                 "163-44B-5: SourceMethod accepts a signature that selects one overload");

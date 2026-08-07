@@ -461,6 +461,7 @@ namespace Unity.FoxgloveSDK.Tests
                     {
                         "Plan/**",
                         "Developer/**",
+                        "Developer.meta",
                         ":(glob)**/Developer/**",
                         ":(glob)**/Developer.meta"
                     },
