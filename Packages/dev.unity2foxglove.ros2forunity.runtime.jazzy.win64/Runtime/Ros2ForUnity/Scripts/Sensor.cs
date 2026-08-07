@@ -82,18 +82,30 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     protected double desiredFrameTime = 0.0;
     private const double MinimumFrequencyHz = 0.001;
     private double cachedDesiredUpdateFreq = Double.NaN;
-    private Publisher<T> publisher;
+    private PublisherOwnership publisherOwnership;
     private ROS2UnityComponent ros2UnityComponent;
-    private ROS2Node ros2Node;
     private string ownerAgentName;
     private string cachedFrameName;
     private bool rosParticipantsDisposed = true;
 
     private T readings;
     private bool newReadings;
-    private int activePublisherCalls;
-    private bool publisherRetirementPending;
     private readonly object readingsMutex = new object();
+
+    private sealed class PublisherOwnership
+    {
+        internal PublisherOwnership(ROS2Node node, Publisher<T> publisher)
+        {
+            Node = node;
+            Publisher = publisher;
+        }
+
+        internal ROS2Node Node { get; }
+        internal Publisher<T> Publisher { get; }
+        internal int ActiveCalls { get; set; }
+        internal bool Retired { get; set; }
+        internal bool RemovalClaimed { get; set; }
+    }
 
     public override string frameName()
     {
@@ -143,19 +155,25 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
             throw new System.InvalidOperationException("Topic name not set for the sensor " + this);
         }
 
-        if (publisher != null)
+        lock (readingsMutex)
         {
-            throw new System.InvalidOperationException("ROS participants have already been created for sensor " + this);
+            if (publisherOwnership != null)
+            {
+                throw new System.InvalidOperationException("ROS participants have already been created for sensor " + this);
+            }
         }
 
         ownerAgentName = agentName;
         cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
-        ros2UnityComponent = ros2Unity;
-        ros2Node = node;
-        rosParticipantsDisposed = false;
         string nsName = (agentName ?? String.Empty).Replace(" ", "_");
-        publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
-        ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
+        var createdPublisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
+        lock (readingsMutex)
+        {
+            ros2UnityComponent = ros2Unity;
+            publisherOwnership = new PublisherOwnership(node, createdPublisher);
+            rosParticipantsDisposed = false;
+        }
+        ros2Unity.RegisterExecutable(ExecutorThreadSensorPublishAction);
     }
 
     /// <summary>
@@ -166,19 +184,21 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     internal void ExecutorThreadSensorPublishAction()
     {
         T readingToPublish;
+        PublisherOwnership ownershipToUse;
         Publisher<T> publisherToUse;
         lock (readingsMutex)
         {
-            if (rosParticipantsDisposed || !(publisher != null && publishing) ||
-                !newReadings || ros2Node == null || ros2Node.IsDisposed)
+            if (rosParticipantsDisposed || !(publisherOwnership != null && publishing) ||
+                !newReadings || publisherOwnership.Node == null || publisherOwnership.Node.IsDisposed)
             {
                 return;
             }
 
             readingToPublish = readings;
-            publisherToUse = publisher;
+            ownershipToUse = publisherOwnership;
+            publisherToUse = ownershipToUse.Publisher;
             newReadings = false;
-            activePublisherCalls++;
+            ownershipToUse.ActiveCalls++;
         }
 
         try
@@ -187,7 +207,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         }
         finally
         {
-            CompletePublisherCall();
+            CompletePublisherCall(ownershipToUse);
         }
     }
 
@@ -207,19 +227,20 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     {
         RefreshDesiredFrameTimeIfNeeded();
 
-        Publisher<T> publisherToUse;
+        PublisherOwnership ownershipToUse;
         ROS2UnityComponent componentToUse;
         ROS2Node nodeToUse;
         lock (readingsMutex)
         {
-            if (rosParticipantsDisposed || !publishing || publisher == null || ros2Node == null || ros2Node.IsDisposed)
+            if (rosParticipantsDisposed || !publishing || publisherOwnership == null ||
+                publisherOwnership.Node == null || publisherOwnership.Node.IsDisposed)
             {
                 return;
             }
 
-            publisherToUse = publisher;
+            ownershipToUse = publisherOwnership;
             componentToUse = ros2UnityComponent;
-            nodeToUse = ros2Node;
+            nodeToUse = ownershipToUse.Node;
         }
 
         if (componentToUse == null || !componentToUse.Ok() || !HasNewData())
@@ -243,7 +264,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
 
         lock (readingsMutex)
         {
-            if (rosParticipantsDisposed || !ReferenceEquals(publisher, publisherToUse) || !ReferenceEquals(ros2Node, nodeToUse))
+            if (rosParticipantsDisposed || !ReferenceEquals(publisherOwnership, ownershipToUse))
             {
                 return;
             }
@@ -293,42 +314,42 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
 
         ROS2Node nodeToUse = null;
         Publisher<T> publisherToRemove = null;
+        PublisherOwnership ownershipToRetire;
         lock (readingsMutex)
         {
             ros2UnityComponent = null;
             readings = null;
             newReadings = false;
             cachedFrameName = null;
-            if (activePublisherCalls == 0)
+            ownershipToRetire = publisherOwnership;
+            publisherOwnership = null;
+            if (ownershipToRetire != null)
             {
-                nodeToUse = ros2Node;
-                publisherToRemove = publisher;
-                publisher = null;
-                ros2Node = null;
-            }
-            else
-            {
-                publisherRetirementPending = true;
+                ownershipToRetire.Retired = true;
+                if (ownershipToRetire.ActiveCalls == 0)
+                {
+                    ownershipToRetire.RemovalClaimed = true;
+                    nodeToUse = ownershipToRetire.Node;
+                    publisherToRemove = ownershipToRetire.Publisher;
+                }
             }
         }
 
         RemovePublisherSafely(nodeToUse, publisherToRemove);
     }
 
-    private void CompletePublisherCall()
+    private void CompletePublisherCall(PublisherOwnership ownership)
     {
         ROS2Node nodeToUse = null;
         Publisher<T> publisherToRemove = null;
         lock (readingsMutex)
         {
-            activePublisherCalls--;
-            if (activePublisherCalls == 0 && publisherRetirementPending)
+            ownership.ActiveCalls--;
+            if (ownership.ActiveCalls == 0 && ownership.Retired && !ownership.RemovalClaimed)
             {
-                publisherRetirementPending = false;
-                nodeToUse = ros2Node;
-                publisherToRemove = publisher;
-                publisher = null;
-                ros2Node = null;
+                ownership.RemovalClaimed = true;
+                nodeToUse = ownership.Node;
+                publisherToRemove = ownership.Publisher;
             }
         }
 

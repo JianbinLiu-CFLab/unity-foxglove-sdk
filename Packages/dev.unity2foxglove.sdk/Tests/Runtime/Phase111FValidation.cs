@@ -233,7 +233,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "111F-E7: TimeUtils normalizes negative nanoseconds before uint conversion");
 
             var sensor = ReadRepoText(RuntimeScripts + "/Sensor.cs");
-            Check(sensor.Contains("publisher != null && publishing", StringComparison.Ordinal)
+            Check(sensor.Contains("publisherOwnership != null && publishing", StringComparison.Ordinal)
                   && sensor.Contains("UnregisterExecutable", StringComparison.Ordinal)
                   && (sensor.Contains("if (readings != null)", StringComparison.Ordinal)
                       || sensor.Contains("if (acquiredReading == null)", StringComparison.Ordinal))

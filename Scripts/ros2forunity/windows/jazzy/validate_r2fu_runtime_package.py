@@ -922,7 +922,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
 
     sensor = read_optional_text(scripts / "Sensor.cs")
-    add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    add(results, "Sensor uses short-circuit publisher guard", "publisherOwnership != null && publishing" in sensor, "Sensor.cs")
     readings_guard_index = sensor.find("if (readings != null)")
     readings_deref_index = sensor.find("readings.SetHeaderFrame")
     sensor_null_guard = (
@@ -935,8 +935,8 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         results,
         "Sensor publishes outside its readings lock with deferred retirement",
         "publisherToUse.Publish(readingToPublish);" in sensor
-        and "publisherRetirementPending" in sensor
-        and "CompletePublisherCall();" in sensor,
+        and "ownershipToRetire.Retired = true;" in sensor
+        and "CompletePublisherCall(ownershipToUse);" in sensor,
         "Sensor.cs",
     )
 
