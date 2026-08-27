@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import ctypes
 import importlib.util
 import io
@@ -2316,6 +2317,126 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         build_dir = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
 
         self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
+
+    def _write_unity_stand_in(self, path: Path, executable: bool = True) -> Path:
+        """Create a candidate that a host would accept as an executable Unity."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"MZ\x90\x00stand-in unity executable")
+        if executable and os.name != "nt":
+            path.chmod(0o755)
+        return path
+
+    def _hub_layout(self, temp: Path) -> tuple[Path, Path]:
+        """Return a Windows Hub editor path and the project that pins its version."""
+        project = temp / "UnityProject"
+        (project / "ProjectSettings").mkdir(parents=True)
+        (project / "ProjectSettings" / "ProjectVersion.txt").write_text(
+            "m_EditorVersion: 2022.3.10f1\n", encoding="utf-8")
+        unity = temp / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "2022.3.10f1" / "Editor" / "Unity.exe"
+        return project, unity
+
+    def test_project_pinned_discovery_rejects_a_non_executable_candidate(self) -> None:
+        """A file that merely occupies the Hub path is not a Unity editor."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, unity = self._hub_layout(root)
+            unity.parent.mkdir(parents=True)
+            unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_discovery_accepts_a_real_executable(self) -> None:
+        """A genuine executable at the pinned Hub path must still be selected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, unity = self._hub_layout(root)
+            self._write_unity_stand_in(unity)
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(unity.resolve(), Path(resolved))
+
+    def test_hub_discovery_rejects_a_non_executable_candidate(self) -> None:
+        """The generic Hub fallback must apply the same executable gate."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _project, unity = self._hub_layout(root)
+            unity.parent.mkdir(parents=True)
+            unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_hub()
+
+        self.assertIsNone(resolved)
+
+    def test_explicit_unity_path_rejects_a_directory(self) -> None:
+        """--unity must not accept a directory that merely occupies the path."""
+        with tempfile.TemporaryDirectory() as temp:
+            occupied = Path(temp) / "Unity.exe"
+            occupied.mkdir()
+
+            with self.assertRaises(FileNotFoundError):
+                self.unity_il2cpp.find_unity_explicit(str(occupied))
+
+    def test_environment_unity_path_rejects_a_directory(self) -> None:
+        """UNITY_EXE must not accept a directory that merely occupies the path."""
+        with tempfile.TemporaryDirectory() as temp:
+            occupied = Path(temp) / "Unity.exe"
+            occupied.mkdir()
+
+            with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                 {"UNITY_EXE": str(occupied)}, clear=False):
+                with self.assertRaises(FileNotFoundError):
+                    self.unity_il2cpp.find_unity_from_env()
+
+    def test_explicit_relative_unity_path_is_resolved_at_discovery(self) -> None:
+        """The identity checked at discovery must be the identity launched after the cwd change."""
+        with tempfile.TemporaryDirectory() as temp:
+            caller_cwd = Path(temp) / "caller"
+            caller_cwd.mkdir()
+            self._write_unity_stand_in(caller_cwd / "tools" / "Unity.exe")
+            previous = os.getcwd()
+            os.chdir(caller_cwd)
+            try:
+                resolved = self.unity_il2cpp.find_unity_explicit(os.path.join("tools", "Unity.exe"))
+            finally:
+                os.chdir(previous)
+
+        self.assertTrue(Path(resolved).is_absolute())
+
+    def test_unity_start_failure_uses_the_declared_exit_taxonomy(self) -> None:
+        """A failed process start must not escape main as a raw traceback."""
+        def exploding_run(*_args, **_kwargs):
+            """Stand in for a process start that fails at the OS boundary."""
+            raise FileNotFoundError("controlled process start failure")
+
+        with mock.patch.object(self.unity_il2cpp, "run_with_progress", side_effect=exploding_run):
+            with mock.patch.object(self.unity_il2cpp, "validate_generated_artifacts", return_value=[]):
+                with mock.patch.object(self.unity_il2cpp, "build_command", return_value=(
+                        ["unity", "-batchmode"], Path(tempfile.gettempdir()) / "project",
+                        Path(tempfile.gettempdir()) / "unity.log",
+                        Path(tempfile.gettempdir()) / "player.exe")):
+                    with mock.patch.object(sys, "argv", ["unity_il2cpp.py"]):
+                        captured = io.StringIO()
+                        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                            returncode = self.unity_il2cpp.main()
+
+        self.assertEqual(self.unity_il2cpp.EXIT_PREFLIGHT_FAILURE, returncode)
+        self.assertIn("controlled process start failure", captured.getvalue())
 
     def test_negative_build_timeout_is_rejected(self) -> None:
         """Only zero, not an arbitrary negative value, may disable the build timeout."""
