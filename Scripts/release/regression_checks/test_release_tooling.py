@@ -2586,6 +2586,26 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertEqual([4321], pids)
 
+    def test_posix_process_group_diagnostic_uses_a_bounded_timeout(self) -> None:
+        """The residual-PID diagnostic must bound the ps subprocess it launches."""
+        completed = types.SimpleNamespace(stdout=" 111 4321\n", returncode=0)
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", return_value=completed) as run:
+            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=False):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([111], pids)
+        self.assertIn("timeout", run.call_args.kwargs)
+        self.assertGreater(run.call_args.kwargs["timeout"], 0)
+
+    def test_posix_process_group_diagnostic_timeout_fails_closed(self) -> None:
+        """A diagnostic timeout must retain an extant group in the residual report."""
+        expired = subprocess.TimeoutExpired(["ps", "-eo", "pid=,pgid="], 1)
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", side_effect=expired):
+            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([4321], pids)
+
     def _controlled_tree(self, poll_result, pid_sequence, call_log):
         """Build a stand-in owned tree with a scripted residual-PID sequence."""
         remaining = list(pid_sequence)

@@ -56,6 +56,7 @@ DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
 DEFAULT_BUILD_TIMEOUT_MINUTES = 120
 UNITY_TERMINATION_WAIT_SECONDS = 30
+PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS = 5
 PROCESS_TREE_POLL_SECONDS = 0.05
 
 # Win32 process/job constants kept local so the script remains dependency-free.
@@ -641,15 +642,16 @@ def _posix_process_group_exists(process_group_id: int) -> bool:
 
 
 def _posix_process_group_pids(process_group_id: int) -> List[int]:
-    """Enumerate a POSIX process group for bounded residual diagnostics."""
+    """Enumerate a POSIX process group with bounded residual diagnostics."""
     try:
         result = subprocess.run(
             ["ps", "-eo", "pid=,pgid="],
             check=False,
             capture_output=True,
             text=True,
+            timeout=PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return [process_group_id] if _posix_process_group_exists(process_group_id) else []
     pids = []
     for line in result.stdout.splitlines():
