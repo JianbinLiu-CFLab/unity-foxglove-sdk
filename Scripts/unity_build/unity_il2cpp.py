@@ -759,6 +759,23 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
     return OwnedProcessTree(process, posix_process_group_id=process.pid)
 
 
+def await_tree_quiescence(process_tree: OwnedProcessTree, deadline_seconds: float) -> List[int]:
+    """Wait for an owned tree to drain and return PIDs that miss the quiescence bound.
+
+    Ownership alone does not prove the descendants were absent when the root
+    process exited. Releasing the job or process group would force any survivor
+    to die, so quiescence has to be decided before ownership is released.
+    """
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        residual_pids = process_tree.active_pids()
+        if not residual_pids:
+            return []
+        if time.monotonic() >= deadline:
+            return residual_pids
+        time.sleep(PROCESS_TREE_POLL_SECONDS)
+
+
 def terminate_process(process_tree: OwnedProcessTree) -> List[int]:
     """Terminate an owned Unity process tree and return residual process IDs."""
     try:
@@ -830,6 +847,8 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
                 next_heartbeat = now + interval
 
             time.sleep(LOG_POLL_SLEEP_SECONDS)
+
+        residual_pids = await_tree_quiescence(process_tree, UNITY_TERMINATION_WAIT_SECONDS)
     finally:
         process_tree.close()
 
@@ -839,6 +858,17 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
 
     elapsed = format_elapsed(time.monotonic() - started)
     print(f"[build_unity_il2cpp] Unity exited after {elapsed}.", flush=True)
+
+    if residual_pids:
+        print(
+            "[build_unity_il2cpp] Owned process tree did not quiesce after Unity exited; "
+            f"residual PIDs: {', '.join(str(pid) for pid in residual_pids)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        if returncode == EXIT_SUCCESS:
+            return EXIT_PREFLIGHT_FAILURE
+
     return returncode
 
 
