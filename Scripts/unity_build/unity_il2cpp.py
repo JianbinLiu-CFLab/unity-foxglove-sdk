@@ -70,6 +70,7 @@ WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
 WINDOWS_TH32CS_SNAPTHREAD = 0x00000004
 WINDOWS_DWORD_FAILURE = 0xFFFFFFFF
 WINDOWS_JOB_TERMINATE_EXIT_CODE = 1
+WINDOWS_EXECUTABLE_MAGIC = b"MZ"
 
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
@@ -141,9 +142,36 @@ def unity_version_key(path: Path) -> Tuple[int, ...]:
     return ()
 
 
+def accepted_unity_candidate(path: Path) -> Optional[Path]:
+    """Resolve a discovery candidate, accepting only a regular executable file.
+
+    Existence proves namespace occupancy, not type or host executability, so a
+    directory, a reparse point, or an ordinary text file can otherwise win a
+    discovery tier. Resolving here also pins the identity that discovery checks
+    to the identity that is launched, because Unity is started with the working
+    directory rebased to the repository root.
+    """
+    try:
+        resolved = path.expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    if not resolved.is_file():
+        return None
+    if os.name == "nt":
+        try:
+            with resolved.open("rb") as handle:
+                if handle.read(len(WINDOWS_EXECUTABLE_MAGIC)) != WINDOWS_EXECUTABLE_MAGIC:
+                    return None
+        except OSError:
+            return None
+    elif not os.access(resolved, os.X_OK):
+        return None
+    return resolved
+
+
 def newest_existing(paths: List[Path]) -> Optional[Path]:
-    """Return the newest Unity version among those that exist."""
-    existing = [p for p in paths if p.exists()]
+    """Return the newest Unity version among the accepted executable candidates."""
+    existing = [accepted for accepted in map(accepted_unity_candidate, paths) if accepted]
     if not existing:
         return None
     return max(existing, key=lambda p: (unity_version_key(p), p.stat().st_mtime))
@@ -154,9 +182,12 @@ def find_unity_explicit(path: Optional[str]) -> Optional[Path]:
     if not path:
         return None
     unity = Path(path).expanduser()
-    if unity.exists():
-        return unity
-    raise FileNotFoundError(f"--unity path does not exist: {unity}")
+    accepted = accepted_unity_candidate(unity)
+    if accepted:
+        return accepted
+    if not unity.exists():
+        raise FileNotFoundError(f"--unity path does not exist: {unity}")
+    raise FileNotFoundError(f"--unity path is not a regular executable file: {unity}")
 
 
 def find_unity_from_env() -> Optional[Path]:
@@ -165,9 +196,12 @@ def find_unity_from_env() -> Optional[Path]:
         value = os.environ.get(name)
         if value:
             unity = Path(value).expanduser()
-            if unity.exists():
-                return unity
-            raise FileNotFoundError(f"{name} points to a missing file: {unity}")
+            accepted = accepted_unity_candidate(unity)
+            if accepted:
+                return accepted
+            if not unity.exists():
+                raise FileNotFoundError(f"{name} points to a missing file: {unity}")
+            raise FileNotFoundError(f"{name} does not point to a regular executable file: {unity}")
     return None
 
 
@@ -193,17 +227,20 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
         ]
         for root in roots:
             unity = root / "Unity" / "Hub" / "Editor" / editor_version / "Editor" / "Unity.exe"
-            if unity.exists():
-                return unity
+            accepted = accepted_unity_candidate(unity)
+            if accepted:
+                return accepted
     elif system == "darwin":
         unity = Path("/Applications/Unity/Hub/Editor") / editor_version / "Unity.app" / "Contents" / "MacOS" / "Unity"
-        if unity.exists():
-            return unity
+        accepted = accepted_unity_candidate(unity)
+        if accepted:
+            return accepted
     elif system == "linux":
         for root in (Path.home() / "Unity" / "Hub" / "Editor", Path("/opt/Unity/Hub/Editor")):
             unity = root / editor_version / "Editor" / "Unity"
-            if unity.exists():
-                return unity
+            accepted = accepted_unity_candidate(unity)
+            if accepted:
+                return accepted
 
     print(
         f"[build_unity_il2cpp] Project-pinned Unity {editor_version} was not found; "
@@ -898,13 +935,17 @@ def main() -> int:
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
-    returncode = run_with_progress(
-        cmd,
-        root,
-        log_path,
-        max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
-        args.timeout_minutes,
-    )
+    try:
+        returncode = run_with_progress(
+            cmd,
+            root,
+            log_path,
+            max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
+            args.timeout_minutes,
+        )
+    except OSError as exc:
+        print(f"[build_unity_il2cpp] Unity could not be started: {exc}", file=sys.stderr)
+        return EXIT_PREFLIGHT_FAILURE
     if returncode == EXIT_SUCCESS:
         print("[build_unity_il2cpp] Build command completed successfully.")
     else:
