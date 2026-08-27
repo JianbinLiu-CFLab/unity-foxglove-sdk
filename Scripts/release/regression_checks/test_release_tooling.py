@@ -2367,6 +2367,98 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(unity.resolve(), Path(resolved))
 
+    def _pinned_project(self, temp: Path, editor_version: str) -> Path:
+        """Write a project whose ProjectVersion.txt pins the given editor version value."""
+        project = temp / "UnityProject"
+        (project / "ProjectSettings").mkdir(parents=True, exist_ok=True)
+        (project / "ProjectSettings" / "ProjectVersion.txt").write_text(
+            f"m_EditorVersion: {editor_version}\n", encoding="utf-8")
+        return project
+
+    def _resolve_pinned(self, temp: Path, project: Path):
+        """Run project-pinned discovery with a controlled Windows Hub root."""
+        with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+            with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                 {"PROGRAMFILES": str(temp / "ProgramFiles"),
+                                  "PROGRAMFILES(X86)": str(temp / "missing")}, clear=False):
+                captured = io.StringIO()
+                with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+        return resolved, captured.getvalue()
+
+    def test_project_pinned_parent_traversal_is_rejected(self) -> None:
+        """A pinned version with parent segments must not walk out of the Hub root."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "base"
+            root.mkdir()
+            project = self._pinned_project(root, "../../../../escaped")
+            hub = root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+            hub.mkdir(parents=True)
+            escaped = (hub / "../../../../escaped" / "Editor" / "Unity.exe").resolve()
+            self._write_unity_stand_in(escaped)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_absolute_value_is_rejected(self) -> None:
+        """An absolute pinned version discards the Hub prefix and must be rejected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            elsewhere = root / "elsewhere"
+            self._write_unity_stand_in(elsewhere / "Editor" / "Unity.exe")
+            project = self._pinned_project(root, str(elsewhere))
+            (root / "ProgramFiles" / "Unity" / "Hub" / "Editor").mkdir(parents=True)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_non_version_value_is_rejected(self) -> None:
+        """A value that is not a Unity version component must not be joined at all."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "not-a-version")
+            planted = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+                       / "not-a-version" / "Editor" / "Unity.exe")
+            self._write_unity_stand_in(planted)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_candidate_escaping_by_symlink_is_rejected(self) -> None:
+        """Containment is checked after resolution, not on the unresolved join."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "2022.3.10f1")
+            version_root = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "2022.3.10f1")
+            version_root.mkdir(parents=True)
+            outside = self._write_unity_stand_in(root / "outside" / "Unity.exe")
+            link = version_root / "Editor"
+            try:
+                link.symlink_to(outside.parent, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable on this host: {exc}")
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_valid_version_inside_hub_root_is_accepted(self) -> None:
+        """A real editor under the pinned Hub version root must still be selected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "2022.3.10f1")
+            unity = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+                     / "2022.3.10f1" / "Editor" / "Unity.exe")
+            self._write_unity_stand_in(unity)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(unity.resolve(), Path(resolved))
+
     def test_hub_discovery_rejects_a_non_executable_candidate(self) -> None:
         """The generic Hub fallback must apply the same executable gate."""
         with tempfile.TemporaryDirectory() as temp:

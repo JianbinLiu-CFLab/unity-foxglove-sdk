@@ -77,6 +77,11 @@ WINDOWS_EXECUTABLE_MAGIC = b"MZ"
 PROJECT_VERSION_SPLIT_MAX = 1
 PROJECT_VERSION_VALUE_INDEX = 1
 
+# A Unity editor version component, e.g. 2022.3.10f1 or 6000.3.14. Project metadata is
+# untrusted input joined into a filesystem path, so the value must match this whole and
+# cannot carry a separator, a drive letter, or a parent segment.
+UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
+
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
@@ -170,6 +175,30 @@ def accepted_unity_candidate(path: Path) -> Optional[Path]:
     return resolved
 
 
+def is_unity_editor_version(value: str) -> bool:
+    """Accept only a Unity editor version component, never a path fragment."""
+    return bool(UNITY_EDITOR_VERSION_PATTERN.fullmatch(value))
+
+
+def contained_unity_candidate(candidate: Path, version_root: Path) -> Optional[Path]:
+    """Accept a candidate only when it resolves beneath the given Hub version root.
+
+    Containment is tested after resolution, so a symlink or reparse point inside the
+    version root cannot redirect the launch outside it. This is independent of the
+    version-component check: either alone would leave the other escape open.
+    """
+    accepted = accepted_unity_candidate(candidate)
+    if accepted is None:
+        return None
+    try:
+        resolved_root = version_root.resolve(strict=True)
+    except OSError:
+        return None
+    if not accepted.is_relative_to(resolved_root):
+        return None
+    return accepted
+
+
 def newest_existing(paths: List[Path]) -> Optional[Path]:
     """Return the newest Unity version among the accepted executable candidates."""
     existing = [accepted for accepted in map(accepted_unity_candidate, paths) if accepted]
@@ -220,6 +249,14 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
     if not editor_version:
         return None
 
+    if not is_unity_editor_version(editor_version):
+        print(
+            f"[build_unity_il2cpp] ProjectVersion.txt pins {editor_version!r}, which is not a "
+            "Unity editor version; ignoring the project pin.",
+            file=sys.stderr,
+        )
+        return None
+
     system = platform.system().lower()
     if system == "windows":
         roots = [
@@ -227,19 +264,20 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
             Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
         ]
         for root in roots:
-            unity = root / "Unity" / "Hub" / "Editor" / editor_version / "Editor" / "Unity.exe"
-            accepted = accepted_unity_candidate(unity)
+            version_root = root / "Unity" / "Hub" / "Editor" / editor_version
+            accepted = contained_unity_candidate(version_root / "Editor" / "Unity.exe", version_root)
             if accepted:
                 return accepted
     elif system == "darwin":
-        unity = Path("/Applications/Unity/Hub/Editor") / editor_version / "Unity.app" / "Contents" / "MacOS" / "Unity"
-        accepted = accepted_unity_candidate(unity)
+        version_root = Path("/Applications/Unity/Hub/Editor") / editor_version
+        accepted = contained_unity_candidate(
+            version_root / "Unity.app" / "Contents" / "MacOS" / "Unity", version_root)
         if accepted:
             return accepted
     elif system == "linux":
         for root in (Path.home() / "Unity" / "Hub" / "Editor", Path("/opt/Unity/Hub/Editor")):
-            unity = root / editor_version / "Editor" / "Unity"
-            accepted = accepted_unity_candidate(unity)
+            version_root = root / editor_version
+            accepted = contained_unity_candidate(version_root / "Editor" / "Unity", version_root)
             if accepted:
                 return accepted
 
