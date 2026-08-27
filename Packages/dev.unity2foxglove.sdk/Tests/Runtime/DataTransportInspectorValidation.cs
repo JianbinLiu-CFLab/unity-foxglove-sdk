@@ -115,6 +115,8 @@ namespace Unity.FoxgloveSDK.Tests
                     publishData,
                     "ShouldEnsureProvider"));
             VerifyFoldoutState(managerEditor);
+            VerifyMultiObjectInspectorBoundary(
+                FindMethod(managerEditor, "OnInspectorGUI"));
             VerifyNeutralSerialization();
             VerifyDirectionalCoordinateRuntimePolicy();
             VerifyValidationRegistryEntry();
@@ -571,6 +573,44 @@ namespace Unity.FoxgloveSDK.Tests
                       "InspectorFoldoutKey(\"DataTransportSubscribe\")",
                       StringComparison.Ordinal),
                 "180G-1: foldout persistence belongs only to Data Transport and its two neutral directional subsections");
+        }
+
+        private static void VerifyMultiObjectInspectorBoundary(
+            MethodDeclarationSyntax topLevel)
+        {
+            var multiObjectGuard = topLevel.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .FirstOrDefault(statement =>
+                    statement.Condition.ToFullString().Contains(
+                        "serializedObject.isEditingMultipleObjects",
+                        StringComparison.Ordinal));
+            var guardText = multiObjectGuard?.Statement.ToFullString()
+                            ?? string.Empty;
+            var guardCallsCustomUi = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>()
+                    .Any(invocation =>
+                        IsInvocationNamed(invocation, "SyncSerializedManager")
+                        || IsInvocationNamed(invocation, "DrawSection")
+                        || IsInvocationNamed(invocation, "DrawRecordingReplayWarning"));
+            var guardReturns = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodesAndSelf()
+                    .OfType<ReturnStatementSyntax>()
+                    .Any();
+            var hasDefaultInspector = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>()
+                    .Any(invocation =>
+                        IsInvocationNamed(invocation, "DrawDefaultInspector"));
+
+            Check(multiObjectGuard != null
+                  && guardText.Contains(
+                      "Multi-object editing",
+                      StringComparison.Ordinal)
+                  && hasDefaultInspector
+                  && guardReturns
+                  && !guardCallsCustomUi,
+                "180J-1: multi-object Manager inspection is mixed-safe and exposes no representative custom actions");
         }
 
         private static void VerifyNeutralSerialization()

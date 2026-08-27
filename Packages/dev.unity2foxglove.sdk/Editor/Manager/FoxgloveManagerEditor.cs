@@ -166,6 +166,19 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+
+            if (serializedObject.isEditingMultipleObjects)
+            {
+                EditorGUILayout.HelpBox(
+                    "Multi-object editing uses Unity's mixed-value inspector. "
+                    + "Manager status, foldouts, and actions are unavailable "
+                    + "until one Manager is selected.",
+                    MessageType.Info);
+                DrawDefaultInspector();
+                serializedObject.ApplyModifiedProperties();
+                return;
+            }
+
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
             RefreshTransportStatsForRepaint();
 
