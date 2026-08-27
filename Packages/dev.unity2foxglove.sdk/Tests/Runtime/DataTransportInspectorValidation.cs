@@ -117,6 +117,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFoldoutState(managerEditor);
             VerifyMultiObjectInspectorBoundary(
                 FindMethod(managerEditor, "OnInspectorGUI"));
+            VerifyPassiveInspectorMutationBoundary(managerEditor);
             VerifyNeutralSerialization();
             VerifyDirectionalCoordinateRuntimePolicy();
             VerifyValidationRegistryEntry();
@@ -611,6 +612,77 @@ namespace Unity.FoxgloveSDK.Tests
                   && guardReturns
                   && !guardCallsCustomUi,
                 "180J-1: multi-object Manager inspection is mixed-safe and exposes no representative custom actions");
+        }
+
+        private static void VerifyPassiveInspectorMutationBoundary(
+            string managerEditor)
+        {
+            var inspector = FindMethod(managerEditor, "OnInspectorGUI");
+            var inspectorText = inspector.ToFullString();
+            var beginChange = inspectorText.IndexOf(
+                "EditorGUI.BeginChangeCheck()",
+                StringComparison.Ordinal);
+            var endChange = inspectorText.IndexOf(
+                "EditorGUI.EndChangeCheck()",
+                beginChange < 0 ? 0 : beginChange,
+                StringComparison.Ordinal);
+            var apply = inspectorText.IndexOf(
+                "serializedObject.ApplyModifiedProperties()",
+                endChange < 0 ? 0 : endChange,
+                StringComparison.Ordinal);
+            var discard = inspectorText.IndexOf(
+                "serializedObject.Update()",
+                endChange < 0 ? 0 : endChange,
+                StringComparison.Ordinal);
+
+            Check(beginChange >= 0
+                  && endChange > beginChange
+                  && apply > endChange
+                  && discard > endChange
+                  && inspectorText.Contains(
+                      "if (EditorGUI.EndChangeCheck())",
+                      StringComparison.Ordinal),
+                "180J-2: passive Manager repaint discards staged enum normalization and applies only an intentional edit");
+
+            var status = FindMethod(managerEditor, "DrawCompactStatus");
+            var statusText = status.ToFullString();
+            var unavailable = statusText.IndexOf(
+                "unavailable",
+                StringComparison.OrdinalIgnoreCase);
+            var refresh = statusText.IndexOf(
+                "RefreshWebUrlCache",
+                StringComparison.Ordinal);
+            Check(statusText.Contains(
+                      "_foxgloveOutputEnabled",
+                      StringComparison.Ordinal)
+                  && unavailable >= 0
+                  && statusText.Contains(
+                      "return;",
+                      StringComparison.Ordinal)
+                  && refresh > unavailable,
+                "180J-3: disabled or invalid transport status is explicit and never synthesizes active URL actions");
+
+            var transport = FindMethod(managerEditor, "DrawTransportModeProperty");
+            var transportText = transport.ToFullString();
+            var disabled = transportText.IndexOf(
+                "if (!GetBool(\"_foxgloveOutputEnabled\"))",
+                StringComparison.Ordinal);
+            var popup = transportText.IndexOf(
+                "EditorGUILayout.Popup",
+                StringComparison.Ordinal);
+            var guardedAssignment = transportText.IndexOf(
+                "if (EditorGUI.EndChangeCheck())",
+                StringComparison.Ordinal);
+            Check(disabled >= 0
+                  && popup > disabled
+                  && guardedAssignment > popup
+                  && transportText.Contains(
+                      "prop.intValue",
+                      StringComparison.Ordinal)
+                  && !transportText.Contains(
+                      "prop.enumValueIndex = selected == 1",
+                      StringComparison.Ordinal),
+                "180J-4: disabled and malformed transport values remain byte-stable until an explicit popup selection");
         }
 
         private static void VerifyNeutralSerialization()
