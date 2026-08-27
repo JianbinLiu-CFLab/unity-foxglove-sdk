@@ -264,13 +264,15 @@ def relative_to_root(path: Path, root: Path) -> str:
 
 
 def validate_generated_artifacts(root: Path) -> List[str]:
-    """Return missing or empty generated artifacts needed for Unity compilation."""
+    """Return missing, non-regular, or empty generated artifacts needed for Unity compilation."""
     failures: List[str] = []
     for relative in REQUIRED_GENERATED_ARTIFACTS:
         path = root / relative
         if not path.exists():
             failures.append(f"missing generated artifact: {relative}")
-        elif path.is_file() and path.stat().st_size == 0:
+        elif not path.is_file():
+            failures.append(f"generated artifact is not a regular file: {relative}")
+        elif path.stat().st_size == 0:
             failures.append(f"empty generated artifact: {relative}")
     return failures
 
