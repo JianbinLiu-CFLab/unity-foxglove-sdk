@@ -2586,6 +2586,92 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertEqual([4321], pids)
 
+    def _controlled_tree(self, poll_result, pid_sequence, call_log):
+        """Build a stand-in owned tree with a scripted residual-PID sequence."""
+        remaining = list(pid_sequence)
+
+        class ControlledProcess:
+            """Stand in for the launched root process."""
+
+            def poll(self):
+                """Report the scripted root process result."""
+                return poll_result
+
+        class ControlledTree:
+            """Stand in for one platform-owned process tree."""
+
+            def __init__(self):
+                """Record the scripted process and start with ownership held."""
+                self.process = ControlledProcess()
+
+            def active_pids(self):
+                """Return the next scripted residual set, repeating the last one."""
+                call_log.append("active_pids")
+                return remaining.pop(0) if len(remaining) > 1 else remaining[0]
+
+            def close(self):
+                """Record that platform ownership was released."""
+                call_log.append("close")
+
+        return ControlledTree()
+
+    def _run_with_controlled_tree(self, temp: Path, tree, timeout_minutes: int = 0):
+        """Drive run_with_progress against a controlled owned tree."""
+        log = temp / "unity.log"
+        with mock.patch.object(self.unity_il2cpp, "start_owned_process", return_value=tree):
+            with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 0.2):
+                captured = io.StringIO()
+                with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                    returncode = self.unity_il2cpp.run_with_progress(
+                        ["controlled"], temp, log, 1, timeout_minutes)
+        return returncode, captured.getvalue()
+
+    def test_success_waits_for_the_owned_tree_to_quiesce(self) -> None:
+        """A tree that drains shortly after the root exits is still a success."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242], [424242], []], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("did not quiesce", text)
+
+    def test_success_is_withheld_when_the_owned_tree_never_quiesces(self) -> None:
+        """A zero root exit must not be success while descendants are still owned."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("did not quiesce", text)
+        self.assertIn("424242", text)
+
+    def test_quiescence_is_checked_before_ownership_is_released(self) -> None:
+        """Ownership must not be released before quiescence has been decided."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertIn("close", calls)
+        self.assertIn("active_pids", calls)
+        self.assertLess(calls.index("active_pids"), calls.index("close"))
+
+    def test_nonzero_exit_is_not_masked_by_a_quiescence_failure(self) -> None:
+        """A real Unity failure code must survive an unquiet tree."""
+        calls: list[str] = []
+        tree = self._controlled_tree(3, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertEqual(3, returncode)
+        self.assertIn("did not quiesce", text)
+
     def test_posix_termination_poll_avoids_repeated_ps_processes(self) -> None:
         """Quiescence polling should use the process-group primitive, not shell out on every pass."""
         process = mock.Mock()
