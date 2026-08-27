@@ -2418,6 +2418,138 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertTrue(Path(resolved).is_absolute())
 
+    def _drive_main(self, temp: Path, on_run, pre_existing: bytes | None = None):
+        """Run main() with a controlled build command and process result.
+
+        Returns (returncode, combined output, requested Player path). The generated
+        artifact preflight and the command construction are stubbed so the assertion
+        is about the post-run outcome only, not about discovery or preflight.
+        """
+        output = temp / "requested" / "FoxgloveDemo.exe"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if pre_existing is not None:
+            output.write_bytes(pre_existing)
+        project = temp / "project"
+        project.mkdir(exist_ok=True)
+        log = temp / "build.log"
+
+        def controlled_run(*_args, **_kwargs):
+            """Stand in for the Unity invocation and its process result."""
+            return on_run(output)
+
+        with mock.patch.object(self.unity_il2cpp, "build_command",
+                               return_value=(["unity", "-batchmode"], project, log, output)):
+            with mock.patch.object(self.unity_il2cpp, "validate_generated_artifacts",
+                                   return_value=[]):
+                with mock.patch.object(self.unity_il2cpp, "run_with_progress",
+                                       side_effect=controlled_run):
+                    with mock.patch.object(sys, "argv", ["unity_il2cpp.py"]):
+                        captured = io.StringIO()
+                        with contextlib.redirect_stdout(captured), \
+                                contextlib.redirect_stderr(captured):
+                            returncode = self.unity_il2cpp.main()
+        return returncode, captured.getvalue(), output
+
+    def test_zero_exit_without_requested_player_is_rejected(self) -> None:
+        """A zero process code must not be reported as success with no Player produced."""
+        def produce_nothing(_output):
+            """Exit zero without writing the requested Player."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(Path(temp), produce_nothing)
+
+            self.assertFalse(output.exists())
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_stale_pre_existing_player_is_rejected(self) -> None:
+        """A pre-run output left untouched by the build is not this invocation's Player."""
+        def leave_stale_output(_output):
+            """Exit zero without touching the pre-existing output."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(
+                Path(temp), leave_stale_output, pre_existing=b"stale player bytes")
+
+            # The controller must not delete or rewrite what it did not produce.
+            self.assertTrue(output.exists())
+            self.assertEqual(b"stale player bytes", output.read_bytes())
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_fresh_invocation_owned_player_is_accepted(self) -> None:
+        """A Player produced by this invocation must still be reported as success."""
+        def produce_player(output):
+            """Write the requested Player, then exit zero."""
+            output.write_bytes(b"freshly built player")
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(Path(temp), produce_player)
+
+            self.assertTrue(output.exists())
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("Build command completed successfully.", text)
+
+    def test_rebuilt_player_over_a_previous_output_is_accepted(self) -> None:
+        """Replacing an older Player in place is ownership by this invocation."""
+        def rebuild_player(output):
+            """Overwrite the previous output with new bytes, then exit zero."""
+            output.write_bytes(b"rebuilt player bytes, different length")
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, _output = self._drive_main(
+                Path(temp), rebuild_player, pre_existing=b"older player")
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("Build command completed successfully.", text)
+
+    def test_nonzero_process_exit_reports_failure(self) -> None:
+        """A nonzero Unity exit code must propagate unchanged and report failure."""
+        def fail_the_build(_output):
+            """Exit nonzero without producing anything."""
+            return 3
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, _output = self._drive_main(Path(temp), fail_the_build)
+
+        self.assertEqual(3, returncode)
+        self.assertIn("Build failed with exit code 3", text)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_output_verification_is_deterministic_and_leaves_no_residue(self) -> None:
+        """The stale verdict must repeat exactly and must not add or remove files."""
+        def leave_stale_output(_output):
+            """Exit zero without touching the pre-existing output."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        verdicts = []
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first, _text, output = self._drive_main(
+                root, leave_stale_output, pre_existing=b"stale player bytes")
+            verdicts.append(first)
+            after_first = sorted(p.relative_to(root).as_posix()
+                                 for p in root.rglob("*") if p.is_file())
+
+            second, _text2, _output2 = self._drive_main(
+                root, leave_stale_output, pre_existing=None)
+            verdicts.append(second)
+            after_second = sorted(p.relative_to(root).as_posix()
+                                  for p in root.rglob("*") if p.is_file())
+
+            self.assertEqual(after_first, after_second)
+            self.assertEqual(b"stale player bytes", output.read_bytes())
+
+        self.assertEqual(verdicts[0], verdicts[1])
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, verdicts[0])
+
     def test_unity_start_failure_uses_the_declared_exit_taxonomy(self) -> None:
         """A failed process start must not escape main as a raw traceback."""
         def exploding_run(*_args, **_kwargs):

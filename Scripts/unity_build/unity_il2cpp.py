@@ -324,6 +324,23 @@ def resolve_unity_for_command(args: argparse.Namespace, project_path: Path) -> s
         raise
 
 
+def output_fingerprint(path: Path) -> Optional[Tuple[int, int]]:
+    """Identify one build output by size and modification time, or None if absent.
+
+    Comparing a fingerprint taken before the build with one taken after is what
+    distinguishes a Player this invocation produced from a stale artifact that
+    merely occupied the requested path. Size and mtime are used together so the
+    verdict does not depend on filesystem timestamp resolution alone.
+    """
+    try:
+        if not path.is_file():
+            return None
+        info = path.stat()
+    except OSError:
+        return None
+    return (info.st_size, info.st_mtime_ns)
+
+
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
     """Build the full Unity batchmode command line from parsed arguments."""
     root = repo_root()
@@ -932,6 +949,7 @@ def main() -> int:
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_before = output_fingerprint(output_path)
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
@@ -947,6 +965,21 @@ def main() -> int:
         print(f"[build_unity_il2cpp] Unity could not be started: {exc}", file=sys.stderr)
         return EXIT_PREFLIGHT_FAILURE
     if returncode == EXIT_SUCCESS:
+        output_after = output_fingerprint(output_path)
+        if output_after is None:
+            print(
+                "[build_unity_il2cpp] Unity reported success but produced no Player at "
+                f"{relative_to_root(output_path, root)}.",
+                file=sys.stderr,
+            )
+            return EXIT_PREFLIGHT_FAILURE
+        if output_after == output_before:
+            print(
+                "[build_unity_il2cpp] Unity reported success but left the pre-existing Player at "
+                f"{relative_to_root(output_path, root)} unchanged; it is not this build's output.",
+                file=sys.stderr,
+            )
+            return EXIT_PREFLIGHT_FAILURE
         print("[build_unity_il2cpp] Build command completed successfully.")
     else:
         print(
