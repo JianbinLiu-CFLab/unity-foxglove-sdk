@@ -2245,6 +2245,54 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         self.assertTrue(failures)
         self.assertTrue(any("missing generated artifact" in failure for failure in failures))
 
+    def _populate_generated_artifacts(self, root: Path) -> None:
+        """Write one nonempty regular file for every required generated artifact."""
+        for relative in self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("generated\n", encoding="utf-8")
+
+    def test_generated_artifact_preflight_accepts_a_complete_regular_file_set(self) -> None:
+        """A fully populated tree of nonempty regular files must preflight clean."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+
+            self.assertEqual([], self.unity_il2cpp.validate_generated_artifacts(root))
+
+    def test_generated_artifact_preflight_rejects_a_directory_at_a_required_path(self) -> None:
+        """exists() alone must not satisfy the preflight: a directory is not the artifact."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+            required = self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS[0]
+            occupied = root / required
+            occupied.unlink()
+            occupied.mkdir(parents=True)
+
+            failures = self.unity_il2cpp.validate_generated_artifacts(root)
+
+        self.assertTrue(any(required in failure for failure in failures))
+
+    def test_generated_artifact_preflight_rejects_a_directory_symlink(self) -> None:
+        """A directory symlink or reparse point at a required path is not the artifact."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+            required = self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS[0]
+            occupied = root / required
+            occupied.unlink()
+            target = root / "symlink-target-directory"
+            target.mkdir()
+            try:
+                occupied.symlink_to(target, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable on this host: {exc}")
+
+            failures = self.unity_il2cpp.validate_generated_artifacts(root)
+
+        self.assertTrue(any(required in failure for failure in failures))
+
     def test_missing_project_pinned_unity_falls_back_to_hub_discovery(self) -> None:
         """Missing ProjectVersion editor should not block newer Hub editor discovery."""
         with tempfile.TemporaryDirectory() as temp:
