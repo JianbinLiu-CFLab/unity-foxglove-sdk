@@ -1349,6 +1349,44 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(2, context.exception.code)
         self.assertIn("invalid choice", stderr.getvalue())
 
+    def test_direct_analyzer_skip_is_a_usage_error(self) -> None:
+        """The analyzer-only selector cannot claim success when its only lane is skipped."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["run_ci.py", "--only", "analyzer", "--skip-analyzer"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.run_ci.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("--skip-analyzer cannot be combined with --only analyzer", stderr.getvalue())
+
+    def test_empty_ci_result_summary_is_non_pass(self) -> None:
+        """An aggregate with no executed lanes must fail instead of vacuously passing."""
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            result = self.run_ci.report_ci_job_results({})
+
+        self.assertEqual(1, result)
+        self.assertIn("No CI checks were executed.", stdout.getvalue())
+
+    def test_default_analyzer_skip_exposes_machine_readable_lane(self) -> None:
+        """A permitted partial default run must identify its skipped analyzer lane explicitly."""
+        with mock.patch.object(self.run_ci, "run_ci_jobs", return_value={"other": True}):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--skip-analyzer"],
+            ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                result = self.run_ci.main()
+
+        rendered = stdout.getvalue()
+        self.assertEqual(0, result)
+        self.assertIn("[SKIP] analyzer", rendered)
+        self.assertIn("SKIPPED_LANES=analyzer", rendered)
+        self.assertIn("All executed CI checks passed.", rendered)
+        self.assertNotIn("All CI checks passed.", rendered)
+
     def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
         """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
         jobs = self.run_ci.build_default_ci_jobs(types.SimpleNamespace(skip_analyzer=False))

@@ -629,19 +629,34 @@ def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
     return {job.name: results_by_name[job.name].ok for job in jobs}
 
 
-def report_ci_job_results(results: dict[str, bool]) -> int:
-    """Print the standard top-level CI aggregate summary and return its exit code."""
+def report_ci_job_results(
+    results: dict[str, bool],
+    skipped: tuple[str, ...] = (),
+) -> int:
+    """Print the top-level CI aggregate summary and return its exit code."""
     print(f"\n{'=' * 60}")
     for name, ok in results.items():
         print(f"  {green(PASS) if ok else red(FAIL)} {name}")
 
-    if all(results.values()):
-        print(f"\n{green('All CI checks passed.')}")
-        return 0
+    for name in skipped:
+        print(f"  {SKIP} {name}")
+    if skipped:
+        print(f"SKIPPED_LANES={','.join(skipped)}")
+
+    if not results:
+        print(f"\n{red('No CI checks were executed.')}")
+        return 1
 
     failed = [n for n, ok in results.items() if not ok]
-    print(f"\n{red('Failed: ' + ', '.join(failed))}")
-    return 1
+    if failed:
+        print(f"\n{red('Failed: ' + ', '.join(failed))}")
+        return 1
+
+    if skipped:
+        print(f"\n{green('All executed CI checks passed.')}")
+    else:
+        print(f"\n{green('All CI checks passed.')}")
+    return 0
 
 
 def restore_with_ignoring_failed_sources(
@@ -751,12 +766,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.only == "analyzer" and args.skip_analyzer:
+        parser.error("--skip-analyzer cannot be combined with --only analyzer")
+
     results: dict[str, bool] = {}
-    all_pass = True
+    skipped_lanes: tuple[str, ...] = (
+        ("analyzer",) if args.only is None and args.skip_analyzer else ()
+    )
 
     if args.only is None:
         results.update(run_ci_jobs(build_default_ci_jobs(args), args.jobs))
-        return report_ci_job_results(results)
+        return report_ci_job_results(results, skipped_lanes)
 
     if args.only == "dotnet":
         results.update(run_ci_jobs(build_dotnet_ci_jobs(), args.jobs))
@@ -1185,20 +1205,7 @@ def main() -> int:
         results["changelog-verified"] = _check_changelog_verified_stubs()
 
     # --- summary ---
-    print(f"\n{'=' * 60}")
-    for name, ok in results.items():
-        print(f"  {green(PASS) if ok else red(FAIL)} {name}")
-
-    for ok in results.values():
-        if not ok:
-            all_pass = False
-
-    if all_pass:
-        print(f"\n{green('All CI checks passed.')}")
-    else:
-        failed = [n for n, ok in results.items() if not ok]
-        print(f"\n{red('Failed: ' + ', '.join(failed))}")
-    return 0 if all_pass else 1
+    return report_ci_job_results(results, skipped_lanes)
 
 
 if __name__ == "__main__":
