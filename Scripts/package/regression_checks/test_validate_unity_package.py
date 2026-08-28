@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -120,6 +121,87 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
 
         self.assertTrue(results[-1].ok)
+
+    def test_package_matrix_gate_authenticates_all_four_package_manifests(self) -> None:
+        """The standalone validator must reject drift outside the SDK manifest."""
+        manifests = {
+            "sdk": (
+                "dev.unity2foxglove.sdk",
+                "1.9.6",
+                {
+                    "com.unity.nuget.newtonsoft-json": "3.2.1",
+                    "com.unity.burst": "1.8.18",
+                    "com.unity.collections": "2.5.5",
+                    "com.unity.mathematics": "1.3.2",
+                },
+            ),
+            "r2fu": (
+                "dev.unity2foxglove.ros2forunity",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+            "bridge": (
+                "dev.unity2foxglove.ros2bridge",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+            "remote_gateway": (
+                "dev.unity2foxglove.remotegateway.win64",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+        }
+        relatives = {
+            "sdk": "dev.unity2foxglove.sdk",
+            "r2fu": "dev.unity2foxglove.ros2forunity",
+            "bridge": "dev.unity2foxglove.ros2bridge",
+            "remote_gateway": "dev.unity2foxglove.remotegateway.win64",
+        }
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = {key: root / relative for key, relative in relatives.items()}
+            for key, package in paths.items():
+                package.mkdir(parents=True)
+                name, version, dependencies = manifests[key]
+                (package / "package.json").write_text(
+                    json.dumps(
+                        {
+                            "name": name,
+                            "version": version,
+                            "dependencies": dependencies,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            gateway_manifest = paths["remote_gateway"] / "package.json"
+            gateway_data = json.loads(gateway_manifest.read_text(encoding="utf-8"))
+            gateway_data["name"] = "dev.unity2foxglove.remotegateway.win64.decoy"
+            gateway_manifest.write_text(json.dumps(gateway_data), encoding="utf-8")
+
+            with mock.patch.object(self.validator, "PACKAGE", paths["sdk"]), \
+                mock.patch.object(self.validator, "ROS2_FOR_UNITY_PACKAGE", paths["r2fu"], create=True), \
+                mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", paths["bridge"]), \
+                mock.patch.object(self.validator, "REMOTE_GATEWAY_PACKAGE", paths["remote_gateway"]):
+                results = []
+                checker = getattr(self.validator, "check_package_matrix", None)
+                self.assertIsNotNone(checker, "standalone package matrix gate is missing")
+                if checker is not None:
+                    checker(results)
+
+        matrix_result = next(
+            item for item in results if item.name == "package matrix remote_gateway name"
+        )
+        self.assertFalse(matrix_result.ok)
+        self.assertIn("remotegateway.win64.decoy", matrix_result.detail)
+
+    def test_main_invokes_the_package_matrix_gate(self) -> None:
+        """The release entry point must execute the independent matrix gate."""
+        with mock.patch.object(self.validator, "check_package_matrix") as gate:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        gate.assert_called_once_with(mock.ANY)
 
     def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
         """A distributable Bridge sample includes its behavior, builder, and guide."""
