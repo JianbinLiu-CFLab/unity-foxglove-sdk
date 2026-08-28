@@ -84,19 +84,41 @@ def _is_assembly_or_child(value: object, assembly_name: str) -> bool:
 
 
 def _assembly_guids(package_root: Path, assembly_name: str) -> set[str]:
-    """Return GUIDs owned by a named assembly and its child assemblies."""
+    """Return GUIDs owned by a named assembly and its child assemblies.
+
+    Unity resolves an assembly-reference GUID across the package graph.
+    Runtime child assemblies are deliberately shipped in sibling UPM packages,
+    so restricting the lookup to ``package_root`` would make a sibling-owned
+    reference invisible.  Search the named package and its declared R2FU
+    runtime siblings in deterministic order; unrelated packages are not part
+    of this ownership boundary.
+    """
     result: set[str] = set()
-    for asmdef in package_root.rglob("*.asmdef"):
-        descriptor = load_json(asmdef)
-        if not _is_assembly_or_child(descriptor.get("name"), assembly_name):
-            continue
-        meta = Path(str(asmdef) + ".meta")
-        if not meta.is_file():
-            raise RuntimeError(f"assembly definition meta is missing: {meta}")
-        match = GUID_PATTERN.search(meta.read_text(encoding="utf-8"))
-        if match is None:
-            raise RuntimeError(f"assembly definition GUID is missing: {meta}")
-        result.add(match.group(1).lower())
+    search_roots = [package_root]
+    package_parent = package_root.parent
+    if package_parent.is_dir():
+        runtime_prefix = package_root.name.casefold() + ".runtime."
+        search_roots.extend(
+            child
+            for child in sorted(package_parent.iterdir(), key=lambda path: path.as_posix().casefold())
+            if (
+                child.is_dir()
+                and child != package_root
+                and child.name.casefold().startswith(runtime_prefix)
+            )
+        )
+    for search_root in search_roots:
+        for asmdef in sorted(search_root.rglob("*.asmdef"), key=lambda path: path.as_posix().casefold()):
+            descriptor = load_json(asmdef)
+            if not _is_assembly_or_child(descriptor.get("name"), assembly_name):
+                continue
+            meta = Path(str(asmdef) + ".meta")
+            if not meta.is_file():
+                raise RuntimeError(f"assembly definition meta is missing: {meta}")
+            match = GUID_PATTERN.search(meta.read_text(encoding="utf-8"))
+            if match is None:
+                raise RuntimeError(f"assembly definition GUID is missing: {meta}")
+            result.add(match.group(1).lower())
     if not result:
         raise RuntimeError(
             f"forbidden assembly definition is missing: {assembly_name}"
