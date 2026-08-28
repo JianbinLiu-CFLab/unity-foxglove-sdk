@@ -489,6 +489,39 @@ class ValidatePackageTests(unittest.TestCase):
         )
         self.assertFalse(scope.ok)
 
+    def test_third_party_notices_require_tokens_in_one_attributable_section(self) -> None:
+        """A global token match must not substitute for one artifact notice section."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            artifact = package / "Runtime" / "Plugins" / "ExampleDependency.dll"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"dll")
+            notices = root / "THIRD_PARTY_NOTICES.md"
+            notices.write_text(
+                "## Artifact name\nExampleDependency\n\n"
+                "## License declaration\nMIT\n\n"
+                "## Distribution path\nRuntime/Plugins/ExampleDependency.dll\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "PACKAGE", package), \
+                mock.patch.object(self.validator, "THIRD_PARTY_NOTICES", notices), \
+                mock.patch.object(
+                    self.validator,
+                    "THIRD_PARTY_NOTICE_REQUIREMENTS",
+                    ((artifact, ("ExampleDependency", "MIT", "Runtime/Plugins/ExampleDependency.dll")),),
+                ):
+                results = []
+                self.validator.check_third_party_notices(results, list(package.rglob("*")))
+
+        coverage = next(
+            item for item in results
+            if item.name == "third-party notices cover bundled binaries"
+        )
+        self.assertFalse(coverage.ok)
+        self.assertIn("ExampleDependency.dll", coverage.detail)
+
     def test_forbidden_sample_artifacts_reports_root_directory_once(self) -> None:
         """A forbidden directory should not flood diagnostics with descendants."""
         with tempfile.TemporaryDirectory() as temp:
