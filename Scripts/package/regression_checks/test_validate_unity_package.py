@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
@@ -356,6 +357,93 @@ class ValidatePackageTests(unittest.TestCase):
             ),
         }
         self.assertEqual(expected, requirements)
+
+    def test_third_party_notice_inventory_rejects_unlisted_package_dlls(self) -> None:
+        """Every regular SDK DLL is either notice-listed or explicitly first-party."""
+        requirements_template = tuple(self.validator.THIRD_PARTY_NOTICE_REQUIREMENTS)
+
+        def run_inventory(
+            extra_relative: str | None = None,
+            add_requirement: bool = False,
+            extra_directory: bool = False,
+        ):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                package = root / "sdk"
+                notices = root / "THIRD_PARTY_NOTICES.md"
+                requirements = []
+                notice_lines = []
+                for index, (_original, tokens) in enumerate(requirements_template):
+                    relative = Path("Runtime/Plugins") / f"Dependency{index}.dll"
+                    artifact = package / relative
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    artifact.write_bytes(b"dll")
+                    requirements.append((artifact, tokens))
+                    notice_lines.extend(tokens)
+                if extra_relative is not None:
+                    extra = package / extra_relative
+                    extra.parent.mkdir(parents=True, exist_ok=True)
+                    if extra_directory:
+                        extra.mkdir(exist_ok=True)
+                    elif extra.suffix.casefold() == ".dll":
+                        extra.write_bytes(b"extra")
+                    else:
+                        extra.write_text("ignored", encoding="utf-8")
+                    if add_requirement and extra.is_file():
+                        requirements.append((extra, ("ExtraDependency", "MIT", extra_relative.replace("\\", "/"))))
+                        notice_lines.extend(requirements[-1][1])
+                analyzer = package / "Editor/SourceGenerators/analyzers/dotnet/cs/AnalyzerExtra.dll"
+                analyzer.parent.mkdir(parents=True, exist_ok=True)
+                analyzer.write_bytes(b"first-party")
+                notices.write_text("\n".join(notice_lines), encoding="utf-8")
+                with mock.patch.object(self.validator, "PACKAGE", package), \
+                    mock.patch.object(self.validator, "THIRD_PARTY_NOTICES", notices), \
+                    mock.patch.object(self.validator, "THIRD_PARTY_NOTICE_REQUIREMENTS", tuple(requirements)):
+                    checker = getattr(self.validator, "check_third_party_notices", None)
+                    self.assertIsNotNone(checker, "third-party notice checker is missing")
+                    if checker is None:
+                        return None
+                    self.assertGreaterEqual(
+                        len(inspect.signature(checker).parameters),
+                        2,
+                        "checker must accept the caller's package snapshot",
+                    )
+                    results = []
+                    checker(results, list(package.rglob("*")))
+                    return {item.name: item for item in results}
+
+        baseline = run_inventory()
+        self.assertTrue(baseline["third-party notice inventory closed"].ok)
+        self.assertTrue(baseline["third-party notice artifact scope visible"].ok)
+        self.assertTrue(baseline["third-party notices cover bundled binaries"].ok)
+
+        for relative in ("UnexpectedDependency.dll", "Runtime/Plugins/UnexpectedNested.dll", "Uppercase.DLL"):
+            with self.subTest(relative=relative):
+                results = run_inventory(relative)
+                self.assertFalse(results["third-party notice inventory closed"].ok)
+                self.assertIn(Path(relative).name, results["third-party notice inventory closed"].detail)
+
+        allowed = run_inventory("AllowedDependency.dll", add_requirement=True)
+        self.assertTrue(allowed["third-party notice inventory closed"].ok)
+
+        ignored = run_inventory("README.md")
+        self.assertTrue(ignored["third-party notice inventory closed"].ok)
+        self.assertTrue(run_inventory("metadata.json")["third-party notice inventory closed"].ok)
+        self.assertTrue(run_inventory("Directory.dll", extra_directory=True)["third-party notice inventory closed"].ok)
+
+    def test_main_passes_its_package_snapshot_to_notice_inventory(self) -> None:
+        """The public entry point reuses its initial package enumeration."""
+        with mock.patch.object(self.validator, "check_third_party_notices") as checker:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        checker.assert_called_once()
+        self.assertGreaterEqual(
+            len(checker.call_args.args),
+            2,
+            "main must pass its package snapshot to the notice checker",
+        )
+        if len(checker.call_args.args) >= 2:
+            self.assertIsInstance(checker.call_args.args[1], list)
 
     def test_required_package_files_require_meta_sidecars(self) -> None:
         """Release-critical Unity assets must retain their tracked identities."""
