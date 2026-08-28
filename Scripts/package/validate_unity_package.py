@@ -738,6 +738,17 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     add(results, "Google.Protobuf DLL/asmdef naming", not offenders, "; ".join(offenders) if offenders else "no collision")
 
 
+def _third_party_notice_sections(notices: str) -> tuple[str, ...]:
+    """Split Markdown notices into attributable level-two-heading sections."""
+    headings = list(re.finditer(r"(?m)^##\s+", notices))
+    if not headings:
+        return (notices,)
+    return tuple(
+        notices[start.start() : end.start() if end is not None else None]
+        for start, end in zip(headings, headings[1:] + [None])
+    )
+
+
 def check_third_party_notices(
     results: list[CheckResult],
     package_entries: list[Path] | None = None,
@@ -748,6 +759,7 @@ def check_third_party_notices(
         notices = ""
     else:
         notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
+    notice_sections = _third_party_notice_sections(notices)
     missing: list[str] = []
     absent_artifacts: list[str] = []
     for artifact, required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
@@ -757,6 +769,8 @@ def check_third_party_notices(
         absent = [token for token in required_tokens if token not in notices]
         if absent:
             missing.append(f"{rel(artifact)} missing {', '.join(absent)}")
+        elif not any(all(token in section for token in required_tokens) for section in notice_sections):
+            missing.append(f"{rel(artifact)} tokens lack one attributable notice section")
 
     add(
         results,
