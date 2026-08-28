@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -769,10 +770,52 @@ def validate_or_update(
                 and not validate_unity_plugin_protobuf_match(
                     built_artifacts["Google.Protobuf.dll"])):
             return 1
-        for name, checked_in in checked_in_artifacts.items():
-            shutil.copy2(built_artifacts[name], checked_in)
-            print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
-            print(f"       sha256={sha256(checked_in)}")
+        with tempfile.TemporaryDirectory(
+            prefix=".validate-source-generator-rollback-",
+            dir=str(REPO_ROOT),
+        ) as backup_dir_name:
+            backup_dir = Path(backup_dir_name)
+            backups: dict[str, Path | None] = {}
+            try:
+                for name, checked_in in checked_in_artifacts.items():
+                    if checked_in.exists():
+                        backup = backup_dir / name
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(checked_in, backup)
+                        backups[name] = backup
+                    else:
+                        backups[name] = None
+
+                for name, checked_in in checked_in_artifacts.items():
+                    shutil.copy2(built_artifacts[name], checked_in)
+                    print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
+                    print(f"       sha256={sha256(checked_in)}")
+            except (OSError, shutil.Error) as exc:
+                rollback_errors: list[str] = []
+                for name, checked_in in reversed(tuple(checked_in_artifacts.items())):
+                    if name not in backups:
+                        continue
+                    backup = backups.get(name)
+                    try:
+                        if backup is None:
+                            if checked_in.exists():
+                                checked_in.unlink()
+                        else:
+                            backup.replace(checked_in)
+                    except (OSError, shutil.Error) as rollback_exc:
+                        rollback_errors.append(f"{name}: {rollback_exc}")
+                print(
+                    "[FAIL] Analyzer update rolled back after an artifact copy failed: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                if rollback_errors:
+                    print(
+                        "[FAIL] Analyzer update rollback encountered errors: "
+                        + "; ".join(rollback_errors),
+                        file=sys.stderr,
+                    )
+                return 1
         return 0
 
     for name, checked_in in checked_in_artifacts.items():

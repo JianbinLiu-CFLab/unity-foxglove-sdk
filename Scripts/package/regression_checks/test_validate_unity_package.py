@@ -941,6 +941,64 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
         self.assertEqual(1, result)
         self.assertEqual(b"old-generator", persisted_generator)
 
+    def test_analyzer_update_rolls_back_when_a_later_artifact_copy_fails(self) -> None:
+        """A failed multi-artifact update must leave the checked-in set unchanged."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"fresh-generator")
+            (build / "Google.Protobuf.dll").write_bytes(b"fresh-protobuf")
+            checked_generator = checked / "FoxgloveLogSourceGenerator.dll"
+            checked_protobuf = checked / "Google.Protobuf.dll"
+            checked_generator.write_bytes(b"old-generator")
+            checked_protobuf.write_bytes(b"old-protobuf")
+            artifacts = {
+                "FoxgloveLogSourceGenerator.dll": checked_generator,
+                "Google.Protobuf.dll": checked_protobuf,
+            }
+            calls: list[Path] = []
+            original_copy2 = self.validator.shutil.copy2
+
+            def fail_on_protobuf_copy(source: Path, destination: Path, *args, **kwargs):
+                calls.append(Path(destination))
+                if Path(destination) == checked_protobuf:
+                    raise OSError("CONTROLLED_SECOND_COPY_FAILURE")
+                return original_copy2(source, destination, *args, **kwargs)
+
+            with mock.patch.object(self.validator, "REPO_ROOT", root):
+                with mock.patch.object(self.validator, "run_build", return_value=True):
+                    with mock.patch.object(
+                        self.validator,
+                        "CHECKED_IN_ARTIFACTS",
+                        artifacts,
+                    ):
+                        with mock.patch.object(
+                            self.validator,
+                            "validate_unity_plugin_protobuf_match",
+                            return_value=True,
+                        ):
+                            with mock.patch.object(
+                                self.validator.shutil,
+                                "copy2",
+                                side_effect=fail_on_protobuf_copy,
+                            ):
+                                try:
+                                    result = self.validator.validate_or_update(True, build, [])
+                                except OSError:
+                                    result = None
+
+            persisted = [
+                checked_generator.read_bytes(),
+                checked_protobuf.read_bytes(),
+            ]
+
+        self.assertEqual(1, result)
+        self.assertEqual([b"old-generator", b"old-protobuf"], persisted)
+        self.assertIn(checked_protobuf, calls)
+
 
 if __name__ == "__main__":
     unittest.main()
