@@ -738,13 +738,16 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     add(results, "Google.Protobuf DLL/asmdef naming", not offenders, "; ".join(offenders) if offenders else "no collision")
 
 
-def check_third_party_notices(results: list[CheckResult]) -> None:
+def check_third_party_notices(
+    results: list[CheckResult],
+    package_entries: list[Path] | None = None,
+) -> None:
     """Ensure every bundled binary dependency has a matching license notice."""
     if not THIRD_PARTY_NOTICES.exists():
         add(results, "third-party notices exist", False, rel(THIRD_PARTY_NOTICES))
-        return
-
-    notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
+        notices = ""
+    else:
+        notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
     missing: list[str] = []
     absent_artifacts: list[str] = []
     for artifact, required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
@@ -767,6 +770,33 @@ def check_third_party_notices(results: list[CheckResult]) -> None:
         "third-party notices cover bundled binaries",
         not missing,
         "; ".join(missing) if missing else "all bundled binary notices present",
+    )
+
+    package_entries = package_entries if package_entries is not None else list(PACKAGE.rglob("*"))
+    analyzer_root = PACKAGE / "Editor" / "SourceGenerators" / "analyzers"
+    discovered: dict[str, str] = {}
+    for path in package_entries:
+        if not path.is_file() or path.suffix.casefold() != ".dll":
+            continue
+        if path_is_relative_to(path, analyzer_root):
+            continue
+        if not path_is_relative_to(path, PACKAGE):
+            continue
+        relative = path.relative_to(PACKAGE).as_posix()
+        discovered.setdefault(relative.casefold(), relative)
+
+    declared: set[str] = set()
+    for artifact, _required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
+        if path_is_relative_to(artifact, PACKAGE):
+            declared.add(artifact.relative_to(PACKAGE).as_posix().casefold())
+    unlisted = [discovered[key] for key in sorted(set(discovered) - declared)]
+    add(
+        results,
+        "third-party notice inventory closed",
+        not unlisted,
+        "all regular package DLLs are notice-listed or first-party analyzers"
+        if not unlisted
+        else "unlisted regular DLLs: " + "; ".join(unlisted),
     )
 
 
@@ -802,7 +832,7 @@ def main() -> int:
     check_manual_phase_service_guards(results)
     check_validation_naming(results, package_files)
     check_google_protobuf_collision(results)
-    check_third_party_notices(results)
+    check_third_party_notices(results, package_entries)
 
     print_results(results)
     failed = [r for r in results if not r.ok]
