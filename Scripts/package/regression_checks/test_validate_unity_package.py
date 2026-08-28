@@ -999,6 +999,53 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
         self.assertEqual([b"old-generator", b"old-protobuf"], persisted)
         self.assertIn(checked_protobuf, calls)
 
+    def test_preexisting_equal_artifact_without_current_build_write_is_rejected(self) -> None:
+        """A successful build must not authenticate equal-hash residue from an earlier run."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            expected = b"stale-authenticated-bytes"
+            built = build / "a.dll"
+            checked_file = checked / "a.dll"
+            built.write_bytes(expected)
+            checked_file.write_bytes(expected)
+            project = root / "Generator.csproj"
+            project.write_text("<Project />\n", encoding="utf-8")
+            target = self.validator.AnalyzerTarget(
+                "core",
+                project,
+                {"a.dll": checked_file},
+                build,
+                False,
+            )
+            calls: list[tuple[object, ...]] = []
+
+            def successful_no_output_build(*args, **kwargs):
+                calls.append(args)
+                return True
+
+            with mock.patch.object(self.validator, "REPO_ROOT", root), \
+                mock.patch.object(self.validator, "TARGETS", {"core": target}), \
+                mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {"a.dll": checked_file},
+                ), \
+                mock.patch.object(
+                    self.validator.subprocess,
+                    "run",
+                    side_effect=successful_no_output_build,
+                ):
+                    result = self.validator.validate_or_update(False, build, [], "core")
+            persisted = built.read_bytes()
+
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(expected, persisted)
+
 
 if __name__ == "__main__":
     unittest.main()

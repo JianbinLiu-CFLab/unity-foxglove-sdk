@@ -249,6 +249,39 @@ def run_build(
         str(build_output_dir),
         "-v:minimal",
     ]
+
+    def output_fingerprint(path: Path) -> tuple[int, int] | None:
+        """Identify one regular build output by size and modification time."""
+        try:
+            if not path.is_file():
+                return None
+            info = path.stat()
+        except OSError:
+            return None
+        return (info.st_size, info.st_mtime_ns)
+
+    expected_paths: tuple[Path, ...] = ()
+    for candidate in TARGETS.values():
+        try:
+            same_project = candidate.project.resolve() == project.resolve()
+        except OSError:
+            same_project = candidate.project == project
+        if same_project:
+            expected_paths = tuple(
+                build_output_dir / name
+                for name in candidate.checked_in_artifacts
+            )
+            break
+    if not expected_paths:
+        expected_paths = tuple(
+            build_output_dir / name
+            for name in CHECKED_IN_ARTIFACTS
+        )
+    output_before = {
+        path: output_fingerprint(path)
+        for path in expected_paths
+    }
+
     try:
         subprocess.run(command, cwd=REPO_ROOT, check=True)
     except subprocess.CalledProcessError as exc:
@@ -262,6 +295,23 @@ def run_build(
             file=sys.stderr,
         )
         return False
+
+    for path in expected_paths:
+        output_after = output_fingerprint(path)
+        if output_after is None:
+            print(
+                "[FAIL] Source generator Release build succeeded but did not "
+                f"produce a regular output at {path}.",
+                file=sys.stderr,
+            )
+            return False
+        if output_after == output_before[path]:
+            print(
+                "[FAIL] Source generator Release build left the pre-existing "
+                f"output at {path} unchanged; it is not this build's output.",
+                file=sys.stderr,
+            )
+            return False
     return True
 
 
