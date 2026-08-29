@@ -260,20 +260,21 @@ namespace Unity.FoxgloveSDK.Components
 
             AdvanceChannelSessionGeneration();
             UnregisterFoxRunSubscriptionCatalogService();
-            _runtime.Stop();
-            _sharedSensorClock.Reset();
-            StopRemoteMcapFileServer();
-            StopReplayCursorEndpoint();
-            StopCertificateDistributor();
-            _channelCache.Clear();
-            _foxRunRecordingChannelCache.Clear();
-            _foxRunRawRecordingChannelCache.Clear();
-            ClearClientEvents();
-            _connectionState.ResetChannelIds(FirstAutoChannelId);
-            if (restoreLivePublishers)
-            {
-                RestoreLivePublishers();
-            }
+            FoxgloveManagerTeardownState.RunStopServer(
+                _runtime.Stop,
+                _sharedSensorClock.Reset,
+                StopRemoteMcapFileServer,
+                StopReplayCursorEndpoint,
+                StopCertificateDistributor,
+                () =>
+                {
+                    _channelCache.Clear();
+                    _foxRunRecordingChannelCache.Clear();
+                    _foxRunRawRecordingChannelCache.Clear();
+                },
+                ClearClientEvents,
+                () => _connectionState.ResetChannelIds(FirstAutoChannelId),
+                restoreLivePublishers ? RestoreLivePublishers : null);
         }
 
         private void DetachRuntimeForwarders(FoxgloveSession session)

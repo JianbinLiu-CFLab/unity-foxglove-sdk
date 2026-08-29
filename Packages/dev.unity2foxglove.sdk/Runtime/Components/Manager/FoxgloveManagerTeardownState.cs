@@ -47,6 +47,32 @@ namespace Unity.FoxgloveSDK.Components
                 resetProfiler);
 
         /// <summary>
+        /// Completes the StopServer tail even when runtime.Stop reports a
+        /// failure, then rethrows the first failure after every tail action has
+        /// had an opportunity to run.
+        /// </summary>
+        internal static void RunStopServer(
+            Action stopRuntime,
+            Action resetSensorClock,
+            Action stopRemoteMcapFileServer,
+            Action stopReplayCursorEndpoint,
+            Action stopCertificateDistributor,
+            Action clearChannelCaches,
+            Action clearClientEvents,
+            Action resetChannelIds,
+            Action restoreLivePublishers)
+            => RunMandatoryCleanup(
+                stopRuntime,
+                resetSensorClock,
+                stopRemoteMcapFileServer,
+                stopReplayCursorEndpoint,
+                stopCertificateDistributor,
+                clearChannelCaches,
+                clearClientEvents,
+                resetChannelIds,
+                restoreLivePublishers);
+
+        /// <summary>
         /// Attempts runtime disposal twice when the first attempt reports a
         /// recoverable partial-cleanup failure, while always releasing the
         /// owner's reference. The first failure is rethrown only when the retry

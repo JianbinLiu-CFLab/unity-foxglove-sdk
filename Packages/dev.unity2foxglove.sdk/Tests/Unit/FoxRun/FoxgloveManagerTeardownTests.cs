@@ -112,6 +112,64 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void StopServerTailRunsAfterRuntimeStopFailureAndRethrowsFirstFatal()
+        {
+            var calls = new List<string>();
+            var method = TeardownMethod("RunStopServer");
+
+            var failure = Assert.Throws<TargetInvocationException>(
+                () => method.Invoke(
+                    null,
+                    new object[]
+                    {
+                        Step(calls, "runtime", new InvalidOperationException("runtime-stop")),
+                        Step(calls, "clock"),
+                        Step(calls, "remote"),
+                        Step(calls, "replay"),
+                        Step(calls, "certificate"),
+                        Step(calls, "cache"),
+                        Step(calls, "events"),
+                        Step(calls, "channel-ids"),
+                        Step(calls, "publishers")
+                    }));
+
+            var primary = Assert.IsType<InvalidOperationException>(failure.InnerException);
+            Assert.Equal("runtime-stop", primary.Message);
+            Assert.Equal(
+                new[]
+                {
+                    "runtime",
+                    "clock",
+                    "remote",
+                    "replay",
+                    "certificate",
+                    "cache",
+                    "events",
+                    "channel-ids",
+                    "publishers"
+                },
+                calls);
+        }
+
+        [Fact]
+        public void StopServerWiresTheFailureResilientTailHelper()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var method = TestSources.ExtractMethod(
+                source,
+                "private void StopServer(bool restoreLivePublishers)");
+
+            Assert.Contains(
+                "FoxgloveManagerTeardownState.RunStopServer(",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains("_runtime.Stop", method, StringComparison.Ordinal);
+            Assert.Contains("ClearClientEvents", method, StringComparison.Ordinal);
+            Assert.Contains("RestoreLivePublishers", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RuntimeDisposeRetryReportsTransientFailureAndReleasesReference()
         {
             var attempts = 0;

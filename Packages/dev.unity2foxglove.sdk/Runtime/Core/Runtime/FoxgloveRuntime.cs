@@ -42,6 +42,11 @@ namespace Unity.FoxgloveSDK.Core
         /// are owner-thread operations and must not be called concurrently.
         /// </summary>
         private FoxgloveSession _session;
+        // A session is removed from the public active slot before teardown so
+        // callbacks cannot observe it as live. Keep a private owner reference
+        // when one of its cleanup steps fails, allowing a later Stop/Dispose to
+        // retry without leaking its transport handlers.
+        private FoxgloveSession _sessionPendingCleanup;
         private readonly IFoxgloveTransport _transport;
         private readonly IFoxgloveClock _wallClock;
         private readonly PlaybackClock _playbackClock;
@@ -76,7 +81,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
         private int _disposed;
         private int _disposing;
-        private bool _stopCleanupComplete;
+        private bool _stopCleanupComplete = true;
         private bool _parametersCleared;
         private bool _servicesCleared;
         private bool _recordingDisposed;
@@ -272,7 +277,13 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
+            // Do not overlap a new session with a retired session whose cleanup
+            // failed. A retry keeps the original session owner reachable.
+            if (_sessionPendingCleanup != null)
+                Stop();
+
             FoxgloveSession session = null;
+            var sessionCleanupComplete = true;
             try
             {
                 session = SessionFactory.Create(
@@ -300,9 +311,11 @@ namespace Unity.FoxgloveSDK.Core
                     try
                     {
                         session?.Dispose();
+                        sessionCleanupComplete = true;
                     }
                     catch (Exception disposeEx)
                     {
+                        sessionCleanupComplete = false;
                         _logger.LogWarning(
                             $"Ignoring startup dispose failure while preserving the original Start exception: {disposeEx.Message}");
                     }
@@ -311,6 +324,8 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     _recording.DetachFromSession();
                     _session = null;
+                    _sessionPendingCleanup = sessionCleanupComplete ? null : session;
+                    _stopCleanupComplete = sessionCleanupComplete;
                 }
                 throw;
             }
@@ -352,7 +367,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (_stopped && _session == null)
             {
-                return;
+                if (_sessionPendingCleanup == null && _stopCleanupComplete)
+                    return;
             }
 
             _stopped = true;
@@ -362,15 +378,26 @@ namespace Unity.FoxgloveSDK.Core
             TryCleanup(_tickCoordinator.ClearPendingReplaySceneSnapshot, ref firstFailure);
             TryCleanup(_replay.CancelPanelHistory, ref firstFailure);
             TryCleanup(() => _replayOrchestrator.Detach(_replay), ref firstFailure);
-            var session = _session;
+            var session = _session ?? _sessionPendingCleanup;
             _session = null;
+            if (session != null)
+                _sessionPendingCleanup = session;
+            var sessionCleanupComplete = session == null;
             TryCleanup(() => { _recording.DetachFromSession(); }, ref firstFailure);
-            TryCleanup(() => { session?.Dispose(); }, ref firstFailure);
+            TryCleanup(
+                () =>
+                {
+                    session?.Dispose();
+                    sessionCleanupComplete = true;
+                },
+                ref firstFailure);
+            if (sessionCleanupComplete)
+                _sessionPendingCleanup = null;
             // The session is deliberately retired before cleanup so callbacks cannot
-            // observe it as active. Completion is tracked by this explicit latch,
-            // not inferred from the nullable session field: every owned cleanup step
-            // above has now been attempted, even when one reports a failure.
-            _stopCleanupComplete = true;
+            // observe it as active. Completion is tracked by this explicit latch
+            // and a retained owner reference when any session cleanup remains
+            // incomplete; it is never inferred from the nullable active field.
+            _stopCleanupComplete = firstFailure == null;
             firstFailure?.Throw();
         }
 
@@ -716,12 +743,11 @@ namespace Unity.FoxgloveSDK.Core
             ExceptionDispatchInfo firstFailure = null;
             try
             {
-                if (!_stopCleanupComplete)
+                if (!_stopCleanupComplete || _sessionPendingCleanup != null)
                 {
                     try
                     {
                         Stop();
-                        _stopCleanupComplete = true;
                     }
                     catch (Exception exception)
                     {
@@ -746,13 +772,20 @@ namespace Unity.FoxgloveSDK.Core
                     _replay.Dispose,
                     ref _replayDisposed,
                     ref firstFailure);
-                TryCleanup(
-                    _transport.Dispose,
-                    ref _transportDisposed,
-                    ref firstFailure);
+                // Keep the transport alive while a retired session still owns
+                // event handlers; the next Dispose call must be able to retry
+                // session cleanup against the live transport.
+                if (_sessionPendingCleanup == null)
+                {
+                    TryCleanup(
+                        _transport.Dispose,
+                        ref _transportDisposed,
+                        ref firstFailure);
+                }
 
                 if (firstFailure == null
                     && _stopCleanupComplete
+                    && _sessionPendingCleanup == null
                     && _parametersCleared
                     && _servicesCleared
                     && _recordingDisposed
