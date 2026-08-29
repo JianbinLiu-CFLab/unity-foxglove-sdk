@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -184,12 +186,59 @@ def ensure_native_artifact() -> None:
     """Verify that the optional package contains the reviewed native artifact."""
     dll = PLUGIN_DIR / "foxglove.dll"
     manifest = PLUGIN_DIR / "foxglove-gateway-native-artifact.json"
-    if not dll.exists() or not manifest.exists():
+    if not dll.is_file() or not manifest.is_file():
         raise SystemExit(
             "Native gateway artifact is missing from the optional package. Run without --skip-native-build first."
         )
+
+    try:
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Native artifact manifest is not valid JSON: {manifest}: {error}") from error
+    if not isinstance(metadata, dict):
+        raise SystemExit(f"Native artifact manifest must contain a JSON object: {manifest}")
+
+    declared_name = metadata.get("artifact")
+    if declared_name != dll.name:
+        raise SystemExit(
+            f"Native artifact manifest artifact name does not match {dll.name!r}: {declared_name!r}"
+        )
+
+    declared_hash = metadata.get("sha256")
+    if not isinstance(declared_hash, str) or re.fullmatch(r"[0-9a-f]{64}", declared_hash) is None:
+        raise SystemExit(
+            "Native artifact manifest sha256 must be exactly 64 lowercase hexadecimal characters."
+        )
+
+    declared_size = metadata.get("sizeBytes")
+    if isinstance(declared_size, bool) or not isinstance(declared_size, int) or declared_size < 0:
+        raise SystemExit("Native artifact manifest sizeBytes must be a non-negative integer.")
+
+    actual_size = dll.stat().st_size
+    if declared_size != actual_size:
+        raise SystemExit(
+            f"Native artifact manifest sizeBytes does not match {dll.name!r}: "
+            f"declared {declared_size}, actual {actual_size}"
+        )
+
+    actual_hash = sha256_file(dll)
+    if declared_hash != actual_hash:
+        raise SystemExit(
+            f"Native artifact manifest sha256 does not match {dll.name!r}: "
+            f"declared {declared_hash}, actual {actual_hash}"
+        )
+
     print(f"Native artifact present: {dll.relative_to(ROOT)}")
     print("Do not submit generated foxglove.dll, foxglove.dll.lib, or foxglove.pdb.")
+
+
+def sha256_file(path: Path) -> str:
+    """Return the lowercase SHA-256 digest for a native artifact."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def editor_log_path() -> Path:

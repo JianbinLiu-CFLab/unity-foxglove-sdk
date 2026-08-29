@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import os
@@ -153,6 +154,63 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             child_environment = self.build.build_environment(arguments)
 
         self.assertNotIn("FOXGLOVE_DEVICE_TOKEN", child_environment)
+
+    def test_skip_build_requires_manifest_identity_match(self) -> None:
+        """The skip-build path rejects a name, digest, or size mismatch."""
+        payload = b"phase187-d05-004-native"
+        actual_hash = hashlib.sha256(payload).hexdigest()
+        cases = (
+            ("artifact", "other.dll", "artifact name"),
+            ("sha256", "0" * 64, "sha256"),
+            ("sizeBytes", len(payload) + 1, "sizeBytes"),
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            manifest = root / "foxglove-gateway-native-artifact.json"
+
+            for field, value, message in cases:
+                declared = {
+                    "artifact": "foxglove.dll",
+                    "sha256": actual_hash,
+                    "sizeBytes": len(payload),
+                }
+                declared[field] = value
+                manifest.write_text(json.dumps(declared), encoding="utf-8")
+                with self.subTest(field=field):
+                    with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                        self.acceptance,
+                        "PLUGIN_DIR",
+                        root,
+                    ):
+                        with self.assertRaisesRegex(SystemExit, message):
+                            self.acceptance.ensure_native_artifact()
+
+    def test_skip_build_accepts_matching_manifest_identity(self) -> None:
+        """A manifest bound to the exact DLL bytes remains accepted."""
+        payload = b"phase187-d05-004-native-valid"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            (root / "foxglove-gateway-native-artifact.json").write_text(
+                json.dumps(
+                    {
+                        "artifact": dll.name,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "sizeBytes": len(payload),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                self.acceptance.ensure_native_artifact()
 
     def test_same_timestamp_still_creates_distinct_run_directories(self) -> None:
         """Concurrent acceptance launches must never share evidence output."""
