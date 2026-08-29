@@ -142,6 +142,32 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterRegistrationSnapshotsScalarValues()
+        {
+            var store = new FoxgloveParameterStore();
+            var number = new JValue(1);
+            var text = new JValue("before");
+            var flag = new JValue(true);
+
+            store.Register("/number", number, "number", true);
+            store.Register("/text", text, "string", true);
+            store.Register("/flag", flag, "boolean", true);
+
+            number.Value = 9;
+            text.Value = "after";
+            flag.Value = false;
+
+            Assert.Equal(1, store.GetWireParameter("/number").Value.Value<int>());
+            Assert.Equal("before", store.GetWireParameter("/text").Value.Value<string>());
+            Assert.True(store.GetWireParameter("/flag").Value.Value<bool>());
+
+            var clientValue = new JValue(4);
+            Assert.True(store.TrySetFromClient("/number", clientValue));
+            clientValue.Value = 8;
+            Assert.Equal(4, store.GetWireParameter("/number").Value.Value<int>());
+        }
+
+        [Fact]
         public void ParameterSetFromClient()
         {
             var store = new FoxgloveParameterStore();

@@ -207,21 +207,21 @@ namespace Unity.FoxgloveSDK.Core
                 case "number":
                     if (value.Type == JTokenType.Integer || value.Type == JTokenType.Float)
                     {
-                        normalized = value;
+                        normalized = value.DeepClone();
                         return true;
                     }
                     return false;
                 case "string":
                     if (value.Type == JTokenType.String)
                     {
-                        normalized = value;
+                        normalized = value.DeepClone();
                         return true;
                     }
                     return false;
                 case "boolean":
                     if (value.Type == JTokenType.Boolean)
                     {
-                        normalized = value;
+                        normalized = value.DeepClone();
                         return true;
                     }
                     return false;
