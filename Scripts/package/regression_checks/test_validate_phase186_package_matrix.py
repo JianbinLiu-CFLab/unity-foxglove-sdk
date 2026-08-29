@@ -170,6 +170,7 @@ class Phase186PackageMatrixTests(unittest.TestCase):
             guid: str,
             references: list[str] | None = None,
         ) -> None:
+            """Write a temporary assembly definition and its Unity GUID metadata."""
             payload = {"name": name}
             if references is not None:
                 payload["references"] = references
@@ -369,6 +370,7 @@ class Phase186PackageMatrixTests(unittest.TestCase):
         }
 
         def write_manifest(path: Path, key: str) -> None:
+            """Write the expected package manifest fixture selected by key."""
             name, version, dependencies = expected_packages[key]
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
@@ -383,6 +385,7 @@ class Phase186PackageMatrixTests(unittest.TestCase):
             )
 
         def write_analyzer_assets(package: Path, dll_name: str, project_name: str) -> None:
+            """Write analyzer DLL and project fixtures for the package matrix."""
             analyzer = package / "Editor/SourceGenerators/analyzers/dotnet/cs" / dll_name
             analyzer.parent.mkdir(parents=True, exist_ok=True)
             analyzer.write_bytes(b"dll")

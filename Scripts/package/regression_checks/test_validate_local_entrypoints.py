@@ -59,9 +59,11 @@ class LocalEntrypointValidationTests(unittest.TestCase):
             returncode = -9
 
             def __init__(self) -> None:
+                """Initialize the fake process state used by the timeout probe."""
                 self.communicate_calls: list[object] = []
 
             def communicate(self, input=None, timeout=None):
+                """Return a bounded drain after the owned process is terminated."""
                 self.communicate_calls.append(timeout)
                 if len(self.communicate_calls) == 1:
                     raise validator.subprocess.TimeoutExpired(
@@ -70,18 +72,23 @@ class LocalEntrypointValidationTests(unittest.TestCase):
                 return "", ""
 
             def wait(self, timeout=None):
+                """Expose the terminated return code to the cleanup path."""
                 return self.returncode
 
             def poll(self):
+                """Report the current fake process status."""
                 return self.returncode
 
             def kill(self):
+                """Mark the fake process as killed."""
                 self.returncode = -9
 
             def __enter__(self):
+                """Support the process context-manager protocol."""
                 return self
 
             def __exit__(self, _type, _value, _traceback):
+                """Leave cleanup ownership with the validator under test."""
                 return False
 
         process = HangingProcess()
