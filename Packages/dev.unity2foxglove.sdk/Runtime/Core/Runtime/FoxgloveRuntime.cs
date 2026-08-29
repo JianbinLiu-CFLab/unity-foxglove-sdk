@@ -279,7 +279,7 @@ namespace Unity.FoxgloveSDK.Core
 
             // Do not overlap a new session with a retired session whose cleanup
             // failed. A retry keeps the original session owner reachable.
-            if (_sessionPendingCleanup != null)
+            if (_sessionPendingCleanup != null || !_stopCleanupComplete)
                 Stop();
 
             FoxgloveSession session = null;
