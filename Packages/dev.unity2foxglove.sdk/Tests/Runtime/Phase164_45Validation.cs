@@ -55,9 +55,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && subscriptions.Contains("TryAddSubscriptionLocked", StringComparison.Ordinal),
                 "164-45B-1: single subscription path already avoids wrapper-array allocation");
             Check(broadcast.Contains("_graph.CopySubscribersTo(_subscriberScratch)", StringComparison.Ordinal)
-                  && broadcast.Contains("if (_subscriberScratch.Count == 0 && !hasDirtyRecorder)", StringComparison.Ordinal)
+                  && broadcast.Contains("if (_subscriberScratch.Count == 0 && !metadataClaimed)", StringComparison.Ordinal)
                   && !broadcast.Contains("_graph.GetSubscribers()", StringComparison.Ordinal),
-                "164-45B-2: connection graph broadcast reuses subscriber scratch and skips idle snapshots");
+                "164-45B-2: connection graph broadcast reuses subscriber scratch and skips idle snapshots unless metadata is claimed");
         }
 
         private static void VerifyPhase5UsesDirectLinkXmlPath()

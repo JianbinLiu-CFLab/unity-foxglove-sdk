@@ -132,15 +132,21 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("FoxServices", StringComparison.Ordinal)
                   && editor.Contains("DrawFoxServicesSection", StringComparison.Ordinal),
                 "141E-10: FoxgloveManager Inspector includes a FoxServices section");
-            var mcapIndex = editor.IndexOf("\"MCAP Record & Replay\"", StringComparison.Ordinal);
-            var foxRunIndex = editor.IndexOf("\"FoxRun\"", StringComparison.Ordinal);
-            var foxServicesIndex = editor.IndexOf("\"FoxServices\"", StringComparison.Ordinal);
-            var diagnosticsIndex = editor.IndexOf("\"Diagnostics\"", StringComparison.Ordinal);
+            var inspectorGui = PhaseValidationSourceHelpers.SourceMethod(editor, "OnInspectorGUI");
+            var mcapIndex = inspectorGui.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal);
+            var foxServicesIndex = inspectorGui.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal);
+            var diagnosticsIndex = inspectorGui.IndexOf("DrawSection(\"Diagnostics\"", StringComparison.Ordinal);
+            var foxServicesSection = PhaseValidationSourceHelpers.SourceMethod(
+                editorSources,
+                "DrawFoxServicesSection");
+            var foxRunIndex = foxServicesSection.IndexOf("FoxRun Runtime Topics", StringComparison.Ordinal);
+            var generatedServicesIndex = foxServicesSection.IndexOf("Generated Services", StringComparison.Ordinal);
             Check(mcapIndex >= 0
-                  && foxRunIndex > mcapIndex
-                  && foxServicesIndex > foxRunIndex
-                  && diagnosticsIndex > foxServicesIndex,
-                "141E-10a: FoxRun and FoxServices stay together between MCAP and Diagnostics");
+                  && foxServicesIndex > mcapIndex
+                  && diagnosticsIndex > foxServicesIndex
+                  && foxRunIndex >= 0
+                  && generatedServicesIndex > foxRunIndex,
+                "141E-10a: FoxRun topics stay inside FoxServices between MCAP and Diagnostics");
             Check(editorSources.Contains("GetRegisteredServiceSnapshots", StringComparison.Ordinal)
                   && editorSources.Contains("EditorGUIUtility.systemCopyBuffer", StringComparison.Ordinal),
                 "141E-11: FoxServices Inspector section reads snapshots and supports copy workflow");

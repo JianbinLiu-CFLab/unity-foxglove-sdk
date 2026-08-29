@@ -103,8 +103,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerServices.Contains("RegisterService", StringComparison.Ordinal)
                   && managerServices.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>", StringComparison.Ordinal),
                 "141B-20: existing manual service registration API remains available");
-            Check(sessionServices.Contains("Handler exception:", StringComparison.Ordinal),
-                "141B-21: existing service drain path converts handler exceptions to failures");
+            Check(sessionServices.Contains("_logger.LogError", StringComparison.Ordinal)
+                  && sessionServices.Contains("Service handler failed", StringComparison.Ordinal)
+                  && sessionServices.Contains("_services.Fail", StringComparison.Ordinal),
+                "141B-21: existing service drain path logs handler exceptions and converts them to failures");
         }
 
         private static void VerifyDisabledSourceReactivationContract()
