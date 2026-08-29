@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -131,6 +132,47 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 < method.IndexOf(dispose, StringComparison.Ordinal));
         }
 
+        [Fact]
+        public void RuntimeStopDetachesSessionHandlersWhenTransportStopThrowsAndRestartDoesNotDuplicate()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                runtime.Start("phase187-d01-002-stop");
+                Assert.Equal(4, transport.HandlerCount);
+
+                transport.ThrowOnNextStop = true;
+                var failure = Assert.Throws<InvalidOperationException>(() => runtime.Stop());
+                Assert.Equal("stop failure", failure.Message);
+                Assert.Equal(0, transport.HandlerCount);
+
+                runtime.Start("phase187-d01-002-restart");
+                Assert.Equal(4, transport.HandlerCount);
+                runtime.Stop();
+                Assert.Equal(0, transport.HandlerCount);
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
+        public void RuntimeDisposePreservesCleanupAndReleasesTransportAfterStopFailure()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextStop = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-d01-002-dispose");
+
+            Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+            runtime.Dispose();
+
+            Assert.Equal(0, transport.HandlerCount);
+            Assert.Equal(1, transport.DisposeCalls);
+        }
+
         private static T ReadPrivateField<T>(object target, string name)
         {
             var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -174,6 +216,74 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             throw new InvalidOperationException("Unterminated method: " + signature);
+        }
+
+        private sealed class ThrowingStopTransport : IFoxgloveTransport
+        {
+            private Action<uint> _connected;
+            private Action<uint> _disconnected;
+            private Action<uint, string> _textReceived;
+            private Action<uint, byte[]> _binaryReceived;
+
+            internal bool ThrowOnNextStop { get; set; }
+            internal int DisposeCalls { get; private set; }
+            internal int HandlerCount =>
+                InvocationCount(_connected)
+                + InvocationCount(_disconnected)
+                + InvocationCount(_textReceived)
+                + InvocationCount(_binaryReceived);
+
+            public bool IsRunning { get; private set; }
+
+            public event Action<uint> OnClientConnected
+            {
+                add => _connected += value;
+                remove => _connected -= value;
+            }
+
+            public event Action<uint> OnClientDisconnected
+            {
+                add => _disconnected += value;
+                remove => _disconnected -= value;
+            }
+
+            public event Action<uint, string> OnTextReceived
+            {
+                add => _textReceived += value;
+                remove => _textReceived -= value;
+            }
+
+            public event Action<uint, byte[]> OnBinaryReceived
+            {
+                add => _binaryReceived += value;
+                remove => _binaryReceived -= value;
+            }
+
+            public void Start(string host, int port) => IsRunning = true;
+
+            public void Stop()
+            {
+                IsRunning = false;
+                if (!ThrowOnNextStop)
+                    return;
+
+                ThrowOnNextStop = false;
+                throw new InvalidOperationException("stop failure");
+            }
+
+            public void BroadcastText(string json) { }
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json) { }
+            public void SendBinary(uint clientId, byte[] data) { }
+
+            public void Dispose()
+            {
+                DisposeCalls++;
+                IsRunning = false;
+            }
+
+            private static int InvocationCount(Delegate callback)
+                => callback?.GetInvocationList().Length ?? 0;
         }
 
         /// <summary>Transport seam that can pause one graph broadcast after snapshot creation.</summary>
