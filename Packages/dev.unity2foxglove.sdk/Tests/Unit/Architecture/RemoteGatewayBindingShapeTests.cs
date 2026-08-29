@@ -115,6 +115,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void ManagerLookupRetriesWhenManagerAppearsAfterInitialEnable()
+        {
+            var result = InvokeBehaviorProbe("LateManagerDiscovery");
+
+            Assert.False(ReadProperty<bool>(result, "FirstLookupSucceeded"));
+            Assert.True(ReadProperty<bool>(result, "SecondLookupSucceeded"));
+            Assert.Equal(2, ReadProperty<int>(result, "FindObjectOfTypeCalls"));
+        }
+
+        [Fact]
         public void GatewayHandleOwnsNativeStopExactlyOnce()
         {
             var source = Text(RuntimeRoot + "/Native/RemoteGatewayHandle.cs");
@@ -454,12 +464,19 @@ namespace UnityEngine
 {
     public class Object
     {
-        public static T FindObjectOfType<T>() where T : Object => null;
+        public static object FindObjectOfTypeResult;
+        public static int FindObjectOfTypeCalls;
+        public static T FindObjectOfType<T>() where T : Object
+        {
+            FindObjectOfTypeCalls++;
+            return FindObjectOfTypeResult as T;
+        }
     }
 
     public class Component : Object
     {
-        public T GetComponent<T>() where T : class => null;
+        public static object GetComponentResult;
+        public T GetComponent<T>() where T : class => GetComponentResult as T;
     }
 
     public class MonoBehaviour : Component {}
@@ -556,6 +573,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private const string BehaviorProbeSource = @"
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Unity.FoxgloveSDK.RemoteGateway.Native;
@@ -572,6 +590,13 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         public bool HasOwnedResources { get; set; }
         public string ConnectionStatus { get; set; }
         public WeakReference Callback { get; set; }
+    }
+
+    public sealed class DiscoveryProbeResult
+    {
+        public bool FirstLookupSucceeded { get; set; }
+        public bool SecondLookupSucceeded { get; set; }
+        public int FindObjectOfTypeCalls { get; set; }
     }
 
     public static class RemoteGatewayBehaviorProbe
@@ -595,6 +620,30 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         public static StartupProbeResult GatewayStartReturnsError()
             => Run(throwFromContextNew: false, returnGatewayError: true);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static DiscoveryProbeResult LateManagerDiscovery()
+        {
+            UnityEngine.Object.FindObjectOfTypeResult = null;
+            UnityEngine.Object.FindObjectOfTypeCalls = 0;
+            UnityEngine.Component.GetComponentResult = null;
+            var controller = new FoxgloveRemoteGatewayController();
+            var ensureManager = typeof(FoxgloveRemoteGatewayController).GetMethod(
+                ""EnsureManager"",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            var first = (bool)ensureManager.Invoke(controller, null);
+            UnityEngine.Object.FindObjectOfTypeResult = new Unity.FoxgloveSDK.Components.FoxgloveManager();
+            var second = (bool)ensureManager.Invoke(controller, null);
+            var calls = UnityEngine.Object.FindObjectOfTypeCalls;
+            UnityEngine.Object.FindObjectOfTypeResult = null;
+            return new DiscoveryProbeResult
+            {
+                FirstLookupSucceeded = first,
+                SecondLookupSucceeded = second,
+                FindObjectOfTypeCalls = calls
+            };
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static StartupProbeResult Run(bool throwFromContextNew, bool returnGatewayError)

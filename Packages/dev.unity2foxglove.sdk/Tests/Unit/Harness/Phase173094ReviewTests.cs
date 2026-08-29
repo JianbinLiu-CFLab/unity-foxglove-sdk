@@ -76,15 +76,15 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void RemoteGatewayControllerDoesNotSerializeDeviceTokenOrSearchEveryFrame()
+        public void RemoteGatewayControllerDoesNotSerializeDeviceTokenAndKeepsDiscoveryRetryable()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.remotegateway.win64/Runtime/FoxgloveRemoteGatewayController.cs");
             var ensure = TestSources.Slice(source, "private bool EnsureManager()", "        private sealed class NativeStructPointer");
 
             Assert.DoesNotContain("[SerializeField] private string _deviceToken", source, StringComparison.Ordinal);
             Assert.DoesNotContain("_deviceToken", source, StringComparison.Ordinal);
-            Assert.Contains("_managerLookupAttempted", source, StringComparison.Ordinal);
-            Assert.Contains("if (_managerLookupAttempted)", ensure, StringComparison.Ordinal);
+            Assert.DoesNotContain("_managerLookupAttempted", source, StringComparison.Ordinal);
+            Assert.Contains("Keep discovery retryable", ensure, StringComparison.Ordinal);
             Assert.DoesNotContain("MissingManagerRetryFrames", source, StringComparison.Ordinal);
         }
 
