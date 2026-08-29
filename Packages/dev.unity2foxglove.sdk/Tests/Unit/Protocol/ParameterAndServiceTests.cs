@@ -309,6 +309,36 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void InvalidUtf8ServicePayloadIsRejectedBeforeHandlerDispatch()
+        {
+            var fake = new Phase6FakeTransport();
+            var calls = 0;
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.Services.Register(
+                new ServiceDescriptor
+                {
+                    Name = "/strict", Type = "/strict",
+                    Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                    Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+                },
+                _ =>
+                {
+                    calls++;
+                    return new JObject { ["ok"] = true };
+                });
+            fake.SimulateConnect(1);
+
+            // A malformed UTF-8 byte inside a JSON string becomes U+FFFD under
+            // replacement decoding and would otherwise be dispatched.
+            var invalidUtf8Json = new byte[] { 0x22, 0xC3, 0x22 };
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(serviceId, 7, "json", invalidUtf8Json));
+            session.DrainServiceCalls();
+
+            Assert.Equal(0, calls);
+            Assert.Contains("Malformed JSON payload", fake.SentTexts(1).Last(), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ServiceCallEnqueueComplete()
         {
             var fake = new Phase6FakeTransport();
