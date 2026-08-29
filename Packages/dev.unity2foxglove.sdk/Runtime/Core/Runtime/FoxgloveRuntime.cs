@@ -288,6 +288,8 @@ namespace Unity.FoxgloveSDK.Core
                 _session = session;
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
+                // A successful Start begins a new stop-cleanup epoch.
+                _stopCleanupComplete = false;
                 _stopped = false;
             }
             catch

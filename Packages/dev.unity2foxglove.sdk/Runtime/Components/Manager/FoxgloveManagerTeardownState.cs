@@ -46,6 +46,59 @@ namespace Unity.FoxgloveSDK.Components
                 endPublishSession,
                 resetProfiler);
 
+        /// <summary>
+        /// Attempts runtime disposal twice when the first attempt reports a
+        /// recoverable partial-cleanup failure, while always releasing the
+        /// owner's reference. The first failure is rethrown only when the retry
+        /// also fails; transient failures are reported through the callback.
+        /// </summary>
+        internal static void RunRuntimeDisposeWithRetry(
+            Action disposeRuntime,
+            Action releaseRuntime,
+            Action<Exception> reportFailure)
+        {
+            ExceptionDispatchInfo firstFailure = null;
+            try
+            {
+                try
+                {
+                    disposeRuntime?.Invoke();
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    firstFailure = ExceptionDispatchInfo.Capture(exception);
+                    ReportFailure(reportFailure, exception);
+                }
+
+                try
+                {
+                    disposeRuntime?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    ReportFailure(reportFailure, exception);
+                    firstFailure.Throw();
+                }
+            }
+            finally
+            {
+                releaseRuntime?.Invoke();
+            }
+        }
+
+        private static void ReportFailure(Action<Exception> reportFailure, Exception exception)
+        {
+            try
+            {
+                reportFailure?.Invoke(exception);
+            }
+            catch
+            {
+                // Diagnostics must not prevent the cleanup retry or reference release.
+            }
+        }
+
         private static void RunMandatoryCleanup(params Action[] steps)
         {
             ExceptionDispatchInfo firstFailure = null;

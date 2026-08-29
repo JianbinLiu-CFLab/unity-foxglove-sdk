@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Unity.FoxgloveSDK.UnitTests.Harness;
+using Unity.FoxgloveSDK.Components;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -103,9 +104,74 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "EndFoxRunTransportSession",
                 "_replayCursorEndpoint?.Dispose()",
                 "_certificateDistributor?.Dispose()",
+                "FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(",
                 "_runtime?.Dispose()",
+                "_runtime = null",
                 "EndFoxRunPublishSession",
                 "FoxgloveProfiler.ResetGlobal(this)");
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryReportsTransientFailureAndReleasesReference()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                () =>
+                {
+                    attempts++;
+                    if (attempts == 1)
+                        throw new InvalidOperationException("first failure");
+                },
+                () => releases++,
+                exception => reports.Add(exception.Message));
+
+            Assert.Equal(2, attempts);
+            Assert.Equal(1, releases);
+            Assert.Equal(new[] { "first failure" }, reports);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryDoesNotRepeatSuccessfulDispose()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                () => attempts++,
+                () => releases++,
+                exception => reports.Add(exception.Message));
+
+            Assert.Equal(1, attempts);
+            Assert.Equal(1, releases);
+            Assert.Empty(reports);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryRethrowsFirstFailureAndReleasesReferenceWhenBothAttemptsFail()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            var failure = Assert.Throws<InvalidOperationException>(
+                () => FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                    () =>
+                    {
+                        attempts++;
+                        throw new InvalidOperationException(
+                            attempts == 1 ? "first failure" : "retry failure");
+                    },
+                    () => releases++,
+                    exception => reports.Add(exception.Message)));
+
+            Assert.Equal("first failure", failure.Message);
+            Assert.Equal(2, attempts);
+            Assert.Equal(1, releases);
+            Assert.Equal(new[] { "first failure", "retry failure" }, reports);
         }
 
         private static MethodInfo TeardownMethod(string name)

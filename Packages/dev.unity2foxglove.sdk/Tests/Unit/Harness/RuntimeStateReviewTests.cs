@@ -160,6 +160,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RuntimeDisposeAfterRestartCleansTheCurrentSession()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                runtime.Start("phase187-d01-002-first-cycle");
+                runtime.Stop();
+
+                runtime.Start("phase187-d01-002-second-cycle");
+                Assert.Equal(4, transport.HandlerCount);
+                Assert.False(ReadPrivateField<bool>(runtime, "_stopCleanupComplete"));
+
+                runtime.Dispose();
+
+                Assert.Null(runtime.Session);
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.False(transport.IsRunning);
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
         public void RuntimeDisposePreservesCleanupAndReleasesTransportAfterStopFailure()
         {
             var transport = new ThrowingStopTransport { ThrowOnNextStop = true };
@@ -167,7 +194,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             runtime.Start("phase187-d01-002-dispose");
 
             Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+            Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
             runtime.Dispose();
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
 
             Assert.Equal(0, transport.HandlerCount);
             Assert.Equal(1, transport.DisposeCalls);
@@ -221,26 +250,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void ManagerDestroyRetriesRuntimeDisposeBeforeReleasingReference()
+        public void ManagerDestroyUsesTestableRuntimeDisposeRetryAndReleasesReference()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var method = SourceMethod(source, "private void OnDestroy()");
-            var firstDisposeIndex = method.IndexOf("_runtime?.Dispose();", StringComparison.Ordinal);
-            var secondDisposeIndex = firstDisposeIndex < 0
-                ? -1
-                : method.IndexOf(
-                    "_runtime?.Dispose();",
-                    firstDisposeIndex + 1,
-                    StringComparison.Ordinal);
-            var clearIndex = secondDisposeIndex < 0
-                ? -1
-                : method.IndexOf("_runtime = null;", secondDisposeIndex, StringComparison.Ordinal);
 
-            Assert.True(firstDisposeIndex >= 0);
-            Assert.True(secondDisposeIndex > firstDisposeIndex);
-            Assert.True(clearIndex > secondDisposeIndex);
-            Assert.Contains("catch", method.Substring(firstDisposeIndex), StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains("() => _runtime?.Dispose()", method, StringComparison.Ordinal);
+            Assert.Contains("() => _runtime = null", method, StringComparison.Ordinal);
         }
 
         private static T ReadPrivateField<T>(object target, string name)
