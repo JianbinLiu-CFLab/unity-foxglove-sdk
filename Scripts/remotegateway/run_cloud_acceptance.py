@@ -169,8 +169,15 @@ def build_and_copy_native() -> None:
         [sys.executable, str(BUILD_SCRIPT), "--copy-to-package"],
         cwd=str(ROOT),
         check=True,
-        env=os.environ.copy(),
+        env=native_build_environment(),
     )
+
+
+def native_build_environment() -> dict[str, str]:
+    """Return a child environment with Cloud credentials removed."""
+    environment = os.environ.copy()
+    environment.pop(TOKEN_ENV, None)
+    return environment
 
 
 def ensure_native_artifact() -> None:
