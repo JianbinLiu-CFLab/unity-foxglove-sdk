@@ -20,6 +20,13 @@ namespace Unity.FoxgloveSDK.Components
             _runtime?.RegisterParameter(name, value, type, writable);
         }
 
+        /// <summary>Register a parameter and return a lease owned by this registration.</summary>
+        public Unity.FoxgloveSDK.Core.FoxgloveParameterStore.ParameterRegistration RegisterParameterOwned(
+            string name, Newtonsoft.Json.Linq.JToken value, string type, bool writable)
+        {
+            return _runtime?.RegisterParameterOwned(name, value, type, writable);
+        }
+
         /// <summary>
         /// Unregisters a runtime parameter.
         /// </summary>

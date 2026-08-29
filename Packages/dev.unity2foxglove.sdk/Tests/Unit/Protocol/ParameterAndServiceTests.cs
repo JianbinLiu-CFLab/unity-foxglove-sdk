@@ -127,6 +127,21 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterOwnedRegistrationCannotRemoveReplacement()
+        {
+            var store = new FoxgloveParameterStore();
+            var first = store.RegisterOwned("/shared", new JValue(1), "number", true);
+            var second = store.RegisterOwned("/shared", new JValue(2), "number", true);
+
+            first.Dispose();
+
+            Assert.Equal(2, store.GetWireParameter("/shared").Value.Value<int>());
+
+            second.Dispose();
+            Assert.Null(store.GetWireParameter("/shared"));
+        }
+
+        [Fact]
         public void ParameterSetFromClient()
         {
             var store = new FoxgloveParameterStore();

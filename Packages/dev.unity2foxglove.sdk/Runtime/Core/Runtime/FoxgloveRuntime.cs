@@ -208,6 +208,11 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
 
+        /// <summary>Register a parameter with a lease that owns only this registration.</summary>
+        public FoxgloveParameterStore.ParameterRegistration RegisterParameterOwned(
+            string name, JToken value, string type, bool writable)
+            => _parameters.RegisterOwned(name, value, type, writable);
+
         /// <summary>Unregister a named parameter. Safe no-op for unknown names.</summary>
         public bool UnregisterParameter(string name)
             => _parameters.Unregister(name);

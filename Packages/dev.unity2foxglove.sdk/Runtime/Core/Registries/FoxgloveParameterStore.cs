@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -33,6 +34,32 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public event Action<string, JToken, string> OnParameterChanged;
 
+        /// <summary>
+        /// A registration lease that can remove only the entry created by that
+        /// lease. Disposing an older lease never removes a newer replacement.
+        /// </summary>
+        public sealed class ParameterRegistration : IDisposable
+        {
+            private readonly FoxgloveParameterStore _store;
+            private readonly string _name;
+            private int _disposed;
+
+            internal ParameterRegistration(FoxgloveParameterStore store, string name)
+            {
+                _store = store;
+                _name = name;
+            }
+
+            internal string Name => _name;
+            internal bool BelongsTo(FoxgloveParameterStore store) => ReferenceEquals(_store, store);
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                    _store.UnregisterOwned(this);
+            }
+        }
+
         /// <summary>Register a parameter. Overwrites if already exists. Fires OnParameterChanged.</summary>
         public void Register(string name, JToken value, string type, bool writable)
         {
@@ -55,10 +82,59 @@ namespace Unity.FoxgloveSDK.Core
             handler?.Invoke(name, CloneValue(normalizedValue), normalizedType);
         }
 
+        /// <summary>
+        /// Register a parameter and return an ownership lease for this exact
+        /// registration. A later registration under the same name supersedes
+        /// the old entry without being removable by the old lease.
+        /// </summary>
+        public ParameterRegistration RegisterOwned(string name, JToken value, string type, bool writable)
+        {
+            var normalizedType = NormalizeParameterType(type);
+            if (!IsSupportedParameterType(normalizedType))
+                throw new ArgumentException($"Unsupported parameter type: {normalizedType}", nameof(type));
+
+            if (!TryNormalizeValueForType(normalizedType, value, out var normalizedValue))
+            {
+                _logger?.LogWarning(
+                    $"Parameter '{name}' value does not match declared type '{normalizedType}'; using the type default.");
+                normalizedValue = DefaultValueForType(normalizedType);
+            }
+
+            var registration = new ParameterRegistration(this, name);
+            lock (_lock)
+            {
+                _params[name] = new ParameterEntry
+                {
+                    Value = normalizedValue,
+                    Type = normalizedType,
+                    Writable = writable,
+                    Owner = registration
+                };
+            }
+
+            var handler = OnParameterChanged;
+            handler?.Invoke(name, CloneValue(normalizedValue), normalizedType);
+            return registration;
+        }
+
         /// <summary>Unregister a parameter.</summary>
         public bool Unregister(string name)
         {
             lock (_lock) { return _params.Remove(name); }
+        }
+
+        /// <summary>Remove an entry only when it is still owned by the supplied lease.</summary>
+        public bool UnregisterOwned(ParameterRegistration registration)
+        {
+            if (registration == null || !registration.BelongsTo(this))
+                return false;
+            lock (_lock)
+            {
+                if (!_params.TryGetValue(registration.Name, out var entry)
+                    || !ReferenceEquals(entry.Owner, registration))
+                    return false;
+                return _params.Remove(registration.Name);
+            }
         }
 
         /// <summary>Set a parameter's value from a client request. Silently no-ops for unknown/read-only params.</summary>
@@ -244,6 +320,7 @@ namespace Unity.FoxgloveSDK.Core
             public JToken Value;
             public string Type;
             public bool Writable;
+            public ParameterRegistration Owner;
         }
 
         private static Parameter ToWireParameter(string name, ParameterEntry entry)
