@@ -5,6 +5,8 @@
 // Purpose: Phase151 profiler core behavior tests.
 
 using System;
+using System.Collections;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Xunit;
@@ -145,6 +147,31 @@ namespace FoxgloveSdk.UnitTests.Profiling
             {
                 second.Dispose();
             }
+        }
+
+        [Fact]
+        public void UnityProfilerAdapterBoundsDynamicMarkerCacheAndUsesOverflowMarker()
+        {
+            const int maximumMarkerCount = 64;
+            var adapter = UnityProfilerAdapter.Instance;
+            var markersField = typeof(UnityProfilerAdapter).GetField(
+                "_markers",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(markersField);
+            var markers = Assert.IsAssignableFrom<IDictionary>(markersField.GetValue(adapter));
+            var prefix = "phase187.d04.003." + Guid.NewGuid().ToString("N") + ".";
+
+            for (var i = 0; i < maximumMarkerCount + 16; i++)
+            {
+                using (adapter.Sample(prefix + i))
+                {
+                }
+            }
+
+            Assert.True(
+                markers.Count <= maximumMarkerCount,
+                "Profiler marker cache grew to " + markers.Count + " entries.");
+            Assert.True(markers.Contains("Foxglove.DynamicOverflow"));
         }
 
         private sealed class CountingProfiler : IFoxgloveProfiler

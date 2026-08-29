@@ -30,8 +30,13 @@ namespace Unity.FoxgloveSDK.Components
     {
         public static readonly UnityProfilerAdapter Instance = new UnityProfilerAdapter();
 
+        internal const int MaximumMarkerCount = 64;
+        private const string OverflowMarkerName = "Foxglove.DynamicOverflow";
         private readonly ConcurrentDictionary<string, ProfilerMarker> _markers = new ConcurrentDictionary<string, ProfilerMarker>();
         private readonly ConcurrentBag<ProfilerScope> _scopes = new ConcurrentBag<ProfilerScope>();
+        private readonly object _markerGate = new object();
+        private ProfilerMarker _overflowMarker;
+        private bool _overflowMarkerInitialized;
 
         [ThreadStatic]
         private static Stack<ProfilerMarker> _activeMarkers;
@@ -80,7 +85,38 @@ namespace Unity.FoxgloveSDK.Components
         private ProfilerMarker GetMarker(string name)
         {
             var markerName = string.IsNullOrWhiteSpace(name) ? "Foxglove.Unnamed" : name;
-            return _markers.GetOrAdd(markerName, static value => new ProfilerMarker(value));
+            if (_markers.TryGetValue(markerName, out var marker))
+                return marker;
+
+            lock (_markerGate)
+            {
+                if (_markers.TryGetValue(markerName, out marker))
+                    return marker;
+
+                // Reserve one slot for a stable overflow marker. Unity keeps
+                // marker names for the process lifetime, so unbounded caller
+                // supplied names must never grow this cache without limit.
+                if (_markers.Count >= MaximumMarkerCount - 1)
+                    return GetOverflowMarkerLocked();
+
+                marker = new ProfilerMarker(markerName);
+                _markers.TryAdd(markerName, marker);
+                return marker;
+            }
+        }
+
+        private ProfilerMarker GetOverflowMarkerLocked()
+        {
+            if (!_overflowMarkerInitialized)
+            {
+                _overflowMarker = new ProfilerMarker(OverflowMarkerName);
+                _overflowMarkerInitialized = true;
+            }
+
+            if (_markers.Count < MaximumMarkerCount)
+                _markers.TryAdd(OverflowMarkerName, _overflowMarker);
+
+            return _overflowMarker;
         }
 
         private sealed class ProfilerScope : IDisposable
