@@ -10,6 +10,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
@@ -305,16 +306,30 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Stop the transport and detach all event handlers.</summary>
         public void Dispose()
         {
-            Stop();
-            _transport.OnClientConnected -= OnClientConnected;
-            _transport.OnClientDisconnected -= OnClientDisconnected;
-            _transport.OnTextReceived -= OnClientText;
-            _transport.OnBinaryReceived -= OnClientBinary;
-            _channels.ChannelOverwritten -= OnChannelOverwritten;
+            ExceptionDispatchInfo firstFailure = null;
+            TryCleanup(Stop, ref firstFailure);
+            TryCleanup(() => _transport.OnClientConnected -= OnClientConnected, ref firstFailure);
+            TryCleanup(() => _transport.OnClientDisconnected -= OnClientDisconnected, ref firstFailure);
+            TryCleanup(() => _transport.OnTextReceived -= OnClientText, ref firstFailure);
+            TryCleanup(() => _transport.OnBinaryReceived -= OnClientBinary, ref firstFailure);
+            TryCleanup(() => _channels.ChannelOverwritten -= OnChannelOverwritten, ref firstFailure);
             Volatile.Write(ref _recorder, null);
             Volatile.Write(ref _mirrorSink, null);
             OnClientMessage = null;
             OnClientMessageWithEncoding = null;
+            firstFailure?.Throw();
+        }
+
+        private static void TryCleanup(Action cleanup, ref ExceptionDispatchInfo firstFailure)
+        {
+            try
+            {
+                cleanup?.Invoke();
+            }
+            catch (Exception exception)
+            {
+                firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+            }
         }
 
         // ── Status API ──

@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -248,6 +249,39 @@ def run_build(
         str(build_output_dir),
         "-v:minimal",
     ]
+
+    def output_fingerprint(path: Path) -> tuple[int, int] | None:
+        """Identify one regular build output by size and modification time."""
+        try:
+            if not path.is_file():
+                return None
+            info = path.stat()
+        except OSError:
+            return None
+        return (info.st_size, info.st_mtime_ns)
+
+    expected_paths: tuple[Path, ...] = ()
+    for candidate in TARGETS.values():
+        try:
+            same_project = candidate.project.resolve() == project.resolve()
+        except OSError:
+            same_project = candidate.project == project
+        if same_project:
+            expected_paths = tuple(
+                build_output_dir / name
+                for name in candidate.checked_in_artifacts
+            )
+            break
+    if not expected_paths:
+        expected_paths = tuple(
+            build_output_dir / name
+            for name in CHECKED_IN_ARTIFACTS
+        )
+    output_before = {
+        path: output_fingerprint(path)
+        for path in expected_paths
+    }
+
     try:
         subprocess.run(command, cwd=REPO_ROOT, check=True)
     except subprocess.CalledProcessError as exc:
@@ -261,6 +295,23 @@ def run_build(
             file=sys.stderr,
         )
         return False
+
+    for path in expected_paths:
+        output_after = output_fingerprint(path)
+        if output_after is None:
+            print(
+                "[FAIL] Source generator Release build succeeded but did not "
+                f"produce a regular output at {path}.",
+                file=sys.stderr,
+            )
+            return False
+        if output_after == output_before[path]:
+            print(
+                "[FAIL] Source generator Release build left the pre-existing "
+                f"output at {path} unchanged; it is not this build's output.",
+                file=sys.stderr,
+            )
+            return False
     return True
 
 
@@ -769,10 +820,52 @@ def validate_or_update(
                 and not validate_unity_plugin_protobuf_match(
                     built_artifacts["Google.Protobuf.dll"])):
             return 1
-        for name, checked_in in checked_in_artifacts.items():
-            shutil.copy2(built_artifacts[name], checked_in)
-            print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
-            print(f"       sha256={sha256(checked_in)}")
+        with tempfile.TemporaryDirectory(
+            prefix=".validate-source-generator-rollback-",
+            dir=str(REPO_ROOT),
+        ) as backup_dir_name:
+            backup_dir = Path(backup_dir_name)
+            backups: dict[str, Path | None] = {}
+            try:
+                for name, checked_in in checked_in_artifacts.items():
+                    if checked_in.exists():
+                        backup = backup_dir / name
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(checked_in, backup)
+                        backups[name] = backup
+                    else:
+                        backups[name] = None
+
+                for name, checked_in in checked_in_artifacts.items():
+                    shutil.copy2(built_artifacts[name], checked_in)
+                    print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
+                    print(f"       sha256={sha256(checked_in)}")
+            except (OSError, shutil.Error) as exc:
+                rollback_errors: list[str] = []
+                for name, checked_in in reversed(tuple(checked_in_artifacts.items())):
+                    if name not in backups:
+                        continue
+                    backup = backups.get(name)
+                    try:
+                        if backup is None:
+                            if checked_in.exists():
+                                checked_in.unlink()
+                        else:
+                            backup.replace(checked_in)
+                    except (OSError, shutil.Error) as rollback_exc:
+                        rollback_errors.append(f"{name}: {rollback_exc}")
+                print(
+                    "[FAIL] Analyzer update rolled back after an artifact copy failed: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                if rollback_errors:
+                    print(
+                        "[FAIL] Analyzer update rollback encountered errors: "
+                        + "; ".join(rollback_errors),
+                        file=sys.stderr,
+                    )
+                return 1
         return 0
 
     for name, checked_in in checked_in_artifacts.items():

@@ -166,6 +166,23 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+
+            if (serializedObject.isEditingMultipleObjects)
+            {
+                EditorGUILayout.HelpBox(
+                    "Multi-object editing uses Unity's mixed-value inspector. "
+                    + "Manager status, foldouts, and actions are unavailable "
+                    + "until one Manager is selected.",
+                    MessageType.Info);
+                DrawDefaultInspector();
+                serializedObject.ApplyModifiedProperties();
+                return;
+            }
+
+            // A repaint may pass malformed/forward-version enum data through popup
+            // helpers. Only commit serialized values when IMGUI observed an
+            // intentional user edit; otherwise discard all staged normalization.
+            EditorGUI.BeginChangeCheck();
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
             RefreshTransportStatsForRepaint();
 
@@ -180,7 +197,10 @@ namespace Unity.FoxgloveSDK.Editor
             DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
             DrawSection("Diagnostics", "Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
-            serializedObject.ApplyModifiedProperties();
+            if (EditorGUI.EndChangeCheck())
+                serializedObject.ApplyModifiedProperties();
+            else
+                serializedObject.Update();
         }
 
         private void DrawScriptProperty()
@@ -197,9 +217,27 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawCompactStatus()
         {
             var manager = (Components.FoxgloveManager)target;
+            var configuredTransport = FindCachedProperty("_transportMode");
+            var configuredTransportValue = configuredTransport?.intValue
+                ?? (int)FoxgloveTransportMode.None;
+            var hasSupportedTransport = configuredTransportValue
+                == (int)FoxgloveTransportMode.WebSocket
+                || configuredTransportValue
+                == (int)FoxgloveTransportMode.SecureWebSocket;
+            if (!GetBool("_foxgloveOutputEnabled") || !hasSupportedTransport)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Status Summary", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(
+                    "Foxglove WebSocket output is disabled or unavailable. Endpoint and Web URL actions are unavailable until a supported transport mode is selected.",
+                    MessageType.Info);
+                return;
+            }
+
             var host = GetString("_host", "127.0.0.1");
             var port = GetInt("_port", 8765);
-            var isSecure = IsSecureMode();
+            var isSecure = configuredTransportValue
+                == (int)FoxgloveTransportMode.SecureWebSocket;
             var token = GetString("_sharedToken", "");
             RefreshWebUrlCache(host, port, isSecure, token);
 
@@ -318,25 +356,45 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var secureIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.SecureWebSocket), (int)FoxgloveTransportMode.SecureWebSocket);
-            var webSocketIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.WebSocket), (int)FoxgloveTransportMode.WebSocket);
-            var noneIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.None), (int)FoxgloveTransportMode.None);
-            if (GetBool("_foxgloveOutputEnabled") && prop.enumValueIndex == noneIndex)
+            var secureValue = (int)FoxgloveTransportMode.SecureWebSocket;
+            var webSocketValue = (int)FoxgloveTransportMode.WebSocket;
+            var noneValue = (int)FoxgloveTransportMode.None;
+            var rawValue = prop.intValue;
+            if (!GetBool("_foxgloveOutputEnabled"))
+            {
+                EditorGUILayout.HelpBox(
+                    "Transport mode is retained while Foxglove WebSocket output is disabled. Re-enable output before choosing a mode.",
+                    MessageType.Info);
+                return;
+            }
+
+            if (rawValue != secureValue
+                && rawValue != webSocketValue
+                && rawValue != noneValue)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Transport mode has unsupported serialized value {rawValue}. Select a supported mode explicitly to repair it.",
+                    MessageType.Warning);
+            }
+            else if (rawValue == noneValue)
             {
                 EditorGUILayout.HelpBox(
                     "Transport mode is serialized as None while Foxglove WebSocket output is enabled. Select Web Socket or Secure Web Socket.",
                     MessageType.Warning);
             }
 
-            var current = prop.enumValueIndex == secureIndex
-                ? FoxgloveTransportMode.SecureWebSocket
-                : FoxgloveTransportMode.WebSocket;
+            var current = rawValue == secureValue ? 1 : 0;
+            EditorGUI.BeginChangeCheck();
             var selected = EditorGUILayout.Popup(
                 "Transport Mode",
-                current == FoxgloveTransportMode.SecureWebSocket ? 1 : 0,
+                current,
                 TransportModeLabels);
-
-            prop.enumValueIndex = selected == 1 ? secureIndex : webSocketIndex;
+            if (EditorGUI.EndChangeCheck())
+            {
+                var requestedValue = selected == 1 ? secureValue : webSocketValue;
+                if (requestedValue != rawValue)
+                    prop.intValue = requestedValue;
+            }
         }
 
         private SerializedProperty FindCachedProperty(string propertyName)

@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -74,6 +75,13 @@ namespace Unity.FoxgloveSDK.Core
         private readonly TickCoordinator _tickCoordinator;
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
         private int _disposed;
+        private int _disposing;
+        private bool _stopCleanupComplete;
+        private bool _parametersCleared;
+        private bool _servicesCleared;
+        private bool _recordingDisposed;
+        private bool _replayDisposed;
+        private bool _transportDisposed;
         private bool _stopped = true;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
@@ -692,16 +700,87 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            if (Volatile.Read(ref _disposed) != 0
+                || Interlocked.Exchange(ref _disposing, 1) != 0)
                 return;
 
-            Stop();
-            _parameters.Clear();
-            _services.Clear();
-            // The remaining owned helpers are pure managed state and do not implement IDisposable.
-            _recording.Dispose();
-            _replay.Dispose();
-            _transport.Dispose();
+            ExceptionDispatchInfo firstFailure = null;
+            try
+            {
+                if (!_stopCleanupComplete)
+                {
+                    try
+                    {
+                        Stop();
+                        _stopCleanupComplete = true;
+                    }
+                    catch (Exception exception)
+                    {
+                        firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+                        // Stop clears the active session before disposing it. Once the
+                        // session is unreachable, the remaining owned resources can
+                        // still be released below and a later Dispose need not repeat it.
+                        _stopCleanupComplete = _session == null;
+                    }
+                }
+
+                TryCleanup(
+                    () => _parameters.Clear(),
+                    ref _parametersCleared,
+                    ref firstFailure);
+                TryCleanup(
+                    () => _services.Clear(),
+                    ref _servicesCleared,
+                    ref firstFailure);
+                // The remaining owned helpers are pure managed state and do not implement IDisposable.
+                TryCleanup(
+                    _recording.Dispose,
+                    ref _recordingDisposed,
+                    ref firstFailure);
+                TryCleanup(
+                    _replay.Dispose,
+                    ref _replayDisposed,
+                    ref firstFailure);
+                TryCleanup(
+                    _transport.Dispose,
+                    ref _transportDisposed,
+                    ref firstFailure);
+
+                if (_stopCleanupComplete
+                    && _parametersCleared
+                    && _servicesCleared
+                    && _recordingDisposed
+                    && _replayDisposed
+                    && _transportDisposed)
+                {
+                    Volatile.Write(ref _disposed, 1);
+                }
+
+                firstFailure?.Throw();
+            }
+            finally
+            {
+                Volatile.Write(ref _disposing, 0);
+            }
+        }
+
+        private static void TryCleanup(
+            Action cleanup,
+            ref bool completed,
+            ref ExceptionDispatchInfo firstFailure)
+        {
+            if (completed)
+                return;
+
+            try
+            {
+                cleanup();
+                completed = true;
+            }
+            catch (Exception exception)
+            {
+                firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+            }
         }
 
     }

@@ -35,6 +35,7 @@ EMPTY_RESULT_NAME_WIDTH = 0
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
+ROS2_FOR_UNITY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
 ROS2_BRIDGE_PACKAGE = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2bridge"
 )
@@ -228,8 +229,73 @@ def load_package_json(results: list[CheckResult]) -> dict:
     except Exception as exc:
         add(results, "package.json parses", False, f"{rel(path)}: {exc}")
         return {}
+    if not isinstance(data, dict):
+        add(results, "package.json parses", False, f"{rel(path)}: JSON root is not an object")
+        return {}
     add(results, "package.json parses", True, rel(path))
     return data
+
+
+def _package_matrix_specs() -> tuple[tuple[str, str, Path, str, dict[str, str]], ...]:
+    """Resolve package roots from patchable module globals."""
+    return (
+        ("sdk", "dev.unity2foxglove.sdk", PACKAGE, "1.9.6", {
+            "com.unity.nuget.newtonsoft-json": "3.2.1",
+            "com.unity.burst": "1.8.18",
+            "com.unity.collections": "2.5.5",
+            "com.unity.mathematics": "1.3.2",
+        }),
+        ("r2fu", "dev.unity2foxglove.ros2forunity", ROS2_FOR_UNITY_PACKAGE, "0.1.0-preview.1", {
+            "dev.unity2foxglove.sdk": "1.9.6",
+        }),
+        ("bridge", "dev.unity2foxglove.ros2bridge", ROS2_BRIDGE_PACKAGE, "0.1.0-preview.1", {
+            "dev.unity2foxglove.sdk": "1.9.6",
+        }),
+        ("remote_gateway", "dev.unity2foxglove.remotegateway.win64", REMOTE_GATEWAY_PACKAGE, "0.1.0-preview.1", {
+            "dev.unity2foxglove.sdk": "1.9.6",
+        }),
+    )
+
+
+def check_package_matrix(results: list[CheckResult]) -> None:
+    """Authenticate all four package identities, versions, and exact dependencies."""
+    for key, expected_name, package_root, expected_version, expected_dependencies in _package_matrix_specs():
+        manifest = package_root / "package.json"
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            add(results, f"package matrix {key} manifest", False, f"{rel(manifest)}: {exc}")
+            continue
+        if not isinstance(data, dict):
+            add(
+                results,
+                f"package matrix {key} manifest",
+                False,
+                f"{rel(manifest)}: JSON root is {type(data).__name__}, expected object",
+            )
+            continue
+        add(results, f"package matrix {key} manifest", True, rel(manifest))
+        actual_name = data.get("name")
+        add(
+            results,
+            f"package matrix {key} name",
+            actual_name == expected_name,
+            f"expected {expected_name!r}, got {actual_name!r}",
+        )
+        actual_version = data.get("version")
+        add(
+            results,
+            f"package matrix {key} version",
+            actual_version == expected_version,
+            f"expected {expected_version!r}, got {actual_version!r}",
+        )
+        actual_dependencies = data.get("dependencies")
+        add(
+            results,
+            f"package matrix {key} dependencies",
+            actual_dependencies == expected_dependencies,
+            f"expected {expected_dependencies!r}, got {actual_dependencies!r}",
+        )
 
 
 def check_ros2_bridge_package(results: list[CheckResult]) -> None:
@@ -672,13 +738,28 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     add(results, "Google.Protobuf DLL/asmdef naming", not offenders, "; ".join(offenders) if offenders else "no collision")
 
 
-def check_third_party_notices(results: list[CheckResult]) -> None:
+def _third_party_notice_sections(notices: str) -> tuple[str, ...]:
+    """Split Markdown notices into attributable level-two-heading sections."""
+    headings = list(re.finditer(r"(?m)^##\s+", notices))
+    if not headings:
+        return (notices,)
+    return tuple(
+        notices[start.start() : end.start() if end is not None else None]
+        for start, end in zip(headings, headings[1:] + [None])
+    )
+
+
+def check_third_party_notices(
+    results: list[CheckResult],
+    package_entries: list[Path] | None = None,
+) -> None:
     """Ensure every bundled binary dependency has a matching license notice."""
     if not THIRD_PARTY_NOTICES.exists():
         add(results, "third-party notices exist", False, rel(THIRD_PARTY_NOTICES))
-        return
-
-    notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
+        notices = ""
+    else:
+        notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
+    notice_sections = _third_party_notice_sections(notices)
     missing: list[str] = []
     absent_artifacts: list[str] = []
     for artifact, required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
@@ -688,6 +769,8 @@ def check_third_party_notices(results: list[CheckResult]) -> None:
         absent = [token for token in required_tokens if token not in notices]
         if absent:
             missing.append(f"{rel(artifact)} missing {', '.join(absent)}")
+        elif not any(all(token in section for token in required_tokens) for section in notice_sections):
+            missing.append(f"{rel(artifact)} tokens lack one attributable notice section")
 
     add(
         results,
@@ -701,6 +784,33 @@ def check_third_party_notices(results: list[CheckResult]) -> None:
         "third-party notices cover bundled binaries",
         not missing,
         "; ".join(missing) if missing else "all bundled binary notices present",
+    )
+
+    package_entries = package_entries if package_entries is not None else list(PACKAGE.rglob("*"))
+    analyzer_root = PACKAGE / "Editor" / "SourceGenerators" / "analyzers"
+    discovered: dict[str, str] = {}
+    for path in package_entries:
+        if not path.is_file() or path.suffix.casefold() != ".dll":
+            continue
+        if path_is_relative_to(path, analyzer_root):
+            continue
+        if not path_is_relative_to(path, PACKAGE):
+            continue
+        relative = path.relative_to(PACKAGE).as_posix()
+        discovered.setdefault(relative.casefold(), relative)
+
+    declared: set[str] = set()
+    for artifact, _required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
+        if path_is_relative_to(artifact, PACKAGE):
+            declared.add(artifact.relative_to(PACKAGE).as_posix().casefold())
+    unlisted = [discovered[key] for key in sorted(set(discovered) - declared)]
+    add(
+        results,
+        "third-party notice inventory closed",
+        not unlisted,
+        "all regular package DLLs are notice-listed or first-party analyzers"
+        if not unlisted
+        else "unlisted regular DLLs: " + "; ".join(unlisted),
     )
 
 
@@ -720,6 +830,7 @@ def main() -> int:
     samples_entries = [path for path in package_entries if path_is_relative_to(path, SAMPLES)]
     samples_files = [path for path in samples_entries if path.is_file()]
     docs_files = [path for path in package_files if path_is_relative_to(path, DOCS)]
+    check_package_matrix(results)
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
@@ -735,7 +846,7 @@ def main() -> int:
     check_manual_phase_service_guards(results)
     check_validation_naming(results, package_files)
     check_google_protobuf_collision(results)
-    check_third_party_notices(results)
+    check_third_party_notices(results, package_entries)
 
     print_results(results)
     failed = [r for r in results if not r.ok]

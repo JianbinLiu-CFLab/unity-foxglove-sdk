@@ -14,6 +14,22 @@ namespace Unity.FoxgloveSDK.Components
             5L * 1000L * 1000L * 10L;
         private long _lastFailureWarningTicks;
 
+        internal bool InvokeIfLive(
+            Func<bool> isLive,
+            Action first,
+            Action second)
+        {
+            if (isLive == null || !isLive())
+                return false;
+
+            first?.Invoke();
+            if (!isLive())
+                return false;
+
+            second?.Invoke();
+            return isLive();
+        }
+
         internal void Invoke<T>(
             Action<T> subscribers,
             T value,

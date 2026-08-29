@@ -115,6 +115,9 @@ namespace Unity.FoxgloveSDK.Tests
                     publishData,
                     "ShouldEnsureProvider"));
             VerifyFoldoutState(managerEditor);
+            VerifyMultiObjectInspectorBoundary(
+                FindMethod(managerEditor, "OnInspectorGUI"));
+            VerifyPassiveInspectorMutationBoundary(managerEditor);
             VerifyNeutralSerialization();
             VerifyDirectionalCoordinateRuntimePolicy();
             VerifyValidationRegistryEntry();
@@ -571,6 +574,115 @@ namespace Unity.FoxgloveSDK.Tests
                       "InspectorFoldoutKey(\"DataTransportSubscribe\")",
                       StringComparison.Ordinal),
                 "180G-1: foldout persistence belongs only to Data Transport and its two neutral directional subsections");
+        }
+
+        private static void VerifyMultiObjectInspectorBoundary(
+            MethodDeclarationSyntax topLevel)
+        {
+            var multiObjectGuard = topLevel.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .FirstOrDefault(statement =>
+                    statement.Condition.ToFullString().Contains(
+                        "serializedObject.isEditingMultipleObjects",
+                        StringComparison.Ordinal));
+            var guardText = multiObjectGuard?.Statement.ToFullString()
+                            ?? string.Empty;
+            var guardCallsCustomUi = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>()
+                    .Any(invocation =>
+                        IsInvocationNamed(invocation, "SyncSerializedManager")
+                        || IsInvocationNamed(invocation, "DrawSection")
+                        || IsInvocationNamed(invocation, "DrawRecordingReplayWarning"));
+            var guardReturns = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodesAndSelf()
+                    .OfType<ReturnStatementSyntax>()
+                    .Any();
+            var hasDefaultInspector = multiObjectGuard != null
+                && multiObjectGuard.Statement.DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>()
+                    .Any(invocation =>
+                        IsInvocationNamed(invocation, "DrawDefaultInspector"));
+
+            Check(multiObjectGuard != null
+                  && guardText.Contains(
+                      "Multi-object editing",
+                      StringComparison.Ordinal)
+                  && hasDefaultInspector
+                  && guardReturns
+                  && !guardCallsCustomUi,
+                "180J-1: multi-object Manager inspection is mixed-safe and exposes no representative custom actions");
+        }
+
+        private static void VerifyPassiveInspectorMutationBoundary(
+            string managerEditor)
+        {
+            var inspector = FindMethod(managerEditor, "OnInspectorGUI");
+            var inspectorText = inspector.ToFullString();
+            var beginChange = inspectorText.IndexOf(
+                "EditorGUI.BeginChangeCheck()",
+                StringComparison.Ordinal);
+            var endChange = inspectorText.IndexOf(
+                "EditorGUI.EndChangeCheck()",
+                beginChange < 0 ? 0 : beginChange,
+                StringComparison.Ordinal);
+            var apply = inspectorText.IndexOf(
+                "serializedObject.ApplyModifiedProperties()",
+                endChange < 0 ? 0 : endChange,
+                StringComparison.Ordinal);
+            var discard = inspectorText.IndexOf(
+                "serializedObject.Update()",
+                endChange < 0 ? 0 : endChange,
+                StringComparison.Ordinal);
+
+            Check(beginChange >= 0
+                  && endChange > beginChange
+                  && apply > endChange
+                  && discard > endChange
+                  && inspectorText.Contains(
+                      "if (EditorGUI.EndChangeCheck())",
+                      StringComparison.Ordinal),
+                "180J-2: passive Manager repaint discards staged enum normalization and applies only an intentional edit");
+
+            var status = FindMethod(managerEditor, "DrawCompactStatus");
+            var statusText = status.ToFullString();
+            var unavailable = statusText.IndexOf(
+                "unavailable",
+                StringComparison.OrdinalIgnoreCase);
+            var refresh = statusText.IndexOf(
+                "RefreshWebUrlCache",
+                StringComparison.Ordinal);
+            Check(statusText.Contains(
+                      "_foxgloveOutputEnabled",
+                      StringComparison.Ordinal)
+                  && unavailable >= 0
+                  && statusText.Contains(
+                      "return;",
+                      StringComparison.Ordinal)
+                  && refresh > unavailable,
+                "180J-3: disabled or invalid transport status is explicit and never synthesizes active URL actions");
+
+            var transport = FindMethod(managerEditor, "DrawTransportModeProperty");
+            var transportText = transport.ToFullString();
+            var disabled = transportText.IndexOf(
+                "if (!GetBool(\"_foxgloveOutputEnabled\"))",
+                StringComparison.Ordinal);
+            var popup = transportText.IndexOf(
+                "EditorGUILayout.Popup",
+                StringComparison.Ordinal);
+            var guardedAssignment = transportText.IndexOf(
+                "if (EditorGUI.EndChangeCheck())",
+                StringComparison.Ordinal);
+            Check(disabled >= 0
+                  && popup > disabled
+                  && guardedAssignment > popup
+                  && transportText.Contains(
+                      "prop.intValue",
+                      StringComparison.Ordinal)
+                  && !transportText.Contains(
+                      "prop.enumValueIndex = selected == 1",
+                      StringComparison.Ordinal),
+                "180J-4: disabled and malformed transport values remain byte-stable until an explicit popup selection");
         }
 
         private static void VerifyNeutralSerialization()

@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
+import json
 import subprocess
 import sys
 import tempfile
@@ -120,6 +122,87 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
 
         self.assertTrue(results[-1].ok)
+
+    def test_package_matrix_gate_authenticates_all_four_package_manifests(self) -> None:
+        """The standalone validator must reject drift outside the SDK manifest."""
+        manifests = {
+            "sdk": (
+                "dev.unity2foxglove.sdk",
+                "1.9.6",
+                {
+                    "com.unity.nuget.newtonsoft-json": "3.2.1",
+                    "com.unity.burst": "1.8.18",
+                    "com.unity.collections": "2.5.5",
+                    "com.unity.mathematics": "1.3.2",
+                },
+            ),
+            "r2fu": (
+                "dev.unity2foxglove.ros2forunity",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+            "bridge": (
+                "dev.unity2foxglove.ros2bridge",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+            "remote_gateway": (
+                "dev.unity2foxglove.remotegateway.win64",
+                "0.1.0-preview.1",
+                {"dev.unity2foxglove.sdk": "1.9.6"},
+            ),
+        }
+        relatives = {
+            "sdk": "dev.unity2foxglove.sdk",
+            "r2fu": "dev.unity2foxglove.ros2forunity",
+            "bridge": "dev.unity2foxglove.ros2bridge",
+            "remote_gateway": "dev.unity2foxglove.remotegateway.win64",
+        }
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = {key: root / relative for key, relative in relatives.items()}
+            for key, package in paths.items():
+                package.mkdir(parents=True)
+                name, version, dependencies = manifests[key]
+                (package / "package.json").write_text(
+                    json.dumps(
+                        {
+                            "name": name,
+                            "version": version,
+                            "dependencies": dependencies,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            gateway_manifest = paths["remote_gateway"] / "package.json"
+            gateway_data = json.loads(gateway_manifest.read_text(encoding="utf-8"))
+            gateway_data["name"] = "dev.unity2foxglove.remotegateway.win64.decoy"
+            gateway_manifest.write_text(json.dumps(gateway_data), encoding="utf-8")
+
+            with mock.patch.object(self.validator, "PACKAGE", paths["sdk"]), \
+                mock.patch.object(self.validator, "ROS2_FOR_UNITY_PACKAGE", paths["r2fu"], create=True), \
+                mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", paths["bridge"]), \
+                mock.patch.object(self.validator, "REMOTE_GATEWAY_PACKAGE", paths["remote_gateway"]):
+                results = []
+                checker = getattr(self.validator, "check_package_matrix", None)
+                self.assertIsNotNone(checker, "standalone package matrix gate is missing")
+                if checker is not None:
+                    checker(results)
+
+        matrix_result = next(
+            item for item in results if item.name == "package matrix remote_gateway name"
+        )
+        self.assertFalse(matrix_result.ok)
+        self.assertIn("remotegateway.win64.decoy", matrix_result.detail)
+
+    def test_main_invokes_the_package_matrix_gate(self) -> None:
+        """The release entry point must execute the independent matrix gate."""
+        with mock.patch.object(self.validator, "check_package_matrix") as gate:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        gate.assert_called_once_with(mock.ANY)
 
     def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
         """A distributable Bridge sample includes its behavior, builder, and guide."""
@@ -275,6 +358,93 @@ class ValidatePackageTests(unittest.TestCase):
         }
         self.assertEqual(expected, requirements)
 
+    def test_third_party_notice_inventory_rejects_unlisted_package_dlls(self) -> None:
+        """Every regular SDK DLL is either notice-listed or explicitly first-party."""
+        requirements_template = tuple(self.validator.THIRD_PARTY_NOTICE_REQUIREMENTS)
+
+        def run_inventory(
+            extra_relative: str | None = None,
+            add_requirement: bool = False,
+            extra_directory: bool = False,
+        ):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                package = root / "sdk"
+                notices = root / "THIRD_PARTY_NOTICES.md"
+                requirements = []
+                notice_lines = []
+                for index, (_original, tokens) in enumerate(requirements_template):
+                    relative = Path("Runtime/Plugins") / f"Dependency{index}.dll"
+                    artifact = package / relative
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    artifact.write_bytes(b"dll")
+                    requirements.append((artifact, tokens))
+                    notice_lines.extend(tokens)
+                if extra_relative is not None:
+                    extra = package / extra_relative
+                    extra.parent.mkdir(parents=True, exist_ok=True)
+                    if extra_directory:
+                        extra.mkdir(exist_ok=True)
+                    elif extra.suffix.casefold() == ".dll":
+                        extra.write_bytes(b"extra")
+                    else:
+                        extra.write_text("ignored", encoding="utf-8")
+                    if add_requirement and extra.is_file():
+                        requirements.append((extra, ("ExtraDependency", "MIT", extra_relative.replace("\\", "/"))))
+                        notice_lines.extend(requirements[-1][1])
+                analyzer = package / "Editor/SourceGenerators/analyzers/dotnet/cs/AnalyzerExtra.dll"
+                analyzer.parent.mkdir(parents=True, exist_ok=True)
+                analyzer.write_bytes(b"first-party")
+                notices.write_text("\n".join(notice_lines), encoding="utf-8")
+                with mock.patch.object(self.validator, "PACKAGE", package), \
+                    mock.patch.object(self.validator, "THIRD_PARTY_NOTICES", notices), \
+                    mock.patch.object(self.validator, "THIRD_PARTY_NOTICE_REQUIREMENTS", tuple(requirements)):
+                    checker = getattr(self.validator, "check_third_party_notices", None)
+                    self.assertIsNotNone(checker, "third-party notice checker is missing")
+                    if checker is None:
+                        return None
+                    self.assertGreaterEqual(
+                        len(inspect.signature(checker).parameters),
+                        2,
+                        "checker must accept the caller's package snapshot",
+                    )
+                    results = []
+                    checker(results, list(package.rglob("*")))
+                    return {item.name: item for item in results}
+
+        baseline = run_inventory()
+        self.assertTrue(baseline["third-party notice inventory closed"].ok)
+        self.assertTrue(baseline["third-party notice artifact scope visible"].ok)
+        self.assertTrue(baseline["third-party notices cover bundled binaries"].ok)
+
+        for relative in ("UnexpectedDependency.dll", "Runtime/Plugins/UnexpectedNested.dll", "Uppercase.DLL"):
+            with self.subTest(relative=relative):
+                results = run_inventory(relative)
+                self.assertFalse(results["third-party notice inventory closed"].ok)
+                self.assertIn(Path(relative).name, results["third-party notice inventory closed"].detail)
+
+        allowed = run_inventory("AllowedDependency.dll", add_requirement=True)
+        self.assertTrue(allowed["third-party notice inventory closed"].ok)
+
+        ignored = run_inventory("README.md")
+        self.assertTrue(ignored["third-party notice inventory closed"].ok)
+        self.assertTrue(run_inventory("metadata.json")["third-party notice inventory closed"].ok)
+        self.assertTrue(run_inventory("Directory.dll", extra_directory=True)["third-party notice inventory closed"].ok)
+
+    def test_main_passes_its_package_snapshot_to_notice_inventory(self) -> None:
+        """The public entry point reuses its initial package enumeration."""
+        with mock.patch.object(self.validator, "check_third_party_notices") as checker:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        checker.assert_called_once()
+        self.assertGreaterEqual(
+            len(checker.call_args.args),
+            2,
+            "main must pass its package snapshot to the notice checker",
+        )
+        if len(checker.call_args.args) >= 2:
+            self.assertIsInstance(checker.call_args.args[1], list)
+
     def test_required_package_files_require_meta_sidecars(self) -> None:
         """Release-critical Unity assets must retain their tracked identities."""
         with tempfile.TemporaryDirectory() as temp:
@@ -318,6 +488,39 @@ class ValidatePackageTests(unittest.TestCase):
             if item.name == "third-party notice artifact scope visible"
         )
         self.assertFalse(scope.ok)
+
+    def test_third_party_notices_require_tokens_in_one_attributable_section(self) -> None:
+        """A global token match must not substitute for one artifact notice section."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            artifact = package / "Runtime" / "Plugins" / "ExampleDependency.dll"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"dll")
+            notices = root / "THIRD_PARTY_NOTICES.md"
+            notices.write_text(
+                "## Artifact name\nExampleDependency\n\n"
+                "## License declaration\nMIT\n\n"
+                "## Distribution path\nRuntime/Plugins/ExampleDependency.dll\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "PACKAGE", package), \
+                mock.patch.object(self.validator, "THIRD_PARTY_NOTICES", notices), \
+                mock.patch.object(
+                    self.validator,
+                    "THIRD_PARTY_NOTICE_REQUIREMENTS",
+                    ((artifact, ("ExampleDependency", "MIT", "Runtime/Plugins/ExampleDependency.dll")),),
+                ):
+                results = []
+                self.validator.check_third_party_notices(results, list(package.rglob("*")))
+
+        coverage = next(
+            item for item in results
+            if item.name == "third-party notices cover bundled binaries"
+        )
+        self.assertFalse(coverage.ok)
+        self.assertIn("ExampleDependency.dll", coverage.detail)
 
     def test_forbidden_sample_artifacts_reports_root_directory_once(self) -> None:
         """A forbidden directory should not flood diagnostics with descendants."""
@@ -770,6 +973,111 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
 
         self.assertEqual(1, result)
         self.assertEqual(b"old-generator", persisted_generator)
+
+    def test_analyzer_update_rolls_back_when_a_later_artifact_copy_fails(self) -> None:
+        """A failed multi-artifact update must leave the checked-in set unchanged."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"fresh-generator")
+            (build / "Google.Protobuf.dll").write_bytes(b"fresh-protobuf")
+            checked_generator = checked / "FoxgloveLogSourceGenerator.dll"
+            checked_protobuf = checked / "Google.Protobuf.dll"
+            checked_generator.write_bytes(b"old-generator")
+            checked_protobuf.write_bytes(b"old-protobuf")
+            artifacts = {
+                "FoxgloveLogSourceGenerator.dll": checked_generator,
+                "Google.Protobuf.dll": checked_protobuf,
+            }
+            calls: list[Path] = []
+            original_copy2 = self.validator.shutil.copy2
+
+            def fail_on_protobuf_copy(source: Path, destination: Path, *args, **kwargs):
+                calls.append(Path(destination))
+                if Path(destination) == checked_protobuf:
+                    raise OSError("CONTROLLED_SECOND_COPY_FAILURE")
+                return original_copy2(source, destination, *args, **kwargs)
+
+            with mock.patch.object(self.validator, "REPO_ROOT", root):
+                with mock.patch.object(self.validator, "run_build", return_value=True):
+                    with mock.patch.object(
+                        self.validator,
+                        "CHECKED_IN_ARTIFACTS",
+                        artifacts,
+                    ):
+                        with mock.patch.object(
+                            self.validator,
+                            "validate_unity_plugin_protobuf_match",
+                            return_value=True,
+                        ):
+                            with mock.patch.object(
+                                self.validator.shutil,
+                                "copy2",
+                                side_effect=fail_on_protobuf_copy,
+                            ):
+                                try:
+                                    result = self.validator.validate_or_update(True, build, [])
+                                except OSError:
+                                    result = None
+
+            persisted = [
+                checked_generator.read_bytes(),
+                checked_protobuf.read_bytes(),
+            ]
+
+        self.assertEqual(1, result)
+        self.assertEqual([b"old-generator", b"old-protobuf"], persisted)
+        self.assertIn(checked_protobuf, calls)
+
+    def test_preexisting_equal_artifact_without_current_build_write_is_rejected(self) -> None:
+        """A successful build must not authenticate equal-hash residue from an earlier run."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            expected = b"stale-authenticated-bytes"
+            built = build / "a.dll"
+            checked_file = checked / "a.dll"
+            built.write_bytes(expected)
+            checked_file.write_bytes(expected)
+            project = root / "Generator.csproj"
+            project.write_text("<Project />\n", encoding="utf-8")
+            target = self.validator.AnalyzerTarget(
+                "core",
+                project,
+                {"a.dll": checked_file},
+                build,
+                False,
+            )
+            calls: list[tuple[object, ...]] = []
+
+            def successful_no_output_build(*args, **kwargs):
+                calls.append(args)
+                return True
+
+            with mock.patch.object(self.validator, "REPO_ROOT", root), \
+                mock.patch.object(self.validator, "TARGETS", {"core": target}), \
+                mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {"a.dll": checked_file},
+                ), \
+                mock.patch.object(
+                    self.validator.subprocess,
+                    "run",
+                    side_effect=successful_no_output_build,
+                ):
+                    result = self.validator.validate_or_update(False, build, [], "core")
+            persisted = built.read_bytes()
+
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(expected, persisted)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import ctypes
 import importlib.util
 import io
@@ -1349,6 +1350,44 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(2, context.exception.code)
         self.assertIn("invalid choice", stderr.getvalue())
 
+    def test_direct_analyzer_skip_is_a_usage_error(self) -> None:
+        """The analyzer-only selector cannot claim success when its only lane is skipped."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["run_ci.py", "--only", "analyzer", "--skip-analyzer"],
+        ), mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as context:
+                self.run_ci.main()
+
+        self.assertEqual(2, context.exception.code)
+        self.assertIn("--skip-analyzer cannot be combined with --only analyzer", stderr.getvalue())
+
+    def test_empty_ci_result_summary_is_non_pass(self) -> None:
+        """An aggregate with no executed lanes must fail instead of vacuously passing."""
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            result = self.run_ci.report_ci_job_results({})
+
+        self.assertEqual(1, result)
+        self.assertIn("No CI checks were executed.", stdout.getvalue())
+
+    def test_default_analyzer_skip_exposes_machine_readable_lane(self) -> None:
+        """A permitted partial default run must identify its skipped analyzer lane explicitly."""
+        with mock.patch.object(self.run_ci, "run_ci_jobs", return_value={"other": True}):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_ci.py", "--skip-analyzer"],
+            ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                result = self.run_ci.main()
+
+        rendered = stdout.getvalue()
+        self.assertEqual(0, result)
+        self.assertIn("[SKIP] analyzer", rendered)
+        self.assertIn("SKIPPED_LANES=analyzer", rendered)
+        self.assertIn("All executed CI checks passed.", rendered)
+        self.assertNotIn("All CI checks passed.", rendered)
+
     def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
         """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
         jobs = self.run_ci.build_default_ci_jobs(types.SimpleNamespace(skip_analyzer=False))
@@ -2207,6 +2246,54 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         self.assertTrue(failures)
         self.assertTrue(any("missing generated artifact" in failure for failure in failures))
 
+    def _populate_generated_artifacts(self, root: Path) -> None:
+        """Write one nonempty regular file for every required generated artifact."""
+        for relative in self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("generated\n", encoding="utf-8")
+
+    def test_generated_artifact_preflight_accepts_a_complete_regular_file_set(self) -> None:
+        """A fully populated tree of nonempty regular files must preflight clean."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+
+            self.assertEqual([], self.unity_il2cpp.validate_generated_artifacts(root))
+
+    def test_generated_artifact_preflight_rejects_a_directory_at_a_required_path(self) -> None:
+        """exists() alone must not satisfy the preflight: a directory is not the artifact."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+            required = self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS[0]
+            occupied = root / required
+            occupied.unlink()
+            occupied.mkdir(parents=True)
+
+            failures = self.unity_il2cpp.validate_generated_artifacts(root)
+
+        self.assertTrue(any(required in failure for failure in failures))
+
+    def test_generated_artifact_preflight_rejects_a_directory_symlink(self) -> None:
+        """A directory symlink or reparse point at a required path is not the artifact."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._populate_generated_artifacts(root)
+            required = self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS[0]
+            occupied = root / required
+            occupied.unlink()
+            target = root / "symlink-target-directory"
+            target.mkdir()
+            try:
+                occupied.symlink_to(target, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable on this host: {exc}")
+
+            failures = self.unity_il2cpp.validate_generated_artifacts(root)
+
+        self.assertTrue(any(required in failure for failure in failures))
+
     def test_missing_project_pinned_unity_falls_back_to_hub_discovery(self) -> None:
         """Missing ProjectVersion editor should not block newer Hub editor discovery."""
         with tempfile.TemporaryDirectory() as temp:
@@ -2231,6 +2318,350 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
 
+    def _write_unity_stand_in(self, path: Path, executable: bool = True) -> Path:
+        """Create a candidate that a host would accept as an executable Unity."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"MZ\x90\x00stand-in unity executable")
+        if executable and os.name != "nt":
+            path.chmod(0o755)
+        return path
+
+    def _hub_layout(self, temp: Path) -> tuple[Path, Path]:
+        """Return a Windows Hub editor path and the project that pins its version."""
+        project = temp / "UnityProject"
+        (project / "ProjectSettings").mkdir(parents=True)
+        (project / "ProjectSettings" / "ProjectVersion.txt").write_text(
+            "m_EditorVersion: 2022.3.10f1\n", encoding="utf-8")
+        unity = temp / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "2022.3.10f1" / "Editor" / "Unity.exe"
+        return project, unity
+
+    def test_project_pinned_discovery_rejects_a_non_executable_candidate(self) -> None:
+        """A file that merely occupies the Hub path is not a Unity editor."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, unity = self._hub_layout(root)
+            unity.parent.mkdir(parents=True)
+            unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_discovery_accepts_a_real_executable(self) -> None:
+        """A genuine executable at the pinned Hub path must still be selected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, unity = self._hub_layout(root)
+            self._write_unity_stand_in(unity)
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(unity.resolve(), Path(resolved))
+
+    def _pinned_project(self, temp: Path, editor_version: str) -> Path:
+        """Write a project whose ProjectVersion.txt pins the given editor version value."""
+        project = temp / "UnityProject"
+        (project / "ProjectSettings").mkdir(parents=True, exist_ok=True)
+        (project / "ProjectSettings" / "ProjectVersion.txt").write_text(
+            f"m_EditorVersion: {editor_version}\n", encoding="utf-8")
+        return project
+
+    def _resolve_pinned(self, temp: Path, project: Path):
+        """Run project-pinned discovery with a controlled Windows Hub root."""
+        with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+            with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                 {"PROGRAMFILES": str(temp / "ProgramFiles"),
+                                  "PROGRAMFILES(X86)": str(temp / "missing")}, clear=False):
+                captured = io.StringIO()
+                with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                    resolved = self.unity_il2cpp.find_unity_from_project_version(project)
+        return resolved, captured.getvalue()
+
+    def test_project_pinned_parent_traversal_is_rejected(self) -> None:
+        """A pinned version with parent segments must not walk out of the Hub root."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "base"
+            root.mkdir()
+            project = self._pinned_project(root, "../../../../escaped")
+            hub = root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+            hub.mkdir(parents=True)
+            escaped = (hub / "../../../../escaped" / "Editor" / "Unity.exe").resolve()
+            self._write_unity_stand_in(escaped)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_absolute_value_is_rejected(self) -> None:
+        """An absolute pinned version discards the Hub prefix and must be rejected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            elsewhere = root / "elsewhere"
+            self._write_unity_stand_in(elsewhere / "Editor" / "Unity.exe")
+            project = self._pinned_project(root, str(elsewhere))
+            (root / "ProgramFiles" / "Unity" / "Hub" / "Editor").mkdir(parents=True)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_non_version_value_is_rejected(self) -> None:
+        """A value that is not a Unity version component must not be joined at all."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "not-a-version")
+            planted = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+                       / "not-a-version" / "Editor" / "Unity.exe")
+            self._write_unity_stand_in(planted)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_candidate_escaping_by_symlink_is_rejected(self) -> None:
+        """Containment is checked after resolution, not on the unresolved join."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "2022.3.10f1")
+            version_root = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "2022.3.10f1")
+            version_root.mkdir(parents=True)
+            outside = self._write_unity_stand_in(root / "outside" / "Unity.exe")
+            link = version_root / "Editor"
+            try:
+                link.symlink_to(outside.parent, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable on this host: {exc}")
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNone(resolved)
+
+    def test_project_pinned_valid_version_inside_hub_root_is_accepted(self) -> None:
+        """A real editor under the pinned Hub version root must still be selected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = self._pinned_project(root, "2022.3.10f1")
+            unity = (root / "ProgramFiles" / "Unity" / "Hub" / "Editor"
+                     / "2022.3.10f1" / "Editor" / "Unity.exe")
+            self._write_unity_stand_in(unity)
+
+            resolved, _text = self._resolve_pinned(root, project)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(unity.resolve(), Path(resolved))
+
+    def test_hub_discovery_rejects_a_non_executable_candidate(self) -> None:
+        """The generic Hub fallback must apply the same executable gate."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _project, unity = self._hub_layout(root)
+            unity.parent.mkdir(parents=True)
+            unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_hub()
+
+        self.assertIsNone(resolved)
+
+    def test_explicit_unity_path_rejects_a_directory(self) -> None:
+        """--unity must not accept a directory that merely occupies the path."""
+        with tempfile.TemporaryDirectory() as temp:
+            occupied = Path(temp) / "Unity.exe"
+            occupied.mkdir()
+
+            with self.assertRaises(FileNotFoundError):
+                self.unity_il2cpp.find_unity_explicit(str(occupied))
+
+    def test_environment_unity_path_rejects_a_directory(self) -> None:
+        """UNITY_EXE must not accept a directory that merely occupies the path."""
+        with tempfile.TemporaryDirectory() as temp:
+            occupied = Path(temp) / "Unity.exe"
+            occupied.mkdir()
+
+            with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                 {"UNITY_EXE": str(occupied)}, clear=False):
+                with self.assertRaises(FileNotFoundError):
+                    self.unity_il2cpp.find_unity_from_env()
+
+    def test_explicit_relative_unity_path_is_resolved_at_discovery(self) -> None:
+        """The identity checked at discovery must be the identity launched after the cwd change."""
+        with tempfile.TemporaryDirectory() as temp:
+            caller_cwd = Path(temp) / "caller"
+            caller_cwd.mkdir()
+            self._write_unity_stand_in(caller_cwd / "tools" / "Unity.exe")
+            previous = os.getcwd()
+            os.chdir(caller_cwd)
+            try:
+                resolved = self.unity_il2cpp.find_unity_explicit(os.path.join("tools", "Unity.exe"))
+            finally:
+                os.chdir(previous)
+
+        self.assertTrue(Path(resolved).is_absolute())
+
+    def _drive_main(self, temp: Path, on_run, pre_existing: bytes | None = None):
+        """Run main() with a controlled build command and process result.
+
+        Returns (returncode, combined output, requested Player path). The generated
+        artifact preflight and the command construction are stubbed so the assertion
+        is about the post-run outcome only, not about discovery or preflight.
+        """
+        output = temp / "requested" / "FoxgloveDemo.exe"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if pre_existing is not None:
+            output.write_bytes(pre_existing)
+        project = temp / "project"
+        project.mkdir(exist_ok=True)
+        log = temp / "build.log"
+
+        def controlled_run(*_args, **_kwargs):
+            """Stand in for the Unity invocation and its process result."""
+            return on_run(output)
+
+        with mock.patch.object(self.unity_il2cpp, "build_command",
+                               return_value=(["unity", "-batchmode"], project, log, output)):
+            with mock.patch.object(self.unity_il2cpp, "validate_generated_artifacts",
+                                   return_value=[]):
+                with mock.patch.object(self.unity_il2cpp, "run_with_progress",
+                                       side_effect=controlled_run):
+                    with mock.patch.object(sys, "argv", ["unity_il2cpp.py"]):
+                        captured = io.StringIO()
+                        with contextlib.redirect_stdout(captured), \
+                                contextlib.redirect_stderr(captured):
+                            returncode = self.unity_il2cpp.main()
+        return returncode, captured.getvalue(), output
+
+    def test_zero_exit_without_requested_player_is_rejected(self) -> None:
+        """A zero process code must not be reported as success with no Player produced."""
+        def produce_nothing(_output):
+            """Exit zero without writing the requested Player."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(Path(temp), produce_nothing)
+
+            self.assertFalse(output.exists())
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_stale_pre_existing_player_is_rejected(self) -> None:
+        """A pre-run output left untouched by the build is not this invocation's Player."""
+        def leave_stale_output(_output):
+            """Exit zero without touching the pre-existing output."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(
+                Path(temp), leave_stale_output, pre_existing=b"stale player bytes")
+
+            # The controller must not delete or rewrite what it did not produce.
+            self.assertTrue(output.exists())
+            self.assertEqual(b"stale player bytes", output.read_bytes())
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_fresh_invocation_owned_player_is_accepted(self) -> None:
+        """A Player produced by this invocation must still be reported as success."""
+        def produce_player(output):
+            """Write the requested Player, then exit zero."""
+            output.write_bytes(b"freshly built player")
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, output = self._drive_main(Path(temp), produce_player)
+
+            self.assertTrue(output.exists())
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("Build command completed successfully.", text)
+
+    def test_rebuilt_player_over_a_previous_output_is_accepted(self) -> None:
+        """Replacing an older Player in place is ownership by this invocation."""
+        def rebuild_player(output):
+            """Overwrite the previous output with new bytes, then exit zero."""
+            output.write_bytes(b"rebuilt player bytes, different length")
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, _output = self._drive_main(
+                Path(temp), rebuild_player, pre_existing=b"older player")
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("Build command completed successfully.", text)
+
+    def test_nonzero_process_exit_reports_failure(self) -> None:
+        """A nonzero Unity exit code must propagate unchanged and report failure."""
+        def fail_the_build(_output):
+            """Exit nonzero without producing anything."""
+            return 3
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text, _output = self._drive_main(Path(temp), fail_the_build)
+
+        self.assertEqual(3, returncode)
+        self.assertIn("Build failed with exit code 3", text)
+        self.assertNotIn("Build command completed successfully.", text)
+
+    def test_output_verification_is_deterministic_and_leaves_no_residue(self) -> None:
+        """The stale verdict must repeat exactly and must not add or remove files."""
+        def leave_stale_output(_output):
+            """Exit zero without touching the pre-existing output."""
+            return self.unity_il2cpp.EXIT_SUCCESS
+
+        verdicts = []
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first, _text, output = self._drive_main(
+                root, leave_stale_output, pre_existing=b"stale player bytes")
+            verdicts.append(first)
+            after_first = sorted(p.relative_to(root).as_posix()
+                                 for p in root.rglob("*") if p.is_file())
+
+            second, _text2, _output2 = self._drive_main(
+                root, leave_stale_output, pre_existing=None)
+            verdicts.append(second)
+            after_second = sorted(p.relative_to(root).as_posix()
+                                  for p in root.rglob("*") if p.is_file())
+
+            self.assertEqual(after_first, after_second)
+            self.assertEqual(b"stale player bytes", output.read_bytes())
+
+        self.assertEqual(verdicts[0], verdicts[1])
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, verdicts[0])
+
+    def test_unity_start_failure_uses_the_declared_exit_taxonomy(self) -> None:
+        """A failed process start must not escape main as a raw traceback."""
+        def exploding_run(*_args, **_kwargs):
+            """Stand in for a process start that fails at the OS boundary."""
+            raise FileNotFoundError("controlled process start failure")
+
+        with mock.patch.object(self.unity_il2cpp, "run_with_progress", side_effect=exploding_run):
+            with mock.patch.object(self.unity_il2cpp, "validate_generated_artifacts", return_value=[]):
+                with mock.patch.object(self.unity_il2cpp, "build_command", return_value=(
+                        ["unity", "-batchmode"], Path(tempfile.gettempdir()) / "project",
+                        Path(tempfile.gettempdir()) / "unity.log",
+                        Path(tempfile.gettempdir()) / "player.exe")):
+                    with mock.patch.object(sys, "argv", ["unity_il2cpp.py"]):
+                        captured = io.StringIO()
+                        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                            returncode = self.unity_il2cpp.main()
+
+        self.assertEqual(self.unity_il2cpp.EXIT_PREFLIGHT_FAILURE, returncode)
+        self.assertIn("controlled process start failure", captured.getvalue())
+
     def test_negative_build_timeout_is_rejected(self) -> None:
         """Only zero, not an arbitrary negative value, may disable the build timeout."""
         with mock.patch.object(sys, "argv", ["unity_il2cpp.py", "--timeout-minutes", "-1"]):
@@ -2246,6 +2677,112 @@ class UnityIl2CppBuildTests(unittest.TestCase):
                 pids = self.unity_il2cpp._posix_process_group_pids(4321)
 
         self.assertEqual([4321], pids)
+
+    def test_posix_process_group_diagnostic_uses_a_bounded_timeout(self) -> None:
+        """The residual-PID diagnostic must bound the ps subprocess it launches."""
+        completed = types.SimpleNamespace(stdout=" 111 4321\n", returncode=0)
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", return_value=completed) as run:
+            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=False):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([111], pids)
+        self.assertIn("timeout", run.call_args.kwargs)
+        self.assertGreater(run.call_args.kwargs["timeout"], 0)
+
+    def test_posix_process_group_diagnostic_timeout_fails_closed(self) -> None:
+        """A diagnostic timeout must retain an extant group in the residual report."""
+        expired = subprocess.TimeoutExpired(["ps", "-eo", "pid=,pgid="], 1)
+        with mock.patch.object(self.unity_il2cpp.subprocess, "run", side_effect=expired):
+            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
+                pids = self.unity_il2cpp._posix_process_group_pids(4321)
+
+        self.assertEqual([4321], pids)
+
+    def _controlled_tree(self, poll_result, pid_sequence, call_log):
+        """Build a stand-in owned tree with a scripted residual-PID sequence."""
+        remaining = list(pid_sequence)
+
+        class ControlledProcess:
+            """Stand in for the launched root process."""
+
+            def poll(self):
+                """Report the scripted root process result."""
+                return poll_result
+
+        class ControlledTree:
+            """Stand in for one platform-owned process tree."""
+
+            def __init__(self):
+                """Record the scripted process and start with ownership held."""
+                self.process = ControlledProcess()
+
+            def active_pids(self):
+                """Return the next scripted residual set, repeating the last one."""
+                call_log.append("active_pids")
+                return remaining.pop(0) if len(remaining) > 1 else remaining[0]
+
+            def close(self):
+                """Record that platform ownership was released."""
+                call_log.append("close")
+
+        return ControlledTree()
+
+    def _run_with_controlled_tree(self, temp: Path, tree, timeout_minutes: int = 0):
+        """Drive run_with_progress against a controlled owned tree."""
+        log = temp / "unity.log"
+        with mock.patch.object(self.unity_il2cpp, "start_owned_process", return_value=tree):
+            with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 0.2):
+                captured = io.StringIO()
+                with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+                    returncode = self.unity_il2cpp.run_with_progress(
+                        ["controlled"], temp, log, 1, timeout_minutes)
+        return returncode, captured.getvalue()
+
+    def test_success_waits_for_the_owned_tree_to_quiesce(self) -> None:
+        """A tree that drains shortly after the root exits is still a success."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242], [424242], []], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertNotIn("did not quiesce", text)
+
+    def test_success_is_withheld_when_the_owned_tree_never_quiesces(self) -> None:
+        """A zero root exit must not be success while descendants are still owned."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, returncode)
+        self.assertIn("did not quiesce", text)
+        self.assertIn("424242", text)
+
+    def test_quiescence_is_checked_before_ownership_is_released(self) -> None:
+        """Ownership must not be released before quiescence has been decided."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertIn("close", calls)
+        self.assertIn("active_pids", calls)
+        self.assertLess(calls.index("active_pids"), calls.index("close"))
+
+    def test_nonzero_exit_is_not_masked_by_a_quiescence_failure(self) -> None:
+        """A real Unity failure code must survive an unquiet tree."""
+        calls: list[str] = []
+        tree = self._controlled_tree(3, [[424242]], calls)
+
+        with tempfile.TemporaryDirectory() as temp:
+            returncode, text = self._run_with_controlled_tree(Path(temp), tree)
+
+        self.assertEqual(3, returncode)
+        self.assertIn("did not quiesce", text)
 
     def test_posix_termination_poll_avoids_repeated_ps_processes(self) -> None:
         """Quiescence polling should use the process-group primitive, not shell out on every pass."""

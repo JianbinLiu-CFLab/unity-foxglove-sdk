@@ -56,6 +56,7 @@ DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
 DEFAULT_BUILD_TIMEOUT_MINUTES = 120
 UNITY_TERMINATION_WAIT_SECONDS = 30
+PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS = 5
 PROCESS_TREE_POLL_SECONDS = 0.05
 
 # Win32 process/job constants kept local so the script remains dependency-free.
@@ -70,10 +71,16 @@ WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
 WINDOWS_TH32CS_SNAPTHREAD = 0x00000004
 WINDOWS_DWORD_FAILURE = 0xFFFFFFFF
 WINDOWS_JOB_TERMINATE_EXIT_CODE = 1
+WINDOWS_EXECUTABLE_MAGIC = b"MZ"
 
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
 PROJECT_VERSION_VALUE_INDEX = 1
+
+# A Unity editor version component, e.g. 2022.3.10f1 or 6000.3.14. Project metadata is
+# untrusted input joined into a filesystem path, so the value must match this whole and
+# cannot carry a separator, a drive letter, or a parent segment.
+UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
 
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
@@ -141,9 +148,60 @@ def unity_version_key(path: Path) -> Tuple[int, ...]:
     return ()
 
 
+def accepted_unity_candidate(path: Path) -> Optional[Path]:
+    """Resolve a discovery candidate, accepting only a regular executable file.
+
+    Existence proves namespace occupancy, not type or host executability, so a
+    directory, a reparse point, or an ordinary text file can otherwise win a
+    discovery tier. Resolving here also pins the identity that discovery checks
+    to the identity that is launched, because Unity is started with the working
+    directory rebased to the repository root.
+    """
+    try:
+        resolved = path.expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    if not resolved.is_file():
+        return None
+    if os.name == "nt":
+        try:
+            with resolved.open("rb") as handle:
+                if handle.read(len(WINDOWS_EXECUTABLE_MAGIC)) != WINDOWS_EXECUTABLE_MAGIC:
+                    return None
+        except OSError:
+            return None
+    elif not os.access(resolved, os.X_OK):
+        return None
+    return resolved
+
+
+def is_unity_editor_version(value: str) -> bool:
+    """Accept only a Unity editor version component, never a path fragment."""
+    return bool(UNITY_EDITOR_VERSION_PATTERN.fullmatch(value))
+
+
+def contained_unity_candidate(candidate: Path, version_root: Path) -> Optional[Path]:
+    """Accept a candidate only when it resolves beneath the given Hub version root.
+
+    Containment is tested after resolution, so a symlink or reparse point inside the
+    version root cannot redirect the launch outside it. This is independent of the
+    version-component check: either alone would leave the other escape open.
+    """
+    accepted = accepted_unity_candidate(candidate)
+    if accepted is None:
+        return None
+    try:
+        resolved_root = version_root.resolve(strict=True)
+    except OSError:
+        return None
+    if not accepted.is_relative_to(resolved_root):
+        return None
+    return accepted
+
+
 def newest_existing(paths: List[Path]) -> Optional[Path]:
-    """Return the newest Unity version among those that exist."""
-    existing = [p for p in paths if p.exists()]
+    """Return the newest Unity version among the accepted executable candidates."""
+    existing = [accepted for accepted in map(accepted_unity_candidate, paths) if accepted]
     if not existing:
         return None
     return max(existing, key=lambda p: (unity_version_key(p), p.stat().st_mtime))
@@ -154,9 +212,12 @@ def find_unity_explicit(path: Optional[str]) -> Optional[Path]:
     if not path:
         return None
     unity = Path(path).expanduser()
-    if unity.exists():
-        return unity
-    raise FileNotFoundError(f"--unity path does not exist: {unity}")
+    accepted = accepted_unity_candidate(unity)
+    if accepted:
+        return accepted
+    if not unity.exists():
+        raise FileNotFoundError(f"--unity path does not exist: {unity}")
+    raise FileNotFoundError(f"--unity path is not a regular executable file: {unity}")
 
 
 def find_unity_from_env() -> Optional[Path]:
@@ -165,9 +226,12 @@ def find_unity_from_env() -> Optional[Path]:
         value = os.environ.get(name)
         if value:
             unity = Path(value).expanduser()
-            if unity.exists():
-                return unity
-            raise FileNotFoundError(f"{name} points to a missing file: {unity}")
+            accepted = accepted_unity_candidate(unity)
+            if accepted:
+                return accepted
+            if not unity.exists():
+                raise FileNotFoundError(f"{name} points to a missing file: {unity}")
+            raise FileNotFoundError(f"{name} does not point to a regular executable file: {unity}")
     return None
 
 
@@ -185,6 +249,14 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
     if not editor_version:
         return None
 
+    if not is_unity_editor_version(editor_version):
+        print(
+            f"[build_unity_il2cpp] ProjectVersion.txt pins {editor_version!r}, which is not a "
+            "Unity editor version; ignoring the project pin.",
+            file=sys.stderr,
+        )
+        return None
+
     system = platform.system().lower()
     if system == "windows":
         roots = [
@@ -192,18 +264,22 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
             Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
         ]
         for root in roots:
-            unity = root / "Unity" / "Hub" / "Editor" / editor_version / "Editor" / "Unity.exe"
-            if unity.exists():
-                return unity
+            version_root = root / "Unity" / "Hub" / "Editor" / editor_version
+            accepted = contained_unity_candidate(version_root / "Editor" / "Unity.exe", version_root)
+            if accepted:
+                return accepted
     elif system == "darwin":
-        unity = Path("/Applications/Unity/Hub/Editor") / editor_version / "Unity.app" / "Contents" / "MacOS" / "Unity"
-        if unity.exists():
-            return unity
+        version_root = Path("/Applications/Unity/Hub/Editor") / editor_version
+        accepted = contained_unity_candidate(
+            version_root / "Unity.app" / "Contents" / "MacOS" / "Unity", version_root)
+        if accepted:
+            return accepted
     elif system == "linux":
         for root in (Path.home() / "Unity" / "Hub" / "Editor", Path("/opt/Unity/Hub/Editor")):
-            unity = root / editor_version / "Editor" / "Unity"
-            if unity.exists():
-                return unity
+            version_root = root / editor_version
+            accepted = contained_unity_candidate(version_root / "Editor" / "Unity", version_root)
+            if accepted:
+                return accepted
 
     print(
         f"[build_unity_il2cpp] Project-pinned Unity {editor_version} was not found; "
@@ -264,13 +340,15 @@ def relative_to_root(path: Path, root: Path) -> str:
 
 
 def validate_generated_artifacts(root: Path) -> List[str]:
-    """Return missing or empty generated artifacts needed for Unity compilation."""
+    """Return missing, non-regular, or empty generated artifacts needed for Unity compilation."""
     failures: List[str] = []
     for relative in REQUIRED_GENERATED_ARTIFACTS:
         path = root / relative
         if not path.exists():
             failures.append(f"missing generated artifact: {relative}")
-        elif path.is_file() and path.stat().st_size == 0:
+        elif not path.is_file():
+            failures.append(f"generated artifact is not a regular file: {relative}")
+        elif path.stat().st_size == 0:
             failures.append(f"empty generated artifact: {relative}")
     return failures
 
@@ -283,6 +361,23 @@ def resolve_unity_for_command(args: argparse.Namespace, project_path: Path) -> s
         if args.dry_run and args.allow_missing_unity:
             return f"<Unity not found: {exc}>"
         raise
+
+
+def output_fingerprint(path: Path) -> Optional[Tuple[int, int]]:
+    """Identify one build output by size and modification time, or None if absent.
+
+    Comparing a fingerprint taken before the build with one taken after is what
+    distinguishes a Player this invocation produced from a stale artifact that
+    merely occupied the requested path. Size and mtime are used together so the
+    verdict does not depend on filesystem timestamp resolution alone.
+    """
+    try:
+        if not path.is_file():
+            return None
+        info = path.stat()
+    except OSError:
+        return None
+    return (info.st_size, info.st_mtime_ns)
 
 
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
@@ -585,15 +680,16 @@ def _posix_process_group_exists(process_group_id: int) -> bool:
 
 
 def _posix_process_group_pids(process_group_id: int) -> List[int]:
-    """Enumerate a POSIX process group for bounded residual diagnostics."""
+    """Enumerate a POSIX process group with bounded residual diagnostics."""
     try:
         result = subprocess.run(
             ["ps", "-eo", "pid=,pgid="],
             check=False,
             capture_output=True,
             text=True,
+            timeout=PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return [process_group_id] if _posix_process_group_exists(process_group_id) else []
     pids = []
     for line in result.stdout.splitlines():
@@ -703,6 +799,23 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
     return OwnedProcessTree(process, posix_process_group_id=process.pid)
 
 
+def await_tree_quiescence(process_tree: OwnedProcessTree, deadline_seconds: float) -> List[int]:
+    """Wait for an owned tree to drain and return PIDs that miss the quiescence bound.
+
+    Ownership alone does not prove the descendants were absent when the root
+    process exited. Releasing the job or process group would force any survivor
+    to die, so quiescence has to be decided before ownership is released.
+    """
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        residual_pids = process_tree.active_pids()
+        if not residual_pids:
+            return []
+        if time.monotonic() >= deadline:
+            return residual_pids
+        time.sleep(PROCESS_TREE_POLL_SECONDS)
+
+
 def terminate_process(process_tree: OwnedProcessTree) -> List[int]:
     """Terminate an owned Unity process tree and return residual process IDs."""
     try:
@@ -774,6 +887,8 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
                 next_heartbeat = now + interval
 
             time.sleep(LOG_POLL_SLEEP_SECONDS)
+
+        residual_pids = await_tree_quiescence(process_tree, UNITY_TERMINATION_WAIT_SECONDS)
     finally:
         process_tree.close()
 
@@ -783,6 +898,17 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
 
     elapsed = format_elapsed(time.monotonic() - started)
     print(f"[build_unity_il2cpp] Unity exited after {elapsed}.", flush=True)
+
+    if residual_pids:
+        print(
+            "[build_unity_il2cpp] Owned process tree did not quiesce after Unity exited; "
+            f"residual PIDs: {', '.join(str(pid) for pid in residual_pids)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        if returncode == EXIT_SUCCESS:
+            return EXIT_PREFLIGHT_FAILURE
+
     return returncode
 
 
@@ -893,17 +1019,37 @@ def main() -> int:
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_before = output_fingerprint(output_path)
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
-    returncode = run_with_progress(
-        cmd,
-        root,
-        log_path,
-        max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
-        args.timeout_minutes,
-    )
+    try:
+        returncode = run_with_progress(
+            cmd,
+            root,
+            log_path,
+            max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
+            args.timeout_minutes,
+        )
+    except OSError as exc:
+        print(f"[build_unity_il2cpp] Unity could not be started: {exc}", file=sys.stderr)
+        return EXIT_PREFLIGHT_FAILURE
     if returncode == EXIT_SUCCESS:
+        output_after = output_fingerprint(output_path)
+        if output_after is None:
+            print(
+                "[build_unity_il2cpp] Unity reported success but produced no Player at "
+                f"{relative_to_root(output_path, root)}.",
+                file=sys.stderr,
+            )
+            return EXIT_PREFLIGHT_FAILURE
+        if output_after == output_before:
+            print(
+                "[build_unity_il2cpp] Unity reported success but left the pre-existing Player at "
+                f"{relative_to_root(output_path, root)} unchanged; it is not this build's output.",
+                file=sys.stderr,
+            )
+            return EXIT_PREFLIGHT_FAILURE
         print("[build_unity_il2cpp] Build command completed successfully.")
     else:
         print(
