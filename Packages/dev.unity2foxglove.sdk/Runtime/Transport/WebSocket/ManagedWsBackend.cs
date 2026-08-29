@@ -98,18 +98,36 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Bind the TCP listener to <c>host</c>:<c>port</c> and begin accepting connections.</summary>
         public virtual void Start(string host, int port)
         {
-            if (_listener != null)
+            if (Volatile.Read(ref _listener) != null)
                 throw new InvalidOperationException("Server already started");
 
             var addr = TransportHostResolver.ResolveBindAddress(host);
+            var listener = new TcpListener(addr, port);
+            CancellationTokenSource cts = null;
+            try
+            {
+                listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                cts = new CancellationTokenSource();
+                listener.Start();
+                Interlocked.Exchange(ref _stopping, 0);
 
-            _listener = new TcpListener(addr, port);
-            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _cts = new CancellationTokenSource();
-            Interlocked.Exchange(ref _stopping, 0);
-            _listener.Start();
-
-            _acceptLoopTask = Task.Run(() => AcceptLoop(_cts.Token));
+                // Publish the fully started resources only after every
+                // fallible bind step succeeds.  A failed Start therefore
+                // leaves a clean, retryable state for the next attempt.
+                Volatile.Write(ref _listener, listener);
+                Volatile.Write(ref _cts, cts);
+                var acceptTask = Task.Run(() => AcceptLoop(cts.Token));
+                Volatile.Write(ref _acceptLoopTask, acceptTask);
+            }
+            catch
+            {
+                try { listener.Stop(); } catch { }
+                try { cts?.Dispose(); } catch { }
+                Volatile.Write(ref _listener, null);
+                Volatile.Write(ref _cts, null);
+                Volatile.Write(ref _acceptLoopTask, null);
+                throw;
+            }
         }
 
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>

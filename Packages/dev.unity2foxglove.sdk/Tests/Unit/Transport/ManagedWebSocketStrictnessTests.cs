@@ -68,6 +68,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void FailedListenerStartDoesNotPublishRunningStateAndCanRetry()
+        {
+            using var blocker = new TcpListener(System.Net.IPAddress.Loopback, 0);
+            blocker.Start();
+            var port = ((System.Net.IPEndPoint)blocker.LocalEndpoint).Port;
+            using var backend = new ManagedWsBackend();
+
+            Assert.ThrowsAny<SocketException>(() => backend.Start("127.0.0.1", port));
+            Assert.False(backend.IsRunning);
+
+            blocker.Stop();
+            backend.Start("127.0.0.1", port);
+            Assert.True(backend.IsRunning);
+            backend.Stop();
+            Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
         public void NullTextIsSentAsAnEmptyTextFrame()
         {
             using var tcpClient = new TcpClient();
