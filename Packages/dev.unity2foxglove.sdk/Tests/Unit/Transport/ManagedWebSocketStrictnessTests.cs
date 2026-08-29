@@ -11,7 +11,6 @@ using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
-using System.Diagnostics;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -46,6 +45,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 SpinWait.SpinUntil(() => PendingClientCount(backend) == 0, TimeSpan.FromSeconds(2)),
                 "Stop must retire every pending handshake instead of leaving an owned socket behind.");
             Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
+        public void HandshakeAdmissionRequiresExactUpgradeTokenAndSixteenByteKey()
+        {
+            var handlerType = typeof(ManagedWsBackend).Assembly.GetType(
+                "Unity.FoxgloveSDK.Transport.WsHandshakeHandler");
+            Assert.NotNull(handlerType);
+            var tokenMethod = handlerType.GetMethod(
+                "ContainsUpgradeToken", BindingFlags.Static | BindingFlags.NonPublic);
+            var keyMethod = handlerType.GetMethod(
+                "IsValidWebSocketKey", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(tokenMethod);
+            Assert.NotNull(keyMethod);
+
+            Assert.False((bool)tokenMethod.Invoke(null, new object[] { "NotUpgrade" }));
+            Assert.True((bool)tokenMethod.Invoke(null, new object[] { "keep-alive, Upgrade" }));
+            Assert.True((bool)keyMethod.Invoke(null, new object[] { "dGhlIHNhbXBsZSBub25jZQ==" }));
+            Assert.False((bool)keyMethod.Invoke(null, new object[] { "dGhlIHNhbXBsZSBub25jZQ" }));
+            Assert.False((bool)keyMethod.Invoke(null, new object[] { "not-base64" }));
         }
 
         [Fact]

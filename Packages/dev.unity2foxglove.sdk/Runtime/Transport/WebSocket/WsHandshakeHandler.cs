@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
 
             if (!headers.TryGetValue("Connection", out var conn) ||
-                conn.IndexOf("Upgrade", StringComparison.OrdinalIgnoreCase) < 0)
+                !ContainsUpgradeToken(conn))
                 return (false, null);
 
             if (!headers.TryGetValue("Upgrade", out var upgrade) ||
@@ -92,6 +92,12 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (!headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
                 return (false, null);
+
+            if (!IsValidWebSocketKey(wsKey))
+            {
+                WriteResponse(stream, BadRequestResponse);
+                return (false, null);
+            }
 
             if (!headers.TryGetValue("Sec-WebSocket-Version", out var version)
                 || !version.Equals("13", StringComparison.Ordinal))
@@ -201,6 +207,56 @@ namespace Unity.FoxgloveSDK.Transport
             var sha1 = AcceptKeySha1.Value;
             var hash = sha1.ComputeHash(Encoding.ASCII.GetBytes(wsKey + magic));
             return Convert.ToBase64String(hash);
+        }
+
+        /// <summary>
+        /// Return true only when the HTTP Connection field contains the exact
+        /// case-insensitive token <c>Upgrade</c>.  A substring such as
+        /// <c>NotUpgrade</c> is not an upgrade directive.
+        /// </summary>
+        private static bool ContainsUpgradeToken(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return false;
+
+            var start = 0;
+            while (start <= value.Length)
+            {
+                var comma = value.IndexOf(',', start);
+                var end = comma >= 0 ? comma : value.Length;
+                var token = value.Substring(start, end - start).Trim();
+                if (token.Equals("Upgrade", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (comma < 0)
+                    break;
+                start = comma + 1;
+            }
+
+            return false;
+        }
+
+        /// <summary>Validate the RFC 6455 16-byte nonce and its canonical Base64 form.</summary>
+        private static bool IsValidWebSocketKey(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length != 24)
+                return false;
+
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (char.IsWhiteSpace(value[i]))
+                    return false;
+            }
+
+            try
+            {
+                var decoded = Convert.FromBase64String(value);
+                return decoded.Length == 16
+                    && string.Equals(Convert.ToBase64String(decoded), value, StringComparison.Ordinal);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
         }
 
         private static void WriteResponse(Stream stream, string response)
