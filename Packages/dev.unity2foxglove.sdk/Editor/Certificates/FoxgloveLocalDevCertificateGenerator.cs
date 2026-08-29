@@ -311,8 +311,15 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 rsa.PersistKeyInCsp = false;
                 var certificateDer = BuildCertificateDer(context, rsa);
-                WritePkcs12(context.PfxPath, certificateDer, rsa);
-                File.WriteAllText(context.RootCaPath, BuildPem("CERTIFICATE", certificateDer), Encoding.ASCII);
+                using (var transaction = FoxgloveCertificatePairTransaction.Begin(context.PfxPath, context.RootCaPath))
+                {
+                    WritePkcs12(transaction.PfxTempPath, certificateDer, rsa);
+                    File.WriteAllText(
+                        transaction.RootCaTempPath,
+                        BuildPem("CERTIFICATE", certificateDer),
+                        Encoding.ASCII);
+                    transaction.Commit();
+                }
             }
 
             return new FoxgloveLocalDevCertificateResult(
@@ -632,24 +639,28 @@ namespace Unity.FoxgloveSDK.Editor
             var configPath = Path.Combine(context.OutputDirectory, OpenSslConfigFileName);
             WriteOpenSslConfig(configPath, context.DnsNames, context.IpAddresses);
 
-            try
+            using (var transaction = FoxgloveCertificatePairTransaction.Begin(context.PfxPath, context.RootCaPath))
             {
-                var legacyArgument = RequiresLegacyPkcs12Option(openssl, context.OutputDirectory)
-                    ? " -legacy"
-                    : string.Empty;
-                RunTool(
-                    openssl,
-                    $"req -x509 -newkey rsa:{FoxgloveLocalDevCertificateGenerator.RsaKeySizeBits} -sha256 -days {FoxgloveLocalDevCertificateGenerator.ValidityDays} -nodes -keyout {Quote(keyPath)} -out {Quote(context.RootCaPath)} -config {Quote(configPath)}",
-                    context.OutputDirectory);
-                RunTool(
-                    openssl,
-                    $"pkcs12 -export -out {Quote(context.PfxPath)} -inkey {Quote(keyPath)} -in {Quote(context.RootCaPath)} -passout pass: -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1{legacyArgument}",
-                    context.OutputDirectory);
-            }
-            finally
-            {
-                TryDelete(keyPath);
-                TryDelete(configPath);
+                try
+                {
+                    var legacyArgument = RequiresLegacyPkcs12Option(openssl, context.OutputDirectory)
+                        ? " -legacy"
+                        : string.Empty;
+                    RunTool(
+                        openssl,
+                        $"req -x509 -newkey rsa:{FoxgloveLocalDevCertificateGenerator.RsaKeySizeBits} -sha256 -days {FoxgloveLocalDevCertificateGenerator.ValidityDays} -nodes -keyout {Quote(keyPath)} -out {Quote(transaction.RootCaTempPath)} -config {Quote(configPath)}",
+                        context.OutputDirectory);
+                    RunTool(
+                        openssl,
+                        $"pkcs12 -export -out {Quote(transaction.PfxTempPath)} -inkey {Quote(keyPath)} -in {Quote(transaction.RootCaTempPath)} -passout pass: -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1{legacyArgument}",
+                        context.OutputDirectory);
+                    transaction.Commit();
+                }
+                finally
+                {
+                    TryDelete(keyPath);
+                    TryDelete(configPath);
+                }
             }
         }
 
