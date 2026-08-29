@@ -173,6 +173,76 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(1, transport.DisposeCalls);
         }
 
+        [Fact]
+        public void RuntimeDisposeRunsSessionCleanupWhenRecordingDetachThrows()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-d01-review-h1");
+
+            var recording = ReadPrivateField<RecordingController>(runtime, "_recording");
+            var lifecycleGate = recording.GetType().GetField(
+                "_lifecycleGate",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(lifecycleGate);
+
+            try
+            {
+                // Nulling the private gate is a deterministic fault injection for
+                // the recording detach step; no production seam is widened for tests.
+                lifecycleGate.SetValue(recording, null);
+                Assert.ThrowsAny<Exception>(() => runtime.Dispose());
+
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.True(ReadPrivateField<bool>(runtime, "_stopCleanupComplete"));
+                Assert.False(ReadPrivateField<bool>(runtime, "_recordingDisposed"));
+                Assert.Equal(1, transport.DisposeCalls);
+
+                lifecycleGate.SetValue(recording, new object());
+                runtime.Dispose();
+                Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            }
+            finally
+            {
+                lifecycleGate.SetValue(recording, new object());
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
+        public void RuntimeStopTracksCompletionExplicitlyInsteadOfInferringFromSessionNull()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var method = SourceMethod(source, "public void Stop()");
+
+            Assert.Contains("_stopCleanupComplete = true;", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("_stopCleanupComplete = _session == null;", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ManagerDestroyRetriesRuntimeDisposeBeforeReleasingReference()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var method = SourceMethod(source, "private void OnDestroy()");
+            var firstDisposeIndex = method.IndexOf("_runtime?.Dispose();", StringComparison.Ordinal);
+            var secondDisposeIndex = firstDisposeIndex < 0
+                ? -1
+                : method.IndexOf(
+                    "_runtime?.Dispose();",
+                    firstDisposeIndex + 1,
+                    StringComparison.Ordinal);
+            var clearIndex = secondDisposeIndex < 0
+                ? -1
+                : method.IndexOf("_runtime = null;", secondDisposeIndex, StringComparison.Ordinal);
+
+            Assert.True(firstDisposeIndex >= 0);
+            Assert.True(secondDisposeIndex > firstDisposeIndex);
+            Assert.True(clearIndex > secondDisposeIndex);
+            Assert.Contains("catch", method.Substring(firstDisposeIndex), StringComparison.Ordinal);
+        }
+
         private static T ReadPrivateField<T>(object target, string name)
         {
             var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);

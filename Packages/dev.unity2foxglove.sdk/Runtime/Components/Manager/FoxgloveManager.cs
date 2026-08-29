@@ -479,14 +479,20 @@ namespace Unity.FoxgloveSDK.Components
                 },
                 () =>
                 {
+                    if (_runtime == null)
+                        return;
+
                     try
                     {
                         _runtime?.Dispose();
                     }
-                    finally
+                    catch
                     {
-                        _runtime = null;
+                        // Dispose keeps per-resource progress, so retry while the
+                        // owner still holds the runtime before releasing the reference.
+                        _runtime?.Dispose();
                     }
+                    _runtime = null;
                 },
                 EndFoxRunPublishSession,
                 () => FoxgloveProfiler.ResetGlobal(this));

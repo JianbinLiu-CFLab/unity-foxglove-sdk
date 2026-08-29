@@ -354,15 +354,22 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _stopped = true;
-            ClearReplaySuppressionWarnings();
-            _tickCoordinator.ClearPendingReplaySnapshot();
-            _tickCoordinator.ClearPendingReplaySceneSnapshot();
-            _replay.CancelPanelHistory();
-            _replayOrchestrator.Detach(_replay);
+            ExceptionDispatchInfo firstFailure = null;
+            TryCleanup(ClearReplaySuppressionWarnings, ref firstFailure);
+            TryCleanup(_tickCoordinator.ClearPendingReplaySnapshot, ref firstFailure);
+            TryCleanup(_tickCoordinator.ClearPendingReplaySceneSnapshot, ref firstFailure);
+            TryCleanup(_replay.CancelPanelHistory, ref firstFailure);
+            TryCleanup(() => _replayOrchestrator.Detach(_replay), ref firstFailure);
             var session = _session;
             _session = null;
-            _recording.DetachFromSession();
-            session?.Dispose();
+            TryCleanup(() => { _recording.DetachFromSession(); }, ref firstFailure);
+            TryCleanup(() => { session?.Dispose(); }, ref firstFailure);
+            // The session is deliberately retired before cleanup so callbacks cannot
+            // observe it as active. Completion is tracked by this explicit latch,
+            // not inferred from the nullable session field: every owned cleanup step
+            // above has now been attempted, even when one reports a failure.
+            _stopCleanupComplete = true;
+            firstFailure?.Throw();
         }
 
         // ── Channel API ──
@@ -717,10 +724,6 @@ namespace Unity.FoxgloveSDK.Core
                     catch (Exception exception)
                     {
                         firstFailure ??= ExceptionDispatchInfo.Capture(exception);
-                        // Stop clears the active session before disposing it. Once the
-                        // session is unreachable, the remaining owned resources can
-                        // still be released below and a later Dispose need not repeat it.
-                        _stopCleanupComplete = _session == null;
                     }
                 }
 
@@ -746,7 +749,8 @@ namespace Unity.FoxgloveSDK.Core
                     ref _transportDisposed,
                     ref firstFailure);
 
-                if (_stopCleanupComplete
+                if (firstFailure == null
+                    && _stopCleanupComplete
                     && _parametersCleared
                     && _servicesCleared
                     && _recordingDisposed
@@ -776,6 +780,20 @@ namespace Unity.FoxgloveSDK.Core
             {
                 cleanup();
                 completed = true;
+            }
+            catch (Exception exception)
+            {
+                firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+            }
+        }
+
+        private static void TryCleanup(
+            Action cleanup,
+            ref ExceptionDispatchInfo firstFailure)
+        {
+            try
+            {
+                cleanup?.Invoke();
             }
             catch (Exception exception)
             {

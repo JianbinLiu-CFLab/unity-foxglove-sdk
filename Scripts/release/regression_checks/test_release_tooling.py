@@ -1940,8 +1940,14 @@ class LocalEntrypointValidatorTests(unittest.TestCase):
 
     def test_git_grep_excludes_regression_fixtures(self) -> None:
         """Intentional invalid-path fixtures must not be treated as production defaults."""
-        completed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
-        with mock.patch.object(self.validator.subprocess, "run", return_value=completed) as run:
+        process = mock.Mock()
+        process.returncode = 1
+        process.communicate.return_value = ("", "")
+        with mock.patch.object(
+            self.validator.subprocess,
+            "Popen",
+            return_value=process,
+        ) as popen:
             self.assertEqual(
                 [],
                 self.validator.git_grep_failures(
@@ -1950,7 +1956,7 @@ class LocalEntrypointValidatorTests(unittest.TestCase):
                 ),
             )
 
-        command = run.call_args.args[0]
+        command = popen.call_args.args[0]
         self.assertIn(
             ":(exclude,glob)Scripts/**/regression_checks/**/*.py",
             command,

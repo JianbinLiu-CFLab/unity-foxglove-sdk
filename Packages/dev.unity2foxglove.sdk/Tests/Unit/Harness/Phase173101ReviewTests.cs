@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
 
-            Assert.Contains("nameof(FoxgloveTransportMode.None)", source, StringComparison.Ordinal);
+            Assert.Contains("var noneValue = (int)FoxgloveTransportMode.None;", source, StringComparison.Ordinal);
             Assert.Contains("Transport mode is serialized as None while Foxglove WebSocket output is enabled.", source, StringComparison.Ordinal);
             Assert.Contains("Select Web Socket or Secure Web Socket.", source, StringComparison.Ordinal);
         }

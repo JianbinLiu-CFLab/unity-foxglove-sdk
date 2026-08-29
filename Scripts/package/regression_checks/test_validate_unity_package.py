@@ -367,6 +367,7 @@ class ValidatePackageTests(unittest.TestCase):
             add_requirement: bool = False,
             extra_directory: bool = False,
         ):
+            """Run inventory validation against an isolated temporary package fixture."""
             with tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 package = root / "sdk"
@@ -996,6 +997,7 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
             original_copy2 = self.validator.shutil.copy2
 
             def fail_on_protobuf_copy(source: Path, destination: Path, *args, **kwargs):
+                """Fail only when the controlled protobuf destination is copied."""
                 calls.append(Path(destination))
                 if Path(destination) == checked_protobuf:
                     raise OSError("CONTROLLED_SECOND_COPY_FAILURE")
@@ -1057,6 +1059,7 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
             calls: list[tuple[object, ...]] = []
 
             def successful_no_output_build(*args, **kwargs):
+                """Simulate a successful build invocation with no changed output."""
                 calls.append(args)
                 return True
 
