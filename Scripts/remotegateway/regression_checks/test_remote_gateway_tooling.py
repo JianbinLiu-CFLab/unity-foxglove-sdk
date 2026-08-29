@@ -212,6 +212,30 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             ):
                 self.acceptance.ensure_native_artifact()
 
+    def test_skip_build_accepts_builder_emitted_uppercase_manifest_identity(self) -> None:
+        """The validator accepts the uppercase digest emitted by the build helper."""
+        payload = b"phase187-d05-004-native-uppercase"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            (root / "foxglove-gateway-native-artifact.json").write_text(
+                json.dumps(
+                    {
+                        "artifact": dll.name,
+                        "sha256": hashlib.sha256(payload).hexdigest().upper(),
+                        "sizeBytes": len(payload),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                self.acceptance.ensure_native_artifact()
+
     def test_same_timestamp_still_creates_distinct_run_directories(self) -> None:
         """Concurrent acceptance launches must never share evidence output."""
         class FixedDateTime(dt.datetime):

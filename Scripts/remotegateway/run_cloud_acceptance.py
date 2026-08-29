@@ -205,9 +205,9 @@ def ensure_native_artifact() -> None:
         )
 
     declared_hash = metadata.get("sha256")
-    if not isinstance(declared_hash, str) or re.fullmatch(r"[0-9a-f]{64}", declared_hash) is None:
+    if not isinstance(declared_hash, str) or re.fullmatch(r"[0-9A-Fa-f]{64}", declared_hash) is None:
         raise SystemExit(
-            "Native artifact manifest sha256 must be exactly 64 lowercase hexadecimal characters."
+            "Native artifact manifest sha256 must be exactly 64 hexadecimal characters."
         )
 
     declared_size = metadata.get("sizeBytes")
@@ -222,7 +222,7 @@ def ensure_native_artifact() -> None:
         )
 
     actual_hash = sha256_file(dll)
-    if declared_hash != actual_hash:
+    if declared_hash.lower() != actual_hash:
         raise SystemExit(
             f"Native artifact manifest sha256 does not match {dll.name!r}: "
             f"declared {declared_hash}, actual {actual_hash}"
