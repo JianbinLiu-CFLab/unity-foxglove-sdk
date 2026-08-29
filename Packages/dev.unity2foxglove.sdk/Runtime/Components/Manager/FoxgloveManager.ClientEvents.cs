@@ -5,6 +5,7 @@
 // Purpose: Main-thread delivery queue for Foxglove client transport events.
 
 using System.Collections.Generic;
+using System.Threading;
 using Unity.FoxgloveSDK.Core;
 using UnityEngine;
 
@@ -96,43 +97,59 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
         {
+            var generation = Volatile.Read(ref _connectionState.ChannelSessionGeneration);
+            System.Func<bool> isLive = () =>
+                Volatile.Read(ref _connectionState.ChannelSessionGeneration)
+                == generation;
             queue.DrainTo(_clientEventDrainScratch);
             try
             {
                 foreach (var evt in _clientEventDrainScratch)
                 {
+                    bool dispatched;
                     if (evt.IsMessage)
                     {
-                        _clientEventDispatchState.Invoke(
-                            OnClientMessage,
-                            evt.ClientId,
-                            evt.ChannelId,
-                            evt.Topic,
-                            evt.Payload,
-                            WarnClientEventSubscriberFailure);
-                        _clientEventDispatchState.Invoke(
-                            OnClientMessageWithEncoding,
-                            evt.ClientId,
-                            evt.ChannelId,
-                            evt.Topic,
-                            evt.Encoding,
-                            evt.Payload,
-                            WarnClientEventSubscriberFailure);
+                        dispatched = _clientEventDispatchState.InvokeIfLive(
+                            isLive,
+                            () => _clientEventDispatchState.Invoke(
+                                OnClientMessage,
+                                evt.ClientId,
+                                evt.ChannelId,
+                                evt.Topic,
+                                evt.Payload,
+                                WarnClientEventSubscriberFailure),
+                            () => _clientEventDispatchState.Invoke(
+                                OnClientMessageWithEncoding,
+                                evt.ClientId,
+                                evt.ChannelId,
+                                evt.Topic,
+                                evt.Encoding,
+                                evt.Payload,
+                                WarnClientEventSubscriberFailure));
                     }
                     else if (evt.IsConnect)
                     {
-                        _clientEventDispatchState.Invoke(
-                            OnClientConnected,
-                            evt.ClientId,
-                            WarnClientEventSubscriberFailure);
+                        dispatched = _clientEventDispatchState.InvokeIfLive(
+                            isLive,
+                            () => _clientEventDispatchState.Invoke(
+                                OnClientConnected,
+                                evt.ClientId,
+                                WarnClientEventSubscriberFailure),
+                            null);
                     }
                     else
                     {
-                        _clientEventDispatchState.Invoke(
-                            OnClientDisconnected,
-                            evt.ClientId,
-                            WarnClientEventSubscriberFailure);
+                        dispatched = _clientEventDispatchState.InvokeIfLive(
+                            isLive,
+                            () => _clientEventDispatchState.Invoke(
+                                OnClientDisconnected,
+                                evt.ClientId,
+                                WarnClientEventSubscriberFailure),
+                            null);
                     }
+
+                    if (!dispatched)
+                        break;
                 }
             }
             finally
