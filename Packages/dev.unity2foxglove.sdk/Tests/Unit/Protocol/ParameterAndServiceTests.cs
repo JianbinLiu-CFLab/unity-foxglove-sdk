@@ -339,6 +339,33 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ServicePublicationFailureLeavesRegistryRetryable()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var descriptor = new ServiceDescriptor
+            {
+                Name = "/atomic", Type = "/atomic",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterService(descriptor));
+            Assert.Empty(session.Services.GetAll());
+
+            var serviceId = session.RegisterService(descriptor);
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterService(serviceId));
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            Assert.True(session.UnregisterService(serviceId));
+            Assert.Null(session.Services.GetById(serviceId));
+        }
+
+        [Fact]
         public void ServiceCallEnqueueComplete()
         {
             var fake = new Phase6FakeTransport();
@@ -554,6 +581,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             private readonly Dictionary<uint, List<byte[]>> _sentBinaries = new();
             public readonly List<string> BroadcastTexts = new();
             public uint? ThrowBinaryForClientId { get; set; }
+            public int ThrowBroadcastCount { get; set; }
 
             public void Start(string host, int port) { }
             public void Stop() { }
@@ -570,7 +598,15 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (!_sentBinaries.ContainsKey(clientId)) _sentBinaries[clientId] = new();
                 _sentBinaries[clientId].Add(data);
             }
-            public void BroadcastText(string json) => BroadcastTexts.Add(json);
+            public void BroadcastText(string json)
+            {
+                if (ThrowBroadcastCount > 0)
+                {
+                    ThrowBroadcastCount--;
+                    throw new InvalidOperationException("Injected broadcast failure.");
+                }
+                BroadcastTexts.Add(json);
+            }
             public void BroadcastBinary(byte[] data) { }
             public List<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : new();
             public List<byte[]> SentBinaries(uint clientId) => _sentBinaries.TryGetValue(clientId, out var l) ? l : new();

@@ -252,7 +252,15 @@ namespace Unity.FoxgloveSDK.Core
             // Re-advertise immediately so connected clients pick up the new service
             if (_session != null)
             {
-                _session.AdvertiseRegisteredService(id);
+                try
+                {
+                    _session.AdvertiseRegisteredService(id);
+                }
+                catch
+                {
+                    _services.Unregister(id);
+                    throw;
+                }
             }
             return id;
         }
