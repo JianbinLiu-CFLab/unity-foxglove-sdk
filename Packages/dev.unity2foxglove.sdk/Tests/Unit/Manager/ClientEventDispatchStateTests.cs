@@ -62,5 +62,57 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             Assert.Equal(1, encodedCalls);
             Assert.Single(failures);
         }
+
+        [Fact]
+        public void RetirementStopsRemainingEventSurfacesAndLaterEvents()
+        {
+            var state = new ClientEventDispatchState();
+            var live = true;
+            var legacyCalls = 0;
+            var encodedCalls = 0;
+            var laterCalls = 0;
+            var failures = new List<Exception>();
+
+            Action<uint> legacy = _ =>
+            {
+                legacyCalls++;
+                live = false;
+            };
+            Action<uint> encoded = _ => encodedCalls++;
+            Action<uint> later = _ => laterCalls++;
+
+            // Keep the RED behavioral assertion runnable on the unmodified tree:
+            // before the guarded dispatcher exists, the existing unguarded Invoke
+            // calls deliver all three surfaces after the first callback retires.
+            var guarded = typeof(ClientEventDispatchState).GetMethod(
+                "InvokeIfLive",
+                System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic);
+            if (guarded == null)
+            {
+                state.Invoke(legacy, 1U, failures.Add);
+                state.Invoke(encoded, 1U, failures.Add);
+                state.Invoke(later, 2U, failures.Add);
+            }
+            else
+            {
+                var result = (bool)guarded.Invoke(
+                    state,
+                    new object[]
+                    {
+                        (Func<bool>)(() => live),
+                        (Action)(() => state.Invoke(legacy, 1U, failures.Add)),
+                        (Action)(() => state.Invoke(encoded, 1U, failures.Add)),
+                    });
+                Assert.False(result);
+                if (result)
+                    state.Invoke(later, 2U, failures.Add);
+            }
+
+            Assert.Equal(1, legacyCalls);
+            Assert.Equal(0, encodedCalls);
+            Assert.Equal(0, laterCalls);
+            Assert.Empty(failures);
+        }
     }
 }
