@@ -34,6 +34,8 @@ namespace Unity.FoxgloveSDK.Transport
         public bool IsRunning { get; init; }
         /// <summary>Number of currently connected clients.</summary>
         public int ActiveClientCount { get; init; }
+        /// <summary>Number of accepted TCP clients still completing TLS/HTTP handshake.</summary>
+        public int PendingClientCount { get; init; }
         /// <summary>Lifetime count of clients that completed a WebSocket handshake.</summary>
         public long TotalAcceptedClients { get; init; }
         /// <summary>Lifetime count of clients rejected before becoming active.</summary>
