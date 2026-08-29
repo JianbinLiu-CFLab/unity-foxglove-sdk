@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void RuntimeDisposeRetryRethrowsFirstFailureAndReleasesReferenceWhenBothAttemptsFail()
+        public void RuntimeDisposeRetryRethrowsFirstFailureAndKeepsReferenceWhenBothAttemptsFail()
         {
             var attempts = 0;
             var releases = 0;
@@ -228,7 +228,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Equal("first failure", failure.Message);
             Assert.Equal(2, attempts);
-            Assert.Equal(1, releases);
+            Assert.Equal(0, releases);
             Assert.Equal(new[] { "first failure", "retry failure" }, reports);
         }
 

@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
@@ -122,9 +123,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var method = SourceMethod(source, "public void Stop()");
-            const string detach = "_recording.DetachFromSession();";
-            const string dispose = "session?.Dispose();";
+            var method = SourceMethod(source, "private void RunStopCleanup");
+            const string detach = "_recording.DetachFromSession";
+            const string dispose = "session?.Dispose()";
 
             Assert.Equal(1, CountOccurrences(method, detach));
             Assert.True(
@@ -264,13 +265,90 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RuntimeStopCleanupStateRetriesOnlyFailedStepAndTracksRequiredOwnership()
+        {
+            var state = new RuntimeStopCleanupState();
+            state.Reset();
+            ExceptionDispatchInfo firstFailure = null;
+            var replayAttempts = 0;
+
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayOrchestrator,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySuppressionWarnings,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySnapshot,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySceneSnapshot,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.Recording,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.Session,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                () =>
+                {
+                    replayAttempts++;
+                    throw new InvalidOperationException("optional cleanup");
+                },
+                ref firstFailure);
+
+            Assert.True(state.IsReadyForStart);
+            Assert.False(state.IsComplete);
+            Assert.Equal("optional cleanup", firstFailure.SourceException.Message);
+
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                () => replayAttempts++,
+                ref firstFailure);
+
+            Assert.Equal(2, replayAttempts);
+            Assert.True(state.IsComplete);
+        }
+
+        [Fact]
+        public void RuntimeStartFailureDisposesPartiallyStartedSessionBeforeRethrowing()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextStart = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() => runtime.Start("phase187-start-failure"));
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.False(transport.IsRunning);
+
+                runtime.Dispose();
+                Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
         public void RuntimeStopTracksCompletionExplicitlyInsteadOfInferringFromSessionNull()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var method = SourceMethod(source, "public void Stop()");
 
-            Assert.Contains("_stopCleanupComplete = firstFailure == null;", method, StringComparison.Ordinal);
+            Assert.Contains("RunStopCleanup(ref firstFailure);", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("_stopCleanupComplete = firstFailure == null;", source, StringComparison.Ordinal);
+            Assert.Contains("_stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;", source, StringComparison.Ordinal);
             Assert.DoesNotContain("_stopCleanupComplete = _session == null;", source, StringComparison.Ordinal);
         }
 
@@ -342,6 +420,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             private Action<uint, byte[]> _binaryReceived;
 
             internal bool ThrowOnNextStop { get; set; }
+            internal bool ThrowOnNextStart { get; set; }
             internal bool ThrowOnNextHandlerRemoval { get; set; }
             internal int DisposeCalls { get; private set; }
             internal int HandlerCount =>
@@ -384,7 +463,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 remove => _binaryReceived -= value;
             }
 
-            public void Start(string host, int port) => IsRunning = true;
+            public void Start(string host, int port)
+            {
+                if (ThrowOnNextStart)
+                {
+                    ThrowOnNextStart = false;
+                    throw new InvalidOperationException("start failure");
+                }
+
+                IsRunning = true;
+            }
 
             public void Stop()
             {

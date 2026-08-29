@@ -79,6 +79,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplayOrchestrator _replayOrchestrator;
         private readonly TickCoordinator _tickCoordinator;
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
+        private readonly RuntimeStopCleanupState _stopCleanup = new RuntimeStopCleanupState();
         private int _disposed;
         private int _disposing;
         private bool _stopCleanupComplete = true;
@@ -290,13 +291,26 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
-            // Do not overlap a new session with a retired session whose cleanup
-            // failed. A retry keeps the original session owner reachable.
-            if (_sessionPendingCleanup != null || !_stopCleanupComplete)
-                Stop();
+            // Do not overlap a new session with a retired session or an attached
+            // forwarder whose cleanup failed. Best-effort replay-history cleanup
+            // may report a failure without poisoning the next session epoch.
+            if (_sessionPendingCleanup != null || !_stopCleanup.IsReadyForStart)
+            {
+                ExceptionDispatchInfo cleanupFailure = null;
+                RunStopCleanup(ref cleanupFailure);
+                if (!_stopCleanup.IsReadyForStart)
+                {
+                    if (cleanupFailure != null)
+                        cleanupFailure.Throw();
+                    throw new InvalidOperationException(
+                        "The previous runtime session still owns cleanup resources.");
+                }
+                if (cleanupFailure != null)
+                    _logger.LogWarning(
+                        $"Ignoring non-critical Stop cleanup failure before restart: {cleanupFailure.SourceException.Message}");
+            }
 
             FoxgloveSession session = null;
-            var sessionCleanupComplete = true;
             try
             {
                 session = SessionFactory.Create(
@@ -308,38 +322,28 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _liveWebSocketChannelFilter),
                     Volatile.Read(ref _mcapRecordingChannelFilter),
                     Volatile.Read(ref _mirrorSink));
+                // A successful session starts a fresh per-step cleanup epoch;
+                // set it before Start so a partially started session is also
+                // covered by the failure path below.
+                _stopCleanup.Reset();
+                _stopCleanupComplete = false;
                 session.Start(host, port);
                 _session = session;
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
-                // A successful Start begins a new stop-cleanup epoch.
-                _stopCleanupComplete = false;
                 _stopped = false;
             }
-            catch
+            catch (Exception startException)
             {
-                try
-                {
-                    _replayOrchestrator.Detach(_replay);
-                    try
-                    {
-                        session?.Dispose();
-                        sessionCleanupComplete = true;
-                    }
-                    catch (Exception disposeEx)
-                    {
-                        sessionCleanupComplete = false;
-                        _logger.LogWarning(
-                            $"Ignoring startup dispose failure while preserving the original Start exception: {disposeEx.Message}");
-                    }
-                }
-                finally
-                {
-                    _recording.DetachFromSession();
-                    _session = null;
-                    _sessionPendingCleanup = sessionCleanupComplete ? null : session;
-                    _stopCleanupComplete = sessionCleanupComplete;
-                }
+                // Run every cleanup step independently. The original Start
+                // failure remains primary; cleanup failures are retained in
+                // the per-step state for a later Stop/Dispose retry.
+                ExceptionDispatchInfo cleanupFailure = null;
+                RunStopCleanup(ref cleanupFailure, session);
+                if (cleanupFailure != null)
+                    _logger.LogWarning(
+                        $"Startup cleanup was incomplete; preserving the original Start exception: {cleanupFailure.SourceException.Message}");
+                ExceptionDispatchInfo.Capture(startException).Throw();
                 throw;
             }
         }
@@ -384,34 +388,63 @@ namespace Unity.FoxgloveSDK.Core
                     return;
             }
 
-            _stopped = true;
             ExceptionDispatchInfo firstFailure = null;
-            TryCleanup(ClearReplaySuppressionWarnings, ref firstFailure);
-            TryCleanup(_tickCoordinator.ClearPendingReplaySnapshot, ref firstFailure);
-            TryCleanup(_tickCoordinator.ClearPendingReplaySceneSnapshot, ref firstFailure);
-            TryCleanup(_replay.CancelPanelHistory, ref firstFailure);
-            TryCleanup(() => _replayOrchestrator.Detach(_replay), ref firstFailure);
-            var session = _session ?? _sessionPendingCleanup;
-            _session = null;
-            if (session != null)
-                _sessionPendingCleanup = session;
-            var sessionCleanupComplete = session == null;
-            TryCleanup(() => { _recording.DetachFromSession(); }, ref firstFailure);
-            TryCleanup(
-                () =>
-                {
-                    session?.Dispose();
-                    sessionCleanupComplete = true;
-                },
-                ref firstFailure);
-            if (sessionCleanupComplete)
-                _sessionPendingCleanup = null;
-            // The session is deliberately retired before cleanup so callbacks cannot
-            // observe it as active. Completion is tracked by this explicit latch
-            // and a retained owner reference when any session cleanup remains
-            // incomplete; it is never inferred from the nullable active field.
-            _stopCleanupComplete = firstFailure == null;
+            RunStopCleanup(ref firstFailure);
             firstFailure?.Throw();
+        }
+
+        /// <summary>
+        /// Runs each Stop action once per cleanup epoch and retains only failed
+        /// steps for later retry. The active session is retired before any
+        /// callback can observe it as running.
+        /// </summary>
+        private void RunStopCleanup(
+            ref ExceptionDispatchInfo firstFailure,
+            FoxgloveSession startupSession = null)
+        {
+            _stopped = true;
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySuppressionWarnings,
+                ClearReplaySuppressionWarnings,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySnapshot,
+                _tickCoordinator.ClearPendingReplaySnapshot,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySceneSnapshot,
+                _tickCoordinator.ClearPendingReplaySceneSnapshot,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                _replay.CancelPanelHistory,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplayOrchestrator,
+                () => _replayOrchestrator.Detach(_replay),
+                ref firstFailure);
+
+            var session = _session ?? _sessionPendingCleanup ?? startupSession;
+            _session = null;
+            if (session == null)
+                _stopCleanup.MarkComplete(RuntimeStopCleanupStep.Session);
+            else
+                _sessionPendingCleanup = session;
+
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.Recording,
+                _recording.DetachFromSession,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.Session,
+                () => session?.Dispose(),
+                ref firstFailure);
+            if (_stopCleanup.IsCompleted(RuntimeStopCleanupStep.Session))
+                _sessionPendingCleanup = null;
+
+            // Resource ownership is represented by the required per-step
+            // latches, not by one failure result from the current invocation.
+            _stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;
         }
 
         // ── Channel API ──
