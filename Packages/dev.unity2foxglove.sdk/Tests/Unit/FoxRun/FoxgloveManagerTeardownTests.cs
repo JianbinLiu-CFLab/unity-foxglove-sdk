@@ -232,6 +232,59 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(new[] { "first failure", "retry failure" }, reports);
         }
 
+        [Fact]
+        public void RuntimeDisposeRetryDoesNotRepeatDisposeWhenReferenceReleaseFails()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            var failure = Assert.Throws<InvalidOperationException>(
+                () => FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                    () => attempts++,
+                    () =>
+                    {
+                        releases++;
+                        throw new InvalidOperationException("release failure");
+                    },
+                    exception => reports.Add(exception.Message)));
+
+            Assert.Equal("release failure", failure.Message);
+            Assert.Equal(1, attempts);
+            Assert.Equal(1, releases);
+            Assert.Equal(new[] { "release failure" }, reports);
+        }
+
+        [Theory]
+        [InlineData(false, false, false, false)]
+        [InlineData(true, false, false, true)]
+        [InlineData(false, true, false, true)]
+        [InlineData(false, false, true, true)]
+        public void StopServerRunsForActiveOrPendingRuntimeOwnership(
+            bool isRunning,
+            bool hasActiveSession,
+            bool hasPendingSessionCleanup,
+            bool expected)
+        {
+            var method = TeardownMethod("ShouldRunStopServer");
+
+            var actual = method.Invoke(
+                null,
+                new object[] { isRunning, hasActiveSession, hasPendingSessionCleanup });
+
+            Assert.Equal(expected, Assert.IsType<bool>(actual));
+
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var stopServer = TestSources.ExtractMethod(
+                source,
+                "private void StopServer(bool restoreLivePublishers)");
+            Assert.Contains(
+                "FoxgloveManagerTeardownState.ShouldRunStopServer(",
+                stopServer,
+                StringComparison.Ordinal);
+        }
+
         private static MethodInfo TeardownMethod(string name)
         {
             var type = typeof(FoxgloveManagerTeardownTests).Assembly.GetType(

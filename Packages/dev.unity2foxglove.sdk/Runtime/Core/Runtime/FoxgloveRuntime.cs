@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
         private readonly RuntimeStopCleanupState _stopCleanup = new RuntimeStopCleanupState();
         private int _disposed;
+        private int _disposeRequested;
         private int _disposing;
         private bool _stopCleanupComplete = true;
         private bool _parametersCleared;
@@ -133,6 +134,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Active session; null before Start or after Stop.</summary>
         public FoxgloveSession Session => _session;
+        /// <summary>Session that still owns teardown callbacks after it leaves the active slot.</summary>
+        internal FoxgloveSession CleanupSession => _session ?? _sessionPendingCleanup;
+        /// <summary>Whether a retired session still requires a cleanup retry.</summary>
+        internal bool HasPendingSessionCleanup => _sessionPendingCleanup != null;
         /// <summary>Whether the session is currently running.</summary>
         public bool IsRunning => _session?.IsRunning ?? false;
         /// <summary>Whether a registered channel has live subscriber or MCAP recording demand.</summary>
@@ -288,6 +293,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Start(string name, string host = "127.0.0.1", int port = 8765)
         {
+            if (Volatile.Read(ref _disposeRequested) != 0)
+                throw new ObjectDisposedException(nameof(FoxgloveRuntime));
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
@@ -313,6 +320,11 @@ namespace Unity.FoxgloveSDK.Core
             FoxgloveSession session = null;
             try
             {
+                // Begin the cleanup epoch before the factory subscribes the
+                // transport. Factory failures therefore enter the same rollback
+                // state as transport Start failures.
+                _stopCleanup.Reset();
+                _stopCleanupComplete = false;
                 session = SessionFactory.Create(
                     name,
                     _transport, _playbackClock, _schemaRegistry, _logger,
@@ -322,11 +334,6 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _liveWebSocketChannelFilter),
                     Volatile.Read(ref _mcapRecordingChannelFilter),
                     Volatile.Read(ref _mirrorSink));
-                // A successful session starts a fresh per-step cleanup epoch;
-                // set it before Start so a partially started session is also
-                // covered by the failure path below.
-                _stopCleanup.Reset();
-                _stopCleanupComplete = false;
                 session.Start(host, port);
                 _session = session;
                 ClearReplaySuppressionWarnings();
@@ -384,7 +391,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (_stopped && _session == null)
             {
-                if (_sessionPendingCleanup == null && _stopCleanupComplete)
+                if (_sessionPendingCleanup == null && _stopCleanup.IsComplete)
                     return;
             }
 
@@ -782,14 +789,16 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Dispose()
         {
-            if (Volatile.Read(ref _disposed) != 0
-                || Interlocked.Exchange(ref _disposing, 1) != 0)
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+            Volatile.Write(ref _disposeRequested, 1);
+            if (Interlocked.Exchange(ref _disposing, 1) != 0)
                 return;
 
             ExceptionDispatchInfo firstFailure = null;
             try
             {
-                if (!_stopCleanupComplete || _sessionPendingCleanup != null)
+                if (!_stopCleanup.IsComplete || _sessionPendingCleanup != null)
                 {
                     try
                     {
@@ -818,19 +827,41 @@ namespace Unity.FoxgloveSDK.Core
                     _replay.Dispose,
                     ref _replayDisposed,
                     ref firstFailure);
-                // Keep the transport alive while a retired session still owns
-                // event handlers; the next Dispose call must be able to retry
-                // session cleanup against the live transport.
-                if (_sessionPendingCleanup == null)
+                // Transport shutdown is independent of session callback removal.
+                // Closing it here guarantees that a permanently failing custom
+                // event accessor cannot keep the listener socket alive.
+                TryCleanup(
+                    _transport.Dispose,
+                    ref _transportDisposed,
+                    ref firstFailure);
+
+                if (_transportDisposed && _sessionPendingCleanup != null)
                 {
-                    TryCleanup(
-                        _transport.Dispose,
-                        ref _transportDisposed,
-                        ref firstFailure);
+                    // Retry only the failed per-session substeps once after the
+                    // transport is closed. If a custom accessor still refuses to
+                    // detach, the disposed transport is the terminal ownership
+                    // boundary and the retired session can be abandoned.
+                    ExceptionDispatchInfo sessionRetryFailure = null;
+                    RunStopCleanup(ref sessionRetryFailure);
+                    firstFailure ??= sessionRetryFailure;
+                    if (_sessionPendingCleanup != null)
+                    {
+                        try
+                        {
+                            _logger.LogWarning(
+                                "Abandoning retired session callbacks after transport disposal completed.");
+                        }
+                        catch
+                        {
+                            // Diagnostics cannot prevent terminal resource release.
+                        }
+                        _sessionPendingCleanup = null;
+                        _stopCleanup.MarkComplete(RuntimeStopCleanupStep.Session);
+                        _stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;
+                    }
                 }
 
-                if (firstFailure == null
-                    && _stopCleanupComplete
+                if (_stopCleanupComplete
                     && _sessionPendingCleanup == null
                     && _parametersCleared
                     && _servicesCleared

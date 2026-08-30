@@ -237,26 +237,30 @@ namespace Unity.FoxgloveSDK.Components
         private void StopServer(bool restoreLivePublishers)
         {
             _startServerAfterTransportCapture = false;
+            var cleanupSession = _runtime?.CleanupSession;
             if (!IsRunning)
             {
                 StopRemoteMcapFileServer();
                 StopReplayCursorEndpoint();
                 StopCertificateDistributor();
-                DetachRuntimeForwarders(_runtime?.Session);
-                if (_runtime?.Session == null)
+                DetachRuntimeForwarders(cleanupSession);
+                if (!FoxgloveManagerTeardownState.ShouldRunStopServer(
+                        IsRunning,
+                        _runtime?.Session != null,
+                        _runtime?.HasPendingSessionCleanup ?? false))
                     return;
             }
 
             // Capture and detach manager callbacks before runtime Stop clears
             // the active Session and would otherwise hide the Transport reference.
-            var transport = _runtime.Session?.Transport;
+            var transport = cleanupSession?.Transport;
             if (transport != null)
             {
                 transport.OnClientConnected -= EnqueueConnect;
                 transport.OnClientDisconnected -= EnqueueDisconnect;
             }
 
-            DetachRuntimeForwarders(_runtime?.Session);
+            DetachRuntimeForwarders(cleanupSession);
 
             AdvanceChannelSessionGeneration();
             UnregisterFoxRunSubscriptionCatalogService();

@@ -3,6 +3,7 @@
 //
 // Module: Runtime/Core/Runtime
 
+using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
@@ -33,20 +34,51 @@ namespace Unity.FoxgloveSDK.Core
             ISinkChannelFilter mcapRecordingChannelFilter = null,
             IFoxgloveMirrorSink mirrorSink = null)
         {
-            var session = new FoxgloveSession(name, transport, playbackClock, schemaRegistry, logger, parameters, services);
-            session.SetRuntimeContext(runtimeContext);
-            session.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, liveWebSocketChannelFilter);
-            session.SetSinkChannelFilter(FoxgloveSinkKind.McapRecording, mcapRecordingChannelFilter);
-            session.SetMirrorSink(mirrorSink, replayExistingChannels: false);
-            if (protobufSchemasRegistered)
-                session.EnableProtobuf();
-            if (additionalMessageEncodings != null)
+            FoxgloveSession session = null;
+            try
             {
-                foreach (var encoding in additionalMessageEncodings)
-                    session.EnableMessageEncoding(encoding);
+                session = new FoxgloveSession(
+                    name,
+                    transport,
+                    playbackClock,
+                    schemaRegistry,
+                    logger,
+                    parameters,
+                    services);
+                session.SetRuntimeContext(runtimeContext);
+                session.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, liveWebSocketChannelFilter);
+                session.SetSinkChannelFilter(FoxgloveSinkKind.McapRecording, mcapRecordingChannelFilter);
+                session.SetMirrorSink(mirrorSink, replayExistingChannels: false);
+                if (protobufSchemasRegistered)
+                    session.EnableProtobuf();
+                if (additionalMessageEncodings != null)
+                {
+                    foreach (var encoding in additionalMessageEncodings)
+                        session.EnableMessageEncoding(encoding);
+                }
+                recording.AttachToSession(parameters, session);
+                return session;
             }
-            recording.AttachToSession(parameters, session);
-            return session;
+            catch
+            {
+                try
+                {
+                    session?.Dispose();
+                }
+                catch (Exception cleanupException)
+                {
+                    try
+                    {
+                        logger?.LogWarning(
+                            $"Session factory rollback was incomplete: {cleanupException.Message}");
+                    }
+                    catch
+                    {
+                        // Preserve the factory failure as the primary exception.
+                    }
+                }
+                throw;
+            }
         }
     }
 }
