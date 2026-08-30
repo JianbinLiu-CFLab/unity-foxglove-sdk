@@ -1289,6 +1289,39 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E01-002")]
+        public void ReadonlyResponseFieldsStillValidateUnsupportedTypesInBothHosts()
+        {
+            var reflection = FoxServiceDtoReflectionValidator.Validate(
+                typeof(E01ReadonlyResponse),
+                FoxServiceDtoSide.Response,
+                "/phase187/e01/readonly-response");
+            Assert.Contains(reflection, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                       && diagnostic.Path == "Response.Handle");
+
+            var result = RunGenerator(@"
+using System;
+using Unity.FoxgloveSDK.Components;
+
+namespace Phase187E01
+{
+    public sealed class Response
+    {
+        public readonly IntPtr Handle;
+    }
+
+    public partial class Host
+    {
+        [FoxService(""/phase187/e01/readonly-response"", Type = ""Phase187E01.Service"", RequestSchemaName = ""Phase187E01.Request"", ResponseSchemaName = ""Phase187E01.Response"")]
+        private Response Invoke(int request) => new Response();
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                               && diagnostic.GetMessage().Contains("Response.Handle", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void GeneratedProtobufDtoAndCollectionInputCompilesWithItsHostType()
         {
             var output = RunGeneratorAndUpdateCompilation(@"
@@ -3668,6 +3701,11 @@ namespace Demo
 
             [FoxRun("/phase184/reflection/invalid-shadow", OnlyIf = "ShadowedCondition")]
             public float InvalidShadowProbe;
+        }
+
+        private sealed class E01ReadonlyResponse
+        {
+            public readonly IntPtr Handle;
         }
 
         private sealed class Phase184ContextDiagnosticProbe

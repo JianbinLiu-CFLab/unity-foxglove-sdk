@@ -141,6 +141,15 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (field.IsInitOnly)
                     {
+                        if (string.Equals(
+                                side,
+                                FoxServiceDtoRules.ResponseSide,
+                                StringComparison.Ordinal))
+                        {
+                            ValidateType(field.FieldType, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+
                         AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
                         continue;
                     }

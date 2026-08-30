@@ -153,6 +153,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     }
                     if (field.IsReadOnly)
                     {
+                        if (string.Equals(
+                                side,
+                                FoxServiceDtoRules.ResponseSide,
+                                StringComparison.Ordinal))
+                        {
+                            ValidateServiceDtoType(field.Type, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+
                         AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
                         continue;
                     }
