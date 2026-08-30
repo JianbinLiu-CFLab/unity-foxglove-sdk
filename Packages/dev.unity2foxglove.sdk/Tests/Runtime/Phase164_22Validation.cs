@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyTopicMetadataHasherIsReused()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
-            var hash = PhaseValidationSourceHelpers.SourceMethod(source, "private static string Sha256Hex");
+            var hash = PhaseValidationSourceHelpers.SourceMethod(source, "public static string Sha256Hex(string value)");
 
             Check(source.Contains("private static readonly object Sha256Gate = new();", StringComparison.Ordinal)
                   && source.Contains("private static readonly SHA256 SharedSha256 = SHA256.Create();", StringComparison.Ordinal),
@@ -39,20 +39,24 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             var fromMembers = PhaseValidationSourceHelpers.SourceMethod(source, "public static FoxRunGenerationModel FromMembers");
             var copyTypes = PhaseValidationSourceHelpers.SourceMethod(source, "private static IReadOnlyList<FoxRunGenerationType> CopyTypes");
-            var publicTypeCtor = PhaseValidationSourceHelpers.SourceMethod(source, "public FoxRunGenerationType(string ns");
-            var internalTypeCtor = PhaseValidationSourceHelpers.SourceMethod(source, "internal FoxRunGenerationType(string ns");
+            var type = PhaseValidationSourceHelpers.SourceType(source, "FoxRunGenerationType");
 
-            Check(fromMembers.Contains("typesAlreadySortedAndCopied: true", StringComparison.Ordinal)
-                  && source.Contains("private FoxRunGenerationModel(", StringComparison.Ordinal)
-                  && source.Contains("typesAlreadySortedAndCopied", StringComparison.Ordinal),
-                "164-22B-1: FromMembers uses an internal already-sorted model path");
-            Check(copyTypes.Contains("membersAlreadySorted: true", StringComparison.Ordinal)
-                  && source.Contains("private static IReadOnlyList<FoxRunGenerationType> ToReadOnlyTypes", StringComparison.Ordinal),
-                "164-22B-2: model copy path preserves sorted type/member order without re-sorting");
-            Check(publicTypeCtor.Contains("membersAlreadySorted: false", StringComparison.Ordinal)
-                  && internalTypeCtor.Contains("membersAlreadySorted", StringComparison.Ordinal)
-                  && source.Contains("private static IReadOnlyList<FoxRunGenerationMember> SortMembers", StringComparison.Ordinal)
-                  && source.Contains("private static IReadOnlyList<FoxRunGenerationMember> CopyMembers", StringComparison.Ordinal),
+            Check(fromMembers.Contains(".GroupBy(", StringComparison.Ordinal)
+                  && fromMembers.Contains(".OrderBy(", StringComparison.Ordinal)
+                  && fromMembers.Contains("new FoxRunGenerationType(", StringComparison.Ordinal)
+                  && fromMembers.Contains("return new FoxRunGenerationModel(types)", StringComparison.Ordinal),
+                "164-22B-1: FromMembers groups and orders members before model construction");
+            Check(copyTypes.Contains(".OrderBy(type => type.DeclaringType", StringComparison.Ordinal)
+                  && copyTypes.Contains("new FoxRunGenerationType(", StringComparison.Ordinal)
+                  && copyTypes.Contains(".AsReadOnly()", StringComparison.Ordinal)
+                  && source.Contains("Types = CopyTypes(types)", StringComparison.Ordinal),
+                "164-22B-2: model copy path preserves deterministic type order and read-only ownership");
+            Check(type.Contains("public FoxRunGenerationType(", StringComparison.Ordinal)
+                  && type.Contains(".OrderBy(member => member.Topic", StringComparison.Ordinal)
+                  && type.Contains(".ThenBy(member => member.MemberName", StringComparison.Ordinal)
+                  && type.Contains(".ThenBy(member => member.SchemaName", StringComparison.Ordinal)
+                  && type.Contains(".ThenBy(member => member.CanonicalType", StringComparison.Ordinal)
+                  && type.Contains(".AsReadOnly()", StringComparison.Ordinal),
                 "164-22B-3: public generation type constructor still sorts defensively");
         }
 
@@ -62,10 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
             var emitter = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
             var metadata = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var toTopicMember = PhaseValidationSourceHelpers.SourceMethod(model, "public FoxgloveSourceEmitter.TopicMember ToTopicMember");
-            var canonicalShape = PhaseValidationSourceHelpers.SourceMethod(metadata, "private static string CanonicalTopicShape");
+            var canonicalShape = PhaseValidationSourceHelpers.SourceMethod(metadata, "internal static string CanonicalTopicShape");
 
             Check(emitter.Contains("public readonly string CanonicalType;", StringComparison.Ordinal)
-                  && toTopicMember.Contains("CanonicalType);", StringComparison.Ordinal),
+                  && toTopicMember.Contains("CanonicalType,", StringComparison.Ordinal),
                 "164-22C-1: TopicMember carries canonical type from generation model");
             Check(canonicalShape.Contains("field.CanonicalType", StringComparison.Ordinal)
                   && !canonicalShape.Contains("NormalizeTypeName(field.TypeName)", StringComparison.Ordinal),

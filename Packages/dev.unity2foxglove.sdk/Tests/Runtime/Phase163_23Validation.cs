@@ -42,8 +42,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-23A-1: shared FoxRun emitter unwraps Nullable<T> before sink JSON emission");
             Check(source.Contains("__json.Append({access}.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture));", StringComparison.Ordinal),
                 "163-23A-2: nullable integral sink JSON uses invariant numeric Value formatting");
-            Check(golden.Contains("this._optionalCount.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", StringComparison.Ordinal)
-                  && !golden.Contains("__AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount.ToString())", StringComparison.Ordinal),
+            Check(golden.Contains(
+                      "__foxRunCapture_3_0.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)",
+                      StringComparison.Ordinal)
+                  && !golden.Contains(
+                      "__AppendFoxRunJsonString(__json, __foxRunCapture_3_0 == null ? null : __foxRunCapture_3_0.ToString())",
+                      StringComparison.Ordinal),
                 "163-23A-3: FoxRun golden baseline records nullable integer as JSON number");
         }
 

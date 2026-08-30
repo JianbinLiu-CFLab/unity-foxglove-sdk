@@ -23,35 +23,43 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRoslynCandidateScanIsSinglePass()
         {
             var source = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
-            var isCandidate = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool IsCandidate");
-            var hasFoxRunAttr = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool HasFoxRunAttr");
+            var isCandidate = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool IsFoxRunCandidate(SyntaxNode node)");
+            var serviceCandidate = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool IsServiceCandidate(SyntaxNode node)");
+            var extractMember = PhaseValidationSourceHelpers.SourceMethod(source, "private static MemberData ExtractMember(");
 
-            Check(isCandidate.Contains("return HasFoxRunAttr(f.AttributeLists);", StringComparison.Ordinal)
-                  && isCandidate.Contains("return HasFoxRunAttr(p.AttributeLists);", StringComparison.Ordinal)
-                  && !source.Contains("private static bool HasFoxRunFieldAttr", StringComparison.Ordinal),
-                "164-23A-1: Roslyn candidate predicate scans FoxRun/FoxRunField attributes once");
-            Check(hasFoxRunAttr.Contains("AttrAttributeName", StringComparison.Ordinal)
-                  && hasFoxRunAttr.Contains("AttrQualifiedNameSuffix", StringComparison.Ordinal)
-                  && hasFoxRunAttr.Contains("FieldAttrAttributeName", StringComparison.Ordinal)
-                  && hasFoxRunAttr.Contains("FieldAttrQualifiedNameSuffix", StringComparison.Ordinal),
-                "164-23A-2: merged candidate scan recognizes FoxRun and FoxRunField spellings");
+            Check(isCandidate.Contains("AttributeLists.Count > 0", StringComparison.Ordinal)
+                  && isCandidate.Contains("FieldDeclarationSyntax", StringComparison.Ordinal)
+                  && isCandidate.Contains("PropertyDeclarationSyntax", StringComparison.Ordinal)
+                  && serviceCandidate.Contains("MethodDeclarationSyntax", StringComparison.Ordinal)
+                  && serviceCandidate.Contains("AttributeLists.Count > 0", StringComparison.Ordinal),
+                "164-23A-1: Roslyn candidate predicates admit attributed fields, properties, and service methods");
+            Check(extractMember.Contains("AttributeClass?.ToDisplayString()", StringComparison.Ordinal)
+                  && extractMember.Contains("AttrFullName", StringComparison.Ordinal)
+                  && extractMember.Contains("MessageAttrFullName", StringComparison.Ordinal)
+                  && extractMember.Contains("FieldAttrFullName", StringComparison.Ordinal),
+                "164-23A-2: semantic extraction resolves canonical FoxRun and aggregate attribute metadata");
         }
 
         private static void VerifyEditorFallbackUsesCombinedScan()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
-            var generate = PhaseValidationSourceHelpers.SourceMethod(source, "out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)");
+            // Anchor the overload by its stable leading parameters; tuple
+            // element formatting is intentionally not part of the selector.
+            var generate = PhaseValidationSourceHelpers.SourceMethodContaining(
+                source,
+                "GenerateSourceFiles",
+                "foxRunTypes = editorScan.FoxRunTypes;");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
             var sharedTraversal = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static void VisitLoadedFoxRunComponentTypes");
 
-            Check(generate.Contains("var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
+            Check(generate.Contains("var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: false);", StringComparison.Ordinal)
                   && generate.Contains("var scan = editorScan.FoxRun;", StringComparison.Ordinal)
                   && generate.Contains("var serviceScan = editorScan.Services;", StringComparison.Ordinal)
                   && generate.Contains("foxRunTypes = editorScan.FoxRunTypes;", StringComparison.Ordinal)
-                  && !generate.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
-                  && !generate.Contains("ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal),
-                "164-23B-1: source-file generation uses one combined FoxRun/FoxService reflection scan");
+                   && !generate.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
+                   && !generate.Contains("ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal),
+                "164-23B-1: source-file generation uses one fail-closed combined FoxRun/FoxService reflection scan");
             Check(combined.Contains("VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions", StringComparison.Ordinal)
                   && Count(sharedTraversal, "AppDomain.CurrentDomain.GetAssemblies()") == 1
                   && sharedTraversal.Contains("ReflectionTypeLoadException", StringComparison.Ordinal)
@@ -77,8 +85,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var validator = Read("Scripts/package/validate_source_generator_dll.py");
 
-            Check(validator.Contains("built_hash = sha256(built_dll)", StringComparison.Ordinal)
-                  && validator.Contains("checked_hash = sha256(CHECKED_IN_DLL)", StringComparison.Ordinal)
+            Check(validator.Contains("built_hash = sha256(built_artifacts[name])", StringComparison.Ordinal)
+                  && validator.Contains("checked_hash = sha256(checked_in)", StringComparison.Ordinal)
                   && validator.Contains("if built_hash != checked_hash:", StringComparison.Ordinal)
                   && !validator.Contains("read_bytes() !=", StringComparison.Ordinal),
                 "164-23D-1: source generator freshness validator avoids redundant full-DLL byte reads");

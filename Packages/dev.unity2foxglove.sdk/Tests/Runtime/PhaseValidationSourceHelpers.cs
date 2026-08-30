@@ -544,6 +544,42 @@ namespace Unity.FoxgloveSDK.Tests
             return method;
         }
 
+        /// <summary>
+        /// Resolves one method by identifier and a stable body marker.  This is
+        /// useful for overloads whose tuple-heavy signatures are legitimately
+        /// reformatted by different C# writers; the marker still anchors the
+        /// intended implementation body and the Roslyn span keeps extraction
+        /// syntax-aware.
+        /// </summary>
+        public static string SourceMethodContaining(
+            string source,
+            string methodName,
+            string bodyMarker)
+        {
+            if (string.IsNullOrWhiteSpace(source)
+                || string.IsNullOrWhiteSpace(methodName)
+                || string.IsNullOrWhiteSpace(bodyMarker))
+            {
+                return string.Empty;
+            }
+
+            var matches = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => string.Equals(
+                    method.Identifier.ValueText,
+                    methodName,
+                    StringComparison.Ordinal))
+                // Keep a method span even when a formatter leaves a recoverable
+                // diagnostic in a tuple header; the body marker is the gate.
+                .Select(method => source.Substring(method.SpanStart, method.Span.Length))
+                .Where(method => method.Contains(bodyMarker, StringComparison.Ordinal))
+                .ToArray();
+
+            return matches.Length == 1 ? matches[0] : string.Empty;
+        }
+
         public static string RequiredSourceMethod(string source, string methodName)
             => SourceMethod(source, methodName);
 
