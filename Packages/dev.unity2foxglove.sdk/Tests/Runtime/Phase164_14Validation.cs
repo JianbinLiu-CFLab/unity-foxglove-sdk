@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -47,42 +49,55 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var fallback = PhaseValidationSourceHelpers.SourceMethod(source, "private void WarnIfEncodingFallback");
             var mismatch = PhaseValidationSourceHelpers.SourceMethod(source, "private void WarnEncodingMismatch");
-            var bridge = PhaseValidationSourceHelpers.SourceMethod(source, "private void WarnIfRos2BridgeFallback");
 
             Check(source.Contains("private int _lastEncodingFallbackWarningKey;", StringComparison.Ordinal)
-                  && source.Contains("private int _lastEncodingMismatchWarningKey;", StringComparison.Ordinal)
-                  && source.Contains("private int _lastBridgeFallbackWarningKey;", StringComparison.Ordinal),
-                "164-14B-1: warning dedupe fallback paths use integer keys");
+                  && source.Contains("private int _lastEncodingMismatchWarningKey;", StringComparison.Ordinal),
+                "164-14B-1: maintained encoding warning paths use integer dedupe keys");
             Check(!fallback.Contains("$\"fallback:", StringComparison.Ordinal)
                   && fallback.Contains("EncodingWarningKey(resolution.Requested, resolution.Effective)", StringComparison.Ordinal),
                 "164-14B-2: encoding fallback dedupe avoids interpolated string keys");
             Check(!mismatch.Contains("$\"mismatch:", StringComparison.Ordinal)
                   && mismatch.Contains("AttemptedEncodingWarningKey(attemptedEncoding)", StringComparison.Ordinal),
                 "164-14B-3: encoding mismatch dedupe avoids interpolated string keys");
-            Check(!bridge.Contains("$\"fallback:", StringComparison.Ordinal)
-                  && bridge.Contains("BridgeWarningKey(resolution.Requested, resolution.Effective)", StringComparison.Ordinal),
-                "164-14B-4: ROS2 Bridge fallback dedupe avoids interpolated string keys");
         }
 
         private static void VerifyFoxRunHubCachesTopicMetadata()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             var update = PhaseValidationSourceHelpers.SourceMethod(source, "private void Update");
-            var scheduled = PhaseValidationSourceHelpers.SourceMethod(source, "private bool TryPublishScheduledTopic");
-            var add = PhaseValidationSourceHelpers.SourceMethod(source, "private void AddSourceNow");
+            var scheduled = PhaseValidationSourceHelpers.SourceMethod(source, "private void TryPublishScheduled");
+            var add = PhaseValidationSourceHelpers.SourceMethod(source, "private bool AddSourceNow");
 
-            Check(source.Contains("Dictionary<IFoxgloveLogSource, FoxgloveLogSourceState>", StringComparison.Ordinal)
-                  && source.Contains("public FoxgloveLogTopicInfo[] Topics { get; }", StringComparison.Ordinal),
+            Check(source.Contains("Dictionary<IFoxgloveLogSource, SourceState>", StringComparison.Ordinal)
+                  && source.Contains("FoxgloveLogTopicInfo[] Topics { get; }", StringComparison.Ordinal)
+                  && source.Contains("FixedRatePublishState[] Timers { get; }", StringComparison.Ordinal),
                 "164-14C-1: FoxRun hub stores topic metadata beside cadence timers");
-            Check(add.Contains("topics[i] = source.FoxgloveLog_GetTopic(i)", StringComparison.Ordinal)
-                  && update.Contains("state.Topics[i]", StringComparison.Ordinal),
+            Check(add.Contains("new FoxgloveLogTopicInfo[count]", StringComparison.Ordinal)
+                  && add.Contains("new bool[count]", StringComparison.Ordinal)
+                  && add.Contains("new FixedRatePublishState[count]", StringComparison.Ordinal)
+                  && add.Contains("source.FoxgloveLog_GetTopic(index)", StringComparison.Ordinal)
+                  && update.Contains("state.Topics[index]", StringComparison.Ordinal)
+                  && update.Contains("ref state.Timers[index]", StringComparison.Ordinal),
                 "164-14C-2: topic metadata is captured at registration and reused during Update");
             Check(!scheduled.Contains("FoxgloveLog_GetTopic(topicIndex)", StringComparison.Ordinal)
                   && scheduled.Contains("FoxgloveLogTopicInfo info", StringComparison.Ordinal),
                 "164-14C-3: scheduled FoxRun publish path avoids per-frame topic metadata dispatch");
-            Check(update.Contains("if (kv.Key is MonoBehaviour mb)", StringComparison.Ordinal)
-                  && !update.Contains("mb2", StringComparison.Ordinal),
+            Check(update.Contains("if (source is MonoBehaviour behaviour)", StringComparison.Ordinal)
+                  && Count(update, "is MonoBehaviour") == 1,
                 "164-14C-4: FoxRun Update uses one MonoBehaviour type-test per source");
+            Check(scheduled.Contains("FoxRunPolicy.FixedRate", StringComparison.Ordinal)
+                  && scheduled.Contains("FoxRunPolicy.Change", StringComparison.Ordinal)
+                  && scheduled.Contains("timer = default", StringComparison.Ordinal)
+                  && scheduled.Contains("explicitTrigger: false", StringComparison.Ordinal)
+                  && scheduled.Contains("FoxgloveLog_MarkPublished", StringComparison.Ordinal),
+                "164-14C-5: current hub dispatches FixedRate and Change topics through the policy seam");
+
+            var state = default(FixedRatePublishState);
+            var first = FixedRatePublishScheduler.ShouldPublish(0d, 10f, ref state, false);
+            var beforeDue = FixedRatePublishScheduler.ShouldPublish(0.05d, 10f, ref state, false);
+            var due = FixedRatePublishScheduler.ShouldPublish(0.1d, 10f, ref state, false);
+            Check(first && !beforeDue && due,
+                "164-14C-6: fixed-rate cadence probe publishes on first use and at the due boundary");
         }
 
         private static void VerifyLegacyCadenceValidationTracksCacheShape()
@@ -98,8 +113,28 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-14\"", StringComparison.Ordinal), "164-14E-1: validation registry exposes Phase164-14");
+            var entry = PhaseValidationRegistry.All.Single(item => item.Flag == "--phase164-14");
+            var defaultEntry = PhaseValidationRegistry.DefaultValidations(false)
+                .SingleOrDefault(item => item.Flag == "--phase164-14");
+            Check(registry.Contains("\"--phase164-14\"", StringComparison.Ordinal)
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.IncludeInDefault
+                  && defaultEntry != null,
+                "164-14E-1: Phase164-14 is a CI-safe member of the default validation lane");
             Check(project.Contains("Phase164_14Validation.cs", StringComparison.Ordinal), "164-14E-2: runtime validation project compiles Phase164-14");
+        }
+
+        private static int Count(string value, string needle)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = value.IndexOf(needle, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += needle.Length;
+            }
+
+            return count;
         }
 
         private static string Read(string relativePath)
