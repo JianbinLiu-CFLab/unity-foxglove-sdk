@@ -49,6 +49,7 @@ namespace Unity.FoxgloveSDK.Editor
             };
             file.MessageType.Add(message);
             var usedNumbers = new Dictionary<int, string>();
+            var usedFieldNames = new Dictionary<string, string>(StringComparer.Ordinal);
             var namedTypes = new Dictionary<string, string>(StringComparer.Ordinal);
             var usedTypeNames = new HashSet<string>(StringComparer.Ordinal) { messageName };
 
@@ -69,9 +70,16 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 usedNumbers.Add(number, field.MemberName);
+                var descriptorName = ToFieldName(field.JsonName, field.MemberName);
+                ReserveIdentifier(
+                    usedFieldNames,
+                    descriptorName,
+                    field.JsonName,
+                    field.MemberName,
+                    "root field");
                 var descriptorField = new FieldDescriptorProto
                 {
-                    Name = ToFieldName(field.JsonName, field.MemberName),
+                    Name = descriptorName,
                     JsonName = field.JsonName ?? string.Empty,
                     Number = number,
                     Label = field.IsArray
@@ -255,6 +263,7 @@ namespace Unity.FoxgloveSDK.Editor
             var message = new DescriptorProto { Name = name };
             file.MessageType.Add(message);
             var usedNumbers = new Dictionary<int, string>();
+            var usedFieldNames = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var nestedField in shape.Fields.OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
             {
                 var fieldMetadata = protobufMetadata?.Find(
@@ -272,9 +281,16 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 usedNumbers.Add(number, nestedField.MemberName);
+                var descriptorName = ToFieldName(nestedField.JsonName, nestedField.MemberName);
+                ReserveIdentifier(
+                    usedFieldNames,
+                    descriptorName,
+                    nestedField.JsonName,
+                    nestedField.MemberName,
+                    "field in DTO '" + shape.TypeName + "'");
                 var descriptorField = new FieldDescriptorProto
                 {
-                    Name = ToFieldName(nestedField.JsonName, nestedField.MemberName),
+                    Name = descriptorName,
                     JsonName = nestedField.JsonName ?? string.Empty,
                     Number = number,
                     Label = nestedField.Repeated
@@ -324,6 +340,7 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new InvalidOperationException("FoxRun Protobuf enum '" + shape.TypeName + "' has no values.");
 
             var descriptor = new EnumDescriptorProto { Name = name };
+            var usedValueNames = new Dictionary<string, string>(StringComparer.Ordinal);
             var ordered = shape.EnumValues
                 .OrderBy(candidate => candidate.Number)
                 .ThenBy(candidate => candidate.Name, StringComparer.Ordinal)
@@ -339,14 +356,14 @@ namespace Unity.FoxgloveSDK.Editor
             }
             else
             {
-                AppendEnumValue(descriptor, zero);
+                AppendEnumValue(descriptor, zero, usedValueNames, shape.TypeName);
             }
 
             foreach (var value in ordered)
             {
                 if (ReferenceEquals(value, zero))
                     continue;
-                AppendEnumValue(descriptor, value);
+                AppendEnumValue(descriptor, value, usedValueNames, shape.TypeName);
             }
 
             file.EnumType.Add(descriptor);
@@ -355,13 +372,46 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void AppendEnumValue(
             EnumDescriptorProto descriptor,
-            FoxRunEnumValue value)
+            FoxRunEnumValue value,
+            IDictionary<string, string> usedValueNames,
+            string enumTypeName)
         {
+            var descriptorName = ToIdentifier(
+                value.Name,
+                "UNSPECIFIED",
+                upperFirst: true);
+            ReserveIdentifier(
+                usedValueNames,
+                descriptorName,
+                value.Name,
+                value.Name,
+                "value in enum '" + enumTypeName + "'");
             descriptor.Value.Add(new EnumValueDescriptorProto
             {
-                Name = ToIdentifier(value.Name, "UNSPECIFIED", upperFirst: true),
+                Name = descriptorName,
                 Number = value.Number
             });
+        }
+
+        private static void ReserveIdentifier(
+            IDictionary<string, string> usedNames,
+            string descriptorName,
+            string declaredName,
+            string memberName,
+            string scope)
+        {
+            var source = string.IsNullOrWhiteSpace(declaredName)
+                ? memberName ?? string.Empty
+                : declaredName;
+            if (usedNames.TryGetValue(descriptorName, out var existing))
+            {
+                throw new InvalidOperationException(
+                    "FoxRun Protobuf identifier collision in " + scope + ": '"
+                    + existing + "' and '" + source + "' both normalize to '"
+                    + descriptorName + "'.");
+            }
+
+            usedNames.Add(descriptorName, source);
         }
 
         private static string SyntheticUnspecifiedName(
@@ -444,7 +494,16 @@ namespace Unity.FoxgloveSDK.Editor
             var characters = new List<char>(source.Length + 1);
             foreach (var character in source)
             {
-                if (char.IsLetterOrDigit(character) || character == '_')
+                if (character > 0x7f)
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun Protobuf identifiers must use the ASCII identifier grammar; invalid value '"
+                        + source + "'.");
+                }
+
+                if (IsAsciiLetter(character)
+                    || IsAsciiDigit(character)
+                    || character == '_')
                     characters.Add(character);
                 else
                     characters.Add('_');
@@ -452,12 +511,19 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (characters.Count == 0)
                 characters.AddRange(fallback);
-            if (!char.IsLetter(characters[0]) && characters[0] != '_')
+            if (!IsAsciiLetter(characters[0]) && characters[0] != '_')
                 characters.Insert(0, '_');
             if (upperFirst && char.IsLower(characters[0]))
                 characters[0] = char.ToUpperInvariant(characters[0]);
             return new string(characters.ToArray());
         }
+
+        private static bool IsAsciiLetter(char value)
+            => (value >= 'A' && value <= 'Z')
+               || (value >= 'a' && value <= 'z');
+
+        private static bool IsAsciiDigit(char value)
+            => value >= '0' && value <= '9';
     }
 
     public sealed class FoxRunProtobufContract
