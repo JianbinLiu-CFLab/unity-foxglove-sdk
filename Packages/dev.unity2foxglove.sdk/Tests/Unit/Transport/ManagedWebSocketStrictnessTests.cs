@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
@@ -45,6 +46,115 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 SpinWait.SpinUntil(() => PendingClientCount(backend) == 0, TimeSpan.FromSeconds(2)),
                 "Stop must retire every pending handshake instead of leaving an owned socket behind.");
             Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
+        public void EstablishedClientsConsumeOneCapacitySlot()
+        {
+            var options = new ManagedWebSocketOptions { MaxClients = 4 };
+            using var backend = new ManagedWsBackend(options);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            var clients = new List<TcpClient>();
+
+            try
+            {
+                var responses = new List<string>();
+                for (var index = 0; index < options.MaxClients; index++)
+                {
+                    var client = new TcpClient();
+                    client.Connect("127.0.0.1", port);
+                    clients.Add(client);
+                    var stream = client.GetStream();
+                    stream.ReadTimeout = 2000;
+                    stream.WriteTimeout = 2000;
+                    var request =
+                        "GET / HTTP/1.1\r\n" +
+                        "Host: 127.0.0.1\r\n" +
+                        "Connection: Upgrade\r\n" +
+                        "Upgrade: websocket\r\n" +
+                        "Sec-WebSocket-Version: 13\r\n" +
+                        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                        "Sec-WebSocket-Protocol: foxglove.sdk.v1\r\n\r\n";
+                    var bytes = Encoding.ASCII.GetBytes(request);
+                    stream.Write(bytes, 0, bytes.Length);
+                    responses.Add(ReadHttpHeaders(stream));
+                    var expectedActive = index + 1;
+                    Assert.True(
+                        SpinWait.SpinUntil(
+                            () =>
+                            {
+                                var stats = backend.GetStatsSnapshot();
+                                return stats.ActiveClientCount == expectedActive
+                                    && stats.PendingClientCount == 0;
+                            },
+                            TimeSpan.FromSeconds(2)),
+                        $"Client {expectedActive} did not transfer its reservation to the active set.");
+                }
+
+                Assert.All(responses, response => Assert.StartsWith("HTTP/1.1 101", response));
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == options.MaxClients,
+                        TimeSpan.FromSeconds(2)),
+                    "Every configured client slot must remain available to an established connection.");
+                Assert.Equal(0, backend.GetStatsSnapshot().PendingClientCount);
+            }
+            finally
+            {
+                backend.Stop();
+                foreach (var client in clients)
+                    client.Dispose();
+            }
+        }
+
+        [Fact]
+        public void SlowCapacityRejectionDoesNotStopAcceptLoop()
+        {
+            var options = new ManagedWebSocketOptions { MaxClients = 1 };
+            using var backend = new BlockingRejectBackend(options);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            var clients = new List<TcpClient>();
+
+            try
+            {
+                var first = ConnectAndWriteHandshake(port);
+                clients.Add(first);
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(first.GetStream()));
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                        TimeSpan.FromSeconds(2)));
+
+                var second = ConnectAndWriteHandshake(port);
+                clients.Add(second);
+                Assert.True(
+                    backend.RejectionEntered.Wait(TimeSpan.FromSeconds(2)),
+                    "The first capacity rejection did not reach the response worker.");
+
+                var third = ConnectAndWriteHandshake(port);
+                clients.Add(third);
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().TotalRejectedClients >= 2,
+                        TimeSpan.FromSeconds(2)),
+                    $"A blocked rejection response must not stall subsequent accepts (stats={backend.GetStatsSnapshot().TotalRejectedClients}, active={backend.GetStatsSnapshot().ActiveClientCount}, pending={backend.GetStatsSnapshot().PendingClientCount}).");
+            }
+            finally
+            {
+                backend.ReleaseRejection.Set();
+                backend.Stop();
+                foreach (var client in clients)
+                    client.Dispose();
+            }
+        }
+
+        [Fact]
+        public void SecureBackendDoesNotWritePlaintextBeforeTlsHandshake()
+        {
+            using var backend = new ProbeWssBackend();
+            Assert.False(backend.PlaintextCapacityResponseSupported);
         }
 
         [Fact]
@@ -308,6 +418,90 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             using var listener = new TcpListener(System.Net.IPAddress.Loopback, 0);
             listener.Start();
             return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        }
+
+        private static string ReadHttpHeaders(NetworkStream stream)
+        {
+            var bytes = new List<byte>();
+            while (bytes.Count < 8192)
+            {
+                int value;
+                try
+                {
+                    value = stream.ReadByte();
+                }
+                catch (IOException)
+                {
+                    return "";
+                }
+                if (value < 0)
+                    break;
+                bytes.Add((byte)value);
+                var count = bytes.Count;
+                if (count >= 4
+                    && bytes[count - 4] == '\r'
+                    && bytes[count - 3] == '\n'
+                    && bytes[count - 2] == '\r'
+                    && bytes[count - 1] == '\n')
+                {
+                    break;
+                }
+            }
+
+            return Encoding.ASCII.GetString(bytes.ToArray());
+        }
+
+        private static TcpClient ConnectAndWriteHandshake(int port)
+        {
+            var client = new TcpClient();
+            client.Connect("127.0.0.1", port);
+            var stream = client.GetStream();
+            stream.ReadTimeout = 2000;
+            stream.WriteTimeout = 2000;
+            var request =
+                "GET / HTTP/1.1\r\n" +
+                "Host: 127.0.0.1\r\n" +
+                "Connection: Upgrade\r\n" +
+                "Upgrade: websocket\r\n" +
+                "Sec-WebSocket-Version: 13\r\n" +
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                "Sec-WebSocket-Protocol: foxglove.sdk.v1\r\n\r\n";
+            var bytes = Encoding.ASCII.GetBytes(request);
+            stream.Write(bytes, 0, bytes.Length);
+            return client;
+        }
+
+        private sealed class BlockingRejectBackend : ManagedWsBackend
+        {
+            internal readonly ManualResetEventSlim RejectionEntered = new ManualResetEventSlim();
+            internal readonly ManualResetEventSlim ReleaseRejection = new ManualResetEventSlim();
+
+            internal BlockingRejectBackend(ManagedWebSocketOptions options)
+                : base(options) { }
+
+            protected override void RejectPendingClient(TcpClient tcpClient)
+            {
+                RejectionEntered.Set();
+                ReleaseRejection.Wait(TimeSpan.FromSeconds(5));
+                base.RejectPendingClient(tcpClient);
+            }
+
+            public override void Dispose()
+            {
+                ReleaseRejection.Set();
+                base.Dispose();
+                RejectionEntered.Dispose();
+                ReleaseRejection.Dispose();
+            }
+        }
+
+        private sealed class ProbeWssBackend : ManagedWssBackend
+        {
+            internal ProbeWssBackend()
+                : base(new FoxgloveTlsOptions()) { }
+
+            internal bool PlaintextCapacityResponseSupported
+                => SupportsPlaintextCapacityResponse;
         }
 
         private static void InvokeReceiveLoop(

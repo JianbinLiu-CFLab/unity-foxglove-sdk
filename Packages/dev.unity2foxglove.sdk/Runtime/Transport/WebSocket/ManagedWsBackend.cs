@@ -32,6 +32,8 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
         private const int StopPendingHandshakeWaitMs = 1000;
+        private const int HandshakeTimeoutMs = 5000;
+        private const int MaxQueuedCapacityResponses = 64;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
         private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
         private const ushort ProtocolErrorCloseCode = 1002;
@@ -65,6 +67,7 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _allowedOriginsLock = new object();
         private readonly object _clientAdmissionLock = new object();
+        private int _queuedCapacityResponses;
 
         // Aggregate health counters
         private long _totalAcceptedClients;
@@ -85,6 +88,13 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Whether the TCP listener is actively accepting connections.</summary>
         public bool IsRunning => Volatile.Read(ref _listener) != null;
+
+        /// <summary>
+        /// Whether a capacity rejection can safely write a plaintext HTTP
+        /// response before the transport-specific handshake has been created.
+        /// TLS transports override this and close the socket instead.
+        /// </summary>
+        protected virtual bool SupportsPlaintextCapacityResponse => true;
 
         /// <summary>Fires when a new WebSocket client completes the handshake.</summary>
         public event Action<uint> OnClientConnected;
@@ -379,7 +389,7 @@ namespace Unity.FoxgloveSDK.Transport
 
                     if (!TryReservePendingClient(tcpClient))
                     {
-                        RejectPendingClient(tcpClient);
+                        QueueRejectedClient(tcpClient);
                         continue;
                     }
 
@@ -414,7 +424,7 @@ namespace Unity.FoxgloveSDK.Transport
             try
             {
                 stream = CreateClientStream(tcpClient);
-                ConfigureStreamTimeouts(stream, 5000, 5000);
+                ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
                 if (ct.IsCancellationRequested || IsStopping)
                 {
                     CloseUnregisteredClient(tcpClient, stream);
@@ -460,6 +470,12 @@ namespace Unity.FoxgloveSDK.Transport
                     stream = null;
                     return;
                 }
+
+                // The active-client entry now owns this admission slot. Release
+                // the handshake reservation before entering the connection's
+                // long-lived receive loop so established clients are counted
+                // exactly once.
+                ReleasePendingClient(tcpClient);
 
                 if (ct.IsCancellationRequested || IsStopping)
                 {
@@ -550,22 +566,22 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        private void RejectPendingClient(TcpClient tcpClient)
+        protected virtual void RejectPendingClient(TcpClient tcpClient)
         {
-            Interlocked.Increment(ref _totalRejectedClients);
-            _logger.LogWarning(
-                $"Rejected WebSocket client because active client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached (including pending handshakes).");
-
-            // This client was rejected at the bounded TCP reservation gate,
-            // before HandleClient could invoke WsHandshakeHandler.  Emit the
-            // same explicit capacity response that the in-handler gate uses;
-            // otherwise clients observe a reset rather than a retryable 503.
             Stream stream = null;
             try
             {
-                stream = tcpClient?.GetStream();
-                if (stream != null)
-                    WsHandshakeHandler.WriteCapacityResponse(stream);
+                if (SupportsPlaintextCapacityResponse)
+                {
+                    // This client was rejected at the bounded TCP reservation
+                    // gate, before HandleClient can invoke the handshake
+                    // handler. Bound the response write so a zero-window peer
+                    // cannot hold the accept loop indefinitely.
+                    stream = tcpClient?.GetStream();
+                    ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
+                    if (stream != null)
+                        WsHandshakeHandler.WriteCapacityResponse(stream);
+                }
             }
             catch (Exception ex)
             {
@@ -574,6 +590,59 @@ namespace Unity.FoxgloveSDK.Transport
             finally
             {
                 CloseUnregisteredClient(tcpClient, stream);
+            }
+        }
+
+        private void QueueRejectedClient(TcpClient tcpClient)
+        {
+            // Record the admission decision on the accept-loop thread. The
+            // response worker may be deliberately blocked by a slow peer, but
+            // the rejection metric must still reflect that the connection was
+            // refused and must not depend on worker scheduling.
+            Interlocked.Increment(ref _totalRejectedClients);
+            _logger.LogWarning(
+                $"Rejected WebSocket client because active client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached (including pending handshakes).");
+
+            // Keep the asynchronous response backlog bounded as well. A peer
+            // can hold a response worker until its write timeout, so an
+            // unbounded Task.Run queue would otherwise become a second resource
+            // exhaustion path under a rejection flood.
+            if (Interlocked.Increment(ref _queuedCapacityResponses) > MaxQueuedCapacityResponses)
+            {
+                Interlocked.Decrement(ref _queuedCapacityResponses);
+                CloseUnregisteredClient(tcpClient, null);
+                return;
+            }
+
+            try
+            {
+                // Capacity responses perform network I/O. Run them away from
+                // the accept loop so a slow peer cannot stop admission for
+                // subsequent connections.
+                _ = Task.Run(() => ProcessRejectedClient(tcpClient));
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Decrement(ref _queuedCapacityResponses);
+                _logger.LogWarning($"Could not schedule WebSocket capacity response: {FormatExceptionChain(ex)}");
+                CloseUnregisteredClient(tcpClient, null);
+            }
+        }
+
+        private void ProcessRejectedClient(TcpClient tcpClient)
+        {
+            try
+            {
+                RejectPendingClient(tcpClient);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"WebSocket capacity response worker failed: {FormatExceptionChain(ex)}");
+                CloseUnregisteredClient(tcpClient, null);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _queuedCapacityResponses);
             }
         }
 

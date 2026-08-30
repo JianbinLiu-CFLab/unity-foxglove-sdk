@@ -68,6 +68,13 @@ namespace Unity.FoxgloveSDK.Transport
             Stop();
         }
 
+        /// <summary>
+        /// A pre-handshake capacity rejection cannot write plaintext HTTP to a
+        /// TLS client. The base backend closes the socket without a response;
+        /// an in-handshake rejection still uses the authenticated SslStream.
+        /// </summary>
+        protected override bool SupportsPlaintextCapacityResponse => false;
+
         private void DisposeServerCertificate()
         {
             _serverCertificate?.Dispose();
