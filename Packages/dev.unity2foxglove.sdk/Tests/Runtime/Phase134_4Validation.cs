@@ -152,7 +152,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(component.Contains("private void OnDisable()", StringComparison.Ordinal)
                   && component.Contains("private void OnDestroy()", StringComparison.Ordinal)
                   && component.Contains("UnregisterRegisteredParameters()", StringComparison.Ordinal)
-                  && component.Contains("_registeredManager.UnregisterParameter(name)", StringComparison.Ordinal),
+                  && component.Contains("FoxgloveParameterStore.ParameterRegistration", StringComparison.Ordinal)
+                  && component.Contains("manager.RegisterParameterOwned(", StringComparison.Ordinal)
+                  && component.Contains("registration?.Dispose()", StringComparison.Ordinal),
                 "134-4E-3: parameter component unregisters names on disable and destroy");
         }
 

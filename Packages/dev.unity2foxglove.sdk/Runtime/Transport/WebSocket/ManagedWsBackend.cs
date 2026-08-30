@@ -554,8 +554,27 @@ namespace Unity.FoxgloveSDK.Transport
         {
             Interlocked.Increment(ref _totalRejectedClients);
             _logger.LogWarning(
-                $"Rejected WebSocket client because active and pending client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached.");
-            CloseUnregisteredClient(tcpClient, null);
+                $"Rejected WebSocket client because active client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached (including pending handshakes).");
+
+            // This client was rejected at the bounded TCP reservation gate,
+            // before HandleClient could invoke WsHandshakeHandler.  Emit the
+            // same explicit capacity response that the in-handler gate uses;
+            // otherwise clients observe a reset rather than a retryable 503.
+            Stream stream = null;
+            try
+            {
+                stream = tcpClient?.GetStream();
+                if (stream != null)
+                    WsHandshakeHandler.WriteCapacityResponse(stream);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Could not send WebSocket capacity response: {FormatExceptionChain(ex)}");
+            }
+            finally
+            {
+                CloseUnregisteredClient(tcpClient, stream);
+            }
         }
 
         private void ReleasePendingClient(TcpClient tcpClient)

@@ -190,7 +190,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
-            Check(server.Contains("ClearClientEvents()")
+            Check((server.Contains("ClearClientEvents()") || server.Contains("ClearClientEvents,"))
                   && clientEvents.Contains("private void ClearClientEvents()")
                   && clientEvents.Contains("_clientLifecycleEvents.Clear()")
                   && clientEvents.Contains("_clientMessageEvents.Clear()"),

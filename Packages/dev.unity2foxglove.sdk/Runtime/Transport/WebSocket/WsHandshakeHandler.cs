@@ -270,6 +270,17 @@ namespace Unity.FoxgloveSDK.Transport
             stream.Write(bytes, 0, bytes.Length);
         }
 
+        /// <summary>
+        /// Send the capacity response for a TCP client rejected before a
+        /// handshake handler can be scheduled.  Keeping the response in this
+        /// class ensures all admission rejection paths use the same HTTP
+        /// status and connection policy.
+        /// </summary>
+        internal static void WriteCapacityResponse(Stream stream)
+        {
+            WriteResponse(stream, ServiceUnavailableResponse);
+        }
+
         /// <summary>Read one line byte-by-byte, avoiding StreamReader buffering that could steal frame data.</summary>
         private static string ReadLineRaw(Stream stream, int maxBytes)
         {

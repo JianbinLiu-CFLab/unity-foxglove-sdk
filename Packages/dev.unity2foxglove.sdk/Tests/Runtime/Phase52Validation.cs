@@ -621,27 +621,35 @@ namespace Unity.FoxgloveSDK.Tests
             var earlyReturnIndex = nullSessionIndex >= 0
                 ? stopServerSource.IndexOf("return;", nullSessionIndex, StringComparison.Ordinal)
                 : -1;
-            var runtimeStopIndex = stopServerSource.IndexOf("_runtime.Stop();", StringComparison.Ordinal);
+            // StopServer delegates its cleanup tail to the shared teardown
+            // state.  The runtime Stop method group must still be passed after
+            // the already-stopped/null-session early return; requiring the old
+            // direct invocation would reject the production cleanup helper.
+            var runtimeStopIndex = stopServerSource.IndexOf("_runtime.Stop,", StringComparison.Ordinal);
+            var teardownHelperIndex = stopServerSource.IndexOf(
+                "FoxgloveManagerTeardownState.RunStopServer(",
+                StringComparison.Ordinal);
             var earlyReturnCount = stopServerSource.Split(
                 new[] { "return;" },
                 StringSplitOptions.None).Length - 1;
             Check(notRunningIndex >= 0
                   && nullSessionIndex > notRunningIndex
                   && earlyReturnIndex > nullSessionIndex
-                  && runtimeStopIndex > earlyReturnIndex
-                  && earlyReturnCount == 1,
+                   && teardownHelperIndex > earlyReturnIndex
+                   && runtimeStopIndex > teardownHelperIndex
+                   && earlyReturnCount == 1,
                 "52C-1g3: StopServer still stops runtime so active recordings are finalized even if transport is already stopped");
             var stopIndex = runtimeSource.IndexOf("public void Stop()", StringComparison.Ordinal);
             var nextMethodIndex = runtimeSource.IndexOf("public void RegisterChannel", stopIndex, StringComparison.Ordinal);
             var stopSource = stopIndex >= 0 && nextMethodIndex > stopIndex
                 ? runtimeSource.Substring(stopIndex, nextMethodIndex - stopIndex)
                 : string.Empty;
-            var firstDetachRecordingIndex = stopSource.IndexOf("_recording.DetachFromSession();", StringComparison.Ordinal);
-            var disposeSessionIndex = stopSource.IndexOf("session?.Dispose();", StringComparison.Ordinal);
+            var firstDetachRecordingIndex = stopSource.IndexOf("_recording.DetachFromSession", StringComparison.Ordinal);
+            var disposeSessionIndex = stopSource.IndexOf("session?.Dispose()", StringComparison.Ordinal);
             Check(firstDetachRecordingIndex >= 0 &&
                   disposeSessionIndex > firstDetachRecordingIndex &&
-                  stopSource.IndexOf("_recording.DetachFromSession();", firstDetachRecordingIndex + 1, StringComparison.Ordinal)
-                  < 0,
+                  stopSource.IndexOf("_recording.DetachFromSession", firstDetachRecordingIndex + 1, StringComparison.Ordinal)
+                   < 0,
                 "52C-1g4: runtime detaches recorder exactly once before disposing the session");
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);
