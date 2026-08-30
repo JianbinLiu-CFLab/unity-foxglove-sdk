@@ -24,6 +24,8 @@ FOXRUN619 | FoxRun | Error | Explicit multi-member MessagePack directions requir
 FOXRUN620 | FoxRun | Error | FoxRun transport Provider selection invalid.
 FOXRUN621 | FoxRun | Error | FoxRun directional transport selection invalid.
 FOXRUN622 | FoxRun | Error | FoxRun delivery policy contains an invalid axis or depth.
+FOXRUN623 | FoxRun | Error | FoxRun declaring host identity cannot be represented by the generated partial-class contract.
+FOXSERVICE010 | FoxService | Error | FoxService declaring host identity cannot be represented by the generated partial-class contract.
 
 ### Removed Rules
 

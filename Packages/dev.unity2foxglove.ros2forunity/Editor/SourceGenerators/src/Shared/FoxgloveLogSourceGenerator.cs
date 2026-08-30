@@ -72,6 +72,58 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             => node is MethodDeclarationSyntax method
                && method.AttributeLists.Count > 0;
 
+
+        private static bool TryGetUnsupportedHostIdentity(
+            INamedTypeSymbol containingType,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (containingType == null)
+            {
+                reason = "missing declaring type";
+                return true;
+            }
+
+            // The neutral model intentionally represents one top-level host as
+            // namespace + simple class. Reject shapes that would otherwise be
+            // flattened into a different partial declaration.
+            if (containingType.ContainingType != null)
+            {
+                reason = "nested declaring types are not supported";
+                return true;
+            }
+
+            if (containingType.IsGenericType || containingType.Arity > 0)
+            {
+                reason = "generic declaring types are not supported";
+                return true;
+            }
+
+            if (IsHostKeyword(containingType.Name))
+            {
+                reason = "keyword declaring class names are not supported";
+                return true;
+            }
+
+            var ns = containingType.ContainingNamespace;
+            while (ns != null && !ns.IsGlobalNamespace)
+            {
+                if (IsHostKeyword(ns.Name))
+                {
+                    reason = "keyword namespace components are not supported";
+                    return true;
+                }
+                ns = ns.ContainingNamespace;
+            }
+
+            return false;
+        }
+
+        private static bool IsHostKeyword(string value)
+            => SyntaxFacts.GetKeywordKind(value) != SyntaxKind.None
+               || SyntaxFacts.GetContextualKeywordKind(value)
+                   != SyntaxKind.None;
+
         private static MemberData ExtractMember(
             GeneratorSyntaxContext context,
             System.Threading.CancellationToken token)
@@ -120,6 +172,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var location = symbol.Locations.FirstOrDefault(
                                item => item.IsInSource)
                            ?? Location.None;
+            if (TryGetUnsupportedHostIdentity(
+                    containingType,
+                    out _))
+            {
+                return MemberData.ForDiagnostic(
+                    location,
+                    "FOXRUN623");
+            }
+
             var topics = new List<TopicEntry>();
             foreach (var attribute in symbol.GetAttributes())
             {
@@ -800,6 +861,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 }
             }
 
+            ReportFoxRunHintCollisions(
+                context,
+                model.Types,
+                firstByClass,
+                invalid);
+
             foreach (var type in model.Types)
             {
                 if (!firstByClass.TryGetValue(
@@ -880,6 +947,50 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 FoxRunDescriptorCarrierEmitter
                     .DescriptorCarrierSource(
                         descriptor));
+        }
+#endif
+
+#if !FOXRUN_PROVIDER_ANALYZER
+        private static void ReportFoxRunHintCollisions(
+            SourceProductionContext context,
+            IReadOnlyList<FoxRunGenerationType> types,
+            IReadOnlyDictionary<(string Ns, string ClassName), MemberData> firstByClass,
+            ISet<string> invalid)
+        {
+            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.Ordinal);
+            var reported = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var type in types ?? Array.Empty<FoxRunGenerationType>())
+            {
+                if (type == null)
+                    continue;
+                var hint = FoxgloveSourceEmitter.GeneratedSourceName(
+                    type.Namespace,
+                    type.ClassName);
+                if (!owners.TryGetValue(hint, out var owner))
+                {
+                    owners.Add(hint, type);
+                    continue;
+                }
+
+                if (string.Equals(owner.DeclaringType, type.DeclaringType, StringComparison.Ordinal))
+                    continue;
+
+                foreach (var conflict in new[] { owner, type })
+                {
+                    invalid.Add(conflict.DeclaringType);
+                    if (!reported.Add(conflict.DeclaringType))
+                        continue;
+                    if (firstByClass.TryGetValue(
+                            (conflict.Namespace, conflict.ClassName),
+                            out var first))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diags.UnsupportedHostIdentity,
+                                first.MemberLocation));
+                    }
+                }
+            }
         }
 #endif
 
@@ -975,6 +1086,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                            ?? Location.None;
             var diagnostics =
                 new List<ServiceDiagnostic>();
+            if (TryGetUnsupportedHostIdentity(
+                    containingType,
+                    out _))
+            {
+                diagnostics.Add(
+                    new ServiceDiagnostic(
+                        "FOXSERVICE010",
+                        location,
+                        string.Empty));
+            }
+
             var isPartial =
                 containingType.DeclaringSyntaxReferences.Any(
                     reference =>
@@ -1267,8 +1389,43 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 list.Add(item);
             }
 
+            var invalidServiceHosts =
+                new HashSet<(string Ns, string ClassName)>();
+            var serviceHintOwners =
+                new Dictionary<string, (string Ns, string ClassName)>();
+            var reportedServiceHosts =
+                new HashSet<(string Ns, string ClassName)>();
             foreach (var group in methodsByType)
             {
+                var hint = FoxServiceSourceEmitter.GeneratedSourceName(
+                    group.Key.Ns,
+                    group.Key.ClassName);
+                if (!serviceHintOwners.TryGetValue(hint, out var owner))
+                {
+                    serviceHintOwners.Add(hint, group.Key);
+                    continue;
+                }
+
+                if (owner == group.Key)
+                    continue;
+                invalidServiceHosts.Add(owner);
+                invalidServiceHosts.Add(group.Key);
+                foreach (var host in new[] { owner, group.Key })
+                {
+                    if (!reportedServiceHosts.Add(host))
+                        continue;
+                    var first = methodsByType[host][0];
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diags.UnsupportedServiceHostIdentity,
+                            first.Location));
+                }
+            }
+
+            foreach (var group in methodsByType)
+            {
+                if (invalidServiceHosts.Contains(group.Key))
+                    continue;
                 var methods = group.Value
                     .OrderBy(
                         item => item.ServiceName,

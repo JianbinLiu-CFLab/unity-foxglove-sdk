@@ -20,12 +20,22 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FOXBRG002",
                 "Bridge ROS 2 field identifier invalid");
 
+        internal static readonly DiagnosticDescriptor HostIdentity =
+            Create(
+                "FOXBRG003",
+                "Bridge declaring host identity unsupported");
+
         internal static DiagnosticDescriptor For(string id)
             => string.Equals(
                    id,
                    InvalidRosField.Id,
                    System.StringComparison.Ordinal)
                 ? InvalidRosField
+                : string.Equals(
+                      id,
+                      "FOXRUN623",
+                      System.StringComparison.Ordinal)
+                    ? HostIdentity
                 : UnsupportedDto;
 
         private static DiagnosticDescriptor Create(

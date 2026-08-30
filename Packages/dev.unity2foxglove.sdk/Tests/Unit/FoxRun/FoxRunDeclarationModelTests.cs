@@ -1295,6 +1295,113 @@ namespace Phase187E02
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E02-002")]
+        public void RoslynGeneratorRejectsCollidingFoxRunHostHintsBeforeAddSource()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace A.B
+{
+    public partial class C
+    {
+        [FoxRun(""/phase187/e02/collision-one"")]
+        private int _value;
+    }
+}
+
+namespace A
+{
+    public partial class B_C
+    {
+        [FoxRun(""/phase187/e02/collision-two"")]
+        private int _value;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN623");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "CS8785");
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E02-002")]
+        public void RoslynGeneratorRejectsUnrepresentableFoxRunHostShapes()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace @namespace
+{
+    public partial class @event
+    {
+        [FoxRun(""/phase187/e02/keyword"")]
+        private int _keyword;
+    }
+}
+
+namespace Phase187E02
+{
+    public partial class Outer
+    {
+        public partial class Inner
+        {
+            [FoxRun(""/phase187/e02/nested"")]
+            private int _nested;
+        }
+    }
+
+    public partial class GenericHost<T>
+    {
+        [FoxRun(""/phase187/e02/generic"")]
+        private int _generic;
+    }
+}";
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var output,
+                out _);
+            var runResult = driver.GetRunResult();
+            Assert.Contains(runResult.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN623");
+            Assert.DoesNotContain(output.GetDiagnostics(), diagnostic =>
+                diagnostic.Id == "CS1001"
+                || diagnostic.Id == "CS0116"
+                || diagnostic.Id == "CS0103"
+                || diagnostic.Id == "CS1061"
+                || diagnostic.Id == "CS8785");
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E02-002")]
+        public void RoslynGeneratorRejectsCollidingFoxServiceHostHintsBeforeAddSource()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Service.A.B
+{
+    public partial class C
+    {
+        [FoxService(""/phase187/e02/service-one"", Type = ""Service.Type"", RequestSchemaName = ""Service.Request"", ResponseSchemaName = ""Service.Response"")]
+        private void InvokeOne() { }
+    }
+}
+
+namespace Service.A
+{
+    public partial class B_C
+    {
+        [FoxService(""/phase187/e02/service-two"", Type = ""Service.Type"", RequestSchemaName = ""Service.Request"", ResponseSchemaName = ""Service.Response"")]
+        private void InvokeTwo() { }
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE010");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "CS8785");
+        }
+
+        [Fact]
         public void RoslynGeneratorRejectsReadonlyNestedProtobufDtoInput()
         {
             var result = RunGenerator(@"
