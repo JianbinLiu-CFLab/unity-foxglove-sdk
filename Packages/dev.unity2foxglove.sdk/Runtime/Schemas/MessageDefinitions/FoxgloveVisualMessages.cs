@@ -15,10 +15,30 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>Foxglove time: { sec, nsec }.</summary>
     public class FoxgloveTime
     {
+        private ulong _rawSec;
+        private ulong _nsecCarry;
         private uint _nsec;
 
         /// <summary>Whole seconds.</summary>
-        [JsonProperty("sec")] public ulong Sec { get; set; }
+        [JsonProperty("sec")]
+        public ulong Sec
+        {
+            get
+            {
+                if (_rawSec > ulong.MaxValue - _nsecCarry)
+                    throw new OverflowException("Nanoseconds overflow timestamp seconds.");
+
+                return _rawSec + _nsecCarry;
+            }
+            set
+            {
+                if (value > ulong.MaxValue - _nsecCarry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Seconds overflow timestamp seconds.");
+
+                _rawSec = value;
+            }
+        }
+
         /// <summary>Nanoseconds fraction. Values above one second are normalized into <see cref="Sec"/>.</summary>
         [JsonProperty("nsec")]
         public uint Nsec
@@ -27,14 +47,10 @@ namespace Unity.FoxgloveSDK.Schemas
             set
             {
                 var carry = value / 1_000_000_000U;
-                if (carry != 0)
-                {
-                    if (Sec > ulong.MaxValue - carry)
-                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
+                if (_rawSec > ulong.MaxValue - carry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
 
-                    Sec += carry;
-                }
-
+                _nsecCarry = carry;
                 _nsec = value % 1_000_000_000U;
             }
         }
@@ -43,10 +59,32 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>Foxglove duration: { sec, nsec }.</summary>
     public class FoxgloveDuration
     {
+        private long _rawSec;
+        private ulong _nsecCarry;
         private uint _nsec;
 
         /// <summary>Whole seconds.</summary>
-        [JsonProperty("sec")] public long Sec { get; set; }
+        [JsonProperty("sec")]
+        public long Sec
+        {
+            get
+            {
+                if (_nsecCarry != 0
+                    && _rawSec > long.MaxValue - (long)_nsecCarry)
+                    throw new OverflowException("Nanoseconds overflow duration seconds.");
+
+                return _rawSec + (long)_nsecCarry;
+            }
+            set
+            {
+                if (_nsecCarry != 0
+                    && value > long.MaxValue - (long)_nsecCarry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Seconds overflow duration seconds.");
+
+                _rawSec = value;
+            }
+        }
+
         /// <summary>Nanoseconds fraction. Values above one second are normalized into <see cref="Sec"/>.</summary>
         [JsonProperty("nsec")]
         public uint Nsec
@@ -55,14 +93,11 @@ namespace Unity.FoxgloveSDK.Schemas
             set
             {
                 var carry = value / 1_000_000_000U;
-                if (carry != 0)
-                {
-                    if (Sec > long.MaxValue - carry)
-                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow duration seconds.");
+                if (carry != 0
+                    && _rawSec > long.MaxValue - (long)carry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow duration seconds.");
 
-                    Sec += carry;
-                }
-
+                _nsecCarry = carry;
                 _nsec = value % 1_000_000_000U;
             }
         }

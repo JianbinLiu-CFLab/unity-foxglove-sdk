@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -22,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passCount = 0;
 
             VerifyGeneratedJsonContractDomain();
+            VerifyFoxgloveTimeAndDurationPropertyOrder();
             VerifyGeneratedProtobufBranches();
             VerifyClientAdvertiseEncodingReachesInboundRouter();
             VerifyValidationRegistryEntry();
@@ -132,6 +134,60 @@ namespace Unity.FoxgloveSDK.Tests
                   && hub.Contains("string encoding, byte[] payload", StringComparison.Ordinal)
                   && hub.Contains("encoding,", StringComparison.Ordinal),
                 "175B-2: client-advertised encoding crosses the session queue into the FoxRun router");
+        }
+
+        private static void VerifyFoxgloveTimeAndDurationPropertyOrder()
+        {
+            var timeSecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes("{\"value\":{\"sec\":1,\"nsec\":1500000000}}"),
+                "value",
+                out FoxgloveTime timeA,
+                out var timeAError);
+            var timeNsecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes("{\"value\":{\"nsec\":1500000000,\"sec\":1}}"),
+                "value",
+                out FoxgloveTime timeB,
+                out var timeBError);
+            Check(
+                timeSecFirst && timeNsecFirst
+                    && timeA.Sec == 2UL && timeA.Nsec == 500_000_000U
+                    && timeB.Sec == timeA.Sec && timeB.Nsec == timeA.Nsec,
+                "187-E03-002-1: FoxgloveTime normalization is independent of JSON property order ("
+                    + timeAError + "; " + timeBError + ")");
+
+            var durationSecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes("{\"value\":{\"sec\":-1,\"nsec\":2500000000}}"),
+                "value",
+                out FoxgloveDuration durationA,
+                out var durationAError);
+            var durationNsecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes("{\"value\":{\"nsec\":2500000000,\"sec\":-1}}"),
+                "value",
+                out FoxgloveDuration durationB,
+                out var durationBError);
+            Check(
+                durationSecFirst && durationNsecFirst
+                    && durationA.Sec == 1L && durationA.Nsec == 500_000_000U
+                    && durationB.Sec == durationA.Sec && durationB.Nsec == durationA.Nsec,
+                "187-E03-002-2: FoxgloveDuration normalization is independent of JSON property order ("
+                    + durationAError + "; " + durationBError + ")");
+
+            var overflowSecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes(
+                    "{\"value\":{\"sec\":18446744073709551615,\"nsec\":1000000000}}"),
+                "value",
+                out FoxgloveTime _,
+                out var overflowAError);
+            var overflowNsecFirst = FoxRunInboundJson.TryReadObject(
+                Encoding.UTF8.GetBytes(
+                    "{\"value\":{\"nsec\":1000000000,\"sec\":18446744073709551615}}"),
+                "value",
+                out FoxgloveTime _,
+                out var overflowBError);
+            Check(
+                !overflowSecFirst && !overflowNsecFirst,
+                "187-E03-002-3: FoxgloveTime seconds overflow is rejected in either property order ("
+                    + overflowAError + "; " + overflowBError + ")");
         }
 
         private static void VerifyValidationRegistryEntry()
