@@ -58,53 +58,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (node is FieldDeclarationSyntax field
                 && field.AttributeLists.Count > 0)
             {
-                return HasAttributeName(
-                    field.AttributeLists,
-                    "FoxRun",
-                    "FoxRunField");
+                // Attribute aliases are resolved only by the semantic model;
+                // keep every attributed declaration as a candidate and let
+                // ExtractMember perform the canonical metadata-name check.
+                return true;
             }
 
             return node is PropertyDeclarationSyntax property
-                   && property.AttributeLists.Count > 0
-                   && HasAttributeName(
-                       property.AttributeLists,
-                       "FoxRun",
-                       "FoxRunField");
+                   && property.AttributeLists.Count > 0;
         }
 
         private static bool IsServiceCandidate(SyntaxNode node)
             => node is MethodDeclarationSyntax method
-               && method.AttributeLists.Count > 0
-               && HasAttributeName(
-                   method.AttributeLists,
-                   "FoxService");
-
-        private static bool HasAttributeName(
-            SyntaxList<AttributeListSyntax> lists,
-            params string[] expected)
-        {
-            foreach (var list in lists)
-            foreach (var attribute in list.Attributes)
-            {
-                var actual = attribute.Name.ToString();
-                foreach (var name in expected)
-                {
-                    if (actual == name
-                        || actual == name + "Attribute"
-                        || actual.EndsWith(
-                            "." + name,
-                            StringComparison.Ordinal)
-                        || actual.EndsWith(
-                            "." + name + "Attribute",
-                            StringComparison.Ordinal))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
+               && method.AttributeLists.Count > 0;
 
         private static MemberData ExtractMember(
             GeneratorSyntaxContext context,
@@ -114,8 +80,24 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (context.Node is FieldDeclarationSyntax field)
             {
                 if (field.Declaration.Variables.Count != 1)
-                    return MemberData.ForDiagnostic(
-                        field.GetLocation());
+                {
+                    // Preserve the multi-declarator diagnostic only when a
+                    // semantic FoxRun/FoxRunField attribute is actually
+                    // present; broad syntax candidates also include ordinary
+                    // attributed fields (including aliases).
+                    foreach (var variable in field.Declaration.Variables)
+                    {
+                        var candidate = context.SemanticModel.GetDeclaredSymbol(variable, token);
+                        if (candidate?.GetAttributes().Any(attribute =>
+                                attribute.AttributeClass?.ToDisplayString() == AttrFullName
+                                || attribute.AttributeClass?.ToDisplayString() == FieldAttrFullName) == true)
+                        {
+                            return MemberData.ForDiagnostic(field.GetLocation());
+                        }
+                    }
+
+                    return null;
+                }
                 symbol = context.SemanticModel.GetDeclaredSymbol(
                     field.Declaration.Variables[0],
                     token);
@@ -925,6 +907,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                + "|"
                + memberName;
 
+#if !FOXRUN_PROVIDER_ANALYZER
         private static ServiceMethodData
             ExtractServiceMethod(
                 GeneratorSyntaxContext context,
@@ -1276,6 +1259,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             methods));
             }
         }
+#endif
 
         private static string
             ReadStringConstructorArgument(

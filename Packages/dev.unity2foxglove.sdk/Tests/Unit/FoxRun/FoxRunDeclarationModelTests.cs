@@ -1266,6 +1266,35 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E02-001")]
+        public void RoslynGeneratorDiscoversFoxRunAttributeAliases()
+        {
+            var result = RunGenerator(@"
+using Run = Unity.FoxgloveSDK.Components.FoxRunAttribute;
+using Service = Unity.FoxgloveSDK.Components.FoxServiceAttribute;
+
+namespace Phase187E02
+{
+    public partial class AliasHost
+    {
+        [Run(""/phase187/e02/alias"")]
+        private int _value;
+
+        [Service(""/phase187/e02/service-alias"", Type = ""Phase187E02.Service"", RequestSchemaName = ""Phase187E02.Request"", ResponseSchemaName = ""Phase187E02.Response"")]
+        private int Invoke(int request) => request;
+    }
+}");
+
+            var generated = result.Results
+                .SelectMany(run => run.GeneratedSources)
+                .Select(source => source.SourceText.ToString())
+                .ToArray();
+            Assert.Contains(generated, source => source.Contains("/phase187/e02/alias", StringComparison.Ordinal));
+            Assert.Contains(generated, source => source.Contains("/phase187/e02/service-alias", StringComparison.Ordinal));
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "CS8785");
+        }
+
+        [Fact]
         public void RoslynGeneratorRejectsReadonlyNestedProtobufDtoInput()
         {
             var result = RunGenerator(@"
