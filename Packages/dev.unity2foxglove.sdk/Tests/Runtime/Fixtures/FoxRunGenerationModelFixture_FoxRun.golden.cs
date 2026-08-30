@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     [Preserve]
-    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxRunGeneratedTransportSource
+    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxglovePublishRecordingPolicySource, IFoxRunGeneratedTransportSource
     {
         int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -1400,19 +1400,30 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private bool __hasLast_0;
         private double __lastPublishSec_0;
         private float[] __last_0_0;
+        private bool __hasRecorded_0;
+        private float[] __lastRecorded_0_0;
         private bool __hasLast_2;
         private double __lastPublishSec_2;
         private System.Collections.Generic.List<float> __last_2_0;
+        private bool __hasRecorded_2;
+        private System.Collections.Generic.List<float> __lastRecorded_2_0;
         private bool __hasLast_3;
         private double __lastPublishSec_3;
         private int? __last_3_0;
+        private bool __hasRecorded_3;
+        private int? __lastRecorded_3_0;
         private bool __hasLast_5;
         private double __lastPublishSec_5;
         private float __last_5_0;
         private float __last_5_1;
+        private bool __hasRecorded_5;
+        private float __lastRecorded_5_0;
+        private float __lastRecorded_5_1;
         private bool __hasLast_6;
         private double __lastPublishSec_6;
         private UnityEngine.Vector3 __last_6_0;
+        private bool __hasRecorded_6;
+        private UnityEngine.Vector3 __lastRecorded_6_0;
 
         bool IFoxgloveLogPolicySource.FoxgloveLog_ShouldPublish(int topicIndex, double nowSec)
         {
@@ -1453,28 +1464,94 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 0:
                     __last_0_0 = this._samples;
                     __hasLast_0 = true;
+                    __hasRecorded_0 = false;
                     __lastPublishSec_0 = nowSec;
                     break;
                 case 2:
                     __last_2_0 = this._sampleList;
                     __hasLast_2 = true;
+                    __hasRecorded_2 = false;
                     __lastPublishSec_2 = nowSec;
                     break;
                 case 3:
                     __last_3_0 = this._optionalCount;
                     __hasLast_3 = true;
+                    __hasRecorded_3 = false;
                     __lastPublishSec_3 = nowSec;
                     break;
                 case 5:
                     __last_5_0 = this._value;
                     __last_5_1 = this._valueMirror;
                     __hasLast_5 = true;
+                    __hasRecorded_5 = false;
                     __lastPublishSec_5 = nowSec;
                     break;
                 case 6:
                     __last_6_0 = this._position;
                     __hasLast_6 = true;
+                    __hasRecorded_6 = false;
                     __lastPublishSec_6 = nowSec;
+                    break;
+                default: break;
+            }
+        }
+
+        bool IFoxglovePublishRecordingPolicySource.FoxgloveLog_ShouldRecord(int topicIndex)
+        {
+            bool changed;
+            switch (topicIndex)
+            {
+                case 0:
+                    changed = !__hasRecorded_0;
+                    if (!changed) changed = !EqualityComparer<float[]>.Default.Equals(this._samples, __lastRecorded_0_0);
+                    return changed;
+                case 1: return true;
+                case 2:
+                    changed = !__hasRecorded_2;
+                    if (!changed) changed = !EqualityComparer<System.Collections.Generic.List<float>>.Default.Equals(this._sampleList, __lastRecorded_2_0);
+                    return changed;
+                case 3:
+                    changed = !__hasRecorded_3;
+                    if (!changed) changed = !EqualityComparer<int?>.Default.Equals(this._optionalCount, __lastRecorded_3_0);
+                    return changed;
+                case 4: return true;
+                case 5:
+                    changed = !__hasRecorded_5;
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._value, __lastRecorded_5_0, 0f);
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._valueMirror, __lastRecorded_5_1, 0.00999999978f);
+                    return changed;
+                case 6:
+                    changed = !__hasRecorded_6;
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.x, __lastRecorded_6_0.x, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.y, __lastRecorded_6_0.y, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.z, __lastRecorded_6_0.z, 0.00100000005f);
+                    return changed;
+                default: return false;
+            }
+        }
+
+        void IFoxglovePublishRecordingPolicySource.FoxgloveLog_MarkRecorded(int topicIndex)
+        {
+            switch (topicIndex)
+            {
+                case 0:
+                    __lastRecorded_0_0 = this._samples;
+                    __hasRecorded_0 = true;
+                    break;
+                case 2:
+                    __lastRecorded_2_0 = this._sampleList;
+                    __hasRecorded_2 = true;
+                    break;
+                case 3:
+                    __lastRecorded_3_0 = this._optionalCount;
+                    __hasRecorded_3 = true;
+                    break;
+                case 5:
+                    __lastRecorded_5_0 = this._value;
+                    __lastRecorded_5_1 = this._valueMirror;
+                    __hasRecorded_5 = true;
+                    break;
+                case 6:
+                    __lastRecorded_6_0 = this._position;
+                    __hasRecorded_6 = true;
                     break;
                 default: break;
             }

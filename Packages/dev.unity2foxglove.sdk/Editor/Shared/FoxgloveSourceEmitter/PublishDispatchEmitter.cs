@@ -296,6 +296,7 @@ namespace Unity.FoxgloveSDK.Editor
                     // ownership must therefore invalidate the Change-policy
                     // snapshot before the hub evaluates ShouldPublish.
                     sb.AppendLine($"{pad}        __hasLast_{topicIndex} = false;");
+                    sb.AppendLine($"{pad}        __hasRecorded_{topicIndex} = false;");
                 }
                 sb.AppendLine($"{pad}        __FoxRunClearRemoteApplied_{topicIndex}();");
                 sb.AppendLine($"{pad}        return true;");

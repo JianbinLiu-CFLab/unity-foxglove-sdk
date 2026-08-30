@@ -63,7 +63,10 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxglovePublishOriginSource");
                 interfaces.Add("IFoxRunRemoteOwnershipSource");
                 if (hasPolicy)
+                {
                     interfaces.Add("IFoxgloveLogPolicySource");
+                    interfaces.Add("IFoxglovePublishRecordingPolicySource");
+                }
                 if (hasConditions)
                     interfaces.Add("IFoxgloveLogConditionSource");
             }

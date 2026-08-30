@@ -16,7 +16,7 @@ using UnityEngine.Scripting;
 using Unity.FoxgloveSDK.Components;
 
 [Preserve]
-partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource, IFoxRunGeneratedTransportSource
+partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveTopicObserverSource, IFoxgloveTopicSinkSource, IFoxglovePublishCaptureSource, IFoxglovePublishRecordingSource, IFoxRunWebSocketCaptureSource, IFoxglovePublishOriginSource, IFoxRunRemoteOwnershipSource, IFoxgloveLogPolicySource, IFoxglovePublishRecordingPolicySource, IFoxgloveLogConditionSource, IFoxgloveInputSource, IFoxgloveTransactionalInputSource, IFoxRunGeneratedTransportSource
 {
     int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -395,6 +395,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         if (__remoteUnchanged) __remoteUnchanged = global::System.Collections.Generic.EqualityComparer<int>.Default.Equals(this._messagePackValue, __foxRunRemoteValue_6_1);
         if (__remoteUnchanged) return false;
         __hasLast_6 = false;
+        __hasRecorded_6 = false;
         __FoxRunClearRemoteApplied_6();
         return true;
     }
@@ -1552,14 +1553,22 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
     private bool __hasLast_4;
     private double __lastPublishSec_4;
     private UnityEngine.Vector3 __last_4_0;
+    private bool __hasRecorded_4;
+    private UnityEngine.Vector3 __lastRecorded_4_0;
     private bool __hasLast_5;
     private double __lastPublishSec_5;
     private int __last_5_0;
     private int __last_5_1;
+    private bool __hasRecorded_5;
+    private int __lastRecorded_5_0;
+    private int __lastRecorded_5_1;
     private bool __hasLast_6;
     private double __lastPublishSec_6;
     private int __last_6_0;
     private int __last_6_1;
+    private bool __hasRecorded_6;
+    private int __lastRecorded_6_0;
+    private int __lastRecorded_6_1;
 
     bool IFoxgloveLogPolicySource.FoxgloveLog_ShouldPublish(int topicIndex, double nowSec)
     {
@@ -1595,19 +1604,71 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
             case 4:
                 __last_4_0 = this._position2;
                 __hasLast_4 = true;
+                __hasRecorded_4 = false;
                 __lastPublishSec_4 = nowSec;
                 break;
             case 5:
                 __last_5_0 = this._messagePackAppliedSequence;
                 __last_5_1 = this._messagePackAppliedValue;
                 __hasLast_5 = true;
+                __hasRecorded_5 = false;
                 __lastPublishSec_5 = nowSec;
                 break;
             case 6:
                 __last_6_0 = this._messagePackSequence;
                 __last_6_1 = this._messagePackValue;
                 __hasLast_6 = true;
+                __hasRecorded_6 = false;
                 __lastPublishSec_6 = nowSec;
+                break;
+            default: break;
+        }
+    }
+
+    bool IFoxglovePublishRecordingPolicySource.FoxgloveLog_ShouldRecord(int topicIndex)
+    {
+        bool changed;
+        switch (topicIndex)
+        {
+            case 0: return true;
+            case 1: return true;
+            case 2: return true;
+            case 3: return true;
+            case 4:
+                changed = !__hasRecorded_4;
+                if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position2.x, __lastRecorded_4_0.x, 0.00999999978f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position2.y, __lastRecorded_4_0.y, 0.00999999978f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position2.z, __lastRecorded_4_0.z, 0.00999999978f);
+                return changed;
+            case 5:
+                changed = !__hasRecorded_5;
+                if (!changed) changed = !EqualityComparer<int>.Default.Equals(this._messagePackAppliedSequence, __lastRecorded_5_0);
+                if (!changed) changed = !EqualityComparer<int>.Default.Equals(this._messagePackAppliedValue, __lastRecorded_5_1);
+                return changed;
+            case 6:
+                changed = !__hasRecorded_6;
+                if (!changed) changed = !EqualityComparer<int>.Default.Equals(this._messagePackSequence, __lastRecorded_6_0);
+                if (!changed) changed = !EqualityComparer<int>.Default.Equals(this._messagePackValue, __lastRecorded_6_1);
+                return changed;
+            default: return false;
+        }
+    }
+
+    void IFoxglovePublishRecordingPolicySource.FoxgloveLog_MarkRecorded(int topicIndex)
+    {
+        switch (topicIndex)
+        {
+            case 4:
+                __lastRecorded_4_0 = this._position2;
+                __hasRecorded_4 = true;
+                break;
+            case 5:
+                __lastRecorded_5_0 = this._messagePackAppliedSequence;
+                __lastRecorded_5_1 = this._messagePackAppliedValue;
+                __hasRecorded_5 = true;
+                break;
+            case 6:
+                __lastRecorded_6_0 = this._messagePackSequence;
+                __lastRecorded_6_1 = this._messagePackValue;
+                __hasRecorded_6 = true;
                 break;
             default: break;
         }
