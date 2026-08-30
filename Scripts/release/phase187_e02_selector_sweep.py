@@ -80,6 +80,8 @@ def run_sweep(timeout_seconds: int = 180) -> list[dict[str, object]]:
 
 
 def main() -> int:
+    """Parse options, run the E02 selector sweep, and return its status."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expect", choices=("green", "red"), default="green")
     parser.add_argument("--json", type=Path, help="write raw per-selector results to this path")

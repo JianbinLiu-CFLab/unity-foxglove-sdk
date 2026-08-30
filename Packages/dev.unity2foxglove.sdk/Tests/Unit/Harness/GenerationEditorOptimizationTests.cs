@@ -218,7 +218,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var generate = TestSources.Slice(source, "private static void Generate", "private static void EmitClass");
             var toRoslynMembers = TestSources.Slice(models, "ToRoslynMembers()", "    internal sealed class TopicEntry");
 
-            Assert.Contains("HasAttributeName(", candidate, StringComparison.Ordinal);
+            Assert.Contains("AttributeLists.Count > 0", candidate, StringComparison.Ordinal);
+            Assert.Contains("attribute.AttributeClass?.ToDisplayString()", extractMember, StringComparison.Ordinal);
+            Assert.Contains("AttrFullName", extractMember, StringComparison.Ordinal);
+            Assert.Contains("FieldAttrFullName", extractMember, StringComparison.Ordinal);
             Assert.DoesNotContain(".Where(", candidate, StringComparison.Ordinal);
             Assert.DoesNotContain(".ToList()", candidate, StringComparison.Ordinal);
             Assert.DoesNotContain(".Where(a => a.AttributeClass?.ToDisplayString() == AttrFullName)", extractMember, StringComparison.Ordinal);
