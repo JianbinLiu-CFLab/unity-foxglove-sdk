@@ -5,6 +5,7 @@
 // Purpose: Cover Phase187 runtime-state review regressions.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
@@ -12,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
@@ -500,6 +502,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void SessionDisposeClearsInboundCallbacksWhenBinaryDetachFails()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnEveryBinaryHandlerRemoval = true };
+            var session = new FoxgloveSession(
+                "phase187-b1-callback-detach",
+                transport,
+                logger: new ConsoleLogger());
+            try
+            {
+                var callbackCount = 0;
+                session.OnClientMessage += (_, _, _, _) => callbackCount++;
+
+                transport.RaiseText(
+                    7,
+                    "{\"op\":\"advertise\",\"channels\":[{\"id\":1,\"topic\":\"/phase187/callback\",\"encoding\":\"json\"}]}");
+
+                Assert.Throws<InvalidOperationException>(() => session.Dispose());
+                Assert.Equal(1, transport.HandlerCount);
+
+                // The transport deliberately retains OnClientBinary after the
+                // detach failure. A disposed session must still make its callback
+                // and recorder graph inert before the failure is rethrown.
+                transport.RaiseBinary(7, ClientMessageFrame(1, "after-dispose"));
+                Assert.Equal(0, callbackCount);
+            }
+            finally
+            {
+                transport.ThrowOnEveryBinaryHandlerRemoval = false;
+                session.Dispose();
+            }
+        }
+
+        [Fact]
         public void RuntimeDisposeRejectsReentrantCleanupWithoutRepeatingTransportDispose()
         {
             var transport = new ThrowingStopTransport();
@@ -524,6 +559,38 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("_stopCleanupComplete = firstFailure == null;", source, StringComparison.Ordinal);
             Assert.Contains("_stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;", source, StringComparison.Ordinal);
             Assert.DoesNotContain("_stopCleanupComplete = _session == null;", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimeStopDoesNotRetryBestEffortReplayHistoryAfterRequiredCleanup()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            var replay = ReadPrivateField<ReplayController>(runtime, "_replay");
+            var panelHistory = ReadPrivateField<object>(replay, "_panelHistory");
+            var originalBuffer = ReadPrivateField<List<McapMessage>>(panelHistory, "_buffer");
+
+            try
+            {
+                // Nulling the private buffer makes only the optional history
+                // housekeeping step fail; all resource-owning stop steps still
+                // complete. This models a permanently broken replay-history
+                // cleanup without changing the transport or session seams.
+                WritePrivateField<List<McapMessage>>(panelHistory, "_buffer", null);
+                runtime.Start("phase187-stop-optional-history");
+
+                Assert.Throws<NullReferenceException>(() => runtime.Stop());
+                Assert.True(ReadPrivateField<RuntimeStopCleanupState>(runtime, "_stopCleanup").IsResourceCleanupComplete);
+
+                // A second Stop must not retry the best-effort step forever once
+                // the required ownership boundaries have been released.
+                runtime.Stop();
+            }
+            finally
+            {
+                WritePrivateField(panelHistory, "_buffer", originalBuffer);
+                runtime.Dispose();
+            }
         }
 
         [Fact]
@@ -597,6 +664,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             internal bool ThrowOnNextStart { get; set; }
             internal bool ThrowOnNextHandlerRemoval { get; set; }
             internal bool ThrowOnEveryHandlerRemoval { get; set; }
+            internal bool ThrowOnEveryBinaryHandlerRemoval { get; set; }
             internal bool ThrowOnNextBinaryAdd { get; set; }
             internal bool ThrowOnNextDispose { get; set; }
             internal Action DisposeCallback { get; set; }
@@ -663,9 +731,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 remove
                 {
                     BinaryRemovalCalls++;
+                    if (ThrowOnEveryBinaryHandlerRemoval)
+                        throw new InvalidOperationException("binary handler removal failure");
                     _binaryReceived -= value;
                 }
             }
+
+            internal void RaiseText(uint clientId, string json) => _textReceived?.Invoke(clientId, json);
+            internal void RaiseBinary(uint clientId, byte[] data) => _binaryReceived?.Invoke(clientId, data);
 
             public void Start(string host, int port)
             {
@@ -708,6 +781,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             private static int InvocationCount(Delegate callback)
                 => callback?.GetInvocationList().Length ?? 0;
+        }
+
+        private static byte[] ClientMessageFrame(uint channelId, string payload)
+        {
+            var payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload);
+            var frame = new byte[5 + payloadBytes.Length];
+            frame[0] = ClientOpcode.MessageData;
+            BinaryEncoding.WriteU32LE(frame, 1, channelId);
+            Buffer.BlockCopy(payloadBytes, 0, frame, 5, payloadBytes.Length);
+            return frame;
         }
 
         /// <summary>Transport seam that can pause one graph broadcast after snapshot creation.</summary>
