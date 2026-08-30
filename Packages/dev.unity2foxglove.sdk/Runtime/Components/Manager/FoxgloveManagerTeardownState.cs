@@ -88,8 +88,6 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 disposeRuntime?.Invoke();
-                releaseRuntime?.Invoke();
-                return;
             }
             catch (Exception exception)
             {
@@ -97,17 +95,40 @@ namespace Unity.FoxgloveSDK.Components
                 ReportFailure(reportFailure, exception);
             }
 
+            if (firstFailure != null)
+            {
+                try
+                {
+                    disposeRuntime?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    ReportFailure(reportFailure, exception);
+                    firstFailure.Throw();
+                }
+            }
+
             try
             {
-                disposeRuntime?.Invoke();
                 releaseRuntime?.Invoke();
             }
-            catch (Exception exception)
+            catch (Exception releaseFailure)
             {
-                ReportFailure(reportFailure, exception);
-                firstFailure.Throw();
+                ReportFailure(reportFailure, releaseFailure);
+                ExceptionDispatchInfo.Capture(releaseFailure).Throw();
+                throw;
             }
         }
+
+        /// <summary>
+        /// A stopped Manager must still enter the teardown tail while either an
+        /// active session or a retired session retains callback ownership.
+        /// </summary>
+        internal static bool ShouldRunStopServer(
+            bool isRunning,
+            bool hasActiveSession,
+            bool hasPendingSessionCleanup)
+            => isRunning || hasActiveSession || hasPendingSessionCleanup;
 
         private static void ReportFailure(Action<Exception> reportFailure, Exception exception)
         {

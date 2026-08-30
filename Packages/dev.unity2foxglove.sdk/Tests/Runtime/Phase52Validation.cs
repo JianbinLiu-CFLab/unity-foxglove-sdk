@@ -615,16 +615,19 @@ namespace Unity.FoxgloveSDK.Tests
                 managerSource,
                 "private void StopServer(bool restoreLivePublishers)");
             var notRunningIndex = stopServerSource.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
-            var nullSessionIndex = stopServerSource.IndexOf(
-                "if (_runtime?.Session == null)",
+            var ownershipPredicateIndex = stopServerSource.IndexOf(
+                "FoxgloveManagerTeardownState.ShouldRunStopServer(",
                 StringComparison.Ordinal);
-            var earlyReturnIndex = nullSessionIndex >= 0
-                ? stopServerSource.IndexOf("return;", nullSessionIndex, StringComparison.Ordinal)
+            var pendingCleanupIndex = stopServerSource.IndexOf(
+                "_runtime?.HasPendingSessionCleanup ?? false",
+                StringComparison.Ordinal);
+            var earlyReturnIndex = ownershipPredicateIndex >= 0
+                ? stopServerSource.IndexOf("return;", ownershipPredicateIndex, StringComparison.Ordinal)
                 : -1;
             // StopServer delegates its cleanup tail to the shared teardown
-            // state.  The runtime Stop method group must still be passed after
-            // the already-stopped/null-session early return; requiring the old
-            // direct invocation would reject the production cleanup helper.
+            // state. The runtime Stop method group must remain after the only
+            // early return, whose predicate now preserves retired-session
+            // ownership instead of looking only at the active Session slot.
             var runtimeStopIndex = stopServerSource.IndexOf("_runtime.Stop,", StringComparison.Ordinal);
             var teardownHelperIndex = stopServerSource.IndexOf(
                 "FoxgloveManagerTeardownState.RunStopServer(",
@@ -633,8 +636,9 @@ namespace Unity.FoxgloveSDK.Tests
                 new[] { "return;" },
                 StringSplitOptions.None).Length - 1;
             Check(notRunningIndex >= 0
-                  && nullSessionIndex > notRunningIndex
-                  && earlyReturnIndex > nullSessionIndex
+                  && ownershipPredicateIndex > notRunningIndex
+                  && pendingCleanupIndex > ownershipPredicateIndex
+                  && earlyReturnIndex > pendingCleanupIndex
                    && teardownHelperIndex > earlyReturnIndex
                    && runtimeStopIndex > teardownHelperIndex
                    && earlyReturnCount == 1,

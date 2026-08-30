@@ -197,8 +197,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             try
             {
                 Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
-                Assert.Equal(1, transport.HandlerCount);
-                Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+                Assert.Equal(1, transport.DisposeCalls);
+                Assert.Equal(1, transport.StopCalls);
+                Assert.Equal(2, transport.ConnectedRemovalCalls);
+                Assert.Equal(1, transport.DisconnectedRemovalCalls);
+                Assert.Equal(1, transport.TextRemovalCalls);
+                Assert.Equal(1, transport.BinaryRemovalCalls);
 
                 runtime.Dispose();
 
@@ -219,8 +225,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             runtime.Start("phase187-d01-002-dispose");
 
             Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
-            Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
-            Assert.Equal(0, transport.DisposeCalls);
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            Assert.Equal(1, transport.DisposeCalls);
+            Assert.Equal(2, transport.StopCalls);
+            Assert.Equal(1, transport.ConnectedRemovalCalls);
+            Assert.Equal(1, transport.DisconnectedRemovalCalls);
+            Assert.Equal(1, transport.TextRemovalCalls);
+            Assert.Equal(1, transport.BinaryRemovalCalls);
             runtime.Dispose();
             Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
 
@@ -268,13 +279,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void RuntimeStopCleanupStateRetriesOnlyFailedStepAndTracksRequiredOwnership()
         {
             var state = new RuntimeStopCleanupState();
-            state.Reset();
+            var completedAttempts = 0;
             ExceptionDispatchInfo firstFailure = null;
+
+            Assert.True(state.IsComplete);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.Session,
+                () => completedAttempts++,
+                ref firstFailure);
+            Assert.Equal(0, completedAttempts);
+
+            state.Reset();
             var replayAttempts = 0;
 
             state.TryCleanup(
                 RuntimeStopCleanupStep.ReplayOrchestrator,
-                () => { },
+                () => completedAttempts++,
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayOrchestrator,
+                () => completedAttempts++,
                 ref firstFailure);
             state.TryCleanup(
                 RuntimeStopCleanupStep.ReplaySuppressionWarnings,
@@ -307,6 +331,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.True(state.IsReadyForStart);
             Assert.False(state.IsComplete);
+            Assert.Equal(1, completedAttempts);
             Assert.Equal("optional cleanup", firstFailure.SourceException.Message);
 
             state.TryCleanup(
@@ -337,6 +362,155 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 runtime.Dispose();
             }
+        }
+
+        [Fact]
+        public void RuntimeStartRollsBackFactoryConstructorSubscriptions()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextBinaryAdd = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                var failure = Assert.Throws<InvalidOperationException>(
+                    () => runtime.Start("phase187-b1-factory-constructor"));
+
+                Assert.Equal("binary add failure", failure.Message);
+                Assert.Null(runtime.Session);
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.False(transport.IsRunning);
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
+        public void RuntimeCannotRestartAfterSuccessfulDispose()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-b1-disposed");
+
+            runtime.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => runtime.Start("phase187-b1-resurrected"));
+            Assert.Equal(0, transport.HandlerCount);
+            Assert.False(transport.IsRunning);
+            Assert.Equal(1, transport.DisposeCalls);
+        }
+
+        [Fact]
+        public void RuntimeCannotRestartAfterFailedDispose()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextHandlerRemoval = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-b1-failed-dispose");
+
+            Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+            Assert.Throws<ObjectDisposedException>(() => runtime.Start("phase187-b1-resurrected"));
+
+            runtime.Dispose();
+            Assert.Equal(0, transport.HandlerCount);
+            Assert.False(transport.IsRunning);
+            Assert.Equal(1, transport.DisposeCalls);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetriesTransportFailureWithoutAllowingAnotherEpoch()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextDispose = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-b1-transport-dispose-failure");
+
+            var failure = Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+
+            Assert.Equal("transport dispose failure", failure.Message);
+            Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
+            Assert.Equal(1, transport.DisposeCalls);
+            Assert.Equal(1, transport.StopCalls);
+            Assert.Throws<ObjectDisposedException>(() => runtime.Start("phase187-b1-resurrected"));
+
+            runtime.Dispose();
+
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            Assert.Equal(2, transport.DisposeCalls);
+            Assert.Equal(1, transport.StopCalls);
+            Assert.Equal(0, transport.HandlerCount);
+        }
+
+        [Fact]
+        public void RuntimeDisposeAbandonsPermanentCallbackFailureOnlyAfterTransportClosure()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnEveryHandlerRemoval = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-b1-permanent-handler-failure");
+
+            Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+
+            Assert.Equal(1, transport.DisposeCalls);
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            Assert.Equal(1, transport.HandlerCount);
+            Assert.Throws<ObjectDisposedException>(() => runtime.Start("phase187-b1-resurrected"));
+
+            runtime.Dispose();
+            Assert.Equal(1, transport.DisposeCalls);
+        }
+
+        [Fact]
+        public void SessionConstructorRollsBackPartialSubscriptionsWhenEventAddThrows()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextBinaryAdd = true };
+
+            var failure = Assert.Throws<InvalidOperationException>(
+                () => new FoxgloveSession(
+                    "phase187-b1-constructor",
+                    transport,
+                    logger: new ConsoleLogger()));
+
+            Assert.Equal("binary add failure", failure.Message);
+            Assert.Equal(0, transport.HandlerCount);
+        }
+
+        [Fact]
+        public void SessionDisposeRetriesOnlyFailedCleanupSubstep()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextHandlerRemoval = true };
+            var session = new FoxgloveSession(
+                "phase187-b1-session-idempotency",
+                transport,
+                logger: new ConsoleLogger());
+
+            Assert.Throws<InvalidOperationException>(() => session.Dispose());
+            Assert.Equal(1, transport.StopCalls);
+            Assert.Equal(1, transport.ConnectedRemovalCalls);
+            Assert.Equal(1, transport.DisconnectedRemovalCalls);
+            Assert.Equal(1, transport.TextRemovalCalls);
+            Assert.Equal(1, transport.BinaryRemovalCalls);
+
+            session.Dispose();
+
+            Assert.Equal(1, transport.StopCalls);
+            Assert.Equal(2, transport.ConnectedRemovalCalls);
+            Assert.Equal(1, transport.DisconnectedRemovalCalls);
+            Assert.Equal(1, transport.TextRemovalCalls);
+            Assert.Equal(1, transport.BinaryRemovalCalls);
+            Assert.Equal(0, transport.HandlerCount);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRejectsReentrantCleanupWithoutRepeatingTransportDispose()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            transport.DisposeCallback = runtime.Dispose;
+            runtime.Start("phase187-b1-reentrant-dispose");
+
+            runtime.Dispose();
+
+            Assert.Equal(1, transport.DisposeCalls);
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
         }
 
         [Fact]
@@ -422,7 +596,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             internal bool ThrowOnNextStop { get; set; }
             internal bool ThrowOnNextStart { get; set; }
             internal bool ThrowOnNextHandlerRemoval { get; set; }
+            internal bool ThrowOnEveryHandlerRemoval { get; set; }
+            internal bool ThrowOnNextBinaryAdd { get; set; }
+            internal bool ThrowOnNextDispose { get; set; }
+            internal Action DisposeCallback { get; set; }
             internal int DisposeCalls { get; private set; }
+            internal int StopCalls { get; private set; }
+            internal int ConnectedRemovalCalls { get; private set; }
+            internal int DisconnectedRemovalCalls { get; private set; }
+            internal int TextRemovalCalls { get; private set; }
+            internal int BinaryRemovalCalls { get; private set; }
             internal int HandlerCount =>
                 InvocationCount(_connected)
                 + InvocationCount(_disconnected)
@@ -436,7 +619,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 add => _connected += value;
                 remove
                 {
-                    if (ThrowOnNextHandlerRemoval)
+                    ConnectedRemovalCalls++;
+                    if (ThrowOnEveryHandlerRemoval || ThrowOnNextHandlerRemoval)
                     {
                         ThrowOnNextHandlerRemoval = false;
                         throw new InvalidOperationException("handler removal failure");
@@ -448,34 +632,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             public event Action<uint> OnClientDisconnected
             {
                 add => _disconnected += value;
-                remove => _disconnected -= value;
+                remove
+                {
+                    DisconnectedRemovalCalls++;
+                    _disconnected -= value;
+                }
             }
 
             public event Action<uint, string> OnTextReceived
             {
                 add => _textReceived += value;
-                remove => _textReceived -= value;
+                remove
+                {
+                    TextRemovalCalls++;
+                    _textReceived -= value;
+                }
             }
 
             public event Action<uint, byte[]> OnBinaryReceived
             {
-                add => _binaryReceived += value;
-                remove => _binaryReceived -= value;
+                add
+                {
+                    _binaryReceived += value;
+                    if (ThrowOnNextBinaryAdd)
+                    {
+                        ThrowOnNextBinaryAdd = false;
+                        throw new InvalidOperationException("binary add failure");
+                    }
+                }
+                remove
+                {
+                    BinaryRemovalCalls++;
+                    _binaryReceived -= value;
+                }
             }
 
             public void Start(string host, int port)
             {
+                IsRunning = true;
                 if (ThrowOnNextStart)
                 {
                     ThrowOnNextStart = false;
                     throw new InvalidOperationException("start failure");
                 }
 
-                IsRunning = true;
             }
 
             public void Stop()
             {
+                StopCalls++;
                 IsRunning = false;
                 if (!ThrowOnNextStop)
                     return;
@@ -493,6 +698,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 DisposeCalls++;
                 IsRunning = false;
+                DisposeCallback?.Invoke();
+                if (ThrowOnNextDispose)
+                {
+                    ThrowOnNextDispose = false;
+                    throw new InvalidOperationException("transport dispose failure");
+                }
             }
 
             private static int InvocationCount(Delegate callback)

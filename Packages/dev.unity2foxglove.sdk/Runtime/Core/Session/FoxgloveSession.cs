@@ -96,6 +96,18 @@ namespace Unity.FoxgloveSDK.Core
 
         private McapRecorder _recorder;
         private IFoxgloveMirrorSink _mirrorSink;
+        private bool _channelOverwrittenSubscribed;
+        private bool _clientConnectedSubscribed;
+        private bool _clientDisconnectedSubscribed;
+        private bool _textReceivedSubscribed;
+        private bool _binaryReceivedSubscribed;
+        private bool _disposeStopComplete;
+        private bool _disposeClientConnectedComplete;
+        private bool _disposeClientDisconnectedComplete;
+        private bool _disposeTextReceivedComplete;
+        private bool _disposeBinaryReceivedComplete;
+        private bool _disposeChannelOverwrittenComplete;
+        private int _disposed;
 
         /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
@@ -270,11 +282,27 @@ namespace Unity.FoxgloveSDK.Core
                 });
             _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
-            _channels.ChannelOverwritten += OnChannelOverwritten;
-            _transport.OnClientConnected += OnClientConnected;
-            _transport.OnClientDisconnected += OnClientDisconnected;
-            _transport.OnTextReceived += OnClientText;
-            _transport.OnBinaryReceived += OnClientBinary;
+            try
+            {
+                // Mark ownership before each add. A custom event accessor may add
+                // the delegate and then throw, in which case constructor rollback
+                // must still attempt to detach it.
+                _channelOverwrittenSubscribed = true;
+                _channels.ChannelOverwritten += OnChannelOverwritten;
+                _clientConnectedSubscribed = true;
+                _transport.OnClientConnected += OnClientConnected;
+                _clientDisconnectedSubscribed = true;
+                _transport.OnClientDisconnected += OnClientDisconnected;
+                _textReceivedSubscribed = true;
+                _transport.OnTextReceived += OnClientText;
+                _binaryReceivedSubscribed = true;
+                _transport.OnBinaryReceived += OnClientBinary;
+            }
+            catch
+            {
+                RollBackConstructorSubscriptions();
+                throw;
+            }
         }
 
         // ── Lifecycle ──
@@ -306,29 +334,111 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Stop the transport and detach all event handlers.</summary>
         public void Dispose()
         {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             ExceptionDispatchInfo firstFailure = null;
-            TryCleanup(Stop, ref firstFailure);
-            TryCleanup(() => _transport.OnClientConnected -= OnClientConnected, ref firstFailure);
-            TryCleanup(() => _transport.OnClientDisconnected -= OnClientDisconnected, ref firstFailure);
-            TryCleanup(() => _transport.OnTextReceived -= OnClientText, ref firstFailure);
-            TryCleanup(() => _transport.OnBinaryReceived -= OnClientBinary, ref firstFailure);
-            TryCleanup(() => _channels.ChannelOverwritten -= OnChannelOverwritten, ref firstFailure);
-            Volatile.Write(ref _recorder, null);
-            Volatile.Write(ref _mirrorSink, null);
-            OnClientMessage = null;
-            OnClientMessageWithEncoding = null;
+            TryCleanup(Stop, ref _disposeStopComplete, ref firstFailure);
+            TryCleanup(DetachClientConnected, ref _disposeClientConnectedComplete, ref firstFailure);
+            TryCleanup(DetachClientDisconnected, ref _disposeClientDisconnectedComplete, ref firstFailure);
+            TryCleanup(DetachTextReceived, ref _disposeTextReceivedComplete, ref firstFailure);
+            TryCleanup(DetachBinaryReceived, ref _disposeBinaryReceivedComplete, ref firstFailure);
+            TryCleanup(DetachChannelOverwritten, ref _disposeChannelOverwrittenComplete, ref firstFailure);
+
+            if (_disposeStopComplete
+                && _disposeClientConnectedComplete
+                && _disposeClientDisconnectedComplete
+                && _disposeTextReceivedComplete
+                && _disposeBinaryReceivedComplete
+                && _disposeChannelOverwrittenComplete)
+            {
+                Volatile.Write(ref _recorder, null);
+                Volatile.Write(ref _mirrorSink, null);
+                OnClientMessage = null;
+                OnClientMessageWithEncoding = null;
+                Volatile.Write(ref _disposed, 1);
+            }
+
             firstFailure?.Throw();
         }
 
-        private static void TryCleanup(Action cleanup, ref ExceptionDispatchInfo firstFailure)
+        private static void TryCleanup(
+            Action cleanup,
+            ref bool completed,
+            ref ExceptionDispatchInfo firstFailure)
         {
+            if (completed)
+                return;
+
             try
             {
                 cleanup?.Invoke();
+                completed = true;
             }
             catch (Exception exception)
             {
                 firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+            }
+        }
+
+        private void DetachClientConnected()
+        {
+            if (!_clientConnectedSubscribed)
+                return;
+            _transport.OnClientConnected -= OnClientConnected;
+            _clientConnectedSubscribed = false;
+        }
+
+        private void DetachClientDisconnected()
+        {
+            if (!_clientDisconnectedSubscribed)
+                return;
+            _transport.OnClientDisconnected -= OnClientDisconnected;
+            _clientDisconnectedSubscribed = false;
+        }
+
+        private void DetachTextReceived()
+        {
+            if (!_textReceivedSubscribed)
+                return;
+            _transport.OnTextReceived -= OnClientText;
+            _textReceivedSubscribed = false;
+        }
+
+        private void DetachBinaryReceived()
+        {
+            if (!_binaryReceivedSubscribed)
+                return;
+            _transport.OnBinaryReceived -= OnClientBinary;
+            _binaryReceivedSubscribed = false;
+        }
+
+        private void DetachChannelOverwritten()
+        {
+            if (!_channelOverwrittenSubscribed)
+                return;
+            _channels.ChannelOverwritten -= OnChannelOverwritten;
+            _channelOverwrittenSubscribed = false;
+        }
+
+        private void RollBackConstructorSubscriptions()
+        {
+            TryRollback(DetachBinaryReceived);
+            TryRollback(DetachTextReceived);
+            TryRollback(DetachClientDisconnected);
+            TryRollback(DetachClientConnected);
+            TryRollback(DetachChannelOverwritten);
+        }
+
+        private static void TryRollback(Action rollback)
+        {
+            try
+            {
+                rollback?.Invoke();
+            }
+            catch
+            {
+                // Preserve the constructor failure as the primary exception.
             }
         }
 
