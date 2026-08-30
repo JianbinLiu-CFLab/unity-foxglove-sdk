@@ -193,10 +193,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void JsonDecoderReadsGeneratedDecimalAndCharInputs()
         {
-            var payload = Encoding.UTF8.GetBytes("{\"amount\":12.5,\"key\":\"A\"}");
+            var amountPayload = Encoding.UTF8.GetBytes("{\"amount\":12.5}");
+            var keyPayload = Encoding.UTF8.GetBytes("{\"key\":\"A\"}");
 
-            Assert.True(FoxRunInboundJson.TryRead(payload, "amount", out decimal amount, out var decimalError), decimalError);
-            Assert.True(FoxRunInboundJson.TryRead(payload, "key", out char key, out var charError), charError);
+            Assert.True(FoxRunInboundJson.TryRead(amountPayload, "amount", out decimal amount, out var decimalError), decimalError);
+            Assert.True(FoxRunInboundJson.TryRead(keyPayload, "key", out char key, out var charError), charError);
 
             Assert.Equal(12.5m, amount);
             Assert.Equal('A', key);
