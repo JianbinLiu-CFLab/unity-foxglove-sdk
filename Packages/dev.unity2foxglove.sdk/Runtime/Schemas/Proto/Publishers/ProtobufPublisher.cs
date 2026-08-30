@@ -59,7 +59,7 @@ namespace Foxglove.Components
         /// </summary>
         protected virtual void Update()
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;

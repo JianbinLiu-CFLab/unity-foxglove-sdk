@@ -27,6 +27,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void SpecializedPublishersUseBaseManagerReResolutionGuard()
+        {
+            var protobuf = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/ProtobufPublisher.cs");
+            var sceneCube = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            var protobufUpdate = SourceMethod(protobuf, "protected virtual void Update()");
+            var sceneCubeUpdate = SourceMethod(sceneCube, "protected override void Update()");
+
+            Assert.Contains("if (!EnsureManagerAvailable()) return;", protobufUpdate, StringComparison.Ordinal);
+            Assert.Contains("if (!EnsureManagerAvailable()) return;", sceneCubeUpdate, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (_manager == null) return;", protobufUpdate, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (_manager == null) return;", sceneCubeUpdate, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PublisherBaseCentralizesPublishToggleAndCachesInspectorSummaries()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
