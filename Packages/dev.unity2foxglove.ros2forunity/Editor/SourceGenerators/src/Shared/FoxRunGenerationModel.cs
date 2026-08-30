@@ -1206,7 +1206,6 @@ namespace Unity.FoxgloveSDK.Editor
             return values
                 .Select(value => value ?? string.Empty)
                 .OrderBy(value => value, StringComparer.Ordinal)
-                .Distinct(StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
         }

@@ -1536,6 +1536,34 @@ namespace Demo
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E01-003")]
+        public void DuplicatePublishTransportIdsReachTheFailClosedValidator()
+        {
+            var member = new FoxrunCodeGenerator.MemberData(
+                "Value",
+                typeof(int),
+                "field",
+                "Phase187E01",
+                "DuplicateProviders",
+                "/phase187/e01/duplicate-providers",
+                -1f,
+                string.Empty,
+                mode: (int)FoxRunFlow.Publish,
+                encoding: (int)FoxRunEncoding.JSON,
+                namedArgumentPresence: FoxRunNamedArgumentPresence.PublishTransportIds,
+                publishTransportIds: new[]
+                {
+                    "foxglove.websocket",
+                    "foxglove.websocket"
+                });
+
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(
+                new[] { member.ToReflectionMember() });
+            var diagnostics = FoxRunGenerationModelValidator.Validate(model);
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN620");
+        }
+
+        [Fact]
         public void ReflectionScannerPreservesInvalidExplicitEnumCast()
         {
             var invalid = ReadReflectionAttributeSnapshot(
