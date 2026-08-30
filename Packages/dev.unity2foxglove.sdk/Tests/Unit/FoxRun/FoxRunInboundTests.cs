@@ -193,10 +193,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void JsonDecoderReadsGeneratedDecimalAndCharInputs()
         {
-            var payload = Encoding.UTF8.GetBytes("{\"amount\":12.5,\"key\":\"A\"}");
+            var amountPayload = Encoding.UTF8.GetBytes("{\"amount\":12.5}");
+            var keyPayload = Encoding.UTF8.GetBytes("{\"key\":\"A\"}");
 
-            Assert.True(FoxRunInboundJson.TryRead(payload, "amount", out decimal amount, out var decimalError), decimalError);
-            Assert.True(FoxRunInboundJson.TryRead(payload, "key", out char key, out var charError), charError);
+            Assert.True(FoxRunInboundJson.TryRead(amountPayload, "amount", out decimal amount, out var decimalError), decimalError);
+            Assert.True(FoxRunInboundJson.TryRead(keyPayload, "key", out char key, out var charError), charError);
 
             Assert.Equal(12.5m, amount);
             Assert.Equal('A', key);
@@ -867,6 +868,34 @@ namespace Demo
             Assert.True(enabledIndex > refreshIndex, "Snapshot refresh must happen before the enabled-state gate.");
             Assert.DoesNotContain("EnableFoxRunInbound", dispatch, StringComparison.Ordinal);
             Assert.Contains("IsFoxRunInboundAuthorized", dispatch, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E05")]
+        public void InputHubReportsDiagnosticForPartialStaging()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var dispatch = TestSources.ExtractMethod(
+                source,
+                "private void OnClientMessage(uint clientId, uint channelId, string topic, string encoding, byte[] payload)");
+
+            Assert.Contains(
+                "result.Status != FoxRunInputDispatchStatus.UnknownTopic",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "result.Status != FoxRunInputDispatchStatus.Staged",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "!string.IsNullOrEmpty(result.Diagnostic)",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.True(
+                dispatch.IndexOf("result.Status != FoxRunInputDispatchStatus.Staged", StringComparison.Ordinal)
+                < dispatch.IndexOf("!string.IsNullOrEmpty(result.Diagnostic)", StringComparison.Ordinal),
+                "The Staged branch must inspect its retained diagnostic before suppressing the warning.");
         }
 
 

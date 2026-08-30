@@ -195,7 +195,7 @@ namespace Unity.FoxgloveSDK.Components
             if (fields == null)
                 throw new ArgumentNullException(nameof(fields));
 
-            fields.Clear();
+            var stagedFields = new List<FoxRunProtobufField>();
             payload ??= Array.Empty<byte>();
             var position = 0;
             while (position < payload.Length)
@@ -213,9 +213,12 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
 
-                fields.Add(new FoxRunProtobufField(number, wireType, value));
+                stagedFields.Add(new FoxRunProtobufField(number, wireType, value));
             }
 
+            fields.Clear();
+            for (var index = 0; index < stagedFields.Count; index++)
+                fields.Add(stagedFields[index]);
             error = string.Empty;
             return true;
         }
@@ -522,10 +525,12 @@ namespace Unity.FoxgloveSDK.Components
             out string error)
         {
             if (values == null) throw new ArgumentNullException(nameof(values));
+            var stagedValues = new List<T>();
             if (field.WireType == 0)
             {
                 if (!TryDecodeVarint(field, out T value, convert, out error)) return false;
-                values.Add(value);
+                stagedValues.Add(value);
+                values.Add(stagedValues[0]);
                 return true;
             }
             if (field.WireType != 2 || field.Value == null)
@@ -541,8 +546,10 @@ namespace Unity.FoxgloveSDK.Components
                     error = "Malformed packed Protobuf " + typeName + " value.";
                     return false;
                 }
-                values.Add(convert(raw));
+                stagedValues.Add(convert(raw));
             }
+            for (var index = 0; index < stagedValues.Count; index++)
+                values.Add(stagedValues[index]);
             error = string.Empty;
             return true;
         }

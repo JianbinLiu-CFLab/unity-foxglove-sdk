@@ -675,6 +675,56 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E05")]
+        public void ServiceResponseSchemaAcceptsNullableOptionalCatalogValues()
+        {
+            var type = typeof(FoxRunSubscriptionCatalog).Assembly.GetType(
+                "Unity.FoxgloveSDK.Components.FoxRunSubscriptionCatalogServiceSchemas");
+            Assert.NotNull(type);
+            var responseField = type!.GetField("Response", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(responseField);
+
+            var schema = JObject.Parse((string)responseField!.GetValue(null)!);
+            var contractProperties = (JObject)schema["properties"]!["contracts"]!["items"]!["properties"]!;
+            var fieldProperties = (JObject)contractProperties["fields"]!["items"]!["properties"]!;
+
+            Assert.True(AllowsNull(contractProperties["publishTransportIds"]),
+                "publishTransportIds schema must accept the null emitted for inherited publish destinations");
+            Assert.True(AllowsNull(contractProperties["subscribeTransportId"]),
+                "subscribeTransportId schema must accept the null emitted before a Provider is selected");
+            Assert.True(AllowsNull(fieldProperties["typeShape"]),
+                "typeShape schema must accept the null emitted when optional shape metadata is absent");
+            Assert.True(AllowsNull(fieldProperties["normalizedSchedule"]),
+                "normalizedSchedule schema must accept the null emitted when optional schedule metadata is absent");
+
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                CreateManifest(),
+                subscriptionsEnabled: true,
+                FoxRunEncoding.JSON,
+                FoxRunEncoding.JSON,
+                subscriptionRateLimitHz: 10,
+                requestedTopic: "/phase176/input",
+                includeDescriptor: false);
+            var contract = Assert.Single((JArray)response["contracts"]!);
+            var fields = Assert.Single((JArray)contract["fields"]!);
+            Assert.Equal(JTokenType.Null, contract["publishTransportIds"]!.Type);
+            Assert.Equal(JTokenType.Null, contract["subscribeTransportId"]!.Type);
+            Assert.Equal(JTokenType.Null, fields["typeShape"]!.Type);
+            Assert.Equal(JTokenType.Null, fields["normalizedSchedule"]!.Type);
+        }
+
+        private static bool AllowsNull(JToken schema)
+        {
+            var oneOf = schema?["oneOf"] as JArray;
+            return oneOf != null
+                   && oneOf.Any(option =>
+                       string.Equals(
+                           option?["type"]?.Value<string>(),
+                           "null",
+                           StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void PublishPanelValidatesTheMaintainedCatalogFieldNames()
         {
             var panel = TestSources.Text(

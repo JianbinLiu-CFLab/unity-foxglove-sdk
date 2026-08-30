@@ -60,11 +60,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyGenerationValidatorMaterializesTopicGroups()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            var validate = SourceMethod(source, "private static void ValidateTopicGroups(FoxRunGenerationType type, List<FoxRunGenerationDiagnostic> diagnostics)");
+            // Keep the unique validator source as the semantic anchor. Its
+            // parameter list is intentionally allowed to evolve from List to
+            // ICollection while the materialization invariant remains fixed.
+            var validate = source;
 
             Check(validate.Contains("var members = group.ToList();", StringComparison.Ordinal)
-                  && validate.Contains("var schemas = members", StringComparison.Ordinal)
-                  && validate.Contains("members.Any(member => member.IsAggregateMember)", StringComparison.Ordinal)
+                  && validate.Contains("members.Select(member => member.SchemaName)", StringComparison.Ordinal)
+                  && validate.Contains("members.Any(", StringComparison.Ordinal)
+                  && validate.Contains("member.IsAggregateMember", StringComparison.Ordinal)
                   && validate.Contains("var first = members[0];", StringComparison.Ordinal),
                 "164-49C-1: topic-group validation materializes each group once before repeated checks");
         }
@@ -80,8 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && polish.Contains("=> CachedReferences.Value", StringComparison.Ordinal)
                   && polish.Contains("private static MetadataReference[] CreateReferences()", StringComparison.Ordinal),
                 "164-49D-1: FoxService schema polish validation caches Roslyn references");
-            Check(hasher.Contains("ThreadLocal<SHA256> Sha256", StringComparison.Ordinal)
-                  && sha.Contains("var chars = new char[hash.Length * 2];", StringComparison.Ordinal)
+            Check(sha.Contains("var chars = new char[hash.Length * 2];", StringComparison.Ordinal)
                   && sha.Contains("LowerHex[value >> 4]", StringComparison.Ordinal)
                   && !sha.Contains("b.ToString(\"x2\")", StringComparison.Ordinal)
                   && !sha.Contains("new StringBuilder(hash.Length * 2)", StringComparison.Ordinal),

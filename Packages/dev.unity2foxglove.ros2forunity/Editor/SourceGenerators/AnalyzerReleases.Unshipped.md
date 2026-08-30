@@ -20,3 +20,4 @@ FOXR2F013 | FoxRun.R2FU | Error | The R2FU route is invalid for the declared dir
 FOXR2F014 | FoxRun.R2FU | Error | The R2FU QoS contract is invalid.
 FOXR2F015 | FoxRun.R2FU | Error | R2FU QoS requires an R2FU direction.
 FOXR2F016 | FoxRun.R2FU | Error | Same-topic R2FU members have incompatible directional QoS.
+FOXR2F017 | FoxRun.R2FU | Error | The R2FU declaring host identity cannot be represented by the generated partial-class contract.

@@ -93,6 +93,33 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void HiddenRecordingDoesNotRepeatForUnchangedPendingChange()
+        {
+            using var fixture = new Fixture(
+                activeProviderIds: new[]
+                {
+                    new FoxRunTransportId("unity2foxglove.r2fu")
+                },
+                nextSessionProviderIds: new[]
+                {
+                    FoxgloveWebSocketTransport.TransportId
+                },
+                policy: FoxRunPolicy.Change);
+
+            Assert.False(fixture.Publish(explicitTrigger: false));
+            Assert.False(fixture.Publish(explicitTrigger: false));
+            Assert.Equal(1, fixture.Source.RecordingPublishes);
+            Assert.Equal(1, fixture.Source.RecordingReadinessChecks);
+            Assert.Equal(1, fixture.Source.RecordingPolicyMarks);
+
+            fixture.Source.Revision++;
+            Assert.False(fixture.Publish(explicitTrigger: false));
+            Assert.Equal(2, fixture.Source.RecordingPublishes);
+            Assert.Equal(2, fixture.Source.RecordingReadinessChecks);
+            Assert.Equal(2, fixture.Source.RecordingPolicyMarks);
+        }
+
+        [Fact]
         public void ProviderlessDeclarationMayReportRecordingOnlySuccess()
         {
             using var fixture = new Fixture(
@@ -206,7 +233,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 IReadOnlyList<FoxRunTransportId> activeProviderIds,
                 IReadOnlyList<FoxRunTransportId> nextSessionProviderIds,
                 bool addSink = false,
-                bool hasFrozenTransportSession = true)
+                bool hasFrozenTransportSession = true,
+                FoxRunPolicy policy = FoxRunPolicy.Trigger)
             {
                 if (InstanceField == null
                     || ManagerField == null
@@ -220,7 +248,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 Source = new RecordingSource(
                     addSink
                         ? FoxTopicVisibility.Exported
-                        : FoxTopicVisibility.LocalOnly);
+                        : FoxTopicVisibility.LocalOnly,
+                    policy: policy);
                 var manager = new FoxgloveManager
                 {
                     ActiveFoxRunPublishEncoding =
@@ -270,14 +299,14 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             internal RecordingSink Sink { get; }
             internal FoxgloveLogHub Hub => _hub;
 
-            internal bool Publish()
+            internal bool Publish(bool explicitTrigger = true)
                 => (bool)TryPublishMethod.Invoke(
                     _hub,
                     new object[]
                     {
                         Source,
                         0,
-                        true
+                        explicitTrigger
                     });
 
             public void Dispose()
@@ -293,16 +322,21 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             IFoxgloveTopicSinkSource,
             IFoxglovePublishCaptureSource,
             IFoxglovePublishRecordingSource,
+            IFoxglovePublishRecordingPolicySource,
             IFoxRunWebSocketCaptureSource
         {
             private readonly FoxTopicContract _contract;
+            private readonly FoxRunPolicy _policy;
+            private int _recordedRevision = -1;
 
             internal RecordingSource(
                 FoxTopicVisibility visibility,
                 string topic = "/phase186/frozen-provider",
-                string origin = "phase186-frozen-provider-source")
+                string origin = "phase186-frozen-provider-source",
+                FoxRunPolicy policy = FoxRunPolicy.Trigger)
             {
                 Origin = origin;
+                _policy = policy;
                 _contract = new FoxTopicContract(
                     topic,
                     string.Empty,
@@ -316,8 +350,10 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public int WebSocketPublishes { get; private set; }
             public int RecordingReadinessChecks { get; private set; }
             public int RecordingPublishes { get; private set; }
+            public int RecordingPolicyMarks { get; private set; }
             public int CaptureEnds { get; private set; }
             public int WebSocketEncodingSets { get; private set; }
+            public int Revision { get; set; }
 
             public int FoxgloveLog_TopicCount => 1;
 
@@ -331,7 +367,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     ? new FoxgloveLogTopicInfo(
                         _contract.Topic,
                         0f,
-                        FoxRunPolicy.Trigger,
+                        _policy,
                         0f,
                         FoxRunFlow.Publish,
                         publishTransportIds: null,
@@ -388,6 +424,15 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 RecordingPublishes++;
                 reason = string.Empty;
                 return true;
+            }
+
+            public bool FoxgloveLog_ShouldRecord(int topicIndex)
+                => _policy != FoxRunPolicy.Change || Revision != _recordedRevision;
+
+            public void FoxgloveLog_MarkRecorded(int topicIndex)
+            {
+                _recordedRevision = Revision;
+                RecordingPolicyMarks++;
             }
 
             public void FoxgloveLog_SetWebSocketEncoding(

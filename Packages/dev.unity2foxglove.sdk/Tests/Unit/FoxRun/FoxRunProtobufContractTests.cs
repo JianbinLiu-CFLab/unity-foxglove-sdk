@@ -323,6 +323,38 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E01-001")]
+        public void ProtobufDescriptorRejectsInvalidNormalizedIdentifiers()
+        {
+            var collision = new FoxRunProtobufContractInput(
+                "Demo.InvalidNames",
+                "/phase187/e01/collision",
+                "Demo.InvalidNames",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput("a-b", "First", "int32", false),
+                    new FoxRunProtobufFieldInput("a_b", "Second", "int32", false)
+                });
+
+            var collisionError = Assert.Throws<InvalidOperationException>(
+                () => FoxRunProtobufContractBuilder.Build(collision));
+            Assert.Contains("identifier", collisionError.Message, StringComparison.OrdinalIgnoreCase);
+
+            var nonAscii = new FoxRunProtobufContractInput(
+                "Demo.InvalidNames",
+                "/phase187/e01/non-ascii",
+                "Demo.InvalidNames",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput("温度", "Temperature", "float32", false)
+                });
+
+            var nonAsciiError = Assert.Throws<InvalidOperationException>(
+                () => FoxRunProtobufContractBuilder.Build(nonAscii));
+            Assert.Contains("ASCII", nonAsciiError.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void NestedDtoFieldNumberCollisionNamesTheExplicitTagEscapeHatch()
         {
             var conflictingDto = FoxRunTypeShape.Object(

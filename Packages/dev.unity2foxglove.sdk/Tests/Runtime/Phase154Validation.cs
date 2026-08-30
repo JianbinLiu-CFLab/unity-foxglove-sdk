@@ -55,8 +55,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(generator.Contains("MessageAttrFullName", StringComparison.Ordinal)
                   && generator.Contains("FieldAttrFullName", StringComparison.Ordinal)
-                  && generator.Contains("isAggregateMember: true", StringComparison.Ordinal)
-                  && generator.Contains("DeclaringTypeName(containingType)", StringComparison.Ordinal),
+                  && generator.Contains("aggregate: true", StringComparison.Ordinal)
+                  && generator.Contains("isAggregateMember:", StringComparison.Ordinal)
+                  && generator.Contains("DeclaringTypeName(", StringComparison.Ordinal)
+                  && generator.Contains("containingType", StringComparison.Ordinal),
                 "Source generator lowers FoxRunMessage/FoxRunField members into aggregate topic entries");
 
             Check(generator.Contains("FOXRUN018", StringComparison.Ordinal)

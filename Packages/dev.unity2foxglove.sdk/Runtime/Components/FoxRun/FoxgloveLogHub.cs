@@ -88,6 +88,17 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Optional generated policy seam for hidden recording. It lets a source
+    /// remember that the current logical Change revision has already been
+    /// accepted by MCAP while a selected live Provider remains pending.
+    /// </summary>
+    public interface IFoxglovePublishRecordingPolicySource
+    {
+        bool FoxgloveLog_ShouldRecord(int topicIndex);
+        void FoxgloveLog_MarkRecorded(int topicIndex);
+    }
+
+    /// <summary>
     /// Optional generated seam used to freeze an inherited WebSocket encoding
     /// before capture. Other Providers own their wire encoding independently.
     /// </summary>
@@ -503,35 +514,62 @@ namespace Unity.FoxgloveSDK.Components
                             as IFoxglovePublishRecordingSource
                         : null;
                 var recordingReady = false;
+                var recordingAllowed = true;
                 if (recordingSource != null)
                 {
-                    try
+                    if (source
+                            is IFoxglovePublishRecordingPolicySource
+                                recordingPolicy)
                     {
-                        recordingReady =
-                            recordingSource
-                                .FoxgloveLog_IsRecordingReady(
-                                    topicIndex,
-                                    _manager,
-                                    out var recordingReason);
-                        if (!recordingReady
-                            && !string.IsNullOrWhiteSpace(
-                                recordingReason))
+                        try
+                        {
+                            recordingAllowed =
+                                recordingPolicy
+                                    .FoxgloveLog_ShouldRecord(
+                                        topicIndex);
+                        }
+                        catch (Exception exception)
+                            when (FoxRunExceptionPolicy
+                                .IsRecoverable(exception))
                         {
                             WarnOnce(
                                 source,
                                 topicIndex,
-                                new InvalidOperationException(
-                                    recordingReason));
+                                exception);
+                            recordingAllowed = false;
                         }
                     }
-                    catch (Exception exception)
-                        when (FoxRunExceptionPolicy
-                            .IsRecoverable(exception))
+
+                    if (recordingAllowed)
                     {
-                        WarnOnce(
-                            source,
-                            topicIndex,
-                            exception);
+                        try
+                        {
+                            recordingReady =
+                                recordingSource
+                                    .FoxgloveLog_IsRecordingReady(
+                                        topicIndex,
+                                        _manager,
+                                        out var recordingReason);
+                            if (!recordingReady
+                                && !string.IsNullOrWhiteSpace(
+                                    recordingReason))
+                            {
+                                WarnOnce(
+                                    source,
+                                    topicIndex,
+                                    new InvalidOperationException(
+                                        recordingReason));
+                            }
+                        }
+                        catch (Exception exception)
+                            when (FoxRunExceptionPolicy
+                                .IsRecoverable(exception))
+                        {
+                            WarnOnce(
+                                source,
+                                topicIndex,
+                                exception);
+                        }
                     }
                 }
 
@@ -656,6 +694,26 @@ namespace Unity.FoxgloveSDK.Components
                                     out var recordingReason))
                             {
                                 recorded = true;
+                                if (source
+                                        is IFoxglovePublishRecordingPolicySource
+                                            recordingPolicy)
+                                {
+                                    try
+                                    {
+                                        recordingPolicy
+                                            .FoxgloveLog_MarkRecorded(
+                                                topicIndex);
+                                    }
+                                    catch (Exception exception)
+                                        when (FoxRunExceptionPolicy
+                                            .IsRecoverable(exception))
+                                    {
+                                        WarnOnce(
+                                            source,
+                                            topicIndex,
+                                            exception);
+                                    }
+                                }
                             }
                             else if (!string.IsNullOrWhiteSpace(
                                          recordingReason))

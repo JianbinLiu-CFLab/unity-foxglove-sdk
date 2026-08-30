@@ -60,6 +60,28 @@ namespace Unity.FoxgloveSDK.Tests
                 !ros2Input.Contains("msgpack", StringComparison.OrdinalIgnoreCase),
                 "185C-5: ROS2 native input generation never inspects MessagePack bytes");
 
+            var catalog = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSubscriptionCatalog.cs");
+            Check(
+                ContainsAll(
+                    catalog,
+                    "[\"publishTransportIds\"] = NullableArraySchema(\"string\")",
+                    "[\"subscribeTransportId\"] = NullableTypeSchema(\"string\")",
+                    "[\"typeShape\"] = NullableTypeSchema(\"object\")",
+                    "[\"normalizedSchedule\"] = NullableTypeSchema(\"object\")",
+                    "[\"oneOf\"] = new JArray(",
+                    "TypeSchema(\"null\")"),
+                "185C-6: subscription catalog schema declares null unions for every optional response value");
+
+            var inputHub = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            Check(
+                ContainsAll(
+                    inputHub,
+                    "result.Status != FoxRunInputDispatchStatus.UnknownTopic",
+                    "result.Status != FoxRunInputDispatchStatus.Staged",
+                    "!string.IsNullOrEmpty(result.Diagnostic)",
+                    "WarnOnce(topic + \": \" + result.Diagnostic)"),
+                "185C-7: input hub surfaces diagnostics when sibling staging is partial");
+
             Console.WriteLine("FoxRun MessagePack bounded input: " + _passed + " checks passed.\n");
         }
 

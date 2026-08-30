@@ -38,6 +38,10 @@ namespace Unity.FoxgloveSDK.Protocol
         {
             if (payloadLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength));
+            if (payloadLength > int.MaxValue - ServerMessageDataHeaderLength)
+                throw new ArgumentOutOfRangeException(
+                    nameof(payloadLength),
+                    "The payload is too large to fit in an Int32 MessageData frame length.");
             return ServerMessageDataHeaderLength + payloadLength;
         }
 

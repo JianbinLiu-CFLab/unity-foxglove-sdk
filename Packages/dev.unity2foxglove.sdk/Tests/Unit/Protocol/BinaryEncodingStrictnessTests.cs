@@ -93,6 +93,18 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(0U, timestamp.Nsec);
         }
 
+        [Fact]
+        public void ServerMessageFrameLengthRejectsIntegerOverflow()
+        {
+            var maximumPayload = int.MaxValue - BinaryEncoding.ServerMessageDataHeaderLength;
+
+            Assert.Equal(int.MaxValue, BinaryEncoding.GetServerMessageDataFrameLength(maximumPayload));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                BinaryEncoding.GetServerMessageDataFrameLength(maximumPayload + 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                BinaryEncoding.GetServerMessageDataFrameLength(int.MaxValue));
+        }
+
         private static void AssertServiceEncodingRejected(byte[] encoding)
         {
             Assert.False(BinaryEncoding.TryDecodeClientServiceCallRequest(

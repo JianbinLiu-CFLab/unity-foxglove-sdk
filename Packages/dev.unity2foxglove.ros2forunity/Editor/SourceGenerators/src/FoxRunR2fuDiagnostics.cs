@@ -42,6 +42,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Create("FOXR2F015", "R2FU QoS requires an R2FU direction");
         public static readonly DiagnosticDescriptor MixedDirectionalQos =
             Create("FOXR2F016", "R2FU directional QoS mismatch");
+        public static readonly DiagnosticDescriptor HostIdentity =
+            Create("FOXR2F017", "R2FU declaring host identity unsupported");
 
         public static bool TryGet(
             string id,
@@ -65,6 +67,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXR2F014": descriptor = InvalidQos; return true;
                 case "FOXR2F015": descriptor = QosRequiresR2fu; return true;
                 case "FOXR2F016": descriptor = MixedDirectionalQos; return true;
+                case "FOXRUN623": descriptor = HostIdentity; return true;
                 default:
                     descriptor = null;
                     return false;

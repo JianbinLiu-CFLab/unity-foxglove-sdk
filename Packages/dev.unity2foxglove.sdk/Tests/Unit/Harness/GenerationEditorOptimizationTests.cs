@@ -218,7 +218,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var generate = TestSources.Slice(source, "private static void Generate", "private static void EmitClass");
             var toRoslynMembers = TestSources.Slice(models, "ToRoslynMembers()", "    internal sealed class TopicEntry");
 
-            Assert.Contains("HasAttributeName(", candidate, StringComparison.Ordinal);
+            Assert.Contains("AttributeLists.Count > 0", candidate, StringComparison.Ordinal);
+            Assert.Contains("attribute.AttributeClass?.ToDisplayString()", extractMember, StringComparison.Ordinal);
+            Assert.Contains("AttrFullName", extractMember, StringComparison.Ordinal);
+            Assert.Contains("FieldAttrFullName", extractMember, StringComparison.Ordinal);
             Assert.DoesNotContain(".Where(", candidate, StringComparison.Ordinal);
             Assert.DoesNotContain(".ToList()", candidate, StringComparison.Ordinal);
             Assert.DoesNotContain(".Where(a => a.AttributeClass?.ToDisplayString() == AttrFullName)", extractMember, StringComparison.Ordinal);
@@ -287,6 +290,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("members.Select(member => member.ToReflectionMember())", scanMembers, StringComparison.Ordinal);
             Assert.DoesNotContain("diagnostics.Where", validate, StringComparison.Ordinal);
             Assert.DoesNotContain("members.Select(member => member.ToReflectionMember()).ToList()", emitSourceFile, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E02-003")]
+        public void PlayerSourceGenerationUsesFailClosedAssemblyDiscovery()
+        {
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var generate = TestSources.Slice(
+                source,
+                "public static List<string> GenerateSourceFiles(",
+                "        /// <summary>\r\n        /// Refresh canonical FoxRun manifest artifacts");
+
+            Assert.Contains(
+                "ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: false)",
+                generate,
+                StringComparison.Ordinal);
         }
 
         [Fact]

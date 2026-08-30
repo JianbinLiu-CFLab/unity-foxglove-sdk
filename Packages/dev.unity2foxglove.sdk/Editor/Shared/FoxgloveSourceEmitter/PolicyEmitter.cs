@@ -28,7 +28,10 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             sb.AppendLine();
-            // Last-value storage per topic
+            // Last-value storage per topic. The recording snapshot is kept
+            // separately from the live-publish snapshot so a hidden MCAP
+            // write can be acknowledged while a selected live Provider is
+            // still pending.
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
@@ -38,6 +41,9 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}    private double __lastPublishSec_{i};");
                 for (int j = 0; j < fields.Count; j++)
                     sb.AppendLine($"{pad}    private {fields[j].TypeName} __last_{i}_{j};");
+                sb.AppendLine($"{pad}    private bool __hasRecorded_{i};");
+                for (int j = 0; j < fields.Count; j++)
+                    sb.AppendLine($"{pad}    private {fields[j].TypeName} __lastRecorded_{i}_{j};");
             }
             sb.AppendLine();
 
@@ -96,7 +102,61 @@ namespace Unity.FoxgloveSDK.Editor
                 for (int j = 0; j < fields.Count; j++)
                     sb.AppendLine($"{pad}                __last_{i}_{j} = {TypeExprEmitter.MemberAccess(fields[j].MemberName)};");
                 sb.AppendLine($"{pad}                __hasLast_{i} = true;");
+                sb.AppendLine($"{pad}                __hasRecorded_{i} = false;");
                 sb.AppendLine($"{pad}                __lastPublishSec_{i} = nowSec;");
+                sb.AppendLine($"{pad}                break;");
+            }
+            sb.AppendLine($"{pad}            default: break;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            // ShouldRecord
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    bool IFoxglovePublishRecordingPolicySource.FoxgloveLog_ShouldRecord(int topicIndex)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        bool changed;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var fields = topicMap[topics[i]];
+                var mode = topicModes[topics[i]];
+                if (mode == 1 || mode == 4)
+                {
+                    sb.AppendLine($"{pad}            case {i}: return true;");
+                    continue;
+                }
+
+                sb.AppendLine($"{pad}            case {i}:");
+                sb.AppendLine($"{pad}                changed = !__hasRecorded_{i};");
+                for (int j = 0; j < fields.Count; j++)
+                {
+                    var f = fields[j];
+                    sb.AppendLine($"{pad}                if (!changed) changed = {TypeExprEmitter.ChangeExpr(f.MemberName, f.TypeName, "__lastRecorded_" + i + "_" + j, f.Tolerance)};");
+                }
+                sb.AppendLine($"{pad}                return changed;");
+            }
+            sb.AppendLine($"{pad}            default: return false;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+
+            // MarkRecorded
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    void IFoxglovePublishRecordingPolicySource.FoxgloveLog_MarkRecorded(int topicIndex)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var fields = topicMap[topics[i]];
+                var mode = topicModes[topics[i]];
+                if (mode == 1 || mode == 4)
+                    continue;
+
+                sb.AppendLine($"{pad}            case {i}:");
+                for (int j = 0; j < fields.Count; j++)
+                    sb.AppendLine($"{pad}                __lastRecorded_{i}_{j} = {TypeExprEmitter.MemberAccess(fields[j].MemberName)};");
+                sb.AppendLine($"{pad}                __hasRecorded_{i} = true;");
                 sb.AppendLine($"{pad}                break;");
             }
             sb.AppendLine($"{pad}            default: break;");

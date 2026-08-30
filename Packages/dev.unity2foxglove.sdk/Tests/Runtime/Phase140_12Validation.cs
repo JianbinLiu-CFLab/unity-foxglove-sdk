@@ -60,11 +60,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ProtobufDescriptorSubsetsAreBuiltInDeterministicOrder()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
+            var valid = ProtobufDescriptorOrderingFixture.TryValidate(
+                out var checkedSubsets,
+                out var checkedDependencies,
+                out var orderingFailures);
 
-            Check(source.Contains("using System.Linq;", StringComparison.Ordinal)
-                  && source.Contains("neededFiles.OrderBy", StringComparison.Ordinal),
-                "140-12B-1: protobuf descriptor subset dependencies are emitted in deterministic order");
+            Check(valid,
+                $"140-12B-1: protobuf descriptor subsets emit dependencies before dependents "
+                + $"({checkedSubsets} subsets, {checkedDependencies} dependency edges, {orderingFailures} ordering failures)");
         }
 
         private static void ImuDescriptorBytesAreCached()
@@ -134,7 +137,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ManagedPointCloudLayoutAvoidsIntermediateList()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
-            var layout = SourceBetween(source, "private sealed class PointCloudLayout", "        }\n    }\n}");
+            var layout = SourceBetween(source, "public sealed class PointCloudLayout", "        }\n    }\n}");
             Check(!layout.Contains("new List<PointCloudPackedField>", StringComparison.Ordinal)
                   && !layout.Contains("fields.ToArray()", StringComparison.Ordinal),
                 "140-12H-2: managed point-cloud layout allocates only its final field array");

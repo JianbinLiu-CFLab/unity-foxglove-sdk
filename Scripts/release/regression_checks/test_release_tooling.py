@@ -2737,7 +2737,10 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         """Drive run_with_progress against a controlled owned tree."""
         log = temp / "unity.log"
         with mock.patch.object(self.unity_il2cpp, "start_owned_process", return_value=tree):
-            with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 0.2):
+            # Keep the synthetic deadline comfortably above a loaded-host
+            # scheduling slice; the assertion is about polling order, not a
+            # sub-second timing guarantee.
+            with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 1.0):
                 captured = io.StringIO()
                 with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
                     returncode = self.unity_il2cpp.run_with_progress(
@@ -2853,7 +2856,10 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             )
 
             try:
-                with mock.patch.object(self.unity_il2cpp, "SECONDS_PER_MINUTE", 5):
+                # Process creation is intentionally real here so the test
+                # proves descendant cleanup.  Allow a loaded Windows host
+                # enough startup time before the synthetic timeout fires.
+                with mock.patch.object(self.unity_il2cpp, "SECONDS_PER_MINUTE", 15):
                     with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0.01):
                         with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 2):
                             result = self.unity_il2cpp.run_with_progress(

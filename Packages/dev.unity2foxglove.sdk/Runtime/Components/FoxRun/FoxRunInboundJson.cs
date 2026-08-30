@@ -37,16 +37,23 @@ namespace Unity.FoxgloveSDK.Components
                 Formatting = Formatting.None,
                 MaxDepth = MaxTypeHintScanDepth,
                 MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
+                MissingMemberHandling = MissingMemberHandling.Error,
                 ReferenceLoopHandling = ReferenceLoopHandling.Error,
                 StringEscapeHandling = StringEscapeHandling.EscapeNonAscii,
-                TypeNameHandling = TypeNameHandling.None
+                TypeNameHandling = TypeNameHandling.None,
+                Converters = { new NonFiniteFloatJsonConverter() }
             };
 
         /// <remarks>
         /// This parser is intended for low-frequency FoxRun control inputs. It decodes UTF-8
         /// into a managed string and builds a JToken tree once per TryRead call.
         /// </remarks>
-        private static bool TryToken(byte[] payload, string field, out JToken token, out string error)
+        private static bool TryToken(
+            byte[] payload,
+            string field,
+            out JToken token,
+            out string error,
+            bool rejectUnknownRootProperties = false)
         {
             token = null;
             error = string.Empty;
@@ -66,10 +73,29 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
 
-                if (!(root is JObject obj) || !obj.TryGetValue(field, StringComparison.Ordinal, out token))
+                if (!(root is JObject obj))
                 {
                     error = "FoxRun inbound payload is missing field '" + field + "'.";
                     return false;
+                }
+
+                if (!obj.TryGetValue(field, StringComparison.Ordinal, out token))
+                {
+                    error = "FoxRun inbound payload is missing field '" + field + "'.";
+                    return false;
+                }
+
+                if (rejectUnknownRootProperties)
+                {
+                    foreach (var property in obj.Properties())
+                    {
+                        if (!string.Equals(property.Name, field, StringComparison.Ordinal))
+                        {
+                            error = "FoxRun inbound payload contains unknown field '"
+                                    + property.Name + "'.";
+                            return false;
+                        }
+                    }
                 }
                 return true;
             }
@@ -139,7 +165,12 @@ namespace Unity.FoxgloveSDK.Components
         private static bool TryScalar<T>(byte[] payload, string field, JTokenType expected, out T value, out string error)
         {
             value = default;
-            if (!TryToken(payload, field, out var token, out error))
+            if (!TryToken(
+                    payload,
+                    field,
+                    out var token,
+                    out error,
+                    rejectUnknownRootProperties: true))
                 return false;
             if (token.Type != expected && !(expected == JTokenType.Float && token.Type == JTokenType.Integer))
             {
@@ -149,6 +180,12 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 value = token.Value<T>();
+                if (!IsFinite(value))
+                {
+                    value = default;
+                    error = "FoxRun inbound field '" + field + "' must be finite.";
+                    return false;
+                }
                 return true;
             }
             catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is InvalidCastException)
@@ -203,6 +240,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             return TryObject(payload, field, out var obj, out error)
+                && RejectUnknownProperties(obj, out error, "x", "y")
                 && TryNumber(obj, "x", out value.x, out error)
                 && TryNumber(obj, "y", out value.y, out error);
         }
@@ -211,6 +249,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             return TryObject(payload, field, out var obj, out error)
+                && RejectUnknownProperties(obj, out error, "x", "y", "z")
                 && TryNumber(obj, "x", out value.x, out error)
                 && TryNumber(obj, "y", out value.y, out error)
                 && TryNumber(obj, "z", out value.z, out error);
@@ -220,6 +259,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             return TryObject(payload, field, out var obj, out error)
+                && RejectUnknownProperties(obj, out error, "x", "y", "z", "w")
                 && TryNumber(obj, "x", out value.x, out error)
                 && TryNumber(obj, "y", out value.y, out error)
                 && TryNumber(obj, "z", out value.z, out error)
@@ -230,6 +270,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             value = default;
             return TryObject(payload, field, out var obj, out error)
+                && RejectUnknownProperties(obj, out error, "r", "g", "b", "a")
                 && TryNumber(obj, "r", out value.r, out error)
                 && TryNumber(obj, "g", out value.g, out error)
                 && TryNumber(obj, "b", out value.b, out error)
@@ -248,7 +289,7 @@ namespace Unity.FoxgloveSDK.Components
             out string error)
         {
             value = default;
-            if (!TryToken(payload, field, out var token, out error))
+            if (!TryToken(payload, field, out var token, out error, rejectUnknownRootProperties: true))
                 return false;
 
             try
@@ -289,13 +330,47 @@ namespace Unity.FoxgloveSDK.Components
         private static bool TryObject(byte[] payload, string field, out JObject obj, out string error)
         {
             obj = null;
-            if (!TryToken(payload, field, out var token, out error))
+            if (!TryToken(
+                    payload,
+                    field,
+                    out var token,
+                    out error,
+                    rejectUnknownRootProperties: true))
                 return false;
             obj = token as JObject;
             if (obj != null)
                 return true;
             error = "FoxRun inbound field '" + field + "' must be a JSON object.";
             return false;
+        }
+
+        private static bool RejectUnknownProperties(
+            JObject obj,
+            out string error,
+            params string[] allowedNames)
+        {
+            error = string.Empty;
+            foreach (var property in obj.Properties())
+            {
+                var allowed = false;
+                for (var i = 0; i < allowedNames.Length; i++)
+                {
+                    if (string.Equals(property.Name, allowedNames[i], StringComparison.Ordinal))
+                    {
+                        allowed = true;
+                        break;
+                    }
+                }
+
+                if (!allowed)
+                {
+                    error = "FoxRun inbound vector payload contains unknown component '"
+                            + property.Name + "'.";
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryNumber(JObject obj, string name, out float value, out string error)
@@ -311,12 +386,121 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 value = token.Value<float>();
+                if (!IsFinite(value))
+                {
+                    value = 0f;
+                    error = "FoxRun inbound vector component '" + name + "' must be finite.";
+                    return false;
+                }
                 return true;
             }
             catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is InvalidCastException)
             {
                 error = "FoxRun inbound vector component '" + name + "' cannot be converted: " + ex.Message;
                 return false;
+            }
+        }
+
+        private static bool IsFinite<T>(T value)
+        {
+            if (typeof(T) == typeof(float))
+            {
+                var numeric = (float)(object)value;
+                return !float.IsNaN(numeric) && !float.IsInfinity(numeric);
+            }
+
+            if (typeof(T) == typeof(double))
+            {
+                var numeric = (double)(object)value;
+                return !double.IsNaN(numeric) && !double.IsInfinity(numeric);
+            }
+
+            return true;
+        }
+
+        private sealed class NonFiniteFloatJsonConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType)
+            {
+                var targetType = Nullable.GetUnderlyingType(objectType) ?? objectType;
+                return targetType == typeof(float) || targetType == typeof(double);
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                if (value == null)
+                {
+                    writer.WriteNull();
+                    return;
+                }
+
+                if (value is float single)
+                {
+                    if (!IsFinite(single))
+                        writer.WriteNull();
+                    else
+                        writer.WriteValue(single);
+                    return;
+                }
+
+                if (value is double number)
+                {
+                    if (!IsFinite(number))
+                        writer.WriteNull();
+                    else
+                        writer.WriteValue(number);
+                    return;
+                }
+
+                throw new JsonSerializationException(
+                    "FoxRun generated JSON converter received an unsupported floating type.");
+            }
+
+            public override object ReadJson(
+                JsonReader reader,
+                Type objectType,
+                object existingValue,
+                JsonSerializer serializer)
+            {
+                var nullableType = Nullable.GetUnderlyingType(objectType);
+                var targetType = nullableType ?? objectType;
+                if (reader.TokenType == JsonToken.Null)
+                {
+                    if (nullableType != null)
+                        return null;
+                    return targetType == typeof(float) ? (object)0f : 0d;
+                }
+
+                if (reader.TokenType != JsonToken.Float && reader.TokenType != JsonToken.Integer)
+                {
+                    throw new JsonSerializationException(
+                        "FoxRun generated JSON floating fields require a finite JSON number or null.");
+                }
+
+                try
+                {
+                    if (targetType == typeof(float))
+                    {
+                        var single = Convert.ToSingle(reader.Value, CultureInfo.InvariantCulture);
+                        if (!IsFinite(single))
+                            throw new JsonSerializationException(
+                                "FoxRun generated JSON floating fields must be finite.");
+                        return single;
+                    }
+
+                    var number = Convert.ToDouble(reader.Value, CultureInfo.InvariantCulture);
+                    if (!IsFinite(number))
+                        throw new JsonSerializationException(
+                            "FoxRun generated JSON floating fields must be finite.");
+                    return number;
+                }
+                catch (Exception ex) when (
+                    ex is FormatException || ex is OverflowException || ex is InvalidCastException)
+                {
+                    throw new JsonSerializationException(
+                        "FoxRun generated JSON floating fields must be finite.",
+                        ex);
+                }
             }
         }
     }

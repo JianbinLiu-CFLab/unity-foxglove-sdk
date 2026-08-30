@@ -391,7 +391,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (_stopped && _session == null)
             {
-                if (_sessionPendingCleanup == null && _stopCleanup.IsComplete)
+                if (_sessionPendingCleanup == null && _stopCleanup.IsResourceCleanupComplete)
                     return;
             }
 

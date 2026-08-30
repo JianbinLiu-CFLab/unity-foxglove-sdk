@@ -240,6 +240,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor UnsupportedHostIdentity = new DiagnosticDescriptor(
+            "FOXRUN623", "FoxRun declaring host identity unsupported",
+            "FoxRun declaring host identity cannot be represented by the generated partial-class contract",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         #endregion
 
         public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
@@ -309,6 +314,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}",
             "FoxService", DiagnosticSeverity.Warning, true);
 
+        public static readonly DiagnosticDescriptor UnsupportedServiceHostIdentity = new DiagnosticDescriptor(
+            "FOXSERVICE010", "FoxService declaring host identity unsupported",
+            "FoxService declaring host identity cannot be represented by the generated partial-class contract",
+            "FoxService", DiagnosticSeverity.Error, true);
+
         public static DiagnosticDescriptor Shared(string id)
         {
             switch (id)
@@ -340,6 +350,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN620": return InvalidTransportSelection;
                 case "FOXRUN621": return InvalidDirectionalTransport;
                 case "FOXRUN622": return InvalidDeliveryPolicy;
+                case "FOXRUN623": return UnsupportedHostIdentity;
                 case "FOXRUN215": return InvalidStreamDeclaration;
                 case "FOXRUN216": return StreamInitializerMissing;
                 case "FOXRUN019": return MixedAggregateTopic;
@@ -376,6 +387,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN203": return InboundTargetNotWritable;
                 case "FOXRUN215": return InvalidStreamDeclaration;
                 case "FOXRUN216": return StreamInitializerMissing;
+                case "FOXRUN623": return UnsupportedHostIdentity;
                 default:
                     return UnknownFoxRunDiagnostic(id);
             }
@@ -394,6 +406,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXSERVICE007": return ServiceDtoWarning;
                 case "FOXSERVICE008": return RecursiveServiceDto;
                 case "FOXSERVICE009": return DeepServiceDto;
+                case "FOXSERVICE010": return UnsupportedServiceHostIdentity;
                 default:
                     return UnknownFoxServiceDiagnostic(id);
             }

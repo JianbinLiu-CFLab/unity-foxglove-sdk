@@ -668,7 +668,6 @@ namespace Unity.FoxgloveSDK.Editor
                         .OrderBy(
                             value => value,
                             StringComparer.Ordinal)
-                        .Distinct(StringComparer.Ordinal)
                         .ToArray());
 
         private static bool ResolvesAnyDirectionToWebSocket(

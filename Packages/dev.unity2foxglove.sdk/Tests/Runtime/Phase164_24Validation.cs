@@ -37,8 +37,13 @@ namespace Unity.FoxgloveSDK.Tests
             var codegen = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var preprocess = PhaseValidationSourceHelpers.SourceMethod(build, "public void OnPreprocessBuild");
-            var ensureWithTypes = PhaseValidationSourceHelpers.SourceMethod(build, "List<(string AsmName, string Ns, string ClassName)> types)");
-            var generate = PhaseValidationSourceHelpers.SourceMethod(codegen, "out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)");
+            var ensureWithTypes = PhaseValidationSourceHelpers.SourceMethod(build, "EnsureFoxRunLinkXml");
+            // Keep this check resilient to tuple-parameter line wrapping while
+            // retaining the exact cached-type handoff assertions below.
+            var generate = PhaseValidationSourceHelpers.SourceMethodContaining(
+                codegen,
+                "GenerateSourceFiles",
+                "foxRunTypes = editorScan.FoxRunTypes;");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
 
             Check(preprocess.Contains("GenerateSourceFiles(out manifest, out foxRunTypes)", StringComparison.Ordinal)

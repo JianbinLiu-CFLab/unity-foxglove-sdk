@@ -459,8 +459,8 @@ namespace Unity.FoxgloveSDK.Components
                 ["nullable"] = TypeSchema("boolean"),
                 ["array"] = TypeSchema("boolean"),
                 ["protobufFieldNumber"] = TypeSchema("integer"),
-                ["typeShape"] = TypeSchema("object"),
-                ["normalizedSchedule"] = TypeSchema("object")
+                ["typeShape"] = NullableTypeSchema("object"),
+                ["normalizedSchedule"] = NullableTypeSchema("object")
             };
             var contracts = new JObject
             {
@@ -472,12 +472,8 @@ namespace Unity.FoxgloveSDK.Components
                 ["wireSchemaName"] = TypeSchema("string"),
                 ["logicalSchemaName"] = TypeSchema("string"),
                 ["subscribeAvailable"] = TypeSchema("boolean"),
-                ["publishTransportIds"] = new JObject
-                {
-                    ["type"] = "array",
-                    ["items"] = TypeSchema("string")
-                },
-                ["subscribeTransportId"] = TypeSchema("string"),
+                ["publishTransportIds"] = NullableArraySchema("string"),
+                ["subscribeTransportId"] = NullableTypeSchema("string"),
                 ["unavailableDiagnosticId"] = TypeSchema("string"),
                 ["unavailableReason"] = TypeSchema("string"),
                 ["hz"] = TypeSchema("number"),
@@ -505,6 +501,30 @@ namespace Unity.FoxgloveSDK.Components
         private static JObject TypeSchema(string type)
         {
             return new JObject { ["type"] = type };
+        }
+
+        private static JObject NullableTypeSchema(string type)
+        {
+            return new JObject
+            {
+                ["oneOf"] = new JArray(
+                    TypeSchema(type),
+                    TypeSchema("null"))
+            };
+        }
+
+        private static JObject NullableArraySchema(string itemType)
+        {
+            return new JObject
+            {
+                ["oneOf"] = new JArray(
+                    new JObject
+                    {
+                        ["type"] = "array",
+                        ["items"] = TypeSchema(itemType)
+                    },
+                    TypeSchema("null"))
+            };
         }
 
         private static JObject ArraySchema(JObject itemProperties)

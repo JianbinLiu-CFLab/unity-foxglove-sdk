@@ -235,8 +235,9 @@ namespace Unity.FoxgloveSDK.Components
                 payload,
                 encoding,
                 Time.realtimeSinceStartupAsDouble);
-            if (result.Status != FoxRunInputDispatchStatus.Staged
-                && result.Status != FoxRunInputDispatchStatus.UnknownTopic)
+            if (result.Status != FoxRunInputDispatchStatus.UnknownTopic
+                && (result.Status != FoxRunInputDispatchStatus.Staged
+                    || !string.IsNullOrEmpty(result.Diagnostic)))
             {
                 WarnOnce(topic + ": " + result.Diagnostic);
             }

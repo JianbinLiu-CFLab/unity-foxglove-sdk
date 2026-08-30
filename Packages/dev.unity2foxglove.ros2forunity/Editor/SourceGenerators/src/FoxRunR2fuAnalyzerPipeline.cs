@@ -55,9 +55,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             foreach (var item in items)
             {
-                if (item == null
-                    || item.DiagnosticLocation != null)
+                if (item == null)
                 {
+                    continue;
+                }
+
+                if (item.DiagnosticLocation != null)
+                {
+                    if (FoxRunR2fuDiagnostics.TryGet(
+                            item.DiagnosticId,
+                            out var descriptor))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                descriptor,
+                                item.DiagnosticLocation,
+                                "FoxRun declaring host identity cannot be represented by the R2FU partial-class contract."));
+                    }
                     continue;
                 }
 
@@ -129,6 +143,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         .Select(DiagnosticDeclaringType),
                     StringComparer.Ordinal);
 
+            ReportHintCollisions(
+                context,
+                model.Types,
+                firstByClass,
+                invalidTypes);
+
             foreach (var type in model.Types)
             {
                 if (invalidTypes.Contains(type.DeclaringType)
@@ -168,7 +188,52 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                        && string.Equals(
                            topic.SubscribeTransportId,
                            ProviderId,
-                           StringComparison.Ordinal)));
+                       StringComparison.Ordinal)));
+
+        private static void ReportHintCollisions(
+            SourceProductionContext context,
+            IReadOnlyList<FoxRunGenerationType> types,
+            IReadOnlyDictionary<(string Ns, string ClassName), MemberData> firstByClass,
+            ISet<string> invalidTypes)
+        {
+            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.Ordinal);
+            var reported = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var type in types ?? Array.Empty<FoxRunGenerationType>())
+            {
+                if (type == null)
+                    continue;
+                var hint = FoxRunR2fuAnalyzerEmitter.GeneratedSourceName(
+                    type.Namespace,
+                    type.ClassName);
+                if (!owners.TryGetValue(hint, out var owner))
+                {
+                    owners.Add(hint, type);
+                    continue;
+                }
+
+                if (string.Equals(
+                        owner.DeclaringType,
+                        type.DeclaringType,
+                        StringComparison.Ordinal))
+                    continue;
+
+                foreach (var conflict in new[] { owner, type })
+                {
+                    invalidTypes.Add(conflict.DeclaringType);
+                    if (!reported.Add(conflict.DeclaringType))
+                        continue;
+                    if (!firstByClass.TryGetValue(
+                            (conflict.Namespace, conflict.ClassName),
+                            out var first))
+                        continue;
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            FoxRunR2fuDiagnostics.HostIdentity,
+                            first.MemberLocation,
+                            "FoxRun declaring host identity collides with another R2FU generated hint."));
+                }
+            }
+        }
 
         private static bool HasUsableShape(MemberData item)
             => item.Ros2MessageShape != null

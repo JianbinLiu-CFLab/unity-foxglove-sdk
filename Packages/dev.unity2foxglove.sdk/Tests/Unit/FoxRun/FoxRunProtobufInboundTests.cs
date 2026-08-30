@@ -126,6 +126,37 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void RepeatedVarintReaderLeavesDestinationUnchangedOnMalformedPackedValue()
+        {
+            var malformedPacked = new FoxRunProtobufField(3, 2, new byte[] { 1, 0x80 });
+            var values = new System.Collections.Generic.List<int> { 7 };
+
+            Assert.False(FoxRunInboundProtobuf.TryReadRepeatedInt32(
+                malformedPacked,
+                values,
+                out var error));
+            Assert.Equal(new[] { 7 }, values);
+            Assert.Equal("Malformed packed Protobuf int32 value.", error);
+        }
+
+        [Fact]
+        public void FieldReaderLeavesDestinationUnchangedOnMalformedLaterField()
+        {
+            var fields = new System.Collections.Generic.List<FoxRunProtobufField>
+            {
+                new FoxRunProtobufField(9, 0, new byte[] { 7 })
+            };
+            var malformed = new byte[] { 0x08, 0x01, 0x10, 0x80 };
+
+            Assert.False(FoxRunInboundProtobuf.TryReadFields(malformed, fields, out var error));
+            Assert.Single(fields);
+            Assert.Equal(9, fields[0].Number);
+            Assert.Equal(0, fields[0].WireType);
+            Assert.Equal(new byte[] { 7 }, fields[0].Value);
+            Assert.Equal("Malformed Protobuf field value.", error);
+        }
+
+        [Fact]
         public void StringReadersRejectInvalidUtf8WithoutReplacement()
         {
             var invalidSequences = new[]

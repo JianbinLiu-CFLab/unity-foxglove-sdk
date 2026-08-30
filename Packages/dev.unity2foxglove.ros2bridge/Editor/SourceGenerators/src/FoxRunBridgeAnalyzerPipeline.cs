@@ -41,9 +41,24 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     StringComparer.Ordinal);
             foreach (var item in items)
             {
-                if (item == null
-                    || item.DiagnosticLocation != null)
+                if (item == null)
                 {
+                    continue;
+                }
+
+                if (item.DiagnosticLocation != null)
+                {
+                    if (string.Equals(
+                            item.DiagnosticId,
+                            "FOXRUN623",
+                            StringComparison.Ordinal))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                FoxRunBridgeDiagnostics.HostIdentity,
+                                item.DiagnosticLocation,
+                                "FoxRun declaring host identity cannot be represented by the Bridge partial-class contract."));
+                    }
                     continue;
                 }
 
@@ -116,6 +131,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         reason));
             }
 
+            ReportHintCollisions(
+                context,
+                model.Types,
+                firstByClass,
+                invalid);
+
             foreach (var type in model.Types)
             {
                 if (invalid.Contains(type.DeclaringType)
@@ -171,5 +192,50 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     : ns + "." + className)
                + "\n"
                + (memberName ?? string.Empty);
+
+        private static void ReportHintCollisions(
+            SourceProductionContext context,
+            IReadOnlyList<FoxRunGenerationType> types,
+            IReadOnlyDictionary<(string Ns, string ClassName), MemberData> firstByClass,
+            ISet<string> invalid)
+        {
+            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.Ordinal);
+            var reported = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var type in types ?? Array.Empty<FoxRunGenerationType>())
+            {
+                if (type == null)
+                    continue;
+                var hint = FoxRunBridgeSourceEmitter.GeneratedSourceName(
+                    type.Namespace,
+                    type.ClassName);
+                if (!owners.TryGetValue(hint, out var owner))
+                {
+                    owners.Add(hint, type);
+                    continue;
+                }
+
+                if (string.Equals(
+                        owner.DeclaringType,
+                        type.DeclaringType,
+                        StringComparison.Ordinal))
+                    continue;
+
+                foreach (var conflict in new[] { owner, type })
+                {
+                    invalid.Add(conflict.DeclaringType);
+                    if (!reported.Add(conflict.DeclaringType))
+                        continue;
+                    if (!firstByClass.TryGetValue(
+                            (conflict.Namespace, conflict.ClassName),
+                            out var first))
+                        continue;
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            FoxRunBridgeDiagnostics.HostIdentity,
+                            first.MemberLocation,
+                            "FoxRun declaring host identity collides with another Bridge generated hint."));
+                }
+            }
+        }
     }
 }

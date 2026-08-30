@@ -1272,6 +1272,12 @@ namespace Unity.FoxgloveSDK.Components
             out string reason);
     }
 
+    public interface IFoxglovePublishRecordingPolicySource
+    {
+        bool FoxgloveLog_ShouldRecord(int topicIndex);
+        void FoxgloveLog_MarkRecorded(int topicIndex);
+    }
+
     public interface IFoxRunWebSocketCaptureSource
     {
         void FoxgloveLog_SetWebSocketEncoding(

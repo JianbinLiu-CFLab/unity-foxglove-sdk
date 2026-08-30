@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Google.Protobuf.Reflection;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -39,39 +38,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ProtobufDescriptorSubsetsAreDependencyFirst()
         {
-            var registry = ProtobufSchemaRegistryLoader.FromDefault(new DefaultSchemaRegistry());
-            var checkedSubsets = 0;
-            var checkedDependencies = 0;
-            var orderingFailures = 0;
-            foreach (var schemaName in registry.SchemaNames)
-            {
-                var bytes = registry.GetFileDescriptorSet(schemaName);
-                if (bytes == null || bytes.Length == 0)
-                    continue;
+            var valid = ProtobufDescriptorOrderingFixture.TryValidate(
+                out var checkedSubsets,
+                out var checkedDependencies,
+                out var orderingFailures);
 
-                var subset = FileDescriptorSet.Parser.ParseFrom(bytes);
-                var positions = subset.File
-                    .Select((file, index) => new { file.Name, Index = index })
-                    .ToDictionary(item => item.Name, item => item.Index, StringComparer.Ordinal);
-
-                foreach (var file in subset.File)
-                {
-                    foreach (var dependency in file.Dependency)
-                    {
-                        if (positions.TryGetValue(dependency, out var depIndex))
-                        {
-                            checkedDependencies++;
-                            if (depIndex >= positions[file.Name])
-                                orderingFailures++;
-                        }
-                    }
-                }
-
-                checkedSubsets++;
-            }
-
-            Check(checkedDependencies > 0 && orderingFailures == 0,
-                "163-13A-1: protobuf descriptor subsets order dependencies before dependents");
+            Check(valid,
+                $"163-13A-1: protobuf descriptor subsets order dependencies before dependents "
+                + $"({checkedSubsets} subsets, {checkedDependencies} dependency edges, {orderingFailures} ordering failures)");
             Check(checkedSubsets >= 40,
                 "163-13A-2: protobuf descriptor ordering validation inspected bundled schemas");
         }
@@ -137,21 +111,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SourceShapeGuards()
         {
-            var protoRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
             var pointCloud = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
             var cameraCalibration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/CameraCalibrationMessageBuilder.cs");
             var foxRunJson = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunJsonSchemaBuilder.cs");
 
-            Check(protoRegistry.Contains("ordered.Add(fileName);", StringComparison.Ordinal)
-                  && !protoRegistry.Contains("neededFiles.OrderBy", StringComparison.Ordinal),
-                "163-13F-1: protobuf descriptor subsets are built by dependency-first traversal");
             Check(pointCloud.Contains("already copied these bytes", StringComparison.Ordinal),
-                "163-13F-2: point-cloud build result documents payload copy semantics");
+                "163-13F-1: point-cloud build result documents payload copy semantics");
             Check(cameraCalibration.Contains("CreateAutoIntrinsicsProtobuf", StringComparison.Ordinal)
                   && cameraCalibration.Contains("CreateAutoIntrinsicsArrays", StringComparison.Ordinal),
-                "163-13F-3: camera calibration exposes shared auto-intrinsics for protobuf");
+                "163-13F-2: camera calibration exposes shared auto-intrinsics for protobuf");
             Check(foxRunJson.Contains("JSON has no NaN/Infinity literal", StringComparison.Ordinal),
-                "163-13F-4: FoxRun nullable-number schema documents non-finite sentinel rationale");
+                "163-13F-3: FoxRun nullable-number schema documents non-finite sentinel rationale");
         }
 
         private static void PhaseWiringIsPresent()

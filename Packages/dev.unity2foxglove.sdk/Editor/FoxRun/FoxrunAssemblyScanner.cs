@@ -29,13 +29,16 @@ namespace Unity.FoxgloveSDK.Editor
                 var key = (ns, type.Name);
 
                 var members = ScanType(type);
+                var methods = ScanServiceType(type);
+                if (members.Count > 0 || methods.Count > 0)
+                    ValidatePhysicalHostIdentity(type);
+
                 if (members.Count > 0)
                 {
                     foxRunTypes.Add((asm.GetName().Name, ns, type.Name));
                     AddFoxRunMembers(key, members, byClass, manifestMembers, reflectionMembers);
                 }
 
-                var methods = ScanServiceType(type);
                 if (methods.Count > 0)
                 {
                     var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
@@ -59,9 +62,12 @@ namespace Unity.FoxgloveSDK.Editor
             VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions, (asm, type) =>
             {
                 var ns = type.Namespace ?? "";
+                var members = ScanType(type);
+                if (members.Count > 0)
+                    ValidatePhysicalHostIdentity(type);
                 AddFoxRunMembers(
                     (ns, type.Name),
-                    ScanType(type),
+                    members,
                     byClass,
                     manifestMembers,
                     reflectionMembers);
@@ -113,9 +119,10 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!ignoreReflectionTypeLoadExceptions)
                         throw;
                     WarnSkippedAssembly(asm, ex);
-                    // Source fallback generation is best-effort because the Roslyn
-                    // path already reports authoring errors in the Editor. The
-                    // link.xml scan is fail-fast and catches preservation risk.
+                    // Non-build Editor refreshes may remain best-effort. The
+                    // Player generation boundary calls this traversal with
+                    // ignoreReflectionTypeLoadExceptions: false and therefore
+                    // propagates the incomplete discovery as a terminal error.
                 }
             }
         }
@@ -134,6 +141,131 @@ namespace Unity.FoxgloveSDK.Editor
             // is enforced by the Roslyn generator during Editor compilation.
             return true;
         }
+
+        /// <summary>
+        /// Keeps the reflection fallback on the same representable host identity
+        /// contract as the Roslyn generator. The model stores only a namespace
+        /// and one simple, non-generic top-level class name, so silently
+        /// flattening another CLR shape would generate a different partial type.
+        /// </summary>
+        private static void ValidatePhysicalHostIdentity(Type type)
+        {
+            if (type == null)
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    "<unknown>",
+                    "the declaring type is unavailable");
+
+            if (type.IsNested)
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    type.FullName,
+                    "nested declaring types are not supported");
+
+            if (type.IsGenericType || type.ContainsGenericParameters)
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    type.FullName,
+                    "generic declaring types are not supported");
+
+            ValidatePhysicalHostIdentity(
+                type.Namespace ?? string.Empty,
+                type.Name,
+                "FOXRUN623");
+        }
+
+        internal static void ValidatePhysicalHostIdentity(
+            string ns,
+            string className,
+            string diagnosticId = "FOXRUN623")
+        {
+            var identity = string.IsNullOrEmpty(ns)
+                ? className ?? string.Empty
+                : ns + "." + (className ?? string.Empty);
+            if (string.IsNullOrEmpty(className)
+                || className.IndexOf('`') >= 0
+                || className.IndexOf('+') >= 0)
+            {
+                throw CreateUnsupportedHostIdentityException(
+                    diagnosticId,
+                    identity,
+                    "the declaring class name is not representable");
+            }
+
+            if (IsPhysicalHostKeyword(className))
+            {
+                throw CreateUnsupportedHostIdentityException(
+                    diagnosticId,
+                    identity,
+                    "keyword declaring class names are not supported");
+            }
+
+            foreach (var component in string.IsNullOrEmpty(ns)
+                         ? Array.Empty<string>()
+                         : ns.Split('.'))
+            {
+                if (component.Length == 0 || IsPhysicalHostKeyword(component))
+                {
+                    throw CreateUnsupportedHostIdentityException(
+                        diagnosticId,
+                        identity,
+                        "keyword namespace components are not supported");
+                }
+            }
+        }
+
+        private static bool IsPhysicalHostKeyword(string value)
+        {
+            switch (value)
+            {
+                case "abstract": case "as": case "base": case "bool":
+                case "break": case "byte": case "case": case "catch":
+                case "char": case "checked": case "class": case "const":
+                case "continue": case "decimal": case "default": case "delegate":
+                case "do": case "double": case "else": case "enum":
+                case "event": case "explicit": case "extern": case "false":
+                case "finally": case "fixed": case "float": case "for":
+                case "foreach": case "goto": case "if": case "implicit":
+                case "in": case "int": case "interface": case "internal":
+                case "is": case "lock": case "long": case "namespace":
+                case "new": case "null": case "object": case "operator":
+                case "out": case "override": case "params": case "private":
+                case "protected": case "public": case "readonly": case "ref":
+                case "return": case "sbyte": case "sealed": case "short":
+                case "sizeof": case "stackalloc": case "static": case "string":
+                case "struct": case "switch": case "this": case "throw":
+                case "true": case "try": case "typeof": case "uint":
+                case "ulong": case "unchecked": case "unsafe": case "ushort":
+                case "using": case "virtual": case "void": case "volatile":
+                case "while":
+                case "add": case "alias": case "and": case "ascending":
+                case "async": case "await": case "by": case "descending":
+                case "dynamic": case "equals": case "file": case "from":
+                case "get": case "global": case "group": case "init":
+                case "into": case "join": case "let": case "managed":
+                case "nameof": case "nint": case "not": case "notnull":
+                case "on": case "or": case "orderby": case "partial":
+                case "record": case "remove": case "required": case "select":
+                case "set": case "unmanaged": case "value": case "var":
+                case "when": case "where": case "with": case "yield":
+                case "scoped":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static InvalidOperationException CreateUnsupportedHostIdentityException(
+            string diagnosticId,
+            string target,
+            string reason)
+            => new InvalidOperationException(
+                (diagnosticId ?? "FOXRUN623")
+                + " Error: "
+                + (target ?? "<unknown>")
+                + ": FoxRun declaring host identity cannot be represented; "
+                + (reason ?? "unsupported host shape")
+                + ".");
 
         /// <summary>
         /// Reflects over all instance fields and properties (public and non-public,

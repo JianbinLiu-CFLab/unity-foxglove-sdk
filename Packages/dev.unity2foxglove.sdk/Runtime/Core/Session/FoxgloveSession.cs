@@ -345,6 +345,15 @@ namespace Unity.FoxgloveSDK.Core
             TryCleanup(DetachBinaryReceived, ref _disposeBinaryReceivedComplete, ref firstFailure);
             TryCleanup(DetachChannelOverwritten, ref _disposeChannelOverwrittenComplete, ref firstFailure);
 
+            // Make the session's downstream callback graph inert even when a
+            // custom event accessor refused one of the detach attempts. The
+            // transport may still retain an inbound handler until a later
+            // retry, but it must not retain the recorder or user callbacks.
+            Volatile.Write(ref _recorder, null);
+            Volatile.Write(ref _mirrorSink, null);
+            OnClientMessage = null;
+            OnClientMessageWithEncoding = null;
+
             if (_disposeStopComplete
                 && _disposeClientConnectedComplete
                 && _disposeClientDisconnectedComplete
@@ -352,10 +361,6 @@ namespace Unity.FoxgloveSDK.Core
                 && _disposeBinaryReceivedComplete
                 && _disposeChannelOverwrittenComplete)
             {
-                Volatile.Write(ref _recorder, null);
-                Volatile.Write(ref _mirrorSink, null);
-                OnClientMessage = null;
-                OnClientMessageWithEncoding = null;
                 Volatile.Write(ref _disposed, 1);
             }
 
