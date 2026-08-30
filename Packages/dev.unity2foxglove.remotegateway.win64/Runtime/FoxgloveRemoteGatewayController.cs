@@ -40,7 +40,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private bool _warnedMissingManager;
         private bool _starting;
         private bool _startupFaulted;
-        private bool _managerLookupAttempted;
         private IRemoteGatewayStartupNativeApi _startupNativeApi = RemoteGatewayStartupNativeApi.Instance;
         private IRemoteGatewayStartupNativeApi _activeContextNativeApi;
 
@@ -392,10 +391,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (_manager != null)
                 return true;
 
-            if (_managerLookupAttempted)
-                return false;
-
-            _managerLookupAttempted = true;
+            // Manager creation/loading can be later than this component's
+            // OnEnable. Keep discovery retryable; warning throttling is
+            // independent from the lookup itself.
             _manager = GetComponent<FoxgloveManager>();
             if (_manager != null)
                 return true;

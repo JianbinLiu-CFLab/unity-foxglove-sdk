@@ -24,10 +24,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAssetRegistryAvoidsFetchAllocations()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Assets/FoxgloveAssetRegistry.cs");
-            var tryResolve = SourceMethod(source, "private bool TryResolve(string uri, out string path, out long maxBytes, out string error)");
-            var tryRead = SourceMethod(source, "private static bool TryReadResolvedFile(string path, long maxBytes, out byte[] bytes, out string error)");
+            var tryResolveStart = source.IndexOf("private bool TryResolve(", StringComparison.Ordinal);
+            var tryResolve = tryResolveStart >= 0 ? source.Substring(tryResolveStart) : string.Empty;
+            var tryReadStart = source.IndexOf("private static bool TryReadResolvedFile(", StringComparison.Ordinal);
+            var tryRead = tryReadStart >= 0 ? source.Substring(tryReadStart) : string.Empty;
 
-            Check(!source.Contains("using System.Linq;", StringComparison.Ordinal)
+            Check(tryResolveStart >= 0
+                  && tryResolve.Contains("out string registeredRoot", StringComparison.Ordinal)
+                  && tryReadStart >= 0
+                  && !source.Contains("using System.Linq;", StringComparison.Ordinal)
                   && !tryResolve.Contains(".OrderByDescending", StringComparison.Ordinal)
                   && !tryResolve.Contains(".ToList()", StringComparison.Ordinal)
                   && tryResolve.Contains("bestPrefixLength", StringComparison.Ordinal),
@@ -48,9 +53,9 @@ namespace Unity.FoxgloveSDK.Tests
             var setParameters = SourceMethod(parameters, "private void HandleSetParameters(uint clientId, string json)");
             var broadcast = SourceMethod(parameters, "public void BroadcastParameterValues(IEnumerable<string> parameterNames)");
 
-            Check(normalize.Contains("normalized = value;", StringComparison.Ordinal)
+            Check(normalize.Contains("normalized = value.DeepClone();", StringComparison.Ordinal)
                   && normalize.Contains("copy.Add(item.DeepClone())", StringComparison.Ordinal),
-                "164-4B-1: scalar parameter normalization reuses immutable scalar tokens while arrays are cloned");
+                "164-4B-1: parameter normalization snapshots scalar tokens and clones array items");
             Check(!parameters.Contains("using System.Linq;", StringComparison.Ordinal)
                   && !setParameters.Contains(".Select", StringComparison.Ordinal)
                   && !setParameters.Contains(".Where", StringComparison.Ordinal)

@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
+        private const int StopPendingHandshakeWaitMs = 1000;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
         private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
         private const ushort ProtocolErrorCloseCode = 1002;
@@ -45,6 +46,14 @@ namespace Unity.FoxgloveSDK.Transport
         private int _stopping;
         /// <summary>Active WebSocket connections keyed by client ID.</summary>
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
+        /// <summary>
+        /// TCP clients which have been accepted but have not completed the
+        /// TLS/HTTP handshake.  The completion source lets Stop wait for the
+        /// handler after closing the socket, while the dictionary itself is
+        /// the bounded admission reservation.
+        /// </summary>
+        private readonly ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>> _pendingClients =
+            new ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>>();
         /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
         private readonly ManagedWebSocketOptions _options;
         private readonly WsHandshakeHandler _handshakeHandler;
@@ -89,18 +98,36 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Bind the TCP listener to <c>host</c>:<c>port</c> and begin accepting connections.</summary>
         public virtual void Start(string host, int port)
         {
-            if (_listener != null)
+            if (Volatile.Read(ref _listener) != null)
                 throw new InvalidOperationException("Server already started");
 
             var addr = TransportHostResolver.ResolveBindAddress(host);
+            var listener = new TcpListener(addr, port);
+            CancellationTokenSource cts = null;
+            try
+            {
+                listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                cts = new CancellationTokenSource();
+                listener.Start();
+                Interlocked.Exchange(ref _stopping, 0);
 
-            _listener = new TcpListener(addr, port);
-            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _cts = new CancellationTokenSource();
-            Interlocked.Exchange(ref _stopping, 0);
-            _listener.Start();
-
-            _acceptLoopTask = Task.Run(() => AcceptLoop(_cts.Token));
+                // Publish the fully started resources only after every
+                // fallible bind step succeeds.  A failed Start therefore
+                // leaves a clean, retryable state for the next attempt.
+                Volatile.Write(ref _listener, listener);
+                Volatile.Write(ref _cts, cts);
+                var acceptTask = Task.Run(() => AcceptLoop(cts.Token));
+                Volatile.Write(ref _acceptLoopTask, acceptTask);
+            }
+            catch
+            {
+                try { listener.Stop(); } catch { }
+                try { cts?.Dispose(); } catch { }
+                Volatile.Write(ref _listener, null);
+                Volatile.Write(ref _cts, null);
+                Volatile.Write(ref _acceptLoopTask, null);
+                throw;
+            }
         }
 
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
@@ -118,6 +145,26 @@ namespace Unity.FoxgloveSDK.Transport
                 var acceptLoopTask = _acceptLoopTask;
                 _acceptLoopTask = null;
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
+
+                var pending = _pendingClients.ToArray();
+                foreach (var pair in pending)
+                {
+                    try { pair.Key.Close(); } catch { }
+                    try { pair.Key.Dispose(); } catch { }
+                }
+                if (pending.Length > 0)
+                {
+                    try
+                    {
+                        var pendingTasks = pending.Select(pair => pair.Value.Task).ToArray();
+                        if (!Task.WaitAll(pendingTasks, StopPendingHandshakeWaitMs))
+                            _logger.LogWarning($"{pending.Length} pending WebSocket handshake(s) did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
+                    }
+                    catch (AggregateException ex)
+                    {
+                        _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
+                    }
+                }
 
                 var clients = _clients.ToArray();
                 var disconnects = clients
@@ -253,6 +300,7 @@ namespace Unity.FoxgloveSDK.Transport
                 Supported = true,
                 IsRunning = IsRunning,
                 ActiveClientCount = clientList.Count,
+                PendingClientCount = _pendingClients.Count,
                 TotalAcceptedClients = Interlocked.Read(ref _totalAcceptedClients),
                 TotalRejectedClients = Interlocked.Read(ref _totalRejectedClients),
                 TotalDisconnectedClients = Interlocked.Read(ref _totalDisconnectedClients),
@@ -329,7 +377,22 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    _ = Task.Run(() => HandleClient(tcpClient, ct));
+                    if (!TryReservePendingClient(tcpClient))
+                    {
+                        RejectPendingClient(tcpClient);
+                        continue;
+                    }
+
+                    try
+                    {
+                        _ = Task.Run(() => HandleClient(tcpClient, ct));
+                    }
+                    catch
+                    {
+                        ReleasePendingClient(tcpClient);
+                        CloseUnregisteredClient(tcpClient, null);
+                        throw;
+                    }
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
                 catch (NullReferenceException) when (ct.IsCancellationRequested || IsStopping) { break; }
@@ -439,6 +502,10 @@ namespace Unity.FoxgloveSDK.Transport
                     _logger.LogError($"Client handler error: {detail}");
                 }
             }
+            finally
+            {
+                ReleasePendingClient(tcpClient);
+            }
         }
 
         /// <summary>Create the stream used by the WebSocket core. Secure backends override this to return SslStream.</summary>
@@ -452,13 +519,71 @@ namespace Unity.FoxgloveSDK.Transport
             var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
             lock (_clientAdmissionLock)
             {
-                if (_clients.Count < maxClients)
+                // The current handler owns a pending reservation.  Count that
+                // reservation for admission, but do not reject the handler
+                // which already consumed it.
+                if (!IsStopping
+                    && (_clients.Count < maxClients
+                        || (_pendingClients.Count > 0 && _clients.Count + _pendingClients.Count <= maxClients)))
                     return true;
             }
 
             Interlocked.Increment(ref _totalRejectedClients);
             _logger.LogWarning($"Rejected WebSocket client because active client limit {maxClients} is reached.");
             return false;
+        }
+
+        private bool TryReservePendingClient(TcpClient tcpClient)
+        {
+            if (tcpClient == null)
+                return false;
+
+            lock (_clientAdmissionLock)
+            {
+                var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
+                if (IsStopping || _clients.Count + _pendingClients.Count >= maxClients)
+                    return false;
+
+                return _pendingClients.TryAdd(
+                    tcpClient,
+                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously));
+            }
+        }
+
+        private void RejectPendingClient(TcpClient tcpClient)
+        {
+            Interlocked.Increment(ref _totalRejectedClients);
+            _logger.LogWarning(
+                $"Rejected WebSocket client because active client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached (including pending handshakes).");
+
+            // This client was rejected at the bounded TCP reservation gate,
+            // before HandleClient could invoke WsHandshakeHandler.  Emit the
+            // same explicit capacity response that the in-handler gate uses;
+            // otherwise clients observe a reset rather than a retryable 503.
+            Stream stream = null;
+            try
+            {
+                stream = tcpClient?.GetStream();
+                if (stream != null)
+                    WsHandshakeHandler.WriteCapacityResponse(stream);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Could not send WebSocket capacity response: {FormatExceptionChain(ex)}");
+            }
+            finally
+            {
+                CloseUnregisteredClient(tcpClient, stream);
+            }
+        }
+
+        private void ReleasePendingClient(TcpClient tcpClient)
+        {
+            if (tcpClient == null)
+                return;
+
+            if (_pendingClients.TryRemove(tcpClient, out var completion))
+                completion.TrySetResult(true);
         }
 
         private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)

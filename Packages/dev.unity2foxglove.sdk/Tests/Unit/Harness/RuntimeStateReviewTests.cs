@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
@@ -122,9 +123,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var method = SourceMethod(source, "public void Stop()");
-            const string detach = "_recording.DetachFromSession();";
-            const string dispose = "session?.Dispose();";
+            var method = SourceMethod(source, "private void RunStopCleanup");
+            const string detach = "_recording.DetachFromSession";
+            const string dispose = "session?.Dispose()";
 
             Assert.Equal(1, CountOccurrences(method, detach));
             Assert.True(
@@ -160,6 +161,57 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RuntimeDisposeAfterRestartCleansTheCurrentSession()
+        {
+            var transport = new ThrowingStopTransport();
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                runtime.Start("phase187-d01-002-first-cycle");
+                runtime.Stop();
+
+                runtime.Start("phase187-d01-002-second-cycle");
+                Assert.Equal(4, transport.HandlerCount);
+                Assert.False(ReadPrivateField<bool>(runtime, "_stopCleanupComplete"));
+
+                runtime.Dispose();
+
+                Assert.Null(runtime.Session);
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.False(transport.IsRunning);
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetriesSessionCleanupAfterHandlerRemovalFailure()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextHandlerRemoval = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            runtime.Start("phase187-d01-session-retry");
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+                Assert.Equal(1, transport.HandlerCount);
+                Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
+
+                runtime.Dispose();
+
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
         public void RuntimeDisposePreservesCleanupAndReleasesTransportAfterStopFailure()
         {
             var transport = new ThrowingStopTransport { ThrowOnNextStop = true };
@@ -167,7 +219,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             runtime.Start("phase187-d01-002-dispose");
 
             Assert.Throws<InvalidOperationException>(() => runtime.Dispose());
+            Assert.Equal(0, ReadPrivateField<int>(runtime, "_disposed"));
+            Assert.Equal(0, transport.DisposeCalls);
             runtime.Dispose();
+            Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
 
             Assert.Equal(0, transport.HandlerCount);
             Assert.Equal(1, transport.DisposeCalls);
@@ -194,7 +249,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Assert.ThrowsAny<Exception>(() => runtime.Dispose());
 
                 Assert.Equal(0, transport.HandlerCount);
-                Assert.True(ReadPrivateField<bool>(runtime, "_stopCleanupComplete"));
+                Assert.False(ReadPrivateField<bool>(runtime, "_stopCleanupComplete"));
                 Assert.False(ReadPrivateField<bool>(runtime, "_recordingDisposed"));
                 Assert.Equal(1, transport.DisposeCalls);
 
@@ -210,37 +265,106 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RuntimeStopCleanupStateRetriesOnlyFailedStepAndTracksRequiredOwnership()
+        {
+            var state = new RuntimeStopCleanupState();
+            state.Reset();
+            ExceptionDispatchInfo firstFailure = null;
+            var replayAttempts = 0;
+
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayOrchestrator,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySuppressionWarnings,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySnapshot,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySceneSnapshot,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.Recording,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.Session,
+                () => { },
+                ref firstFailure);
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                () =>
+                {
+                    replayAttempts++;
+                    throw new InvalidOperationException("optional cleanup");
+                },
+                ref firstFailure);
+
+            Assert.True(state.IsReadyForStart);
+            Assert.False(state.IsComplete);
+            Assert.Equal("optional cleanup", firstFailure.SourceException.Message);
+
+            state.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                () => replayAttempts++,
+                ref firstFailure);
+
+            Assert.Equal(2, replayAttempts);
+            Assert.True(state.IsComplete);
+        }
+
+        [Fact]
+        public void RuntimeStartFailureDisposesPartiallyStartedSessionBeforeRethrowing()
+        {
+            var transport = new ThrowingStopTransport { ThrowOnNextStart = true };
+            var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() => runtime.Start("phase187-start-failure"));
+                Assert.Equal(0, transport.HandlerCount);
+                Assert.False(transport.IsRunning);
+
+                runtime.Dispose();
+                Assert.Equal(1, ReadPrivateField<int>(runtime, "_disposed"));
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+        }
+
+        [Fact]
         public void RuntimeStopTracksCompletionExplicitlyInsteadOfInferringFromSessionNull()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var method = SourceMethod(source, "public void Stop()");
 
-            Assert.Contains("_stopCleanupComplete = true;", method, StringComparison.Ordinal);
+            Assert.Contains("RunStopCleanup(ref firstFailure);", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("_stopCleanupComplete = firstFailure == null;", source, StringComparison.Ordinal);
+            Assert.Contains("_stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;", source, StringComparison.Ordinal);
             Assert.DoesNotContain("_stopCleanupComplete = _session == null;", source, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void ManagerDestroyRetriesRuntimeDisposeBeforeReleasingReference()
+        public void ManagerDestroyUsesTestableRuntimeDisposeRetryAndReleasesReference()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var method = SourceMethod(source, "private void OnDestroy()");
-            var firstDisposeIndex = method.IndexOf("_runtime?.Dispose();", StringComparison.Ordinal);
-            var secondDisposeIndex = firstDisposeIndex < 0
-                ? -1
-                : method.IndexOf(
-                    "_runtime?.Dispose();",
-                    firstDisposeIndex + 1,
-                    StringComparison.Ordinal);
-            var clearIndex = secondDisposeIndex < 0
-                ? -1
-                : method.IndexOf("_runtime = null;", secondDisposeIndex, StringComparison.Ordinal);
 
-            Assert.True(firstDisposeIndex >= 0);
-            Assert.True(secondDisposeIndex > firstDisposeIndex);
-            Assert.True(clearIndex > secondDisposeIndex);
-            Assert.Contains("catch", method.Substring(firstDisposeIndex), StringComparison.Ordinal);
+            Assert.Contains(
+                "FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains("() => _runtime?.Dispose()", method, StringComparison.Ordinal);
+            Assert.Contains("() => _runtime = null", method, StringComparison.Ordinal);
         }
 
         private static T ReadPrivateField<T>(object target, string name)
@@ -296,6 +420,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             private Action<uint, byte[]> _binaryReceived;
 
             internal bool ThrowOnNextStop { get; set; }
+            internal bool ThrowOnNextStart { get; set; }
+            internal bool ThrowOnNextHandlerRemoval { get; set; }
             internal int DisposeCalls { get; private set; }
             internal int HandlerCount =>
                 InvocationCount(_connected)
@@ -308,7 +434,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             public event Action<uint> OnClientConnected
             {
                 add => _connected += value;
-                remove => _connected -= value;
+                remove
+                {
+                    if (ThrowOnNextHandlerRemoval)
+                    {
+                        ThrowOnNextHandlerRemoval = false;
+                        throw new InvalidOperationException("handler removal failure");
+                    }
+                    _connected -= value;
+                }
             }
 
             public event Action<uint> OnClientDisconnected
@@ -329,7 +463,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 remove => _binaryReceived -= value;
             }
 
-            public void Start(string host, int port) => IsRunning = true;
+            public void Start(string host, int port)
+            {
+                if (ThrowOnNextStart)
+                {
+                    ThrowOnNextStart = false;
+                    throw new InvalidOperationException("start failure");
+                }
+
+                IsRunning = true;
+            }
 
             public void Stop()
             {

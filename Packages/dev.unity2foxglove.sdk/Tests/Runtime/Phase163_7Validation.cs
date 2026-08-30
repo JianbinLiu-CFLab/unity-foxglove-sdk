@@ -149,12 +149,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeStopDetachesRecordingBeforeSessionDispose()
         {
             var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var stop = Slice(runtime, "public void Stop()", "//");
-            Check(stop.Contains("_recording.DetachFromSession();", StringComparison.Ordinal)
-                  && stop.Contains("session?.Dispose();", StringComparison.Ordinal)
+            var stop = Slice(runtime, "public void Stop()", "public void RegisterChannel");
+            var detachIndex = stop.IndexOf("_recording.DetachFromSession", StringComparison.Ordinal);
+            var disposeIndex = stop.IndexOf("session?.Dispose()", StringComparison.Ordinal);
+            Check(detachIndex >= 0
+                  && disposeIndex >= 0
                   && !stop.Contains("session?.SetRecorder(null);", StringComparison.Ordinal)
-                  && stop.IndexOf("_recording.DetachFromSession();", StringComparison.Ordinal)
-                     < stop.IndexOf("session?.Dispose();", StringComparison.Ordinal),
+                  && detachIndex < disposeIndex
+                  && stop.IndexOf("_recording.DetachFromSession", detachIndex + 1, StringComparison.Ordinal) < 0,
                 "163-7F: runtime stop detaches recording before disposing the session");
         }
 

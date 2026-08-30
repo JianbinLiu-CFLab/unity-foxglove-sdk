@@ -36,9 +36,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Slice(manager, "private void OnDestroy()", "private void OnApplicationQuit()")
                     .Contains("StopServer(restoreLivePublishers: true)", StringComparison.Ordinal),
                 "163-2D: OnDestroy also leaves publisher state clean");
-            Check(server.Contains("_runtime.Stop();", StringComparison.Ordinal)
-                  && server.Contains("_sharedSensorClock.Reset();", StringComparison.Ordinal)
-                  && server.IndexOf("_runtime.Stop();", StringComparison.Ordinal) < server.IndexOf("_sharedSensorClock.Reset();", StringComparison.Ordinal),
+            var stopServer = Slice(server, "private void StopServer(bool restoreLivePublishers)", "private void DetachRuntimeForwarders");
+            var runtimeStopIndex = stopServer.IndexOf("_runtime.Stop,", StringComparison.Ordinal);
+            var sensorResetIndex = stopServer.IndexOf("_sharedSensorClock.Reset,", StringComparison.Ordinal);
+            Check((runtimeStopIndex >= 0 || stopServer.Contains("_runtime.Stop();", StringComparison.Ordinal))
+                  && (sensorResetIndex >= 0 || stopServer.Contains("_sharedSensorClock.Reset();", StringComparison.Ordinal))
+                  && runtimeStopIndex >= 0 && sensorResetIndex > runtimeStopIndex,
                 "163-2E: StopServer resets shared sensor clock after runtime stop");
             Check(setup.Contains("FindObjectsByType<FoxgloveManager>", StringComparison.Ordinal)
                   && setup.Contains("ShouldDisableLivePublisherForReplay", StringComparison.Ordinal)

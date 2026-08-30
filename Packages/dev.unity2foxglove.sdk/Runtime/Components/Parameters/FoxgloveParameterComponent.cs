@@ -43,8 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         // ── Serialized fields ──
         /// <summary>List of parameter definitions to register on enable.</summary>
         [SerializeField] private List<ParameterDefinition> _parameters = new();
-        private readonly List<string> _registeredNames = new();
-        private FoxgloveManager _registeredManager;
+        private readonly List<FoxgloveParameterStore.ParameterRegistration> _registrations = new();
 
         /// <summary>
         /// Registers all defined parameters with the FoxgloveManager on this GameObject.
@@ -61,7 +60,6 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _registeredManager = manager;
             foreach (var p in _parameters)
             {
                 if (string.IsNullOrEmpty(p.Name)) continue;
@@ -76,12 +74,13 @@ namespace Unity.FoxgloveSDK.Components
                         continue;
                     }
 
-                    manager.RegisterParameter(
+                    var registration = manager.RegisterParameterOwned(
                         p.Name,
                         normalizedValue,
                         FoxgloveParameterStore.NormalizeParameterType(p.Type),
                         p.Writable);
-                    _registeredNames.Add(p.Name);
+                    if (registration != null)
+                        _registrations.Add(registration);
                 }
                 catch (Exception ex)
                 {
@@ -102,14 +101,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void UnregisterRegisteredParameters()
         {
-            if (_registeredManager != null)
-            {
-                foreach (var name in _registeredNames)
-                    _registeredManager.UnregisterParameter(name);
-            }
-
-            _registeredNames.Clear();
-            _registeredManager = null;
+            foreach (var registration in _registrations)
+                registration?.Dispose();
+            _registrations.Clear();
         }
     }
 }

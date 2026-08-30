@@ -46,6 +46,11 @@ namespace Unity.FoxgloveSDK.Transport
         private CancellationTokenSource _cts;
         private Task _acceptLoopTask;
         private string _rootCaSha256Fingerprint;
+        // The fingerprint and download must be derived from one immutable
+        // snapshot for the lifetime of a running distributor. Re-opening the
+        // configured path for every request could otherwise serve bytes from a
+        // different certificate generation than the page displayed.
+        private byte[] _rootCaBytes;
         private int _activeClientHandlers;
         private int _running;
         private bool _acceptingClients;
@@ -95,7 +100,12 @@ namespace Unity.FoxgloveSDK.Transport
                 if (string.IsNullOrWhiteSpace(_rootCaPath) || !File.Exists(_rootCaPath))
                     throw new InvalidOperationException("Root CA file is required for certificate distribution.");
 
-                _rootCaSha256Fingerprint = ComputeSha256Fingerprint(_rootCaPath);
+                var rootCaBytes = ReadFileWithinLimit(_rootCaPath, MaxCertificateFileBytes);
+                if (rootCaBytes == null)
+                    throw new InvalidOperationException("Root CA file exceeds the certificate distribution size limit.");
+
+                _rootCaSha256Fingerprint = ComputeSha256Fingerprint(rootCaBytes);
+                Volatile.Write(ref _rootCaBytes, rootCaBytes);
                 var address = TransportHostResolver.ResolveBindAddress(host);
                 TcpListener listener = null;
                 CancellationTokenSource cts = null;
@@ -123,6 +133,8 @@ namespace Unity.FoxgloveSDK.Transport
                 catch
                 {
                     Volatile.Write(ref _running, 0);
+                    Volatile.Write(ref _rootCaBytes, null);
+                    _rootCaSha256Fingerprint = null;
                     _listener = null;
                     _cts = null;
                     _acceptLoopTask = null;
@@ -234,6 +246,8 @@ namespace Unity.FoxgloveSDK.Transport
                     " ms; their synchronization remains owned until final exit.");
             }
             cts?.Dispose();
+            Volatile.Write(ref _rootCaBytes, null);
+            _rootCaSha256Fingerprint = null;
             return handlersIdle;
         }
 
@@ -364,7 +378,7 @@ namespace Unity.FoxgloveSDK.Transport
 
                     if (parts[1] == "/rootCA.crt")
                     {
-                        WriteFile(stream, _rootCaPath, "application/x-x509-ca-cert");
+                        WriteFile(stream, Volatile.Read(ref _rootCaBytes), "application/x-x509-ca-cert");
                         return;
                     }
 
@@ -419,6 +433,19 @@ namespace Unity.FoxgloveSDK.Transport
             stream.Flush();
         }
 
+        private static void WriteFile(Stream stream, byte[] bytes, string contentType)
+        {
+            if (bytes == null)
+            {
+                WriteText(stream, "404 Not Found", "text/plain", "File not found.");
+                return;
+            }
+
+            WriteHeader(stream, "200 OK", contentType, bytes.Length);
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Flush();
+        }
+
         private static byte[] ReadFileWithinLimit(string path, int maxBytes)
         {
             using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -435,6 +462,16 @@ namespace Unity.FoxgloveSDK.Transport
 
                 buffer.Write(chunk, 0, read);
             }
+        }
+
+        private static string ComputeSha256Fingerprint(byte[] bytes)
+        {
+            if (bytes == null)
+                return string.Empty;
+
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(bytes);
+            return BitConverter.ToString(hash).Replace("-", ":");
         }
 
         private static void WriteText(Stream stream, string status, string contentType, string text)

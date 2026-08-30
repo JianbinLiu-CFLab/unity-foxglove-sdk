@@ -498,18 +498,25 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
                 "phase184-acceptance-tooling",
                 [sys.executable, script, "--only", "phase184-acceptance-tooling"],
                 disable_timeout=True,
+                exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
             ),
             CiJob(
                 "phase186-bridge-tooling",
                 [sys.executable, script, "--only", "phase186-bridge-tooling"],
                 disable_timeout=True,
+                exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
             ),
             CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
                 disable_timeout=True,
+                exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
             ),
-            CiJob("packages", [sys.executable, script, "--only", "packages"]),
+            CiJob(
+                "packages",
+                [sys.executable, script, "--only", "packages"],
+                exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+            ),
             CiJob("boundary", [sys.executable, script, "--only", "boundary"]),
         ]
     )

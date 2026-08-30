@@ -42,6 +42,11 @@ namespace Unity.FoxgloveSDK.Core
         /// are owner-thread operations and must not be called concurrently.
         /// </summary>
         private FoxgloveSession _session;
+        // A session is removed from the public active slot before teardown so
+        // callbacks cannot observe it as live. Keep a private owner reference
+        // when one of its cleanup steps fails, allowing a later Stop/Dispose to
+        // retry without leaking its transport handlers.
+        private FoxgloveSession _sessionPendingCleanup;
         private readonly IFoxgloveTransport _transport;
         private readonly IFoxgloveClock _wallClock;
         private readonly PlaybackClock _playbackClock;
@@ -74,9 +79,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplayOrchestrator _replayOrchestrator;
         private readonly TickCoordinator _tickCoordinator;
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
+        private readonly RuntimeStopCleanupState _stopCleanup = new RuntimeStopCleanupState();
         private int _disposed;
         private int _disposing;
-        private bool _stopCleanupComplete;
+        private bool _stopCleanupComplete = true;
         private bool _parametersCleared;
         private bool _servicesCleared;
         private bool _recordingDisposed;
@@ -203,6 +209,11 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
 
+        /// <summary>Register a parameter with a lease that owns only this registration.</summary>
+        public FoxgloveParameterStore.ParameterRegistration RegisterParameterOwned(
+            string name, JToken value, string type, bool writable)
+            => _parameters.RegisterOwned(name, value, type, writable);
+
         /// <summary>Unregister a named parameter. Safe no-op for unknown names.</summary>
         public bool UnregisterParameter(string name)
             => _parameters.Unregister(name);
@@ -242,7 +253,15 @@ namespace Unity.FoxgloveSDK.Core
             // Re-advertise immediately so connected clients pick up the new service
             if (_session != null)
             {
-                _session.AdvertiseRegisteredService(id);
+                try
+                {
+                    _session.AdvertiseRegisteredService(id);
+                }
+                catch
+                {
+                    _services.Unregister(id);
+                    throw;
+                }
             }
             return id;
         }
@@ -272,6 +291,25 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
+            // Do not overlap a new session with a retired session or an attached
+            // forwarder whose cleanup failed. Best-effort replay-history cleanup
+            // may report a failure without poisoning the next session epoch.
+            if (_sessionPendingCleanup != null || !_stopCleanup.IsReadyForStart)
+            {
+                ExceptionDispatchInfo cleanupFailure = null;
+                RunStopCleanup(ref cleanupFailure);
+                if (!_stopCleanup.IsReadyForStart)
+                {
+                    if (cleanupFailure != null)
+                        cleanupFailure.Throw();
+                    throw new InvalidOperationException(
+                        "The previous runtime session still owns cleanup resources.");
+                }
+                if (cleanupFailure != null)
+                    _logger.LogWarning(
+                        $"Ignoring non-critical Stop cleanup failure before restart: {cleanupFailure.SourceException.Message}");
+            }
+
             FoxgloveSession session = null;
             try
             {
@@ -284,32 +322,28 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _liveWebSocketChannelFilter),
                     Volatile.Read(ref _mcapRecordingChannelFilter),
                     Volatile.Read(ref _mirrorSink));
+                // A successful session starts a fresh per-step cleanup epoch;
+                // set it before Start so a partially started session is also
+                // covered by the failure path below.
+                _stopCleanup.Reset();
+                _stopCleanupComplete = false;
                 session.Start(host, port);
                 _session = session;
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
                 _stopped = false;
             }
-            catch
+            catch (Exception startException)
             {
-                try
-                {
-                    _replayOrchestrator.Detach(_replay);
-                    try
-                    {
-                        session?.Dispose();
-                    }
-                    catch (Exception disposeEx)
-                    {
-                        _logger.LogWarning(
-                            $"Ignoring startup dispose failure while preserving the original Start exception: {disposeEx.Message}");
-                    }
-                }
-                finally
-                {
-                    _recording.DetachFromSession();
-                    _session = null;
-                }
+                // Run every cleanup step independently. The original Start
+                // failure remains primary; cleanup failures are retained in
+                // the per-step state for a later Stop/Dispose retry.
+                ExceptionDispatchInfo cleanupFailure = null;
+                RunStopCleanup(ref cleanupFailure, session);
+                if (cleanupFailure != null)
+                    _logger.LogWarning(
+                        $"Startup cleanup was incomplete; preserving the original Start exception: {cleanupFailure.SourceException.Message}");
+                ExceptionDispatchInfo.Capture(startException).Throw();
                 throw;
             }
         }
@@ -350,26 +384,67 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (_stopped && _session == null)
             {
-                return;
+                if (_sessionPendingCleanup == null && _stopCleanupComplete)
+                    return;
             }
 
-            _stopped = true;
             ExceptionDispatchInfo firstFailure = null;
-            TryCleanup(ClearReplaySuppressionWarnings, ref firstFailure);
-            TryCleanup(_tickCoordinator.ClearPendingReplaySnapshot, ref firstFailure);
-            TryCleanup(_tickCoordinator.ClearPendingReplaySceneSnapshot, ref firstFailure);
-            TryCleanup(_replay.CancelPanelHistory, ref firstFailure);
-            TryCleanup(() => _replayOrchestrator.Detach(_replay), ref firstFailure);
-            var session = _session;
-            _session = null;
-            TryCleanup(() => { _recording.DetachFromSession(); }, ref firstFailure);
-            TryCleanup(() => { session?.Dispose(); }, ref firstFailure);
-            // The session is deliberately retired before cleanup so callbacks cannot
-            // observe it as active. Completion is tracked by this explicit latch,
-            // not inferred from the nullable session field: every owned cleanup step
-            // above has now been attempted, even when one reports a failure.
-            _stopCleanupComplete = true;
+            RunStopCleanup(ref firstFailure);
             firstFailure?.Throw();
+        }
+
+        /// <summary>
+        /// Runs each Stop action once per cleanup epoch and retains only failed
+        /// steps for later retry. The active session is retired before any
+        /// callback can observe it as running.
+        /// </summary>
+        private void RunStopCleanup(
+            ref ExceptionDispatchInfo firstFailure,
+            FoxgloveSession startupSession = null)
+        {
+            _stopped = true;
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySuppressionWarnings,
+                ClearReplaySuppressionWarnings,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySnapshot,
+                _tickCoordinator.ClearPendingReplaySnapshot,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplaySceneSnapshot,
+                _tickCoordinator.ClearPendingReplaySceneSnapshot,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplayPanelHistory,
+                _replay.CancelPanelHistory,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.ReplayOrchestrator,
+                () => _replayOrchestrator.Detach(_replay),
+                ref firstFailure);
+
+            var session = _session ?? _sessionPendingCleanup ?? startupSession;
+            _session = null;
+            if (session == null)
+                _stopCleanup.MarkComplete(RuntimeStopCleanupStep.Session);
+            else
+                _sessionPendingCleanup = session;
+
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.Recording,
+                _recording.DetachFromSession,
+                ref firstFailure);
+            _stopCleanup.TryCleanup(
+                RuntimeStopCleanupStep.Session,
+                () => session?.Dispose(),
+                ref firstFailure);
+            if (_stopCleanup.IsCompleted(RuntimeStopCleanupStep.Session))
+                _sessionPendingCleanup = null;
+
+            // Resource ownership is represented by the required per-step
+            // latches, not by one failure result from the current invocation.
+            _stopCleanupComplete = _stopCleanup.IsResourceCleanupComplete;
         }
 
         // ── Channel API ──
@@ -714,12 +789,11 @@ namespace Unity.FoxgloveSDK.Core
             ExceptionDispatchInfo firstFailure = null;
             try
             {
-                if (!_stopCleanupComplete)
+                if (!_stopCleanupComplete || _sessionPendingCleanup != null)
                 {
                     try
                     {
                         Stop();
-                        _stopCleanupComplete = true;
                     }
                     catch (Exception exception)
                     {
@@ -744,13 +818,20 @@ namespace Unity.FoxgloveSDK.Core
                     _replay.Dispose,
                     ref _replayDisposed,
                     ref firstFailure);
-                TryCleanup(
-                    _transport.Dispose,
-                    ref _transportDisposed,
-                    ref firstFailure);
+                // Keep the transport alive while a retired session still owns
+                // event handlers; the next Dispose call must be able to retry
+                // session cleanup against the live transport.
+                if (_sessionPendingCleanup == null)
+                {
+                    TryCleanup(
+                        _transport.Dispose,
+                        ref _transportDisposed,
+                        ref firstFailure);
+                }
 
                 if (firstFailure == null
                     && _stopCleanupComplete
+                    && _sessionPendingCleanup == null
                     && _parametersCleared
                     && _servicesCleared
                     && _recordingDisposed

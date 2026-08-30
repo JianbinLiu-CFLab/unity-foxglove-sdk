@@ -299,12 +299,18 @@ namespace Unity.FoxgloveSDK.Tests
 
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var start = ExtractMethodBody(source, "public void Start");
-            var catchIndex = start.IndexOf("catch", StringComparison.Ordinal);
-            var detachIndex = start.IndexOf("_recording.DetachFromSession()", StringComparison.Ordinal);
-            Check(start.Contains("finally") && detachIndex > catchIndex,
-                "51B-15b: runtime Start rollback detaches recording in a cleanup path that survives dispose failures");
-            Check(start.Contains("startup dispose failure", StringComparison.OrdinalIgnoreCase),
-                "51B-15c: runtime Start rollback preserves the original startup exception if session dispose also fails");
+            var cleanup = ExtractMethodBody(source, "private void RunStopCleanup");
+            var detachIndex = cleanup.IndexOf("_recording.DetachFromSession", StringComparison.Ordinal);
+            var disposeIndex = cleanup.IndexOf("session?.Dispose()", StringComparison.Ordinal);
+            Check(start.Contains("RunStopCleanup(ref cleanupFailure, session)", StringComparison.Ordinal)
+                  && cleanup.Contains("RuntimeStopCleanupStep.Recording", StringComparison.Ordinal)
+                  && cleanup.Contains("RuntimeStopCleanupStep.Session", StringComparison.Ordinal)
+                  && detachIndex >= 0 && disposeIndex > detachIndex,
+                "51B-15b: runtime Start rollback runs recording detach before session disposal through retryable cleanup steps");
+            Check(start.Contains("ExceptionDispatchInfo.Capture(startException).Throw()", StringComparison.Ordinal)
+                  && start.Contains("preserving the original Start exception", StringComparison.OrdinalIgnoreCase)
+                  && cleanup.Contains("ref firstFailure", StringComparison.Ordinal),
+                "51B-15c: runtime Start rollback preserves the original startup exception while retaining cleanup failures");
         }
 
         private static void VerifyClearSessionClearsTransientServiceCallsOnly()
@@ -413,11 +419,12 @@ namespace Unity.FoxgloveSDK.Tests
             var stop = ExtractMethodBody(source, "private void StopServer");
             var stopIndex = source.IndexOf("private void StopServer", StringComparison.Ordinal);
             var detachIndex = source.IndexOf("transport.OnClientConnected -=", stopIndex, StringComparison.Ordinal);
-            var runtimeStopIndex = source.IndexOf("_runtime.Stop()", stopIndex, StringComparison.Ordinal);
+            var runtimeStopIndex = source.IndexOf("_runtime.Stop,", stopIndex, StringComparison.Ordinal);
             Check(stop.Contains("capture and detach") || stop.Contains("Capture and detach"),
                 "51B-27: StopServer documents that callbacks are detached before runtime Stop clears Session");
-            Check(detachIndex >= 0 && runtimeStopIndex >= 0 && detachIndex < runtimeStopIndex,
-                "51B-28: StopServer detaches transport callbacks before runtime Stop");
+            Check(stop.Contains("FoxgloveManagerTeardownState.RunStopServer(", StringComparison.Ordinal)
+                  && detachIndex >= 0 && runtimeStopIndex >= 0 && detachIndex < runtimeStopIndex,
+                "51B-28: StopServer detaches transport callbacks before the centralized runtime Stop step");
         }
 
         private static void VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated()

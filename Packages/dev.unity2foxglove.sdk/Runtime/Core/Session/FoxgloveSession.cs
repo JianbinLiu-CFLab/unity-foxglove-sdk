@@ -836,8 +836,18 @@ namespace Unity.FoxgloveSDK.Core
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
             var id = _services.Register(descriptor);
-            AdvertiseRegisteredService(id);
-            return id;
+            try
+            {
+                AdvertiseRegisteredService(id);
+                return id;
+            }
+            catch
+            {
+                // Publication is part of registration. Do not leave a service
+                // in the registry when its first advertisement failed.
+                _services.Unregister(id);
+                throw;
+            }
         }
 
         /// <summary>
@@ -847,7 +857,7 @@ namespace Unity.FoxgloveSDK.Core
         public bool UnregisterService(uint serviceId)
         {
             var service = _services.GetById(serviceId);
-            if (!_services.Unregister(serviceId))
+            if (service == null)
                 return false;
 
             _transport.BroadcastText(JsonConvert.SerializeObject(new UnadvertiseServices
@@ -855,13 +865,29 @@ namespace Unity.FoxgloveSDK.Core
                 ServiceIds = new List<uint> { serviceId }
             }));
 
-            if (service != null)
+            try
             {
                 _graph.RemoveAdvertisedService(service.Name);
                 _graph.BroadcastUpdate();
+                if (!_services.Unregister(serviceId))
+                    return false;
+                return true;
             }
-
-            return true;
+            catch
+            {
+                // Keep the registry and graph coherent for a retry if graph
+                // publication fails after the unadvertise was sent.
+                try
+                {
+                    _graph.AddAdvertisedService(service.Name);
+                    _graph.BroadcastUpdate();
+                }
+                catch
+                {
+                    // Preserve the original publication exception.
+                }
+                throw;
+            }
         }
 
         /// <summary>
@@ -875,9 +901,30 @@ namespace Unity.FoxgloveSDK.Core
                 return;
 
             var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { service } };
-            _transport.BroadcastText(JsonConvert.SerializeObject(adv));
-            _graph.AddAdvertisedService(service.Name);
-            _graph.BroadcastUpdate();
+            var graphAdded = false;
+            try
+            {
+                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+                _graph.AddAdvertisedService(service.Name);
+                graphAdded = true;
+                _graph.BroadcastUpdate();
+            }
+            catch
+            {
+                if (graphAdded)
+                {
+                    try
+                    {
+                        _graph.RemoveAdvertisedService(service.Name);
+                        _graph.BroadcastUpdate();
+                    }
+                    catch
+                    {
+                        // Preserve the original publication exception.
+                    }
+                }
+                throw;
+            }
         }
 
         // ── Time ──

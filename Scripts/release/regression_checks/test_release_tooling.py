@@ -1388,8 +1388,8 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("All executed CI checks passed.", rendered)
         self.assertNotIn("All CI checks passed.", rendered)
 
-    def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
-        """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
+    def test_default_ci_marks_resource_heavy_lanes_exclusive(self) -> None:
+        """Resource-heavy lanes serialize so concurrent jobs cannot exhaust the host."""
         jobs = self.run_ci.build_default_ci_jobs(types.SimpleNamespace(skip_analyzer=False))
 
         self.assertEqual("dotnet", self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP)
@@ -1403,10 +1403,10 @@ class RunCiTests(unittest.TestCase):
                 "foxrun-publish-panel": None,
                 "phase179-ros2-regression": None,
                 "phase181-ros2-regression": None,
-                "phase184-acceptance-tooling": None,
-                "phase186-bridge-tooling": None,
-                "mcap-conformance": None,
-                "packages": None,
+                 "phase184-acceptance-tooling": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                 "phase186-bridge-tooling": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                 "mcap-conformance": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                 "packages": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "boundary": None,
             },
             {job.name: job.exclusive_group for job in jobs},

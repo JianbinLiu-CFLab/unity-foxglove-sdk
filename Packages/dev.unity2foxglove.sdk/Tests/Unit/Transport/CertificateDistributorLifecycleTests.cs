@@ -52,6 +52,46 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void FingerprintAndDownloadRemainBoundToStartedCertificateSnapshot()
+        {
+            var certificatePath = CreateCertificateFixture("certificate-A");
+            var distributor = new FoxgloveCertificateDistributor(
+                certificatePath,
+                clientIoTimeoutMs: 5000);
+            try
+            {
+                distributor.Start("127.0.0.1", 0);
+                var firstEndpoint = GetListenerEndpoint(distributor);
+                var fingerprintA = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(certificatePath);
+                var pageA = ReadHttpBody(firstEndpoint, "/");
+                var downloadA = ReadHttpBody(firstEndpoint, "/rootCA.crt");
+
+                Assert.Contains(fingerprintA, pageA, StringComparison.Ordinal);
+                Assert.Equal("certificate-A", downloadA);
+
+                File.WriteAllText(certificatePath, "certificate-B", Encoding.ASCII);
+                var pageAfterMutation = ReadHttpBody(GetListenerEndpoint(distributor), "/");
+                var downloadAfterMutation = ReadHttpBody(GetListenerEndpoint(distributor), "/rootCA.crt");
+
+                Assert.Contains(fingerprintA, pageAfterMutation, StringComparison.Ordinal);
+                Assert.Equal("certificate-A", downloadAfterMutation);
+
+                distributor.Stop();
+                distributor.Start("127.0.0.1", 0);
+                var secondEndpoint = GetListenerEndpoint(distributor);
+                var fingerprintB = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(certificatePath);
+                Assert.NotEqual(fingerprintA, fingerprintB);
+                Assert.Contains(fingerprintB, ReadHttpBody(secondEndpoint, "/"), StringComparison.Ordinal);
+                Assert.Equal("certificate-B", ReadHttpBody(secondEndpoint, "/rootCA.crt"));
+            }
+            finally
+            {
+                distributor.Dispose();
+                File.Delete(certificatePath);
+            }
+        }
+
+        [Fact]
         public void DisposeAbortsPartialClientAndWaitsForHandlerExit()
         {
             var certificatePath = CreateCertificateFixture();
@@ -137,11 +177,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             }
         }
 
-        private static string CreateCertificateFixture()
+        private static string CreateCertificateFixture(string contents = "phase187-certificate-fixture")
         {
             var path = Path.GetTempFileName();
-            File.WriteAllText(path, "phase187-certificate-fixture", Encoding.ASCII);
+            File.WriteAllText(path, contents, Encoding.ASCII);
             return path;
+        }
+
+        private static string ReadHttpBody(IPEndPoint endpoint, string path)
+        {
+            using var client = new TcpClient();
+            client.Connect(endpoint.Address, endpoint.Port);
+            using var stream = client.GetStream();
+            stream.ReadTimeout = 5000;
+            stream.WriteTimeout = 5000;
+            var request = Encoding.ASCII.GetBytes(
+                $"GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+            stream.Write(request, 0, request.Length);
+            using var response = new MemoryStream();
+            var buffer = new byte[1024];
+            int read;
+            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                response.Write(buffer, 0, read);
+
+            var text = Encoding.UTF8.GetString(response.ToArray());
+            var separator = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            return separator >= 0 ? text.Substring(separator + 4) : text;
         }
 
         private static IPEndPoint GetListenerEndpoint(FoxgloveCertificateDistributor distributor)

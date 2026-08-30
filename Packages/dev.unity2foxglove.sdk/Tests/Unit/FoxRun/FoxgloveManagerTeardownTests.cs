@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Unity.FoxgloveSDK.UnitTests.Harness;
+using Unity.FoxgloveSDK.Components;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -103,9 +104,132 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "EndFoxRunTransportSession",
                 "_replayCursorEndpoint?.Dispose()",
                 "_certificateDistributor?.Dispose()",
+                "FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(",
                 "_runtime?.Dispose()",
+                "_runtime = null",
                 "EndFoxRunPublishSession",
                 "FoxgloveProfiler.ResetGlobal(this)");
+        }
+
+        [Fact]
+        public void StopServerTailRunsAfterRuntimeStopFailureAndRethrowsFirstFatal()
+        {
+            var calls = new List<string>();
+            var method = TeardownMethod("RunStopServer");
+
+            var failure = Assert.Throws<TargetInvocationException>(
+                () => method.Invoke(
+                    null,
+                    new object[]
+                    {
+                        Step(calls, "runtime", new InvalidOperationException("runtime-stop")),
+                        Step(calls, "clock"),
+                        Step(calls, "remote"),
+                        Step(calls, "replay"),
+                        Step(calls, "certificate"),
+                        Step(calls, "cache"),
+                        Step(calls, "events"),
+                        Step(calls, "channel-ids"),
+                        Step(calls, "publishers")
+                    }));
+
+            var primary = Assert.IsType<InvalidOperationException>(failure.InnerException);
+            Assert.Equal("runtime-stop", primary.Message);
+            Assert.Equal(
+                new[]
+                {
+                    "runtime",
+                    "clock",
+                    "remote",
+                    "replay",
+                    "certificate",
+                    "cache",
+                    "events",
+                    "channel-ids",
+                    "publishers"
+                },
+                calls);
+        }
+
+        [Fact]
+        public void StopServerWiresTheFailureResilientTailHelper()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var method = TestSources.ExtractMethod(
+                source,
+                "private void StopServer(bool restoreLivePublishers)");
+
+            Assert.Contains(
+                "FoxgloveManagerTeardownState.RunStopServer(",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains("_runtime.Stop", method, StringComparison.Ordinal);
+            Assert.Contains("ClearClientEvents", method, StringComparison.Ordinal);
+            Assert.Contains("RestoreLivePublishers", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryReportsTransientFailureAndReleasesReference()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                () =>
+                {
+                    attempts++;
+                    if (attempts == 1)
+                        throw new InvalidOperationException("first failure");
+                },
+                () => releases++,
+                exception => reports.Add(exception.Message));
+
+            Assert.Equal(2, attempts);
+            Assert.Equal(1, releases);
+            Assert.Equal(new[] { "first failure" }, reports);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryDoesNotRepeatSuccessfulDispose()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                () => attempts++,
+                () => releases++,
+                exception => reports.Add(exception.Message));
+
+            Assert.Equal(1, attempts);
+            Assert.Equal(1, releases);
+            Assert.Empty(reports);
+        }
+
+        [Fact]
+        public void RuntimeDisposeRetryRethrowsFirstFailureAndKeepsReferenceWhenBothAttemptsFail()
+        {
+            var attempts = 0;
+            var releases = 0;
+            var reports = new List<string>();
+
+            var failure = Assert.Throws<InvalidOperationException>(
+                () => FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                    () =>
+                    {
+                        attempts++;
+                        throw new InvalidOperationException(
+                            attempts == 1 ? "first failure" : "retry failure");
+                    },
+                    () => releases++,
+                    exception => reports.Add(exception.Message)));
+
+            Assert.Equal("first failure", failure.Message);
+            Assert.Equal(2, attempts);
+            Assert.Equal(0, releases);
+            Assert.Equal(new[] { "first failure", "retry failure" }, reports);
         }
 
         private static MethodInfo TeardownMethod(string name)

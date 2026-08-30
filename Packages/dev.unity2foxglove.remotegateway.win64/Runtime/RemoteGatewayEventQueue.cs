@@ -63,6 +63,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private readonly Queue<RemoteGatewayEvent> _events;
         private readonly int _capacity;
         private long _droppedCount;
+        private bool _hasLatestConnectionStatus;
+        private RemoteGatewayEvent _latestConnectionStatus;
 
         internal RemoteGatewayEventQueue(int capacity)
         {
@@ -87,7 +89,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             get
             {
                 lock (_gate)
-                    return _events.Count;
+                    return _events.Count + (_hasLatestConnectionStatus ? 1 : 0);
             }
         }
 
@@ -95,8 +97,40 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         {
             lock (_gate)
             {
+                if (item.Kind == RemoteGatewayEventKind.ConnectionStatusChanged)
+                {
+                    var droppedExisting = false;
+                    if (!_hasLatestConnectionStatus && _events.Count >= _capacity)
+                    {
+                        DropOldest();
+                        droppedExisting = true;
+                    }
+
+                    var replacedStatus = _hasLatestConnectionStatus;
+                    _latestConnectionStatus = item;
+                    _hasLatestConnectionStatus = true;
+                    if (replacedStatus)
+                    {
+                        _droppedCount++;
+                        droppedExisting = true;
+                    }
+
+                    // Connection status is a latest-value signal, not a FIFO
+                    // workload item. Keeping it in a dedicated slot prevents
+                    // unsupported callback traffic from evicting health state;
+                    // reserve one bounded-queue slot for the latest value.
+                    return !droppedExisting;
+                }
+
+                var fifoCapacity = _capacity - (_hasLatestConnectionStatus ? 1 : 0);
+                if (fifoCapacity < 1)
+                {
+                    _droppedCount++;
+                    return false;
+                }
+
                 var droppedOldest = false;
-                if (_events.Count >= _capacity)
+                if (_events.Count >= fifoCapacity)
                 {
                     DropOldest();
                     droppedOldest = true;
@@ -111,6 +145,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         {
             lock (_gate)
             {
+                if (_hasLatestConnectionStatus)
+                {
+                    item = _latestConnectionStatus;
+                    _latestConnectionStatus = default;
+                    _hasLatestConnectionStatus = false;
+                    return true;
+                }
+
                 if (_events.Count == 0)
                 {
                     item = default;
@@ -132,6 +174,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             var drained = 0;
             lock (_gate)
             {
+                if (_hasLatestConnectionStatus)
+                {
+                    destination.Add(_latestConnectionStatus);
+                    _latestConnectionStatus = default;
+                    _hasLatestConnectionStatus = false;
+                    drained++;
+                }
+
                 while (drained < maxCount && _events.Count > 0)
                 {
                     destination.Add(_events.Dequeue());

@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Core
 {
     public partial class FoxgloveSession
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
+
         /// <summary>
         /// Sweep timed-out calls, execute pending handler invocations, and
         /// send completed responses/failures. Must run on the Unity main
@@ -154,7 +156,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             JToken parsedPayload;
-            try { parsedPayload = JToken.Parse(Encoding.UTF8.GetString(payload)); }
+            try { parsedPayload = JToken.Parse(StrictUtf8.GetString(payload)); }
             catch
             {
                 SendServiceCallFailure(clientId, serviceId, callId, "Malformed JSON payload");

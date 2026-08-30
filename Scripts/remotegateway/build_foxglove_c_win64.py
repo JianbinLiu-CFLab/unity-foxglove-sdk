@@ -26,6 +26,7 @@ PACKAGE_PLUGIN_RELATIVE = (
 PACKAGE_PLUGIN_DIR = (
     ROOT / PACKAGE_PLUGIN_RELATIVE
 )
+DEVICE_TOKEN_ENVIRONMENT_VARIABLE = "FOXGLOVE_DEVICE_TOKEN"
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
 ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
@@ -83,6 +84,7 @@ def sha256(path: Path) -> str:
 def build_environment(args: argparse.Namespace) -> dict[str, str]:
     """Build the Cargo/MSVC environment used for a static CRT gateway DLL."""
     env = os.environ.copy()
+    env.pop(DEVICE_TOKEN_ENVIRONMENT_VARIABLE, None)
     libclang_path = args.libclang_path or find_repo_local_libclang()
     if libclang_path:
         env["LIBCLANG_PATH"] = libclang_path

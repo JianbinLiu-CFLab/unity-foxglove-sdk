@@ -127,6 +127,47 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterOwnedRegistrationCannotRemoveReplacement()
+        {
+            var store = new FoxgloveParameterStore();
+            var first = store.RegisterOwned("/shared", new JValue(1), "number", true);
+            var second = store.RegisterOwned("/shared", new JValue(2), "number", true);
+
+            first.Dispose();
+
+            Assert.Equal(2, store.GetWireParameter("/shared").Value.Value<int>());
+
+            second.Dispose();
+            Assert.Null(store.GetWireParameter("/shared"));
+        }
+
+        [Fact]
+        public void ParameterRegistrationSnapshotsScalarValues()
+        {
+            var store = new FoxgloveParameterStore();
+            var number = new JValue(1);
+            var text = new JValue("before");
+            var flag = new JValue(true);
+
+            store.Register("/number", number, "number", true);
+            store.Register("/text", text, "string", true);
+            store.Register("/flag", flag, "boolean", true);
+
+            number.Value = 9;
+            text.Value = "after";
+            flag.Value = false;
+
+            Assert.Equal(1, store.GetWireParameter("/number").Value.Value<int>());
+            Assert.Equal("before", store.GetWireParameter("/text").Value.Value<string>());
+            Assert.True(store.GetWireParameter("/flag").Value.Value<bool>());
+
+            var clientValue = new JValue(4);
+            Assert.True(store.TrySetFromClient("/number", clientValue));
+            clientValue.Value = 8;
+            Assert.Equal(4, store.GetWireParameter("/number").Value.Value<int>());
+        }
+
+        [Fact]
         public void ParameterSetFromClient()
         {
             var store = new FoxgloveParameterStore();
@@ -265,6 +306,63 @@ namespace Unity.FoxgloveSDK.UnitTests
             fake.SimulateBinary(1, req);
             var sent = fake.SentTexts(1);
             Assert.True(sent.Last().Contains("Unsupported encoding"), "Wrong encoding → failure");
+        }
+
+        [Fact]
+        public void InvalidUtf8ServicePayloadIsRejectedBeforeHandlerDispatch()
+        {
+            var fake = new Phase6FakeTransport();
+            var calls = 0;
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.Services.Register(
+                new ServiceDescriptor
+                {
+                    Name = "/strict", Type = "/strict",
+                    Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                    Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+                },
+                _ =>
+                {
+                    calls++;
+                    return new JObject { ["ok"] = true };
+                });
+            fake.SimulateConnect(1);
+
+            // A malformed UTF-8 byte inside a JSON string becomes U+FFFD under
+            // replacement decoding and would otherwise be dispatched.
+            var invalidUtf8Json = new byte[] { 0x22, 0xC3, 0x22 };
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(serviceId, 7, "json", invalidUtf8Json));
+            session.DrainServiceCalls();
+
+            Assert.Equal(0, calls);
+            Assert.Contains("Malformed JSON payload", fake.SentTexts(1).Last(), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ServicePublicationFailureLeavesRegistryRetryable()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var descriptor = new ServiceDescriptor
+            {
+                Name = "/atomic", Type = "/atomic",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterService(descriptor));
+            Assert.Empty(session.Services.GetAll());
+
+            var serviceId = session.RegisterService(descriptor);
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterService(serviceId));
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            Assert.True(session.UnregisterService(serviceId));
+            Assert.Null(session.Services.GetById(serviceId));
         }
 
         [Fact]
@@ -483,6 +581,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             private readonly Dictionary<uint, List<byte[]>> _sentBinaries = new();
             public readonly List<string> BroadcastTexts = new();
             public uint? ThrowBinaryForClientId { get; set; }
+            public int ThrowBroadcastCount { get; set; }
 
             public void Start(string host, int port) { }
             public void Stop() { }
@@ -499,7 +598,15 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (!_sentBinaries.ContainsKey(clientId)) _sentBinaries[clientId] = new();
                 _sentBinaries[clientId].Add(data);
             }
-            public void BroadcastText(string json) => BroadcastTexts.Add(json);
+            public void BroadcastText(string json)
+            {
+                if (ThrowBroadcastCount > 0)
+                {
+                    ThrowBroadcastCount--;
+                    throw new InvalidOperationException("Injected broadcast failure.");
+                }
+                BroadcastTexts.Add(json);
+            }
             public void BroadcastBinary(byte[] data) { }
             public List<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : new();
             public List<byte[]> SentBinaries(uint clientId) => _sentBinaries.TryGetValue(clientId, out var l) ? l : new();

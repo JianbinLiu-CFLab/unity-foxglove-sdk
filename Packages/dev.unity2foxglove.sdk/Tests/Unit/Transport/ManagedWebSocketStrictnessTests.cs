@@ -21,6 +21,71 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
     public sealed class ManagedWebSocketStrictnessTests
     {
         [Fact]
+        public void PendingHandshakesAreBoundedAndClosedOnStop()
+        {
+            var options = new ManagedWebSocketOptions { MaxClients = 1 };
+            using var backend = new ManagedWsBackend(options);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+
+            using var pending = new TcpClient();
+            pending.Connect("127.0.0.1", port);
+            Assert.True(
+                SpinWait.SpinUntil(() => PendingClientCount(backend) == 1, TimeSpan.FromSeconds(2)),
+                "A connected client that has not completed the handshake must consume a bounded pending slot.");
+
+            using var rejected = new TcpClient();
+            rejected.Connect("127.0.0.1", port);
+            Assert.True(
+                SpinWait.SpinUntil(() => backend.GetStatsSnapshot().TotalRejectedClients >= 1, TimeSpan.FromSeconds(2)),
+                "A second pending client must be rejected while the single admission slot is occupied.");
+
+            backend.Stop();
+            Assert.True(
+                SpinWait.SpinUntil(() => PendingClientCount(backend) == 0, TimeSpan.FromSeconds(2)),
+                "Stop must retire every pending handshake instead of leaving an owned socket behind.");
+            Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
+        public void HandshakeAdmissionRequiresExactUpgradeTokenAndSixteenByteKey()
+        {
+            var handlerType = typeof(ManagedWsBackend).Assembly.GetType(
+                "Unity.FoxgloveSDK.Transport.WsHandshakeHandler");
+            Assert.NotNull(handlerType);
+            var tokenMethod = handlerType.GetMethod(
+                "ContainsUpgradeToken", BindingFlags.Static | BindingFlags.NonPublic);
+            var keyMethod = handlerType.GetMethod(
+                "IsValidWebSocketKey", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(tokenMethod);
+            Assert.NotNull(keyMethod);
+
+            Assert.False((bool)tokenMethod.Invoke(null, new object[] { "NotUpgrade" }));
+            Assert.True((bool)tokenMethod.Invoke(null, new object[] { "keep-alive, Upgrade" }));
+            Assert.True((bool)keyMethod.Invoke(null, new object[] { "dGhlIHNhbXBsZSBub25jZQ==" }));
+            Assert.False((bool)keyMethod.Invoke(null, new object[] { "dGhlIHNhbXBsZSBub25jZQ" }));
+            Assert.False((bool)keyMethod.Invoke(null, new object[] { "not-base64" }));
+        }
+
+        [Fact]
+        public void FailedListenerStartDoesNotPublishRunningStateAndCanRetry()
+        {
+            using var blocker = new TcpListener(System.Net.IPAddress.Loopback, 0);
+            blocker.Start();
+            var port = ((System.Net.IPEndPoint)blocker.LocalEndpoint).Port;
+            using var backend = new ManagedWsBackend();
+
+            Assert.ThrowsAny<SocketException>(() => backend.Start("127.0.0.1", port));
+            Assert.False(backend.IsRunning);
+
+            blocker.Stop();
+            backend.Start("127.0.0.1", port);
+            Assert.True(backend.IsRunning);
+            backend.Stop();
+            Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
         public void NullTextIsSentAsAnEmptyTextFrame()
         {
             using var tcpClient = new TcpClient();
@@ -224,6 +289,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             return Assert.IsType<ConcurrentDictionary<uint, WsConnection>>(field.GetValue(backend));
+        }
+
+        private static int PendingClientCount(ManagedWsBackend backend)
+        {
+            var field = typeof(ManagedWsBackend).GetField(
+                "_pendingClients",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+                return 0;
+
+            var value = field.GetValue(backend) as System.Collections.ICollection;
+            return value?.Count ?? 0;
+        }
+
+        private static int GetFreeTcpPort()
+        {
+            using var listener = new TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
         }
 
         private static void InvokeReceiveLoop(
