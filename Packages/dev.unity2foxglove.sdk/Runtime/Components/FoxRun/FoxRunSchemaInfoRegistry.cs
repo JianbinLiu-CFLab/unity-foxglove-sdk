@@ -477,7 +477,24 @@ namespace Unity.FoxgloveSDK.Components
             string message,
             Exception error)
         {
-            GeneratedSchemaRegistrationFailed?.Invoke(message, error);
+            var handlers = GeneratedSchemaRegistrationFailed;
+            if (handlers != null)
+            {
+                foreach (var subscriber in handlers.GetInvocationList())
+                {
+                    try
+                    {
+                        ((Action<string, Exception>)subscriber)(message, error);
+                    }
+                    catch (Exception observerException)
+                        when (FoxRunExceptionPolicy.IsRecoverable(observerException))
+                    {
+#if UNITY_5_3_OR_NEWER
+                        UnityEngine.Debug.LogException(observerException);
+#endif
+                    }
+                }
+            }
 #if UNITY_5_3_OR_NEWER
             UnityEngine.Debug.LogWarning("[FoxRun] " + message);
 #endif

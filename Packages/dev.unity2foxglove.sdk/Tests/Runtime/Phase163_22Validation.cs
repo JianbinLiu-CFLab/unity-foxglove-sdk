@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             DescriptorRoundTripsSemanticPolicyFields();
             DescriptorComparerDetectsSemanticPolicyDrift();
             SchemaRegistrationContinuesAfterInvalidAggregateContract();
+            SchemaRegistrationIsolatesThrowingObservers();
             ChannelRegistryReportsConflictingOverwrite();
             ArrayTopicFingerprintUsesCanonicalElementType();
             JsonWritersEscapeSurrogatePairs();
@@ -138,6 +139,79 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= OnWarning;
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        private static void SchemaRegistrationIsolatesThrowingObservers()
+        {
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            var firstObserverCalls = 0;
+            var secondObserverCalls = 0;
+            Exception escaped = null;
+            void ThrowingObserver(string message, Exception exception)
+            {
+                firstObserverCalls++;
+                throw new InvalidOperationException("observer failure");
+            }
+            void RecordingObserver(string message, Exception exception)
+            {
+                secondObserverCalls++;
+                Check(message.Contains("/phase163/observer-bad", StringComparison.Ordinal)
+                      && exception is InvalidOperationException,
+                    "163-22C-4: later schema observer receives the original recoverable failure");
+            }
+
+            FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed += ThrowingObserver;
+            FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed += RecordingObserver;
+            try
+            {
+                var manifest = new FoxRunSchemaManifestInfo(
+                    1,
+                    "Unity2Foxglove",
+                    "FoxRun",
+                    1,
+                    "global-observer",
+                    "foxrun-observer",
+                    new[]
+                    {
+                        new FoxRunSchemaTypeInfo(
+                            "Demo.ObserverProbe",
+                            new[]
+                            {
+                                Contract("Demo.ObserverBad", "/phase163/observer-bad",
+                                    new FoxRunSchemaFieldInfo("payload", "_payload", "field", "object", false, false, aggregate: true)),
+                                Contract("Demo.ObserverGood", "/phase163/observer-good",
+                                    new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float", false, false, aggregate: true))
+                            })
+                    });
+                var registry = new DefaultSchemaRegistry();
+
+                try
+                {
+                    FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+                    FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(registry);
+                }
+                catch (Exception exception)
+                {
+                    escaped = exception;
+                }
+
+                Check(escaped == null
+                      && firstObserverCalls == 1
+                      && secondObserverCalls == 1,
+                    "163-22C-5: recoverable observer failures do not abort diagnostic dispatch");
+                Check(registry.TryGetSchema(
+                          "Demo.ObserverGood",
+                          FoxgloveSchemaDefinitions.JsonSchemaEncoding,
+                          out var entry)
+                      && entry.Content.Contains("\"speed\"", StringComparison.Ordinal),
+                    "163-22C-6: independent schema registration continues after a throwing observer");
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= ThrowingObserver;
+                FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= RecordingObserver;
                 FoxRunSchemaInfoRegistry.ClearForTests();
             }
         }
