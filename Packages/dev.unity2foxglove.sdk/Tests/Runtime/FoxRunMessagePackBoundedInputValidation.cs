@@ -72,6 +72,16 @@ namespace Unity.FoxgloveSDK.Tests
                     "TypeSchema(\"null\")"),
                 "185C-6: subscription catalog schema declares null unions for every optional response value");
 
+            var inputHub = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            Check(
+                ContainsAll(
+                    inputHub,
+                    "result.Status != FoxRunInputDispatchStatus.UnknownTopic",
+                    "result.Status != FoxRunInputDispatchStatus.Staged",
+                    "!string.IsNullOrEmpty(result.Diagnostic)",
+                    "WarnOnce(topic + \": \" + result.Diagnostic)"),
+                "185C-7: input hub surfaces diagnostics when sibling staging is partial");
+
             Console.WriteLine("FoxRun MessagePack bounded input: " + _passed + " checks passed.\n");
         }
 

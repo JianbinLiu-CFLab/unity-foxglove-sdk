@@ -870,6 +870,34 @@ namespace Demo
             Assert.Contains("IsFoxRunInboundAuthorized", dispatch, StringComparison.Ordinal);
         }
 
+        [Fact]
+        [Trait("Phase", "187-R2-E05")]
+        public void InputHubReportsDiagnosticForPartialStaging()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var dispatch = TestSources.ExtractMethod(
+                source,
+                "private void OnClientMessage(uint clientId, uint channelId, string topic, string encoding, byte[] payload)");
+
+            Assert.Contains(
+                "result.Status != FoxRunInputDispatchStatus.UnknownTopic",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "result.Status != FoxRunInputDispatchStatus.Staged",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "!string.IsNullOrEmpty(result.Diagnostic)",
+                dispatch,
+                StringComparison.Ordinal);
+            Assert.True(
+                dispatch.IndexOf("result.Status != FoxRunInputDispatchStatus.Staged", StringComparison.Ordinal)
+                < dispatch.IndexOf("!string.IsNullOrEmpty(result.Diagnostic)", StringComparison.Ordinal),
+                "The Staged branch must inspect its retained diagnostic before suppressing the warning.");
+        }
+
 
 
 
