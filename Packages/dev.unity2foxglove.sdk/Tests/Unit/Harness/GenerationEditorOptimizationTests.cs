@@ -290,6 +290,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E02-003")]
+        public void PlayerSourceGenerationUsesFailClosedAssemblyDiscovery()
+        {
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var generate = TestSources.Slice(
+                source,
+                "public static List<string> GenerateSourceFiles(",
+                "        /// <summary>\r\n        /// Refresh canonical FoxRun manifest artifacts");
+
+            Assert.Contains(
+                "ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: false)",
+                generate,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14069MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_69Validation.cs", "--phase140-69", "Phase140_69Validation.Validate");
     }
