@@ -8,6 +8,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Google.Protobuf.Reflection;
+using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -216,6 +218,58 @@ namespace Unity.FoxgloveSDK.Tests
         {
             public float Reading { get; set; }
             public double Ratio { get; set; }
+        }
+    }
+
+    /// <summary>
+    /// Independent descriptor-ordering fixture shared by the historical 140-12
+    /// and 163-13 validation gates. It parses each emitted descriptor set rather
+    /// than asserting implementation spelling.
+    /// </summary>
+    public static class ProtobufDescriptorOrderingFixture
+    {
+        public static bool TryValidate(
+            out int checkedSubsets,
+            out int checkedDependencies,
+            out int orderingFailures)
+        {
+            checkedSubsets = 0;
+            checkedDependencies = 0;
+            orderingFailures = 0;
+
+            var registry = ProtobufSchemaRegistryLoader.FromDefault(new DefaultSchemaRegistry());
+            foreach (var schemaName in registry.SchemaNames)
+            {
+                var bytes = registry.GetFileDescriptorSet(schemaName);
+                if (bytes == null || bytes.Length == 0)
+                    continue;
+
+                // Parse emitted bytes independently of the registry traversal,
+                // then check every dependency edge.
+                var subset = FileDescriptorSet.Parser.ParseFrom(bytes);
+                var positions = subset.File
+                    .Select((file, index) => new { file.Name, Index = index })
+                    .ToDictionary(item => item.Name, item => item.Index, StringComparer.Ordinal);
+
+                foreach (var file in subset.File)
+                {
+                    foreach (var dependency in file.Dependency)
+                    {
+                        if (!positions.TryGetValue(dependency, out var dependencyIndex))
+                            continue;
+
+                        checkedDependencies++;
+                        if (dependencyIndex >= positions[file.Name])
+                            orderingFailures++;
+                    }
+                }
+
+                checkedSubsets++;
+            }
+
+            return checkedSubsets >= 40
+                   && checkedDependencies > 0
+                   && orderingFailures == 0;
         }
     }
 }

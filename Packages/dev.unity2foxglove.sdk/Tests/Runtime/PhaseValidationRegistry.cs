@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-10", "Phase 163-10: phase163-10 review regression checks for MCAP reader parsing", Phase163_10Validation.Validate, includeInDefault: false),
             Ci("--phase163-11", "Phase 163-11: validation for MCAP DataLoader, Remote File, and Replay Engine review fixes", Phase163_11Validation.Validate, includeInDefault: false),
             Ci("--phase163-12", "Phase 163-12: validation for schema catalog and identity review fixes", Phase163_12Validation.Validate, includeInDefault: false),
-            Ci("--phase163-13", "Phase 163-13: validation for protobuf/JSON builder review fixes", Phase163_13Validation.Validate, includeInDefault: false),
+            Ci("--phase163-13", "Phase 163-13: validation for protobuf/JSON builder review fixes", Phase163_13Validation.Validate),
             Ci("--phase163-14", "Phase 163-14: validation for publisher base, cadence, and output policy review fixes", Phase163_14Validation.Validate, includeInDefault: false),
             Ci("--phase163-15", "Phase 163-15: validation for camera publisher and editor review fixes", Phase163_15Validation.Validate, includeInDefault: false),
             Ci("--phase163-16", "Phase 163-16: validation for video sidecar and codec review fixes", Phase163_16Validation.Validate, includeInDefault: false),
