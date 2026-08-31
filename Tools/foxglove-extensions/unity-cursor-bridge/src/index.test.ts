@@ -395,6 +395,52 @@ describe("Unity Replay Sync panel lifecycle", () => {
     }
   });
 
+  test("forwards an explicit same-time seek queued while an advance is in flight", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    let resolveSecond: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/f04-same-time-inflight";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1 ? firstResponse : secondResponse;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(3_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: false }, vi.fn());
+      vi.setSystemTime(3_001_000);
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: true }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint);
+      const secondPayload = JSON.parse(String(ownCalls[1]![1]?.body));
+      expect(secondPayload.time).toEqual({ sec: 7, nsec: 9 });
+      expect(secondPayload.mode).toBe("seek");
+      expect(secondPayload.didSeek).toBe(true);
+      resolveSecond?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
   test("follow mode honors the master sync-enabled switch", async () => {
     vi.useFakeTimers();
     const endpoint = "http://127.0.0.1:9998/f04-enabled";

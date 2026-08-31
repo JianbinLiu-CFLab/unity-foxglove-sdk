@@ -94,6 +94,7 @@ type PendingCursor = {
   payload: CursorPayload;
   sentSec: number;
   sentNsec: number;
+  didSeek: boolean;
 };
 
 function normalizeEndpoint(endpoint: unknown): string {
@@ -655,6 +656,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       payload,
       sentSec: payload.time.sec,
       sentNsec: payload.time.nsec,
+      didSeek: payload.didSeek,
     };
     inFlightCursor = dispatched;
 
@@ -734,9 +736,14 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       return;
     }
 
+    const didSeek = renderState.didSeek === true;
     if (
-      (inFlightCursor?.sentSec === currentTime.sec && inFlightCursor.sentNsec === currentTime.nsec)
-      || (pendingCursor?.sentSec === currentTime.sec && pendingCursor.sentNsec === currentTime.nsec)
+      (inFlightCursor?.sentSec === currentTime.sec
+        && inFlightCursor.sentNsec === currentTime.nsec
+        && inFlightCursor.didSeek === didSeek)
+      || (pendingCursor?.sentSec === currentTime.sec
+        && pendingCursor.sentNsec === currentTime.nsec
+        && pendingCursor.didSeek === didSeek)
     ) {
       return;
     }
@@ -750,6 +757,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       payload,
       sentSec: currentTime.sec,
       sentNsec: currentTime.nsec,
+      didSeek: payload.didSeek,
     };
   }
 
