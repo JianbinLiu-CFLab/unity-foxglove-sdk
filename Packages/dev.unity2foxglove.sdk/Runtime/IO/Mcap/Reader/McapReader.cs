@@ -83,7 +83,8 @@ namespace Unity.FoxgloveSDK.IO
                 footer.SummaryStart,
                 footer.SummaryOffsetStart,
                 footer.SummaryCrc,
-                recordSizeLimit);
+                recordSizeLimit,
+                validateCrcs);
         }
 
         internal McapTrailerInfo ReadTrailerInfo(

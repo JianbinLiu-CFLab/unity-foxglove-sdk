@@ -53,7 +53,8 @@ namespace Unity.FoxgloveSDK.IO
             ulong summaryStart,
             ulong summaryOffsetStart,
             uint summaryCrc,
-            ulong recordSizeLimit)
+            ulong recordSizeLimit,
+            bool validateCrcs = true)
         {
             if (summaryBytes == null)
                 throw new ArgumentNullException(nameof(summaryBytes));
@@ -203,7 +204,8 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException($"MCAP Summary Offset for opcode 0x{pair.Key:X2} does not match its summary group.");
             }
 
-            ValidateSummaryCrc(summaryBytes, summaryStart, summaryOffsetStart, summaryCrc);
+            if (validateCrcs)
+                ValidateSummaryCrc(summaryBytes, summaryStart, summaryOffsetStart, summaryCrc);
             return summary;
         }
 
