@@ -114,6 +114,34 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorAcceptsChunkIndexWithoutMessageIndexes()
+        {
+            using var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(
+                       stream,
+                       null,
+                       new McapWriterOptions
+                       {
+                           UseChunking = true,
+                           IndexTypes = McapIndexTypes.Chunk,
+                           UseStatistics = true,
+                           ChunkSizeBytes = 1024
+                       },
+                       leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/mcap/coarse", "json", "mcap.Schema", "jsonschema", "{}");
+                recorder.WriteMessage(1, 10, Encoding.UTF8.GetBytes("{}"));
+                recorder.Close();
+            }
+
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+
+            Assert.Single(summary.ChunkIndexes);
+            Assert.Empty(summary.ChunkIndexes[0].MessageIndexOffsets);
+        }
+
+        [Fact]
         public void ReadSummaryDoesNotDependOnCallerStreamPosition()
         {
             using var stream = CreateMcap(writer =>

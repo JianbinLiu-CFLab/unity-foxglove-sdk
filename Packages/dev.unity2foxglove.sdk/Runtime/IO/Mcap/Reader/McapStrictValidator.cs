@@ -408,6 +408,17 @@ namespace Unity.FoxgloveSDK.IO
                 if (_pendingChunkMessages == null)
                     return;
 
+                // Message Index records are optional. An entirely absent set
+                // is the valid coarse-index form represented by an empty
+                // ChunkIndex.message_index_offsets map. If a file emits any
+                // Message Index for a chunk, however, keep enforcing the
+                // all-channels completeness contract below.
+                if (_pendingMessageIndexChannels.Count == 0)
+                {
+                    _pendingChunkMessages = null;
+                    return;
+                }
+
                 foreach (var channelId in _pendingChunkMessages.Keys)
                 {
                     if (!_pendingMessageIndexChannels.Contains(channelId))
