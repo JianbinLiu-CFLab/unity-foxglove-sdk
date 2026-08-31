@@ -11,7 +11,7 @@
     "package": "foxglove-extension package",
     "local-install": "foxglove-extension install",
     "typecheck": "node -e \"require('fs').mkdirSync('../../../build/foxglove-extensions/foxrun-publish-panel',{recursive:true})\" && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=1 --no-file-parallelism"
   },
   "dependencies": {
     "@foxglove/extension": "2.54.0"
