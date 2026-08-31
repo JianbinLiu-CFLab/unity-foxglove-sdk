@@ -1045,9 +1045,15 @@ def main() -> int:
     if args.only in (None, "phase186-bridge-tooling"):
         for module in PHASE186_BRIDGE_TOOLING_REGRESSIONS:
             label = module.rsplit(".", 1)[-1].removeprefix("test_").replace("_", " ")
+            # The provenance regression suite performs many isolated Git and
+            # filesystem fixture operations.  On synced Windows checkouts it
+            # legitimately exceeds the generic 600-second command deadline;
+            # the enclosing Phase186 job already has no wall-clock timeout.
+            slow_provenance = module == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance"
             results["phase186-" + module.rsplit(".", 1)[-1]] = run(
                 [sys.executable, "-m", "unittest", module],
                 "Phase186 " + label + " regressions",
+                disable_timeout=slow_provenance,
             )
         results["phase186-package-matrix"] = run(
             [sys.executable, PHASE186_PACKAGE_MATRIX_VALIDATOR],

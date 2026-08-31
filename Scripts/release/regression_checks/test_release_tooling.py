@@ -1253,6 +1253,18 @@ class RunCiTests(unittest.TestCase):
         )
         self.assertNotIn("phase186_bridge_acceptance --case", flattened)
 
+        provenance_call = next(
+            call
+            for call in run.call_args_list
+            if call.args[0][-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance"
+        )
+        self.assertIs(True, provenance_call.kwargs["disable_timeout"])
+        for call in run.call_args_list:
+            command = call.args[0]
+            if command[-1] not in self.PHASE186_BRIDGE_TOOLING_SUITES or command[-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance":
+                continue
+            self.assertIsNot(True, call.kwargs.get("disable_timeout", False))
+
     def test_phase186_bridge_windows_live_selector_runs_exact_certification(self) -> None:
         """The live selector must bind certification identity to the current SHA."""
 
