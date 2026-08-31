@@ -1019,10 +1019,13 @@ namespace Unity.FoxgloveSDK.Core
             var graphAdded = false;
             try
             {
-                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+                // Validate and publish the graph entry before advertising the
+                // service to clients.  A malformed service name must fail
+                // before any client-visible advertise frame is emitted.
                 _graph.AddAdvertisedService(service.Name);
                 graphAdded = true;
                 _graph.BroadcastUpdate();
+                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
             }
             catch
             {
