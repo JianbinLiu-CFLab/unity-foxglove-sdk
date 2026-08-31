@@ -146,6 +146,94 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public async Task RetirementCapacityRefusesThirdGenerationWithoutStoppingSecond()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            using var firstQueueEntered = new ManualResetEventSlim();
+            using var releaseFirstQueue = new ManualResetEventSlim();
+            using var secondQueueEntered = new ManualResetEventSlim();
+            using var releaseSecondQueue = new ManualResetEventSlim();
+            var firstPort = ReserveFreeLoopbackPort();
+            var secondPort = ReserveFreeLoopbackPort();
+            var thirdPort = ReserveFreeLoopbackPort();
+            Task<HttpStatusCode> firstRequest = null;
+            Task<HttpStatusCode> secondRequest = null;
+
+            try
+            {
+                endpoint.Start(
+                    Options(firstPort, "/retire-first", "retire-first-token"),
+                    _ =>
+                    {
+                        firstQueueEntered.Set();
+                        releaseFirstQueue.Wait(TimeSpan.FromSeconds(10));
+                        return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
+                    });
+                firstRequest = PostCursorAsync(firstPort, "/retire-first", "retire-first-token");
+                Assert.True(
+                    firstQueueEntered.Wait(TimeSpan.FromSeconds(5)),
+                    "First worker never entered its queue callback.");
+
+                endpoint.Start(
+                    Options(secondPort, "/retire-second", "retire-second-token"),
+                    _ =>
+                    {
+                        secondQueueEntered.Set();
+                        releaseSecondQueue.Wait(TimeSpan.FromSeconds(10));
+                        return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
+                    });
+                secondRequest = PostCursorAsync(secondPort, "/retire-second", "retire-second-token");
+                Assert.True(
+                    secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
+                    "Second worker never entered its queue callback.");
+
+                var error = Record.Exception(() => endpoint.Start(
+                    Options(thirdPort, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+
+                var capacityError = Assert.IsType<InvalidOperationException>(error);
+                Assert.Equal(
+                    "Replay cursor endpoint retirement capacity is exhausted; the current generation remains active.",
+                    capacityError.Message);
+                Assert.Equal(1, endpoint.RetiringGenerationCount);
+
+                releaseSecondQueue.Set();
+                await ObserveRetiredRequestAsync(secondRequest);
+                Assert.True(endpoint.IsRunning);
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(secondPort, "/retire-second", "retire-second-token"));
+
+                releaseFirstQueue.Set();
+                await ObserveRetiredRequestAsync(firstRequest);
+                for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25));
+                }
+                Assert.Equal(0, endpoint.RetiringGenerationCount);
+                endpoint.Start(
+                    Options(thirdPort, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
+            }
+            finally
+            {
+                releaseFirstQueue.Set();
+                releaseSecondQueue.Set();
+                if (firstRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(firstRequest);
+                }
+                if (secondRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(secondRequest);
+                }
+            }
+        }
+
+        [Fact]
         public void WorkerLoopAndHandlersUseOnlyTheirCapturedGeneration()
         {
             var source = TestSources.Text(
