@@ -90,6 +90,12 @@ type ReplayTime = {
   nsec: number;
 };
 
+type PendingCursor = {
+  payload: CursorPayload;
+  sentSec: number;
+  sentNsec: number;
+};
+
 function normalizeEndpoint(endpoint: unknown): string {
   if (typeof endpoint !== "string") {
     return DEFAULT_ENDPOINT;
@@ -553,6 +559,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   // still own the active request (identity guard against late callbacks).
   let cursorController: AbortController | undefined;
   let cursorTimeout: ReturnType<typeof setTimeout> | undefined;
+  let inFlightCursor: PendingCursor | undefined;
+  let pendingCursor: PendingCursor | undefined;
   // Stage 3 (140K): "Follow Unity replay" is self-clocked. The panel API exposes no play/pause
   // control (only seekPlayback), so follow cannot wait for Foxglove's own currentTime to advance:
   // paused it never moves, playing it fights free-run. Instead the panel owns an internal clock —
@@ -641,6 +649,12 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     lastSentAtMs = Date.now();
     const controller = new AbortController();
     cursorController = controller;
+    const dispatched: PendingCursor = {
+      payload,
+      sentSec: payload.time.sec,
+      sentNsec: payload.time.nsec,
+    };
+    inFlightCursor = dispatched;
 
     // Stage 2 stall guard: if neither handler fires within REQUEST_TIMEOUT_MS, abort and release
     // in-flight so the panel keeps trying instead of wedging forever.
@@ -651,8 +665,10 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       }
       controller.abort();
       inFlight = false;
+      inFlightCursor = undefined;
       status = { ok: false, message: `Unity did not respond within ${REQUEST_TIMEOUT_MS} ms. Retrying.` };
       onSettled(false, false);
+      flushPendingCursor();
     }, REQUEST_TIMEOUT_MS);
 
     void sendCursor(state.endpoint, state.token, payload, controller.signal).then(
@@ -670,8 +686,10 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
           return;
         }
         inFlight = false;
+        inFlightCursor = undefined;
         status = result;
         onSettled(result.ok, true);
+        flushPendingCursor();
       },
       (error: unknown) => {
         if (cursorController !== controller) {
@@ -685,10 +703,52 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
           return;
         }
         inFlight = false;
+        inFlightCursor = undefined;
         status = { ok: false, message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}` };
         onSettled(false, false);
+        flushPendingCursor();
       },
     );
+  }
+
+  function flushPendingCursor(): void {
+    const pending = pendingCursor;
+    pendingCursor = undefined;
+    if (!mounted || !state.enabled || state.followUnity || pending == undefined || inFlight) {
+      return;
+    }
+
+    dispatchCursor(pending.payload, (_ok, delivered) => {
+      if (delivered) {
+        lastCursorSec = pending.sentSec;
+        lastCursorNsec = pending.sentNsec;
+      }
+    });
+  }
+
+  function queueLatestCursorIfNeeded(currentTime: Time, renderState: CursorRenderState): void {
+    if (!state.enabled || state.followUnity || currentTime == undefined) {
+      pendingCursor = undefined;
+      return;
+    }
+
+    if (
+      (inFlightCursor?.sentSec === currentTime.sec && inFlightCursor.sentNsec === currentTime.nsec)
+      || (pendingCursor?.sentSec === currentTime.sec && pendingCursor.sentNsec === currentTime.nsec)
+    ) {
+      return;
+    }
+
+    const payload = buildPayload(renderState, sequence + 1);
+    if (payload == undefined) {
+      return;
+    }
+    sequence = payload.sequence;
+    pendingCursor = {
+      payload,
+      sentSec: currentTime.sec,
+      sentNsec: currentTime.nsec,
+    };
   }
 
   function scheduleFollowPump(): void {
@@ -831,6 +891,9 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   panel.enabledInput.addEventListener("change", () => {
     state = { ...state, enabled: panel.enabledInput.checked };
+    if (!state.enabled) {
+      pendingCursor = undefined;
+    }
     savePanelState(context, state);
   }, listenerOptions);
 
@@ -861,6 +924,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       return;
     }
     state = { ...state, followUnity: follow.checked };
+    pendingCursor = undefined;
     savePanelState(context, state);
     if (state.followUnity) {
       followReachedEnd = false; // a fresh enable should follow from the current position again
@@ -910,8 +974,11 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
         // parked this lets the user scrub freely (each scrub syncs Unity once) without the loop
         // running away — re-check Follow to resume Unity-paced playback.
         const nowMs = Date.now();
-        if (
-          !inFlight &&
+        if (inFlight) {
+          if (state.enabled && currentTime != undefined) {
+            queueLatestCursorIfNeeded(currentTime, renderState);
+          }
+        } else if (
           shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
         ) {
           const payload = buildPayload(renderState, sequence + 1);
@@ -939,6 +1006,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     mounted = false;
     listenerController.abort();
     stopFollow();
+    pendingCursor = undefined;
+    inFlightCursor = undefined;
     if (cursorTimeout != undefined) {
       clearTimeout(cursorTimeout);
       cursorTimeout = undefined;

@@ -315,6 +315,52 @@ describe("Unity Replay Sync panel lifecycle", () => {
     nowSpy.mockRestore();
   });
 
+  test("forwards the latest cursor observed while the prior POST is in flight", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    let resolveSecond: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/f04-latest";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1 ? firstResponse : secondResponse;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(1_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+      vi.setSystemTime(1_001_000); // beyond the cadence interval; only in-flight backpressure blocks.
+      context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint && call[1] != undefined);
+      const secondCall = ownCalls[ownCalls.length - 1];
+      expect(secondCall).toBeDefined();
+      const secondInit = secondCall![1] as RequestInit;
+      expect(JSON.parse(String(secondInit.body)).time).toEqual({ sec: 2, nsec: 0 });
+      resolveSecond?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
   test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {
     vi.useFakeTimers();
     let capturedSignal: AbortSignal | undefined;
