@@ -302,10 +302,21 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     var messages = _replayEngine.Tick(timeNs, _replayTickBuffer);
                     if (messages == null || messages.Count == 0) return;
+                    var expectedSceneCallbacks = 0;
+                    var queuedSceneCallbacks = 0;
                     foreach (var msg in messages)
                         if (TryGetReplayTopic(msg.ChannelId, out _))
-                            ForwardReplayMessageToScene(msg);
-                    FireReplayBatchCompleted(messages, messages[messages.Count - 1].LogTime, "ExternalCursor");
+                        {
+                            expectedSceneCallbacks++;
+                            if (ForwardReplayMessageToScene(msg))
+                                queuedSceneCallbacks++;
+                        }
+                    FireReplayBatchCompleted(
+                        messages,
+                        messages[messages.Count - 1].LogTime,
+                        "ExternalCursor",
+                        expectedSceneCallbacks,
+                        queuedSceneCallbacks);
                 }
                 finally
                 {
@@ -405,12 +416,17 @@ namespace Unity.FoxgloveSDK.Core
                 if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 var messages = _replayEngine.Snapshot(timeNs, _replaySnapshotBuffer);
                 if (messages == null) return;
+                var queuedSceneCallbacks = 0;
                 foreach (var msg in messages)
-                {
-                    ForwardReplayMessageToScene(msg);
-                }
+                    if (ForwardReplayMessageToScene(msg))
+                        queuedSceneCallbacks++;
 
-                FireReplayBatchCompleted(messages, timeNs, "Snapshot");
+                FireReplayBatchCompleted(
+                    messages,
+                    timeNs,
+                    "Snapshot",
+                    messages.Count,
+                    queuedSceneCallbacks);
             }
 
             if (!deferCallbacks)
@@ -429,6 +445,8 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             ulong latestLogTime = 0;
+            var expectedSceneCallbacks = 0;
+            var queuedSceneCallbacks = 0;
             if (messages != null)
             {
                 foreach (var msg in messages)
@@ -439,11 +457,20 @@ namespace Unity.FoxgloveSDK.Core
                     if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
 
                     if (forwardToScene && topic != null)
-                        ForwardReplayMessageToScene(msg);
+                    {
+                        expectedSceneCallbacks++;
+                        if (ForwardReplayMessageToScene(msg))
+                            queuedSceneCallbacks++;
+                    }
                 }
 
                 if (forwardToScene)
-                    FireReplayBatchCompleted(messages, latestLogTime, source);
+                    FireReplayBatchCompleted(
+                        messages,
+                        latestLogTime,
+                        source,
+                        expectedSceneCallbacks,
+                        queuedSceneCallbacks);
             }
 
             if (!broadcastTimeNs.HasValue && latestLogTime > 0)
@@ -454,10 +481,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void ForwardReplayMessageToScene(McapMessage message)
+        private bool ForwardReplayMessageToScene(McapMessage message)
         {
             var context = CreateReplayMessageContext(message);
-            TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
+            return TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
         }
 
         private bool TryGetReplayTopic(ushort channelId, out string topic)
@@ -475,15 +502,32 @@ namespace Unity.FoxgloveSDK.Core
             return false;
         }
 
-        private void FireReplayBatchCompleted(IReadOnlyList<McapMessage> messages, ulong batchLogTimeNs, string source)
+        private void FireReplayBatchCompleted(
+            IReadOnlyList<McapMessage> messages,
+            ulong batchLogTimeNs,
+            string source,
+            int expectedMessageCount,
+            int queuedMessageCount)
         {
-            if (messages == null || messages.Count == 0)
+            if (messages == null || expectedMessageCount <= 0)
                 return;
+
+            if (queuedMessageCount != expectedMessageCount)
+            {
+                _logger?.LogWarning(
+                    "Skipped replay batch completion because scene callback admission was incomplete. expected="
+                    + expectedMessageCount
+                    + " queued="
+                    + queuedMessageCount
+                    + " source="
+                    + source);
+                return;
+            }
 
             TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch(new ReplayBatchContext(
                 batchLogTimeNs,
                 _replayEngine?.StartTimeNs ?? 0UL,
-                messages.Count,
+                expectedMessageCount,
                 source,
                 replaySessionId: _replaySessionId)));
         }
