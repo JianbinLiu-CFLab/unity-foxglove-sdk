@@ -5,6 +5,7 @@
 // Purpose: Phase 140-74/75/76/78/79/80/81/82 sample and tooling optimization checks.
 
 using System;
+using System.Text;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -393,7 +394,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
             Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
             Assert.Contains("minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
-            Assert.Contains("shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("shouldSendCursor(", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("state.enabled", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("currentTime", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("lastCursorSec", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("lastCursorNsec", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("lastSentAtMs", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("nowMs", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("minIntervalMs", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("renderState.didSeek === true", renderLoop, StringComparison.Ordinal);
+            Assert.Contains(
+                "shouldSendCursor(state.enabled,currentTime,lastCursorSec,lastCursorNsec,lastSentAtMs,nowMs,minIntervalMs,renderState.didSeek===true,)",
+                CompactWhitespace(renderLoop),
+                StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / state.maxHz", renderLoop, StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / DEFAULT_MAX_HZ", renderLoop, StringComparison.Ordinal);
             Assert.Contains("lastCursorSec", source, StringComparison.Ordinal);
@@ -416,5 +429,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14082MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_82Validation.cs", "--phase140-82", "Phase140_82Validation.Validate");
+
+        private static string CompactWhitespace(string source)
+        {
+            var compact = new StringBuilder(source.Length);
+            foreach (var character in source)
+            {
+                if (!char.IsWhiteSpace(character))
+                    compact.Append(character);
+            }
+
+            return compact.ToString();
+        }
     }
 }
