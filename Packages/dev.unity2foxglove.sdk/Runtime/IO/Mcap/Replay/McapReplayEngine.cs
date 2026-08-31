@@ -40,6 +40,8 @@ namespace Unity.FoxgloveSDK.IO
         // instead of allocating a second payload-sized array.
         private readonly List<DeferredReplayMessage> _deferredPending = new();
         private int _deferredPendingHead;
+        private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
+        private long _deferredOwnerBytes;
         private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         private readonly IFoxgloveLogger _logger;
@@ -82,10 +84,35 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private int _maxMessagesPerTick = 8;
 
+        private const long DefaultMaxDeferredOwnerBytes = (long)McapReader.DefaultChunkUncompressedSizeLimit;
+        private const int DefaultMaxDeferredMessages = 100000;
+        private long _maxDeferredOwnerBytes = DefaultMaxDeferredOwnerBytes;
+        private int _maxDeferredMessages = DefaultMaxDeferredMessages;
+
         public int MaxMessagesPerTick
         {
             get => _maxMessagesPerTick;
             set => _maxMessagesPerTick = value < 0 ? 0 : value;
+        }
+
+        /// <summary>
+        /// Maximum decompressed chunk-owner bytes retained by deferred future
+        /// replay messages. A non-positive value restores the default bound.
+        /// </summary>
+        public long MaxDeferredOwnerBytes
+        {
+            get => _maxDeferredOwnerBytes;
+            set => _maxDeferredOwnerBytes = value > 0 ? value : DefaultMaxDeferredOwnerBytes;
+        }
+
+        /// <summary>
+        /// Maximum number of future replay messages retained as deferred views.
+        /// A non-positive value restores the default bound.
+        /// </summary>
+        public int MaxDeferredMessages
+        {
+            get => _maxDeferredMessages;
+            set => _maxDeferredMessages = value > 0 ? value : DefaultMaxDeferredMessages;
         }
 
         /// <summary>
@@ -240,6 +267,7 @@ namespace Unity.FoxgloveSDK.IO
             var clampedNow = nowNs > EndTimeNs ? EndTimeNs : nowNs;
             _currentTimeNs = clampedNow;
             var emitAfter = _lastEmitTime;
+            var stopScanning = false;
 
             // Flush previously buffered messages that are now due.
             // Filter against emitAfter to drop stale overflow messages
@@ -250,7 +278,20 @@ namespace Unity.FoxgloveSDK.IO
                 var pendingLogTime = PeekPendingLogTime();
                 if (pendingLogTime > clampedNow) break;
                 if (pendingLogTime < emitAfter) { DropPending(); continue; }
+                if (ShouldStopBeforeDueRecord(pendingLogTime, result))
+                    break;
                 result.Add(PopPending());
+            }
+
+            // Once the returned batch has reached its scan boundary, do not
+            // materialize later due pending entries into the result just to move
+            // them back into another queue. Same-time groups remain intact.
+            if (PendingCount > 0 && HasReachedScanBudget(result))
+            {
+                var pendingLogTime = PeekPendingLogTime();
+                if (pendingLogTime <= clampedNow &&
+                    pendingLogTime > ScanBudgetBoundaryTime(result))
+                    stopScanning = true;
             }
 
             if (!CanSeek)
@@ -258,7 +299,6 @@ namespace Unity.FoxgloveSDK.IO
 
             // Advance through chunks
             var chunkIndexes = _summary.ChunkIndexes;
-            var stopScanning = false;
             while (_currentChunkIdx < chunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
             {
                 // Need next chunk?
@@ -289,7 +329,14 @@ namespace Unity.FoxgloveSDK.IO
                     {
                         // Keep metadata plus a view into the current chunk. The
                         // payload is copied only when the message is emitted.
-                        AddDeferred(record, _currentUncompressed);
+                        if (!TryAddDeferred(record, _currentUncompressed))
+                        {
+                            // Rewind so the record is retried after an older
+                            // deferred owner has been released on a later tick.
+                            _readOffset = recordStart;
+                            stopScanning = true;
+                            break;
+                        }
                         continue;
                     }
 
@@ -699,8 +746,28 @@ namespace Unity.FoxgloveSDK.IO
                 _deferredPending.Sort(CompareDeferredMessages);
         }
 
-        private void AddDeferred(McapReplayChunkRecord record, byte[] owner)
+        private bool TryAddDeferred(McapReplayChunkRecord record, byte[] owner)
         {
+            if (owner == null)
+                return false;
+            if (MaxDeferredMessages > 0 && DeferredPendingCount >= MaxDeferredMessages)
+                return false;
+
+            if (!_deferredOwnerReferences.TryGetValue(owner, out var ownerReferences))
+            {
+                var ownerBytes = owner.LongLength;
+                if (MaxDeferredOwnerBytes > 0 &&
+                    (_deferredOwnerBytes > MaxDeferredOwnerBytes - ownerBytes))
+                    return false;
+
+                _deferredOwnerReferences[owner] = 1;
+                _deferredOwnerBytes += ownerBytes;
+            }
+            else
+            {
+                _deferredOwnerReferences[owner] = ownerReferences + 1;
+            }
+
             _deferredPending.Add(new DeferredReplayMessage
             {
                 ChannelId = record.ChannelId,
@@ -711,19 +778,25 @@ namespace Unity.FoxgloveSDK.IO
                 DataOffset = record.DataOffset,
                 DataLength = record.DataLength
             });
+            return true;
         }
 
         private McapMessage PopDeferred()
         {
             var deferred = _deferredPending[_deferredPendingHead++];
+            var owner = deferred.Owner;
             var message = deferred.Materialize();
+            ReleaseDeferredOwner(owner);
             CompactDeferredPendingIfUseful();
             return message;
         }
 
         private void DropDeferred()
         {
-            _deferredPending[_deferredPendingHead++].Owner = null;
+            var deferred = _deferredPending[_deferredPendingHead++];
+            var owner = deferred.Owner;
+            deferred.Owner = null;
+            ReleaseDeferredOwner(owner);
             CompactDeferredPendingIfUseful();
         }
 
@@ -731,6 +804,24 @@ namespace Unity.FoxgloveSDK.IO
         {
             _deferredPending.Clear();
             _deferredPendingHead = 0;
+            _deferredOwnerReferences.Clear();
+            _deferredOwnerBytes = 0;
+        }
+
+        private void ReleaseDeferredOwner(byte[] owner)
+        {
+            if (owner == null || !_deferredOwnerReferences.TryGetValue(owner, out var references))
+                return;
+
+            if (references <= 1)
+            {
+                _deferredOwnerReferences.Remove(owner);
+                _deferredOwnerBytes -= owner.LongLength;
+            }
+            else
+            {
+                _deferredOwnerReferences[owner] = references - 1;
+            }
         }
 
         private void CompactDeferredPending()

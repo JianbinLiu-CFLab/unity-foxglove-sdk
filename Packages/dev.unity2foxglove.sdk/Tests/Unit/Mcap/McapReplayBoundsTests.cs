@@ -94,6 +94,47 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public void DeferredFutureOwnersRespectByteAndMessageBounds()
+        {
+            var path = CreateMcap(pathName: "r4-f04-deferred-bound", chunkSizeBytes: 128,
+                writeMessages: recorder =>
+                {
+                    for (var i = 0; i < 24; i++)
+                    {
+                        recorder.WriteMessage(1, (ulong)(1_000_000 + i), new byte[16]);
+                        recorder.WriteMessage(1, (ulong)(10 + i), new byte[16]);
+                    }
+                });
+            try
+            {
+                using var engine = new McapReplayEngine
+                {
+                    MaxMessagesPerTick = 0,
+                    MaxDeferredOwnerBytes = 256,
+                    MaxDeferredMessages = 3
+                };
+                engine.Load(path);
+                engine.Play();
+
+                engine.Tick(100);
+
+                var deferred = DeferredStats(engine);
+                Assert.InRange(deferred.messageCount, 1, 3);
+                Assert.True(deferred.ownerBytes > 0);
+                Assert.InRange(deferred.ownerBytes, 0, 256);
+
+                engine.Tick(2_000_000);
+                var drained = DeferredStats(engine);
+                Assert.Equal(0, drained.messageCount);
+                Assert.Equal(0L, drained.ownerBytes);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
         private static string CreateMcap(
             string pathName,
             int chunkSizeBytes,
@@ -133,6 +174,25 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             Assert.NotNull(property);
             return (int)property.GetValue(queue);
+        }
+
+        private static (long ownerBytes, int messageCount) DeferredStats(McapReplayEngine engine)
+        {
+            var ownerBytesField = typeof(McapReplayEngine).GetField(
+                "_deferredOwnerBytes",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var deferredField = typeof(McapReplayEngine).GetField(
+                "_deferredPending",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var headField = typeof(McapReplayEngine).GetField(
+                "_deferredPendingHead",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(ownerBytesField);
+            Assert.NotNull(deferredField);
+            Assert.NotNull(headField);
+            var entries = (System.Collections.ICollection)deferredField.GetValue(engine);
+            var head = (int)headField.GetValue(engine);
+            return ((long)ownerBytesField.GetValue(engine), entries.Count - head);
         }
 
         private static void TryDelete(string path)
