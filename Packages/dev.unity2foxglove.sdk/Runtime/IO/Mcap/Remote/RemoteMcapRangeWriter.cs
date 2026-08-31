@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -17,13 +18,23 @@ namespace Unity.FoxgloveSDK.IO
     {
         /// <summary>Builds a self-contained MCAP stream for the requested inclusive log-time range.</summary>
         public static MemoryStream CreateSlice(string mcapPath, RemoteMcapRequest request, long maxInMemoryDataBytes)
+            => CreateSlice(mcapPath, request, maxInMemoryDataBytes, CancellationToken.None);
+
+        /// <summary>Builds a self-contained MCAP stream while observing cancellation.</summary>
+        internal static MemoryStream CreateSlice(
+            string mcapPath,
+            RemoteMcapRequest request,
+            long maxInMemoryDataBytes,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (mcapPath == null)
                 throw new ArgumentNullException(nameof(mcapPath));
 
             request = request ?? new RemoteMcapRequest();
             using var loader = new McapDataLoader(mcapPath);
             var initialization = loader.Initialize();
+            cancellationToken.ThrowIfCancellationRequested();
             // Enumerate the selected records forward-only.  The eager iterator
             // materializes the complete range before the response cap can be
             // observed, defeating the purpose of MaxInMemoryDataBytes.
@@ -49,6 +60,7 @@ namespace Unity.FoxgloveSDK.IO
                     ThrowIfOverCap(output, maxInMemoryDataBytes);
                     foreach (var message in messages)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         recorder.WriteMessagePreservingMcapMetadata(
                             message.ChannelId,
                             message.Sequence,
@@ -59,6 +71,7 @@ namespace Unity.FoxgloveSDK.IO
                     }
 
                     recorder.Close();
+                    cancellationToken.ThrowIfCancellationRequested();
                     ThrowIfOverCap(output, maxInMemoryDataBytes);
                 }
             }

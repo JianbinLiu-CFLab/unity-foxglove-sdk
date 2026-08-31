@@ -195,11 +195,13 @@ namespace Unity.FoxgloveSDK.IO
                         continue;
                     }
 
-                    activeRequests.Add(
-                        HandleRequestAsync(
-                            router,
-                            context,
-                            token));
+                    // Do not execute the handler inline on the sole accept-loop
+                    // continuation.  /v1/data performs synchronous range
+                    // construction before its first await; scheduling it first
+                    // makes the request visible to admission accounting and
+                    // leaves the listener free to accept the next context.
+                    activeRequests.Add(ScheduleRequest(
+                        () => HandleRequestAsync(router, context, token)));
                 }
             }
             finally
@@ -227,6 +229,10 @@ namespace Unity.FoxgloveSDK.IO
             {
                 await router.HandleAsync(context, token).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                try { context.Response.OutputStream.Close(); } catch { /* disconnected/cancelled */ }
+            }
             catch
             {
                 try
@@ -239,6 +245,18 @@ namespace Unity.FoxgloveSDK.IO
                     // If the client disconnected, the request is already over.
                 }
             }
+        }
+
+        /// <summary>
+        /// Schedules one request away from the accept-loop continuation.  Kept
+        /// internal so the unit boundary can verify that a synchronously
+        /// entering async handler is tracked before it blocks.
+        /// </summary>
+        internal static Task ScheduleRequest(Func<Task> requestHandler)
+        {
+            if (requestHandler == null)
+                throw new ArgumentNullException(nameof(requestHandler));
+            return Task.Run(requestHandler);
         }
 
         private static void RemoveCompletedRequests(List<Task> requests)
