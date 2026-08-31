@@ -40,6 +40,21 @@ namespace Unity.FoxgloveSDK.Core
                 _active = false;
             }
         }
+
+        internal bool TryExecuteIfActive(Action action)
+        {
+            if (action == null)
+                throw new ArgumentNullException(nameof(action));
+
+            lock (_gate)
+            {
+                if (!_active)
+                    return false;
+
+                action();
+                return true;
+            }
+        }
     }
 
     /// <summary>

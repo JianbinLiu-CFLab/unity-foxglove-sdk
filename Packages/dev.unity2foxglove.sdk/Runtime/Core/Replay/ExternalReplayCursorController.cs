@@ -40,13 +40,22 @@ namespace Unity.FoxgloveSDK.Core
         private bool _hasPending;
         private bool _hasLastAccepted;
         private ulong _lastAcceptedNs;
+        private ReplayCursorGenerationLease _lastAcceptedLease;
         private ReplayCursorRequest _pending;
 
         /// <summary>Whether the optional cursor bridge should accept requests.</summary>
         public bool Enabled
         {
             get => Volatile.Read(ref _enabled) != 0;
-            set => Volatile.Write(ref _enabled, value ? 1 : 0);
+            set
+            {
+                lock (_gate)
+                {
+                    Volatile.Write(ref _enabled, value ? 1 : 0);
+                    if (!value)
+                        ClearNoLock();
+                }
+            }
         }
 
         /// <summary>Queue a cursor request after disabled, replay, duplicate, and range checks.</summary>
@@ -57,27 +66,45 @@ namespace Unity.FoxgloveSDK.Core
             ulong endNs,
             out string message)
         {
-            if (!Enabled)
+            var lease = request.GenerationLease;
+            if (lease == null)
+                return TryEnqueueCore(request, replayEnabled, startNs, endNs, out message);
+
+            var result = ExternalReplayCursorEnqueueResult.StaleGeneration;
+            string localMessage = null;
+            if (!lease.TryExecuteIfActive(() =>
+                result = TryEnqueueCore(request, replayEnabled, startNs, endNs, out localMessage)))
             {
-                message = "External replay cursor bridge is disabled.";
-                return ExternalReplayCursorEnqueueResult.Disabled;
+                message = "Stale replay cursor endpoint generation.";
+                return ExternalReplayCursorEnqueueResult.StaleGeneration;
             }
 
-            if (!replayEnabled || endNs < startNs)
-            {
-                message = "Replay is not available for external cursor control.";
-                return ExternalReplayCursorEnqueueResult.ReplayUnavailable;
-            }
+            message = localMessage;
+            return result;
+        }
 
-            var clampedTimeNs = Clamp(request.TimeNs, startNs, endNs);
+        private ExternalReplayCursorEnqueueResult TryEnqueueCore(
+            ReplayCursorRequest request,
+            bool replayEnabled,
+            ulong startNs,
+            ulong endNs,
+            out string message)
+        {
             lock (_gate)
             {
-                if (request.GenerationLease != null && !request.GenerationLease.IsActive)
+                if (Volatile.Read(ref _enabled) == 0)
                 {
-                    message = "Stale replay cursor endpoint generation.";
-                    return ExternalReplayCursorEnqueueResult.StaleGeneration;
+                    message = "External replay cursor bridge is disabled.";
+                    return ExternalReplayCursorEnqueueResult.Disabled;
                 }
 
+                if (!replayEnabled || endNs < startNs)
+                {
+                    message = "Replay is not available for external cursor control.";
+                    return ExternalReplayCursorEnqueueResult.ReplayUnavailable;
+                }
+
+                var clampedTimeNs = Clamp(request.TimeNs, startNs, endNs);
                 // An explicit seek is a restoration command, not a duplicate
                 // advance. It must be accepted even when its timestamp equals
                 // the last accepted cursor so a rebuilt scene can be replayed.
@@ -92,6 +119,7 @@ namespace Unity.FoxgloveSDK.Core
                 Volatile.Write(ref _hasPendingFast, 1);
                 _hasLastAccepted = true;
                 _lastAcceptedNs = clampedTimeNs;
+                _lastAcceptedLease = request.GenerationLease;
                 message = "Cursor accepted.";
                 return ExternalReplayCursorEnqueueResult.Accepted;
             }
@@ -118,21 +146,39 @@ namespace Unity.FoxgloveSDK.Core
                 _pending = default;
                 _hasPending = false;
                 Volatile.Write(ref _hasPendingFast, 0);
-                return true;
             }
+
+            if (Enabled && (request.GenerationLease == null || request.GenerationLease.IsActive))
+                return true;
+
+            lock (_gate)
+            {
+                if (ReferenceEquals(_lastAcceptedLease, request.GenerationLease))
+                {
+                    _hasLastAccepted = false;
+                    _lastAcceptedNs = 0;
+                    _lastAcceptedLease = null;
+                }
+            }
+            request = default;
+            return false;
         }
 
         /// <summary>Clear pending state when replay or the endpoint is disabled.</summary>
         public void Clear()
         {
             lock (_gate)
-            {
-                _pending = default;
-                _hasPending = false;
-                Volatile.Write(ref _hasPendingFast, 0);
-                _hasLastAccepted = false;
-                _lastAcceptedNs = 0;
-            }
+                ClearNoLock();
+        }
+
+        private void ClearNoLock()
+        {
+            _pending = default;
+            _hasPending = false;
+            Volatile.Write(ref _hasPendingFast, 0);
+            _hasLastAccepted = false;
+            _lastAcceptedNs = 0;
+            _lastAcceptedLease = null;
         }
 
         private static ulong Clamp(ulong value, ulong min, ulong max)

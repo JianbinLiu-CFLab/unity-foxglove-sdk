@@ -366,6 +366,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void DisablingControllerClearsAlreadyQueuedRequest()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: false);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            controller.Enabled = false;
+
+            Assert.False(controller.TryDrainLatest(out _));
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
