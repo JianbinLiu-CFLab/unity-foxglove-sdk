@@ -135,6 +135,119 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public void DeferredFutureMessageCountBoundIsIndependentOfOwnerByteBound()
+        {
+            var path = CreateMcap(pathName: "r4-f04-deferred-message-cap", chunkSizeBytes: 4096,
+                writeMessages: recorder =>
+                {
+                    // Keep the first chunk eligible at Tick(0), then force
+                    // the remaining records into the deferred-future path.
+                    recorder.WriteMessage(1, 0, new byte[1]);
+                    for (var i = 0; i < 11; i++)
+                        recorder.WriteMessage(1, (ulong)(1_000_000 + i), new byte[1]);
+                });
+            try
+            {
+                using var engine = new McapReplayEngine
+                {
+                    MaxMessagesPerTick = 0,
+                    MaxDeferredOwnerBytes = 1_000_000,
+                    MaxDeferredMessages = 3
+                };
+                engine.Load(path);
+                engine.Play();
+
+                engine.Tick(0);
+
+                var deferred = DeferredStats(engine);
+                Assert.Equal(3, deferred.messageCount);
+                Assert.True(deferred.ownerBytes > 0);
+                Assert.InRange(deferred.ownerBytes, 0, 1_000_000);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        [Fact]
+        public void OversizedDeferredOwnerDoesNotStarveLaterDueRecord()
+        {
+            var path = CreateMcap(pathName: "r4-f04-deferred-starvation", chunkSizeBytes: 4096,
+                writeMessages: recorder =>
+                {
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.WriteMessage(1, 10, new byte[] { 10 });
+                });
+            try
+            {
+                using var engine = new McapReplayEngine
+                {
+                    MaxMessagesPerTick = 1,
+                    MaxDeferredOwnerBytes = 1,
+                    MaxDeferredMessages = 8
+                };
+                engine.Load(path);
+                engine.Play();
+
+                var tick = engine.Tick(10);
+
+                var due = Assert.Single(tick);
+                Assert.Equal(10UL, due.LogTime);
+
+                // The rejected future record remains retryable, but the due
+                // record must not be replayed while the clock is unchanged.
+                Assert.Empty(engine.Tick(10));
+
+                var future = Assert.Single(engine.Tick(100));
+                Assert.Equal(100UL, future.LogTime);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        [Fact]
+        public void DeferredRetryDoesNotReplayDueRecordsAfterBlockedFuture()
+        {
+            var path = CreateMcap(pathName: "r4-f04-deferred-retry-order", chunkSizeBytes: 4096,
+                writeMessages: recorder =>
+                {
+                    recorder.WriteMessage(1, 10, new byte[] { 1 });
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.WriteMessage(1, 10, new byte[] { 2 });
+                });
+            try
+            {
+                using var engine = new McapReplayEngine
+                {
+                    MaxMessagesPerTick = 1,
+                    MaxDeferredOwnerBytes = 1,
+                    MaxDeferredMessages = 8
+                };
+                engine.Load(path);
+                engine.Play();
+
+                var first = engine.Tick(10);
+                Assert.Equal(2, first.Count);
+                Assert.Equal(new byte[] { 1 }, first[0].Data);
+                Assert.Equal(new byte[] { 2 }, first[1].Data);
+
+                // Rewinding to the blocked future must not emit the second
+                // same-time record a second time.
+                Assert.Empty(engine.Tick(10));
+
+                var future = Assert.Single(engine.Tick(100));
+                Assert.Equal(100UL, future.LogTime);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
         private static string CreateMcap(
             string pathName,
             int chunkSizeBytes,
