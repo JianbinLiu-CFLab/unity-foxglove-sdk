@@ -481,6 +481,52 @@ describe("Unity Replay Sync panel lifecycle", () => {
     }
   });
 
+  test("disabled sync clears an in-flight cursor without queuing a stale request", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/disabled-inflight";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1
+        ? firstResponse
+        : Promise.resolve(new Response("{}", { status: 202 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ endpoint, enabled: true });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      const enabledInput = context.panelElement.querySelector<HTMLInputElement>("#enabled");
+      expect(enabledInput).not.toBeNull();
+      enabledInput!.checked = false;
+      enabledInput!.dispatchEvent(new Event("change"));
+
+      // This render occurs while the first request is still in flight. The
+      // disabled transition must clear any queued cursor before the response
+      // can flush it.
+      context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+
+      enabledInput!.checked = true;
+      enabledInput!.dispatchEvent(new Event("change"));
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(1);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
   test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {
     vi.useFakeTimers();
     let capturedSignal: AbortSignal | undefined;
