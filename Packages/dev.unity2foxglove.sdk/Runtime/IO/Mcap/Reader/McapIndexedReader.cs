@@ -208,7 +208,14 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             foreach (var message in EnumerateIndexedMessagesInFileOrder(options))
-                result.Add(message);
+            {
+                if (!McapIndexedReaderHelpers.TryAddBoundedMessage(result, message, options, out _))
+                    break;
+                if (options.Order == McapReadOrder.FileOrder &&
+                    options.MaxMessages > 0 &&
+                    result.Count >= options.MaxMessages)
+                    break;
+            }
 
             McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
 
@@ -254,16 +261,7 @@ namespace Unity.FoxgloveSDK.IO
                 return result;
 
             var messages = ReadLinearMessages(options);
-            for (var i = 0; i < messages.Count; i++)
-            {
-                var message = messages[i];
-                if (!McapIndexedReaderHelpers.IsInTimeRange(message.LogTime, options))
-                    continue;
-                if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
-                    continue;
-
-                result.Add(message);
-            }
+            result.AddRange(messages);
 
             McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
 
@@ -460,10 +458,14 @@ namespace Unity.FoxgloveSDK.IO
         {
             var scanOptions = new McapReadOptions
             {
-                EndTimeNs = ulong.MaxValue,
-                MaxMessages = 0,
-                Order = McapReadOrder.FileOrder,
+                StartTimeNs = options.StartTimeNs,
+                EndTimeNs = options.EndTimeNs,
+                Topics = options.Topics == null ? null : new List<string>(options.Topics),
+                ChannelIds = options.ChannelIds == null ? null : new List<ushort>(options.ChannelIds),
+                MaxMessages = options.MaxMessages,
+                Order = options.Order,
                 AllowLinearFallback = true,
+                UseOfficialEndTimeSemantics = options.UseOfficialEndTimeSemantics,
                 ValidateCrcs = options.ValidateCrcs,
                 ChunkUncompressedSizeLimit = options.ChunkUncompressedSizeLimit
             };

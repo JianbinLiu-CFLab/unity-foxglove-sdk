@@ -136,6 +136,33 @@ namespace Unity.FoxgloveSDK.IO
                 result.RemoveRange(0, result.Count - options.MaxMessages);
         }
 
+        internal static bool TryAddBoundedMessage(
+            List<McapMessage> result,
+            McapMessage message,
+            McapReadOptions options,
+            out McapMessage evicted)
+        {
+            evicted = null;
+            if (options.MaxMessages <= 0)
+            {
+                result.Add(message);
+                return true;
+            }
+
+            if (options.Order == McapReadOrder.FileOrder && result.Count >= options.MaxMessages)
+                return false;
+
+            result.Add(message);
+            if (result.Count <= options.MaxMessages)
+                return true;
+
+            result.Sort(CompareMessages);
+            var removeIndex = options.Order == McapReadOrder.FileOrder ? options.MaxMessages : 0;
+            evicted = result[removeIndex];
+            result.RemoveAt(removeIndex);
+            return true;
+        }
+
         private static McapReadOptions CopyReadOptions(McapReadOptions source)
         {
             return new McapReadOptions

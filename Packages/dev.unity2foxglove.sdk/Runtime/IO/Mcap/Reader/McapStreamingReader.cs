@@ -348,7 +348,11 @@ namespace Unity.FoxgloveSDK.IO
             if (_limits.MaxPayloadBytes > 0 && retainedPayloadBytes + payloadBytes > _limits.MaxPayloadBytes)
                 throw new InvalidOperationException("Streaming MCAP read exceeded MaxPayloadBytes=" + _limits.MaxPayloadBytes + ".");
 
-            result.Messages.Add(message);
+            if (!McapIndexedReaderHelpers.TryAddBoundedMessage(result.Messages, message, options, out var evicted))
+                return;
+
+            if (evicted != null)
+                retainedPayloadBytes -= evicted.Data?.LongLength ?? 0L;
             retainedPayloadBytes += payloadBytes;
         }
 

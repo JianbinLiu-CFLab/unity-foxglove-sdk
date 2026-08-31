@@ -305,6 +305,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void IndexedFileOrderMaxMessagesStopsBeforeReadingLaterChunks()
+        {
+            var bytes = CreateTwoChunkIndexedMcap(out var secondChunkOffset);
+            using var stream = new CountingSeekStream(bytes, (long)secondChunkOffset);
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+            stream.ResetTargetHits();
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                MaxMessages = 1
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal(1UL, message.LogTime);
+            Assert.Equal(0, stream.TargetHits);
+        }
+
+        [Fact]
         public void IndexedReaderThrowsAfterDispose()
         {
             using var stream = CreateSimpleMessageMcap(3);
@@ -642,6 +664,30 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        private sealed class CountingSeekStream : MemoryStream
+        {
+            private readonly long _target;
+            private int _targetHits;
+
+            public CountingSeekStream(byte[] buffer, long target)
+                : base(buffer, writable: false)
+            {
+                _target = target;
+            }
+
+            public int TargetHits => Volatile.Read(ref _targetHits);
+
+            public void ResetTargetHits() => Interlocked.Exchange(ref _targetHits, 0);
+
+            public override long Seek(long offset, SeekOrigin loc)
+            {
+                var position = base.Seek(offset, loc);
+                if (position == _target)
+                    Interlocked.Increment(ref _targetHits);
+                return position;
+            }
+        }
+
         private static MemoryStream CreateSummaryRecordCrossingFooterMcap()
         {
             var stream = new MemoryStream();
@@ -793,6 +839,67 @@ namespace Unity.FoxgloveSDK.UnitTests
                 writer.WriteMessage(1, 1, 1, 1, new byte[4096]);
                 writer.WriteDataEnd();
                 writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            return stream.ToArray();
+        }
+
+        private static byte[] CreateTwoChunkIndexedMcap(out ulong secondChunkOffset)
+        {
+            byte[] firstRecords;
+            byte[] secondRecords;
+            using (var records = new MemoryStream())
+            {
+                using (var writer = new McapWriter(records, leaveOpen: true))
+                    writer.WriteMessage(1, 1, 1, 1, Encoding.UTF8.GetBytes("first"));
+                firstRecords = records.ToArray();
+            }
+            using (var records = new MemoryStream())
+            {
+                using (var writer = new McapWriter(records, leaveOpen: true))
+                    writer.WriteMessage(1, 2, 2, 2, Encoding.UTF8.GetBytes("second"));
+                secondRecords = records.ToArray();
+            }
+
+            var stream = new MemoryStream();
+            ulong firstChunkOffset;
+            ulong firstChunkLength;
+            ulong firstIndexOffset;
+            ulong firstIndexLength;
+            ulong secondChunkLength;
+            ulong secondIndexOffset;
+            ulong secondIndexLength;
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-bounded-read");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/bounded", "json", new Dictionary<string, string>());
+
+                firstChunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(1, 1, (ulong)firstRecords.Length, 0, "", (ulong)firstRecords.Length, firstRecords);
+                firstChunkLength = (ulong)writer.Position - firstChunkOffset;
+                firstIndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (1, 0) });
+                firstIndexLength = (ulong)writer.Position - firstIndexOffset;
+
+                secondChunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(2, 2, (ulong)secondRecords.Length, 0, "", (ulong)secondRecords.Length, secondRecords);
+                secondChunkLength = (ulong)writer.Position - secondChunkOffset;
+                secondIndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (2, 0) });
+                secondIndexLength = (ulong)writer.Position - secondIndexOffset;
+
+                writer.WriteDataEnd();
+                var summaryStart = (ulong)writer.Position;
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/bounded", "json", new Dictionary<string, string>());
+                writer.WriteChunkIndex(1, 1, firstChunkOffset, firstChunkLength,
+                    new Dictionary<ushort, ulong> { [1] = firstIndexOffset }, firstIndexLength, "", (ulong)firstRecords.Length, (ulong)firstRecords.Length);
+                writer.WriteChunkIndex(2, 2, secondChunkOffset, secondChunkLength,
+                    new Dictionary<ushort, ulong> { [1] = secondIndexOffset }, secondIndexLength, "", (ulong)secondRecords.Length, (ulong)secondRecords.Length);
+                writer.WriteFooter(summaryStart, 0, 0);
                 writer.WriteMagic();
             }
 
