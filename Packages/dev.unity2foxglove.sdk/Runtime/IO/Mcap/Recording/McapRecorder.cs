@@ -264,13 +264,14 @@ namespace Unity.FoxgloveSDK.IO
                     Signature = signature
                 };
                 var meta = CreateChannelMetadata(McapChannelDirection.Output);
+                var channelRecordStart = _writer.Position;
                 try
                 {
                     _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 }
                 catch (Exception ex)
                 {
-                    Fail("Channel write failed: " + ex.Message);
+                    HandleTopLevelRecordWriteFailure(channelRecordStart, ex, "Channel");
                     throw;
                 }
                 _serverChannelWriteStates[fId] = state;
@@ -343,13 +344,14 @@ namespace Unity.FoxgloveSDK.IO
                             Signature = signature
                         };
                         var meta = CreateChannelMetadata(McapChannelDirection.Input);
+                        var channelRecordStart = _writer.Position;
                         try
                         {
                             _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         }
                         catch (Exception ex)
                         {
-                            Fail("Client channel write failed: " + ex.Message);
+                            HandleTopLevelRecordWriteFailure(channelRecordStart, ex, "Client channel");
                             throw;
                         }
                         _clientChannelWriteState[key] = map;
@@ -458,7 +460,15 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 var off = (ulong)_writer.Position;
-                _writer.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                try
+                {
+                    _writer.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                }
+                catch (Exception ex)
+                {
+                    HandleTopLevelRecordWriteFailure((long)off, ex, "Metadata");
+                    throw;
+                }
                 var len = (ulong)_writer.Position - off;
                 _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
                 _metadataCount++;
@@ -475,7 +485,17 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 FlushChunk();
-                var index = _writer.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
+                var attachmentRecordStart = _writer.Position;
+                McapAttachmentIndex index;
+                try
+                {
+                    index = _writer.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
+                }
+                catch (Exception ex)
+                {
+                    HandleTopLevelRecordWriteFailure(attachmentRecordStart, ex, "Attachment");
+                    throw;
+                }
                 _attachmentIdx.Add(index);
                 _attachmentCount++;
             }
@@ -852,6 +872,29 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_chunkBuf.Length > 0 && _chunkBuf.Length + nextRecordLength >= _chunkSz)
                 FlushChunk();
+        }
+
+        private void HandleTopLevelRecordWriteFailure(
+            long recordStartPosition,
+            Exception writeError,
+            string recordName)
+        {
+            try
+            {
+                _writer.TruncateToPosition(recordStartPosition);
+            }
+            catch (Exception rollbackError)
+            {
+                _closed = true;
+                Fail($"{recordName} write and rollback failed: {rollbackError.Message}");
+                throw new IOException(
+                    $"MCAP recorder could not roll back an incomplete {recordName} record.",
+                    new AggregateException(writeError, rollbackError));
+            }
+
+            _failedChunkStartPosition ??= recordStartPosition;
+            _chunkFlushFailure ??= writeError;
+            Fail($"{recordName} write failed: {writeError.Message}");
         }
 
         /// <summary>

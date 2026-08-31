@@ -329,6 +329,74 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialMetadataWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() =>
+                recorder.WriteMetadata("phase187.partial", "{}"));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.MetadataIndexes);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialSchemaWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() => recorder.AddChannel(
+                1,
+                "/phase187/partial-schema",
+                "json",
+                "phase187.PartialSchema",
+                "jsonschema",
+                "{}"));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.Schemas);
+            Assert.Empty(summary.Channels);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialChannelWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() => recorder.AddChannel(
+                1,
+                "/phase187/partial-channel",
+                "json",
+                "",
+                "",
+                ""));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.Channels);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
         public void ReplaySnapshotKeepsGreatestSameChannelMessageKey()
         {
             var path = Path.Combine(
