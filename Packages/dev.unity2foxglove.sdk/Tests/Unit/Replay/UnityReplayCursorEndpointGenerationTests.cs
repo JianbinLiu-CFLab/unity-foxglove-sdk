@@ -169,6 +169,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void ExplicitSameTimeSeekIsAcceptedAfterAnAdvance()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var advance = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: false);
+            var seek = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 2,
+                didSeek: true);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(advance, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drainedAdvance));
+            Assert.False(drainedAdvance.DidSeek);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(seek, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drainedSeek));
+            Assert.True(drainedSeek.DidSeek);
+            Assert.Equal(2, drainedSeek.Sequence);
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();

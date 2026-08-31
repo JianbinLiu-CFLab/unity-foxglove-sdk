@@ -361,6 +361,40 @@ describe("Unity Replay Sync panel lifecycle", () => {
     }
   });
 
+  test("forwards an explicit same-time seek after the cursor was already delivered", async () => {
+    vi.useFakeTimers();
+    const endpoint = "http://127.0.0.1:9998/f04-seek";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return Promise.resolve(new Response("{}", { status: 202 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(2_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: false }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+
+      vi.setSystemTime(2_001_000);
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: true }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint);
+      const seekPayload = JSON.parse(String(ownCalls[1]![1]?.body));
+      expect(seekPayload.mode).toBe("seek");
+      expect(seekPayload.didSeek).toBe(true);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
   test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {
     vi.useFakeTimers();
     let capturedSignal: AbortSignal | undefined;

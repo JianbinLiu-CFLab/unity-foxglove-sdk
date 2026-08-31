@@ -354,12 +354,14 @@ export function shouldSendCursor(
   lastSentAtMs: number,
   nowMs: number,
   minIntervalMs: number,
+  forceSeek = false,
 ): boolean {
   if (!enabled || currentTime == undefined) {
     return false;
   }
 
-  return (currentTime.sec !== lastSec || currentTime.nsec !== lastNsec) && nowMs - lastSentAtMs >= minIntervalMs;
+  return (forceSeek || currentTime.sec !== lastSec || currentTime.nsec !== lastNsec)
+    && nowMs - lastSentAtMs >= minIntervalMs;
 }
 
 function buildPanelDom(state: PanelState, canFollow: boolean): {
@@ -979,7 +981,16 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
             queueLatestCursorIfNeeded(currentTime, renderState);
           }
         } else if (
-          shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
+          shouldSendCursor(
+            state.enabled,
+            currentTime,
+            lastCursorSec,
+            lastCursorNsec,
+            lastSentAtMs,
+            nowMs,
+            minIntervalMs,
+            renderState.didSeek === true,
+          )
         ) {
           const payload = buildPayload(renderState, sequence + 1);
           if (payload != undefined && currentTime != undefined) {
