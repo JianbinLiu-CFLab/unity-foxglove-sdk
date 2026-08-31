@@ -148,6 +148,11 @@ namespace Unity.FoxgloveSDK.IO
                         $"Footer summary_start {_footer.SummaryStart} does not match the strict summary boundary {expectedSummaryStart}.");
                 if (_firstSummaryRecordOffset >= 0 && _dataEndEndOffset != _firstSummaryRecordOffset)
                     throw new InvalidDataException("The summary section must begin immediately after DataEnd.");
+
+                if (_validatedChunkIndexOffsets.Count > 0 &&
+                    _validatedChunkIndexOffsets.Count != _validatedChunks.Count)
+                    throw new InvalidDataException(
+                        "Summary must contain exactly one Chunk Index for every data Chunk when Chunk Index records are present.");
             }
 
             private void ValidateRecord(long recordStart, byte opcode, byte[] content)
@@ -343,6 +348,9 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
                 var messages = new Dictionary<ushort, Dictionary<ulong, ulong>>();
+                var hasMessages = false;
+                var messageStartTime = ulong.MaxValue;
+                var messageEndTime = 0UL;
                 var off = 0;
                 while (off < records.Length)
                 {
@@ -377,6 +385,11 @@ namespace Unity.FoxgloveSDK.IO
                         case McapWriter.OpcodeMessage:
                         {
                             var message = ValidateMessage(inner);
+                            hasMessages = true;
+                            if (message.LogTime < messageStartTime)
+                                messageStartTime = message.LogTime;
+                            if (message.LogTime > messageEndTime)
+                                messageEndTime = message.LogTime;
                             if (!messages.TryGetValue(message.ChannelId, out var channelMessages))
                             {
                                 channelMessages = new Dictionary<ulong, ulong>();
@@ -394,6 +407,11 @@ namespace Unity.FoxgloveSDK.IO
                     }
                     off += contentLength;
                 }
+
+                if (hasMessages &&
+                    (header.MessageStartTime != messageStartTime || header.MessageEndTime != messageEndTime))
+                    throw new InvalidDataException(
+                        "Chunk header message time bounds do not match its decoded Message records.");
 
                 _pendingChunkMessages = messages;
                 _pendingMessageIndexChannels.Clear();

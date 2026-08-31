@@ -178,6 +178,56 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorRejectsChunkAndIndexTimeBoundsThatDisagreeWithMessages()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkOffset = FindRecordOffsets(bytes, McapWriter.OpcodeChunk)[0];
+            var chunkIndexOffset = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex)[0];
+
+            // Keep the Chunk header and its summary Chunk Index mutually
+            // consistent, but make both disagree with the message timestamps
+            // decoded from the chunk payload.
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkOffset + McapWriter.RecordHeaderLength), 999);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkOffset + McapWriter.RecordHeaderLength + sizeof(ulong)), 1000);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkIndexOffset + McapWriter.RecordHeaderLength), 999);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkIndexOffset + McapWriter.RecordHeaderLength + sizeof(ulong)), 1000);
+
+            using var stream = new MemoryStream(bytes, writable: false);
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("message time bounds", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsChunkWithoutMatchingChunkIndex()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkIndexOffsets = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex);
+            Assert.Equal(2, chunkIndexOffsets.Count);
+
+            var first = checked((int)chunkIndexOffsets[0]);
+            var lengthOffset = checked(first + 1);
+            var contentLength = checked((int)McapBinaryReader.ReadU64LE(bytes, ref lengthOffset));
+            var recordLength = McapWriter.RecordHeaderLength + contentLength;
+            var shortened = new byte[bytes.Length - recordLength];
+            Buffer.BlockCopy(bytes, 0, shortened, 0, first);
+            Buffer.BlockCopy(bytes, first + recordLength, shortened, first, bytes.Length - first - recordLength);
+
+            using var stream = new MemoryStream(shortened, writable: false);
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("exactly one Chunk Index for every data Chunk", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ReadSummaryDoesNotDependOnCallerStreamPosition()
         {
             using var stream = CreateMcap(writer =>
