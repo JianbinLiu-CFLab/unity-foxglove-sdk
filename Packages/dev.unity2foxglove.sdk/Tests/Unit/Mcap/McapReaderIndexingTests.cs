@@ -134,6 +134,37 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorRejectsIncompletePerChunkMessageIndexes()
+        {
+            using var stream = CreateIncompleteMessageIndexMcap();
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(stream));
+
+            Assert.Contains("Message Index", error.Message, StringComparison.Ordinal);
+            Assert.Contains("channel 2", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IndexedChannelFilterInspectsChunkWhenMessageIndexMapIsIncomplete()
+        {
+            using var stream = CreateIncompleteMessageIndexMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                ChannelIds = new List<ushort> { 2 },
+                Order = McapReadOrder.FileOrder
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal((ushort)2, message.ChannelId);
+            Assert.Equal(20UL, message.LogTime);
+        }
+
+        [Fact]
         public void TestRecordParserRejectsBytesAfterTrailingMagic()
         {
             using var stream = new MemoryStream();
@@ -654,6 +685,58 @@ namespace Unity.FoxgloveSDK.UnitTests
                 chunkLength = (ulong)writer.Position - chunkStart;
                 writer.WriteDataEnd();
                 writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateIncompleteMessageIndexMcap()
+        {
+            using var chunkRecords = new MemoryStream();
+            ulong channel1Offset;
+            using (var chunkWriter = new McapWriter(chunkRecords, leaveOpen: true))
+            {
+                channel1Offset = (ulong)chunkWriter.Position;
+                chunkWriter.WriteMessage(1, 1, 10, 10, Encoding.UTF8.GetBytes("one"));
+                chunkWriter.WriteMessage(2, 1, 20, 20, Encoding.UTF8.GetBytes("two"));
+            }
+
+            var records = chunkRecords.ToArray();
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-incomplete-index");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/one", "json", new Dictionary<string, string>());
+                writer.WriteChannel(2, 1, "/round4/f02/two", "json", new Dictionary<string, string>());
+
+                var chunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(10, 20, (ulong)records.Length, 0, "", (ulong)records.Length, records);
+                var chunkLength = (ulong)writer.Position - chunkOffset;
+
+                var channel1IndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (10, channel1Offset) });
+                var messageIndexLength = (ulong)writer.Position - channel1IndexOffset;
+
+                writer.WriteDataEnd();
+                var summaryStart = (ulong)writer.Position;
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/one", "json", new Dictionary<string, string>());
+                writer.WriteChannel(2, 1, "/round4/f02/two", "json", new Dictionary<string, string>());
+                writer.WriteChunkIndex(
+                    10,
+                    20,
+                    chunkOffset,
+                    chunkLength,
+                    new Dictionary<ushort, ulong> { [1] = channel1IndexOffset },
+                    messageIndexLength,
+                    "",
+                    (ulong)records.Length,
+                    (ulong)records.Length);
+                writer.WriteFooter(summaryStart, 0, 0);
                 writer.WriteMagic();
             }
 

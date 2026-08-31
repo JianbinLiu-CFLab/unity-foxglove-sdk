@@ -93,6 +93,8 @@ namespace Unity.FoxgloveSDK.IO
             private bool _sawDataEnd;
             private bool _sawFooter;
             private bool _messageIndexMayFollow;
+            private Dictionary<ushort, Dictionary<ulong, ulong>> _pendingChunkMessages;
+            private readonly HashSet<ushort> _pendingMessageIndexChannels = new HashSet<ushort>();
             private long _firstSummaryRecordOffset = -1;
             private long _dataEndEndOffset = -1;
             private McapFooter _footer;
@@ -150,6 +152,7 @@ namespace Unity.FoxgloveSDK.IO
                     if (_sawDataEnd)
                         throw new InvalidDataException(
                             $"Private opcode 0x{opcode:X2} is not allowed in the MCAP summary section.");
+                    CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
                     return;
                 }
@@ -163,7 +166,10 @@ namespace Unity.FoxgloveSDK.IO
             private void ValidateDataRecord(long recordStart, byte opcode, byte[] content)
             {
                 if (opcode != McapWriter.OpcodeMessageIndex)
+                {
+                    CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
+                }
 
                 switch (opcode)
                 {
@@ -291,11 +297,12 @@ namespace Unity.FoxgloveSDK.IO
                 McapRecordDecoder.AddChannel(_channels, channel);
             }
 
-            private void ValidateMessage(byte[] content)
+            private McapMessage ValidateMessage(byte[] content)
             {
                 var message = McapRecordDecoder.DecodeMessage(content, 0, content.Length);
                 if (!ContainsChannel(message.ChannelId))
                     throw new InvalidDataException($"Message references unknown channel {message.ChannelId}.");
+                return message;
             }
 
             private void ValidateChunk(byte[] content)
@@ -308,9 +315,11 @@ namespace Unity.FoxgloveSDK.IO
                 if (_options.ValidateCrcs && !crcValid)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
+                var messages = new Dictionary<ushort, Dictionary<ulong, ulong>>();
                 var off = 0;
                 while (off < records.Length)
                 {
+                    var recordOffset = (ulong)off;
                     if (records.Length - off < McapWriter.RecordHeaderLength)
                         throw new InvalidDataException("Chunk inner record header is truncated.");
                     var opcode = records[off++];
@@ -339,8 +348,16 @@ namespace Unity.FoxgloveSDK.IO
                             AddChannel(inner);
                             break;
                         case McapWriter.OpcodeMessage:
-                            ValidateMessage(inner);
+                        {
+                            var message = ValidateMessage(inner);
+                            if (!messages.TryGetValue(message.ChannelId, out var channelMessages))
+                            {
+                                channelMessages = new Dictionary<ulong, ulong>();
+                                messages.Add(message.ChannelId, channelMessages);
+                            }
+                            channelMessages.Add(recordOffset, message.LogTime);
                             break;
+                        }
                         case McapWriter.OpcodeMetadata:
                             ValidateCurrentVersionLength(opcode, inner);
                             McapRecordDecoder.DecodeMetadata(inner);
@@ -350,6 +367,9 @@ namespace Unity.FoxgloveSDK.IO
                     }
                     off += contentLength;
                 }
+
+                _pendingChunkMessages = messages;
+                _pendingMessageIndexChannels.Clear();
             }
 
             private void ValidateMessageIndex(byte[] content)
@@ -359,6 +379,46 @@ namespace Unity.FoxgloveSDK.IO
                 var channelId = McapBinaryReader.ReadU16LE(content, ref off);
                 if (!ContainsChannel(channelId))
                     throw new InvalidDataException($"Message Index references unknown channel {channelId}.");
+                if (_pendingChunkMessages == null || !_pendingChunkMessages.TryGetValue(channelId, out var expectedMessages))
+                    throw new InvalidDataException($"Message Index references channel {channelId}, which has no message in the preceding Chunk.");
+                if (!_pendingMessageIndexChannels.Add(channelId))
+                    throw new InvalidDataException($"Chunk has more than one Message Index for channel {channelId}.");
+
+                var recordsLength = McapBinaryReader.ReadU32LE(content, ref off);
+                var recordsEnd = checked(off + (int)recordsLength);
+                var indexedOffsets = new HashSet<ulong>();
+                while (off < recordsEnd)
+                {
+                    var timestamp = McapBinaryReader.ReadU64LE(content, ref off);
+                    var offset = McapBinaryReader.ReadU64LE(content, ref off);
+                    if (!expectedMessages.TryGetValue(offset, out var expectedTimestamp) || expectedTimestamp != timestamp)
+                        throw new InvalidDataException(
+                            $"Message Index for channel {channelId} contains an invalid timestamp/offset entry ({timestamp}, {offset}).");
+                    if (!indexedOffsets.Add(offset))
+                        throw new InvalidDataException($"Message Index for channel {channelId} contains duplicate offset {offset}.");
+                }
+
+                if (indexedOffsets.Count != expectedMessages.Count)
+                    throw new InvalidDataException(
+                        $"Message Index for channel {channelId} does not index every message in the preceding Chunk.");
+            }
+
+            private void CompletePendingMessageIndexes()
+            {
+                if (_pendingChunkMessages == null)
+                    return;
+
+                foreach (var channelId in _pendingChunkMessages.Keys)
+                {
+                    if (!_pendingMessageIndexChannels.Contains(channelId))
+                        throw new InvalidDataException(
+                            $"Chunk is missing the required Message Index for channel {channelId}.");
+                }
+                if (_pendingMessageIndexChannels.Count != _pendingChunkMessages.Count)
+                    throw new InvalidDataException("Chunk Message Index channel set does not match its message channel set.");
+
+                _pendingChunkMessages = null;
+                _pendingMessageIndexChannels.Clear();
             }
 
             private void ValidateCurrentVersionLength(byte opcode, byte[] content)

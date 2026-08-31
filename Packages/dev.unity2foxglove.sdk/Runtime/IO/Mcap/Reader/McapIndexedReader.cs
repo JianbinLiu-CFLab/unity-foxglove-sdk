@@ -329,12 +329,6 @@ namespace Unity.FoxgloveSDK.IO
                 if (chunkIndex.MessageEndTime < options.StartTimeNs || McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
                     continue;
 
-                if (selectedChannelIds != null &&
-                    chunkIndex.MessageIndexOffsets != null &&
-                    chunkIndex.MessageIndexOffsets.Count > 0 &&
-                    !McapIndexedReaderHelpers.ContainsAnySelectedChannel(chunkIndex.MessageIndexOffsets, selectedChannelIds))
-                    continue;
-
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
                     chunkIndex.ChunkLength,
@@ -428,12 +422,6 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 if (McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, expectedCount, chunkIndex.MessageEndTime))
                     break;
-                if (selectedChannelIds != null &&
-                    chunkIndex.MessageIndexOffsets != null &&
-                    chunkIndex.MessageIndexOffsets.Count > 0 &&
-                    !McapIndexedReaderHelpers.ContainsAnySelectedChannel(chunkIndex.MessageIndexOffsets, selectedChannelIds))
-                    continue;
-
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
                     chunkIndex.ChunkLength,
@@ -590,25 +578,9 @@ namespace Unity.FoxgloveSDK.IO
             HashSet<ushort> selectedChannelIds,
             List<McapChunkIndex> chunkIndexes)
         {
-            var expected = new HashSet<ushort>();
-            for (var i = 0; i < chunkIndexes.Count; i++)
-            {
-                var chunkIndex = chunkIndexes[i];
-                if (McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options) ||
-                    chunkIndex.MessageEndTime < options.StartTimeNs)
-                    continue;
-
-                if (chunkIndex.MessageIndexOffsets == null || chunkIndex.MessageIndexOffsets.Count == 0)
-                    return ExpectedLatestChannelCount(selectedChannelIds);
-
-                foreach (var channelId in chunkIndex.MessageIndexOffsets.Keys)
-                {
-                    if (selectedChannelIds == null || selectedChannelIds.Contains(channelId))
-                        expected.Add(channelId);
-                }
-            }
-
-            return expected.Count;
+            // ChunkIndex maps come from untrusted files. A missing key cannot
+            // prove that the corresponding channel is absent from the chunk.
+            return ExpectedLatestChannelCount(selectedChannelIds);
         }
 
     }
