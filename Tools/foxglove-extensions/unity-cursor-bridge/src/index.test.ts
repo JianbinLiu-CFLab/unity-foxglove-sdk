@@ -208,6 +208,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
     expect(endpointAfterRender).toBe(endpoint);
     expect(endpointAfterRender?.value).toBe("http://127.0.0.1:9999/typing");
     expect(typeof cleanup).toBe("function");
+    cleanup?.();
   });
 
   test("initPanel persists endpoint and enabled state but not token", () => {
