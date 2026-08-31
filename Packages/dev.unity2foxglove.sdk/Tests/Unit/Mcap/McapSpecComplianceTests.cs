@@ -142,6 +142,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorRejectsChunkIndexMessageOffsetWithoutMessageIndexRecord()
+        {
+            using var stream = CreateMcapWithSummary(writer =>
+                writer.WriteChunkIndex(
+                    0,
+                    0,
+                    0,
+                    0,
+                    new Dictionary<ushort, ulong> { [1] = 0 },
+                    0,
+                    string.Empty,
+                    0,
+                    0));
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("Message Index", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ReadSummaryDoesNotDependOnCallerStreamPosition()
         {
             using var stream = CreateMcap(writer =>

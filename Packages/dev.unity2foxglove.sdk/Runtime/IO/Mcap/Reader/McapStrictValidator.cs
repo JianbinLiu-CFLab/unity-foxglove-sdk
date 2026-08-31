@@ -93,6 +93,7 @@ namespace Unity.FoxgloveSDK.IO
             private bool _sawDataEnd;
             private bool _sawFooter;
             private bool _messageIndexMayFollow;
+            private readonly HashSet<ulong> _messageIndexRecordOffsets = new HashSet<ulong>();
             private Dictionary<ushort, Dictionary<ulong, ulong>> _pendingChunkMessages;
             private readonly HashSet<ushort> _pendingMessageIndexChannels = new HashSet<ushort>();
             private long _firstSummaryRecordOffset = -1;
@@ -197,6 +198,7 @@ namespace Unity.FoxgloveSDK.IO
                         if (!_messageIndexMayFollow)
                             throw new InvalidDataException("Message Index records must immediately follow a Chunk.");
                         ValidateMessageIndex(content);
+                        _messageIndexRecordOffsets.Add((ulong)recordStart);
                         _messageIndexMayFollow = true;
                         break;
                     case McapWriter.OpcodeAttachment:
@@ -256,7 +258,15 @@ namespace Unity.FoxgloveSDK.IO
                         break;
                     case McapWriter.OpcodeChunkIndex:
                         ValidateCurrentVersionLength(opcode, content);
-                        McapRecordDecoder.DecodeChunkIndex(content);
+                        var chunkIndex = McapRecordDecoder.DecodeChunkIndex(content);
+                        foreach (var messageIndexOffset in chunkIndex.MessageIndexOffsets.Values)
+                        {
+                            if (!_messageIndexRecordOffsets.Contains(messageIndexOffset))
+                            {
+                                throw new InvalidDataException(
+                                    $"Chunk Index references Message Index offset {messageIndexOffset}, but no Message Index record exists at that offset.");
+                            }
+                        }
                         break;
                     case McapWriter.OpcodeAttachmentIndex:
                         ValidateCurrentVersionLength(opcode, content);
