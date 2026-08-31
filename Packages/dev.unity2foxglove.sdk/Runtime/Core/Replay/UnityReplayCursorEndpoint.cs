@@ -183,12 +183,14 @@ namespace Unity.FoxgloveSDK.Core
                 Options = options;
                 Queue = queue ?? throw new ArgumentNullException(nameof(queue));
                 StateProvider = stateProvider;
+                GenerationLease = new ReplayCursorGenerationLease();
             }
 
             public HttpListener Listener { get; }
             public UnityReplayCursorEndpointOptions Options { get; }
             public Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> Queue { get; }
             public Func<ReplayCursorState> StateProvider { get; }
+            public ReplayCursorGenerationLease GenerationLease { get; }
             public Thread Worker { get; set; }
             public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
 
@@ -278,6 +280,7 @@ namespace Unity.FoxgloveSDK.Core
                         _running = false;
                         _generation = null;
                         generation.RequestStop();
+                        generation.GenerationLease.Revoke();
                         throw;
                     }
                 }
@@ -316,6 +319,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             generation.RequestStop();
+            generation.GenerationLease.Revoke();
 
             try
             {
@@ -500,7 +504,7 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            var result = generation.Queue(request);
+            var result = generation.Queue(request.WithGenerationLease(generation.GenerationLease));
             if (result.Success && string.Equals(result.Message, "Cursor accepted.", StringComparison.Ordinal))
             {
                 TryWrite(context, 202, AcceptedCursorResponseBytes, cors);

@@ -21,7 +21,10 @@ namespace Unity.FoxgloveSDK.Core
         ReplayUnavailable,
 
         /// <summary>The request repeats the latest accepted cursor value.</summary>
-        Duplicate
+        Duplicate,
+
+        /// <summary>The endpoint generation that owned the request has been retired.</summary>
+        StaleGeneration
     }
 
     /// <summary>
@@ -69,6 +72,12 @@ namespace Unity.FoxgloveSDK.Core
             var clampedTimeNs = Clamp(request.TimeNs, startNs, endNs);
             lock (_gate)
             {
+                if (request.GenerationLease != null && !request.GenerationLease.IsActive)
+                {
+                    message = "Stale replay cursor endpoint generation.";
+                    return ExternalReplayCursorEnqueueResult.StaleGeneration;
+                }
+
                 // An explicit seek is a restoration command, not a duplicate
                 // advance. It must be accepted even when its timestamp equals
                 // the last accepted cursor so a rebuilt scene can be replayed.

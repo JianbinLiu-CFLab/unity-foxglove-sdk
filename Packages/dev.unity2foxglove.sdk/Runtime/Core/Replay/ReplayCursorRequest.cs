@@ -13,6 +13,36 @@ using Unity.FoxgloveSDK.Transport;
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
+    /// Revocable authority held by one loopback endpoint worker generation.
+    /// Queue consumers check it while committing a request so a callback that
+    /// started before endpoint replacement cannot publish after revocation.
+    /// </summary>
+    internal sealed class ReplayCursorGenerationLease
+    {
+        private readonly object _gate = new object();
+        private bool _active = true;
+
+        public bool IsActive
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _active;
+                }
+            }
+        }
+
+        public void Revoke()
+        {
+            lock (_gate)
+            {
+                _active = false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Read-only replay cursor state exposed to the optional Foxglove extension.
     /// It mirrors Unity's replay clock without granting the HTTP endpoint direct
     /// access to Unity objects or replay mutation.
@@ -202,7 +232,17 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Whether the cursor represents an explicit Foxglove seek/scrub operation.</summary>
         public bool DidSeek { get; }
 
-        private ReplayCursorRequest(string source, long sequence, long sec, int nsec, ulong timeNs, string mode, bool didSeek)
+        internal ReplayCursorGenerationLease GenerationLease { get; }
+
+        private ReplayCursorRequest(
+            string source,
+            long sequence,
+            long sec,
+            int nsec,
+            ulong timeNs,
+            string mode,
+            bool didSeek,
+            ReplayCursorGenerationLease generationLease = null)
         {
             Source = source ?? string.Empty;
             Sequence = sequence;
@@ -211,6 +251,7 @@ namespace Unity.FoxgloveSDK.Core
             TimeNs = timeNs;
             Mode = string.IsNullOrWhiteSpace(mode) ? "seek" : mode;
             DidSeek = didSeek;
+            GenerationLease = generationLease;
         }
 
         /// <summary>Create a request for runtime tests without JSON parsing.</summary>
@@ -343,7 +384,11 @@ namespace Unity.FoxgloveSDK.Core
         {
             var sec = (long)(timeNs / NanosecondsPerSecond);
             var nsec = (int)(timeNs % NanosecondsPerSecond);
-            return new ReplayCursorRequest(Source, Sequence, sec, nsec, timeNs, Mode, DidSeek);
+            return new ReplayCursorRequest(Source, Sequence, sec, nsec, timeNs, Mode, DidSeek, GenerationLease);
         }
+
+        /// <summary>Attach endpoint-generation authority without changing the wire payload.</summary>
+        internal ReplayCursorRequest WithGenerationLease(ReplayCursorGenerationLease generationLease)
+            => new ReplayCursorRequest(Source, Sequence, Sec, Nsec, TimeNs, Mode, DidSeek, generationLease);
     }
 }

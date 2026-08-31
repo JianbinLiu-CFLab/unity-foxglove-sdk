@@ -234,6 +234,86 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public async Task RetiredGenerationCannotOverwriteNewerCursor()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            using var oldQueueEntered = new ManualResetEventSlim();
+            using var releaseOldQueue = new ManualResetEventSlim();
+            using var newQueueEntered = new ManualResetEventSlim();
+            var oldPort = ReserveFreeLoopbackPort();
+            var newPort = ReserveFreeLoopbackPort();
+            Task<HttpStatusCode> oldRequest = null;
+
+            try
+            {
+                endpoint.Start(
+                    Options(oldPort, "/authority-old", "authority-old-token"),
+                    request =>
+                    {
+                        oldQueueEntered.Set();
+                        releaseOldQueue.Wait(TimeSpan.FromSeconds(10));
+                        var result = controller.TryEnqueue(
+                            request,
+                            replayEnabled: true,
+                            startNs: 0,
+                            endNs: 10_000_000_000UL,
+                            out var message);
+                        return new UnityReplayCursorEndpointQueueResult(
+                            result == ExternalReplayCursorEnqueueResult.Accepted
+                            || result == ExternalReplayCursorEnqueueResult.Duplicate,
+                            message);
+                    });
+                oldRequest = PostCursorAsync(
+                    oldPort,
+                    "/authority-old",
+                    "authority-old-token",
+                    CursorJsonFor(sequence: 1, sec: 2, nsec: 3));
+                Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
+
+                endpoint.Start(
+                    Options(newPort, "/authority-new", "authority-new-token"),
+                    request =>
+                    {
+                        var result = controller.TryEnqueue(
+                            request,
+                            replayEnabled: true,
+                            startNs: 0,
+                            endNs: 10_000_000_000UL,
+                            out var message);
+                        newQueueEntered.Set();
+                        return new UnityReplayCursorEndpointQueueResult(
+                            result == ExternalReplayCursorEnqueueResult.Accepted
+                            || result == ExternalReplayCursorEnqueueResult.Duplicate,
+                            message);
+                    });
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(
+                        newPort,
+                        "/authority-new",
+                        "authority-new-token",
+                        CursorJsonFor(sequence: 2, sec: 3, nsec: 4)));
+                Assert.True(newQueueEntered.Wait(TimeSpan.FromSeconds(5)), "New worker never entered its queue callback.");
+
+                releaseOldQueue.Set();
+                await ObserveRetiredRequestAsync(oldRequest);
+                Assert.True(controller.TryDrainLatest(out var drained));
+                Assert.Equal(2, drained.Sequence);
+                Assert.Equal(3_000_000_004UL, drained.TimeNs);
+            }
+            finally
+            {
+                releaseOldQueue.Set();
+                if (oldRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(oldRequest);
+                }
+                controller.Clear();
+            }
+        }
+
+        [Fact]
         public void WorkerLoopAndHandlersUseOnlyTheirCapturedGeneration()
         {
             var source = TestSources.Text(
@@ -338,7 +418,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                 bearerToken: bearerToken,
                 maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
 
-        private static async Task<HttpStatusCode> PostCursorAsync(int port, string path, string bearerToken)
+        private static Task<HttpStatusCode> PostCursorAsync(int port, string path, string bearerToken)
+            => PostCursorAsync(port, path, bearerToken, CursorJson);
+
+        private static async Task<HttpStatusCode> PostCursorAsync(
+            int port,
+            string path,
+            string bearerToken,
+            string json)
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
@@ -346,10 +433,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Bearer",
                 bearerToken);
-            request.Content = new StringContent(CursorJson, Encoding.UTF8, "application/json");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await Client.SendAsync(request);
             return response.StatusCode;
         }
+
+        private static string CursorJsonFor(long sequence, long sec, int nsec)
+            => "{\"source\":\"phase187\",\"sequence\":"
+               + sequence
+               + ",\"mode\":\"seek\",\"time\":{\"sec\":"
+               + sec
+               + ",\"nsec\":"
+               + nsec
+               + "}}";
 
         private static async Task ObserveRetiredRequestAsync(Task<HttpStatusCode> request)
         {
