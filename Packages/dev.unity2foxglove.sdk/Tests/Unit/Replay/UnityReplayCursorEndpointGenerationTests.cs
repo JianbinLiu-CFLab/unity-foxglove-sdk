@@ -366,6 +366,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void NewGenerationAcceptsSameTimeAdvanceAfterOldGenerationRevoke()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var oldLease = new ReplayCursorGenerationLease();
+            var newLease = new ReplayCursorGenerationLease();
+            var oldRequest = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 1,
+                    didSeek: false)
+                .WithGenerationLease(oldLease);
+            var newRequest = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 2,
+                    didSeek: false)
+                .WithGenerationLease(newLease);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(oldRequest, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            oldLease.Revoke();
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(newRequest, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drained));
+            Assert.Equal(2, drained.Sequence);
+        }
+
+        [Fact]
         public void DisablingControllerClearsAlreadyQueuedRequest()
         {
             var controller = new ExternalReplayCursorController { Enabled = true };

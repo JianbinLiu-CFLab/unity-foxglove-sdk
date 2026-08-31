@@ -109,7 +109,10 @@ namespace Unity.FoxgloveSDK.Core
                 // An explicit seek is a restoration command, not a duplicate
                 // advance. It must be accepted even when its timestamp equals
                 // the last accepted cursor so a rebuilt scene can be replayed.
-                if (_hasLastAccepted && _lastAcceptedNs == clampedTimeNs && !request.DidSeek)
+                if (_hasLastAccepted &&
+                    ReferenceEquals(_lastAcceptedLease, request.GenerationLease) &&
+                    _lastAcceptedNs == clampedTimeNs &&
+                    !request.DidSeek)
                 {
                     message = "Duplicate cursor ignored.";
                     return ExternalReplayCursorEnqueueResult.Duplicate;
