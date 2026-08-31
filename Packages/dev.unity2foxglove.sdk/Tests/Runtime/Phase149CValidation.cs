@@ -156,8 +156,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationRegistryEntry()
         {
-            Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase149c"),
+            var validation = PhaseValidationRegistry.All.SingleOrDefault(item => item.Flag == "--phase149c");
+            Check(validation != null,
                 "149C-17: validation registry exposes Phase 149C");
+            Check(!validation.IncludeInDefault
+                    && PhaseValidationRegistry.Find(new[] { "--phase149c" }) == validation
+                    && PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false)
+                        .All(item => item != validation),
+                "149C-18: Phase 149C remains explicit-only and directly selectable");
         }
 
         private static byte[] BuildTopLevelPrivateFixture()
@@ -209,8 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var chunkBytes = chunkRecords.ToArray();
                 writer.WriteChunk(0, 0, (ulong)chunkBytes.Length, 0, "", (ulong)chunkBytes.Length, chunkBytes);
                 writer.WriteDataEnd();
-                var summaryStart = (ulong)writer.Position;
-                writer.WriteFooter(summaryStart, summaryStart, 0);
+                writer.WriteFooter(0, 0, 0);
                 writer.WriteMagic();
             }
 
