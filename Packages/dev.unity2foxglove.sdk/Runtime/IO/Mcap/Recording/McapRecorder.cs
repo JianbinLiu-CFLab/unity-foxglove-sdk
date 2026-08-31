@@ -368,16 +368,25 @@ namespace Unity.FoxgloveSDK.IO
         // Message writing
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
+            WriteMessageToChannelWriteState(map, map.Seq, logNs, logNs, payload, advanceSequence: true);
+        }
+
+        private void WriteMessageToChannelWriteState(
+            ChannelWriteState map,
+            uint seq,
+            ulong logNs,
+            ulong publishNs,
+            byte[] payload,
+            bool advanceSequence)
+        {
             if (_recordingFailed || _closed) return;
-            var seq = map.Seq;
             var payloadLength = payload?.Length ?? 0;
             if (!_options.UseChunking)
             {
                 var recordStartPosition = _writer.Position;
                 try
                 {
-                    // MCAP publish_time intentionally mirrors log_time for Unity live recording.
-                    _writer.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                    _writer.WriteMessage(map.McapId, seq, logNs, publishNs, payload);
                 }
                 catch (Exception writeError)
                 {
@@ -397,7 +406,8 @@ namespace Unity.FoxgloveSDK.IO
                     throw;
                 }
 
-                map.Seq++;
+                if (advanceSequence)
+                    map.Seq++;
                 map.MsgCount++;
                 TrackMessageTimes(logNs);
                 return;
@@ -428,11 +438,12 @@ namespace Unity.FoxgloveSDK.IO
             McapWriter.WriteU16(header, McapWriter.RecordHeaderLength, map.McapId);
             McapWriter.WriteU32(header, McapWriter.RecordHeaderLength + 2, seq);
             McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4, logNs);
-            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, logNs);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, publishNs);
             _chunkBuf.Write(header, 0, header.Length);
             if (payloadLength > 0)
                 _chunkBuf.Write(payload, 0, payloadLength);
-            map.Seq++;
+            if (advanceSequence)
+                map.Seq++;
             map.MsgCount++;
             map.Pending.Add((logNs, off));
             if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
@@ -518,6 +529,25 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
                 WriteMessageToChannelWriteState(map, logNs, payload);
+            }
+        }
+
+        /// <summary>
+        /// Writes a server message while preserving the source MCAP sequence
+        /// and publish timestamp. Used by lossless range re-emission paths;
+        /// ordinary live recording continues to derive both values locally.
+        /// </summary>
+        internal void WriteMessagePreservingMcapMetadata(
+            uint fId,
+            uint sequence,
+            ulong logNs,
+            ulong publishNs,
+            byte[] payload)
+        {
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
+                WriteMessageToChannelWriteState(map, sequence, logNs, publishNs, payload, advanceSequence: false);
             }
         }
 

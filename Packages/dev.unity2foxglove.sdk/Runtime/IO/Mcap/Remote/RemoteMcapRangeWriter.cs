@@ -44,7 +44,12 @@ namespace Unity.FoxgloveSDK.IO
                     ThrowIfOverCap(output, maxInMemoryDataBytes);
                     foreach (var message in messages)
                     {
-                        recorder.WriteMessage(message.ChannelId, message.LogTime, message.Data);
+                        recorder.WriteMessagePreservingMcapMetadata(
+                            message.ChannelId,
+                            message.Sequence,
+                            message.LogTime,
+                            message.PublishTime,
+                            message.Data);
                         ThrowIfOverCap(output, maxInMemoryDataBytes);
                     }
 
