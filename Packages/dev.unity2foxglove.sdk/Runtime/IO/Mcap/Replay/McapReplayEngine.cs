@@ -258,20 +258,25 @@ namespace Unity.FoxgloveSDK.IO
 
             // Advance through chunks
             var chunkIndexes = _summary.ChunkIndexes;
+            var stopScanning = false;
             while (_currentChunkIdx < chunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
             {
                 // Need next chunk?
                 if (_currentChunkIdx < 0 || _readOffset >= (_currentUncompressed?.Length ?? 0))
                 {
                     var nextChunkIdx = _currentChunkIdx + 1;
-                    if (nextChunkIdx < chunkIndexes.Count && chunkIndexes[nextChunkIdx].MessageStartTime > clampedNow)
+                    if (nextChunkIdx < chunkIndexes.Count
+                        && ShouldStopBeforeNextChunk(chunkIndexes[nextChunkIdx], clampedNow, result))
+                    {
                         break;
+                    }
                     if (!LoadNextChunk()) break;
                 }
 
                 // Read messages from current chunk
                 while (_readOffset + 9 <= _currentUncompressed.Length)
                 {
+                    var recordStart = _readOffset;
                     var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, ref _readOffset);
                     if (!record.IsMessage)
                         continue;
@@ -286,6 +291,16 @@ namespace Unity.FoxgloveSDK.IO
                         // payload is copied only when the message is emitted.
                         AddDeferred(record, _currentUncompressed);
                         continue;
+                    }
+
+                    if (ShouldStopBeforeDueRecord(logNs, result))
+                    {
+                        // The record belongs to a later scan window. Rewind so
+                        // the next Tick can consume it without materializing a
+                        // large all-due backlog into pending.
+                        _readOffset = recordStart;
+                        stopScanning = true;
+                        break;
                     }
 
                     var dataLen = record.DataLength;
@@ -304,6 +319,9 @@ namespace Unity.FoxgloveSDK.IO
                         Data = data
                     });
                 }
+
+                if (stopScanning)
+                    break;
             }
 
             SortPending();
@@ -571,6 +589,37 @@ namespace Unity.FoxgloveSDK.IO
                 _currentUncompressed = Array.Empty<byte>();
             _readOffset = 0;
             return true;
+        }
+
+        private bool ShouldStopBeforeNextChunk(
+            McapChunkIndex nextChunk,
+            ulong clampedNow,
+            List<McapMessage> result)
+        {
+            if (nextChunk.MessageStartTime > clampedNow)
+                return true;
+            if (!HasReachedScanBudget(result))
+                return false;
+            return nextChunk.MessageStartTime > ScanBudgetBoundaryTime(result);
+        }
+
+        private bool ShouldStopBeforeDueRecord(ulong logTime, List<McapMessage> result)
+        {
+            if (!HasReachedScanBudget(result))
+                return false;
+            return logTime > ScanBudgetBoundaryTime(result);
+        }
+
+        private bool HasReachedScanBudget(List<McapMessage> result)
+            => MaxMessagesPerTick > 0 && result.Count >= MaxMessagesPerTick;
+
+        private ulong ScanBudgetBoundaryTime(List<McapMessage> result)
+        {
+            if (MaxMessagesPerTick <= 0 || result.Count < MaxMessagesPerTick)
+                return ulong.MaxValue;
+            if (result.Count > 1)
+                result.Sort(CompareMessages);
+            return result[MaxMessagesPerTick - 1].LogTime;
         }
 
         private int PendingCount => _pending.Count + DeferredPendingCount;
