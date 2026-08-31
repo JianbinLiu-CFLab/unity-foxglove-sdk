@@ -75,6 +75,8 @@ namespace Unity.FoxgloveSDK.Core
         private ulong _replaySessionId;
         private readonly object _replayHandlersGate = new();
         private bool _isDrainingReplayCallbacks;
+        // Monotonic fence that invalidates callbacks transferred to a drain when replay stops.
+        private long _replayCallbackGeneration;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => Volatile.Read(ref _replayEnabled);
@@ -517,15 +519,19 @@ namespace Unity.FoxgloveSDK.Core
                     for (var i = 0; i < _drainBuffer.Count; i++)
                     {
                         var callback = _drainBuffer[i];
+                        if (!IsReplayCallbackCurrent(callback.Generation))
+                            continue;
+
                         if (callback.IsBatch)
                         {
-                            InvokeReplayBatchCompleted(callback.BatchContext.Value);
+                            InvokeReplayBatchCompleted(callback.BatchContext.Value, callback.Generation);
                             continue;
                         }
 
                         var context = callback.MessageContext.Value;
-                        InvokeReplayMessageContext(context);
-                        InvokeReplayMessage(context.Topic, context.Payload);
+                        InvokeReplayMessageContext(context, callback.Generation);
+                        if (IsReplayCallbackCurrent(callback.Generation))
+                            InvokeReplayMessage(context.Topic, context.Payload, callback.Generation);
                     }
                 }
             }
@@ -541,7 +547,8 @@ namespace Unity.FoxgloveSDK.Core
 
         private bool TryQueueReplayCallback(ReplayCallbackDispatch dispatch)
         {
-            if (_pendingReplayCallbacks.TryEnqueue(dispatch, out var overflow))
+            var stamped = dispatch.WithGeneration(Interlocked.Read(ref _replayCallbackGeneration));
+            if (_pendingReplayCallbacks.TryEnqueue(stamped, out var overflow))
                 return true;
 
             WarnReplayCallbackQueueOverflow(overflow);
@@ -588,31 +595,40 @@ namespace Unity.FoxgloveSDK.Core
             return dispatch.MessageContext.Value.Payload?.Length ?? 0;
         }
 
-        private void InvokeReplayMessage(string topic, byte[] data)
+        private bool IsReplayCallbackCurrent(long generation)
+            => Interlocked.Read(ref _replayCallbackGeneration) == generation;
+
+        private void InvokeReplayMessage(string topic, byte[] data, long generation)
         {
             var handlers = _replayMessageHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(topic, data); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay message listener failed: {ex.Message}"); }
             }
         }
 
-        private void InvokeReplayMessageContext(ReplayMessageContext context)
+        private void InvokeReplayMessageContext(ReplayMessageContext context, long generation)
         {
             var handlers = _replayMessageContextHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(context); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay message context listener failed: {ex.Message}"); }
             }
         }
 
-        private void InvokeReplayBatchCompleted(ReplayBatchContext context)
+        private void InvokeReplayBatchCompleted(ReplayBatchContext context, long generation)
         {
             var handlers = _replayBatchCompletedHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(context); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay batch listener failed: {ex.Message}"); }
             }

@@ -214,6 +214,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
+                Interlocked.Increment(ref _replayCallbackGeneration);
                 _replayEngine?.Dispose();
                 _replayEngine = null;
                 Volatile.Write(ref _replayEnabled, false);
