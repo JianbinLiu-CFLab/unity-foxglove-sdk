@@ -195,7 +195,14 @@ namespace Unity.FoxgloveSDK.Core
                 if (lease != null)
                 {
                     if (!lease.TryExecuteIfActive(() =>
-                        applied = TryDrainAndApplyNoLock(lease, apply)))
+                    {
+                        // Keep the controller gate paired with the generation
+                        // lease through the drain and callback. Otherwise a
+                        // concurrent disable can clear authority while the
+                        // callback is still applying the request.
+                        lock (_gate)
+                            applied = TryDrainAndApplyNoLock(lease, apply);
+                    }))
                     {
                         ClearStalePending(lease);
                         return false;
