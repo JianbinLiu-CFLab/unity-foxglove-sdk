@@ -299,11 +299,18 @@ namespace Unity.FoxgloveSDK.IO
 
         private IEnumerable<McapMessage> EnumerateSequentialMessagesInFileOrder(McapReadOptions options)
         {
-            var result = ReadSequentialMessages(options, new List<McapMessage>());
-            for (var i = 0; i < result.Count; i++)
+            var selectedChannelIds = ResolveSelectedChannelIds(options);
+            if (selectedChannelIds != null && selectedChannelIds.Count == 0)
+                yield break;
+
+            foreach (var message in _reader.EnumerateSequentialMessages(
+                         _summary.DataSectionEndOffset,
+                         options,
+                         _sequentialReadLimits,
+                         selectedChannelIds))
             {
                 ThrowIfDisposed();
-                yield return result[i];
+                yield return message;
             }
         }
 

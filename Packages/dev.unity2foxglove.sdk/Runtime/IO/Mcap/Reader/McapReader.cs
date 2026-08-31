@@ -229,6 +229,131 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Lazily enumerates messages in the data section without retaining the
+        /// complete sequential result set. The borrowed stream is positioned at
+        /// the next record as enumeration advances; callers must not interleave
+        /// other stream operations while iterating.
+        /// </summary>
+        internal IEnumerable<McapMessage> EnumerateSequentialMessages(
+            ulong dataSectionEndOffset,
+            McapReadOptions options,
+            McapSequentialReadLimits sequentialLimits,
+            HashSet<ushort> selectedChannelIds,
+            ulong recordSizeLimit = DefaultRecordSizeLimit)
+        {
+            if (options == null)
+                throw new ArgumentNullException(nameof(options));
+
+            if (selectedChannelIds != null && selectedChannelIds.Count == 0)
+                yield break;
+
+            sequentialLimits?.Validate();
+            var retainedMessages = 0;
+            var retainedPayloadBytes = 0L;
+
+            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
+            var isFirstRecord = true;
+            while ((ulong)_stream.Position < dataSectionEndOffset)
+            {
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
+                var recordEnd = (ulong)_stream.Position;
+                if (recordEnd > dataSectionEndOffset)
+                    throw new InvalidDataException("MCAP data-section record extends past the message scan bounds.");
+
+                if (isFirstRecord)
+                {
+                    if (opcode != McapWriter.OpcodeHeader)
+                        throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{opcode:X2}");
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLength);
+                    isFirstRecord = false;
+                    continue;
+                }
+
+                if (opcode == McapWriter.OpcodeMessage)
+                {
+                    var message = McapRecordDecoder.DecodeMessage(content, 0, contentLength);
+                    if (ShouldYieldSequentialMessage(message, options, selectedChannelIds))
+                    {
+                        EnforceSequentialMessageLimits(
+                            sequentialLimits,
+                            retainedMessages,
+                            retainedPayloadBytes,
+                            message);
+                        retainedMessages++;
+                        retainedPayloadBytes += message.Data?.LongLength ?? 0L;
+                        yield return message;
+                    }
+                    continue;
+                }
+
+                if (opcode == McapWriter.OpcodeChunk)
+                {
+                    var records = McapChunkReader.DecodeChunkRecordsContent(
+                        content,
+                        0,
+                        contentLength,
+                        out var crcValid,
+                        options.ChunkUncompressedSizeLimit);
+                    McapChunkReader.EnsureCrcValid(crcValid, options.ValidateCrcs);
+
+                    foreach (var message in McapChunkReader.EnumerateMessages(records))
+                    {
+                        if (!ShouldYieldSequentialMessage(message, options, selectedChannelIds))
+                            continue;
+
+                        EnforceSequentialMessageLimits(
+                            sequentialLimits,
+                            retainedMessages,
+                            retainedPayloadBytes,
+                            message);
+                        retainedMessages++;
+                        retainedPayloadBytes += message.Data?.LongLength ?? 0L;
+                        yield return message;
+                    }
+                    continue;
+                }
+
+                if (opcode == McapWriter.OpcodeDataEnd)
+                {
+                    McapRecordDecoder.DecodeDataEnd(content, 0, contentLength);
+                    yield break;
+                }
+
+                if (opcode == McapWriter.OpcodeHeader)
+                    throw new InvalidDataException("MCAP Header record appeared after the first data-section record.");
+            }
+        }
+
+        private static bool ShouldYieldSequentialMessage(
+            McapMessage message,
+            McapReadOptions options,
+            HashSet<ushort> selectedChannelIds)
+        {
+            if (!McapIndexedReaderHelpers.IsInTimeRange(message.LogTime, options))
+                return false;
+            return selectedChannelIds == null || selectedChannelIds.Contains(message.ChannelId);
+        }
+
+        private static void EnforceSequentialMessageLimits(
+            McapSequentialReadLimits limits,
+            int retainedMessages,
+            long retainedPayloadBytes,
+            McapMessage message)
+        {
+            if (limits == null)
+                return;
+
+            if (limits.MaxMessages > 0 && retainedMessages >= limits.MaxMessages)
+                throw new InvalidOperationException(
+                    "Unindexed MCAP sequential fallback exceeded MaxMessages=" + limits.MaxMessages + ".");
+
+            var payloadBytes = message?.Data?.LongLength ?? 0L;
+            if (limits.MaxPayloadBytes > 0 && retainedPayloadBytes + payloadBytes > limits.MaxPayloadBytes)
+                throw new InvalidOperationException(
+                    "Unindexed MCAP sequential fallback exceeded MaxPayloadBytes=" + limits.MaxPayloadBytes + ".");
+        }
+
+        /// <summary>
         /// Reads private records from the data section into a list.
         /// </summary>
         public List<McapPrivateRecord> ReadPrivateRecords(

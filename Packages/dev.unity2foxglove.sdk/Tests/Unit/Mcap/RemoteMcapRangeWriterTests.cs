@@ -73,6 +73,28 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public void UnindexedLazyEnumerationYieldsBeforeLaterMalformedRecord()
+        {
+            using var stream = BuildUnindexedMcapWithMalformedTail();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            using var enumerator = reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                AllowLinearFallback = true
+            }).GetEnumerator();
+
+            Assert.True(enumerator.MoveNext());
+            Assert.Equal(10UL, enumerator.Current.LogTime);
+
+            var error = Assert.Throws<InvalidDataException>(() => enumerator.MoveNext());
+            Assert.Contains("message", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static byte[] BuildUnchunkedMcap(params MessageSpec[] messages)
         {
             using var stream = new MemoryStream();
@@ -185,6 +207,58 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
 
             return stream.ToArray();
+        }
+
+        private static MemoryStream BuildUnindexedMcapWithMalformedTail()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "r4-f03-unindexed-lazy");
+                writer.WriteSchema(1, "r4.Schema", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/r4", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 10, 10, new byte[] { 1 });
+                // A truncated Message record follows the valid message. The
+                // summary is present but deliberately has no ChunkIndex, so
+                // the indexed reader must use its sequential fallback.
+                writer.WriteRecord(McapWriter.OpcodeMessage, new byte[10]);
+                writer.WriteDataEnd();
+
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics
+                    {
+                        MessageCount = 1,
+                        SchemaCount = 1,
+                        ChannelCount = 1,
+                        MessageStartTime = 10,
+                        MessageEndTime = 10,
+                        ChannelMessageCounts = new Dictionary<ushort, ulong> { [1] = 1 }
+                    }
+                };
+                summary.Schemas.Add(new McapSchema
+                {
+                    Id = 1,
+                    Name = "r4.Schema",
+                    Encoding = "jsonschema",
+                    Data = Encoding.UTF8.GetBytes("{}")
+                });
+                summary.Channels.Add(new McapChannel
+                {
+                    Id = 1,
+                    SchemaId = 1,
+                    Topic = "/r4",
+                    MessageEncoding = "json",
+                    Metadata = new Dictionary<string, string>()
+                });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
         }
 
         private static void WriteRawRecord(Stream destination, byte[] content)
