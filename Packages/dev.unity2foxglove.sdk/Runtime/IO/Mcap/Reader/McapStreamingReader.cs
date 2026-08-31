@@ -37,6 +37,10 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Stream _stream;
         private readonly bool _ownsStream;
         private readonly McapSequentialReadLimits _limits;
+        // Indexed summaryless fallback files may omit DataEnd and place the
+        // zero-summary Footer directly after the data records.  Keep the
+        // public streaming contract strict; only McapIndexedReader opts in.
+        private readonly bool _allowSummarylessFooter;
         private readonly byte[] _recordHeaderBuffer = new byte[McapWriter.RecordHeaderLength];
         private readonly byte[] _magicProbeBuffer = new byte[McapWriter.MagicLength];
         private byte[] _contentBuffer;
@@ -53,6 +57,15 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Create a streaming reader over any readable MCAP stream.</summary>
         public McapStreamingReader(Stream stream, bool leaveOpen = false, McapSequentialReadLimits sequentialReadLimits = null)
+            : this(stream, leaveOpen, sequentialReadLimits, allowSummarylessFooter: false)
+        {
+        }
+
+        internal McapStreamingReader(
+            Stream stream,
+            bool leaveOpen,
+            McapSequentialReadLimits sequentialReadLimits,
+            bool allowSummarylessFooter)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             if (!_stream.CanRead)
@@ -60,6 +73,7 @@ namespace Unity.FoxgloveSDK.IO
             _ownsStream = !leaveOpen;
             _limits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
             _limits.Validate();
+            _allowSummarylessFooter = allowSummarylessFooter;
         }
 
         /// <summary>Scan the stream and return messages plus discovered inventory.</summary>
@@ -108,7 +122,16 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 }
 
-                ValidateRecordPlacement(opcode, section);
+                if (section == StreamingSection.Data &&
+                    opcode == McapWriter.OpcodeFooter &&
+                    _allowSummarylessFooter)
+                {
+                    ValidateSummarylessFooter(content, contentLengthInt);
+                }
+                else
+                {
+                    ValidateRecordPlacement(opcode, section);
+                }
                 ProcessRecord(
                     result,
                     options,
@@ -260,6 +283,18 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException("MCAP contains more than one DataEnd record.");
             if (IsDataOnlyOpcode(opcode) || McapWriter.IsPrivateOpcode(opcode))
                 throw new InvalidDataException($"MCAP data opcode 0x{opcode:X2} appears after DataEnd.");
+        }
+
+        private static void ValidateSummarylessFooter(byte[] content, int contentLength)
+        {
+            var footer = McapRecordDecoder.DecodeFooter(content, 0, contentLength);
+            if (footer.SummaryStart != 0 ||
+                footer.SummaryOffsetStart != 0 ||
+                footer.SummaryCrc != 0)
+            {
+                throw new InvalidDataException(
+                    "MCAP summaryless fallback requires a zeroed Footer summary tuple.");
+            }
         }
 
         private static bool IsDataOnlyOpcode(byte opcode)

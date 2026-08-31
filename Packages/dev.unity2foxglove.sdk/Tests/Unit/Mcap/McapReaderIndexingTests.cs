@@ -96,6 +96,36 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void IndexedLinearFallbackSupportsSummarylessFooterWithoutDataEnd()
+        {
+            using var stream = CreateSummarylessFooterWithoutDataEndMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal(42UL, message.LogTime);
+            Assert.Equal("summaryless", Encoding.UTF8.GetString(message.Data));
+        }
+
+        [Fact]
+        public void PublicStreamingReaderStillRequiresDataEndForSummarylessFooter()
+        {
+            using var stream = CreateSummarylessFooterWithoutDataEndMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("before DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void LazyLinearFallbackDoesNotApplyEagerRetentionLimits()
         {
             using var stream = CreateSimpleMessageMcap(2);
@@ -783,6 +813,24 @@ namespace Unity.FoxgloveSDK.UnitTests
                 writer.WriteChannel(1, 1, "/round4/f02", "json", new Dictionary<string, string>());
                 writer.WriteDataEnd();
                 writer.WriteMessage(1, 1, 99, 99, Encoding.UTF8.GetBytes("late"));
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateSummarylessFooterWithoutDataEndMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f-review-summaryless");
+                writer.WriteSchema(1, "round4.Review", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/review", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 42, 42, Encoding.UTF8.GetBytes("summaryless"));
                 writer.WriteFooter(0, 0, 0);
                 writer.WriteMagic();
             }

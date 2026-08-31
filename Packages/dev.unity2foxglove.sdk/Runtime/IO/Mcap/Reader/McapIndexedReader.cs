@@ -485,7 +485,15 @@ namespace Unity.FoxgloveSDK.IO
             };
 
             _stream.Seek(0, SeekOrigin.Begin);
-            using var streamingReader = new McapStreamingReader(_stream, leaveOpen: true, _sequentialReadLimits);
+            // Summaryless direct files produced by the compatibility path can
+            // omit DataEnd and terminate data with a zeroed Footer.  The public
+            // streaming reader remains strict; indexed fallback opts into this
+            // narrowly scoped envelope compatibility mode.
+            using var streamingReader = new McapStreamingReader(
+                _stream,
+                leaveOpen: true,
+                _sequentialReadLimits,
+                allowSummarylessFooter: true);
             return streamingReader.Read(scanOptions).Messages;
         }
 
