@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.IO;
@@ -358,6 +359,47 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Null(firstException);
             Assert.Null(secondException);
             Assert.Equal(1, stream.DisposeCount);
+        }
+
+        [Fact]
+        public void CompositeReadersReleaseReusableBuffersOnDispose()
+        {
+            var bytes = CreateLargeRecordMcap();
+
+            using (var indexedStream = new MemoryStream(bytes, writable: false))
+            {
+                var indexed = new McapIndexedReader(
+                    indexedStream,
+                    leaveOpen: true,
+                    McapSequentialReadLimits.UnlimitedForTests);
+                indexed.ReadMessages();
+                var nestedReader = typeof(McapIndexedReader)
+                    .GetField("_reader", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(indexed);
+                var nestedBuffer = typeof(McapReader)
+                    .GetField("_recordContentBuffer", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(nestedBuffer.GetValue(nestedReader));
+
+                indexed.Dispose();
+
+                Assert.Null(nestedBuffer.GetValue(nestedReader));
+            }
+
+            using (var streamingStream = new MemoryStream(bytes, writable: false))
+            {
+                var streaming = new McapStreamingReader(
+                    streamingStream,
+                    leaveOpen: true,
+                    sequentialReadLimits: McapSequentialReadLimits.UnlimitedForTests);
+                streaming.Read();
+                var streamingBuffer = typeof(McapStreamingReader)
+                    .GetField("_contentBuffer", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(streamingBuffer.GetValue(streaming));
+
+                streaming.Dispose();
+
+                Assert.Null(streamingBuffer.GetValue(streaming));
+            }
         }
 
         [Fact]
@@ -737,6 +779,24 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private static byte[] CreateLargeRecordMcap()
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-dispose-buffer");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/buffer", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 1, 1, new byte[4096]);
+                writer.WriteDataEnd();
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            return stream.ToArray();
         }
 
         private static byte[] CreateSimpleMessageMcapBytes(int messageCount)

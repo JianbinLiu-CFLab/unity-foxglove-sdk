@@ -592,6 +592,7 @@ namespace Unity.FoxgloveSDK.IO
             if (_disposed)
                 return;
             _disposed = true;
+            _contentBuffer = null;
             if (_ownsStream)
                 _stream.Dispose();
         }

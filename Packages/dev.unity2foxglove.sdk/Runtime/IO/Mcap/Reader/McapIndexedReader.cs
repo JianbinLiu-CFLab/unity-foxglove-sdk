@@ -509,6 +509,8 @@ namespace Unity.FoxgloveSDK.IO
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
+            _reader.Dispose();
+            _chunkIndexesByDescendingEndTime = null;
             if (_ownsStream)
                 _stream.Dispose();
         }
