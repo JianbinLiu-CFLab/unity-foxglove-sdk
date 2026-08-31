@@ -224,6 +224,8 @@ namespace Unity.FoxgloveSDK.Core
                 _channelBehaviorMap = null;
                 _panelHistory.ResetDebounce();
                 _pendingReplayCallbacks.Clear();
+                _replayTickBuffer.Clear();
+                _replaySnapshotBuffer.Clear();
             }
         }
 
