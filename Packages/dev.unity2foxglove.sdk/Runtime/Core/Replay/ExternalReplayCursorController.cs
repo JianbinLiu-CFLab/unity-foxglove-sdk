@@ -4,6 +4,7 @@
 // Module: Runtime/Core/Replay
 // Purpose: Coalesces optional external replay cursor requests for main-thread drain.
 
+using System;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Core
@@ -164,11 +165,92 @@ namespace Unity.FoxgloveSDK.Core
             return false;
         }
 
+        /// <summary>
+        /// Drains and applies the latest request while holding the controller
+        /// gate and, when present, its generation lease. Lifecycle disable or
+        /// endpoint replacement therefore cannot revoke the request between the
+        /// drain and the runtime's state mutation.
+        /// </summary>
+        public bool TryDrainLatest(Action<ReplayCursorRequest> apply)
+        {
+            if (apply == null)
+                throw new ArgumentNullException(nameof(apply));
+            if (Volatile.Read(ref _hasPendingFast) == 0)
+                return false;
+
+            while (true)
+            {
+                ReplayCursorGenerationLease lease;
+                lock (_gate)
+                {
+                    if (!_hasPending)
+                        return false;
+                    lease = _pending.GenerationLease;
+                }
+
+                var applied = false;
+                if (lease != null)
+                {
+                    if (!lease.TryExecuteIfActive(() =>
+                        applied = TryDrainAndApplyNoLock(lease, apply)))
+                    {
+                        ClearStalePending(lease);
+                        return false;
+                    }
+                }
+                else
+                {
+                    lock (_gate)
+                        applied = TryDrainAndApplyNoLock(null, apply);
+                }
+
+                if (applied)
+                    return true;
+                if (Volatile.Read(ref _hasPendingFast) == 0)
+                    return false;
+            }
+        }
+
         /// <summary>Clear pending state when replay or the endpoint is disabled.</summary>
         public void Clear()
         {
             lock (_gate)
                 ClearNoLock();
+        }
+
+        private bool TryDrainAndApplyNoLock(
+            ReplayCursorGenerationLease expectedLease,
+            Action<ReplayCursorRequest> apply)
+        {
+            if (!_hasPending)
+                return false;
+
+            var request = _pending;
+            if (!ReferenceEquals(request.GenerationLease, expectedLease))
+                return false;
+            if (Volatile.Read(ref _enabled) == 0 ||
+                (expectedLease != null && !expectedLease.IsActive))
+            {
+                ClearNoLock();
+                return false;
+            }
+
+            _pending = default;
+            _hasPending = false;
+            Volatile.Write(ref _hasPendingFast, 0);
+            // Keep the gate/lease held through the state mutation. A concurrent
+            // disable or generation revoke must wait until the callback returns.
+            apply(request);
+            return true;
+        }
+
+        private void ClearStalePending(ReplayCursorGenerationLease staleLease)
+        {
+            lock (_gate)
+            {
+                if (_hasPending && ReferenceEquals(_pending.GenerationLease, staleLease))
+                    ClearNoLock();
+            }
         }
 
         private void ClearNoLock()

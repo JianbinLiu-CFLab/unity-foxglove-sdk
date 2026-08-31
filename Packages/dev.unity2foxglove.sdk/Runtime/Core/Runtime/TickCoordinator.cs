@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Core
                     // Seek/play/pause mutate the same snapshot scheduler, and
                     // releasing the lock here could publish a stale pre-seek
                     // snapshot after a newer playback control request.
-                    if (externalCursor != null && externalCursor.TryDrainLatest(out var cursor))
+                    externalCursor?.TryDrainLatest(cursor =>
                     {
                         if (ShouldTreatExternalCursorAsSeek(cursor))
                             ReplaySeekExternalCursor(cursor.TimeNs, replay, playbackClock);
@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Core
                             ReplayAdvanceToExternalCursor(cursor.TimeNs, replay, playbackClock);
 
                         RememberExternalCursor(cursor.TimeNs);
-                    }
+                    });
 
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
                         replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);

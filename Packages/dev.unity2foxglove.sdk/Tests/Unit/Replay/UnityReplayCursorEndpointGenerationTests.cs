@@ -390,6 +390,54 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public async Task AtomicDrainAppliesBeforeDisableCanClearAuthority()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: true);
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            using var callbackEntered = new ManualResetEventSlim();
+            using var releaseCallback = new ManualResetEventSlim();
+            var appliedWhileEnabled = false;
+            var drain = Task.Run(() => controller.TryDrainLatest(drained =>
+            {
+                appliedWhileEnabled = controller.Enabled;
+                callbackEntered.Set();
+                releaseCallback.Wait(TimeSpan.FromSeconds(5));
+                Assert.Equal(1, drained.Sequence);
+            }));
+
+            Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(5)));
+            var disableStarted = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var disable = Task.Run(() =>
+            {
+                disableStarted.SetResult(true);
+                controller.Enabled = false;
+            });
+            await disableStarted.Task;
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            Assert.False(disable.IsCompleted);
+            releaseCallback.Set();
+            Assert.True(await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))) == drain);
+            await drain;
+            await disable;
+            Assert.True(appliedWhileEnabled);
+            Assert.False(controller.TryDrainLatest(out _));
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
