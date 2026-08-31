@@ -36,6 +36,10 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private McapFileSummary _summary;
         private readonly McapReplayPendingQueue _pending = new();
+        // Future records retain a view into their owning decompressed chunk
+        // instead of allocating a second payload-sized array.
+        private readonly List<DeferredReplayMessage> _deferredPending = new();
+        private int _deferredPendingHead;
         private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         private readonly IFoxgloveLogger _logger;
@@ -243,9 +247,9 @@ namespace Unity.FoxgloveSDK.IO
             SortPending();
             while (PendingCount > 0)
             {
-                var pending = PeekPending();
-                if (pending.LogTime > clampedNow) break;
-                if (pending.LogTime < emitAfter) { DropPending(); continue; }
+                var pendingLogTime = PeekPendingLogTime();
+                if (pendingLogTime > clampedNow) break;
+                if (pendingLogTime < emitAfter) { DropPending(); continue; }
                 result.Add(PopPending());
             }
 
@@ -273,25 +277,20 @@ namespace Unity.FoxgloveSDK.IO
                         continue;
 
                     var logNs = record.LogTime;
-                    var dataLen = record.DataLength;
                     if (logNs < emitAfter)
                         continue;
 
-                    var data = new byte[dataLen];
-                    Buffer.BlockCopy(_currentUncompressed, record.DataOffset, data, 0, dataLen);
-
                     if (logNs > clampedNow)
                     {
-                        AddPending(new McapMessage
-                        {
-                            ChannelId = record.ChannelId,
-                            Sequence = record.Sequence,
-                            LogTime = logNs,
-                            PublishTime = record.PublishTime,
-                            Data = data
-                        });
+                        // Keep metadata plus a view into the current chunk. The
+                        // payload is copied only when the message is emitted.
+                        AddDeferred(record, _currentUncompressed);
                         continue;
                     }
+
+                    var dataLen = record.DataLength;
+                    var data = new byte[dataLen];
+                    Buffer.BlockCopy(_currentUncompressed, record.DataOffset, data, 0, dataLen);
 
                     // Collect all eligible messages; FinishTickResult caps
                     // at MaxMessagesPerTick and moves the sorted tail to
@@ -488,6 +487,7 @@ namespace Unity.FoxgloveSDK.IO
 
             var clampedTimeNs = ClampReplayTime(timeNs);
             _pending.Clear();
+            ClearDeferredPending();
             _lastEmitTime = clampedTimeNs;
             _currentTimeNs = clampedTimeNs;
 
@@ -543,6 +543,7 @@ namespace Unity.FoxgloveSDK.IO
             _reader = null;
             _summary = null;
             _pending.Clear();
+            ClearDeferredPending();
             _currentChunkIdx = -1;
             _currentUncompressed = null;
             _readOffset = 0;
@@ -572,18 +573,60 @@ namespace Unity.FoxgloveSDK.IO
             return true;
         }
 
-        private int PendingCount => _pending.Count;
+        private int PendingCount => _pending.Count + DeferredPendingCount;
 
-        private McapMessage PeekPending() => _pending.Peek();
+        private int DeferredPendingCount => _deferredPending.Count - _deferredPendingHead;
+
+        private ulong PeekPendingLogTime()
+        {
+            if (DeferredPendingCount <= 0)
+                return _pending.Peek().LogTime;
+            if (_pending.Count <= 0)
+                return _deferredPending[_deferredPendingHead].LogTime;
+
+            var deferred = _deferredPending[_deferredPendingHead];
+            return CompareDeferredToMessage(deferred, _pending.Peek()) <= 0
+                ? deferred.LogTime
+                : _pending.Peek().LogTime;
+        }
 
         /// <summary>
         /// Dequeues the oldest pending message.
         /// </summary>
         private McapMessage PopPending()
-            => _pending.Pop();
+        {
+            if (DeferredPendingCount <= 0)
+                return _pending.Pop();
+            if (_pending.Count <= 0)
+                return PopDeferred();
+
+            return CompareDeferredToMessage(
+                       _deferredPending[_deferredPendingHead],
+                       _pending.Peek()) <= 0
+                ? PopDeferred()
+                : _pending.Pop();
+        }
 
         private void DropPending()
-            => _pending.Drop();
+        {
+            if (DeferredPendingCount <= 0)
+            {
+                _pending.Drop();
+                return;
+            }
+            if (_pending.Count <= 0)
+            {
+                DropDeferred();
+                return;
+            }
+
+            if (CompareDeferredToMessage(
+                    _deferredPending[_deferredPendingHead],
+                    _pending.Peek()) <= 0)
+                DropDeferred();
+            else
+                _pending.Drop();
+        }
 
         private void AddPending(McapMessage message)
             => _pending.Add(message);
@@ -597,7 +640,97 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private void SortPending()
-            => _pending.Sort(CompareMessages);
+        {
+            // The materialized-only fast path remains equivalent to
+            // `=> _pending.Sort(CompareMessages)` for the established hot-path
+            // contract; deferred views are sorted alongside it below.
+            _pending.Sort(CompareMessages);
+            CompactDeferredPending();
+            if (DeferredPendingCount > 1)
+                _deferredPending.Sort(CompareDeferredMessages);
+        }
+
+        private void AddDeferred(McapReplayChunkRecord record, byte[] owner)
+        {
+            _deferredPending.Add(new DeferredReplayMessage
+            {
+                ChannelId = record.ChannelId,
+                Sequence = record.Sequence,
+                LogTime = record.LogTime,
+                PublishTime = record.PublishTime,
+                Owner = owner,
+                DataOffset = record.DataOffset,
+                DataLength = record.DataLength
+            });
+        }
+
+        private McapMessage PopDeferred()
+        {
+            var deferred = _deferredPending[_deferredPendingHead++];
+            var message = deferred.Materialize();
+            CompactDeferredPendingIfUseful();
+            return message;
+        }
+
+        private void DropDeferred()
+        {
+            _deferredPending[_deferredPendingHead++].Owner = null;
+            CompactDeferredPendingIfUseful();
+        }
+
+        private void ClearDeferredPending()
+        {
+            _deferredPending.Clear();
+            _deferredPendingHead = 0;
+        }
+
+        private void CompactDeferredPending()
+        {
+            if (_deferredPendingHead <= 0)
+                return;
+            if (_deferredPendingHead >= _deferredPending.Count)
+            {
+                _deferredPending.Clear();
+                _deferredPendingHead = 0;
+                return;
+            }
+
+            _deferredPending.RemoveRange(0, _deferredPendingHead);
+            _deferredPendingHead = 0;
+        }
+
+        private void CompactDeferredPendingIfUseful()
+        {
+            if (_deferredPendingHead > 32
+                && _deferredPendingHead * 2 >= _deferredPending.Count)
+                CompactDeferredPending();
+        }
+
+        private static int CompareDeferredMessages(
+            DeferredReplayMessage left,
+            DeferredReplayMessage right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChannelId.CompareTo(right.ChannelId);
+            if (cmp != 0) return cmp;
+            cmp = left.Sequence.CompareTo(right.Sequence);
+            if (cmp != 0) return cmp;
+            return left.PublishTime.CompareTo(right.PublishTime);
+        }
+
+        private static int CompareDeferredToMessage(
+            DeferredReplayMessage left,
+            McapMessage right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChannelId.CompareTo(right.ChannelId);
+            if (cmp != 0) return cmp;
+            cmp = left.Sequence.CompareTo(right.Sequence);
+            if (cmp != 0) return cmp;
+            return left.PublishTime.CompareTo(right.PublishTime);
+        }
 
         private bool ShouldUseChunkRecords(string scope, bool crcValid)
         {
@@ -703,6 +836,33 @@ namespace Unity.FoxgloveSDK.IO
             cmp = a.MessageEndTime.CompareTo(b.MessageEndTime);
             if (cmp != 0) return cmp;
             return a.ChunkStartOffset.CompareTo(b.ChunkStartOffset);
+        }
+
+        private sealed class DeferredReplayMessage
+        {
+            internal ushort ChannelId;
+            internal uint Sequence;
+            internal ulong LogTime;
+            internal ulong PublishTime;
+            internal byte[] Owner;
+            internal int DataOffset;
+            internal int DataLength;
+
+            internal McapMessage Materialize()
+            {
+                var data = new byte[DataLength];
+                if (DataLength > 0)
+                    Buffer.BlockCopy(Owner, DataOffset, data, 0, DataLength);
+                Owner = null;
+                return new McapMessage
+                {
+                    ChannelId = ChannelId,
+                    Sequence = Sequence,
+                    LogTime = LogTime,
+                    PublishTime = PublishTime,
+                    Data = data
+                };
+            }
         }
     }
 }
