@@ -395,6 +395,46 @@ describe("Unity Replay Sync panel lifecycle", () => {
     }
   });
 
+  test("follow mode honors the master sync-enabled switch", async () => {
+    vi.useFakeTimers();
+    const endpoint = "http://127.0.0.1:9998/f04-enabled";
+    const seekPlayback = vi.fn();
+    const fetchMock = vi.fn(async (requestEndpoint: string) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      return new Response("{}", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ enabled: false, followUnity: true, endpoint });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(seekPlayback).not.toHaveBeenCalled();
+
+      const enabledInput = context.panelElement.querySelector<HTMLInputElement>("#enabled");
+      expect(enabledInput).not.toBeNull();
+      enabledInput!.checked = true;
+      enabledInput!.dispatchEvent(new Event("change"));
+      context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const seekCountBeforeDisable = seekPlayback.mock.calls.length;
+
+      enabledInput!.checked = false;
+      enabledInput!.dispatchEvent(new Event("change"));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(seekPlayback).toHaveBeenCalledTimes(seekCountBeforeDisable);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
   test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {
     vi.useFakeTimers();
     let capturedSignal: AbortSignal | undefined;

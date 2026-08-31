@@ -806,6 +806,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   function resumeFollowFromScrubIfNeeded(renderState: CursorRenderState, currentTime: Time | undefined): void {
     if (
+      !state.enabled ||
       !state.followUnity ||
       !canFollow ||
       !followReachedEnd ||
@@ -826,7 +827,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   }
 
   function pumpFollow(): void {
-    if (!mounted || !state.followUnity || seekPlayback == undefined) {
+    if (!mounted || !state.enabled || !state.followUnity || seekPlayback == undefined) {
       stopFollow();
       return;
     }
@@ -840,7 +841,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     const payload = buildFollowPayload(sentSec, sentNsec);
 
     dispatchCursor(payload, (ok, delivered) => {
-      if (!mounted || !state.followUnity) {
+      if (!mounted || !state.enabled || !state.followUnity) {
         stopFollow();
         return;
       }
@@ -881,7 +882,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   }
 
   function maybeStartFollow(): void {
-    if (!mounted || !state.followUnity || !canFollow || followActive || followReachedEnd || lastRenderSec < 0) {
+    if (!mounted || !state.enabled || !state.followUnity || !canFollow || followActive || followReachedEnd || lastRenderSec < 0) {
       return;
     }
     followActive = true;
@@ -895,6 +896,9 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     state = { ...state, enabled: panel.enabledInput.checked };
     if (!state.enabled) {
       pendingCursor = undefined;
+      stopFollow();
+    } else if (state.followUnity) {
+      maybeStartFollow();
     }
     savePanelState(context, state);
   }, listenerOptions);
@@ -968,7 +972,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
       resumeFollowFromScrubIfNeeded(renderState, currentTime);
 
-      if (state.followUnity && canFollow && !followReachedEnd) {
+      if (state.enabled && state.followUnity && canFollow && !followReachedEnd) {
         // Stage 3: the self-clocked pump owns sending while following; just keep it running.
         maybeStartFollow();
       } else {
