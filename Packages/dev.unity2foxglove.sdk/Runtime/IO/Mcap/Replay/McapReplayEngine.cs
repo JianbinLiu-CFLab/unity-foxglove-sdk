@@ -45,6 +45,8 @@ namespace Unity.FoxgloveSDK.IO
         // when the record becomes due, so the scan can continue without
         // retaining another decompressed chunk owner.
         private readonly List<DeferredReplayRetry> _deferredRetries = new();
+        private readonly Dictionary<ulong, DeferredReplayRetry> _deferredRetryByKey = new();
+        private bool _deferredRetriesSorted;
         private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
         private long _deferredOwnerBytes;
         private readonly List<McapMessage> _defaultTickBuffer = new();
@@ -813,17 +815,14 @@ namespace Unity.FoxgloveSDK.IO
             ulong logTime,
             ulong publishTime)
         {
-            for (var i = 0; i < _deferredRetries.Count; i++)
-            {
-                var existing = _deferredRetries[i];
-                if (existing.ChunkIndex == chunkIndex && existing.RecordOffset == recordOffset)
-                    return true;
-            }
+            var key = MakeDeferredRetryKey(chunkIndex, recordOffset);
+            if (_deferredRetryByKey.ContainsKey(key))
+                return true;
 
-            if (_deferredRetries.Count >= DefaultMaxDeferredRetryRecords)
+            if (_deferredRetryByKey.Count >= DefaultMaxDeferredRetryRecords)
                 return false;
 
-            _deferredRetries.Add(new DeferredReplayRetry
+            var retry = new DeferredReplayRetry
             {
                 ChunkIndex = chunkIndex,
                 RecordOffset = recordOffset,
@@ -831,55 +830,79 @@ namespace Unity.FoxgloveSDK.IO
                 Sequence = sequence,
                 LogTime = logTime,
                 PublishTime = publishTime
-            });
+            };
+            _deferredRetryByKey.Add(key, retry);
+            _deferredRetries.Add(retry);
+            _deferredRetriesSorted = false;
             return true;
         }
 
         private void RemoveDeferredRetry(int chunkIndex, int recordOffset)
         {
-            for (var i = _deferredRetries.Count - 1; i >= 0; i--)
-            {
-                if (_deferredRetries[i].ChunkIndex == chunkIndex &&
-                    _deferredRetries[i].RecordOffset == recordOffset)
-                    _deferredRetries.RemoveAt(i);
-            }
+            _deferredRetryByKey.Remove(MakeDeferredRetryKey(chunkIndex, recordOffset));
         }
+
+        private int DeferredRetryCount => _deferredRetryByKey.Count;
+
+        private static ulong MakeDeferredRetryKey(int chunkIndex, int recordOffset)
+            => ((ulong)(uint)chunkIndex << 32) | (uint)recordOffset;
 
         private void FlushDeferredRetries(
             ulong clampedNow,
             ulong emitAfter,
             List<McapMessage> result)
         {
-            if (_deferredRetries.Count == 0)
+            if (DeferredRetryCount == 0)
+            {
+                _deferredRetries.Clear();
+                _deferredRetriesSorted = true;
                 return;
+            }
 
-            _deferredRetries.Sort((left, right) =>
+            if (!_deferredRetriesSorted && _deferredRetries.Count > 1)
             {
-                var cmp = left.LogTime.CompareTo(right.LogTime);
-                if (cmp != 0) return cmp;
-                cmp = left.ChunkIndex.CompareTo(right.ChunkIndex);
-                if (cmp != 0) return cmp;
-                return left.RecordOffset.CompareTo(right.RecordOffset);
-            });
+                _deferredRetries.Sort(CompareDeferredRetries);
+                _deferredRetriesSorted = true;
+            }
 
-            for (var i = 0; i < _deferredRetries.Count;)
+            var writeIndex = 0;
+            for (var readIndex = 0; readIndex < _deferredRetries.Count; readIndex++)
             {
-                var retry = _deferredRetries[i];
+                var retry = _deferredRetries[readIndex];
+                var key = MakeDeferredRetryKey(retry.ChunkIndex, retry.RecordOffset);
+                if (!_deferredRetryByKey.TryGetValue(key, out var activeRetry) ||
+                    !ReferenceEquals(activeRetry, retry))
+                    continue;
+
                 if (retry.LogTime < emitAfter)
                 {
-                    _deferredRetries.RemoveAt(i);
+                    _deferredRetryByKey.Remove(key);
                     continue;
                 }
-                if (retry.LogTime > clampedNow)
-                    break;
-                if (ShouldStopBeforeDueRecord(retry.LogTime, result))
-                    break;
 
+                if (retry.LogTime > clampedNow || ShouldStopBeforeDueRecord(retry.LogTime, result))
+                {
+                    _deferredRetries[writeIndex++] = retry;
+                    continue;
+                }
+
+                _deferredRetryByKey.Remove(key);
                 var message = ReadDeferredRetry(retry);
-                _deferredRetries.RemoveAt(i);
                 if (message != null)
                     result.Add(message);
             }
+
+            if (writeIndex < _deferredRetries.Count)
+                _deferredRetries.RemoveRange(writeIndex, _deferredRetries.Count - writeIndex);
+        }
+
+        private static int CompareDeferredRetries(DeferredReplayRetry left, DeferredReplayRetry right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChunkIndex.CompareTo(right.ChunkIndex);
+            if (cmp != 0) return cmp;
+            return left.RecordOffset.CompareTo(right.RecordOffset);
         }
 
         private McapMessage ReadDeferredRetry(DeferredReplayRetry retry)
@@ -939,6 +962,8 @@ namespace Unity.FoxgloveSDK.IO
             _deferredPending.Clear();
             _deferredPendingHead = 0;
             _deferredRetries.Clear();
+            _deferredRetryByKey.Clear();
+            _deferredRetriesSorted = false;
             _deferredOwnerReferences.Clear();
             _deferredOwnerBytes = 0;
         }
@@ -1054,7 +1079,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private void UpdatePostTickStatus(List<McapMessage> result)
         {
-            if (PendingCount > 0 || _deferredRetries.Count > 0)
+            if (PendingCount > 0 || DeferredRetryCount > 0)
             {
                 CurrentStatus = Status.Buffering;
                 return;
@@ -1063,7 +1088,7 @@ namespace Unity.FoxgloveSDK.IO
             if (CanSeek &&
                 result.Count == 0 &&
                 _summary?.ChunkIndexes != null &&
-                _deferredRetries.Count == 0 &&
+                DeferredRetryCount == 0 &&
                 _currentChunkIdx >= _summary.ChunkIndexes.Count - 1 &&
                 _readOffset >= (_currentUncompressed?.Length ?? 0))
             {

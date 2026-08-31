@@ -248,6 +248,47 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public void DeferredRetryAdmissionRemainsResponsiveAtMetadataBound()
+        {
+            const int futureMessageCount = 50_000;
+            var path = CreateMcap(pathName: "r4-f04-deferred-retry-scale", chunkSizeBytes: 4 * 1024 * 1024,
+                writeMessages: recorder =>
+                {
+                    recorder.WriteMessage(1, 1_000_000, new byte[] { 1 });
+                    for (var i = 0; i < futureMessageCount; i++)
+                        recorder.WriteMessage(1, (ulong)(2_000_000 + i), new byte[] { 1 });
+                });
+            try
+            {
+                using var engine = new McapReplayEngine
+                {
+                    MaxMessagesPerTick = 0,
+                    MaxDeferredOwnerBytes = 1,
+                    MaxDeferredMessages = futureMessageCount
+                };
+                engine.Load(path);
+                engine.Play();
+
+                var tickTask = System.Threading.Tasks.Task.Run(() => engine.Tick(1_000_000));
+                Assert.True(
+                    tickTask.Wait(TimeSpan.FromSeconds(10)),
+                    "Deferred retry admission exceeded the bounded review window.");
+                Assert.Single(tickTask.GetAwaiter().GetResult());
+
+                var retriesField = typeof(McapReplayEngine).GetField(
+                    "_deferredRetries",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.NotNull(retriesField);
+                var retries = (System.Collections.ICollection)retriesField.GetValue(engine);
+                Assert.Equal(futureMessageCount, retries.Count);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
         private static string CreateMcap(
             string pathName,
             int chunkSizeBytes,
