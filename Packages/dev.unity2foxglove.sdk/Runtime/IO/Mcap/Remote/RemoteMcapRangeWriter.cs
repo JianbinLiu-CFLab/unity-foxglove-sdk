@@ -24,14 +24,19 @@ namespace Unity.FoxgloveSDK.IO
             request = request ?? new RemoteMcapRequest();
             using var loader = new McapDataLoader(mcapPath);
             var initialization = loader.Initialize();
-            var messages = loader.CreateIterator(new McapDataLoaderQuery
+            // Enumerate the selected records forward-only.  The eager iterator
+            // materializes the complete range before the response cap can be
+            // observed, defeating the purpose of MaxInMemoryDataBytes.
+            var messages = loader.CreateLazyIterator(new McapDataLoaderQuery
             {
                 StartTimeNs = request.StartTimeNs,
                 EndTimeNs = request.EndTimeNs,
                 MaxMessages = 0
             });
 
-            var output = new MemoryStream();
+            var output = maxInMemoryDataBytes >= 0
+                ? new BoundedMemoryStream(maxInMemoryDataBytes)
+                : new MemoryStream();
             try
             {
                 using (var recorder = new McapRecorder(
@@ -122,6 +127,57 @@ namespace Unity.FoxgloveSDK.IO
         private static void ThrowIfOverCap(MemoryStream output, long maxInMemoryDataBytes)
         {
             if (maxInMemoryDataBytes >= 0 && output.Length > maxInMemoryDataBytes)
+                throw new RemoteMcapRangeTooLargeException(
+                    "Requested MCAP range exceeds the configured in-memory byte response cap.");
+        }
+    }
+
+    /// <summary>
+    /// A seekable in-memory sink that rejects a write before it can grow past
+    /// the configured response budget.  The post-write checks in the range
+    /// writer remain as a defensive invariant for seeks/overwrites.
+    /// </summary>
+    internal sealed class BoundedMemoryStream : MemoryStream
+    {
+        private readonly long _maximumLength;
+
+        internal BoundedMemoryStream(long maximumLength)
+            : base()
+        {
+            if (maximumLength < 0)
+                throw new ArgumentOutOfRangeException(nameof(maximumLength));
+            _maximumLength = maximumLength;
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            EnsureWriteWithinBudget(count);
+            base.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            EnsureWriteWithinBudget(buffer.Length);
+            base.Write(buffer);
+        }
+
+        public override void WriteByte(byte value)
+        {
+            EnsureWriteWithinBudget(1);
+            base.WriteByte(value);
+        }
+
+        public override void SetLength(long value)
+        {
+            if (value < 0 || value > _maximumLength)
+                throw new RemoteMcapRangeTooLargeException(
+                    "Requested MCAP range exceeds the configured in-memory byte response cap.");
+            base.SetLength(value);
+        }
+
+        private void EnsureWriteWithinBudget(int count)
+        {
+            if (count < 0 || Position > _maximumLength - count)
                 throw new RemoteMcapRangeTooLargeException(
                     "Requested MCAP range exceeds the configured in-memory byte response cap.");
         }
