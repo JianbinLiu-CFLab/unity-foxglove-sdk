@@ -227,6 +227,8 @@ namespace Unity.FoxgloveSDK.IO
         /// The returned enumerable is forward-only and can be enumerated once.
         /// Do not interleave this enumeration with other read calls on the same
         /// reader instance; all indexed reads share one seekable stream.
+        /// No eager sequential-retention limits are applied to the no-index
+        /// fallback because each yielded message is released by the caller.
         /// </summary>
         /// <param name="options">Optional query options. Only <see cref="McapReadOrder.FileOrder"/> is supported.</param>
         /// <returns>A single-pass enumerable over matching messages.</returns>
@@ -306,7 +308,12 @@ namespace Unity.FoxgloveSDK.IO
             foreach (var message in _reader.EnumerateSequentialMessages(
                          _summary.DataSectionEndOffset,
                          options,
-                         _sequentialReadLimits,
+                         // Lazy enumeration yields each message directly to
+                         // the caller and retains no result set. Applying the
+                         // eager fallback's cumulative retention counters here
+                         // would reject an otherwise bounded forward stream
+                         // after earlier messages have already been consumed.
+                         sequentialLimits: null,
                          selectedChannelIds))
             {
                 ThrowIfDisposed();

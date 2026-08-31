@@ -96,6 +96,31 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void LazyLinearFallbackDoesNotApplyEagerRetentionLimits()
+        {
+            using var stream = CreateSimpleMessageMcap(2);
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                new McapSequentialReadLimits
+                {
+                    MaxMessages = 1,
+                    MaxPayloadBytes = 1
+                });
+
+            var messages = new List<McapMessage>();
+            foreach (var message in reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            }))
+            {
+                messages.Add(message);
+            }
+
+            Assert.Equal(2, messages.Count);
+        }
+
+        [Fact]
         public void StreamingReaderRejectsDuplicateDataEnd()
         {
             using var stream = CreateDuplicateDataEndMcap();
