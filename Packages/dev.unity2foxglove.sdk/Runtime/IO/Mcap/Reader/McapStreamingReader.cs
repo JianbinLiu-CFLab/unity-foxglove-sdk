@@ -41,7 +41,15 @@ namespace Unity.FoxgloveSDK.IO
         private readonly byte[] _magicProbeBuffer = new byte[McapWriter.MagicLength];
         private byte[] _contentBuffer;
         private long _bytesRead;
+        private bool _sawTrailingMagic;
         private bool _disposed;
+
+        private enum StreamingSection
+        {
+            Data,
+            Summary,
+            Footer
+        }
 
         /// <summary>Create a streaming reader over any readable MCAP stream.</summary>
         public McapStreamingReader(Stream stream, bool leaveOpen = false, McapSequentialReadLimits sequentialReadLimits = null)
@@ -69,7 +77,8 @@ namespace Unity.FoxgloveSDK.IO
             ValidateMagic(leadingMagic, "leading");
             dataCrc = Crc32Helper.Update(dataCrc, leadingMagic);
 
-            var beforeDataEnd = true;
+            var section = StreamingSection.Data;
+            _sawTrailingMagic = false;
             var isFirstRecord = true;
             var retainedPayloadBytes = 0L;
             var retainedMetadataBytes = 0L;
@@ -83,7 +92,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 var contentLengthInt = (int)contentLength;
                 var content = ReadExactContent(contentLengthInt);
-                if (beforeDataEnd && opcode != McapWriter.OpcodeDataEnd)
+                if (section == StreamingSection.Data && opcode != McapWriter.OpcodeDataEnd)
                 {
                     dataCrc = Crc32Helper.Update(dataCrc, headerBytes);
                     dataCrc = Crc32Helper.Update(dataCrc, new ReadOnlySpan<byte>(content, 0, contentLengthInt));
@@ -99,6 +108,7 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 }
 
+                ValidateRecordPlacement(opcode, section);
                 ProcessRecord(
                     result,
                     options,
@@ -108,12 +118,19 @@ namespace Unity.FoxgloveSDK.IO
                     contentLengthInt,
                     (ulong)recordStart,
                     (ulong)(headerBytes.Length + contentLengthInt),
-                    ref beforeDataEnd,
+                    ref section,
                     ref dataCrc,
                     ref retainedPayloadBytes,
                     ref retainedMetadataBytes,
                     ref retainedAttachmentBytes);
             }
+
+            if (section == StreamingSection.Data)
+                throw new InvalidDataException("MCAP streaming read requires a DataEnd record.");
+            if (section != StreamingSection.Footer)
+                throw new InvalidDataException("MCAP streaming read requires a Footer record after DataEnd.");
+            if (!_sawTrailingMagic)
+                throw new InvalidDataException("MCAP streaming read requires exact trailing magic after Footer.");
 
             McapIndexedReaderHelpers.ApplyOrderingAndLimit(result.Messages, options);
             return result;
@@ -128,7 +145,7 @@ namespace Unity.FoxgloveSDK.IO
             int contentLength,
             ulong recordStart,
             ulong recordLength,
-            ref bool beforeDataEnd,
+            ref StreamingSection section,
             ref uint dataCrc,
             ref long retainedPayloadBytes,
             ref long retainedMetadataBytes,
@@ -214,14 +231,53 @@ namespace Unity.FoxgloveSDK.IO
                     break;
                 case McapWriter.OpcodeDataEnd:
                     ValidateDataEnd(content, contentLength, dataCrc, options.ValidateCrcs);
-                    beforeDataEnd = false;
+                    section = StreamingSection.Summary;
                     break;
                 case McapWriter.OpcodeFooter:
                     McapRecordDecoder.DecodeFooter(content, 0, contentLength);
+                    section = StreamingSection.Footer;
                     break;
                 default:
                     break;
             }
+        }
+
+        private static void ValidateRecordPlacement(byte opcode, StreamingSection section)
+        {
+            if (opcode == McapWriter.OpcodeHeader)
+                throw new InvalidDataException("MCAP contains more than one Header record.");
+            if (section == StreamingSection.Footer)
+                throw new InvalidDataException("No MCAP records may follow Footer before trailing magic.");
+
+            if (section == StreamingSection.Data)
+            {
+                if (opcode == McapWriter.OpcodeFooter || IsSummaryOnlyOpcode(opcode))
+                    throw new InvalidDataException($"MCAP summary opcode 0x{opcode:X2} appears before DataEnd.");
+                return;
+            }
+
+            if (opcode == McapWriter.OpcodeDataEnd)
+                throw new InvalidDataException("MCAP contains more than one DataEnd record.");
+            if (IsDataOnlyOpcode(opcode) || McapWriter.IsPrivateOpcode(opcode))
+                throw new InvalidDataException($"MCAP data opcode 0x{opcode:X2} appears after DataEnd.");
+        }
+
+        private static bool IsDataOnlyOpcode(byte opcode)
+        {
+            return opcode == McapWriter.OpcodeMessage ||
+                   opcode == McapWriter.OpcodeChunk ||
+                   opcode == McapWriter.OpcodeMessageIndex ||
+                   opcode == McapWriter.OpcodeAttachment ||
+                   opcode == McapWriter.OpcodeMetadata;
+        }
+
+        private static bool IsSummaryOnlyOpcode(byte opcode)
+        {
+            return opcode == McapWriter.OpcodeChunkIndex ||
+                   opcode == McapWriter.OpcodeAttachmentIndex ||
+                   opcode == McapWriter.OpcodeStatistics ||
+                   opcode == McapWriter.OpcodeMetadataIndex ||
+                   opcode == McapWriter.OpcodeSummaryOffset;
         }
 
         private void ProcessChunkRecords(
@@ -462,7 +518,15 @@ namespace Unity.FoxgloveSDK.IO
                 }
 
                 if (isMagic)
+                {
+                    _sawTrailingMagic = true;
+                    if (_stream.ReadByte() >= 0)
+                    {
+                        _bytesRead++;
+                        throw new InvalidDataException("MCAP contains bytes after trailing magic.");
+                    }
                     return false;
+                }
 
                 headerBytes = _recordHeaderBuffer;
                 Buffer.BlockCopy(probe, 0, headerBytes, 0, probe.Length);

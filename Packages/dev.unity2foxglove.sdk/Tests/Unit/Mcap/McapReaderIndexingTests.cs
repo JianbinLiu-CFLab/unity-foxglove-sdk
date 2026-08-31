@@ -70,6 +70,53 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StreamingReaderRejectsMessageAfterDataEnd()
+        {
+            using var stream = CreatePostDataEndMessageMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("after DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IndexedLinearFallbackRejectsMessageAfterDataEnd()
+        {
+            using var stream = CreatePostDataEndMessageMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.ReadMessages());
+
+            Assert.Contains("after DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StreamingReaderRejectsDuplicateDataEnd()
+        {
+            using var stream = CreateDuplicateDataEndMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StreamingReaderRequiresFooterAndTrailingMagic()
+        {
+            using var stream = CreateIncompleteMcapEnvelope();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("Footer", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void TruncatedMessageContentThrowsInvalidData()
         {
             Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeMessage(new byte[10], 0, 10)),
@@ -606,6 +653,56 @@ namespace Unity.FoxgloveSDK.UnitTests
                 writer.WriteDataEnd(0x12345678);
                 writer.WriteFooter(0, 0, 0);
                 writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreatePostDataEndMessageMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-post-data-end");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02", "json", new Dictionary<string, string>());
+                writer.WriteDataEnd();
+                writer.WriteMessage(1, 1, 99, 99, Encoding.UTF8.GetBytes("late"));
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateDuplicateDataEndMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-duplicate-data-end");
+                writer.WriteDataEnd();
+                writer.WriteDataEnd();
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateIncompleteMcapEnvelope()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-incomplete-envelope");
+                writer.WriteDataEnd();
             }
 
             stream.Position = 0;
