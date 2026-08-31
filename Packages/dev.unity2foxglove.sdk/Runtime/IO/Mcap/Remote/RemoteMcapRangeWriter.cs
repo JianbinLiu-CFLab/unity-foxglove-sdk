@@ -35,9 +35,8 @@ namespace Unity.FoxgloveSDK.IO
             using var loader = new McapDataLoader(mcapPath);
             var initialization = loader.Initialize();
             cancellationToken.ThrowIfCancellationRequested();
-            // Enumerate the selected records forward-only.  The eager iterator
-            // materializes the complete range before the response cap can be
-            // observed, defeating the purpose of MaxInMemoryDataBytes.
+            // Enumerate selected records forward-only so the response cap is
+            // enforced as bytes are written instead of after an eager snapshot.
             var messages = loader.CreateLazyIterator(new McapDataLoaderQuery
             {
                 StartTimeNs = request.StartTimeNs,
