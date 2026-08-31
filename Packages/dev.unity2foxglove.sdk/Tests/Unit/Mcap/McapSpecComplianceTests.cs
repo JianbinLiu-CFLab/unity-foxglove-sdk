@@ -397,6 +397,24 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ChunkBoundaryWriterDoesNotExceedPairedReaderLimit()
+        {
+            const int chunkLimit = 64;
+            const int messageRecordOverhead = McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8;
+            var exactPayloadLength = chunkLimit - messageRecordOverhead;
+
+            Assert.True(McapRecorder.IsChunkedMessageRecordWithinLimit(
+                exactPayloadLength,
+                chunkLimit));
+            Assert.False(McapRecorder.IsChunkedMessageRecordWithinLimit(
+                exactPayloadLength + 1,
+                chunkLimit));
+            Assert.Equal(
+                (ulong)McapWriterOptions.MaxChunkSizeBytes,
+                McapReader.DefaultChunkUncompressedSizeLimit);
+        }
+
+        [Fact]
         public void ReplaySnapshotKeepsGreatestSameChannelMessageKey()
         {
             var path = Path.Combine(

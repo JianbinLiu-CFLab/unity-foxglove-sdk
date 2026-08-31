@@ -412,6 +412,14 @@ namespace Unity.FoxgloveSDK.IO
 
             var contentLength = checked(messagePrefixLength + payloadLength);
             var recordLength = checked(McapWriter.RecordHeaderLength + contentLength);
+            if (!IsChunkedMessageRecordWithinLimit(
+                    payloadLength,
+                    McapReader.DefaultChunkUncompressedSizeLimit))
+            {
+                Fail(
+                    $"Message record size {recordLength} exceeds the paired reader chunk limit {McapReader.DefaultChunkUncompressedSizeLimit}.");
+                return;
+            }
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
             var header = _messageRecordHeader;
@@ -872,6 +880,19 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_chunkBuf.Length > 0 && _chunkBuf.Length + nextRecordLength >= _chunkSz)
                 FlushChunk();
+        }
+
+        internal static bool IsChunkedMessageRecordWithinLimit(
+            int payloadLength,
+            ulong chunkUncompressedSizeLimit)
+        {
+            if (payloadLength < 0)
+                return false;
+
+            const ulong messageRecordOverhead =
+                McapWriter.RecordHeaderLength + 2UL + 4UL + 8UL + 8UL;
+            return (ulong)payloadLength <= chunkUncompressedSizeLimit
+                   && (ulong)payloadLength + messageRecordOverhead <= chunkUncompressedSizeLimit;
         }
 
         private void HandleTopLevelRecordWriteFailure(
