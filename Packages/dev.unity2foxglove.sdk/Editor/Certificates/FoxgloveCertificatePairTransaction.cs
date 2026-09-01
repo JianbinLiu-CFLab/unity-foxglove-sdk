@@ -78,50 +78,123 @@ namespace Unity.FoxgloveSDK.Editor
             }
             catch
             {
-                RestoreOriginalPair();
+                // RestoreOriginalPair is deliberately best effort. It records
+                // incomplete state in the latches so Dispose can retry without
+                // replacing the exception raised by the failed commit.
+                try
+                {
+                    RestoreOriginalPair();
+                }
+                catch
+                {
+                    // Keep the commit failure as the authoritative diagnostic
+                    // even if an unexpected filesystem implementation error
+                    // escapes the best-effort restore helpers.
+                    ReportCleanupFailure("restore");
+                }
                 throw;
             }
         }
 
         public void Dispose()
         {
-            if (_disposed)
+            // A failed cleanup pass still owns recoverable artifacts. Keep the
+            // public Dispose operation idempotent while allowing a later pass
+            // to retry after a transient file-system lock is released.
+            if (_disposed && !HasPendingCleanup())
                 return;
 
-            if (!_committed)
-                RestoreOriginalPair();
+            try
+            {
+                if (!_committed)
+                {
+                    try
+                    {
+                        RestoreOriginalPair();
+                    }
+                    catch
+                    {
+                        ReportCleanupFailure("restore");
+                    }
+                }
 
-            TryDelete(_pfxTempPath);
-            TryDelete(_rootCaTempPath);
-            TryDelete(_pfxBackupPath);
-            TryDelete(_rootCaBackupPath);
-            _disposed = true;
+                TryDelete(_pfxTempPath);
+                TryDelete(_rootCaTempPath);
+
+                // A backup is still the only copy of an original while its
+                // latch is set. Retain it when a transient filesystem failure
+                // prevented restoration; deleting it would make recovery
+                // impossible. Successful commits may always discard backups.
+                if (_committed || !_pfxOriginalMoved)
+                    TryDelete(_pfxBackupPath);
+                if (_committed || !_rootCaOriginalMoved)
+                    TryDelete(_rootCaBackupPath);
+            }
+            finally
+            {
+                _disposed = true;
+            }
+        }
+
+        private bool HasPendingCleanup()
+        {
+            return _pfxInstalled
+                   || _rootCaInstalled
+                   || _pfxOriginalMoved
+                   || _rootCaOriginalMoved
+                   || File.Exists(_pfxTempPath)
+                   || File.Exists(_rootCaTempPath)
+                   || File.Exists(_pfxBackupPath)
+                   || File.Exists(_rootCaBackupPath);
         }
 
         private void RestoreOriginalPair()
         {
-            if (_pfxInstalled)
-            {
-                TryDelete(_pfxPath);
+            // Keep each latch set until its operation has actually completed.
+            // This makes a subsequent cleanup pass safe after a transient
+            // delete/move failure.
+            if (_pfxInstalled && TryDelete(_pfxPath))
                 _pfxInstalled = false;
-            }
 
-            if (_rootCaInstalled)
-            {
-                TryDelete(_rootCaPath);
+            if (_rootCaInstalled && TryDelete(_rootCaPath))
                 _rootCaInstalled = false;
-            }
 
-            if (_pfxOriginalMoved && File.Exists(_pfxBackupPath))
-            {
-                File.Move(_pfxBackupPath, _pfxPath);
+            // Do not attempt to move the backup while an installed artifact is
+            // still present.  TryRestoreBackup performs its own delete check,
+            // but a transient failure in the first delete above must not be
+            // followed by a successful second delete that leaves the
+            // installed latch stale.
+            if (!_pfxInstalled
+                && _pfxOriginalMoved
+                && TryRestoreBackup(_pfxBackupPath, _pfxPath))
                 _pfxOriginalMoved = false;
-            }
 
-            if (_rootCaOriginalMoved && File.Exists(_rootCaBackupPath))
-            {
-                File.Move(_rootCaBackupPath, _rootCaPath);
+            if (!_rootCaInstalled
+                && _rootCaOriginalMoved
+                && TryRestoreBackup(_rootCaBackupPath, _rootCaPath))
                 _rootCaOriginalMoved = false;
+        }
+
+        private static bool TryRestoreBackup(string backupPath, string destinationPath)
+        {
+            if (!File.Exists(backupPath))
+                return false;
+
+            // File.Move does not replace an existing destination on the Unity
+            // profiles supported by this package. Remove a partially installed
+            // artifact first, and leave the latch set if that removal fails.
+            if (!TryDelete(destinationPath))
+                return false;
+
+            try
+            {
+                File.Move(backupPath, destinationPath);
+                return true;
+            }
+            catch
+            {
+                ReportCleanupFailure("move");
+                return false;
             }
         }
 
@@ -149,17 +222,31 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new InvalidOperationException($"Staged {label} artifact is empty: {path}");
         }
 
-        private static void TryDelete(string path)
+        private static bool TryDelete(string path)
         {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return true;
+
             try
             {
-                if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                    File.Delete(path);
+                File.Delete(path);
+                return !File.Exists(path);
             }
             catch
             {
-                // Cleanup is best effort; the original operation's exception is authoritative.
+                ReportCleanupFailure("delete");
+                return false;
             }
+        }
+
+        private static void ReportCleanupFailure(string operation)
+        {
+#if UNITY_5_3_OR_NEWER
+            UnityEngine.Debug.LogWarning("[Foxglove] Certificate transaction could not " + operation + " an artifact during cleanup.");
+#else
+            System.Diagnostics.Debug.WriteLine(
+                "[Foxglove] Certificate transaction could not " + operation + " an artifact during cleanup.");
+#endif
         }
 
         private void ThrowIfDisposed()
