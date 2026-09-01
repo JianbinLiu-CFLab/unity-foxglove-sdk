@@ -10,6 +10,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
+using System.Threading;
 using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Transport
@@ -83,15 +84,33 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Authenticate the accepted TCP stream as a TLS server stream.</summary>
         protected override Stream CreateClientStream(TcpClient tcpClient)
+            => CreateClientStream(tcpClient, CancellationToken.None);
+
+        /// <summary>Authenticate TLS while honoring the bounded handshake cancellation.</summary>
+        protected override Stream CreateClientStream(TcpClient tcpClient, CancellationToken handshakeCancellation)
         {
             var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false);
-            // Local development certificates are commonly self-signed and have no CRL/OCSP endpoint.
-            sslStream.AuthenticateAsServer(
-                _serverCertificate,
-                clientCertificateRequired: false,
-                enabledSslProtocols: SslProtocols.None,
-                checkCertificateRevocation: false);
-            return sslStream;
+            using var cancellationRegistration = handshakeCancellation.Register(
+                () =>
+                {
+                    try { sslStream.Dispose(); } catch { }
+                });
+            try
+            {
+                // Local development certificates are commonly self-signed and have no CRL/OCSP endpoint.
+                sslStream.AuthenticateAsServer(
+                    _serverCertificate,
+                    clientCertificateRequired: false,
+                    enabledSslProtocols: SslProtocols.None,
+                    checkCertificateRevocation: false);
+                handshakeCancellation.ThrowIfCancellationRequested();
+                return sslStream;
+            }
+            catch
+            {
+                try { sslStream.Dispose(); } catch { }
+                throw;
+            }
         }
     }
 }

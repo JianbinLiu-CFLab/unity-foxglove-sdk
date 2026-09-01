@@ -84,14 +84,23 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (!headers.TryGetValue("Connection", out var conn) ||
                 !ContainsUpgradeToken(conn))
+            {
+                WriteResponse(stream, BadRequestResponse);
                 return (false, null);
+            }
 
             if (!headers.TryGetValue("Upgrade", out var upgrade) ||
                 !upgrade.Equals("websocket", StringComparison.OrdinalIgnoreCase))
+            {
+                WriteResponse(stream, BadRequestResponse);
                 return (false, null);
+            }
 
             if (!headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
+            {
+                WriteResponse(stream, BadRequestResponse);
                 return (false, null);
+            }
 
             if (!IsValidWebSocketKey(wsKey))
             {

@@ -7,11 +7,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -193,6 +195,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             Assert.True(backend.IsRunning);
             backend.Stop();
             Assert.False(backend.IsRunning);
+        }
+
+        [Fact]
+        public void MalformedRequiredHandshakeHeadersReturnConsistentBadRequest()
+        {
+            var requests = new[]
+            {
+                BuildHandshakeRequest(connection: null),
+                BuildHandshakeRequest(connection: "NotUpgrade"),
+                BuildHandshakeRequest(upgrade: null),
+                BuildHandshakeRequest(upgrade: "http"),
+                BuildHandshakeRequest(includeKey: false)
+            };
+
+            foreach (var request in requests)
+            {
+                var stream = new DuplexBufferStream(Encoding.ASCII.GetBytes(request));
+                var handler = new WsHandshakeHandler(
+                    new ManagedWebSocketOptions(),
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    new object(),
+                    null);
+
+                var result = handler.Handshake(stream);
+
+                Assert.False(result.accepted);
+                Assert.StartsWith(
+                    "HTTP/1.1 400 Bad Request",
+                    Encoding.ASCII.GetString(stream.WrittenBytes));
+            }
+        }
+
+        [Fact]
+        public async Task HandshakeHasAnAbsoluteDeadlineAcrossBlockingReads()
+        {
+            using var backend = new BlockingHandshakeBackend();
+            using var client = new TcpClient();
+            var stopwatch = Stopwatch.StartNew();
+            var task = Task.Run(() => InvokeHandleClient(backend, client, CancellationToken.None));
+
+            var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromMilliseconds(6500))) == task;
+            backend.HandshakeStream.Release();
+            if (!completed)
+                await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(1)));
+
+            Assert.True(
+                completed,
+                $"A handshake that never produces a byte must be closed by the absolute deadline (elapsed={stopwatch.ElapsedMilliseconds}ms).");
+            Assert.True(backend.HandshakeStream.IsDisposed);
         }
 
         [Fact]
@@ -471,6 +522,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             return client;
         }
 
+        private static string BuildHandshakeRequest(
+            string connection = "Upgrade",
+            string upgrade = "websocket",
+            bool includeKey = true)
+        {
+            var request = new StringBuilder()
+                .Append("GET / HTTP/1.1\r\n")
+                .Append("Host: 127.0.0.1\r\n");
+            if (connection != null)
+                request.Append("Connection: ").Append(connection).Append("\r\n");
+            if (upgrade != null)
+                request.Append("Upgrade: ").Append(upgrade).Append("\r\n");
+            if (includeKey)
+                request.Append("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
+            request
+                .Append("Sec-WebSocket-Version: 13\r\n")
+                .Append("Sec-WebSocket-Protocol: foxglove.sdk.v1\r\n\r\n");
+            return request.ToString();
+        }
+
         private sealed class BlockingRejectBackend : ManagedWsBackend
         {
             internal readonly ManualResetEventSlim RejectionEntered = new ManualResetEventSlim();
@@ -504,6 +575,61 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 => SupportsPlaintextCapacityResponse;
         }
 
+        private sealed class BlockingHandshakeBackend : ManagedWsBackend
+        {
+            internal readonly BlockingHandshakeStream HandshakeStream = new BlockingHandshakeStream();
+
+            protected override Stream CreateClientStream(TcpClient tcpClient)
+                => HandshakeStream;
+        }
+
+        private sealed class BlockingHandshakeStream : Stream
+        {
+            private readonly ManualResetEventSlim _release = new ManualResetEventSlim();
+
+            internal bool IsDisposed { get; private set; }
+
+            internal void Release() => _release.Set();
+
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override bool CanTimeout => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush() { }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                _release.Wait(TimeSpan.FromSeconds(30));
+                return 0;
+            }
+
+            public override int ReadByte()
+            {
+                _release.Wait(TimeSpan.FromSeconds(30));
+                return -1;
+            }
+
+            public override void Write(byte[] buffer, int offset, int count) { }
+
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            protected override void Dispose(bool disposing)
+            {
+                IsDisposed = true;
+                _release.Set();
+                _release.Dispose();
+                base.Dispose(disposing);
+            }
+        }
+
         private static void InvokeReceiveLoop(
             ManagedWsBackend backend,
             uint clientId,
@@ -514,6 +640,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
             method.Invoke(backend, new object[] { clientId, connection, CancellationToken.None });
+        }
+
+        private static void InvokeHandleClient(
+            ManagedWsBackend backend,
+            TcpClient tcpClient,
+            CancellationToken cancellationToken)
+        {
+            var method = typeof(ManagedWsBackend).GetMethod(
+                "HandleClient",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(method);
+            method.Invoke(backend, new object[] { tcpClient, cancellationToken });
         }
 
         private static void InvokeDisconnect(

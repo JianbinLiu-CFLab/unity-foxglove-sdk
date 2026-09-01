@@ -124,10 +124,14 @@ namespace Unity.FoxgloveSDK.Transport
                 // Publish the fully started resources only after every
                 // fallible bind step succeeds.  A failed Start therefore
                 // leaves a clean, retryable state for the next attempt.
-                Volatile.Write(ref _listener, listener);
+                // Start the loop against the local listener before publishing
+                // the running marker.  This keeps the task independent from a
+                // partially published field set and makes IsRunning true only
+                // after all shutdown handles are visible.
+                var acceptTask = Task.Run(() => AcceptLoop(listener, cts.Token));
                 Volatile.Write(ref _cts, cts);
-                var acceptTask = Task.Run(() => AcceptLoop(cts.Token));
                 Volatile.Write(ref _acceptLoopTask, acceptTask);
+                Volatile.Write(ref _listener, listener);
             }
             catch
             {
@@ -156,26 +160,6 @@ namespace Unity.FoxgloveSDK.Transport
                 _acceptLoopTask = null;
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
 
-                var pending = _pendingClients.ToArray();
-                foreach (var pair in pending)
-                {
-                    try { pair.Key.Close(); } catch { }
-                    try { pair.Key.Dispose(); } catch { }
-                }
-                if (pending.Length > 0)
-                {
-                    try
-                    {
-                        var pendingTasks = pending.Select(pair => pair.Value.Task).ToArray();
-                        if (!Task.WaitAll(pendingTasks, StopPendingHandshakeWaitMs))
-                            _logger.LogWarning($"{pending.Length} pending WebSocket handshake(s) did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
-                    }
-                    catch (AggregateException ex)
-                    {
-                        _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
-                    }
-                }
-
                 var clients = _clients.ToArray();
                 var disconnects = clients
                     .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
@@ -203,6 +187,30 @@ namespace Unity.FoxgloveSDK.Transport
                     {
                         _logger.LogWarning(
                             "Client disconnect callbacks are still running after forced stop; continuing shutdown.");
+                    }
+                }
+
+                // Give established clients their bounded graceful-close window
+                // before hard-closing sockets that are still in handshake.  A
+                // pending handshake has no application state to drain, while
+                // an active connection may still have queued control frames.
+                var pending = _pendingClients.ToArray();
+                foreach (var pair in pending)
+                {
+                    try { pair.Key.Close(); } catch { }
+                    try { pair.Key.Dispose(); } catch { }
+                }
+                if (pending.Length > 0)
+                {
+                    try
+                    {
+                        var pendingTasks = pending.Select(pair => pair.Value.Task).ToArray();
+                        if (!Task.WaitAll(pendingTasks, StopPendingHandshakeWaitMs))
+                            _logger.LogWarning($"{pending.Length} pending WebSocket handshake(s) did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
+                    }
+                    catch (AggregateException ex)
+                    {
+                        _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
                     }
                 }
             }
@@ -370,16 +378,12 @@ namespace Unity.FoxgloveSDK.Transport
         // Internal
 
         /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
-        private async Task AcceptLoop(CancellationToken ct)
+        private async Task AcceptLoop(TcpListener listener, CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var listener = _listener;
-                    if (listener == null)
-                        break;
-
                     var tcpClient = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
                     if (ct.IsCancellationRequested || IsStopping)
                     {
@@ -419,12 +423,25 @@ namespace Unity.FoxgloveSDK.Transport
         {
             WsConnection conn = null;
             Stream stream = null;
+            CancellationTokenSource handshakeCts = null;
+            CancellationTokenRegistration handshakeRegistration = default;
             var clientId = 0u;
             var registeredClient = false;
             try
             {
-                stream = CreateClientStream(tcpClient);
+                // Stream ReadTimeout is an inactivity limit.  Pair it with a
+                // linked cancellation timer so a peer which drips one byte at
+                // a time cannot hold an admission reservation forever.  The
+                // callback closes both layers, which also interrupts a
+                // synchronous SslStream authentication on secure backends.
+                handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                handshakeCts.CancelAfter(HandshakeTimeoutMs);
+                handshakeRegistration = handshakeCts.Token.Register(
+                    () => CloseHandshakeResources(tcpClient, stream));
+
+                stream = CreateClientStream(tcpClient, handshakeCts.Token);
                 ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
+                handshakeCts.Token.ThrowIfCancellationRequested();
                 if (ct.IsCancellationRequested || IsStopping)
                 {
                     CloseUnregisteredClient(tcpClient, stream);
@@ -433,6 +450,11 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 var (accepted, _) = _handshakeHandler.Handshake(stream, HasClientCapacityForHandshake);
+                handshakeCts.Token.ThrowIfCancellationRequested();
+                handshakeRegistration.Dispose();
+                handshakeRegistration = default;
+                handshakeCts.Dispose();
+                handshakeCts = null;
                 if (!accepted)
                 {
                     try { stream?.Close(); } catch { }
@@ -520,6 +542,8 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
+                handshakeRegistration.Dispose();
+                handshakeCts?.Dispose();
                 ReleasePendingClient(tcpClient);
             }
         }
@@ -530,17 +554,21 @@ namespace Unity.FoxgloveSDK.Transport
             return tcpClient.GetStream();
         }
 
+        /// <summary>Create the stream while a handshake cancellation deadline is active.</summary>
+        protected virtual Stream CreateClientStream(TcpClient tcpClient, CancellationToken handshakeCancellation)
+        {
+            return CreateClientStream(tcpClient);
+        }
+
         private bool HasClientCapacityForHandshake()
         {
             var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
             lock (_clientAdmissionLock)
             {
-                // The current handler owns a pending reservation.  Count that
-                // reservation for admission, but do not reject the handler
-                // which already consumed it.
-                if (!IsStopping
-                    && (_clients.Count < maxClients
-                        || (_pendingClients.Count > 0 && _clients.Count + _pendingClients.Count <= maxClients)))
+                // Every handler already owns one pending reservation.  The
+                // active set is the only remaining capacity decision here;
+                // TryRegisterClient repeats it under this same lock.
+                if (!IsStopping && _clients.Count < maxClients)
                     return true;
             }
 
@@ -694,7 +722,10 @@ namespace Unity.FoxgloveSDK.Transport
             if (ex == null)
                 return false;
 
-            if (ex is AuthenticationException || ex is IOException || ex is SocketException)
+            if (ex is OperationCanceledException
+                || ex is AuthenticationException
+                || ex is IOException
+                || ex is SocketException)
                 return true;
 
             if (ex is AggregateException aggregate)
@@ -758,6 +789,14 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         private static void CloseUnregisteredClient(TcpClient tcpClient, Stream stream)
+        {
+            try { stream?.Close(); } catch { }
+            try { stream?.Dispose(); } catch { }
+            try { tcpClient?.Close(); } catch { }
+            try { tcpClient?.Dispose(); } catch { }
+        }
+
+        private static void CloseHandshakeResources(TcpClient tcpClient, Stream stream)
         {
             try { stream?.Close(); } catch { }
             try { stream?.Dispose(); } catch { }
