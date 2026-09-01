@@ -76,9 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "171-6: native artifact manifest records remote-access build metadata without requiring the DLL");
 
             Check(buildScript.Contains("cargo\", \"build\", \"--release\", \"--features\", \"remote-access\"", StringComparison.Ordinal)
-                  && buildScript.Contains("STAGING_RELATIVE = \"build/remotegateway/foxglove-c-win64\"", StringComparison.Ordinal)
-                  && buildScript.Contains("--copy-to-package", StringComparison.Ordinal)
-                  && buildScript.Contains("APPROVED_ARTIFACTS", StringComparison.Ordinal),
+                   && buildScript.Contains("STAGING_RELATIVE = \"build/remotegateway/foxglove-c-win64\"", StringComparison.Ordinal)
+                   && buildScript.Contains("--copy-to-package", StringComparison.Ordinal)
+                   && buildScript.Contains("--update-package-manifest", StringComparison.Ordinal)
+                   && buildScript.Contains("APPROVED_ARTIFACTS", StringComparison.Ordinal),
                 "171-7: native build script stages outside Packages and copies only reviewed artifacts on request");
 
             Check(!File.Exists(RepoPath(PackageRoot + "/Runtime/Plugins/Windows/x86_64/foxglove.dll")),

@@ -2,7 +2,9 @@
 """Build the Phase171 foxglove_c remote-access DLL for Windows x64.
 
 The script keeps native build outputs outside Packages by default. Use
---copy-to-package only after reviewing the produced manifest and DLL.
+    --copy-to-package only after reviewing the produced DLL. The committed package
+    manifest remains the trust anchor unless --update-package-manifest
+    is explicitly supplied.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ PACKAGE_PLUGIN_RELATIVE = (
 PACKAGE_PLUGIN_DIR = (
     ROOT / PACKAGE_PLUGIN_RELATIVE
 )
+PACKAGE_MANIFEST_NAME = "foxglove-gateway-native-artifact.json"
 DEVICE_TOKEN_ENVIRONMENT_VARIABLE = "FOXGLOVE_DEVICE_TOKEN"
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
@@ -48,7 +51,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--copy-to-package",
         action="store_true",
-        help="Copy approved artifacts and the generated manifest into the optional package plugin folder.",
+        help="Copy approved native artifacts into the optional package plugin folder without replacing its manifest.",
+    )
+    parser.add_argument(
+        "--update-package-manifest",
+        action="store_true",
+        help="Also replace the package manifest with the generated one (requires --copy-to-package; review and commit it before skip-build acceptance).",
     )
     parser.add_argument(
         "--include-pdb",
@@ -108,12 +116,12 @@ def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
 def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[str, ...]) -> Path:
     """Write reviewed native artifact metadata into the staging directory."""
     dll = target_dir / "release" / "foxglove.dll"
-    if not dll.exists():
+    if not dll.is_file():
         raise FileNotFoundError(dll)
     artifacts = {}
     for name in artifact_names:
         artifact = target_dir / "release" / name
-        if not artifact.exists():
+        if not artifact.is_file():
             continue
         artifacts[name] = {
             "sha256": sha256(artifact),
@@ -143,8 +151,14 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     return manifest_path
 
 
-def copy_approved_artifacts(target_dir: Path, manifest_path: Path, artifact_names: tuple[str, ...]) -> None:
-    """Copy only the approved DLL-side artifacts into the optional package."""
+def copy_approved_artifacts(
+    target_dir: Path,
+    manifest_path: Path,
+    artifact_names: tuple[str, ...],
+    *,
+    copy_manifest: bool = False,
+) -> None:
+    """Copy approved DLL-side artifacts without silently replacing trust metadata."""
     unapproved = sorted(set(artifact_names) - ALLOWED_ARTIFACTS)
     if unapproved:
         raise ValueError(f"unapproved artifact name(s): {', '.join(unapproved)}")
@@ -157,14 +171,23 @@ def copy_approved_artifacts(target_dir: Path, manifest_path: Path, artifact_name
             stale.unlink()
     for name in artifact_names:
         source = target_dir / "release" / name
-        if source.exists():
+        if source.is_file():
             shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
-    shutil.copy2(manifest_path, PACKAGE_PLUGIN_DIR / manifest_path.name)
+    if copy_manifest:
+        if manifest_path.name != PACKAGE_MANIFEST_NAME:
+            raise ValueError(
+                f"manifest must be named {PACKAGE_MANIFEST_NAME!r} before it can be copied"
+            )
+        if not manifest_path.is_file():
+            raise FileNotFoundError(manifest_path)
+        shutil.copy2(manifest_path, PACKAGE_PLUGIN_DIR / PACKAGE_MANIFEST_NAME)
 
 
 def main() -> int:
     """Build the native gateway artifact and optionally copy it into the package."""
     args = parse_args()
+    if args.update_package_manifest and not args.copy_to_package:
+        raise SystemExit("--update-package-manifest requires --copy-to-package")
     target_dir = Path(args.target_dir)
     env = build_environment(args)
     artifact_names = selected_artifacts(args.include_pdb)
@@ -174,8 +197,15 @@ def main() -> int:
     print(f"Wrote {manifest_path.relative_to(ROOT)}")
 
     if args.copy_to_package:
-        copy_approved_artifacts(target_dir, manifest_path, artifact_names)
+        copy_approved_artifacts(
+            target_dir,
+            manifest_path,
+            artifact_names,
+            copy_manifest=args.update_package_manifest,
+        )
         print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
+        if args.update_package_manifest:
+            print("Updated package manifest explicitly; review and commit it before using --skip-native-build.")
     else:
         print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
 

@@ -99,32 +99,30 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             {
                 if (item.Kind == RemoteGatewayEventKind.ConnectionStatusChanged)
                 {
-                    var droppedExisting = false;
                     if (!_hasLatestConnectionStatus && _events.Count >= _capacity)
-                    {
                         DropOldest();
-                        droppedExisting = true;
-                    }
 
                     var replacedStatus = _hasLatestConnectionStatus;
                     _latestConnectionStatus = item;
                     _hasLatestConnectionStatus = true;
                     if (replacedStatus)
-                    {
                         _droppedCount++;
-                        droppedExisting = true;
-                    }
 
                     // Connection status is a latest-value signal, not a FIFO
                     // workload item. Keeping it in a dedicated slot prevents
                     // unsupported callback traffic from evicting health state;
                     // reserve one bounded-queue slot for the latest value.
-                    return !droppedExisting;
+                    // The status itself was stored, so report acceptance even
+                    // when an older FIFO item or status was displaced.
+                    return true;
                 }
 
                 var fifoCapacity = _capacity - (_hasLatestConnectionStatus ? 1 : 0);
                 if (fifoCapacity < 1)
                 {
+                    // A capacity of one reserves the sole slot for the latest
+                    // connection status. Non-status work is intentionally
+                    // rejected rather than evicting that health signal.
                     _droppedCount++;
                     return false;
                 }

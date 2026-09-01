@@ -75,6 +75,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("Runtime/Plugins/Windows/x86_64", script.Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("AWS_LC_SYS_PREBUILT_NASM", script, StringComparison.Ordinal);
             Assert.Contains("target-feature=+crt-static", script, StringComparison.Ordinal);
+            Assert.Contains("--update-package-manifest", script, StringComparison.Ordinal);
+            Assert.Contains("committed package", script, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("trust anchor", script, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("cargo build --target-dir Packages", script, StringComparison.Ordinal);
         }
 
@@ -85,6 +88,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("FOXGLOVE_DEVICE_TOKEN", script, StringComparison.Ordinal);
             Assert.Contains("build_foxglove_c_win64.py", script, StringComparison.Ordinal);
             Assert.Contains("--copy-to-package", script, StringComparison.Ordinal);
+            Assert.Contains("read_committed_manifest", script, StringComparison.Ordinal);
+            Assert.Contains("staged", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("-projectPath", script, StringComparison.Ordinal);
             Assert.Contains("Unity.exe", script, StringComparison.Ordinal);
             Assert.Contains("Remote gateway started. Publishing to Foxglove Cloud.", script, StringComparison.Ordinal);

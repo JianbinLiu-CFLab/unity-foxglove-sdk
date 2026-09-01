@@ -89,6 +89,40 @@ class RemoteGatewayToolingTests(unittest.TestCase):
 
             self.assertFalse((package / self.build.PDB_ARTIFACT).exists())
 
+    def test_copy_keeps_committed_manifest_unless_explicitly_updated(self) -> None:
+        """A local build must not silently replace the package trust anchor."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / "target"
+            release = target / "release"
+            package = root / "package"
+            release.mkdir(parents=True)
+            package.mkdir()
+            for name in self.build.APPROVED_ARTIFACTS:
+                (release / name).write_bytes(name.encode("utf-8"))
+
+            committed_manifest = b'{"sha256":"committed"}\n'
+            generated_manifest = root / self.build.PACKAGE_MANIFEST_NAME
+            generated_manifest.write_bytes(b'{"sha256":"generated"}\n')
+            package_manifest = package / generated_manifest.name
+            package_manifest.write_bytes(committed_manifest)
+
+            with mock.patch.object(self.build, "PACKAGE_PLUGIN_DIR", package):
+                self.build.copy_approved_artifacts(
+                    target,
+                    generated_manifest,
+                    self.build.APPROVED_ARTIFACTS,
+                )
+                self.assertEqual(committed_manifest, package_manifest.read_bytes())
+
+                self.build.copy_approved_artifacts(
+                    target,
+                    generated_manifest,
+                    self.build.APPROVED_ARTIFACTS,
+                    copy_manifest=True,
+                )
+                self.assertEqual(generated_manifest.read_bytes(), package_manifest.read_bytes())
+
     def test_manifest_records_the_static_crt_cxx_flag(self) -> None:
         """Native provenance must include both C and C++ CRT controls."""
         with tempfile.TemporaryDirectory() as temp:
@@ -139,7 +173,11 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 self.acceptance.build_and_copy_native()
 
             child_environment = run.call_args.kwargs["env"]
-            self.assertNotIn(self.acceptance.TOKEN_ENV, child_environment)
+            self.assertNotIn(
+                self.acceptance.TOKEN_ENV,
+                child_environment,
+                "native build child environment must not contain the device token",
+            )
             self.assertEqual(sentinel, os.environ[self.acceptance.TOKEN_ENV])
 
     def test_direct_native_build_environment_does_not_inherit_device_token(self) -> None:
@@ -153,7 +191,11 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         ):
             child_environment = self.build.build_environment(arguments)
 
-        self.assertNotIn("FOXGLOVE_DEVICE_TOKEN", child_environment)
+        self.assertNotIn(
+            "FOXGLOVE_DEVICE_TOKEN",
+            child_environment,
+            "direct native build child environment must not contain the device token",
+        )
 
     def test_skip_build_requires_manifest_identity_match(self) -> None:
         """The skip-build path rejects a name, digest, or size mismatch."""
@@ -235,6 +277,148 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 root,
             ):
                 self.acceptance.ensure_native_artifact()
+
+    def test_skip_build_rejects_manifest_that_is_not_the_committed_trust_anchor(self) -> None:
+        """Skip-build validation must fail closed when the tracked manifest is dirty."""
+        payload = b"phase187-d05-004-native-trust-anchor"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            manifest = root / "foxglove-gateway-native-artifact.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "artifact": dll.name,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "sizeBytes": len(payload),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ), mock.patch.object(
+                self.acceptance.subprocess,
+                "run",
+                return_value=SimpleNamespace(
+                    returncode=0,
+                    stdout=b'{"committed":true}\n',
+                    stderr=b"",
+                ),
+            ):
+                with self.assertRaisesRegex(SystemExit, "committed trust anchor"):
+                    self.acceptance.ensure_native_artifact(require_committed=True)
+
+    def test_skip_build_accepts_manifest_matching_the_committed_trust_anchor(self) -> None:
+        """A clean checkout can validate the package DLL against its committed manifest."""
+        payload = b"phase187-d05-004-native-trust-anchor-valid"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            manifest = root / "foxglove-gateway-native-artifact.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "artifact": dll.name,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "sizeBytes": len(payload),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ), mock.patch.object(
+                self.acceptance.subprocess,
+                "run",
+                return_value=SimpleNamespace(
+                    returncode=0,
+                    stdout=manifest.read_bytes(),
+                    stderr=b"",
+                ),
+            ) as run:
+                self.acceptance.ensure_native_artifact(require_committed=True)
+
+            command = run.call_args.args[0]
+            self.assertEqual("git", command[0])
+            self.assertIn("show", command)
+
+    def test_manifest_validator_rejects_edge_shaped_inputs(self) -> None:
+        """The validator rejects type, length, truncation, and filesystem near-misses."""
+        payload = b"phase187-d05-manifest-edge"
+        actual_hash = hashlib.sha256(payload).hexdigest()
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dll = root / "foxglove.dll"
+            dll.write_bytes(payload)
+            manifest = root / "foxglove-gateway-native-artifact.json"
+
+            def validate(declared: object, expected: str) -> None:
+                manifest.write_text(json.dumps(declared), encoding="utf-8")
+                with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                    self.acceptance,
+                    "PLUGIN_DIR",
+                    root,
+                ):
+                    with self.assertRaisesRegex(SystemExit, expected):
+                        self.acceptance.ensure_native_artifact()
+
+            base = {"artifact": dll.name, "sha256": actual_hash, "sizeBytes": len(payload)}
+            validate({**base, "sha256": actual_hash[:-1]}, "sha256")
+            validate({**base, "sha256": "z" * 64}, "sha256")
+            near_miss_digit = "0" if actual_hash[8] != "0" else "1"
+            near_miss = actual_hash[:8] + near_miss_digit + actual_hash[9:]
+            validate({**base, "sha256": near_miss}, "sha256 does not match")
+            validate({**base, "sizeBytes": len(payload) - 1}, "sizeBytes")
+            validate({**base, "sizeBytes": True}, "sizeBytes")
+            validate({**base, "sizeBytes": -1}, "sizeBytes")
+
+            manifest.write_text("[1]", encoding="utf-8")
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                with self.assertRaisesRegex(SystemExit, "JSON object"):
+                    self.acceptance.ensure_native_artifact()
+
+            manifest.write_text("{", encoding="utf-8")
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                with self.assertRaisesRegex(SystemExit, "valid JSON"):
+                    self.acceptance.ensure_native_artifact()
+
+            manifest.unlink()
+            manifest.mkdir()
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                with self.assertRaisesRegex(SystemExit, "missing"):
+                    self.acceptance.ensure_native_artifact()
+
+            manifest.rmdir()
+            dll.unlink()
+            dll.mkdir()
+            manifest.write_text(json.dumps(base), encoding="utf-8")
+            with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
+                self.acceptance,
+                "PLUGIN_DIR",
+                root,
+            ):
+                with self.assertRaisesRegex(SystemExit, "missing"):
+                    self.acceptance.ensure_native_artifact()
 
     def test_same_timestamp_still_creates_distinct_run_directories(self) -> None:
         """Concurrent acceptance launches must never share evidence output."""

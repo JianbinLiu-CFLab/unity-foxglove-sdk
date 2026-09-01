@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private const string DeviceTokenEnvironmentVariable = "FOXGLOVE_DEVICE_TOKEN";
         private const string EditorUserSettingsTokenKey = "Unity2Foxglove.RemoteGateway.DeviceToken";
         private const int DefaultEventQueueCapacity = 1024;
+        private const int MissingManagerRetryFrames = 60;
 
         [Header("Remote Gateway")]
         [Tooltip("Default off. When enabled in Play Mode, publishes Unity scene data to Foxglove Cloud through the official Foxglove Remote Access Gateway.")]
@@ -40,6 +41,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private bool _warnedMissingManager;
         private bool _starting;
         private bool _startupFaulted;
+        private int _missingManagerRetryFramesRemaining;
         private IRemoteGatewayStartupNativeApi _startupNativeApi = RemoteGatewayStartupNativeApi.Instance;
         private IRemoteGatewayStartupNativeApi _activeContextNativeApi;
 
@@ -79,6 +81,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private void OnEnable()
         {
             _startupFaulted = false;
+            _missingManagerRetryFramesRemaining = 0;
             EnsureManager();
         }
 
@@ -391,16 +394,29 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (_manager != null)
                 return true;
 
-            // Manager creation/loading can be later than this component's
-            // OnEnable. Keep discovery retryable; warning throttling is
-            // independent from the lookup itself.
             _manager = GetComponent<FoxgloveManager>();
             if (_manager != null)
+            {
+                _missingManagerRetryFramesRemaining = 0;
                 return true;
+            }
+
+            // Manager creation/loading can be later than this component's
+            // OnEnable. Keep discovery retryable without scanning every frame.
+            if (_missingManagerRetryFramesRemaining > 0)
+            {
+                _missingManagerRetryFramesRemaining--;
+                return false;
+            }
 
             _manager = FindObjectOfType<FoxgloveManager>();
             if (_manager != null)
+            {
+                _missingManagerRetryFramesRemaining = 0;
                 return true;
+            }
+
+            _missingManagerRetryFramesRemaining = MissingManagerRetryFrames;
 
             if (!_warnedMissingManager)
             {
