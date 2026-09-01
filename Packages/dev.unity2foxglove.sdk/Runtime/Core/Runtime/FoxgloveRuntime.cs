@@ -252,22 +252,18 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler = null)
         {
+            // Once a session is active, let it stage the registry mutation and
+            // client-visible advertisement under one lifecycle lock. This
+            // prevents a request from observing the descriptor between those
+            // two operations.
+            if (_session != null)
+                return _session.RegisterServiceFromRuntime(descriptor, handler);
+
             var id = handler != null
                 ? _services.Register(descriptor, handler)
                 : _services.Register(descriptor);
-            // Re-advertise immediately so connected clients pick up the new service
-            if (_session != null)
-            {
-                try
-                {
-                    _session.AdvertiseRegisteredService(id);
-                }
-                catch
-                {
-                    _services.Unregister(id);
-                    throw;
-                }
-            }
+            // Before Start there are no connected clients; the next session
+            // snapshot advertises the retained runtime-owned definition.
             return id;
         }
 

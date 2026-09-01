@@ -34,6 +34,8 @@ namespace Unity.FoxgloveSDK.Core
         public uint Register(ServiceDescriptor descriptor, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
         {
             if (descriptor == null) throw new ArgumentNullException(nameof(descriptor));
+            if (string.IsNullOrWhiteSpace(descriptor.Name))
+                throw new ArgumentException("Service name is required.", nameof(descriptor));
 
             lock (_lock)
             {
@@ -58,6 +60,56 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _handlers.Remove(serviceId);
                 return _services.Remove(serviceId);
+            }
+        }
+
+        /// <summary>
+        /// Atomically remove a service while retaining its descriptor and handler
+        /// so a caller can compensate an external publication failure.
+        /// </summary>
+        internal bool TryRemove(
+            uint serviceId,
+            out ServiceDescriptor descriptor,
+            out Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
+        {
+            lock (_lock)
+            {
+                if (!_services.TryGetValue(serviceId, out var stored))
+                {
+                    descriptor = null;
+                    handler = null;
+                    return false;
+                }
+
+                descriptor = CloneDescriptor(stored);
+                _services.Remove(serviceId);
+                _handlers.TryGetValue(serviceId, out handler);
+                _handlers.Remove(serviceId);
+                return true;
+            }
+        }
+
+        /// <summary>Restore a previously removed service with its original ID and handler.</summary>
+        internal void Restore(
+            uint serviceId,
+            ServiceDescriptor descriptor,
+            Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
+        {
+            if (descriptor == null)
+                throw new ArgumentNullException(nameof(descriptor));
+            if (string.IsNullOrWhiteSpace(descriptor.Name))
+                throw new ArgumentException("Service name is required.", nameof(descriptor));
+
+            lock (_lock)
+            {
+                if (_services.ContainsKey(serviceId))
+                    throw new InvalidOperationException($"Service {serviceId} is already registered.");
+
+                _services[serviceId] = CloneDescriptorWithId(descriptor, serviceId);
+                if (handler != null)
+                    _handlers[serviceId] = handler;
+                if (_nextServiceId <= serviceId)
+                    _nextServiceId = serviceId + 1;
             }
         }
 

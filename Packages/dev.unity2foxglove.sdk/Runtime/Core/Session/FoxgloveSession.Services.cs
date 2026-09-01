@@ -143,12 +143,6 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (!_services.TryGet(serviceId, out _))
-            {
-                SendServiceCallFailure(clientId, serviceId, callId, $"Unknown service: {serviceId}");
-                return;
-            }
-
             if (payload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
             {
                 SendServiceCallFailure(clientId, serviceId, callId, "Payload exceeds 1 MiB limit");
@@ -163,7 +157,28 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (!_services.TryEnqueue(serviceId, callId, clientId, encoding, payload, parsedPayload, out _, out var error))
+            string error;
+            lock (_serviceLifecycleLock)
+            {
+                if (!_services.TryGet(serviceId, out _))
+                {
+                    error = $"Unknown service: {serviceId}";
+                }
+                else if (_services.TryEnqueue(
+                    serviceId,
+                    callId,
+                    clientId,
+                    encoding,
+                    payload,
+                    parsedPayload,
+                    out _,
+                    out error))
+                {
+                    error = null;
+                }
+            }
+
+            if (error != null)
                 SendServiceCallFailure(clientId, serviceId, callId, error);
         }
 
